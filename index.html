@@ -19,6 +19,12 @@
     th.sortable { cursor: pointer; user-select: none; }
     th.sortable:hover { background-color: #1e293b; }
 
+    /* Hide the horizontal scrollbars but keep the area scrollable (drag / wheel / touch). */
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    /* While grab-dragging the table, show the grabbing hand and suppress text selection. */
+    #scrollBody.dragging { cursor: grabbing; user-select: none; }
+
     /* Print: show only the report area, cleanly */
     @media print {
       body { background: #fff; }
@@ -212,12 +218,9 @@
           <div class="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-200">
             <h2 class="text-lg font-semibold text-slate-900">Comparable Properties</h2>
           </div>
-          <!-- Always-visible top scrollbar that mirrors the table's horizontal scroll,
-               so wide tables can be panned sideways without scrolling to the bottom. -->
-          <div id="scrollTop" class="hidden overflow-x-auto no-print" aria-hidden="true">
-            <div id="scrollTopInner" style="height:1px"></div>
-          </div>
-          <div id="scrollBody" class="overflow-x-auto">
+          <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
+               Scrollbars are hidden for a cleaner look (see .no-scrollbar). -->
+          <div id="scrollBody" class="overflow-x-auto no-scrollbar cursor-grab">
             <table id="compsTable" class="w-full text-sm">
               <thead class="bg-slate-800 text-slate-100">
                 <tr id="tableHead"></tr>
@@ -484,35 +487,38 @@
       });
       body.appendChild(tr);
     });
-    syncTopScrollbar();
   }
 
   // ----------------------------------------------------------------------------
-  // Top mirror scrollbar — keeps a horizontal scrollbar visible above the table
-  // so wide tables can be scrolled sideways without reaching the bottom first.
+  // Drag-to-scroll — grab the comps table and pan it left/right with the mouse.
+  // Scrollbars are hidden (.no-scrollbar) for a cleaner look; dragging (and the
+  // trackpad / touch) is how you move sideways.
   // ----------------------------------------------------------------------------
-  const scrollTop = document.getElementById("scrollTop");
-  const scrollTopInner = document.getElementById("scrollTopInner");
   const scrollBody = document.getElementById("scrollBody");
-  const compsTable = document.getElementById("compsTable");
+  let isDragging = false, dragStartX = 0, dragStartScroll = 0, dragMoved = false;
 
-  function syncTopScrollbar() {
-    const overflowing = compsTable.scrollWidth > scrollBody.clientWidth + 1;
-    scrollTop.classList.toggle("hidden", !overflowing);
-    if (overflowing) scrollTopInner.style.width = compsTable.scrollWidth + "px";
-  }
+  scrollBody.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    dragMoved = false;
+    dragStartX = e.pageX;
+    dragStartScroll = scrollBody.scrollLeft;
+    scrollBody.classList.add("dragging");
+  });
+  scrollBody.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const dx = e.pageX - dragStartX;
+    if (Math.abs(dx) > 3) dragMoved = true;
+    scrollBody.scrollLeft = dragStartScroll - dx;
+    e.preventDefault();
+  });
+  function endDrag() { isDragging = false; scrollBody.classList.remove("dragging"); }
+  scrollBody.addEventListener("mouseleave", endDrag);
+  window.addEventListener("mouseup", endDrag);
 
-  // Mirror scroll position between the top strip and the table (one bounce, no loop).
-  let isSyncing = false;
-  function mirror(from, to) {
-    if (isSyncing) return;
-    isSyncing = true;
-    to.scrollLeft = from.scrollLeft;
-    requestAnimationFrame(() => { isSyncing = false; });
-  }
-  scrollTop.addEventListener("scroll", () => mirror(scrollTop, scrollBody));
-  scrollBody.addEventListener("scroll", () => mirror(scrollBody, scrollTop));
-  window.addEventListener("resize", syncTopScrollbar);
+  // If the press was actually a drag, swallow the click so it doesn't also sort.
+  scrollBody.addEventListener("click", (e) => {
+    if (dragMoved) { e.stopPropagation(); e.preventDefault(); dragMoved = false; }
+  }, true);
 
   function sortBy(key) {
     const col = COLUMNS.find((c) => c.key === key);
@@ -558,7 +564,6 @@
     const btn = document.getElementById("imgBtn");
     const original = btn.textContent;
     btn.textContent = "Rendering…"; btn.disabled = true;
-    scrollTop.classList.add("hidden");   // keep the mirror scrollbar out of the image
     try {
       const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#f1f5f9", useCORS: true });
       const a = document.createElement("a");
@@ -570,7 +575,6 @@
       alert("Couldn't generate the image. You can use Print / PDF instead.");
     } finally {
       btn.textContent = original; btn.disabled = false;
-      syncTopScrollbar();                // restore the strip if the table overflows
     }
   }
 

@@ -16,6 +16,7 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     .spinner { border-top-color: transparent; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
     th.sortable { cursor: pointer; user-select: none; }
     th.sortable:hover { background-color: #1e293b; }
 
@@ -132,13 +133,24 @@
         <button id="submitBtn" type="submit"
           class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
           <span id="btnLabel">Generate Report</span>
-          <div id="btnSpinner" class="hidden spinner w-4 h-4 border-2 border-white rounded-full"></div>
         </button>
       </form>
     </div>
 
     <!-- Status / Error -->
     <div id="statusBox" class="hidden mt-6 no-print"></div>
+
+    <!-- Animated loading card (step sequence shown while a report generates) -->
+    <div id="loadingCard" class="hidden mt-6 no-print">
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 flex flex-col items-center text-center fade-in">
+        <div class="spinner w-9 h-9 border-[3px] border-blue-600 rounded-full mb-4"></div>
+        <p id="loadingHeadline" class="text-base font-semibold text-slate-900">Searching recent listings…</p>
+        <p class="text-sm text-slate-400 mt-1">This usually takes 20–40 seconds.</p>
+        <div class="w-full max-w-xs mt-5 h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div id="loadingBar" class="h-full rounded-full bg-blue-600" style="width:0%; transition:width .35s ease-out;"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- Results -->
     <div id="results" class="hidden mt-6">
@@ -349,7 +361,6 @@
   // Loading / status helpers
   // ----------------------------------------------------------------------------
   function setLoading(isLoading) {
-    document.getElementById("btnSpinner").classList.toggle("hidden", !isLoading);
     document.getElementById("btnLabel").textContent = isLoading ? "Generating…" : "Generate Report";
     document.getElementById("submitBtn").disabled = isLoading;
   }
@@ -364,6 +375,65 @@
     box.classList.remove("hidden");
   }
   function hideStatus() { document.getElementById("statusBox").classList.add("hidden"); }
+
+  // ----------------------------------------------------------------------------
+  // Animated loading card — cycles through generation stages during the wait.
+  // ----------------------------------------------------------------------------
+  const LOADING_STEPS = [
+    "Searching recent listings…",
+    "Reviewing comparable sales nearby…",
+    "Calculating price per square foot…",
+    "Assembling your report…",
+  ];
+  let loadingMsgTimer = null;
+  let loadingProgressTimer = null;
+  let loadingProgress = 0;
+
+  function setLoadingProgress(pct) {
+    loadingProgress = pct;
+    document.getElementById("loadingBar").style.width = pct + "%";
+  }
+
+  function showLoadingCard() {
+    const headline = document.getElementById("loadingHeadline");
+    let i = 0;
+    headline.textContent = LOADING_STEPS[0];
+    document.getElementById("loadingCard").classList.remove("hidden");
+
+    // Install-style fill: jump off the line, then creep toward ~90%, slowing as it
+    // climbs so it never falsely reaches 100% before the data actually arrives.
+    setLoadingProgress(0);
+    requestAnimationFrame(() => setLoadingProgress(8));
+    clearInterval(loadingProgressTimer);
+    loadingProgressTimer = setInterval(() => {
+      const next = loadingProgress + (90 - loadingProgress) * 0.06;
+      if (next >= 89.5) { setLoadingProgress(89.5); clearInterval(loadingProgressTimer); loadingProgressTimer = null; }
+      else setLoadingProgress(next);
+    }, 350);
+
+    // Cycle the stage messages, holding on the last one.
+    clearInterval(loadingMsgTimer);
+    loadingMsgTimer = setInterval(() => {
+      i = Math.min(i + 1, LOADING_STEPS.length - 1);
+      headline.textContent = LOADING_STEPS[i];
+      if (i === LOADING_STEPS.length - 1) { clearInterval(loadingMsgTimer); loadingMsgTimer = null; }
+    }, 3500);
+  }
+
+  // Snap to a satisfying 100% finish, then resolve so the results can render.
+  function completeLoadingCard() {
+    clearInterval(loadingProgressTimer); loadingProgressTimer = null;
+    clearInterval(loadingMsgTimer); loadingMsgTimer = null;
+    document.getElementById("loadingHeadline").textContent = "Report ready!";
+    setLoadingProgress(100);
+    return new Promise((resolve) => setTimeout(resolve, 550));
+  }
+
+  function hideLoadingCard() {
+    clearInterval(loadingMsgTimer); loadingMsgTimer = null;
+    clearInterval(loadingProgressTimer); loadingProgressTimer = null;
+    document.getElementById("loadingCard").classList.add("hidden");
+  }
 
   // ----------------------------------------------------------------------------
   // Target-vs-market comparison
@@ -593,8 +663,9 @@
     if (!address) return;
 
     document.getElementById("results").classList.add("hidden");
+    hideStatus();
     setLoading(true);
-    showStatus("Searching public records and listings for recent comparable transactions. This typically takes 20–40 seconds.", "info");
+    showLoadingCard();
 
     try {
       const res = await fetch("/api/comps", {
@@ -616,10 +687,12 @@
       }
 
       const parsed = await res.json();
-      hideStatus();
+      await completeLoadingCard();   // fill the bar to 100% for a satisfying finish
+      hideLoadingCard();
       renderResults(parsed, { address, type, note });
     } catch (err) {
       console.error(err);
+      hideLoadingCard();
       const msg = err && err.message ? err.message : String(err);
       showStatus(
         `<strong>Something went wrong.</strong><br>${msg}` +

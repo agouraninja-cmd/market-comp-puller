@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Market Comp Puller</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    .fade-in { animation: fadeIn .35s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .spinner { border-top-color: transparent; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { background-color: #1e293b; }
+
+    /* Print: show only the report area, cleanly */
+    @media print {
+      body { background: #fff; }
+      .no-print { display: none !important; }
+      #reportArea { box-shadow: none; }
+      .print-shadow-none { box-shadow: none !important; border-color: #e2e8f0 !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <!-- Password gate overlay (shown only if the server requires a password) -->
+  <div id="gate" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6">
+      <h2 class="text-lg font-semibold text-slate-900 mb-1">🔒 Protected</h2>
+      <p class="text-sm text-slate-500 mb-4">Enter the access password to use this tool.</p>
+      <form id="gateForm" class="space-y-3">
+        <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Password"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+        <p id="gateError" class="hidden text-sm text-red-600"></p>
+        <button type="submit"
+          class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors">
+          Unlock
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="max-w-5xl mx-auto px-4 py-8">
+
+    <!-- Header -->
+    <header class="mb-6 no-print">
+      <h1 class="text-3xl font-bold text-slate-900 flex items-center gap-2">
+        <span>🏢</span> Market Comp Puller
+      </h1>
+      <p class="text-slate-500 mt-1">Pull recent comparable sales &amp; lease comps for a commercial property.</p>
+    </header>
+
+    <!-- Form Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 no-print">
+      <form id="compForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Property Address</label>
+          <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Property Type</label>
+            <select id="propertyType"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+              <option>Industrial</option>
+              <option>Office</option>
+              <option>Retail</option>
+              <option>Multifamily</option>
+              <option>Land</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Radius / Market Note <span class="text-slate-400 font-normal">(optional)</span></label>
+            <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+          </div>
+        </div>
+
+        <!-- Target property (optional) -->
+        <details class="border border-slate-200 rounded-lg bg-slate-50/60">
+          <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-slate-700">
+            🎯 Compare a target property <span class="text-slate-400 font-normal">(optional)</span>
+          </summary>
+          <div class="px-4 pb-4 pt-1">
+            <p class="text-xs text-slate-500 mb-3">Enter your subject property's size and price to see how its $/SF stacks up against the comp average.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Target Size (SF)</label>
+                <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Target / Asking Price ($)</label>
+                <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <button id="submitBtn" type="submit"
+          class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+          <span id="btnLabel">Pull Comps</span>
+          <div id="btnSpinner" class="hidden spinner w-4 h-4 border-2 border-white rounded-full"></div>
+        </button>
+      </form>
+    </div>
+
+    <!-- Status / Error -->
+    <div id="statusBox" class="hidden mt-6 no-print"></div>
+
+    <!-- Results -->
+    <div id="results" class="hidden mt-6">
+
+      <!-- Toolbar (not captured in the image / not printed) -->
+      <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
+        <button id="imgBtn"
+          class="text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 transition-colors">
+          📸 Download Image
+        </button>
+        <button id="printBtn"
+          class="text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 transition-colors">
+          🖨 Print / PDF
+        </button>
+        <button id="csvBtn"
+          class="text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 transition-colors">
+          ⬇ Export CSV
+        </button>
+      </div>
+
+      <!-- Captured / printed region -->
+      <div id="reportArea" class="space-y-6">
+
+        <!-- Report header (gives the screenshot context) -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-indigo-600 font-semibold">Market Comp Report</div>
+              <h2 id="reportAddress" class="text-xl font-bold text-slate-900 mt-1"></h2>
+              <div id="reportMeta" class="text-sm text-slate-500 mt-0.5"></div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-2xl">🏢</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-3">
+            <h2 class="text-lg font-semibold text-slate-900">Market Summary</h2>
+            <span id="avgPpsf" class="hidden text-sm font-medium bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full"></span>
+          </div>
+          <p id="summaryText" class="text-slate-700 leading-relaxed"></p>
+        </div>
+
+        <!-- Target comparison card -->
+        <div id="compareCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+          <h2 class="text-lg font-semibold text-slate-900 mb-4">🎯 Target vs. Market</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+              <div class="text-xs uppercase tracking-wide text-slate-400">Your Target $/SF</div>
+              <div id="targetPpsfVal" class="text-2xl font-bold text-slate-900 mt-1">—</div>
+              <div id="targetBasis" class="text-xs text-slate-400 mt-1"></div>
+            </div>
+            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+              <div class="text-xs uppercase tracking-wide text-slate-400">Market Avg $/SF</div>
+              <div id="marketPpsfVal" class="text-2xl font-bold text-slate-900 mt-1">—</div>
+              <div class="text-xs text-slate-400 mt-1">from pulled comps</div>
+            </div>
+            <div id="deltaTile" class="rounded-lg border p-4">
+              <div class="text-xs uppercase tracking-wide opacity-70">Delta vs. Market</div>
+              <div id="deltaVal" class="text-2xl font-bold mt-1">—</div>
+              <div id="deltaPct" class="text-xs opacity-80 mt-1"></div>
+            </div>
+          </div>
+          <p id="verdictText" class="text-sm text-slate-600 mt-4"></p>
+        </div>
+
+        <!-- Comps table -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-900">Comparable Properties</h2>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-800 text-slate-100">
+                <tr id="tableHead"></tr>
+              </thead>
+              <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+          <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100 no-print">Click a column header to sort.</p>
+        </div>
+
+        <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
+        <p class="text-center text-xs text-slate-400">
+          Comps based on publicly available data. Verify before use in underwriting.
+        </p>
+      </div>
+    </div>
+
+    <!-- Disclaimer for the no-results state -->
+    <footer id="footerNote" class="mt-8 text-center text-xs text-slate-400 no-print">
+      Comps based on publicly available data. Verify before use in underwriting.
+    </footer>
+  </div>
+
+  <script>
+  // ----------------------------------------------------------------------------
+  // Table columns
+  // ----------------------------------------------------------------------------
+  const COLUMNS = [
+    { key: "address",        label: "Address",        numeric: false },
+    { key: "size_sqft",      label: "Size (SF)",      numeric: true  },
+    { key: "price_or_rate",  label: "Price / Rate",   numeric: true  },
+    { key: "price_per_sqft", label: "$/SF",           numeric: true  },
+    { key: "cap_rate",       label: "Cap Rate",       numeric: true  },
+    { key: "notes",          label: "Notes",          numeric: false },
+  ];
+
+  let currentComps = [];
+  let sortState = { key: null, dir: 1 };
+
+  function numericValue(str) {
+    if (str == null) return NaN;
+    const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+    return m ? parseFloat(m[0]) : NaN;
+  }
+  function formatUsd(n, opts) {
+    return "$" + n.toLocaleString(undefined, opts || { maximumFractionDigits: 2 });
+  }
+
+  // ----------------------------------------------------------------------------
+  // Password gate
+  // ----------------------------------------------------------------------------
+  function getStoredPassword() { return sessionStorage.getItem("APP_PASSWORD") || ""; }
+
+  async function initGate() {
+    let cfg = { authRequired: false };
+    try {
+      const r = await fetch("/api/config");
+      cfg = await r.json();
+    } catch (_) { /* if config fails, treat as open */ }
+
+    if (!cfg.authRequired) return;            // no password configured
+
+    // If we already have a valid stored password, skip the gate.
+    if (getStoredPassword()) {
+      const ok = await tryLogin(getStoredPassword(), true);
+      if (ok) return;
+    }
+    document.getElementById("gate").classList.remove("hidden");
+  }
+
+  async function tryLogin(password, silent) {
+    try {
+      const r = await fetch("/api/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (r.ok) {
+        sessionStorage.setItem("APP_PASSWORD", password);
+        return true;
+      }
+      if (!silent) {
+        const err = await r.json().catch(() => ({}));
+        showGateError(err.error || "Incorrect password.");
+      }
+      return false;
+    } catch (e) {
+      if (!silent) showGateError("Couldn't reach the server.");
+      return false;
+    }
+  }
+
+  function showGateError(msg) {
+    const el = document.getElementById("gateError");
+    el.textContent = msg;
+    el.classList.remove("hidden");
+  }
+
+  document.getElementById("gateForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = document.getElementById("gatePassword").value;
+    const ok = await tryLogin(pw, false);
+    if (ok) document.getElementById("gate").classList.add("hidden");
+  });
+
+  initGate();
+
+  // ----------------------------------------------------------------------------
+  // Loading / status helpers
+  // ----------------------------------------------------------------------------
+  function setLoading(isLoading) {
+    document.getElementById("btnSpinner").classList.toggle("hidden", !isLoading);
+    document.getElementById("btnLabel").textContent = isLoading ? "Searching…" : "Pull Comps";
+    document.getElementById("submitBtn").disabled = isLoading;
+  }
+  function showStatus(html, kind = "info") {
+    const box = document.getElementById("statusBox");
+    const styles = {
+      info:  "bg-blue-50 border-blue-200 text-blue-800",
+      error: "bg-red-50 border-red-200 text-red-800",
+    };
+    box.className = `mt-6 rounded-lg border px-4 py-3 text-sm no-print ${styles[kind] || styles.info}`;
+    box.innerHTML = html;
+    box.classList.remove("hidden");
+  }
+  function hideStatus() { document.getElementById("statusBox").classList.add("hidden"); }
+
+  // ----------------------------------------------------------------------------
+  // Target-vs-market comparison
+  // ----------------------------------------------------------------------------
+  function renderComparison(parsed) {
+    const card = document.getElementById("compareCard");
+    const size = numericValue(document.getElementById("targetSize").value);
+    const price = numericValue(document.getElementById("targetPrice").value);
+
+    if (!(size > 0) || !(price > 0)) { card.classList.add("hidden"); return; }
+
+    const targetPpsf = price / size;
+    const marketPpsf = numericValue(parsed.avg_price_per_sqft);
+
+    document.getElementById("targetPpsfVal").textContent = formatUsd(targetPpsf);
+    document.getElementById("targetBasis").textContent =
+      `${formatUsd(price, { maximumFractionDigits: 0 })} ÷ ${size.toLocaleString()} SF`;
+
+    const deltaTile = document.getElementById("deltaTile");
+    const deltaVal = document.getElementById("deltaVal");
+    const deltaPct = document.getElementById("deltaPct");
+    const verdict = document.getElementById("verdictText");
+
+    if (!(marketPpsf > 0)) {
+      document.getElementById("marketPpsfVal").textContent = "n/a";
+      deltaTile.className = "rounded-lg border p-4 bg-slate-50 border-slate-200 text-slate-500";
+      deltaVal.textContent = "—";
+      deltaPct.textContent = "";
+      verdict.textContent =
+        "The comps didn't return a numeric average $/SF, so there's nothing to compare against numerically. Your target $/SF is shown above — eyeball it against the $/SF column in the table.";
+      card.classList.remove("hidden");
+      return;
+    }
+
+    document.getElementById("marketPpsfVal").textContent = formatUsd(marketPpsf);
+
+    const delta = targetPpsf - marketPpsf;
+    const pct = (delta / marketPpsf) * 100;
+    const above = delta > 0;
+
+    deltaTile.className =
+      "rounded-lg border p-4 " +
+      (above ? "bg-amber-50 border-amber-200 text-amber-800"
+             : "bg-emerald-50 border-emerald-200 text-emerald-800");
+    deltaVal.textContent = (above ? "+" : "−") + formatUsd(Math.abs(delta));
+    deltaPct.textContent = (above ? "+" : "−") + Math.abs(pct).toFixed(1) + "% vs. market avg";
+
+    verdict.textContent = above
+      ? `Your target is priced about ${Math.abs(pct).toFixed(1)}% ABOVE the comp average (${formatUsd(targetPpsf)} vs. ${formatUsd(marketPpsf)} per SF). Make sure quality, location, or income justifies the premium.`
+      : `Your target is priced about ${Math.abs(pct).toFixed(1)}% BELOW the comp average (${formatUsd(targetPpsf)} vs. ${formatUsd(marketPpsf)} per SF) — potentially a value, assuming condition and income hold up.`;
+
+    card.classList.remove("hidden");
+  }
+
+  // ----------------------------------------------------------------------------
+  // Render summary + table
+  // ----------------------------------------------------------------------------
+  function renderResults(parsed, meta) {
+    if (!parsed || !Array.isArray(parsed.comps)) {
+      throw new Error("Parsed response is missing a 'comps' array.");
+    }
+    currentComps = parsed.comps;
+    sortState = { key: null, dir: 1 };
+
+    // Report header
+    document.getElementById("reportAddress").textContent = meta.address;
+    const dateStr = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    document.getElementById("reportMeta").textContent =
+      `${meta.type}${meta.note ? " · " + meta.note : ""} · Generated ${dateStr}`;
+
+    document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
+
+    const avgEl = document.getElementById("avgPpsf");
+    if (parsed.avg_price_per_sqft) {
+      avgEl.textContent = "Avg $/SF: " + parsed.avg_price_per_sqft;
+      avgEl.classList.remove("hidden");
+    } else {
+      avgEl.classList.add("hidden");
+    }
+
+    renderComparison(parsed);
+    renderTableHead();
+    renderTableBody();
+    document.getElementById("results").classList.remove("hidden");
+    document.getElementById("footerNote").classList.add("hidden");
+  }
+
+  function renderTableHead() {
+    const head = document.getElementById("tableHead");
+    head.innerHTML = "";
+    COLUMNS.forEach((col) => {
+      const th = document.createElement("th");
+      th.className = "sortable text-left font-semibold px-4 py-3 whitespace-nowrap";
+      let arrow = "";
+      if (sortState.key === col.key) arrow = sortState.dir === 1 ? " ▲" : " ▼";
+      th.textContent = col.label + arrow;
+      th.addEventListener("click", () => sortBy(col.key));
+      head.appendChild(th);
+    });
+  }
+
+  function renderTableBody() {
+    const body = document.getElementById("tableBody");
+    body.innerHTML = "";
+    if (currentComps.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="${COLUMNS.length}" class="px-4 py-6 text-center text-slate-400">No comps found.</td>`;
+      body.appendChild(tr);
+      return;
+    }
+    currentComps.forEach((comp) => {
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50";
+      COLUMNS.forEach((col) => {
+        const td = document.createElement("td");
+        td.className = "px-4 py-3 align-top " + (col.key === "notes" ? "text-slate-500 min-w-[200px]" : "whitespace-nowrap");
+        const val = comp[col.key];
+        td.textContent = (val === undefined || val === null || val === "") ? "—" : val;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+  }
+
+  function sortBy(key) {
+    const col = COLUMNS.find((c) => c.key === key);
+    if (!col) return;
+    if (sortState.key === key) { sortState.dir *= -1; }
+    else { sortState.key = key; sortState.dir = 1; }
+    currentComps.sort((a, b) => {
+      let av = a[key], bv = b[key];
+      if (col.numeric) {
+        const an = numericValue(av), bn = numericValue(bv);
+        const aNan = isNaN(an), bNan = isNaN(bn);
+        if (aNan && bNan) return 0;
+        if (aNan) return 1;
+        if (bNan) return -1;
+        return (an - bn) * sortState.dir;
+      }
+      av = (av || "").toString().toLowerCase();
+      bv = (bv || "").toString().toLowerCase();
+      return av.localeCompare(bv) * sortState.dir;
+    });
+    renderTableHead();
+    renderTableBody();
+  }
+
+  // ----------------------------------------------------------------------------
+  // CSV / Image / Print
+  // ----------------------------------------------------------------------------
+  function exportCsv() {
+    if (!currentComps.length) return;
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const header = COLUMNS.map((c) => esc(c.label)).join(",");
+    const rows = currentComps.map((comp) => COLUMNS.map((c) => esc(comp[c.key])).join(","));
+    const csv = [header, ...rows].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "market-comps.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadImage() {
+    const node = document.getElementById("reportArea");
+    const btn = document.getElementById("imgBtn");
+    const original = btn.textContent;
+    btn.textContent = "Rendering…"; btn.disabled = true;
+    try {
+      const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#f1f5f9", useCORS: true });
+      const a = document.createElement("a");
+      a.download = "market-comp-report.png";
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+    } catch (e) {
+      console.error(e);
+      alert("Couldn't generate the image. You can use Print / PDF instead.");
+    } finally {
+      btn.textContent = original; btn.disabled = false;
+    }
+  }
+
+  document.getElementById("csvBtn").addEventListener("click", exportCsv);
+  document.getElementById("imgBtn").addEventListener("click", downloadImage);
+  document.getElementById("printBtn").addEventListener("click", () => window.print());
+
+  // ----------------------------------------------------------------------------
+  // Submit -> our backend proxy (key stays on the server)
+  // ----------------------------------------------------------------------------
+  document.getElementById("compForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const address = document.getElementById("address").value.trim();
+    const type = document.getElementById("propertyType").value;
+    const note = document.getElementById("marketNote").value.trim();
+    if (!address) return;
+
+    document.getElementById("results").classList.add("hidden");
+    setLoading(true);
+    showStatus("🔎 Searching the web for recent comparable transactions… this can take 20–40 seconds.", "info");
+
+    try {
+      const res = await fetch("/api/comps", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-app-password": getStoredPassword() },
+        body: JSON.stringify({ address, type, note }),
+      });
+
+      if (res.status === 401) {
+        // Password missing/expired — re-show the gate.
+        sessionStorage.removeItem("APP_PASSWORD");
+        document.getElementById("gate").classList.remove("hidden");
+        throw new Error("Your session needs a password. Please unlock and try again.");
+      }
+      if (!res.ok) {
+        let detail = "";
+        try { detail = (await res.json())?.error || ""; } catch (_) {}
+        throw new Error(detail || `Request failed (${res.status}).`);
+      }
+
+      const parsed = await res.json();
+      hideStatus();
+      renderResults(parsed, { address, type, note });
+    } catch (err) {
+      console.error(err);
+      const msg = err && err.message ? err.message : String(err);
+      showStatus(
+        `<strong>Something went wrong.</strong><br>${msg}` +
+        `<br><span class="text-xs opacity-80">If this looks like a parsing issue, try again — the model occasionally adds stray text. Check the server logs / browser console for details.</span>`,
+        "error"
+      );
+    } finally {
+      setLoading(false);
+    }
+  });
+  </script>
+</body>
+</html>

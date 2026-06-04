@@ -1,0 +1,13 @@
+{
+  "name": "market-comp-puller",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-page web app that pulls commercial real estate comps via the Anthropic API with web search.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

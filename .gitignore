@@ -1,0 +1,10 @@
+.env
+node_modules/
+
+# Local runtime logs
+server.out.log
+server.err.log
+*.log
+
+# Local Claude Code settings
+.claude/

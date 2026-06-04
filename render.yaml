@@ -1,0 +1,18 @@
+# Render Blueprint — deploys the Market Comp Puller as a Node web service.
+# In Render: New + > Blueprint, connect this repo, and Render reads this file.
+# You'll be prompted to enter the two secret values below (they are NOT stored here).
+services:
+  - type: web
+    name: market-comp-puller
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      # Your Anthropic API key. Required. Enter it in the Render dashboard.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Shared access password for the public site. Enter it in the Render dashboard.
+      - key: APP_PASSWORD
+        sync: false

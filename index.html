@@ -240,7 +240,7 @@
   // ----------------------------------------------------------------------------
   // Table columns
   // ----------------------------------------------------------------------------
-  const COLUMNS = [
+  const BASE_COLUMNS = [
     { key: "address",        label: "Address",        numeric: false },
     { key: "size_sqft",      label: "Size (SF)",      numeric: true  },
     { key: "price_or_rate",  label: "Price / Rate",   numeric: true  },
@@ -248,6 +248,23 @@
     { key: "cap_rate",       label: "Cap Rate",       numeric: true  },
     { key: "notes",          label: "Notes",          numeric: false },
   ];
+
+  // Industrial reports get two extra physical-spec columns, shown right after Size.
+  const INDUSTRIAL_COLUMNS = [
+    { key: "clear_height", label: "Clear Height", numeric: true },
+    { key: "dock_doors",   label: "Dock Doors",   numeric: true },
+  ];
+
+  function columnsForType(type) {
+    if (type !== "Industrial") return BASE_COLUMNS.slice();
+    const cols = BASE_COLUMNS.slice();
+    const sizeIdx = cols.findIndex((c) => c.key === "size_sqft");
+    cols.splice(sizeIdx + 1, 0, ...INDUSTRIAL_COLUMNS);
+    return cols;
+  }
+
+  // Active columns for the current report; rebuilt per search in renderResults().
+  let COLUMNS = BASE_COLUMNS.slice();
 
   let currentComps = [];
   let sortState = { key: null, dir: 1 };
@@ -402,6 +419,7 @@
     }
     currentComps = parsed.comps;
     sortState = { key: null, dir: 1 };
+    COLUMNS = columnsForType(meta.type);   // Industrial adds Clear Height + Dock Doors
 
     // Report header
     document.getElementById("reportAddress").textContent = meta.address;

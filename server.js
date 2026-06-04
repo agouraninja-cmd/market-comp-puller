@@ -48,12 +48,19 @@ function passwordMatches(candidate) {
 // ---------------------------------------------------------------------------
 function buildPrompt(address, type, note) {
   const typeGuidance = {
-    Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases, clear height and dock notes if available.",
+    Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
     Retail:      "Focus on retail/strip/single-tenant net lease. Report price/SF for sales and NNN $/SF/yr for leases, tenant/anchor and cap rate where relevant.",
     Multifamily: "Focus on apartment/multifamily. Report price per unit AND price/SF, cap rate, and unit count in notes.",
     Land:        "Focus on comparable land sales. Report price per acre and price/SF of land, zoning and entitlement notes.",
   };
+
+  const isIndustrial = type === "Industrial";
+
+  // Industrial comps carry two extra physical-spec fields.
+  const compShape = isIndustrial
+    ? `{ "address": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`
+    : `{ "address": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`;
 
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
@@ -65,6 +72,9 @@ function buildPrompt(address, type, note) {
     ``,
     `TASK: Find 3 to 6 RECENT (prefer last 24 months) comparable sales or lease listings near this address that match the property type.`,
     typeGuidance[type] || "",
+    isIndustrial
+      ? `For EACH industrial comp, also report two building specs: "clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level"). Search listing pages, brokerage flyers, and property records for these. If a spec genuinely can't be found, use an empty string "" — do not guess.`
+      : "",
     ``,
     `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     ``,
@@ -73,7 +83,7 @@ function buildPrompt(address, type, note) {
     `  "summary": "2-3 sentence written takeaway about the local market",`,
     `  "avg_price_per_sqft": "string or null",`,
     `  "comps": [`,
-    `    { "address": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`,
+    `    ${compShape}`,
     `  ]`,
     `}`,
     ``,

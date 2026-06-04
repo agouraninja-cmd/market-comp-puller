@@ -1,0 +1,101 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A web app for a commercial real estate firm. A user enters a property address +
+type; the server asks Claude (with web search) for recent comparable sales/leases
+and returns a structured comp report (summary, average $/SF, comp table, optional
+subject-vs-market comparison). The front-end is a single HTML file; a small Node
+proxy holds the API key so the browser never sees it.
+
+There is no build step, no test suite, no linter, and **no npm dependencies** — it
+runs on plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
+
+## Running it
+
+```bash
+npm start          # = node server.js  -> serves http://localhost:3000
+```
+
+`npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
+a **portable (no-admin) copy**, so it's launched by full path instead:
+
+```powershell
+& "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
+```
+
+### Restart rule (important)
+
+- Editing **`index.html`** needs no restart — `server.js` reads it from disk on
+  every request, so just refresh the browser.
+- Editing **`server.js`** (e.g. the prompt) **requires restarting the process** —
+  it's loaded once at startup. Kill the process listening on port 3000 and
+  relaunch.
+
+## Configuration (environment / `.env`)
+
+`server.js` has a tiny built-in `.env` loader, so a local `.env` works without any
+dependency. `.env` is git-ignored — never commit it.
+
+- `ANTHROPIC_API_KEY` — **required.** Keep the key on ONE line with nothing after
+  it; a stray comment or a smart `—` dash on the same line will corrupt it.
+- `APP_PASSWORD` — optional shared password. When set, the front-end shows a lock
+  screen and every `/api/comps` call must carry the matching `x-app-password`
+  header (checked server-side with a constant-time compare). When unset, the app
+  is fully open.
+- `PORT` — defaults to 3000. Hosts set this themselves.
+
+`MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
+404 for the model, list available models via `GET https://api.anthropic.com/v1/models`
+with the key and update the constant — an earlier model ID was retired.
+
+## Architecture
+
+```
+Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages API
+        ^                                       |              (+ web_search tool)
+        +-------------- JSON comps --------------+
+```
+
+**`server.js`** — zero-dependency Node HTTP server. Routes:
+- `POST /api/comps` — the core endpoint. Enforces the password gate (if set),
+  builds the prompt, calls Anthropic with the `web_search` tool enabled, and
+  returns parsed JSON.
+- `GET /api/config` — tells the front-end whether a password is required
+  (`{ authRequired }`), so the UI knows whether to show the gate.
+- `POST /api/login` — validates a password so the UI can confirm before searching.
+- `GET /healthz` — health check for hosting platforms.
+- `GET /` — serves `index.html`.
+
+**`index.html`** — the entire front-end (Tailwind via CDN, html2canvas via CDN).
+Holds the form, password gate, results rendering, sortable table, and the
+CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
+
+### Two non-obvious flows to know before editing
+
+1. **Web-search response parsing (`server.js`).** A web-search response is a mix
+   of block types. The code keeps only `block.type === "text"`, joins them, then
+   `parseCompJson` defensively strips ```` ```json ```` fences and slices the
+   outer `{...}` before `JSON.parse`. The model is told to return raw JSON, but
+   this guards against stray text. If you change the output shape, keep the
+   "return ONLY JSON" instruction intact.
+
+2. **Property-type-aware reporting is split across both files.** `buildPrompt` in
+   `server.js` switches guidance per type (Industrial/Office/Retail/Multifamily/
+   Land). **Industrial** additionally requests two extra per-comp fields
+   (`clear_height`, `dock_doors`) and uses a wider JSON comp shape. The front-end
+   mirrors this: `columnsForType()` in `index.html` inserts the matching
+   **Clear Height** / **Dock Doors** columns only for Industrial reports, and the
+   active `COLUMNS` array is rebuilt per search in `renderResults()`. **Any new
+   type-specific field must be changed in both places** — the prompt's comp shape
+   and the front-end column set — or it won't display/export.
+
+## Deployment
+
+Standard Node web service. Push to a Git host and deploy on Render/Railway/Fly/etc.
+with start command `npm start`. Set `ANTHROPIC_API_KEY` (and `APP_PASSWORD` for a
+public link) as host environment variables — do not rely on `.env` in production.
+Every search is billed to the owner's Anthropic account, which is why a public
+deployment should set `APP_PASSWORD` and/or a spend cap in the Anthropic console.

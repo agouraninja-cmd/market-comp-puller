@@ -194,8 +194,15 @@
 
     <!-- Recent searches (stored locally in this browser only) -->
     <div id="recentWrap" class="hidden mt-3 flex flex-wrap items-center gap-2 no-print">
-      <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Recent:</span>
+      <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Re-run:</span>
       <div id="recentChips" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- Saved reports (full report data stored locally; reopening is free) -->
+    <div id="savedWrap" class="hidden mt-2 flex flex-wrap items-center gap-2 no-print">
+      <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Saved reports:</span>
+      <div id="savedChips" class="flex flex-wrap gap-2"></div>
+      <button id="clearSavedBtn" type="button" class="text-xs text-slate-400 hover:text-red-600 underline decoration-slate-300 hover:decoration-red-400">clear</button>
     </div>
 
     <!-- Status / Error -->
@@ -289,9 +296,16 @@
 
         <!-- Comps table -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-200">
+          <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200">
             <h2 class="text-lg font-semibold text-slate-900">Comparable Properties</h2>
-            <span id="compCount" class="text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap"></span>
+            <div class="flex items-center gap-3">
+              <div id="txFilter" style="display:none" class="items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50 no-print">
+                <button type="button" data-tx="all"    class="text-xs font-medium px-2.5 py-1 rounded-md">All</button>
+                <button type="button" data-tx="sales"  class="text-xs font-medium px-2.5 py-1 rounded-md">Sales</button>
+                <button type="button" data-tx="leases" class="text-xs font-medium px-2.5 py-1 rounded-md">Leases</button>
+              </div>
+              <span id="compCount" class="text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap"></span>
+            </div>
           </div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
                Scrollbars are hidden for a cleaner look (see .no-scrollbar). -->
@@ -394,11 +408,13 @@
   const BASE_COLUMNS = [
     { key: "address",        label: "Address",        numeric: false },
     { key: "date",           label: "Date",           numeric: false, isDate: true },
+    { key: "transaction",    label: "Type",           numeric: false },
     { key: "size_sqft",      label: "Size (SF)",      numeric: true  },
     { key: "price_or_rate",  label: "Price / Rate",   numeric: true  },
     { key: "price_per_sqft", label: "$/SF",           numeric: true  },
     { key: "cap_rate",       label: "Cap Rate",       numeric: true  },
     { key: "notes",          label: "Notes",          numeric: false },
+    { key: "source_url",     label: "Source",         numeric: false, isLink: true },
   ];
 
   // Industrial reports get two extra physical-spec columns, shown right after Size.
@@ -647,9 +663,15 @@
     sortState = { key: null, dir: 1 };
     COLUMNS = columnsForType(meta.type);   // Industrial adds Clear Height + Dock Doors
 
-    // Report header
+    // Sale/Lease filter — reset per report; only shown when comps carry a transaction type.
+    txFilter = "all";
+    updateTxButtons();
+    const hasTx = currentComps.some((c) => c.transaction);
+    document.getElementById("txFilter").style.display = hasTx ? "flex" : "none";
+
+    // Report header (reopened reports keep their original generation date)
     document.getElementById("reportAddress").textContent = meta.address;
-    const dateStr = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
     document.getElementById("reportMeta").textContent =
       `${meta.type}${meta.note ? " · " + meta.note : ""} · Generated ${dateStr}`;
 
@@ -663,13 +685,15 @@
       avgEl.classList.add("hidden");
     }
 
-    document.getElementById("compCount").textContent =
-      currentComps.length + (currentComps.length === 1 ? " comp" : " comps");
+    updateCompCount();
 
     renderComparison(parsed);
     renderTableHead();
     renderTableBody();
-    if (!meta.sample) saveRecentSearch(meta);
+    if (!meta.sample && !meta.fromHistory) {
+      saveRecentSearch(meta);
+      saveReport(meta, parsed);
+    }
     document.getElementById("results").classList.remove("hidden");
     document.getElementById("footerNote").classList.add("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
@@ -725,6 +749,69 @@
   renderRecentChips();
 
   // ----------------------------------------------------------------------------
+  // Saved reports — the full data of the last 10 real reports, stored in this
+  // browser (localStorage). Reopening one is instant and costs nothing.
+  // ----------------------------------------------------------------------------
+  const SAVED_KEY = "savedReports";
+
+  function loadSavedReports() {
+    try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; }
+    catch (_) { return []; }
+  }
+
+  function saveReport(meta, data) {
+    try {
+      const list = loadSavedReports()
+        .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
+      list.unshift({
+        ts: Date.now(),
+        meta: { address: meta.address, type: meta.type, note: meta.note || "" },
+        data,
+      });
+      while (list.length > 10) list.pop();
+      try {
+        localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+      } catch (_) {
+        // Storage full — drop the oldest and try once more.
+        list.pop();
+        localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+      }
+    } catch (_) { /* private mode etc. — saved reports are a nicety */ }
+    renderSavedChips();
+  }
+
+  function renderSavedChips() {
+    const wrap = document.getElementById("savedWrap");
+    const chips = document.getElementById("savedChips");
+    const list = loadSavedReports();
+    chips.innerHTML = "";
+    wrap.classList.toggle("hidden", list.length === 0);
+    list.forEach((r) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-live text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-full px-3 py-1";
+      btn.textContent = `${r.meta.address} · ${new Date(r.ts).toLocaleDateString()}`;
+      btn.title = "Reopen this report — no new search, no cost";
+      btn.addEventListener("click", () => {
+        hideLoadingCard();
+        showStatus(
+          `Reopened a saved report generated ${new Date(r.ts).toLocaleDateString()}. Run a new search for fresh data.`,
+          "info"
+        );
+        renderResults(r.data, { ...r.meta, fromHistory: true, generatedAt: r.ts });
+      });
+      chips.appendChild(btn);
+    });
+  }
+
+  document.getElementById("clearSavedBtn").addEventListener("click", () => {
+    localStorage.removeItem(SAVED_KEY);
+    renderSavedChips();
+  });
+
+  renderSavedChips();
+
+  // ----------------------------------------------------------------------------
   // Rotating example addresses — the search field quietly cycles through
   // realistic placeholders while it sits empty.
   // ----------------------------------------------------------------------------
@@ -758,11 +845,11 @@
     summary: "The DFW mid-cities industrial submarket remains tight, with Class B distribution product trading between roughly $105 and $122 per SF over the past 12 months and newer single-tenant buildings commanding a premium. Rear-load lease rates are holding near $7.25/SF NNN, and cap rates on stabilized deals have compressed into the high-5% to low-6% range.",
     avg_price_per_sqft: "$113 (sale comps)",
     comps: [
-      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000 (sale)", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court" },
-      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000 (sale)", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer" },
-      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN (lease)", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space" },
-      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000 (sale)", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard" },
-      { address: "900 113th St, Arlington, TX", date: "Jun 2025", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000 (sale)", price_per_sqft: "$122", cap_rate: "5.8%", notes: "2022 construction; single tenant on NNN lease" },
+      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "" },
+      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer", source_url: "" },
+      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space", source_url: "" },
+      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "" },
+      { address: "900 113th St, Arlington, TX", date: "Jun 2025", transaction: "Sale", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000", price_per_sqft: "$122", cap_rate: "5.8%", notes: "2022 construction; single tenant on NNN lease", source_url: "" },
     ],
   };
 
@@ -791,16 +878,54 @@
     });
   }
 
+  // Sale/Lease filter state — reset per report in renderResults().
+  let txFilter = "all";
+
+  function visibleComps() {
+    if (txFilter === "all") return currentComps;
+    const want = txFilter === "sales" ? "sale" : "lease";
+    return currentComps.filter((c) => String(c.transaction || "").toLowerCase().startsWith(want));
+  }
+
+  function updateCompCount() {
+    const total = currentComps.length;
+    const vis = visibleComps().length;
+    document.getElementById("compCount").textContent =
+      txFilter === "all"
+        ? total + (total === 1 ? " comp" : " comps")
+        : `${vis} of ${total} comps`;
+  }
+
+  function updateTxButtons() {
+    document.querySelectorAll("#txFilter [data-tx]").forEach((btn) => {
+      const active = btn.dataset.tx === txFilter;
+      btn.className = "text-xs font-medium px-2.5 py-1 rounded-md transition-colors " +
+        (active ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900");
+    });
+  }
+
+  document.querySelectorAll("#txFilter [data-tx]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      txFilter = btn.dataset.tx;
+      updateTxButtons();
+      renderTableBody();
+      updateCompCount();
+    });
+  });
+
   function renderTableBody() {
     const body = document.getElementById("tableBody");
     body.innerHTML = "";
-    if (currentComps.length === 0) {
+    const comps = visibleComps();
+    if (comps.length === 0) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="${COLUMNS.length}" class="px-4 py-6 text-center text-slate-400">No comps found.</td>`;
+      const msg = currentComps.length === 0 ? "No comps found."
+        : (txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.");
+      tr.innerHTML = `<td colspan="${COLUMNS.length}" class="px-4 py-6 text-center text-slate-400">${msg}</td>`;
       body.appendChild(tr);
       return;
     }
-    currentComps.forEach((comp, idx) => {
+    comps.forEach((comp, idx) => {
       const tr = document.createElement("tr");
       tr.className = "hover:bg-slate-50 row-in";
       tr.style.animationDelay = Math.min(idx * 45, 450) + "ms";
@@ -808,7 +933,23 @@
         const td = document.createElement("td");
         td.className = "px-4 py-3 align-top " + (col.key === "notes" ? "text-slate-500 min-w-[200px]" : "whitespace-nowrap");
         const val = comp[col.key];
-        td.textContent = (val === undefined || val === null || val === "") ? "—" : val;
+        if (col.isLink) {
+          const url = String(val || "");
+          if (/^https?:\/\//i.test(url)) {
+            const a = document.createElement("a");
+            a.href = url;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = "View";
+            a.title = url;
+            a.className = "text-blue-700 underline decoration-blue-300 hover:decoration-blue-700";
+            td.appendChild(a);
+          } else {
+            td.textContent = "—";
+          }
+        } else {
+          td.textContent = (val === undefined || val === null || val === "") ? "—" : val;
+        }
         tr.appendChild(td);
       });
       body.appendChild(tr);

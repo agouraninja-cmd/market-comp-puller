@@ -87,8 +87,8 @@ function buildPrompt(address, type, note) {
 
   // Industrial comps carry two extra physical-spec fields.
   const compShape = isIndustrial
-    ? `{ "address": "", "date": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`
-    : `{ "address": "", "date": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`;
+    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "" }`
+    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "" }`;
 
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
@@ -115,7 +115,7 @@ function buildPrompt(address, type, note) {
     `  ]`,
     `}`,
     ``,
-    `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". If a field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
   ].join("\n");
 }
 

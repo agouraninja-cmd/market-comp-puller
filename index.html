@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Market Comparables — Commercial Real Estate</title>
+  <title>Adler Realty — Market Comparables</title>
   <meta name="description" content="Generate a structured report of recent comparable sales and lease transactions for any commercial property." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cpath d='M9 24V9a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 18 9v15M21 24V14.5a1.5 1.5 0 0 0-1.5-1.5H18M6.5 24h19M12 11.5h2.5M12 15h2.5M12 18.5h2.5' stroke='white' stroke-width='1.7' stroke-linecap='round' fill='none'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -21,6 +21,53 @@
 
     th.sortable { cursor: pointer; user-select: none; }
     th.sortable:hover { background-color: #1e293b; }
+
+    /* Page-load entrance — the brand bar, heading, and form drift in on first paint. */
+    .enter { opacity: 0; animation: fadeIn .5s ease-out forwards; }
+    .enter-1 { animation-delay: 80ms; }
+    .enter-2 { animation-delay: 160ms; }
+    .enter-3 { animation-delay: 260ms; }
+    .enter-4 { animation-delay: 360ms; }
+
+    /* Slow ambient light drift across the brand bar — barely there, but alive. */
+    #brandBar {
+      background: linear-gradient(110deg, #0f172a 0%, #1f2c44 45%, #0f172a 90%);
+      background-size: 220% 100%;
+      animation: fadeIn .5s ease-out forwards, brandDrift 14s ease-in-out infinite;
+    }
+    @keyframes brandDrift {
+      0%, 100% { background-position: 0% 0; }
+      50%      { background-position: 100% 0; }
+    }
+
+    /* Soft cross-fade when the example address in the placeholder rotates. */
+    #address::placeholder { transition: color .3s ease; }
+    #address.ph-fade::placeholder { color: transparent; }
+
+    /* Smooth reveal when the subject-property section is expanded. */
+    details[open] > div { animation: fadeIn .3s ease-out; }
+
+    /* Motion — micro-interactions that keep the UI feeling responsive and alive. */
+    .btn-live { transition: transform .15s ease, background-color .15s ease, box-shadow .15s ease; }
+    .btn-live:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -4px rgb(15 23 42 / .35); }
+    .btn-live:active { transform: translateY(0) scale(.98); box-shadow: none; }
+    input, select { transition: box-shadow .15s ease, border-color .15s ease; }
+    tbody tr { transition: background-color .15s ease; }
+    .row-in { opacity: 0; animation: rowIn .35s ease-out forwards; }
+    @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    /* Report cards cascade in one after another when results render. */
+    #reportArea > * { opacity: 0; animation: fadeIn .45s ease-out forwards; }
+    #reportArea > *:nth-child(2) { animation-delay: 90ms; }
+    #reportArea > *:nth-child(3) { animation-delay: 180ms; }
+    #reportArea > *:nth-child(4) { animation-delay: 270ms; }
+    #reportArea > *:nth-child(5) { animation-delay: 360ms; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
 
     /* Hide the horizontal scrollbars but keep the area scrollable (drag / wheel / touch). */
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -54,7 +101,7 @@
           class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none" />
         <p id="gateError" class="hidden text-sm text-red-600"></p>
         <button type="submit"
-          class="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold px-4 py-2 rounded-lg transition-colors">
+          class="btn-live w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold px-4 py-2 rounded-lg">
           Sign in
         </button>
       </form>
@@ -62,14 +109,14 @@
   </div>
 
   <!-- Top brand bar -->
-  <div class="bg-slate-900 text-white no-print">
+  <div id="brandBar" class="bg-slate-900 text-white no-print">
     <div class="max-w-5xl mx-auto px-4 py-3.5 flex items-center gap-3">
       <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 ring-1 ring-white/15">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
       </span>
       <div class="leading-tight">
-        <div class="font-semibold tracking-tight">Market Comparables</div>
-        <div class="text-[11px] uppercase tracking-wider text-slate-400">Commercial Real Estate Analytics</div>
+        <div class="font-semibold tracking-tight">Adler Realty</div>
+        <div class="text-[11px] uppercase tracking-wider text-slate-400">Market Comparables · Commercial Real Estate</div>
       </div>
     </div>
   </div>
@@ -77,13 +124,13 @@
   <div class="max-w-5xl mx-auto px-4 py-8">
 
     <!-- Intro -->
-    <header class="mb-6 no-print">
-      <h1 class="text-2xl font-bold text-slate-900">Comparable Sales &amp; Lease Analysis</h1>
-      <p class="text-slate-500 mt-1">Generate a structured report of recent comparable transactions for any commercial property.</p>
+    <header class="mb-6 no-print enter enter-1">
+      <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Comparable Sales &amp; Lease Analysis</h1>
+      <p class="text-slate-500 mt-2 text-lg">Recent sale and lease comps for any commercial property — searched live, summarized, and export-ready in under a minute.</p>
     </header>
 
     <!-- Form Card -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 no-print">
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 no-print enter enter-2">
       <form id="compForm" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Property Address</label>
@@ -132,10 +179,16 @@
           </div>
         </details>
 
-        <button id="submitBtn" type="submit"
-          class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
-          <span id="btnLabel">Generate Report</span>
-        </button>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <button id="submitBtn" type="submit"
+            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold px-6 py-2.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed">
+            <span id="btnLabel">Generate Report</span>
+          </button>
+          <button id="sampleBtn" type="button"
+            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold px-6 py-2.5 rounded-lg border border-slate-300">
+            View sample report
+          </button>
+        </div>
       </form>
     </div>
 
@@ -166,17 +219,17 @@
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
         <button id="imgBtn"
-          class="inline-flex items-center gap-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-1.5 transition-colors">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 21"/></svg>
           Download Image
         </button>
         <button id="printBtn"
-          class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 transition-colors">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
           Print / PDF
         </button>
         <button id="csvBtn"
-          class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 transition-colors">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
           Export CSV
         </button>
@@ -193,10 +246,11 @@
               <h2 id="reportAddress" class="text-xl font-bold text-slate-900 mt-1"></h2>
               <div id="reportMeta" class="text-sm text-slate-500 mt-0.5"></div>
             </div>
-            <div class="shrink-0">
+            <div class="shrink-0 flex flex-col items-end">
               <span class="inline-flex items-center justify-center w-11 h-11 rounded-lg bg-slate-900 text-white">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
               </span>
+              <div class="text-xs font-semibold text-slate-900 mt-1.5">Adler Realty</div>
             </div>
           </div>
         </div>
@@ -254,14 +308,82 @@
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
         <p class="text-center text-xs text-slate-400">
-          Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
+          Prepared by Adler Realty · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
         </p>
       </div>
     </div>
 
+    <!-- Home info — fills out the landing view; hidden once a report is shown -->
+    <div id="homeInfo" class="no-print">
+
+      <!-- How it works -->
+      <section class="mt-10 enter enter-3">
+        <h2 class="text-lg font-semibold text-slate-900 mb-4">How it works</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 text-sm font-bold shrink-0">1</span>
+              <h3 class="font-semibold text-slate-900">Describe the property</h3>
+            </div>
+            <p class="text-sm text-slate-500 leading-relaxed">Enter the address and property type. Add a radius or submarket note to focus the search where it matters.</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 text-sm font-bold shrink-0">2</span>
+              <h3 class="font-semibold text-slate-900">We search the market</h3>
+            </div>
+            <p class="text-sm text-slate-500 leading-relaxed">A live web search scans public records, listings, and brokerage announcements for recent comparable transactions.</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 text-sm font-bold shrink-0">3</span>
+              <h3 class="font-semibold text-slate-900">Get a decision-ready report</h3>
+            </div>
+            <p class="text-sm text-slate-500 leading-relaxed">Market summary, average $/SF, a sortable comp table, and a subject-vs-market comparison — ready in under a minute.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- What you get -->
+      <section class="mt-8 enter enter-4">
+        <h2 class="text-lg font-semibold text-slate-900 mb-4">What you get</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
+            </span>
+            <h3 class="font-semibold text-slate-900 mb-1">Type-aware analysis</h3>
+            <p class="text-sm text-slate-500 leading-relaxed">Industrial, Office, Retail, Multifamily, and Land each get tailored treatment — industrial comps include clear height and dock doors.</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-6 4 3 5-7"/></svg>
+            </span>
+            <h3 class="font-semibold text-slate-900 mb-1">Subject vs. market</h3>
+            <p class="text-sm text-slate-500 leading-relaxed">See your property's $/SF against the comp average, with the premium or discount quantified.</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            </span>
+            <h3 class="font-semibold text-slate-900 mb-1">One-click exports</h3>
+            <p class="text-sm text-slate-500 leading-relaxed">Share clean, branded reports as CSV, PNG image, or print-ready PDF.</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg>
+            </span>
+            <h3 class="font-semibold text-slate-900 mb-1">Fresh, public data</h3>
+            <p class="text-sm text-slate-500 leading-relaxed">Every search runs live against public listings and records — nothing stale, no subscription required.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <!-- Disclaimer for the no-results state -->
     <footer id="footerNote" class="mt-8 text-center text-xs text-slate-400 no-print">
-      Comps based on publicly available data. Verify before use in underwriting.
+      Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
+      <span class="block mt-1.5">© 2026 Adler Realty</span>
     </footer>
   </div>
 
@@ -306,6 +428,22 @@
   }
   function formatUsd(n, opts) {
     return "$" + n.toLocaleString(undefined, opts || { maximumFractionDigits: 2 });
+  }
+
+  // Count a numeric readout up from zero to its final value (ease-out, ~700ms).
+  function animateValue(el, target, format, prefix = "") {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      el.textContent = prefix + format(target);
+      return;
+    }
+    const dur = 700, t0 = performance.now();
+    function frame(t) {
+      const p = Math.min((t - t0) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = prefix + format(target * eased);
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
   }
 
   // ----------------------------------------------------------------------------
@@ -458,7 +596,7 @@
     const targetPpsf = price / size;
     const marketPpsf = numericValue(parsed.avg_price_per_sqft);
 
-    document.getElementById("targetPpsfVal").textContent = formatUsd(targetPpsf);
+    animateValue(document.getElementById("targetPpsfVal"), targetPpsf, (v) => formatUsd(v));
     document.getElementById("targetBasis").textContent =
       `${formatUsd(price, { maximumFractionDigits: 0 })} ÷ ${size.toLocaleString()} SF`;
 
@@ -478,7 +616,7 @@
       return;
     }
 
-    document.getElementById("marketPpsfVal").textContent = formatUsd(marketPpsf);
+    animateValue(document.getElementById("marketPpsfVal"), marketPpsf, (v) => formatUsd(v));
 
     const delta = targetPpsf - marketPpsf;
     const pct = (delta / marketPpsf) * 100;
@@ -488,7 +626,7 @@
       "rounded-lg border p-4 " +
       (above ? "bg-amber-50 border-amber-200 text-amber-800"
              : "bg-emerald-50 border-emerald-200 text-emerald-800");
-    deltaVal.textContent = (above ? "+" : "−") + formatUsd(Math.abs(delta));
+    animateValue(deltaVal, Math.abs(delta), (v) => formatUsd(v), above ? "+" : "−");
     deltaPct.textContent = (above ? "+" : "−") + Math.abs(pct).toFixed(1) + "% vs. market avg";
 
     verdict.textContent = above
@@ -531,9 +669,14 @@
     renderComparison(parsed);
     renderTableHead();
     renderTableBody();
-    saveRecentSearch(meta);
+    if (!meta.sample) saveRecentSearch(meta);
     document.getElementById("results").classList.remove("hidden");
     document.getElementById("footerNote").classList.add("hidden");
+    document.getElementById("homeInfo").classList.add("hidden");
+
+    // Glide down to the finished report.
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById("results").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   }
 
   // ----------------------------------------------------------------------------
@@ -566,7 +709,7 @@
     list.forEach((s) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 hover:text-slate-900 border border-slate-300 rounded-full px-3 py-1 transition-colors";
+      btn.className = "btn-live text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 hover:text-slate-900 border border-slate-300 rounded-full px-3 py-1";
       btn.textContent = `${s.address} · ${s.type}`;
       btn.title = "Run this search again";
       btn.addEventListener("click", () => {
@@ -580,6 +723,59 @@
   }
 
   renderRecentChips();
+
+  // ----------------------------------------------------------------------------
+  // Rotating example addresses — the search field quietly cycles through
+  // realistic placeholders while it sits empty.
+  // ----------------------------------------------------------------------------
+  const ADDRESS_EXAMPLES = [
+    "e.g. 1200 W Industrial Blvd, Dallas, TX",
+    "e.g. 4500 Commerce St, Phoenix, AZ",
+    "e.g. 880 Harbor Gateway, Long Beach, CA",
+    "e.g. 2300 Peachtree Rd NE, Atlanta, GA",
+    "e.g. 15 Enterprise Pkwy, Columbus, OH",
+  ];
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const addressInput = document.getElementById("address");
+    let phIdx = 0;
+    setInterval(() => {
+      // Don't distract while the field is focused or already has text.
+      if (document.activeElement === addressInput || addressInput.value) return;
+      addressInput.classList.add("ph-fade");
+      setTimeout(() => {
+        phIdx = (phIdx + 1) % ADDRESS_EXAMPLES.length;
+        addressInput.placeholder = ADDRESS_EXAMPLES[phIdx];
+        addressInput.classList.remove("ph-fade");
+      }, 300);
+    }, 4000);
+  }
+
+  // ----------------------------------------------------------------------------
+  // Sample report — canned, illustrative data so visitors can see the product
+  // instantly without spending a live search.
+  // ----------------------------------------------------------------------------
+  const SAMPLE_REPORT = {
+    summary: "The DFW mid-cities industrial submarket remains tight, with Class B distribution product trading between roughly $105 and $122 per SF over the past 12 months and newer single-tenant buildings commanding a premium. Rear-load lease rates are holding near $7.25/SF NNN, and cap rates on stabilized deals have compressed into the high-5% to low-6% range.",
+    avg_price_per_sqft: "$113 (sale comps)",
+    comps: [
+      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000 (sale)", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court" },
+      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000 (sale)", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer" },
+      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN (lease)", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space" },
+      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000 (sale)", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard" },
+      { address: "900 113th St, Arlington, TX", date: "Jun 2025", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000 (sale)", price_per_sqft: "$122", cap_rate: "5.8%", notes: "2022 construction; single tenant on NNN lease" },
+    ],
+  };
+
+  document.getElementById("sampleBtn").addEventListener("click", () => {
+    hideLoadingCard();
+    showStatus("This is a <strong>sample report</strong> with illustrative data — run a real search above to pull live comps for your property.", "info");
+    renderResults(SAMPLE_REPORT, {
+      address: "1200 W Industrial Blvd, Dallas, TX",
+      type: "Industrial",
+      note: "Sample — illustrative data",
+      sample: true,
+    });
+  });
 
   function renderTableHead() {
     const head = document.getElementById("tableHead");
@@ -604,9 +800,10 @@
       body.appendChild(tr);
       return;
     }
-    currentComps.forEach((comp) => {
+    currentComps.forEach((comp, idx) => {
       const tr = document.createElement("tr");
-      tr.className = "hover:bg-slate-50";
+      tr.className = "hover:bg-slate-50 row-in";
+      tr.style.animationDelay = Math.min(idx * 45, 450) + "ms";
       COLUMNS.forEach((col) => {
         const td = document.createElement("td");
         td.className = "px-4 py-3 align-top " + (col.key === "notes" ? "text-slate-500 min-w-[200px]" : "whitespace-nowrap");
@@ -760,7 +957,7 @@
       const msg = err && err.message ? err.message : String(err);
       showStatus(
         `<strong>Something went wrong.</strong><br>${msg}` +
-        `<br><button id="retryBtn" type="button" class="mt-2 text-sm font-semibold text-red-800 bg-white hover:bg-red-100 border border-red-300 rounded-lg px-3 py-1.5 transition-colors">Try again</button>`,
+        `<br><button id="retryBtn" type="button" class="btn-live mt-2 text-sm font-semibold text-red-800 bg-white hover:bg-red-100 border border-red-300 rounded-lg px-3 py-1.5">Try again</button>`,
         "error"
       );
       const retry = document.getElementById("retryBtn");

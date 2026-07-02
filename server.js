@@ -44,6 +44,34 @@ function passwordMatches(candidate) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-IP rate limit — every search is billed, so cap how fast one connection
+// can burn the budget even when it has the password.
+// ---------------------------------------------------------------------------
+const RATE_WINDOW_MS = 5 * 60 * 1000;
+const RATE_MAX = 10; // searches per IP per window
+const rateHits = new Map();
+
+function clientIp(req) {
+  // Hosts like Render sit behind a proxy; the real client is in x-forwarded-for.
+  const fwd = req.headers["x-forwarded-for"];
+  if (fwd) return String(fwd).split(",")[0].trim();
+  return req.socket.remoteAddress || "unknown";
+}
+
+function rateLimited(ip) {
+  const now = Date.now();
+  const hits = (rateHits.get(ip) || []).filter((t) => now - t < RATE_WINDOW_MS);
+  hits.push(now);
+  rateHits.set(ip, hits);
+  if (rateHits.size > 1000) {
+    for (const [k, v] of rateHits) {
+      if (!v.some((t) => now - t < RATE_WINDOW_MS)) rateHits.delete(k);
+    }
+  }
+  return hits.length > RATE_MAX;
+}
+
+// ---------------------------------------------------------------------------
 // Prompt builder — property-type aware
 // ---------------------------------------------------------------------------
 function buildPrompt(address, type, note) {
@@ -59,8 +87,8 @@ function buildPrompt(address, type, note) {
 
   // Industrial comps carry two extra physical-spec fields.
   const compShape = isIndustrial
-    ? `{ "address": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`
-    : `{ "address": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`;
+    ? `{ "address": "", "date": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`
+    : `{ "address": "", "date": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "" }`;
 
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
@@ -87,7 +115,7 @@ function buildPrompt(address, type, note) {
     `  ]`,
     `}`,
     ``,
-    `Rules: If a field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". If a field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
   ].join("\n");
 }
 
@@ -108,7 +136,9 @@ function parseCompJson(rawText) {
 // ---------------------------------------------------------------------------
 // Call the Anthropic Messages API with web search enabled
 // ---------------------------------------------------------------------------
-async function getComps(address, type, note) {
+const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
+
+async function callAnthropicOnce(address, type, note) {
   const body = {
     model: MODEL,
     max_tokens: 2500,
@@ -116,15 +146,28 @@ async function getComps(address, type, note) {
     messages: [{ role: "user", content: buildPrompt(address, type, note) }],
   };
 
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  let r;
+  try {
+    r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error("The search took too long and was stopped. Please try again.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!r.ok) {
     let detail = "";
@@ -144,6 +187,20 @@ async function getComps(address, type, note) {
   if (!text) throw new Error("The model returned no text content to parse.");
 
   return parseCompJson(text);
+}
+
+async function getComps(address, type, note) {
+  // The model occasionally wraps the JSON in stray text; one silent retry
+  // resolves most of those instead of surfacing a parse error to the user.
+  try {
+    return await callAnthropicOnce(address, type, note);
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      console.warn("Comp JSON failed to parse; retrying once.", err.message);
+      return await callAnthropicOnce(address, type, note);
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +224,11 @@ const server = http.createServer((req, res) => {
         // Password gate (only enforced when APP_PASSWORD is set).
         if (APP_PASSWORD && !passwordMatches(req.headers["x-app-password"])) {
           return sendJson(res, 401, { error: "Unauthorized — incorrect or missing password." });
+        }
+        if (rateLimited(clientIp(req))) {
+          return sendJson(res, 429, {
+            error: "Too many searches from this connection — please wait a few minutes and try again.",
+          });
         }
         const { address, type, note } = JSON.parse(body || "{}");
         if (!address || !type) {

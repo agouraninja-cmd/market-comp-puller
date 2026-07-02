@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Market Comparables — Commercial Real Estate</title>
+  <meta name="description" content="Generate a structured report of recent comparable sales and lease transactions for any commercial property." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cpath d='M9 24V9a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 18 9v15M21 24V14.5a1.5 1.5 0 0 0-1.5-1.5H18M6.5 24h19M12 11.5h2.5M12 15h2.5M12 18.5h2.5' stroke='white' stroke-width='1.7' stroke-linecap='round' fill='none'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -137,11 +139,17 @@
       </form>
     </div>
 
+    <!-- Recent searches (stored locally in this browser only) -->
+    <div id="recentWrap" class="hidden mt-3 flex flex-wrap items-center gap-2 no-print">
+      <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Recent:</span>
+      <div id="recentChips" class="flex flex-wrap gap-2"></div>
+    </div>
+
     <!-- Status / Error -->
-    <div id="statusBox" class="hidden mt-6 no-print"></div>
+    <div id="statusBox" class="hidden mt-6 no-print" role="status" aria-live="polite"></div>
 
     <!-- Animated loading card (step sequence shown while a report generates) -->
-    <div id="loadingCard" class="hidden mt-6 no-print">
+    <div id="loadingCard" class="hidden mt-6 no-print" role="status" aria-live="polite">
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 flex flex-col items-center text-center fade-in">
         <div class="spinner w-9 h-9 border-[3px] border-blue-600 rounded-full mb-4"></div>
         <p id="loadingHeadline" class="text-base font-semibold text-slate-900">Searching recent listings…</p>
@@ -229,6 +237,7 @@
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-200">
             <h2 class="text-lg font-semibold text-slate-900">Comparable Properties</h2>
+            <span id="compCount" class="text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap"></span>
           </div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
                Scrollbars are hidden for a cleaner look (see .no-scrollbar). -->
@@ -262,6 +271,7 @@
   // ----------------------------------------------------------------------------
   const BASE_COLUMNS = [
     { key: "address",        label: "Address",        numeric: false },
+    { key: "date",           label: "Date",           numeric: false, isDate: true },
     { key: "size_sqft",      label: "Size (SF)",      numeric: true  },
     { key: "price_or_rate",  label: "Price / Rate",   numeric: true  },
     { key: "price_per_sqft", label: "$/SF",           numeric: true  },
@@ -515,12 +525,61 @@
       avgEl.classList.add("hidden");
     }
 
+    document.getElementById("compCount").textContent =
+      currentComps.length + (currentComps.length === 1 ? " comp" : " comps");
+
     renderComparison(parsed);
     renderTableHead();
     renderTableBody();
+    saveRecentSearch(meta);
     document.getElementById("results").classList.remove("hidden");
     document.getElementById("footerNote").classList.add("hidden");
   }
+
+  // ----------------------------------------------------------------------------
+  // Recent searches — the last 5 successful searches, stored in this browser
+  // only (localStorage), shown as one-click chips under the form.
+  // ----------------------------------------------------------------------------
+  const RECENT_KEY = "recentSearches";
+
+  function loadRecentSearches() {
+    try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
+    catch (_) { return []; }
+  }
+
+  function saveRecentSearch(meta) {
+    try {
+      const list = loadRecentSearches()
+        .filter((s) => !(s.address === meta.address && s.type === meta.type));
+      list.unshift({ address: meta.address, type: meta.type, note: meta.note || "" });
+      localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)));
+    } catch (_) { /* private mode etc. — recents are a nicety, not a requirement */ }
+    renderRecentChips();
+  }
+
+  function renderRecentChips() {
+    const wrap = document.getElementById("recentWrap");
+    const chips = document.getElementById("recentChips");
+    const list = loadRecentSearches();
+    chips.innerHTML = "";
+    wrap.classList.toggle("hidden", list.length === 0);
+    list.forEach((s) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 hover:text-slate-900 border border-slate-300 rounded-full px-3 py-1 transition-colors";
+      btn.textContent = `${s.address} · ${s.type}`;
+      btn.title = "Run this search again";
+      btn.addEventListener("click", () => {
+        document.getElementById("address").value = s.address;
+        document.getElementById("propertyType").value = s.type;
+        document.getElementById("marketNote").value = s.note || "";
+        document.getElementById("compForm").requestSubmit();
+      });
+      chips.appendChild(btn);
+    });
+  }
+
+  renderRecentChips();
 
   function renderTableHead() {
     const head = document.getElementById("tableHead");
@@ -597,6 +656,11 @@
     else { sortState.key = key; sortState.dir = 1; }
     currentComps.sort((a, b) => {
       let av = a[key], bv = b[key];
+      if (col.isDate) {
+        const ad = Date.parse(av), bd = Date.parse(bv);
+        if (!isNaN(ad) && !isNaN(bd)) return (ad - bd) * sortState.dir;
+        // fall through to string compare when either date doesn't parse
+      }
       if (col.numeric) {
         const an = numericValue(av), bn = numericValue(bv);
         const aNan = isNaN(an), bNan = isNaN(bn);
@@ -696,9 +760,11 @@
       const msg = err && err.message ? err.message : String(err);
       showStatus(
         `<strong>Something went wrong.</strong><br>${msg}` +
-        `<br><span class="text-xs opacity-80">If this looks like a parsing issue, try again — the model occasionally adds stray text. Check the server logs / browser console for details.</span>`,
+        `<br><button id="retryBtn" type="button" class="mt-2 text-sm font-semibold text-red-800 bg-white hover:bg-red-100 border border-red-300 rounded-lg px-3 py-1.5 transition-colors">Try again</button>`,
         "error"
       );
+      const retry = document.getElementById("retryBtn");
+      if (retry) retry.addEventListener("click", () => document.getElementById("compForm").requestSubmit());
     } finally {
       setLoading(false);
     }

@@ -3,13 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Adler Realty — Market Comparables</title>
-  <meta name="description" content="Generate a structured report of recent comparable sales and lease transactions for any commercial property." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cpath d='M9 24V9a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 18 9v15M21 24V14.5a1.5 1.5 0 0 0-1.5-1.5H18M6.5 24h19M12 11.5h2.5M12 15h2.5M12 18.5h2.5' stroke='white' stroke-width='1.7' stroke-linecap='round' fill='none'/%3E%3C/svg%3E" />
+  <title>Adler Industrial — Market Comparables</title>
+  <meta name="description" content="Adler Industrial market comparables — generate a structured report of recent comparable sales and lease transactions for any commercial property." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314181d'/%3E%3Cpolygon points='16,4 5,28 14.5,19' fill='%232155A3'/%3E%3Cpolygon points='16,4 14.5,19 21,28' fill='%23C9CCD0'/%3E%3Cpolygon points='16,4 21,28 28,20' fill='%238F9396'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Adler Industrial brand palette (royal blue from the company logo).
+    tailwind.config = {
+      theme: { extend: { colors: { brand: {
+        50: "#EDF2F9", 100: "#DCE6F3", 200: "#BFD2EA", 300: "#93B3DB", 400: "#6690C9",
+        500: "#3F6FB4", 600: "#2155A3", 700: "#1B4489", 800: "#16386F", 900: "#122D58",
+      } } } },
+    };
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     body { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -29,16 +38,31 @@
     .enter-3 { animation-delay: 260ms; }
     .enter-4 { animation-delay: 360ms; }
 
-    /* Slow ambient light drift across the brand bar — barely there, but alive. */
-    #brandBar {
-      background: linear-gradient(110deg, #0f172a 0%, #1f2c44 45%, #0f172a 90%);
-      background-size: 220% 100%;
-      animation: fadeIn .5s ease-out forwards, brandDrift 14s ease-in-out infinite;
+    /* Hero — deep navy gradient with a slow ambient drift, soft light glows,
+       and a faint dot grid. The form card floats over its bottom edge. */
+    #hero {
+      background: linear-gradient(150deg, #0b0c0e 0%, #14181d 45%, #1b2940 100%);
+      background-size: 180% 180%;
+      animation: fadeIn .5s ease-out forwards, brandDrift 18s ease-in-out infinite;
+      border-bottom: 3px solid #2155A3; /* the brand's signature blue rule */
     }
+    .hero-glow {
+      background:
+        radial-gradient(600px 300px at 85% 15%, rgb(33 85 163 / .30), transparent 60%),
+        radial-gradient(500px 280px at 8% 95%, rgb(102 144 201 / .12), transparent 60%),
+        radial-gradient(circle at 1px 1px, rgb(255 255 255 / .05) 1px, transparent 0);
+      background-size: auto, auto, 26px 26px;
+    }
+    /* Condensed, wide-tracked type for the Adler Industrial wordmark. */
+    .font-brand { font-family: 'Oswald', 'Inter', sans-serif; }
     @keyframes brandDrift {
-      0%, 100% { background-position: 0% 0; }
-      50%      { background-position: 100% 0; }
+      0%, 100% { background-position: 0% 0%; }
+      50%      { background-position: 100% 100%; }
     }
+
+    /* Info cards lift gently on hover. */
+    .card-hover { transition: transform .2s ease, box-shadow .2s ease; }
+    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -12px rgb(15 23 42 / .18); }
 
     /* Soft cross-fade when the example address in the placeholder rotates. */
     #address::placeholder { transition: color .3s ease; }
@@ -98,51 +122,71 @@
       <p class="text-sm text-slate-500 mb-4">Please enter your access password to continue.</p>
       <form id="gateForm" class="space-y-3">
         <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Access password"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none" />
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <p id="gateError" class="hidden text-sm text-red-600"></p>
         <button type="submit"
-          class="btn-live w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold px-4 py-2 rounded-lg">
+          class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">
           Sign in
         </button>
       </form>
     </div>
   </div>
 
-  <!-- Top brand bar -->
-  <div id="brandBar" class="bg-slate-900 text-white no-print">
-    <div class="max-w-5xl mx-auto px-4 py-3.5 flex items-center gap-3">
-      <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 ring-1 ring-white/15">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
-      </span>
-      <div class="leading-tight">
-        <div class="font-semibold tracking-tight">Adler Realty</div>
-        <div class="text-[11px] uppercase tracking-wider text-slate-400">Market Comparables · Commercial Real Estate</div>
+  <!-- Hero -->
+  <div id="hero" class="relative overflow-hidden text-white no-print">
+    <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
+    <div class="relative max-w-5xl mx-auto px-4">
+      <!-- Brand row — Adler Industrial faceted-peak mark + wordmark -->
+      <div class="py-4 flex items-center gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" viewBox="0 0 100 100" aria-hidden="true">
+          <polygon points="50,6 12,86 44,58" fill="#2155A3"/>
+          <polygon points="50,6 44,58 66,86" fill="#C9CCD0"/>
+          <polygon points="50,6 66,86 88,60" fill="#8F9396"/>
+        </svg>
+        <div class="leading-tight">
+          <div class="font-brand text-lg font-semibold tracking-[0.25em] text-white">ADLER</div>
+          <div class="font-brand text-[11px] font-medium tracking-[0.35em] text-brand-300">INDUSTRIAL</div>
+        </div>
+        <div class="hidden sm:block ml-auto text-[11px] uppercase tracking-wider text-slate-400">Idaho&rsquo;s Premier Industrial Developer</div>
+      </div>
+      <!-- Hero copy -->
+      <div class="pt-8 pb-24 sm:pt-10 sm:pb-28">
+        <h1 class="font-brand uppercase text-3xl sm:text-4xl font-semibold tracking-wide max-w-2xl enter enter-1">Comparable Sales &amp; Lease Analysis</h1>
+        <p class="text-slate-300 mt-3 text-lg max-w-2xl enter enter-1">Recent sale and lease comps for any commercial property — searched live, summarized, and export-ready in under a minute.</p>
+        <div class="mt-6 flex flex-wrap gap-2 enter enter-2">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-white/10 ring-1 ring-white/15 text-slate-200 text-sm px-3 py-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Live web-search data
+          </span>
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-white/10 ring-1 ring-white/15 text-slate-200 text-sm px-3 py-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            3–6 recent comps per report
+          </span>
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-white/10 ring-1 ring-white/15 text-slate-200 text-sm px-3 py-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            CSV · PNG · PDF exports
+          </span>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="max-w-5xl mx-auto px-4 py-8">
+  <div class="max-w-5xl mx-auto px-4 pb-8">
 
-    <!-- Intro -->
-    <header class="mb-6 no-print enter enter-1">
-      <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Comparable Sales &amp; Lease Analysis</h1>
-      <p class="text-slate-500 mt-2 text-lg">Recent sale and lease comps for any commercial property — searched live, summarized, and export-ready in under a minute.</p>
-    </header>
-
-    <!-- Form Card -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 no-print enter enter-2">
+    <!-- Form Card — floats over the hero's bottom edge -->
+    <div class="relative z-10 -mt-16 sm:-mt-20 bg-white rounded-xl shadow-xl border border-slate-200 p-6 no-print enter enter-2">
       <form id="compForm" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Property Address</label>
           <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none" />
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Property Type</label>
             <select id="propertyType"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none">
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
               <option>Industrial</option>
               <option>Office</option>
               <option>Retail</option>
@@ -153,7 +197,7 @@
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Radius / Market Note <span class="text-slate-400 font-normal">(optional)</span></label>
             <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none" />
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
         </div>
 
@@ -168,12 +212,12 @@
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Target Size (SF)</label>
                 <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000"
-                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none" />
+                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Target / Asking Price ($)</label>
                 <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000"
-                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none" />
+                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
               </div>
             </div>
           </div>
@@ -181,7 +225,7 @@
 
         <div class="flex flex-col sm:flex-row gap-3">
           <button id="submitBtn" type="submit"
-            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold px-6 py-2.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed">
+            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-6 py-2.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Generate Report</span>
           </button>
           <button id="sampleBtn" type="button"
@@ -211,11 +255,11 @@
     <!-- Animated loading card (step sequence shown while a report generates) -->
     <div id="loadingCard" class="hidden mt-6 no-print" role="status" aria-live="polite">
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 flex flex-col items-center text-center fade-in">
-        <div class="spinner w-9 h-9 border-[3px] border-blue-600 rounded-full mb-4"></div>
+        <div class="spinner w-9 h-9 border-[3px] border-brand-600 rounded-full mb-4"></div>
         <p id="loadingHeadline" class="text-base font-semibold text-slate-900">Searching recent listings…</p>
         <p class="text-sm text-slate-400 mt-1">This usually takes 20–40 seconds.</p>
         <div class="w-full max-w-xs mt-5 h-2 rounded-full bg-slate-100 overflow-hidden">
-          <div id="loadingBar" class="h-full rounded-full bg-blue-600" style="width:0%; transition:width .35s ease-out;"></div>
+          <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
         </div>
       </div>
     </div>
@@ -226,7 +270,7 @@
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
         <button id="imgBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 21"/></svg>
           Download Image
         </button>
@@ -249,15 +293,18 @@
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <div class="text-xs uppercase tracking-wider text-blue-700 font-semibold">Market Comparables Report</div>
+              <div class="text-xs uppercase tracking-wider text-brand-700 font-semibold">Market Comparables Report</div>
               <h2 id="reportAddress" class="text-xl font-bold text-slate-900 mt-1"></h2>
               <div id="reportMeta" class="text-sm text-slate-500 mt-0.5"></div>
             </div>
             <div class="shrink-0 flex flex-col items-end">
-              <span class="inline-flex items-center justify-center w-11 h-11 rounded-lg bg-slate-900 text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
-              </span>
-              <div class="text-xs font-semibold text-slate-900 mt-1.5">Adler Realty</div>
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-11 h-11" viewBox="0 0 100 100" aria-hidden="true">
+                <polygon points="50,6 12,86 44,58" fill="#2155A3"/>
+                <polygon points="50,6 44,58 66,86" fill="#C9CCD0"/>
+                <polygon points="50,6 66,86 88,60" fill="#8F9396"/>
+              </svg>
+              <div class="font-brand text-sm font-semibold tracking-[0.2em] text-slate-900 mt-1">ADLER</div>
+              <div class="font-brand text-[10px] font-medium tracking-[0.3em] text-brand-600">INDUSTRIAL</div>
             </div>
           </div>
         </div>
@@ -266,7 +313,7 @@
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-3">
             <h2 class="text-lg font-semibold text-slate-900">Market Summary</h2>
-            <span id="avgPpsf" class="hidden text-sm font-medium bg-blue-50 text-blue-700 px-3 py-1 rounded-full"></span>
+            <span id="avgPpsf" class="hidden text-sm font-medium bg-brand-50 text-brand-700 px-3 py-1 rounded-full"></span>
           </div>
           <p id="summaryText" class="text-slate-700 leading-relaxed"></p>
         </div>
@@ -322,7 +369,7 @@
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
         <p class="text-center text-xs text-slate-400">
-          Prepared by Adler Realty · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
+          Prepared by Adler Industrial · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
         </p>
       </div>
     </div>
@@ -331,26 +378,27 @@
     <div id="homeInfo" class="no-print">
 
       <!-- How it works -->
-      <section class="mt-10 enter enter-3">
-        <h2 class="text-lg font-semibold text-slate-900 mb-4">How it works</h2>
+      <section class="mt-12 enter enter-3">
+        <div class="text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">How it works</div>
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">From address to comp report in three steps</h2>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <div class="flex items-center gap-3 mb-2">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 text-sm font-bold shrink-0">1</span>
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-white text-sm font-bold shrink-0 shadow-sm">1</span>
               <h3 class="font-semibold text-slate-900">Describe the property</h3>
             </div>
             <p class="text-sm text-slate-500 leading-relaxed">Enter the address and property type. Add a radius or submarket note to focus the search where it matters.</p>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <div class="flex items-center gap-3 mb-2">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 text-sm font-bold shrink-0">2</span>
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-white text-sm font-bold shrink-0 shadow-sm">2</span>
               <h3 class="font-semibold text-slate-900">We search the market</h3>
             </div>
             <p class="text-sm text-slate-500 leading-relaxed">A live web search scans public records, listings, and brokerage announcements for recent comparable transactions.</p>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <div class="flex items-center gap-3 mb-2">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 text-sm font-bold shrink-0">3</span>
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-white text-sm font-bold shrink-0 shadow-sm">3</span>
               <h3 class="font-semibold text-slate-900">Get a decision-ready report</h3>
             </div>
             <p class="text-sm text-slate-500 leading-relaxed">Market summary, average $/SF, a sortable comp table, and a subject-vs-market comparison — ready in under a minute.</p>
@@ -359,32 +407,33 @@
       </section>
 
       <!-- What you get -->
-      <section class="mt-8 enter enter-4">
-        <h2 class="text-lg font-semibold text-slate-900 mb-4">What you get</h2>
+      <section class="mt-10 enter enter-4">
+        <div class="text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">What you get</div>
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">Everything a comp package needs</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
             </span>
             <h3 class="font-semibold text-slate-900 mb-1">Type-aware analysis</h3>
             <p class="text-sm text-slate-500 leading-relaxed">Industrial, Office, Retail, Multifamily, and Land each get tailored treatment — industrial comps include clear height and dock doors.</p>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-6 4 3 5-7"/></svg>
             </span>
             <h3 class="font-semibold text-slate-900 mb-1">Subject vs. market</h3>
             <p class="text-sm text-slate-500 leading-relaxed">See your property's $/SF against the comp average, with the premium or discount quantified.</p>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
             </span>
             <h3 class="font-semibold text-slate-900 mb-1">One-click exports</h3>
             <p class="text-sm text-slate-500 leading-relaxed">Share clean, branded reports as CSV, PNG image, or print-ready PDF.</p>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-900 text-white mb-3">
+          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg>
             </span>
             <h3 class="font-semibold text-slate-900 mb-1">Fresh, public data</h3>
@@ -397,7 +446,7 @@
     <!-- Disclaimer for the no-results state -->
     <footer id="footerNote" class="mt-8 text-center text-xs text-slate-400 no-print">
       Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
-      <span class="block mt-1.5">© 2026 Adler Realty</span>
+      <span class="block mt-1.5">© 2026 Adler Industrial</span>
     </footer>
   </div>
 
@@ -531,7 +580,7 @@
   function showStatus(html, kind = "info") {
     const box = document.getElementById("statusBox");
     const styles = {
-      info:  "bg-blue-50 border-blue-200 text-blue-800",
+      info:  "bg-brand-50 border-brand-200 text-brand-800",
       error: "bg-red-50 border-red-200 text-red-800",
     };
     box.className = `mt-6 rounded-lg border px-4 py-3 text-sm no-print ${styles[kind] || styles.info}`;
@@ -789,7 +838,7 @@
     list.forEach((r) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "btn-live text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-full px-3 py-1";
+      btn.className = "btn-live text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-full px-3 py-1";
       btn.textContent = `${r.meta.address} · ${new Date(r.ts).toLocaleDateString()}`;
       btn.title = "Reopen this report — no new search, no cost";
       btn.addEventListener("click", () => {
@@ -942,7 +991,7 @@
             a.rel = "noopener noreferrer";
             a.textContent = "View";
             a.title = url;
-            a.className = "text-blue-700 underline decoration-blue-300 hover:decoration-blue-700";
+            a.className = "text-brand-700 underline decoration-brand-300 hover:decoration-brand-700";
             td.appendChild(a);
           } else {
             td.textContent = "—";

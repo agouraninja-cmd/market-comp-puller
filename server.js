@@ -74,7 +74,7 @@ function rateLimited(ip) {
 // ---------------------------------------------------------------------------
 // Prompt builder — property-type aware
 // ---------------------------------------------------------------------------
-function buildPrompt(address, type, note) {
+function buildPrompt(address, type, note, months, maxComps, txFocus) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -88,8 +88,8 @@ function buildPrompt(address, type, note) {
 
   // Industrial comps carry two extra physical-spec fields.
   const compShape = isIndustrial
-    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "" }`
-    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "" }`;
+    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "" }`
+    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "" }`;
 
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
@@ -99,7 +99,13 @@ function buildPrompt(address, type, note) {
     `- Property type: ${type}`,
     note ? `- Market note / radius: ${note}` : `- Market note / radius: (none specified — use the immediate submarket)`,
     ``,
-    `TASK: Find 3 to 6 RECENT (prefer last 24 months) comparable sales or lease listings near this address that match the property type.`,
+    `TASK: Find 3 to ${maxComps} RECENT (prefer last ${months} months) ${
+      txFocus === "sales"  ? "comparable closed SALES" :
+      txFocus === "leases" ? "comparable LEASE transactions or lease listings" :
+                             "comparable sales or lease listings"
+    } near this address that match the property type.`,
+    txFocus === "sales"  ? `Include ONLY sale transactions — do NOT include lease comps.` :
+    txFocus === "leases" ? `Include ONLY lease transactions or active lease listings — do NOT include sale comps.` : "",
     typeGuidance[type] || "",
     isIndustrial
       ? `For EACH industrial comp, also report two building specs: "clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level"). Search listing pages, brokerage flyers, and property records for these. If a spec genuinely can't be found, use an empty string "" — do not guess.`
@@ -111,12 +117,14 @@ function buildPrompt(address, type, note) {
     `{`,
     `  "summary": "2-3 sentence written takeaway about the local market",`,
     `  "avg_price_per_sqft": "string or null",`,
+    `  "subject_lat": "",`,
+    `  "subject_lng": "",`,
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
     `}`,
     ``,
-    `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
   ].join("\n");
 }
 
@@ -139,12 +147,12 @@ function parseCompJson(rawText) {
 // ---------------------------------------------------------------------------
 const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
 
-async function callAnthropicOnce(address, type, note) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus) {
   const body = {
     model: MODEL,
-    max_tokens: 2500,
+    max_tokens: 3200,
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note) }],
+    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus) }],
   };
 
   const controller = new AbortController();
@@ -190,15 +198,15 @@ async function callAnthropicOnce(address, type, note) {
   return parseCompJson(text);
 }
 
-async function getComps(address, type, note) {
+async function getComps(address, type, note, months, maxComps, txFocus) {
   // The model occasionally wraps the JSON in stray text; one silent retry
   // resolves most of those instead of surfacing a parse error to the user.
   try {
-    return await callAnthropicOnce(address, type, note);
+    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
-      return await callAnthropicOnce(address, type, note);
+      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus);
     }
     throw err;
   }
@@ -231,7 +239,7 @@ const server = http.createServer((req, res) => {
             error: "Too many searches from this connection — please wait a few minutes and try again.",
           });
         }
-        const { address, type, note } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus } = JSON.parse(body || "{}");
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
@@ -240,7 +248,11 @@ const server = http.createServer((req, res) => {
             error: "Server is missing the ANTHROPIC_API_KEY environment variable.",
           });
         }
-        const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "");
+        // Whitelisted so arbitrary client values can't reshape the prompt.
+        const monthsOk = [12, 24, 36].includes(Number(months)) ? Number(months) : 24;
+        const maxCompsOk = [4, 6, 8].includes(Number(maxComps)) ? Number(maxComps) : 8;
+        const txFocusOk = ["both", "sales", "leases"].includes(String(txFocus)) ? String(txFocus) : "both";
+        const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "", monthsOk, maxCompsOk, txFocusOk);
         return sendJson(res, 200, result);
       } catch (err) {
         console.error("Error handling /api/comps:", err);

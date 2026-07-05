@@ -22,6 +22,9 @@
     };
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     body { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
     h1, h2, h3 { letter-spacing: -0.01em; }
@@ -201,6 +204,27 @@
           </div>
         </div>
 
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Lookback Window</label>
+            <select id="lookback"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="12">Last 12 months</option>
+              <option value="24" selected>Last 24 months</option>
+              <option value="36">Last 36 months</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Transaction Focus</label>
+            <select id="txFocus"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="both" selected>Sales &amp; Leases</option>
+              <option value="sales">Sales only</option>
+              <option value="leases">Leases only</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Target property (optional) -->
         <details class="border border-slate-200 rounded-lg bg-slate-50/60">
           <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-slate-700">
@@ -313,6 +337,17 @@
           <p id="summaryText" class="text-slate-700 leading-relaxed"></p>
         </div>
 
+        <!-- Comp map (shown when the comps carry coordinates) -->
+        <div id="mapCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
+          <div class="px-6 py-4 border-b border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-900">Comp Map</h2>
+          </div>
+          <div id="compMap" style="height: 340px;"></div>
+          <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100">
+            Pin locations are approximate. <span class="font-medium text-brand-700">Blue pin</span> = subject property, gray dots = comps. Click a pin for details.
+          </p>
+        </div>
+
         <!-- Target comparison card -->
         <div id="compareCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
           <h2 class="text-lg font-semibold text-slate-900 mb-4">Subject vs. Market</h2>
@@ -334,6 +369,34 @@
             </div>
           </div>
           <p id="verdictText" class="text-sm text-slate-600 mt-4"></p>
+        </div>
+
+        <!-- Estimated value range (computed from sale-comp $/SF × subject SF) -->
+        <div id="valueCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="text-lg font-semibold text-slate-900">Estimated Value Range</h2>
+            <span id="valueBasis" class="text-xs text-slate-400"></span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+              <div class="text-xs uppercase tracking-wide text-slate-400">Low</div>
+              <div id="valueLow" class="text-2xl font-bold text-slate-900 mt-1">—</div>
+              <div id="valueLowPpsf" class="text-xs text-slate-400 mt-1"></div>
+            </div>
+            <div class="rounded-lg bg-brand-50 border border-brand-200 p-4">
+              <div class="text-xs uppercase tracking-wide text-brand-500">Likely</div>
+              <div id="valueMid" class="text-2xl font-bold text-brand-700 mt-1">—</div>
+              <div id="valueMidPpsf" class="text-xs text-brand-400 mt-1"></div>
+            </div>
+            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+              <div class="text-xs uppercase tracking-wide text-slate-400">High</div>
+              <div id="valueHigh" class="text-2xl font-bold text-slate-900 mt-1">—</div>
+              <div id="valueHighPpsf" class="text-xs text-slate-400 mt-1"></div>
+            </div>
+          </div>
+          <p class="text-xs text-slate-500 mt-4">
+            Computed by applying the sale comps&rsquo; $/SF range to the subject&rsquo;s square footage — an indication of market positioning, not an appraisal.
+          </p>
         </div>
 
         <!-- Comps table -->
@@ -411,7 +474,7 @@
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
             </span>
             <h3 class="font-semibold text-slate-900 mb-1">Type-aware analysis</h3>
-            <p class="text-sm text-slate-500 leading-relaxed">Industrial, Office, Retail, Multifamily, and Land each get tailored treatment — industrial comps include clear height and dock doors.</p>
+            <p class="text-sm text-slate-500 leading-relaxed">Industrial, Office, Retail, Multifamily, Land, and Residential each get tailored treatment — industrial comps include clear height and dock doors.</p>
           </div>
           <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
@@ -697,6 +760,105 @@
   }
 
   // ----------------------------------------------------------------------------
+  // Estimated value range — sale-comp $/SF spread applied to the subject's SF.
+  // Client-side only: no extra API cost.
+  // ----------------------------------------------------------------------------
+  function renderValueEstimate() {
+    const card = document.getElementById("valueCard");
+    const size = numericValue(document.getElementById("targetSize").value);
+    if (!(size > 0)) { card.classList.add("hidden"); return; }
+
+    // Sale comps only — lease $/SF/yr is a different unit and would skew the range.
+    const ppsfs = currentComps
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => numericValue(c.price_per_sqft))
+      .filter((v) => v > 0);
+    if (ppsfs.length < 2) { card.classList.add("hidden"); return; }
+
+    const lo = Math.min(...ppsfs);
+    const hi = Math.max(...ppsfs);
+    const avg = ppsfs.reduce((s, v) => s + v, 0) / ppsfs.length;
+    const fmtTotal = (v) => "$" + Math.round(v).toLocaleString();
+
+    document.getElementById("valueBasis").textContent =
+      `${size.toLocaleString()} SF × $/SF from ${ppsfs.length} sale comps`;
+    animateValue(document.getElementById("valueLow"), lo * size, fmtTotal);
+    animateValue(document.getElementById("valueMid"), avg * size, fmtTotal);
+    animateValue(document.getElementById("valueHigh"), hi * size, fmtTotal);
+    document.getElementById("valueLowPpsf").textContent = "at " + formatUsd(lo) + "/SF · lowest comp";
+    document.getElementById("valueMidPpsf").textContent = "at " + formatUsd(avg) + "/SF · comp average";
+    document.getElementById("valueHighPpsf").textContent = "at " + formatUsd(hi) + "/SF · highest comp";
+    card.classList.remove("hidden");
+  }
+
+  // ----------------------------------------------------------------------------
+  // Comp map — plots the subject (blue pin) and comps (gray dots) on OSM tiles.
+  // Coordinates come from the model per comp; pins are approximate.
+  // ----------------------------------------------------------------------------
+  let mapInstance = null;
+
+  function renderMap(parsed, meta) {
+    const card = document.getElementById("mapCard");
+    const escMap = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+
+    const pts = (currentComps || [])
+      .map((c) => ({ lat: parseFloat(c.lat), lng: parseFloat(c.lng), c }))
+      .filter((p) => isFinite(p.lat) && isFinite(p.lng));
+    const sLat = parseFloat(parsed.subject_lat);
+    const sLng = parseFloat(parsed.subject_lng);
+    const hasSubject = isFinite(sLat) && isFinite(sLng);
+
+    if (typeof L === "undefined" || (pts.length === 0 && !hasSubject)) {
+      card.classList.add("hidden");
+      return;
+    }
+    card.classList.remove("hidden");
+
+    mapInstance = L.map("compMap", { scrollWheelZoom: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      crossOrigin: "anonymous",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(mapInstance);
+
+    const bounds = [];
+    if (hasSubject) {
+      const subjIcon = L.divIcon({
+        className: "",
+        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#145192;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
+        iconSize: [22, 22], iconAnchor: [11, 22],
+      });
+      L.marker([sLat, sLng], { icon: subjIcon, zIndexOffset: 1000 })
+        .addTo(mapInstance)
+        .bindPopup(`<strong>Subject:</strong> ${escMap(meta.address)}`);
+      bounds.push([sLat, sLng]);
+    }
+    pts.forEach((p) => {
+      const dotIcon = L.divIcon({
+        className: "",
+        html: '<div style="width:15px;height:15px;border-radius:50%;background:#64748b;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.35)"></div>',
+        iconSize: [15, 15], iconAnchor: [8, 8],
+      });
+      const line2 = [p.c.price_or_rate, p.c.transaction].filter(Boolean).map(escMap).join(" · ");
+      L.marker([p.lat, p.lng], { icon: dotIcon })
+        .addTo(mapInstance)
+        .bindPopup(`<strong>${escMap(p.c.address || "Comp")}</strong>${line2 ? "<br>" + line2 : ""}`);
+      bounds.push([p.lat, p.lng]);
+    });
+
+    mapInstance.fitBounds(bounds, { padding: [35, 35], maxZoom: 14 });
+    // The container was just unhidden — Leaflet needs a size recalc on next tick.
+    setTimeout(() => {
+      if (!mapInstance) return;
+      mapInstance.invalidateSize();
+      mapInstance.fitBounds(bounds, { padding: [35, 35], maxZoom: 14 });
+    }, 120);
+  }
+
+  // ----------------------------------------------------------------------------
   // Render summary + table
   // ----------------------------------------------------------------------------
   function renderResults(parsed, meta) {
@@ -732,6 +894,7 @@
     updateCompCount();
 
     renderComparison(parsed);
+    renderValueEstimate();
     renderTableHead();
     renderTableBody();
     if (!meta.sample && !meta.fromHistory) {
@@ -741,6 +904,7 @@
     document.getElementById("results").classList.remove("hidden");
     document.getElementById("footerNote").classList.add("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
+    renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
     // Glide down to the finished report.
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -888,12 +1052,14 @@
   const SAMPLE_REPORT = {
     summary: "The DFW mid-cities industrial submarket remains tight, with Class B distribution product trading between roughly $105 and $122 per SF over the past 12 months and newer single-tenant buildings commanding a premium. Rear-load lease rates are holding near $7.25/SF NNN, and cap rates on stabilized deals have compressed into the high-5% to low-6% range.",
     avg_price_per_sqft: "$113 (sale comps)",
+    subject_lat: "32.7715",
+    subject_lng: "-96.8460",
     comps: [
-      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "" },
-      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer", source_url: "" },
-      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space", source_url: "" },
-      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "" },
-      { address: "900 113th St, Arlington, TX", date: "Jun 2025", transaction: "Sale", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000", price_per_sqft: "$122", cap_rate: "5.8%", notes: "2022 construction; single tenant on NNN lease", source_url: "" },
+      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430" },
+      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer", source_url: "", lat: "32.7020", lng: "-96.9510" },
+      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space", source_url: "", lat: "32.7330", lng: "-97.0110" },
+      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "", lat: "32.7120", lng: "-97.1350" },
+      { address: "900 113th St, Arlington, TX", date: "Jun 2025", transaction: "Sale", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000", price_per_sqft: "$122", cap_rate: "5.8%", notes: "2022 construction; single tenant on NNN lease", source_url: "", lat: "32.6490", lng: "-97.0830" },
     ],
   };
 
@@ -1081,7 +1247,12 @@
     const original = btn.textContent;
     btn.textContent = "Rendering…"; btn.disabled = true;
     try {
-      const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#f1f5f9", useCORS: true });
+      // The Leaflet map is skipped in the capture — cross-origin tiles would
+      // otherwise taint the canvas and break the whole export.
+      const canvas = await html2canvas(node, {
+        scale: 2, backgroundColor: "#f1f5f9", useCORS: true,
+        ignoreElements: (el) => el.id === "mapCard",
+      });
       const a = document.createElement("a");
       a.download = "market-comp-report.png";
       a.href = canvas.toDataURL("image/png");
@@ -1117,7 +1288,11 @@
       const res = await fetch("/api/comps", {
         method: "POST",
         headers: { "content-type": "application/json", "x-app-password": getStoredPassword() },
-        body: JSON.stringify({ address, type, note }),
+        body: JSON.stringify({
+          address, type, note,
+          months: Number(document.getElementById("lookback").value),
+          txFocus: document.getElementById("txFocus").value,
+        }),
       });
 
       if (res.status === 401) {

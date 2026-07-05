@@ -81,6 +81,7 @@ function buildPrompt(address, type, note) {
     Retail:      "Focus on retail/strip/single-tenant net lease. Report price/SF for sales and NNN $/SF/yr for leases, tenant/anchor and cap rate where relevant.",
     Multifamily: "Focus on apartment/multifamily. Report price per unit AND price/SF, cap rate, and unit count in notes.",
     Land:        "Focus on comparable land sales. Report price per acre and price/SF of land, zoning and entitlement notes.",
+    Residential: "Focus on single-family homes, townhomes, and condos. Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
 
   const isIndustrial = type === "Industrial";

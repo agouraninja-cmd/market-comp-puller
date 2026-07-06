@@ -64,11 +64,14 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 // Lead storage — Supabase REST when configured, local file otherwise
 // ---------------------------------------------------------------------------
 function supabaseHeaders() {
-  return {
-    "content-type": "application/json",
-    apikey: SUPABASE_SERVICE_KEY,
-    authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-  };
+  // Legacy service_role keys are JWTs and go in BOTH headers. New-style
+  // sb_secret_... keys are not JWTs — sending one as an Authorization bearer
+  // makes the gateway reject the whole request (401), so it gets apikey only.
+  const headers = { "content-type": "application/json", apikey: SUPABASE_SERVICE_KEY };
+  if (SUPABASE_SERVICE_KEY.startsWith("eyJ")) {
+    headers.authorization = `Bearer ${SUPABASE_SERVICE_KEY}`;
+  }
+  return headers;
 }
 
 // Returns "db" or "file" depending on where the lead landed. A DB failure

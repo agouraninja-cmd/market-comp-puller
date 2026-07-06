@@ -83,8 +83,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /api/leads` — downloads captured leads as CSV; requires `ADMIN_KEY`.
 - `POST /api/comp-submission` — stores a broker-submitted comp (broker contact +
   comp details, `status: "pending"`) in the Supabase `comp_submissions` table
-  (file fallback: `comp-submissions.jsonl`). Review is manual — nothing shown in
-  reports yet. Rate-limited per IP.
+  (file fallback: `comp-submissions.jsonl`). Review is manual: setting a row's
+  `status` to `approved` in Supabase puts it in the verified comp layer — each
+  search fetches approved comps of the matching property type and offers them
+  to the model as trusted candidates; comps the model includes from that list
+  carry `"verified": true` and the front-end shows a green Verified badge in
+  the Address column. Rate-limited per IP.
 - `GET /api/comp-submissions` — downloads submitted comps as CSV; requires
   `ADMIN_KEY`.
 - `GET /healthz` — health check for hosting platforms.

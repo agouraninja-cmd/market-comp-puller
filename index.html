@@ -1301,7 +1301,7 @@
     subject_lat: "32.7715",
     subject_lng: "-96.8460",
     comps: [
-      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430" },
+      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true },
       { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer", source_url: "", lat: "32.7020", lng: "-96.9510" },
       { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space", source_url: "", lat: "32.7330", lng: "-97.0110" },
       { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "", lat: "32.7120", lng: "-97.1350" },
@@ -1407,6 +1407,14 @@
           }
         } else {
           td.textContent = (val === undefined || val === null || val === "") ? "-" : val;
+          if (col.key === "address" && (comp.verified === true || String(comp.verified).toLowerCase() === "true")) {
+            // Broker-submitted comps reviewed by the team get a trust badge.
+            const badge = document.createElement("span");
+            badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5";
+            badge.textContent = "Verified";
+            badge.title = "Submitted by a local broker and reviewed by our team";
+            td.appendChild(badge);
+          }
           if (col.isDate) {
             // Flag comps the model returned from before the requested window.
             const cutoff = lookbackCutoff();

@@ -193,7 +193,28 @@ function rateLimited(ip) {
 // ---------------------------------------------------------------------------
 // Prompt builder — property-type aware
 // ---------------------------------------------------------------------------
-function buildPrompt(address, type, note, months, maxComps, txFocus) {
+// Approved broker-submitted comps for this property type, offered to the model
+// as trusted candidates. Empty when the DB is unconfigured or the fetch fails;
+// the report then works exactly as before.
+async function fetchVerifiedComps(type, txFocus) {
+  if (!DB_CONFIGURED) return [];
+  try {
+    let url = `${SUPABASE_URL}/rest/v1/comp_submissions` +
+      `?status=eq.approved&property_type=eq.${encodeURIComponent(type)}` +
+      `&select=address,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes` +
+      `&order=ts.desc&limit=25`;
+    if (txFocus === "sales") url += `&transaction=eq.Sale`;
+    else if (txFocus === "leases") url += `&transaction=eq.Lease`;
+    const r = await fetch(url, { headers: supabaseHeaders() });
+    if (!r.ok) throw new Error(`Supabase read failed (${r.status}).`);
+    return await r.json();
+  } catch (err) {
+    console.error("Verified comp fetch failed; continuing without:", err.message);
+    return [];
+  }
+}
+
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -214,8 +235,17 @@ function buildPrompt(address, type, note, months, maxComps, txFocus) {
 
   // Industrial comps carry two extra physical-spec fields.
   const compShape = isIndustrial
-    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "" }`
-    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "" }`;
+    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "", "verified": false }`
+    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "", "verified": false }`;
+
+  // Trusted internal comps get their own prompt section when any exist.
+  const verifiedBlock = (verifiedComps && verifiedComps.length) ? [
+    ``,
+    `VERIFIED INTERNAL COMPS: the following ${verifiedComps.length === 1 ? "comp was" : "comps were"} submitted by local brokers and reviewed by our team. Treat the details as accurate.`,
+    ...verifiedComps.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.cap_rate ? " | cap rate " + c.cap_rate : ""}${c.notes ? " | " + c.notes : ""}`),
+    `Include each verified internal comp in the "comps" array IF it is genuinely comparable to the target property (reasonably near the target address and inside the date window). Set "verified": true on those and copy their details faithfully; compute "price_per_sqft" from the given size and price where possible, and estimate "lat"/"lng" from the address. When a verified comp and a web result describe the same transaction, keep only the verified one. Verified comps count toward the comp total. Set "verified": false on every comp found via web search. Never include a verified comp that is clearly in a different city or market than the target.`,
+  ].join("\n") : "";
 
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
@@ -237,6 +267,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus) {
     isIndustrial
       ? `For EACH industrial comp, also report two building specs: "clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level"). Search listing pages, brokerage flyers, and property records for these. If a spec genuinely can't be found, use an empty string "" — do not guess.`
       : "",
+    verifiedBlock,
     ``,
     `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     `Do not use em dashes anywhere in your output text.`,
@@ -275,12 +306,12 @@ function parseCompJson(rawText) {
 // ---------------------------------------------------------------------------
 const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps) {
   const body = {
     model: MODEL,
     max_tokens: 3200,
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus) }],
+    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps) }],
   };
 
   const controller = new AbortController();
@@ -327,14 +358,18 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus)
 }
 
 async function getComps(address, type, note, months, maxComps, txFocus) {
+  const verifiedComps = await fetchVerifiedComps(type, txFocus);
+  if (verifiedComps.length) {
+    console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
+  }
   // The model occasionally wraps the JSON in stray text; one silent retry
   // resolves most of those instead of surfacing a parse error to the user.
   try {
-    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus);
+    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
-      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus);
+      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps);
     }
     throw err;
   }

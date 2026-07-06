@@ -209,10 +209,17 @@
             <label class="block text-sm font-medium text-slate-700 mb-1">Lookback Window</label>
             <select id="lookback"
               class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="6">Last 6 months</option>
               <option value="12">Last 12 months</option>
               <option value="24" selected>Last 24 months</option>
               <option value="36">Last 36 months</option>
+              <option value="custom">Custom…</option>
             </select>
+            <div id="lookbackCustomWrap" class="hidden mt-2 flex items-center gap-2">
+              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18"
+                class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              <span class="text-sm text-slate-500 shrink-0">months</span>
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Transaction Focus</label>
@@ -552,7 +559,55 @@
   let COLUMNS = BASE_COLUMNS.slice();
 
   let currentComps = [];
+  let currentMeta = null;
   let sortState = { key: null, dir: 1 };
+
+  // "Industrial · submarket note · Last 24 months · Sales & Leases"
+  function metaLine(meta) {
+    const parts = [meta.type];
+    if (meta.note) parts.push(meta.note);
+    if (meta.months) parts.push(meta.months === 1 ? "Last 1 month" : `Last ${meta.months} months`);
+    if (meta.txFocus) {
+      parts.push(meta.txFocus === "sales" ? "Sales only"
+               : meta.txFocus === "leases" ? "Leases only" : "Sales & Leases");
+    }
+    return parts.join(" · ");
+  }
+
+  // Lookback controls — the select's "custom" option reveals a months input.
+  const lookbackSel = document.getElementById("lookback");
+  const lookbackCustomWrap = document.getElementById("lookbackCustomWrap");
+  const lookbackCustomInput = document.getElementById("lookbackCustom");
+
+  lookbackSel.addEventListener("change", () => {
+    const custom = lookbackSel.value === "custom";
+    lookbackCustomWrap.classList.toggle("hidden", !custom);
+    if (custom) lookbackCustomInput.focus();
+  });
+
+  // Resolves the selected window to a number of months, or null if the custom
+  // box is empty/out of range.
+  function selectedLookbackMonths() {
+    if (lookbackSel.value !== "custom") return Number(lookbackSel.value);
+    const m = Math.round(numericValue(lookbackCustomInput.value));
+    return m >= 1 && m <= 120 ? m : null;
+  }
+
+  // Sets the controls to a given window (preset when it matches, else custom).
+  function setLookbackControls(months) {
+    const preset = [...lookbackSel.options].some((o) => o.value === String(months));
+    lookbackSel.value = preset ? String(months) : "custom";
+    lookbackCustomWrap.classList.toggle("hidden", preset);
+    if (!preset) lookbackCustomInput.value = months;
+  }
+
+  // First day of the report's lookback window, anchored to when the report was
+  // generated (so reopened saved reports keep historically correct badges).
+  function lookbackCutoff() {
+    if (!currentMeta || !currentMeta.months) return null;
+    const base = new Date(currentMeta.generatedAt || Date.now());
+    return new Date(base.getFullYear(), base.getMonth() - currentMeta.months, 1);
+  }
 
   function numericValue(str) {
     if (str == null) return NaN;
@@ -915,6 +970,7 @@
       throw new Error("Parsed response is missing a 'comps' array.");
     }
     currentComps = parsed.comps;
+    currentMeta = meta;
     sortState = { key: null, dir: 1 };
     COLUMNS = columnsForType(meta.type);   // Industrial adds Clear Height + Dock Doors
 
@@ -928,7 +984,7 @@
     document.getElementById("reportAddress").textContent = meta.address;
     const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
     document.getElementById("reportMeta").textContent =
-      `${meta.type}${meta.note ? " · " + meta.note : ""} · Generated ${dateStr}`;
+      `${metaLine(meta)} · Generated ${dateStr}`;
 
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
 
@@ -975,7 +1031,7 @@
     try {
       const list = loadRecentSearches()
         .filter((s) => !(s.address === meta.address && s.type === meta.type));
-      list.unshift({ address: meta.address, type: meta.type, note: meta.note || "" });
+      list.unshift({ address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus });
       localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)));
     } catch (_) { /* private mode etc. — recents are a nicety, not a requirement */ }
     renderRecentChips();
@@ -997,6 +1053,8 @@
         document.getElementById("address").value = s.address;
         document.getElementById("propertyType").value = s.type;
         document.getElementById("marketNote").value = s.note || "";
+        if (s.months) setLookbackControls(s.months);
+        if (s.txFocus) document.getElementById("txFocus").value = s.txFocus;
         document.getElementById("compForm").requestSubmit();
       });
       chips.appendChild(btn);
@@ -1022,7 +1080,7 @@
         .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
       list.unshift({
         ts: Date.now(),
-        meta: { address: meta.address, type: meta.type, note: meta.note || "" },
+        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus },
         data,
       });
       while (list.length > 10) list.pop();
@@ -1119,6 +1177,8 @@
       address: "1200 W Industrial Blvd, Dallas, TX",
       type: "Industrial",
       note: "Sample — illustrative data",
+      months: 24,
+      txFocus: "both",
       sample: true,
     });
   });
@@ -1208,6 +1268,18 @@
           }
         } else {
           td.textContent = (val === undefined || val === null || val === "") ? "—" : val;
+          if (col.isDate) {
+            // Flag comps the model returned from before the requested window.
+            const cutoff = lookbackCutoff();
+            const d = Date.parse(val);
+            if (cutoff && !isNaN(d) && d < cutoff.getTime()) {
+              const badge = document.createElement("span");
+              badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5";
+              badge.textContent = "outside window";
+              badge.title = `Older than the requested last ${currentMeta.months} months`;
+              td.appendChild(badge);
+            }
+          }
         }
         tr.appendChild(td);
       });
@@ -1282,7 +1354,11 @@
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const header = COLUMNS.map((c) => esc(c.label)).join(",");
     const rows = currentComps.map((comp) => COLUMNS.map((c) => esc(comp[c.key])).join(","));
-    const csv = [header, ...rows].join("\r\n");
+    // Title row so an exported file records what was searched and when.
+    const title = currentMeta
+      ? esc(`${currentMeta.address} — ${metaLine(currentMeta)} — Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`)
+      : "";
+    const csv = [...(title ? [title] : []), header, ...rows].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1326,7 +1402,14 @@
     const address = document.getElementById("address").value.trim();
     const type = document.getElementById("propertyType").value;
     const note = document.getElementById("marketNote").value.trim();
+    const months = selectedLookbackMonths();
+    const txFocus = document.getElementById("txFocus").value;
     if (!address) return;
+    if (!months) {
+      showStatus("Enter a custom lookback window between 1 and 120 months.", "error");
+      document.getElementById("lookbackCustom").focus();
+      return;
+    }
 
     document.getElementById("results").classList.add("hidden");
     hideStatus();
@@ -1337,11 +1420,7 @@
       const res = await fetch("/api/comps", {
         method: "POST",
         headers: { "content-type": "application/json", "x-app-password": getStoredPassword() },
-        body: JSON.stringify({
-          address, type, note,
-          months: Number(document.getElementById("lookback").value),
-          txFocus: document.getElementById("txFocus").value,
-        }),
+        body: JSON.stringify({ address, type, note, months, txFocus }),
       });
 
       if (res.status === 401) {
@@ -1359,7 +1438,7 @@
       const parsed = await res.json();
       await completeLoadingCard();   // fill the bar to 100% for a satisfying finish
       hideLoadingCard();
-      renderResults(parsed, { address, type, note });
+      renderResults(parsed, { address, type, note, months, txFocus });
     } catch (err) {
       console.error(err);
       hideLoadingCard();

@@ -86,6 +86,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus) {
 
   const isIndustrial = type === "Industrial";
 
+  // Anchor the lookback window to real dates — the model doesn't know "today",
+  // so "last N months" alone drifts toward stale comps.
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
+  const todayStr = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const cutoffStr = cutoff.toLocaleString("en-US", { month: "long", year: "numeric" });
+
   // Industrial comps carry two extra physical-spec fields.
   const compShape = isIndustrial
     ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "" }`
@@ -99,11 +106,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus) {
     `- Property type: ${type}`,
     note ? `- Market note / radius: ${note}` : `- Market note / radius: (none specified — use the immediate submarket)`,
     ``,
-    `TASK: Find 3 to ${maxComps} RECENT (prefer last ${months} months) ${
+    `TASK: Find 3 to ${maxComps} RECENT ${
       txFocus === "sales"  ? "comparable closed SALES" :
       txFocus === "leases" ? "comparable LEASE transactions or lease listings" :
                              "comparable sales or lease listings"
     } near this address that match the property type.`,
+    `Today's date is ${todayStr}. Comps MUST be dated ${cutoffStr} or later (the last ${months === 1 ? "1 month" : months + " months"}). If you cannot find at least 3 comps inside that window, you may include older comps to reach 3, but you MUST state in "summary" that some comps fall outside the requested ${months}-month window.`,
     txFocus === "sales"  ? `Include ONLY sale transactions — do NOT include lease comps.` :
     txFocus === "leases" ? `Include ONLY lease transactions or active lease listings — do NOT include sale comps.` : "",
     typeGuidance[type] || "",
@@ -248,8 +256,9 @@ const server = http.createServer((req, res) => {
             error: "Server is missing the ANTHROPIC_API_KEY environment variable.",
           });
         }
-        // Whitelisted so arbitrary client values can't reshape the prompt.
-        const monthsOk = [12, 24, 36].includes(Number(months)) ? Number(months) : 24;
+        // Validated/clamped so arbitrary client values can't reshape the prompt.
+        const monthsNum = Math.round(Number(months));
+        const monthsOk = Number.isFinite(monthsNum) ? Math.min(120, Math.max(1, monthsNum)) : 24;
         const maxCompsOk = [4, 6, 8].includes(Number(maxComps)) ? Number(maxComps) : 8;
         const txFocusOk = ["both", "sales", "leases"].includes(String(txFocus)) ? String(txFocus) : "both";
         const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "", monthsOk, maxCompsOk, txFocusOk);

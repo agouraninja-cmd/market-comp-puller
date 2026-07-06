@@ -57,6 +57,9 @@ dependency. `.env` is git-ignored — never commit it.
   as CSV (send the key via `x-admin-key` header or `?key=`). Unset = that
   endpoint is disabled. Without Supabase configured, leads live only in
   `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
+- `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
+  to the Render URL. If the site moves to a custom domain, set this AND update
+  the canonical/`og:url` tags in `index.html` (they are hard-coded).
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 `MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
@@ -92,6 +95,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /api/comp-submissions` — downloads submitted comps as CSV; requires
   `ADMIN_KEY`.
 - `GET /healthz` — health check for hosting platforms.
+- `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.
 
 **`index.html`** — the entire front-end (Tailwind via CDN, html2canvas via CDN).

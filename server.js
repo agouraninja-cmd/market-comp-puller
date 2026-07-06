@@ -61,6 +61,11 @@ const COMP_SUBMISSIONS_FILE = path.join(__dirname, "comp-submissions.jsonl");
 // that endpoint is disabled entirely.
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
 
+// Public URL of this deployment, used in robots.txt/sitemap.xml and best kept
+// in sync with the canonical/og:url tags in index.html. Override with SITE_URL
+// when the site moves to a custom domain.
+const SITE_URL = (process.env.SITE_URL || "https://market-comp-puller.onrender.com").replace(/\/+$/, "");
+
 // ---------------------------------------------------------------------------
 // Lead storage — Supabase REST when configured, local file otherwise
 // ---------------------------------------------------------------------------
@@ -575,6 +580,21 @@ const server = http.createServer((req, res) => {
   // --- Health check (handy for hosting platforms) ---
   if (req.method === "GET" && req.url === "/healthz") {
     return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY) });
+  }
+
+  // --- SEO: robots.txt + a one-page sitemap so crawlers index the site ---
+  if (req.method === "GET" && req.url === "/robots.txt") {
+    res.writeHead(200, { "content-type": "text/plain" });
+    return res.end(`User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
+  }
+  if (req.method === "GET" && req.url === "/sitemap.xml") {
+    res.writeHead(200, { "content-type": "application/xml" });
+    return res.end(
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      `  <url><loc>${SITE_URL}/</loc></url>\n` +
+      `</urlset>\n`
+    );
   }
 
   res.writeHead(404, { "content-type": "text/plain" });

@@ -8,3 +8,6 @@ server.err.log
 
 # Local Claude Code settings
 .claude/
+
+# Captured leads (contact info) — never commit
+leads.jsonl

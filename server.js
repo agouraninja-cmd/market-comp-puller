@@ -35,13 +35,31 @@ const MODEL = "claude-sonnet-4-6";
 // Leave it unset to keep the app open.
 const APP_PASSWORD = process.env.APP_PASSWORD || "";
 
-// Constant-time string comparison (avoids leaking the password via timing).
-function passwordMatches(candidate) {
+// Lead capture — when enabled, the front-end asks for contact info before
+// unlocking exports (the lead-magnet flow). Defaults ON for open deployments
+// and OFF when the app is password-gated (internal use); LEAD_CAPTURE=on|off
+// overrides either way.
+const LEAD_CAPTURE = process.env.LEAD_CAPTURE
+  ? process.env.LEAD_CAPTURE.toLowerCase() !== "off"
+  : !APP_PASSWORD;
+
+// Captured leads are appended here, one JSON object per line. NOTE: on hosts
+// with an ephemeral filesystem (Render/Railway free tiers) this file is lost
+// on redeploy — download it via GET /api/leads before deploying.
+const LEADS_FILE = path.join(__dirname, "leads.jsonl");
+
+// Optional key that unlocks GET /api/leads (the lead download). When unset,
+// that endpoint is disabled entirely.
+const ADMIN_KEY = process.env.ADMIN_KEY || "";
+
+// Constant-time string comparison (avoids leaking secrets via timing).
+function secretMatches(candidate, secret) {
   const a = Buffer.from(String(candidate || ""));
-  const b = Buffer.from(APP_PASSWORD);
+  const b = Buffer.from(secret);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
 }
+function passwordMatches(candidate) { return secretMatches(candidate, APP_PASSWORD); }
 
 // ---------------------------------------------------------------------------
 // Per-IP rate limit — every search is billed, so cap how fast one connection
@@ -272,9 +290,85 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Lead capture: stores contact info submitted to unlock exports ---
+  if (req.method === "POST" && req.url === "/api/lead") {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 1e4) req.destroy();
+    });
+    req.on("end", () => {
+      try {
+        // Separate quota from searches ("lead:" prefix) so filling the form
+        // never eats into a visitor's search allowance — but the file can't
+        // be spammed full either.
+        if (rateLimited("lead:" + clientIp(req))) {
+          return sendJson(res, 429, { error: "Too many submissions — please try again later." });
+        }
+        const { name, email, phone, company, address, type } = JSON.parse(body || "{}");
+        const clean = (v, max) => String(v || "").trim().slice(0, max);
+        const lead = {
+          ts: new Date().toISOString(),
+          name: clean(name, 120),
+          email: clean(email, 200),
+          phone: clean(phone, 60),
+          company: clean(company, 120),
+          address: clean(address, 300),
+          type: clean(type, 40),
+        };
+        if (!lead.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
+          return sendJson(res, 400, { error: "A name and a valid email are required." });
+        }
+        fs.appendFile(LEADS_FILE, JSON.stringify(lead) + "\n", (err) => {
+          if (err) {
+            console.error("Failed to store lead:", err);
+            return sendJson(res, 500, { error: "Could not save your details — please try again." });
+          }
+          console.log(`Lead captured: ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
+          return sendJson(res, 200, { ok: true });
+        });
+      } catch (_) {
+        return sendJson(res, 400, { error: "Bad request." });
+      }
+    });
+    return;
+  }
+
+  // --- Lead download (CSV). Disabled unless ADMIN_KEY is set. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/leads") {
+    if (!ADMIN_KEY) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    const key = req.headers["x-admin-key"] ||
+      new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!secretMatches(key, ADMIN_KEY)) {
+      return sendJson(res, 401, { error: "Unauthorized." });
+    }
+    fs.readFile(LEADS_FILE, "utf8", (err, data) => {
+      const cols = ["ts", "name", "email", "phone", "company", "address", "type"];
+      if (err && err.code !== "ENOENT") {
+        return sendJson(res, 500, { error: "Could not read leads." });
+      }
+      const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const rows = (err ? "" : data).split("\n").filter(Boolean).map((line) => {
+        try {
+          const o = JSON.parse(line);
+          return cols.map((c) => esc(o[c])).join(",");
+        } catch (_) { return null; }
+      }).filter(Boolean);
+      res.writeHead(200, {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": "attachment; filename=leads.csv",
+      });
+      res.end([cols.join(","), ...rows].join("\r\n"));
+    });
+    return;
+  }
+
   // --- Tells the front-end whether a password is required ---
   if (req.method === "GET" && req.url === "/api/config") {
-    return sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD) });
+    return sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE });
   }
 
   // --- Validate a password (so the UI can confirm before searching) ---
@@ -327,4 +421,10 @@ server.listen(PORT, () => {
   console.log(APP_PASSWORD
     ? "🔒 Password gate ENABLED (APP_PASSWORD is set)."
     : "🔓 Password gate disabled — anyone with the URL can run searches. Set APP_PASSWORD to require a password.");
+  console.log(LEAD_CAPTURE
+    ? `🧲 Lead capture ENABLED — exports require contact info; leads append to ${path.basename(LEADS_FILE)}.`
+    : "Lead capture disabled (set LEAD_CAPTURE=on to enable).");
+  if (LEAD_CAPTURE && !ADMIN_KEY) {
+    console.warn("⚠  ADMIN_KEY is not set — GET /api/leads (lead download) is disabled.");
+  }
 });

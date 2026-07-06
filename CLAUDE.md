@@ -45,6 +45,14 @@ dependency. `.env` is git-ignored — never commit it.
   screen and every `/api/comps` call must carry the matching `x-app-password`
   header (checked server-side with a constant-time compare). When unset, the app
   is fully open.
+- `LEAD_CAPTURE` — optional `on`/`off`. When on, the CSV/PNG/print exports are
+  unlocked by a one-time contact form (the lead-magnet flow) and leads append to
+  `leads.jsonl` (git-ignored — contains PII, never commit). Defaults to ON when
+  `APP_PASSWORD` is unset (public deployment) and OFF when it is set (internal).
+- `ADMIN_KEY` — optional. When set, `GET /api/leads` returns the captured leads
+  as CSV (send the key via `x-admin-key` header or `?key=`). Unset = that
+  endpoint is disabled. On ephemeral-filesystem hosts, download leads before
+  each redeploy or they're lost.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 `MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
@@ -63,9 +71,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `POST /api/comps` — the core endpoint. Enforces the password gate (if set),
   builds the prompt, calls Anthropic with the `web_search` tool enabled, and
   returns parsed JSON.
-- `GET /api/config` — tells the front-end whether a password is required
-  (`{ authRequired }`), so the UI knows whether to show the gate.
+- `GET /api/config` — tells the front-end whether a password is required and
+  whether lead capture is on (`{ authRequired, leadCapture }`).
 - `POST /api/login` — validates a password so the UI can confirm before searching.
+- `POST /api/lead` — appends a lead-capture submission (name/email/phone/company
+  + the searched address/type) to `leads.jsonl`. Rate-limited per IP.
+- `GET /api/leads` — downloads captured leads as CSV; requires `ADMIN_KEY`.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /` — serves `index.html`.
 

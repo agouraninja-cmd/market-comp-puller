@@ -240,6 +240,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus) {
     ``,
     `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     ``,
+    `Write the "summary" in plain, friendly English that a property owner with no real estate background can understand. Avoid industry jargon (say "returns for investors" rather than "cap rates", "asking rent" rather than "NNN rate", and so on). Never use em dashes anywhere in your output text.`,
+    ``,
     `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
     `{`,
     `  "summary": "2-3 sentence written takeaway about the local market",`,

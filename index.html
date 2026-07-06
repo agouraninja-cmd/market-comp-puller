@@ -231,17 +231,27 @@
             Compare a subject property <span class="text-slate-400 font-normal">(optional)</span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p class="text-xs text-slate-500 mb-3">Enter your subject property's size and price to see how its $/SF stacks up against the comp average.</p>
+            <p class="text-xs text-slate-500 mb-3">Enter your subject property's size and price — a single value or a range — to see how its $/SF stacks up against the comp average.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Target Size (SF)</label>
-                <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000"
-                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                <div class="flex items-center gap-2">
+                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000"
+                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  <span class="text-sm text-slate-400 shrink-0">to</span>
+                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)"
+                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Target / Asking Price ($)</label>
-                <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000"
-                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                <div class="flex items-center gap-2">
+                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000"
+                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  <span class="text-sm text-slate-400 shrink-0">to</span>
+                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)"
+                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                </div>
               </div>
             </div>
           </div>
@@ -709,19 +719,43 @@
   // ----------------------------------------------------------------------------
   // Target-vs-market comparison
   // ----------------------------------------------------------------------------
+  // Reads a min/max input pair as a range. Either box may be left blank
+  // (single value); swapped bounds are tolerated. Returns null if empty.
+  function targetRange(minId, maxId) {
+    const a = numericValue(document.getElementById(minId).value);
+    const b = numericValue(document.getElementById(maxId).value);
+    if (!(a > 0) && !(b > 0)) return null;
+    const lo = a > 0 ? a : b;
+    const hi = b > 0 ? b : a;
+    return { min: Math.min(lo, hi), max: Math.max(lo, hi) };
+  }
+
   function renderComparison(parsed) {
     const card = document.getElementById("compareCard");
-    const size = numericValue(document.getElementById("targetSize").value);
-    const price = numericValue(document.getElementById("targetPrice").value);
+    const sizeR = targetRange("targetSize", "targetSizeMax");
+    const priceR = targetRange("targetPrice", "targetPriceMax");
 
-    if (!(size > 0) || !(price > 0)) { card.classList.add("hidden"); return; }
+    if (!sizeR || !priceR) { card.classList.add("hidden"); return; }
 
-    const targetPpsf = price / size;
+    // Cheapest case = lowest price over the most SF; priciest = the reverse.
+    const ppsfLo = priceR.min / sizeR.max;
+    const ppsfHi = priceR.max / sizeR.min;
+    const targetPpsf = (ppsfLo + ppsfHi) / 2;
+    const isRange = ppsfHi - ppsfLo > 0.005;
     const marketPpsf = numericValue(parsed.avg_price_per_sqft);
 
-    animateValue(document.getElementById("targetPpsfVal"), targetPpsf, (v) => formatUsd(v));
+    const ppsfEl = document.getElementById("targetPpsfVal");
+    ppsfEl.classList.toggle("text-2xl", !isRange);
+    ppsfEl.classList.toggle("text-xl", isRange);
+    if (isRange) {
+      ppsfEl.textContent = `${formatUsd(ppsfLo)} – ${formatUsd(ppsfHi)}`;
+    } else {
+      animateValue(ppsfEl, targetPpsf, (v) => formatUsd(v));
+    }
+
+    const fmtR = (r, fmt) => r.min === r.max ? fmt(r.min) : `${fmt(r.min)}–${fmt(r.max)}`;
     document.getElementById("targetBasis").textContent =
-      `${formatUsd(price, { maximumFractionDigits: 0 })} ÷ ${size.toLocaleString()} SF`;
+      `${fmtR(priceR, (v) => formatUsd(v, { maximumFractionDigits: 0 }))} ÷ ${fmtR(sizeR, (v) => v.toLocaleString())} SF`;
 
     const deltaTile = document.getElementById("deltaTile");
     const deltaVal = document.getElementById("deltaVal");
@@ -741,20 +775,31 @@
 
     animateValue(document.getElementById("marketPpsfVal"), marketPpsf, (v) => formatUsd(v));
 
+    if (isRange && marketPpsf >= ppsfLo && marketPpsf <= ppsfHi) {
+      deltaTile.className = "rounded-lg border p-4 bg-brand-50 border-brand-200 text-brand-800";
+      deltaVal.textContent = "In range";
+      deltaPct.textContent = "market avg falls inside your range";
+      verdict.textContent =
+        `The comparable average (${formatUsd(marketPpsf)} per SF) falls within the subject's range of ${formatUsd(ppsfLo)}–${formatUsd(ppsfHi)} per SF — the subject is priced in line with the market.`;
+      card.classList.remove("hidden");
+      return;
+    }
+
     const delta = targetPpsf - marketPpsf;
     const pct = (delta / marketPpsf) * 100;
     const above = delta > 0;
+    const basisLabel = isRange ? `range midpoint ${formatUsd(targetPpsf)}` : formatUsd(targetPpsf);
 
     deltaTile.className =
       "rounded-lg border p-4 " +
       (above ? "bg-amber-50 border-amber-200 text-amber-800"
              : "bg-emerald-50 border-emerald-200 text-emerald-800");
     animateValue(deltaVal, Math.abs(delta), (v) => formatUsd(v), above ? "+" : "−");
-    deltaPct.textContent = (above ? "+" : "−") + Math.abs(pct).toFixed(1) + "% vs. market avg";
+    deltaPct.textContent = (above ? "+" : "−") + Math.abs(pct).toFixed(1) + "% vs. market avg" + (isRange ? " (midpoint)" : "");
 
     verdict.textContent = above
-      ? `The subject property is priced approximately ${Math.abs(pct).toFixed(1)}% above the comparable average (${formatUsd(targetPpsf)} vs. ${formatUsd(marketPpsf)} per SF). Confirm that quality, location, or income supports the premium.`
-      : `The subject property is priced approximately ${Math.abs(pct).toFixed(1)}% below the comparable average (${formatUsd(targetPpsf)} vs. ${formatUsd(marketPpsf)} per SF), which may indicate value — subject to condition and income.`;
+      ? `The subject property is priced approximately ${Math.abs(pct).toFixed(1)}% above the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF). Confirm that quality, location, or income supports the premium.`
+      : `The subject property is priced approximately ${Math.abs(pct).toFixed(1)}% below the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF), which may indicate value — subject to condition and income.`;
 
     card.classList.remove("hidden");
   }
@@ -765,8 +810,8 @@
   // ----------------------------------------------------------------------------
   function renderValueEstimate() {
     const card = document.getElementById("valueCard");
-    const size = numericValue(document.getElementById("targetSize").value);
-    if (!(size > 0)) { card.classList.add("hidden"); return; }
+    const sizeR = targetRange("targetSize", "targetSizeMax");
+    if (!sizeR) { card.classList.add("hidden"); return; }
 
     // Sale comps only — lease $/SF/yr is a different unit and would skew the range.
     const ppsfs = currentComps
@@ -778,13 +823,17 @@
     const lo = Math.min(...ppsfs);
     const hi = Math.max(...ppsfs);
     const avg = ppsfs.reduce((s, v) => s + v, 0) / ppsfs.length;
+    const midSize = (sizeR.min + sizeR.max) / 2;
     const fmtTotal = (v) => "$" + Math.round(v).toLocaleString();
+    const sizeLabel = sizeR.min === sizeR.max
+      ? `${sizeR.min.toLocaleString()} SF`
+      : `${sizeR.min.toLocaleString()}–${sizeR.max.toLocaleString()} SF`;
 
     document.getElementById("valueBasis").textContent =
-      `${size.toLocaleString()} SF × $/SF from ${ppsfs.length} sale comps`;
-    animateValue(document.getElementById("valueLow"), lo * size, fmtTotal);
-    animateValue(document.getElementById("valueMid"), avg * size, fmtTotal);
-    animateValue(document.getElementById("valueHigh"), hi * size, fmtTotal);
+      `${sizeLabel} × $/SF from ${ppsfs.length} sale comps`;
+    animateValue(document.getElementById("valueLow"), lo * sizeR.min, fmtTotal);
+    animateValue(document.getElementById("valueMid"), avg * midSize, fmtTotal);
+    animateValue(document.getElementById("valueHigh"), hi * sizeR.max, fmtTotal);
     document.getElementById("valueLowPpsf").textContent = "at " + formatUsd(lo) + "/SF · lowest comp";
     document.getElementById("valueMidPpsf").textContent = "at " + formatUsd(avg) + "/SF · comp average";
     document.getElementById("valueHighPpsf").textContent = "at " + formatUsd(hi) + "/SF · highest comp";

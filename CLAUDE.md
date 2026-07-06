@@ -46,13 +46,17 @@ dependency. `.env` is git-ignored — never commit it.
   header (checked server-side with a constant-time compare). When unset, the app
   is fully open.
 - `LEAD_CAPTURE` — optional `on`/`off`. When on, the CSV/PNG/print exports are
-  unlocked by a one-time contact form (the lead-magnet flow) and leads append to
-  `leads.jsonl` (git-ignored — contains PII, never commit). Defaults to ON when
+  unlocked by a one-time contact form (the lead-magnet flow). Defaults to ON when
   `APP_PASSWORD` is unset (public deployment) and OFF when it is set (internal).
+- `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` — optional pair. When both are set,
+  leads are stored durably in a Supabase Postgres table named `leads` (written
+  via its REST API with plain fetch — still zero npm deps). When unset, or if a
+  DB insert fails, leads append to `leads.jsonl` (git-ignored — contains PII,
+  never commit). `GET /api/leads` merges both sources.
 - `ADMIN_KEY` — optional. When set, `GET /api/leads` returns the captured leads
   as CSV (send the key via `x-admin-key` header or `?key=`). Unset = that
-  endpoint is disabled. On ephemeral-filesystem hosts, download leads before
-  each redeploy or they're lost.
+  endpoint is disabled. Without Supabase configured, leads live only in
+  `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 `MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a

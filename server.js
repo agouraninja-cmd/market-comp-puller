@@ -43,14 +43,79 @@ const LEAD_CAPTURE = process.env.LEAD_CAPTURE
   ? process.env.LEAD_CAPTURE.toLowerCase() !== "off"
   : !APP_PASSWORD;
 
-// Captured leads are appended here, one JSON object per line. NOTE: on hosts
-// with an ephemeral filesystem (Render/Railway free tiers) this file is lost
-// on redeploy — download it via GET /api/leads before deploying.
+// Durable lead storage — a Supabase (hosted Postgres) project, written to via
+// its REST API with plain fetch, so the app stays dependency-free. When these
+// are unset (or an insert fails), leads fall back to the local file below so
+// no lead is ever dropped.
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+const DB_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
+
+// File fallback. NOTE: on hosts with an ephemeral filesystem (Render/Railway
+// free tiers) this file is lost on redeploy — configure Supabase for anything
+// you care about, or download via GET /api/leads before deploying.
 const LEADS_FILE = path.join(__dirname, "leads.jsonl");
 
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
+
+// ---------------------------------------------------------------------------
+// Lead storage — Supabase REST when configured, local file otherwise
+// ---------------------------------------------------------------------------
+function supabaseHeaders() {
+  return {
+    "content-type": "application/json",
+    apikey: SUPABASE_SERVICE_KEY,
+    authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+  };
+}
+
+// Returns "db" or "file" depending on where the lead landed. A DB failure
+// falls back to the file rather than losing the lead.
+async function storeLead(lead) {
+  if (DB_CONFIGURED) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/leads`, {
+        method: "POST",
+        headers: { ...supabaseHeaders(), prefer: "return=minimal" },
+        body: JSON.stringify(lead),
+      });
+      if (!r.ok) throw new Error(`Supabase insert failed (${r.status}): ${(await r.text()).slice(0, 300)}`);
+      return "db";
+    } catch (err) {
+      console.error("Lead DB insert failed — falling back to file:", err.message);
+    }
+  }
+  await fs.promises.appendFile(LEADS_FILE, JSON.stringify(lead) + "\n");
+  return "file";
+}
+
+async function readLeadsFromFile() {
+  let raw;
+  try {
+    raw = await fs.promises.readFile(LEADS_FILE, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+  return raw.split("\n").filter(Boolean).map((line) => {
+    try { return JSON.parse(line); } catch (_) { return null; }
+  }).filter(Boolean);
+}
+
+async function readLeads() {
+  const fileLeads = await readLeadsFromFile();
+  if (!DB_CONFIGURED) return fileLeads;
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/leads?select=ts,name,email,phone,company,address,type&order=ts.asc&limit=10000`,
+    { headers: supabaseHeaders() }
+  );
+  if (!r.ok) throw new Error(`Supabase read failed (${r.status}).`);
+  const dbLeads = await r.json();
+  // Include any leads that fell back to the file during a DB outage.
+  return [...dbLeads, ...fileLeads];
+}
 
 // Constant-time string comparison (avoids leaking secrets via timing).
 function secretMatches(candidate, secret) {
@@ -297,10 +362,10 @@ const server = http.createServer((req, res) => {
       body += c;
       if (body.length > 1e4) req.destroy();
     });
-    req.on("end", () => {
+    req.on("end", async () => {
       try {
         // Separate quota from searches ("lead:" prefix) so filling the form
-        // never eats into a visitor's search allowance — but the file can't
+        // never eats into a visitor's search allowance — but the store can't
         // be spammed full either.
         if (rateLimited("lead:" + clientIp(req))) {
           return sendJson(res, 429, { error: "Too many submissions — please try again later." });
@@ -319,16 +384,13 @@ const server = http.createServer((req, res) => {
         if (!lead.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
           return sendJson(res, 400, { error: "A name and a valid email are required." });
         }
-        fs.appendFile(LEADS_FILE, JSON.stringify(lead) + "\n", (err) => {
-          if (err) {
-            console.error("Failed to store lead:", err);
-            return sendJson(res, 500, { error: "Could not save your details — please try again." });
-          }
-          console.log(`Lead captured: ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
-          return sendJson(res, 200, { ok: true });
-        });
-      } catch (_) {
-        return sendJson(res, 400, { error: "Bad request." });
+        const dest = await storeLead(lead);
+        console.log(`Lead captured (${dest}): ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Failed to store lead:", err);
+        return sendJson(res, 500, { error: "Could not save your details — please try again." });
       }
     });
     return;
@@ -345,23 +407,18 @@ const server = http.createServer((req, res) => {
     if (!secretMatches(key, ADMIN_KEY)) {
       return sendJson(res, 401, { error: "Unauthorized." });
     }
-    fs.readFile(LEADS_FILE, "utf8", (err, data) => {
+    readLeads().then((leads) => {
       const cols = ["ts", "name", "email", "phone", "company", "address", "type"];
-      if (err && err.code !== "ENOENT") {
-        return sendJson(res, 500, { error: "Could not read leads." });
-      }
       const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-      const rows = (err ? "" : data).split("\n").filter(Boolean).map((line) => {
-        try {
-          const o = JSON.parse(line);
-          return cols.map((c) => esc(o[c])).join(",");
-        } catch (_) { return null; }
-      }).filter(Boolean);
+      const rows = leads.map((o) => cols.map((c) => esc(o[c])).join(","));
       res.writeHead(200, {
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": "attachment; filename=leads.csv",
       });
       res.end([cols.join(","), ...rows].join("\r\n"));
+    }).catch((err) => {
+      console.error("Failed to read leads:", err);
+      sendJson(res, 500, { error: "Could not read leads." });
     });
     return;
   }
@@ -424,7 +481,7 @@ server.listen(PORT, () => {
     ? "🔒 Password gate ENABLED (APP_PASSWORD is set)."
     : "🔓 Password gate disabled — anyone with the URL can run searches. Set APP_PASSWORD to require a password.");
   console.log(LEAD_CAPTURE
-    ? `🧲 Lead capture ENABLED — exports require contact info; leads append to ${path.basename(LEADS_FILE)}.`
+    ? `🧲 Lead capture ENABLED — exports require contact info; leads go to ${DB_CONFIGURED ? "Supabase" : path.basename(LEADS_FILE) + " (EPHEMERAL on most hosts — set SUPABASE_URL + SUPABASE_SERVICE_KEY for durable storage)"}.`
     : "Lead capture disabled (set LEAD_CAPTURE=on to enable).");
   if (LEAD_CAPTURE && !ADMIN_KEY) {
     console.warn("⚠  ADMIN_KEY is not set — GET /api/leads (lead download) is disabled.");

@@ -47,8 +47,8 @@ const LEAD_CAPTURE = process.env.LEAD_CAPTURE
 // its REST API with plain fetch, so the app stays dependency-free. When these
 // are unset (or an insert fails), leads fall back to the local file below so
 // no lead is ever dropped.
-const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
+const SUPABASE_SERVICE_KEY = (process.env.SUPABASE_SERVICE_KEY || "").trim();
 const DB_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
 
 // File fallback. NOTE: on hosts with an ephemeral filesystem (Render/Railway

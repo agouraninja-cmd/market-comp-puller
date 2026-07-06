@@ -398,7 +398,9 @@ const server = http.createServer((req, res) => {
         res.writeHead(500);
         return res.end("index.html not found");
       }
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      // no-store: the whole front-end is this one file, so a stale cached copy
+      // means users silently miss every update. It's small; always fetch fresh.
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(data);
     });
     return;

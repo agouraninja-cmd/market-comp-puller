@@ -110,14 +110,21 @@ async function readLeadsFromFile() {
 async function readLeads() {
   const fileLeads = await readLeadsFromFile();
   if (!DB_CONFIGURED) return fileLeads;
-  const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/leads?select=ts,name,email,phone,company,address,type&order=ts.asc&limit=10000`,
-    { headers: supabaseHeaders() }
-  );
-  if (!r.ok) throw new Error(`Supabase read failed (${r.status}).`);
-  const dbLeads = await r.json();
-  // Include any leads that fell back to the file during a DB outage.
-  return [...dbLeads, ...fileLeads];
+  // A broken/unreachable DB must not take down the lead download — the file
+  // still holds everything that fell back there.
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/leads?select=ts,name,email,phone,company,address,type&order=ts.asc&limit=10000`,
+      { headers: supabaseHeaders() }
+    );
+    if (!r.ok) throw new Error(`Supabase read failed (${r.status}).`);
+    const dbLeads = await r.json();
+    // Include any leads that fell back to the file during a DB outage.
+    return [...dbLeads, ...fileLeads];
+  } catch (err) {
+    console.error("Lead DB read failed — returning file leads only:", err.message);
+    return fileLeads;
+  }
 }
 
 // Constant-time string comparison (avoids leaking secrets via timing).

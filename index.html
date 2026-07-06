@@ -167,6 +167,80 @@
     </div>
   </div>
 
+  <!-- Broker comp-submission modal -->
+  <div id="compModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-8">
+      <div id="compFormWrap">
+        <h2 class="text-lg font-semibold text-slate-900">Submit a comp</h2>
+        <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission before it's used in reports.</p>
+        <form id="compForm2" class="space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="compBrokerName" type="text" autocomplete="name" placeholder="Your name *"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="compBrokerEmail" type="email" autocomplete="email" placeholder="Email *"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="compBrokerPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="compBrokerCompany" type="text" autocomplete="organization" placeholder="Brokerage (optional)"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <div class="border-t border-slate-200 pt-3">
+            <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">The comp</div>
+            <input id="compAddress" type="text" placeholder="Property address *"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <select id="compType"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="Industrial" selected>Industrial</option>
+              <option value="Office">Office</option>
+              <option value="Retail">Retail</option>
+              <option value="Multifamily">Multifamily</option>
+              <option value="Land">Land</option>
+              <option value="Residential">Residential</option>
+            </select>
+            <select id="compTx"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="Sale" selected>Sale</option>
+              <option value="Lease">Lease</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <input id="compDate" type="text" placeholder="Close date, e.g. Mar 2026"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="compSize" type="text" placeholder="Size (SF), e.g. 86,400"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <input id="compPrice" type="text" placeholder="Price / rate *"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="compCapRate" type="text" placeholder="Cap rate (optional)"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <textarea id="compNotes" rows="2" placeholder="Notes — tenant, condition, terms (optional)"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+          <p id="compError" class="hidden text-sm text-red-600"></p>
+          <button id="compSubmitBtn" type="submit"
+            class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
+            Submit comp
+          </button>
+          <button id="compCancel" type="button" class="w-full text-sm text-slate-400 hover:text-slate-600 py-1">Cancel</button>
+        </form>
+      </div>
+      <div id="compSuccess" class="hidden text-center py-6">
+        <div class="text-3xl mb-2">🤝</div>
+        <h2 class="text-lg font-semibold text-slate-900">Thanks — we got it.</h2>
+        <p class="text-sm text-slate-500 mt-1">Our team reviews every submission. We'll reach out when the verified comp layer goes live for contributors.</p>
+        <div class="mt-4 flex justify-center gap-3">
+          <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-4 py-2">Submit another</button>
+          <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Hero -->
   <div id="hero" class="relative overflow-hidden text-white no-print">
     <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
@@ -554,6 +628,21 @@
             <h3 class="font-semibold text-slate-900 mb-1">Fresh, public data</h3>
             <p class="text-sm text-slate-500 leading-relaxed">Every search runs live against public listings and records — nothing stale, no subscription required.</p>
           </div>
+        </div>
+      </section>
+
+      <!-- Broker comp submission CTA -->
+      <section class="mt-10 enter enter-4">
+        <div class="rounded-xl bg-gradient-to-br from-slate-900 to-brand-900 text-white p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
+          <div class="flex-1">
+            <div class="text-xs font-semibold uppercase tracking-wider text-brand-300 mb-1">For brokers</div>
+            <h2 class="text-xl font-bold tracking-tight">Know a deal we're missing?</h2>
+            <p class="text-sm text-slate-300 mt-1 max-w-2xl">Submit a recent sale or lease comp. Every submission is reviewed by our team before it's used — and contributing brokers get first access to the verified comp layer as it grows.</p>
+          </div>
+          <button id="brokerCtaBtn" type="button"
+            class="btn-live shrink-0 inline-flex items-center justify-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50">
+            Submit a comp
+          </button>
         </div>
       </section>
     </div>
@@ -1520,6 +1609,88 @@
   document.getElementById("csvBtn").addEventListener("click", gatedExport(exportCsv));
   document.getElementById("imgBtn").addEventListener("click", gatedExport(downloadImage));
   document.getElementById("printBtn").addEventListener("click", gatedExport(() => window.print()));
+
+  // ----------------------------------------------------------------------------
+  // Broker comp submission — outside brokers offer verified comps; stored
+  // server-side (status: pending) for manual review.
+  // ----------------------------------------------------------------------------
+  const compModal = document.getElementById("compModal");
+
+  function openCompModal() {
+    document.getElementById("compFormWrap").classList.remove("hidden");
+    document.getElementById("compSuccess").classList.add("hidden");
+    document.getElementById("compError").classList.add("hidden");
+    compModal.classList.remove("hidden");
+    document.getElementById("compBrokerName").focus();
+  }
+  function closeCompModal() { compModal.classList.add("hidden"); }
+
+  document.getElementById("brokerCtaBtn").addEventListener("click", openCompModal);
+  document.getElementById("compCancel").addEventListener("click", closeCompModal);
+  document.getElementById("compDoneBtn").addEventListener("click", closeCompModal);
+  document.getElementById("compAnotherBtn").addEventListener("click", () => {
+    // Keep the broker's contact info; clear only the comp fields.
+    ["compAddress", "compDate", "compSize", "compPrice", "compCapRate", "compNotes"]
+      .forEach((id) => { document.getElementById(id).value = ""; });
+    document.getElementById("compFormWrap").classList.remove("hidden");
+    document.getElementById("compSuccess").classList.add("hidden");
+    document.getElementById("compAddress").focus();
+  });
+
+  document.getElementById("compForm2").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById("compError");
+    const btn = document.getElementById("compSubmitBtn");
+    const val = (id) => document.getElementById(id).value.trim();
+    const payload = {
+      broker_name: val("compBrokerName"),
+      broker_email: val("compBrokerEmail"),
+      broker_phone: val("compBrokerPhone"),
+      broker_company: val("compBrokerCompany"),
+      address: val("compAddress"),
+      property_type: document.getElementById("compType").value,
+      transaction: document.getElementById("compTx").value,
+      deal_date: val("compDate"),
+      size_sqft: val("compSize"),
+      price_or_rate: val("compPrice"),
+      cap_rate: val("compCapRate"),
+      notes: val("compNotes"),
+    };
+    if (!payload.broker_name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.broker_email)) {
+      errEl.textContent = "Please enter your name and a valid email.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    if (!payload.address || !payload.price_or_rate) {
+      errEl.textContent = "Please enter the comp's address and its price or rate.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    errEl.classList.add("hidden");
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Submitting…";
+    try {
+      const r = await fetch("/api/comp-submission", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        let detail = "";
+        try { detail = (await r.json())?.error || ""; } catch (_) {}
+        throw new Error(detail || `Request failed (${r.status}).`);
+      }
+      document.getElementById("compFormWrap").classList.add("hidden");
+      document.getElementById("compSuccess").classList.remove("hidden");
+    } catch (err) {
+      errEl.textContent = err && err.message ? err.message : "Something went wrong — please try again.";
+      errEl.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
 
   // ----------------------------------------------------------------------------
   // Submit -> our backend proxy (key stays on the server)

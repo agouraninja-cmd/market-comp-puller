@@ -51,10 +51,11 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "")
 const SUPABASE_SERVICE_KEY = (process.env.SUPABASE_SERVICE_KEY || "").trim();
 const DB_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
 
-// File fallback. NOTE: on hosts with an ephemeral filesystem (Render/Railway
-// free tiers) this file is lost on redeploy — configure Supabase for anything
-// you care about, or download via GET /api/leads before deploying.
+// File fallbacks. NOTE: on hosts with an ephemeral filesystem (Render/Railway
+// free tiers) these files are lost on redeploy — configure Supabase for
+// anything you care about, or download via the admin endpoints before deploying.
 const LEADS_FILE = path.join(__dirname, "leads.jsonl");
+const COMP_SUBMISSIONS_FILE = path.join(__dirname, "comp-submissions.jsonl");
 
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
@@ -74,30 +75,30 @@ function supabaseHeaders() {
   return headers;
 }
 
-// Returns "db" or "file" depending on where the lead landed. A DB failure
-// falls back to the file rather than losing the lead.
-async function storeLead(lead) {
+// Returns "db" or "file" depending on where the row landed. A DB failure
+// falls back to the file rather than losing the submission.
+async function storeRow(table, file, row) {
   if (DB_CONFIGURED) {
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/leads`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
         method: "POST",
         headers: { ...supabaseHeaders(), prefer: "return=minimal" },
-        body: JSON.stringify(lead),
+        body: JSON.stringify(row),
       });
       if (!r.ok) throw new Error(`Supabase insert failed (${r.status}): ${(await r.text()).slice(0, 300)}`);
       return "db";
     } catch (err) {
-      console.error("Lead DB insert failed — falling back to file:", err.message);
+      console.error(`${table} DB insert failed — falling back to file:`, err.message);
     }
   }
-  await fs.promises.appendFile(LEADS_FILE, JSON.stringify(lead) + "\n");
+  await fs.promises.appendFile(file, JSON.stringify(row) + "\n");
   return "file";
 }
 
-async function readLeadsFromFile() {
+async function readRowsFromFile(file) {
   let raw;
   try {
-    raw = await fs.promises.readFile(LEADS_FILE, "utf8");
+    raw = await fs.promises.readFile(file, "utf8");
   } catch (err) {
     if (err.code === "ENOENT") return [];
     throw err;
@@ -107,24 +108,49 @@ async function readLeadsFromFile() {
   }).filter(Boolean);
 }
 
-async function readLeads() {
-  const fileLeads = await readLeadsFromFile();
-  if (!DB_CONFIGURED) return fileLeads;
-  // A broken/unreachable DB must not take down the lead download — the file
-  // still holds everything that fell back there.
+// A broken/unreachable DB must not take down the admin downloads — the file
+// still holds everything that fell back there.
+async function readRows(table, file, cols) {
+  const fileRows = await readRowsFromFile(file);
+  if (!DB_CONFIGURED) return fileRows;
   try {
     const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/leads?select=ts,name,email,phone,company,address,type&order=ts.asc&limit=10000`,
+      `${SUPABASE_URL}/rest/v1/${table}?select=${cols.join(",")}&order=ts.asc&limit=10000`,
       { headers: supabaseHeaders() }
     );
     if (!r.ok) throw new Error(`Supabase read failed (${r.status}).`);
-    const dbLeads = await r.json();
-    // Include any leads that fell back to the file during a DB outage.
-    return [...dbLeads, ...fileLeads];
+    const dbRows = await r.json();
+    // Include any rows that fell back to the file during a DB outage.
+    return [...dbRows, ...fileRows];
   } catch (err) {
-    console.error("Lead DB read failed — returning file leads only:", err.message);
-    return fileLeads;
+    console.error(`${table} DB read failed — returning file rows only:`, err.message);
+    return fileRows;
   }
+}
+
+// Serves an ADMIN_KEY-gated CSV download of a lead/submission store.
+function sendCsvDownload(req, res, table, file, cols, filename) {
+  if (!ADMIN_KEY) {
+    res.writeHead(404, { "content-type": "text/plain" });
+    return res.end("Not found");
+  }
+  const key = req.headers["x-admin-key"] ||
+    new URL(req.url, "http://localhost").searchParams.get("key");
+  if (!secretMatches(key, ADMIN_KEY)) {
+    return sendJson(res, 401, { error: "Unauthorized." });
+  }
+  readRows(table, file, cols).then((rows) => {
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = rows.map((o) => cols.map((c) => esc(o[c])).join(","));
+    res.writeHead(200, {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename=${filename}`,
+    });
+    res.end([cols.join(","), ...lines].join("\r\n"));
+  }).catch((err) => {
+    console.error(`Failed to read ${table}:`, err);
+    sendJson(res, 500, { error: `Could not read ${table}.` });
+  });
 }
 
 // Constant-time string comparison (avoids leaking secrets via timing).
@@ -394,7 +420,7 @@ const server = http.createServer((req, res) => {
         if (!lead.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
           return sendJson(res, 400, { error: "A name and a valid email are required." });
         }
-        const dest = await storeLead(lead);
+        const dest = await storeRow("leads", LEADS_FILE, lead);
         console.log(`Lead captured (${dest}): ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
         return sendJson(res, 200, { ok: true });
       } catch (err) {
@@ -408,29 +434,64 @@ const server = http.createServer((req, res) => {
 
   // --- Lead download (CSV). Disabled unless ADMIN_KEY is set. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/leads") {
-    if (!ADMIN_KEY) {
-      res.writeHead(404, { "content-type": "text/plain" });
-      return res.end("Not found");
-    }
-    const key = req.headers["x-admin-key"] ||
-      new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!secretMatches(key, ADMIN_KEY)) {
-      return sendJson(res, 401, { error: "Unauthorized." });
-    }
-    readLeads().then((leads) => {
-      const cols = ["ts", "name", "email", "phone", "company", "address", "type"];
-      const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-      const rows = leads.map((o) => cols.map((c) => esc(o[c])).join(","));
-      res.writeHead(200, {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": "attachment; filename=leads.csv",
-      });
-      res.end([cols.join(","), ...rows].join("\r\n"));
-    }).catch((err) => {
-      console.error("Failed to read leads:", err);
-      sendJson(res, 500, { error: "Could not read leads." });
+    return sendCsvDownload(req, res, "leads", LEADS_FILE,
+      ["ts", "name", "email", "phone", "company", "address", "type"], "leads.csv");
+  }
+
+  // --- Broker comp submission: stores a comp offered by an outside broker ---
+  if (req.method === "POST" && req.url === "/api/comp-submission") {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 2e4) req.destroy();
+    });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("comp:" + clientIp(req))) {
+          return sendJson(res, 429, { error: "Too many submissions — please try again later." });
+        }
+        const b = JSON.parse(body || "{}");
+        const clean = (v, max) => String(v || "").trim().slice(0, max);
+        const submission = {
+          ts: new Date().toISOString(),
+          status: "pending",
+          broker_name: clean(b.broker_name, 120),
+          broker_email: clean(b.broker_email, 200),
+          broker_company: clean(b.broker_company, 120),
+          broker_phone: clean(b.broker_phone, 60),
+          address: clean(b.address, 300),
+          property_type: ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"].includes(b.property_type) ? b.property_type : "",
+          transaction: ["Sale", "Lease"].includes(b.transaction) ? b.transaction : "",
+          deal_date: clean(b.deal_date, 40),
+          size_sqft: clean(b.size_sqft, 40),
+          price_or_rate: clean(b.price_or_rate, 80),
+          cap_rate: clean(b.cap_rate, 40),
+          notes: clean(b.notes, 1000),
+        };
+        if (!submission.broker_name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submission.broker_email)) {
+          return sendJson(res, 400, { error: "Your name and a valid email are required." });
+        }
+        if (!submission.address || !submission.price_or_rate) {
+          return sendJson(res, 400, { error: "The comp's address and price/rate are required." });
+        }
+        const dest = await storeRow("comp_submissions", COMP_SUBMISSIONS_FILE, submission);
+        console.log(`Comp submitted (${dest}): ${submission.address} — ${submission.broker_name} <${submission.broker_email}>`);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Failed to store comp submission:", err);
+        return sendJson(res, 500, { error: "Could not save the comp — please try again." });
+      }
     });
     return;
+  }
+
+  // --- Comp submission download (CSV). Disabled unless ADMIN_KEY is set. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/comp-submissions") {
+    return sendCsvDownload(req, res, "comp_submissions", COMP_SUBMISSIONS_FILE,
+      ["ts", "status", "broker_name", "broker_email", "broker_phone", "broker_company",
+       "address", "property_type", "transaction", "deal_date", "size_sqft",
+       "price_or_rate", "cap_rate", "notes"], "comp-submissions.csv");
   }
 
   // --- Tells the front-end whether a password is required ---

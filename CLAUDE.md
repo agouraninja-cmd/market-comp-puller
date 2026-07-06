@@ -78,9 +78,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /api/config` — tells the front-end whether a password is required and
   whether lead capture is on (`{ authRequired, leadCapture }`).
 - `POST /api/login` — validates a password so the UI can confirm before searching.
-- `POST /api/lead` — appends a lead-capture submission (name/email/phone/company
-  + the searched address/type) to `leads.jsonl`. Rate-limited per IP.
+- `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
+  + the searched address/type). Rate-limited per IP.
 - `GET /api/leads` — downloads captured leads as CSV; requires `ADMIN_KEY`.
+- `POST /api/comp-submission` — stores a broker-submitted comp (broker contact +
+  comp details, `status: "pending"`) in the Supabase `comp_submissions` table
+  (file fallback: `comp-submissions.jsonl`). Review is manual — nothing shown in
+  reports yet. Rate-limited per IP.
+- `GET /api/comp-submissions` — downloads submitted comps as CSV; requires
+  `ADMIN_KEY`.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /` — serves `index.html`.
 

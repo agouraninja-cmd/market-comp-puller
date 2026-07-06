@@ -434,9 +434,11 @@ const server = http.createServer((req, res) => {
   }
 
   // --- Lead download (CSV). Disabled unless ADMIN_KEY is set. ---
+  // referred_to is filled in manually (Supabase table editor) when a lead is
+  // handed to a contributing broker; new leads arrive with it empty.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/leads") {
     return sendCsvDownload(req, res, "leads", LEADS_FILE,
-      ["ts", "name", "email", "phone", "company", "address", "type"], "leads.csv");
+      ["ts", "name", "email", "phone", "company", "address", "type", "referred_to"], "leads.csv");
   }
 
   // --- Broker comp submission: stores a comp offered by an outside broker ---

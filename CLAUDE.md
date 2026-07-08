@@ -4,11 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A web app for a commercial real estate firm. A user enters a property address +
-type; the server asks Claude (with web search) for recent comparable sales/leases
-and returns a structured comp report (summary, average $/SF, comp table, optional
-subject-vs-market comparison). The front-end is a single HTML file; a small Node
-proxy holds the API key so the browser never sees it.
+A commercial real estate comp tool, branded **CompNinja** (the owner's
+independent brand — it previously carried Adler Industrial branding; do not
+reintroduce Adler anywhere). A user enters a property address + type; the
+server asks Claude (with web search) for recent comparable sales/leases and
+returns a structured comp report (summary, average $/SF, comp table, optional
+subject-vs-market comparison). The front-end is a single HTML file; a small
+Node proxy holds the API key so the browser never sees it. The public contact
+email across the site is agouraninja@gmail.com. The owner is not a licensed
+broker: site copy must say we "connect you with a local broker", never that we
+are one.
 
 There is no build step, no test suite, no linter, and **no npm dependencies** — it
 runs on plain Node (uses the built-in `fetch`, so **Node 18+ is required**).

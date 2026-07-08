@@ -163,12 +163,34 @@
     /* While grab-dragging the table, show the grabbing hand and suppress text selection. */
     #scrollBody.dragging { cursor: grabbing; user-select: none; }
 
-    /* Print: show only the report area, cleanly */
+    /* Print-only elements: invisible on screen (and to html2canvas), shown when printing. */
+    .print-only { display: none; }
+
+    /* Print: a clean CompNinja document, not a webpage dump. */
     @media print {
       body { background: #fff; }
       .no-print { display: none !important; }
+      .print-only { display: block; }
       #reportArea { box-shadow: none; }
       .print-shadow-none { box-shadow: none !important; border-color: #e2e8f0 !important; }
+      @page { margin: 14mm 12mm; }
+      /* Keep each report card on one page. The entrance cascade starts cards
+         at opacity 0, so they must be forced visible for a fast Ctrl+P. */
+      #reportArea > * {
+        break-inside: avoid; page-break-inside: avoid;
+        animation: none !important; opacity: 1 !important;
+      }
+      #compsTable tr { break-inside: avoid; page-break-inside: avoid; }
+      #compsTable thead { display: table-header-group; }
+      /* Paper cannot scroll sideways: unclip the table and let cells wrap. */
+      #scrollBody { display: block !important; overflow: visible !important; }
+      #reportArea .overflow-hidden { overflow: visible !important; }
+      #compsTable { font-size: 10px; }
+      #compsTable th, #compsTable td { padding: 4px 6px; white-space: normal !important; }
+      /* Map tiles are lazy-loaded cross-origin images that print blank. */
+      #mapCard { display: none !important; }
+      /* Print always uses the table, never the mobile card list. */
+      #cardList { display: none !important; }
     }
   </style>
 </head>
@@ -427,7 +449,8 @@
           </div>
         </details>
 
-        <div class="flex flex-col sm:flex-row gap-3">
+        <!-- On phones this row docks to the bottom of the screen while the form is visible. -->
+        <div class="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white border-t border-slate-100 rounded-b-xl flex flex-col sm:flex-row gap-3 sm:static sm:m-0 sm:p-0 sm:bg-transparent sm:border-0">
           <button id="submitBtn" type="submit"
             class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-6 py-2.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Generate Report</span>
@@ -493,6 +516,25 @@
       <!-- Captured / printed region -->
       <div id="reportArea" class="space-y-6">
 
+        <!-- Print letterhead: appears only on the printed / PDF report -->
+        <div class="print-only pb-3 mb-2 border-b-2 border-brand-600">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="h-7 w-7 shrink-0" viewBox="0 0 44 44" aria-hidden="true">
+                <rect width="44" height="44" rx="10" fill="#1E293B"/>
+                <rect x="6" y="17" width="32" height="10" rx="5" fill="#DC2626"/>
+                <circle cx="17" cy="22" r="2.8" fill="#1E293B"/>
+                <circle cx="27" cy="22" r="2.8" fill="#1E293B"/>
+              </svg>
+              <span class="font-brand uppercase text-xl font-semibold tracking-wide text-slate-900">Comp<span class="text-brand-600">Ninja</span></span>
+            </div>
+            <div class="text-right text-xs text-slate-500">
+              <div>agouraninja@gmail.com</div>
+              <div id="printDate"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Report header (gives the screenshot context) -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
           <div class="flex items-start justify-between gap-4">
@@ -556,6 +598,16 @@
           <p id="verdictText" class="text-sm text-slate-600 mt-4"></p>
         </div>
 
+        <!-- Market position: each sale comp $/SF on a strip, with the average and the subject -->
+        <div id="chartCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-1">
+            <h2 class="text-lg font-semibold text-slate-900">Market Position</h2>
+            <span id="chartBasis" class="text-xs text-slate-400"></span>
+          </div>
+          <p class="text-xs text-slate-400 mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
+          <div id="chartWrap"></div>
+        </div>
+
         <!-- Estimated value range (computed from sale-comp $/SF × subject SF) -->
         <div id="valueCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
@@ -597,9 +649,11 @@
               <span id="compCount" class="text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap"></span>
             </div>
           </div>
+          <!-- Mobile card list: same data as the table, stacked for small screens -->
+          <div id="cardList" class="sm:hidden divide-y divide-slate-100"></div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
                Scrollbars are hidden for a cleaner look (see .no-scrollbar). -->
-          <div id="scrollBody" class="overflow-x-auto no-scrollbar cursor-grab">
+          <div id="scrollBody" class="hidden sm:block overflow-x-auto no-scrollbar cursor-grab">
             <table id="compsTable" class="w-full text-sm">
               <thead class="bg-slate-800 text-slate-100">
                 <tr id="tableHead"></tr>
@@ -607,13 +661,18 @@
               <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
             </table>
           </div>
-          <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100 no-print">Click a column header to sort.</p>
+          <p class="hidden sm:block text-xs text-slate-400 px-6 py-2 border-t border-slate-100 no-print">Click a column header to sort.</p>
         </div>
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
         <p class="text-center text-xs text-slate-400">
           Prepared by CompNinja · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
         </p>
+
+        <!-- Print footer -->
+        <div class="print-only pt-3 mt-2 border-t border-slate-200 text-center text-xs text-slate-400">
+          CompNinja · agouraninja@gmail.com · https://market-comp-puller.onrender.com
+        </div>
       </div>
 
       <!-- Broker CTA — screen only, shown on lead-capture deployments -->
@@ -1119,6 +1178,92 @@
   }
 
   // ----------------------------------------------------------------------------
+  // Market position chart — every sale comp's $/SF as a dot on a strip, with
+  // the average marked and (when subject inputs exist) a "You" marker. Pure
+  // inline SVG with presentation attributes, so it survives PNG and print.
+  // ----------------------------------------------------------------------------
+  function renderMarketChart() {
+    const card = document.getElementById("chartCard");
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+    // Sale comps only — same rule as the value estimate.
+    const pts = currentComps
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => ({ v: numericValue(c.price_per_sqft), address: c.address || "" }))
+      .filter((p) => p.v > 0)
+      .sort((a, b) => a.v - b.v);
+    if (pts.length < 2) { card.classList.add("hidden"); return; }
+
+    const avg = pts.reduce((s, p) => s + p.v, 0) / pts.length;
+
+    // Subject $/SF (single value or band) — same math as renderComparison.
+    const sizeR = targetRange("targetSize", "targetSizeMax");
+    const priceR = targetRange("targetPrice", "targetPriceMax");
+    let youLo = null, youHi = null, youMid = null, isBand = false;
+    if (sizeR && priceR) {
+      youLo = priceR.min / sizeR.max;
+      youHi = priceR.max / sizeR.min;
+      youMid = (youLo + youHi) / 2;
+      isBand = youHi - youLo > 0.005;
+    }
+
+    // Linear domain over comps plus the subject, padded so nothing sits on the edge.
+    let dMin = Math.min(...pts.map((p) => p.v));
+    let dMax = Math.max(...pts.map((p) => p.v));
+    if (youLo !== null) { dMin = Math.min(dMin, youLo); dMax = Math.max(dMax, youHi); }
+    let span = dMax - dMin;
+    if (span < 0.01) { span = Math.max(Math.abs(dMax) * 0.1, 1); dMin -= span / 2; dMax += span / 2; span = dMax - dMin; }
+    dMin -= span * 0.06; dMax += span * 0.06;
+    const x = (v) => 30 + ((v - dMin) / (dMax - dMin)) * 540;
+
+    const baseY = 62;
+    let svg = `<svg width="100%" viewBox="0 0 600 110" role="img" aria-label="Sale comps by price per square foot">`;
+    svg += `<line x1="30" y1="${baseY}" x2="570" y2="${baseY}" stroke="#e2e8f0" stroke-width="2"/>`;
+
+    // Subject band behind everything else.
+    if (youLo !== null && isBand) {
+      svg += `<rect x="${x(youLo).toFixed(1)}" y="48" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="28" fill="#DC2626" fill-opacity="0.12"/>`;
+    }
+
+    // Average line + label, anchor flipped near the edges so it stays inside.
+    const ax = x(avg);
+    const aAnchor = ax < 70 ? "start" : ax > 530 ? "end" : "middle";
+    svg += `<line x1="${ax.toFixed(1)}" y1="40" x2="${ax.toFixed(1)}" y2="84" stroke="#1E293B" stroke-width="2"/>`;
+    svg += `<text x="${ax.toFixed(1)}" y="32" text-anchor="${aAnchor}" font-size="11" font-weight="600" fill="#1E293B" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
+
+    // Comp dots with vertical jitter when they crowd each other.
+    const offsets = [0, -11, 11, -22];
+    let prevX = -Infinity, oi = 0;
+    pts.forEach((p) => {
+      const px = x(p.v);
+      if (px - prevX < 12) { oi = (oi + 1) % offsets.length; } else { oi = 0; }
+      const py = baseY + offsets[oi];
+      prevX = px;
+      svg += `<circle cx="${px.toFixed(1)}" cy="${py}" r="6" fill="#64748b" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
+    });
+
+    // Min/max labels under the strip.
+    const lo = pts[0].v, hi = pts[pts.length - 1].v;
+    svg += `<text x="${x(lo).toFixed(1)}" y="100" text-anchor="start" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text x="${x(hi).toFixed(1)}" y="100" text-anchor="end" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+
+    // "You" marker on top.
+    if (youLo !== null) {
+      const yx = x(youMid);
+      svg += `<path d="M${yx.toFixed(1)},${baseY - 8} l7,8 l-7,8 l-7,-8 Z" fill="#DC2626" stroke="#fff" stroke-width="1.5"/>`;
+      const yAnchor = yx < 50 ? "start" : yx > 550 ? "end" : "middle";
+      svg += `<text x="${yx.toFixed(1)}" y="90" text-anchor="${yAnchor}" font-size="11" font-weight="700" fill="#DC2626" font-family="Inter, sans-serif">You</text>`;
+    }
+    svg += `</svg>`;
+
+    document.getElementById("chartBasis").textContent =
+      `${pts.length} sale comps` + (youLo !== null ? " · subject shown" : "");
+    document.getElementById("chartWrap").innerHTML = svg;
+    card.classList.remove("hidden");
+  }
+
+  // ----------------------------------------------------------------------------
   // Comp map — plots the subject (blue pin) and comps (gray dots) on OSM tiles.
   // Coordinates come from the model per comp; pins are approximate.
   // ----------------------------------------------------------------------------
@@ -1208,6 +1353,7 @@
     const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
     document.getElementById("reportMeta").textContent =
       `${metaLine(meta)} · Generated ${dateStr}`;
+    document.getElementById("printDate").textContent = "Generated " + dateStr;
 
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
 
@@ -1223,6 +1369,7 @@
 
     renderComparison(parsed);
     renderValueEstimate();
+    renderMarketChart();
     renderTableHead();
     renderTableBody();
     if (!meta.sample && !meta.fromHistory) {
@@ -1463,7 +1610,30 @@
     });
   });
 
+  // Badge builders shared by the table and the mobile card list.
+  function verifiedBadge(comp) {
+    // Broker-submitted comps reviewed by the team get a trust badge.
+    if (!(comp.verified === true || String(comp.verified).toLowerCase() === "true")) return null;
+    const badge = document.createElement("span");
+    badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5";
+    badge.textContent = "Verified";
+    badge.title = "Submitted by a local broker and reviewed by our team";
+    return badge;
+  }
+  function outsideWindowBadge(dateVal) {
+    // Flag comps the model returned from before the requested window.
+    const cutoff = lookbackCutoff();
+    const d = Date.parse(dateVal);
+    if (!cutoff || isNaN(d) || d >= cutoff.getTime()) return null;
+    const badge = document.createElement("span");
+    badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5";
+    badge.textContent = "outside window";
+    badge.title = `Older than the requested last ${currentMeta.months} months`;
+    return badge;
+  }
+
   function renderTableBody() {
+    renderCards();
     const body = document.getElementById("tableBody");
     body.innerHTML = "";
     const comps = visibleComps();
@@ -1499,30 +1669,87 @@
           }
         } else {
           td.textContent = (val === undefined || val === null || val === "") ? "-" : val;
-          if (col.key === "address" && (comp.verified === true || String(comp.verified).toLowerCase() === "true")) {
-            // Broker-submitted comps reviewed by the team get a trust badge.
-            const badge = document.createElement("span");
-            badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5";
-            badge.textContent = "Verified";
-            badge.title = "Submitted by a local broker and reviewed by our team";
-            td.appendChild(badge);
+          if (col.key === "address") {
+            const b = verifiedBadge(comp);
+            if (b) td.appendChild(b);
           }
           if (col.isDate) {
-            // Flag comps the model returned from before the requested window.
-            const cutoff = lookbackCutoff();
-            const d = Date.parse(val);
-            if (cutoff && !isNaN(d) && d < cutoff.getTime()) {
-              const badge = document.createElement("span");
-              badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5";
-              badge.textContent = "outside window";
-              badge.title = `Older than the requested last ${currentMeta.months} months`;
-              td.appendChild(badge);
-            }
+            const b = outsideWindowBadge(val);
+            if (b) td.appendChild(b);
           }
         }
         tr.appendChild(td);
       });
       body.appendChild(tr);
+    });
+  }
+
+  // Mobile rendering of the same comps: stacked cards instead of the wide
+  // table. Shares COLUMNS and visibleComps() with the table, so the Sale/Lease
+  // filter, per-type columns, and any active sort all carry over.
+  function renderCards() {
+    const list = document.getElementById("cardList");
+    list.innerHTML = "";
+    const comps = visibleComps();
+    if (comps.length === 0) {
+      const msg = currentComps.length === 0 ? "No comps found."
+        : (txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.");
+      const p = document.createElement("p");
+      p.className = "px-6 py-6 text-center text-sm text-slate-400";
+      p.textContent = msg;
+      list.appendChild(p);
+      return;
+    }
+    comps.forEach((comp, idx) => {
+      const card = document.createElement("div");
+      card.className = "px-6 py-4 row-in";
+      card.style.animationDelay = Math.min(idx * 45, 450) + "ms";
+
+      const head = document.createElement("div");
+      head.className = "font-semibold text-slate-900 text-sm leading-snug";
+      head.textContent = comp.address || "-";
+      const vb = verifiedBadge(comp);
+      if (vb) head.appendChild(vb);
+      const db = outsideWindowBadge(comp.date);
+      if (db) head.appendChild(db);
+      card.appendChild(head);
+
+      const rows = document.createElement("dl");
+      rows.className = "mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm";
+      COLUMNS.forEach((col) => {
+        if (col.key === "address") return;   // already the card header
+        const val = comp[col.key];
+        const empty = val === undefined || val === null || val === "";
+        const core = ["date", "transaction", "size_sqft", "price_or_rate", "price_per_sqft"].includes(col.key);
+        if (empty && !core) return;          // omit optional empties for compactness
+        // Long values get a full-width row so they don't wrap awkwardly.
+        const wide = col.key === "notes" || col.isLink ||
+          col.key === "price_or_rate" || col.key === "dock_doors";
+        const row = document.createElement("div");
+        row.className = "flex justify-between gap-3" + (wide ? " col-span-2" : "");
+        const dt = document.createElement("dt");
+        dt.className = "text-slate-400 shrink-0";
+        dt.textContent = col.label;
+        const dd = document.createElement("dd");
+        dd.className = "text-right " + (col.key === "notes" ? "text-slate-500" : "text-slate-700");
+        if (col.isLink && /^https?:\/\//i.test(String(val || ""))) {
+          const a = document.createElement("a");
+          a.href = val;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = "View";
+          a.title = val;
+          a.className = "text-brand-700 underline decoration-brand-300";
+          dd.appendChild(a);
+        } else {
+          dd.textContent = empty ? "-" : val;
+        }
+        row.appendChild(dt);
+        row.appendChild(dd);
+        rows.appendChild(row);
+      });
+      card.appendChild(rows);
+      list.appendChild(card);
     });
   }
 

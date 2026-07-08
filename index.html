@@ -65,8 +65,8 @@
     ]
   }
   </script>
-  <!-- Favicon: the CompNinja mark as an inline SVG (variant A) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Crect width='44' height='44' rx='10' fill='%231E293B'/%3E%3Crect x='4' y='9' width='36' height='5' rx='2' fill='%23DC2626'/%3E%3Crect x='7' y='17' width='30' height='11' rx='5.5' fill='%23E2E8F0'/%3E%3Ccircle cx='16' cy='22.5' r='2.6' fill='%231E293B'/%3E%3Ccircle cx='28' cy='22.5' r='2.6' fill='%231E293B'/%3E%3C/svg%3E" />
+  <!-- Favicon: minimal CompNinja glyph (headband bar with eye notches on an ink tile) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Crect width='44' height='44' rx='10' fill='%231E293B'/%3E%3Crect x='6' y='17' width='32' height='10' rx='5' fill='%23DC2626'/%3E%3Ccircle cx='17' cy='22' r='2.8' fill='%231E293B'/%3E%3Ccircle cx='27' cy='22' r='2.8' fill='%231E293B'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -304,19 +304,10 @@
   <div id="hero" class="relative overflow-hidden text-white no-print">
     <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
     <div class="relative max-w-5xl mx-auto px-4">
-      <!-- Brand row: the CompNinja mark drawn inline so it stays crisp on the dark hero. -->
-      <div class="py-4 flex items-center gap-3">
-        <svg class="h-10 w-10" viewBox="0 0 44 44" aria-hidden="true">
-          <rect width="44" height="44" rx="10" fill="#1E293B" stroke="#64748B" stroke-width="1"/>
-          <rect x="4" y="9" width="36" height="5" rx="2" fill="#DC2626"/>
-          <rect x="7" y="17" width="30" height="11" rx="5.5" fill="#E2E8F0"/>
-          <circle cx="16" cy="22.5" r="2.6" fill="#1E293B"/>
-          <circle cx="28" cy="22.5" r="2.6" fill="#1E293B"/>
-        </svg>
-        <div class="leading-tight">
-          <div class="text-xl font-bold tracking-tight text-white">Comp<span class="text-brand-500">Ninja</span></div>
-          <div class="text-[11px] font-medium tracking-[0.2em] uppercase text-slate-400">Fast, quiet market intel</div>
-        </div>
+      <!-- Brand row: type-led CompNinja lockup in the site's own headline face. -->
+      <div class="py-4">
+        <div class="font-brand uppercase text-2xl font-semibold tracking-wide leading-none text-white">Comp<span class="text-brand-500">Ninja</span></div>
+        <div class="text-[11px] font-medium tracking-[0.2em] uppercase text-slate-400 mt-1">Fast, quiet market intel</div>
       </div>
       <!-- Hero copy -->
       <div class="pt-8 pb-24 sm:pt-10 sm:pb-28">
@@ -505,15 +496,8 @@
               <h2 id="reportAddress" class="text-xl font-bold text-slate-900 mt-1"></h2>
               <div id="reportMeta" class="text-sm text-slate-500 mt-0.5"></div>
             </div>
-            <div class="shrink-0 flex items-center gap-2">
-              <svg class="h-9 w-9" viewBox="0 0 44 44" role="img" aria-label="CompNinja logo">
-                <rect width="44" height="44" rx="10" fill="#1E293B"/>
-                <rect x="4" y="9" width="36" height="5" rx="2" fill="#DC2626"/>
-                <rect x="7" y="17" width="30" height="11" rx="5.5" fill="#E2E8F0"/>
-                <circle cx="16" cy="22.5" r="2.6" fill="#1E293B"/>
-                <circle cx="28" cy="22.5" r="2.6" fill="#1E293B"/>
-              </svg>
-              <div class="text-lg font-bold tracking-tight text-slate-900">Comp<span class="text-brand-600">Ninja</span></div>
+            <div class="shrink-0">
+              <div class="font-brand uppercase text-xl font-semibold tracking-wide text-slate-900">Comp<span class="text-brand-600">Ninja</span></div>
             </div>
           </div>
         </div>

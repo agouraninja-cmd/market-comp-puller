@@ -577,6 +577,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Static: the social-preview image referenced by the og:image meta tag ---
+  if (req.method === "GET" && req.url === "/og-image.png") {
+    fs.readFile(path.join(__dirname, "og-image.png"), (err, data) => {
+      if (err) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        return res.end("Not found");
+      }
+      // Scrapers (LinkedIn, iMessage, Slack) re-fetch rarely; a day of caching is safe.
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+      res.end(data);
+    });
+    return;
+  }
+
   // --- Health check (handy for hosting platforms) ---
   if (req.method === "GET" && req.url === "/healthz") {
     return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY) });

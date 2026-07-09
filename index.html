@@ -15,9 +15,13 @@
   <meta property="og:description" content="Enter any commercial property address and get recent comparable sales and lease comps in under a minute. Free, no subscription." />
   <meta property="og:url" content="https://market-comp-puller.onrender.com/" />
   <meta property="og:locale" content="en_US" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image" content="https://market-comp-puller.onrender.com/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Free Commercial Real Estate Comps" />
   <meta name="twitter:description" content="Recent comparable sales and lease comps for any commercial property. Free, in under a minute." />
+  <meta name="twitter:image" content="https://market-comp-puller.onrender.com/og-image.png" />
   <!-- Structured data for search engines -->
   <script type="application/ld+json">
   {
@@ -140,6 +144,20 @@
     .btn-live:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -4px rgb(15 23 42 / .35); }
     .btn-live:active { transform: translateY(0) scale(.98); box-shadow: none; }
     input, select { transition: box-shadow .15s ease, border-color .15s ease; }
+
+    /* Financial figures line up: lining, equal-width digits wherever numbers stack. */
+    #compsTable, #cardList, #statTiles { font-variant-numeric: tabular-nums; }
+
+    /* Replace the stock native dropdown arrow with the site's own chevron.
+       !important because Tailwind's px-3 utility otherwise wins the padding. */
+    select {
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right .65rem center;
+      background-size: 1.05rem;
+      padding-right: 2.4rem !important;
+    }
     tbody tr { transition: background-color .15s ease; }
     .row-in { opacity: 0; animation: rowIn .35s ease-out forwards; }
     @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -555,12 +573,12 @@
           </div>
         </div>
 
+        <!-- Key stats row — the report leads with scannable numbers (built per search) -->
+        <div id="statTiles" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
         <!-- Summary card -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-3">
-            <h2 class="text-lg font-semibold text-slate-900">Market Summary</h2>
-            <span id="avgPpsf" class="hidden text-sm font-medium bg-brand-50 text-brand-700 px-3 py-1 rounded-full"></span>
-          </div>
+          <h2 class="text-lg font-semibold text-slate-900 mb-3">Market Summary</h2>
           <p id="summaryText" class="text-slate-700 leading-relaxed"></p>
         </div>
 
@@ -1296,6 +1314,18 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(mapInstance);
 
+    // Wheel zoom is opt-in (armed by a click, disarmed when the cursor leaves)
+    // so wheel-scrolling the report past the map never zooms it by accident.
+    // Listeners go on the container DOM (not Leaflet's map "click") so clicks
+    // on pins and controls also arm it; the dataset flag keeps repeat searches
+    // from stacking duplicates. Pinch zoom on touch is Leaflet's default.
+    const mapEl = mapInstance.getContainer();
+    if (!mapEl.dataset.wheelZoomGate) {
+      mapEl.dataset.wheelZoomGate = "1";
+      mapEl.addEventListener("click", () => { if (mapInstance) mapInstance.scrollWheelZoom.enable(); });
+      mapEl.addEventListener("mouseleave", () => { if (mapInstance) mapInstance.scrollWheelZoom.disable(); });
+    }
+
     const bounds = [];
     if (hasSubject) {
       const subjIcon = L.divIcon({
@@ -1333,6 +1363,42 @@
   // ----------------------------------------------------------------------------
   // Render summary + table
   // ----------------------------------------------------------------------------
+  // Key stats row — the scannable numbers a comp package leads with. A tile
+  // only renders when its stat exists; the whole row hides if none do.
+  function renderStatTiles(parsed, meta) {
+    const wrap = document.getElementById("statTiles");
+    const sizes = currentComps
+      .map((c) => numericValue(c.size_sqft))
+      .filter(isFinite)
+      .sort((a, b) => a - b);
+    const mid = sizes.length / 2;
+    const median = sizes.length === 0 ? NaN
+      : sizes.length % 2 ? sizes[Math.floor(mid)]
+      : (sizes[mid - 1] + sizes[mid]) / 2;
+    const tiles = [
+      { label: "Avg $/SF", value: parsed.avg_price_per_sqft || "" },
+      { label: "Comps Found", value: currentComps.length ? String(currentComps.length) : "" },
+      { label: "Median Size", value: isFinite(median) ? Math.round(median).toLocaleString() + " SF" : "" },
+      { label: "Lookback", value: meta.months ? (meta.months === 1 ? "1 month" : meta.months + " months") : "" },
+    ].filter((t) => t.value);
+    wrap.innerHTML = "";
+    tiles.forEach((t) => {
+      const tile = document.createElement("div");
+      tile.className = "bg-white rounded-xl shadow-sm border border-slate-200 p-4 print-shadow-none";
+      const label = document.createElement("div");
+      label.className = "text-xs font-semibold uppercase tracking-wider text-slate-400";
+      label.textContent = t.label;
+      const value = document.createElement("div");
+      // Avg $/SF can come back as a long range string — step the size down so it fits.
+      value.className = (String(t.value).length > 14 ? "text-base" : "text-2xl") +
+        " font-bold text-slate-900 mt-1 leading-snug break-words";
+      value.textContent = t.value;
+      tile.append(label, value);
+      wrap.appendChild(tile);
+    });
+    wrap.classList.toggle("hidden", tiles.length === 0);
+  }
+
   function renderResults(parsed, meta) {
     if (!parsed || !Array.isArray(parsed.comps)) {
       throw new Error("Parsed response is missing a 'comps' array.");
@@ -1357,13 +1423,7 @@
 
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
 
-    const avgEl = document.getElementById("avgPpsf");
-    if (parsed.avg_price_per_sqft) {
-      avgEl.textContent = "Avg $/SF: " + parsed.avg_price_per_sqft;
-      avgEl.classList.remove("hidden");
-    } else {
-      avgEl.classList.add("hidden");
-    }
+    renderStatTiles(parsed, meta);
 
     updateCompCount();
 
@@ -1566,7 +1626,8 @@
     head.innerHTML = "";
     COLUMNS.forEach((col) => {
       const th = document.createElement("th");
-      th.className = "sortable text-left font-semibold px-4 py-3 whitespace-nowrap";
+      th.className = "sortable font-semibold px-4 py-3 whitespace-nowrap " +
+        (col.numeric ? "text-right" : "text-left");
       let arrow = "";
       if (sortState.key === col.key) arrow = sortState.dir === 1 ? " ▲" : " ▼";
       th.textContent = col.label + arrow;
@@ -1651,7 +1712,9 @@
       tr.style.animationDelay = Math.min(idx * 45, 450) + "ms";
       COLUMNS.forEach((col) => {
         const td = document.createElement("td");
-        td.className = "px-4 py-3 align-top " + (col.key === "notes" ? "text-slate-500 min-w-[200px]" : "whitespace-nowrap");
+        td.className = "px-4 py-3 align-top " +
+          (col.key === "notes" ? "text-slate-500 min-w-[200px]" : "whitespace-nowrap") +
+          (col.numeric ? " text-right" : "");
         const val = comp[col.key];
         if (col.isLink) {
           const url = String(val || "");

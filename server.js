@@ -303,7 +303,23 @@ function parseCompJson(rawText) {
   if (first !== -1 && last !== -1 && last > first) {
     text = text.slice(first, last + 1);
   }
-  return JSON.parse(text);
+  return stripEmDashes(JSON.parse(text));
+}
+
+// Site style rule: no em dashes anywhere. The prompt already forbids them,
+// but models slip, so scrub every string in the parsed report. Numeric
+// ranges become hyphens; prose dashes become commas.
+function stripEmDashes(value) {
+  if (typeof value === "string") {
+    return value
+      .replace(/(\d)\s*—\s*(\$?\d)/g, "$1-$2")
+      .replace(/\s*—\s*/g, ", ");
+  }
+  if (Array.isArray(value)) return value.map(stripEmDashes);
+  if (value && typeof value === "object") {
+    for (const k of Object.keys(value)) value[k] = stripEmDashes(value[k]);
+  }
+  return value;
 }
 
 // ---------------------------------------------------------------------------
@@ -400,11 +416,11 @@ const server = http.createServer((req, res) => {
       try {
         // Password gate (only enforced when APP_PASSWORD is set).
         if (APP_PASSWORD && !passwordMatches(req.headers["x-app-password"])) {
-          return sendJson(res, 401, { error: "Unauthorized — incorrect or missing password." });
+          return sendJson(res, 401, { error: "Unauthorized: incorrect or missing password." });
         }
         if (rateLimited(clientIp(req))) {
           return sendJson(res, 429, {
-            error: "Too many searches from this connection — please wait a few minutes and try again.",
+            error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
         const { address, type, note, months, maxComps, txFocus } = JSON.parse(body || "{}");
@@ -445,7 +461,7 @@ const server = http.createServer((req, res) => {
         // never eats into a visitor's search allowance — but the store can't
         // be spammed full either.
         if (rateLimited("lead:" + clientIp(req))) {
-          return sendJson(res, 429, { error: "Too many submissions — please try again later." });
+          return sendJson(res, 429, { error: "Too many submissions. Please try again later." });
         }
         const { name, email, phone, company, address, type } = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
@@ -467,7 +483,7 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Failed to store lead:", err);
-        return sendJson(res, 500, { error: "Could not save your details — please try again." });
+        return sendJson(res, 500, { error: "Could not save your details. Please try again." });
       }
     });
     return;
@@ -491,7 +507,7 @@ const server = http.createServer((req, res) => {
     req.on("end", async () => {
       try {
         if (rateLimited("comp:" + clientIp(req))) {
-          return sendJson(res, 429, { error: "Too many submissions — please try again later." });
+          return sendJson(res, 429, { error: "Too many submissions. Please try again later." });
         }
         const b = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
@@ -523,7 +539,7 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Failed to store comp submission:", err);
-        return sendJson(res, 500, { error: "Could not save the comp — please try again." });
+        return sendJson(res, 500, { error: "Could not save the comp. Please try again." });
       }
     });
     return;

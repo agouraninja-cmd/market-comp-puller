@@ -145,13 +145,8 @@
     .reveal { opacity: 0; transform: translateY(12px); transition: opacity .45s ease-out, transform .45s ease-out; }
     .reveal.revealed { opacity: 1; transform: none; }
 
-    /* Brand micro-moments: ninja-red text selection and a red tick ahead of
-       the marketing section eyebrows. */
+    /* Brand micro-moment: ninja-red text selection. */
     ::selection { background: #DC2626; color: #fff; }
-    .eyebrow::before {
-      content: ""; display: inline-block; width: 1.25rem; height: 2px;
-      background: #DC2626; vertical-align: middle; margin-right: .5rem;
-    }
 
     /* FAQ accordions: replace the native disclosure marker with a chevron that
        turns when opened. Scoped to #faq — the form's details keeps its marker. */
@@ -810,7 +805,7 @@
 
       <!-- How it works -->
       <section id="how-it-works" class="mt-12 reveal">
-        <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">How it works</div>
+        <div class="inline-block text-xs font-semibold uppercase tracking-wider text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-2.5 py-0.5 mb-2">How it works</div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">From address to comp report in three steps</h2>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
@@ -839,7 +834,7 @@
 
       <!-- What you get -->
       <section class="mt-10 reveal">
-        <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">What you get</div>
+        <div class="inline-block text-xs font-semibold uppercase tracking-wider text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-2.5 py-0.5 mb-2">What you get</div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">Everything a comp package needs</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
@@ -877,7 +872,7 @@
       <section class="mt-10 reveal">
         <div class="rounded-xl bg-gradient-to-br from-slate-900 to-brand-900 text-white p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
           <div class="flex-1">
-            <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-300 mb-1">For brokers</div>
+            <div class="inline-block text-xs font-semibold uppercase tracking-wider text-brand-200 bg-white/10 ring-1 ring-white/15 rounded-full px-2.5 py-0.5 mb-2">For brokers</div>
             <h2 class="text-xl font-bold tracking-tight">Know a deal we're missing?</h2>
             <p class="text-sm text-slate-300 mt-1 max-w-2xl">Submit a recent sale or lease comp. Every submission is reviewed by our team, and in return we send contributing brokers qualified leads from this site.</p>
           </div>
@@ -890,7 +885,7 @@
 
       <!-- FAQ (visible copy matches the FAQPage structured data in the head) -->
       <section id="faq" class="mt-10 reveal">
-        <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">FAQ</div>
+        <div class="inline-block text-xs font-semibold uppercase tracking-wider text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-2.5 py-0.5 mb-2">FAQ</div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">Frequently asked questions</h2>
         <div class="space-y-3">
           <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">

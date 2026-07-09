@@ -139,6 +139,31 @@
     .card-hover { transition: transform .2s ease, box-shadow .2s ease; }
     .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -12px rgb(15 23 42 / .18); }
 
+    /* Marketing sections reveal once as they scroll into view (JS adds .revealed).
+       The IntersectionObserver fallback adds .revealed to everything, so content
+       can never be stranded invisible. */
+    .reveal { opacity: 0; transform: translateY(12px); transition: opacity .45s ease-out, transform .45s ease-out; }
+    .reveal.revealed { opacity: 1; transform: none; }
+
+    /* Brand micro-moments: ninja-red text selection and a red tick ahead of
+       the marketing section eyebrows. */
+    ::selection { background: #DC2626; color: #fff; }
+    .eyebrow::before {
+      content: ""; display: inline-block; width: 1.25rem; height: 2px;
+      background: #DC2626; vertical-align: middle; margin-right: .5rem;
+    }
+
+    /* FAQ accordions: replace the native disclosure marker with a chevron that
+       turns when opened. Scoped to #faq — the form's details keeps its marker. */
+    #faq summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    #faq summary::-webkit-details-marker { display: none; }
+    #faq summary::after {
+      content: ""; width: 1rem; height: 1rem; flex-shrink: 0;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+      transition: transform .25s ease;
+    }
+    #faq details[open] summary::after { transform: rotate(180deg); }
+
     /* Soft cross-fade when the example address in the placeholder rotates. */
     #address::placeholder { transition: color .3s ease; }
     #address.ph-fade::placeholder { color: transparent; }
@@ -353,6 +378,11 @@
   <!-- Hero -->
   <div id="hero" class="relative overflow-hidden text-white no-print">
     <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
+    <!-- Faint static skyline along the hero's bottom edge — character, not motion. -->
+    <svg class="absolute bottom-0 inset-x-0 w-full h-[110px] pointer-events-none" viewBox="0 0 1200 110"
+         preserveAspectRatio="none" aria-hidden="true">
+      <path fill="rgb(255 255 255 / .05)" d="M0 110V74h34V47h10v-9h12v9h8v27h30V58h40v-16h6V30h6v12h6v16h26v52h18V38h44v-14h30v14h12v72h22V64h38v-20h28v20h14v46h24V50h8V26h10v-6h6v6h10v24h8v60h30V70h36v-26h8v-14h10v14h8v26h20v40h16V54h42v-24h26v24h14v56h24V78h32v-30h36v30h12v32h20V44h10V22h12v22h8v66h26V60h40v-24h8V22h8v14h8v24h24v50h18V70h34v-22h30v22h10v40h22V52h36v-20h6V20h8v12h8v20h20v58h16V80h34v-40h24v40h14v30z"/>
+    </svg>
     <div class="relative max-w-5xl mx-auto px-4">
       <!-- Brand row: icon mark + CompNinja lockup in the site's own headline face. -->
       <div class="py-4 flex items-center gap-3">
@@ -753,7 +783,7 @@
     <div id="homeInfo" class="no-print">
 
       <!-- Trust strip: true claims only — no invented usage numbers. -->
-      <div class="mt-10 enter enter-3">
+      <div class="mt-10 reveal">
         <dl class="flex flex-wrap justify-center gap-x-10 gap-y-4 text-center">
           <div>
             <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Property types</dt>
@@ -779,8 +809,8 @@
       </div>
 
       <!-- How it works -->
-      <section id="how-it-works" class="mt-12 enter enter-3">
-        <div class="text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">How it works</div>
+      <section id="how-it-works" class="mt-12 reveal">
+        <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">How it works</div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">From address to comp report in three steps</h2>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
@@ -808,8 +838,8 @@
       </section>
 
       <!-- What you get -->
-      <section class="mt-10 enter enter-4">
-        <div class="text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">What you get</div>
+      <section class="mt-10 reveal">
+        <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">What you get</div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">Everything a comp package needs</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
@@ -844,10 +874,10 @@
       </section>
 
       <!-- Broker comp submission CTA -->
-      <section class="mt-10 enter enter-4">
+      <section class="mt-10 reveal">
         <div class="rounded-xl bg-gradient-to-br from-slate-900 to-brand-900 text-white p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
           <div class="flex-1">
-            <div class="text-xs font-semibold uppercase tracking-wider text-brand-300 mb-1">For brokers</div>
+            <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-300 mb-1">For brokers</div>
             <h2 class="text-xl font-bold tracking-tight">Know a deal we're missing?</h2>
             <p class="text-sm text-slate-300 mt-1 max-w-2xl">Submit a recent sale or lease comp. Every submission is reviewed by our team, and in return we send contributing brokers qualified leads from this site.</p>
           </div>
@@ -859,8 +889,8 @@
       </section>
 
       <!-- FAQ (visible copy matches the FAQPage structured data in the head) -->
-      <section id="faq" class="mt-10 enter enter-4">
-        <div class="text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">FAQ</div>
+      <section id="faq" class="mt-10 reveal">
+        <div class="eyebrow text-xs font-semibold uppercase tracking-wider text-brand-700 mb-1">FAQ</div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">Frequently asked questions</h2>
         <div class="space-y-3">
           <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
@@ -1482,8 +1512,10 @@
       : (sizes[mid - 1] + sizes[mid]) / 2;
     const tiles = [
       { label: "Avg $/SF", value: parsed.avg_price_per_sqft || "" },
-      { label: "Comps Found", value: currentComps.length ? String(currentComps.length) : "" },
-      { label: "Median Size", value: isFinite(median) ? Math.round(median).toLocaleString() + " SF" : "" },
+      { label: "Comps Found", value: currentComps.length ? String(currentComps.length) : "",
+        animate: { target: currentComps.length, format: (n) => String(Math.round(n)) } },
+      { label: "Median Size", value: isFinite(median) ? Math.round(median).toLocaleString() + " SF" : "",
+        animate: { target: median, format: (n) => Math.round(n).toLocaleString() + " SF" } },
       { label: "Lookback", value: meta.months ? (meta.months === 1 ? "1 month" : meta.months + " months") : "" },
     ].filter((t) => t.value);
     wrap.innerHTML = "";
@@ -1497,7 +1529,9 @@
       // Avg $/SF can come back as a long range string — step the size down so it fits.
       value.className = (String(t.value).length > 14 ? "text-base" : "text-2xl") +
         " font-bold text-slate-900 mt-1 leading-snug break-words";
-      value.textContent = t.value;
+      // Purely numeric stats count up once; string stats render as-is.
+      if (t.animate) animateValue(value, t.animate.target, t.animate.format);
+      else value.textContent = t.value;
       tile.append(label, value);
       wrap.appendChild(tile);
     });
@@ -1741,6 +1775,20 @@
   });
   // Same modal action the in-page broker CTA uses.
   document.getElementById("footerSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
+
+  // Marketing sections reveal once as they enter the viewport, instead of
+  // animating at page load before anyone has scrolled to them.
+  const revealEls = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) { en.target.classList.add("revealed"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.1, rootMargin: "0px 0px -40px 0px" });
+    revealEls.forEach((el) => io.observe(el));
+  } else {
+    revealEls.forEach((el) => el.classList.add("revealed"));
+  }
 
   function renderTableHead() {
     const head = document.getElementById("tableHead");

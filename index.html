@@ -155,8 +155,8 @@
     /* Financial figures line up: lining, equal-width digits wherever numbers stack. */
     #compsTable, #cardList, #statTiles { font-variant-numeric: tabular-nums; }
 
-    /* Scroll targets stop below the sticky nav instead of underneath it. */
-    section[id], #results, #compForm { scroll-margin-top: 4.5rem; }
+    /* Breathing room above scroll targets. */
+    section[id], #results, #compForm { scroll-margin-top: 1rem; }
 
     /* Replace the stock native dropdown arrow with the site's own chevron.
        !important because Tailwind's px-3 utility otherwise wins the padding. */
@@ -350,37 +350,22 @@
     </div>
   </div>
 
-  <!-- Sticky nav — the brand row lives here now, above the hero, and follows the scroll. -->
-  <!-- No .enter here: its keyframes hold a translateY that would nudge the pinned bar. -->
-  <header class="sticky top-0 z-40 bg-[#0d1015]/90 backdrop-blur border-b border-white/10 no-print">
-    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-      <a href="#" id="navBrand" class="flex items-center gap-2.5 shrink-0">
-        <svg class="h-8 w-8 shrink-0" viewBox="0 0 44 44" aria-hidden="true">
+  <!-- Hero -->
+  <div id="hero" class="relative overflow-hidden text-white no-print">
+    <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
+    <div class="relative max-w-5xl mx-auto px-4">
+      <!-- Brand row: icon mark + CompNinja lockup in the site's own headline face. -->
+      <div class="py-4 flex items-center gap-3">
+        <svg class="h-10 w-10 shrink-0" viewBox="0 0 44 44" aria-hidden="true">
           <rect width="44" height="44" rx="10" fill="#1E293B"/>
           <rect x="6" y="17" width="32" height="10" rx="5" fill="#DC2626"/>
           <circle cx="17" cy="22" r="2.8" fill="#1E293B"/>
           <circle cx="27" cy="22" r="2.8" fill="#1E293B"/>
         </svg>
-        <span class="font-brand uppercase text-xl font-semibold tracking-wide leading-none text-white">Comp<span class="text-brand-500">Ninja</span></span>
-      </a>
-      <nav class="hidden sm:flex items-center gap-6 text-sm text-slate-300" aria-label="Site">
-        <button type="button" data-scroll-to="how-it-works" class="hover:text-white transition-colors">How it works</button>
-        <button type="button" data-scroll-to="faq" class="hover:text-white transition-colors">FAQ</button>
-        <button type="button" id="navSubmitComp" class="hover:text-white transition-colors">Submit a comp</button>
-      </nav>
-      <button type="button" id="navGetComps"
-        class="btn-live shrink-0 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-1.5 rounded-lg">
-        Get comps
-      </button>
-    </div>
-  </header>
-
-  <!-- Hero -->
-  <div id="hero" class="relative overflow-hidden text-white no-print">
-    <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
-    <div class="relative max-w-5xl mx-auto px-4">
+        <div class="font-brand uppercase text-2xl font-semibold tracking-wide leading-none text-white">Comp<span class="text-brand-500">Ninja</span></div>
+      </div>
       <!-- Hero copy -->
-      <div class="pt-12 pb-24 sm:pt-16 sm:pb-28">
+      <div class="pt-8 pb-24 sm:pt-10 sm:pb-28">
         <h1 class="font-brand uppercase text-3xl sm:text-4xl font-semibold tracking-wide max-w-2xl enter enter-1">Comparable Sales &amp; Lease Analysis</h1>
         <p class="text-slate-300 mt-3 text-lg max-w-2xl enter enter-1">Recent sale and lease comps for any commercial property. Searched live, summarized, and export-ready in under a minute.</p>
         <div class="mt-6 flex flex-wrap gap-2 enter enter-2">
@@ -766,6 +751,32 @@
 
     <!-- Home info — fills out the landing view; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
+
+      <!-- Trust strip: true claims only — no invented usage numbers. -->
+      <div class="mt-10 enter enter-3">
+        <dl class="flex flex-wrap justify-center gap-x-10 gap-y-4 text-center">
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Property types</dt>
+            <dd class="text-xl font-bold text-slate-900 mt-0.5">6</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Comps per report</dt>
+            <dd class="text-xl font-bold text-slate-900 mt-0.5">3–6</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Typical report time</dt>
+            <dd class="text-xl font-bold text-slate-900 mt-0.5">Under 1 min</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Broker-submitted comps</dt>
+            <dd class="text-xl font-bold text-slate-900 mt-0.5">Verified</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Cost</dt>
+            <dd class="text-xl font-bold text-slate-900 mt-0.5">Free</dd>
+          </div>
+        </dl>
+      </div>
 
       <!-- How it works -->
       <section id="how-it-works" class="mt-12 enter enter-3">
@@ -1715,8 +1726,8 @@
   });
 
   // ----------------------------------------------------------------------------
-  // Sticky nav + footer links. The marketing sections (#homeInfo) hide once a
-  // report renders, so section links reveal them again before scrolling.
+  // Footer links. The marketing sections (#homeInfo) hide once a report
+  // renders, so section links reveal them again before scrolling.
   // ----------------------------------------------------------------------------
   function smoothScrollTo(el) {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1728,16 +1739,7 @@
       smoothScrollTo(document.getElementById(btn.dataset.scrollTo));
     });
   });
-  document.getElementById("navBrand").addEventListener("click", (e) => {
-    e.preventDefault();
-    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  });
-  document.getElementById("navGetComps").addEventListener("click", () => {
-    smoothScrollTo(document.getElementById("compForm"));
-    document.getElementById("address").focus({ preventScroll: true });
-  });
-  // Same modal / sample actions the in-page buttons use.
-  document.getElementById("navSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
+  // Same modal action the in-page broker CTA uses.
   document.getElementById("footerSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
 
   function renderTableHead() {

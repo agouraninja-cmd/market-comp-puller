@@ -7,7 +7,7 @@
   <meta name="description" content="Enter any commercial property address and get recent sale and lease comps in under a minute. Free reports with maps, price per square foot, and PDF export." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://market-comp-puller.onrender.com/" />
-  <meta name="theme-color" content="#145192" />
+  <meta name="theme-color" content="#0F172A" />
   <!-- Social sharing previews -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CompNinja" />
@@ -84,6 +84,20 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
+    /* ------------------------------------------------------------------------
+       Design tokens — the whole site draws from these; don't invent new values.
+       Dark surfaces (slate only): slate-950 #020617 bookends (hero start,
+         footer) · slate-900 #0F172A ink · slate-800 #1E293B lifted ink (logo
+         tile, table header; hover = slate-700 #334155).
+       Accents: brand red = actions + the subject property · slate-900 ink =
+         selected state (segmented controls) · emerald = verified/positive ·
+         amber = caution · plain red + left rule = errors. No blues.
+       Buttons: primary bg-brand-600 · secondary white/slate-bordered · ghost
+         text-slate-500 hover:text-slate-700 · on-dark inverse bg-white
+         text-brand-800. Brand-tinted chips are reserved for saved reports.
+       Labels: eyebrow = text-xs font-semibold uppercase tracking-wider ·
+         badge = text-[10px] font-medium uppercase tracking-wide.
+       ------------------------------------------------------------------------ */
     body { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
     h1, h2, h3 { letter-spacing: -0.01em; }
     .fade-in { animation: fadeIn .35s ease-out; }
@@ -99,7 +113,7 @@
     @keyframes shimmer { 100% { transform: translateX(100%); } }
 
     th.sortable { cursor: pointer; user-select: none; }
-    th.sortable:hover { background-color: #1e293b; }
+    th.sortable:hover { background-color: #334155; }
 
     /* Page-load entrance — the brand bar, heading, and form drift in on first paint. */
     .enter { opacity: 0; animation: fadeIn .5s ease-out forwards; }
@@ -111,7 +125,7 @@
     /* Hero — deep navy gradient with a slow ambient drift, soft light glows,
        and a faint dot grid. The form card floats over its bottom edge. */
     #hero {
-      background: linear-gradient(150deg, #0b0c0e 0%, #14181d 45%, #1E293B 100%);
+      background: linear-gradient(150deg, #020617 0%, #0F172A 45%, #1E293B 100%);
       background-size: 180% 180%;
       animation: fadeIn .5s ease-out forwards, brandDrift 18s ease-in-out infinite;
       border-bottom: 3px solid #DC2626; /* the ninja-red brand rule */
@@ -380,7 +394,7 @@
           Unlock exports
         </button>
         <button id="leadCancel" type="button"
-          class="w-full text-sm text-slate-400 hover:text-slate-600 py-1">
+          class="w-full text-sm text-slate-500 hover:text-slate-700 py-1">
           Not now
         </button>
       </form>
@@ -408,7 +422,7 @@
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <div class="border-t border-slate-200 pt-3">
-            <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">The comp</div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">The comp</div>
             <input id="compAddress" type="text" placeholder="Property address *"
               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
@@ -447,7 +461,7 @@
             class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
             Submit comp
           </button>
-          <button id="compCancel" type="button" class="w-full text-sm text-slate-400 hover:text-slate-600 py-1">Cancel</button>
+          <button id="compCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-1">Cancel</button>
         </form>
       </div>
       <div id="compSuccess" class="hidden text-center py-6">
@@ -455,8 +469,8 @@
         <h2 class="text-lg font-semibold text-slate-900">Thanks, we got it.</h2>
         <p class="text-sm text-slate-500 mt-1">Our team reviews every submission. We'll reach out with leads that fit your market.</p>
         <div class="mt-4 flex justify-center gap-3">
-          <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-4 py-2">Submit another</button>
-          <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Done</button>
+          <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Submit another</button>
+          <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Done</button>
         </div>
       </div>
     </div>
@@ -621,15 +635,15 @@
 
     <!-- Recent searches (stored locally in this browser only) -->
     <div id="recentWrap" class="hidden mt-3 flex flex-wrap items-center gap-2 no-print">
-      <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Re-run:</span>
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Re-run:</span>
       <div id="recentChips" class="flex flex-wrap gap-2"></div>
     </div>
 
     <!-- Saved reports (full report data stored locally; reopening is free) -->
     <div id="savedWrap" class="hidden mt-2 flex flex-wrap items-center gap-2 no-print">
-      <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Saved reports:</span>
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Saved reports:</span>
       <div id="savedChips" class="flex flex-wrap gap-2"></div>
-      <button id="clearSavedBtn" type="button" class="text-xs text-slate-400 hover:text-red-600 underline decoration-slate-300 hover:decoration-red-400">clear</button>
+      <button id="clearSavedBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
     </div>
 
     <!-- Status / Error -->
@@ -698,7 +712,7 @@
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
         <button id="imgBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 21"/></svg>
           Download Image
         </button>
@@ -789,17 +803,17 @@
           <h2 class="text-lg font-semibold text-slate-900 mb-4">Your Property vs. Market</h2>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs uppercase tracking-wide text-slate-400">Your Property $/SF</div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Your Property $/SF</div>
               <div id="targetPpsfVal" class="text-2xl font-bold text-slate-900 mt-1">-</div>
               <div id="targetBasis" class="text-xs text-slate-400 mt-1"></div>
             </div>
             <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs uppercase tracking-wide text-slate-400">Market Avg $/SF</div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Market Avg $/SF</div>
               <div id="marketPpsfVal" class="text-2xl font-bold text-slate-900 mt-1">-</div>
               <div class="text-xs text-slate-400 mt-1">from pulled comps</div>
             </div>
             <div id="deltaTile" class="rounded-lg border p-4">
-              <div class="text-xs uppercase tracking-wide opacity-70">Difference vs. Market</div>
+              <div class="text-xs font-semibold uppercase tracking-wider opacity-70">Difference vs. Market</div>
               <div id="deltaVal" class="text-2xl font-bold mt-1">-</div>
               <div id="deltaPct" class="text-xs opacity-80 mt-1"></div>
             </div>
@@ -825,17 +839,17 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs uppercase tracking-wide text-slate-400">Low</div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Low</div>
               <div id="valueLow" class="text-2xl font-bold text-slate-900 mt-1">-</div>
               <div id="valueLowPpsf" class="text-xs text-slate-400 mt-1"></div>
             </div>
             <div class="rounded-lg bg-brand-50 border border-brand-200 p-4">
-              <div class="text-xs uppercase tracking-wide text-brand-500">Likely</div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-brand-500">Likely</div>
               <div id="valueMid" class="text-2xl font-bold text-slate-900 mt-1">-</div>
               <div id="valueMidPpsf" class="text-xs text-slate-500 mt-1"></div>
             </div>
             <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs uppercase tracking-wide text-slate-400">High</div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">High</div>
               <div id="valueHigh" class="text-2xl font-bold text-slate-900 mt-1">-</div>
               <div id="valueHighPpsf" class="text-xs text-slate-400 mt-1"></div>
             </div>
@@ -1042,7 +1056,7 @@
   </div>
 
   <!-- Site footer — dark ink bookend to the hero; always visible, never printed. -->
-  <footer class="mt-12 bg-[#0d1015] text-slate-400 border-t-[3px] border-brand-600 no-print">
+  <footer class="mt-12 bg-slate-950 text-slate-400 border-t-[3px] border-brand-600 no-print">
     <div class="max-w-7xl mx-auto px-4 py-10">
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-8">
         <div>
@@ -1260,11 +1274,20 @@
   function showStatus(html, kind = "info") {
     const box = document.getElementById("statusBox");
     const styles = {
-      info:  "bg-brand-50 border-brand-200 text-brand-800",
-      error: "bg-red-50 border-red-200 text-red-800",
+      info:  "bg-slate-50 border-slate-200 text-slate-700",
+      error: "bg-red-50 border-red-200 border-l-4 border-l-red-600 text-red-800",
     };
     box.className = `mt-6 rounded-lg border px-4 py-3 text-sm no-print ${styles[kind] || styles.info}`;
-    box.innerHTML = html;
+    // Errors carry an alert icon + red left rule so they can't be mistaken for
+    // brand-colored info notes (brand red and error red are the same family).
+    if (kind === "error") {
+      box.innerHTML =
+        '<div class="flex items-start gap-2.5">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>' +
+        `<div class="min-w-0">${html}</div></div>`;
+    } else {
+      box.innerHTML = html;
+    }
     box.classList.remove("hidden");
   }
   function hideStatus() { document.getElementById("statusBox").classList.add("hidden"); }
@@ -2740,7 +2763,7 @@
       const msg = err && err.message ? err.message : String(err);
       showStatus(
         `<strong>Something went wrong.</strong><br>${msg}` +
-        `<br><button id="retryBtn" type="button" class="btn-live mt-2 text-sm font-semibold text-red-800 bg-white hover:bg-red-100 border border-red-300 rounded-lg px-3 py-1.5">Try again</button>`,
+        `<br><button id="retryBtn" type="button" class="btn-live mt-2 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">Try again</button>`,
         "error"
       );
       const retry = document.getElementById("retryBtn");

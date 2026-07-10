@@ -157,26 +157,13 @@
     .skyline-ninja svg { display: block; width: 100%; height: 100%; }
     .skyline-ninja .ninja-body, .skyline-ninja .ninja-band { fill: rgb(255 255 255 / .12); transition: fill .2s ease; }
     .skyline-ninja:hover .ninja-body, .skyline-ninja:hover .ninja-band { fill: rgb(255 255 255 / .22); }
-    .skyline-ninja.is-running { animation: ninjaRunX 4.6s linear forwards; pointer-events: none; }
-    .skyline-ninja.is-running svg { animation: ninjaHops 4.6s ease-in-out forwards; }
+    /* The parkour run itself is generated in JS (Web Animations API) from the
+       skyline's real roofline, so his feet land on actual rooftops. */
+    .skyline-ninja.is-running { pointer-events: none; }
     .skyline-ninja.is-running .ninja-band { fill: rgb(239 68 68 / .6); }
     .skyline-ninja.is-gone { display: none; }
     /* Phones squeeze the rooftop to ~14px; shrink him so he keeps his footing. */
     @media (max-width: 640px) { .skyline-ninja { width: 20px; height: 20px; left: 16.6%; } }
-    @keyframes ninjaRunX { to { transform: translateX(86vw); } }
-    @keyframes ninjaHops {
-      0%   { transform: translateY(0); }
-      9%   { transform: translateY(-34px); }
-      17%  { transform: translateY(14px); }
-      27%  { transform: translateY(-20px); }
-      36%  { transform: translateY(6px); }
-      48%  { transform: translateY(-40px) rotate(180deg); }  /* big hop with a flip */
-      60%  { transform: translateY(10px) rotate(360deg); }
-      71%  { transform: translateY(-24px) rotate(360deg); }
-      80%  { transform: translateY(2px) rotate(360deg); }
-      91%  { transform: translateY(-30px) rotate(360deg); }
-      100% { transform: translateY(18px) rotate(360deg); }
-    }
 
     /* FAQ accordions: replace the native disclosure marker with a chevron that
        turns when opened. Scoped to #faq — the form's details keeps its marker. */
@@ -1874,14 +1861,128 @@
     revealEls.forEach((el) => el.classList.add("revealed"));
   }
 
-  // Easter egg: the skyline ninja parkours off the page when discovered.
+  // Easter egg: the skyline ninja parkours across the rooftops when discovered.
+  // His route is read from the skyline SVG itself (isPointInFill sampling), so
+  // every landing sits on a real roof: he runs the flats, arcs over the gaps,
+  // flips on the three longest leaps, and exits past the right edge.
   const ninjaEl = document.getElementById("skylineNinja");
   if (ninjaEl) {
+    const runNinja = () => {
+      const skyPath = document.querySelector('#hero svg[viewBox="0 0 1200 110"] path');
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce || !skyPath || !skyPath.isPointInFill || !ninjaEl.animate) return false;
+
+      const skyBox = skyPath.ownerSVGElement.getBoundingClientRect();
+      const pxPerVb = skyBox.width / 1200;             // skyline stretches across the hero
+      const nBox = ninjaEl.getBoundingClientRect();
+      const x0 = (nBox.left - skyBox.left + nBox.width / 2) / pxPerVb;
+      const nVb = nBox.width / pxPerVb;                // his width in viewBox units
+
+      // The form card floats over the hero's bottom edge and hides the lower
+      // rooftops behind it. Treat it as an obstacle: where the card spans,
+      // only roofs tall enough to clear its top edge are landable.
+      let cardCut = 200, cardL = Infinity, cardR = -Infinity;
+      const form = document.getElementById("compForm");
+      if (form) {
+        const cb = form.parentElement.getBoundingClientRect();
+        cardCut = 108 - Math.max(0, skyBox.bottom - cb.top);
+        cardL = (cb.left - skyBox.left) / pxPerVb;
+        cardR = (cb.right - skyBox.left) / pxPerVb;
+      }
+      // +15: feet may dip a touch behind the card's top edge (torso stays visible);
+      // demanding full visibility would leave one long floaty glide mid-run.
+      const visible = (s) => s.y <= cardCut + 15 || s.x1 > cardR + 2 || s.x2 < cardL - 2;
+
+      // Roof height at viewBox x; 110 = gap between buildings / ground.
+      const roofAt = (x) => {
+        for (let y = 14; y < 100; y += 1) {
+          if (skyPath.isPointInFill(new DOMPoint(x, y + 0.5))) return y;
+        }
+        return 110;
+      };
+
+      // Profile the roofline rightward from his perch, then group it into
+      // contiguous slabs wide enough to land on.
+      const prof = [];
+      for (let x = Math.floor(x0); x <= 1240; x += 2) {
+        prof.push({ x, y: x <= 1208 ? roofAt(x) : 110 });
+      }
+      const slabs = [];
+      let cur = null;
+      const keep = (s) => s && s.x2 - s.x1 >= 8 && (slabs.length === 0 || visible(s));
+      prof.forEach((p) => {
+        if (p.y < 100 && cur && Math.abs(p.y - cur.y) <= 3) { cur.x2 = p.x; }
+        else {
+          if (keep(cur)) slabs.push(cur);
+          cur = p.y < 100 ? { x1: p.x, x2: p.x, y: p.y } : null;
+        }
+      });
+      if (keep(cur)) slabs.push(cur);
+      if (slabs.length < 2) return false;
+
+      // Route: run along each slab, jump to the next. Jump arcs are parabolas
+      // whose apex clears everything between takeoff and landing (skipped-over
+      // spires included, hence the profile scan).
+      const inset = (s) => Math.min(nVb * 0.28, (s.x2 - s.x1) / 2);
+      const route = [];
+      let px = x0, py = slabs[0].y;
+      slabs.forEach((s, i) => {
+        const enter = i === 0 ? x0 : s.x1 + inset(s);
+        if (i > 0) {
+          let clear = Math.min(py, s.y);
+          prof.forEach((p) => { if (p.x > px && p.x < enter && p.y < clear) clear = p.y; });
+          // Higher arcs for longer leaps; short hops stay snappy.
+          route.push({ type: "jump", x1: px, y1: py, x2: enter, y2: s.y,
+                       apex: Math.max(-30, clear - 8 - (enter - px) / 5) });
+        }
+        const exit = Math.max(enter, s.x2 - inset(s));
+        route.push({ type: "run", x1: enter, x2: exit, y: s.y });
+        px = exit; py = s.y;
+      });
+      const exitX = 1215 + nVb;                        // fully past the clipped edge
+      route.push({ type: "jump", x1: px, y1: py, x2: exitX, y2: py + 60, apex: py - 14 });
+
+      // Flip on the three longest leaps.
+      route.filter((r) => r.type === "jump")
+           .sort((a, b) => (b.x2 - b.x1) - (a.x2 - a.x1))
+           .slice(0, 3).forEach((j) => { j.flip = true; });
+
+      // Sample the route into keyframes at constant horizontal speed, with a
+      // slight gait bounce on the flats. ~8s total reads as an actual run.
+      const total = exitX - x0;
+      const frames = [];
+      const N = 260;
+      let spin = 0, flipping = null;
+      for (let k = 0; k <= N; k++) {
+        const x = x0 + (k / N) * total;
+        const seg = route.find((r) => x >= r.x1 - 0.01 && x <= r.x2 + 0.01) || route[route.length - 1];
+        let y, rot = spin;
+        if (seg.type === "run") {
+          y = seg.y - 1.6 * Math.abs(Math.sin((x - x0) * 0.12));
+        } else {
+          const u = Math.min(1, Math.max(0, (x - seg.x1) / (seg.x2 - seg.x1)));
+          const yc = 2 * seg.apex - (seg.y1 + seg.y2) / 2;   // parabola through the apex
+          y = (1 - u) * (1 - u) * seg.y1 + 2 * u * (1 - u) * yc + u * u * seg.y2;
+          if (seg.flip) {
+            if (flipping !== seg) { flipping = seg; spin += 360; }
+            rot = spin - 360 + 360 * (u * u * (3 - 2 * u));  // smoothstep the tumble
+          }
+        }
+        frames.push({ transform: "translateX(" + ((x - x0) * pxPerVb).toFixed(1) + "px) " +
+          "translateY(" + (y - slabs[0].y).toFixed(1) + "px) rotate(" + rot.toFixed(0) + "deg)" });
+      }
+
+      const anim = ninjaEl.animate(frames, { duration: 8000, easing: "linear", fill: "forwards" });
+      anim.finished.then(() => ninjaEl.classList.add("is-gone")).catch(() => {});
+      return true;
+    };
+
     ninjaEl.addEventListener("click", () => {
-      if (!ninjaEl.classList.contains("is-running")) ninjaEl.classList.add("is-running");
-    });
-    ninjaEl.addEventListener("animationend", (e) => {
-      if (e.animationName === "ninjaRunX") ninjaEl.classList.add("is-gone");
+      if (ninjaEl.classList.contains("is-running") || ninjaEl.classList.contains("is-gone")) return;
+      ninjaEl.classList.add("is-running");
+      let ok = false;
+      try { ok = runNinja(); } catch (_) {}
+      if (!ok) ninjaEl.classList.add("is-gone");   // reduced motion / no support: instant vanish
     });
   }
 

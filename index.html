@@ -799,7 +799,7 @@
               <div class="text-xs text-slate-400 mt-1">from pulled comps</div>
             </div>
             <div id="deltaTile" class="rounded-lg border p-4">
-              <div class="text-xs uppercase tracking-wide opacity-70">Delta vs. Market</div>
+              <div class="text-xs uppercase tracking-wide opacity-70">Difference vs. Market</div>
               <div id="deltaVal" class="text-2xl font-bold mt-1">-</div>
               <div id="deltaPct" class="text-xs opacity-80 mt-1"></div>
             </div>
@@ -1431,7 +1431,7 @@
       (above ? "bg-amber-50 border-amber-200 text-amber-800"
              : "bg-emerald-50 border-emerald-200 text-emerald-800");
     animateValue(deltaVal, Math.abs(delta), (v) => formatUsd(v), above ? "+" : "−");
-    deltaPct.textContent = (above ? "+" : "−") + Math.abs(pct).toFixed(1) + "% vs. market avg" + (isRange ? " (midpoint)" : "");
+    deltaPct.textContent = Math.abs(pct).toFixed(1) + "% " + (above ? "above" : "below") + " market average" + (isRange ? " (midpoint)" : "");
 
     verdict.textContent = above
       ? `The subject property is priced approximately ${Math.abs(pct).toFixed(1)}% above the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF). Confirm that quality, location, or income supports the premium.`

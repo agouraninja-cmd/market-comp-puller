@@ -157,6 +157,22 @@
     .skyline-ninja svg { display: block; width: 100%; height: 100%; }
     .skyline-ninja .ninja-body, .skyline-ninja .ninja-band { fill: rgb(255 255 255 / .12); transition: fill .2s ease; }
     .skyline-ninja:hover .ninja-body, .skyline-ninja:hover .ninja-band { fill: rgb(255 255 255 / .22); }
+    /* Loading card: the ninja jogs along the progress bar's leading edge while
+       the search runs, and the stage headline cross-fades between steps. */
+    .loading-ninja {
+      position: absolute;
+      bottom: 7px;                      /* feet on the bar's top edge */
+      left: 0%;
+      width: 18px; height: 18px;
+      transform: translateX(-50%);
+      transition: left .35s ease-out;   /* same cadence as the bar fill */
+    }
+    .loading-ninja svg { display: block; width: 100%; height: 100%; animation: ninjaJog .38s ease-in-out infinite alternate; }
+    .loading-ninja .ninja-body { fill: #334155; }
+    .loading-ninja .ninja-band { fill: #DC2626; }
+    @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
+    #loadingHeadline { transition: opacity .22s ease; }
+
     /* The parkour run itself is generated in JS (Web Animations API) from the
        skyline's real roofline, so his feet land on actual rooftops. */
     .skyline-ninja.is-running { pointer-events: none; }
@@ -565,8 +581,18 @@
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 flex flex-col items-center text-center fade-in">
         <p id="loadingHeadline" class="text-base font-semibold text-slate-900">Searching recent listings…</p>
         <p class="text-sm text-slate-400 mt-1">This usually takes 20–40 seconds.</p>
-        <div class="w-full max-w-xs mt-5 h-2 rounded-full bg-slate-100 overflow-hidden">
-          <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
+        <div class="w-full max-w-xs mt-5 relative">
+          <!-- The brand ninja jogs along the bar's leading edge while the search runs. -->
+          <div id="loadingNinja" class="loading-ninja" aria-hidden="true">
+            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+              <path class="ninja-band" d="M19.5 6 Q13 3 8 5 Q13 7.5 19 8.5 Z"/>
+              <circle class="ninja-body" cx="22.5" cy="8" r="4"/>
+              <path class="ninja-body" d="M20 12 Q26 13 27.5 17.5 L26 19 Q24.5 16.5 21.5 15.5 Q22 19 19.5 21 Q23 23 23.5 27 L25.5 29.5 Q26 30.5 24.5 30.5 L21.5 30.5 Q21 27 19 24.5 Q15 26 11.5 25 L7 29.5 Q6 30.5 5.5 29.5 Q7.5 25 9.5 22.5 Q12 19.5 15 14.5 Q16.5 12 20 12 Z"/>
+            </svg>
+          </div>
+          <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
+          </div>
         </div>
       </div>
       <!-- Purely visual (the live region above announces progress): gray placeholders
@@ -1187,12 +1213,22 @@
   // ----------------------------------------------------------------------------
   // Animated loading card — cycles through generation stages during the wait.
   // ----------------------------------------------------------------------------
-  const LOADING_STEPS = [
-    "Searching recent listings…",
-    "Reviewing comparable sales nearby…",
-    "Calculating price per square foot…",
-    "Assembling your report…",
-  ];
+  // Stage messages pace the real 20–60s search: quick early beats, longer
+  // strides later, holding on the last step until the data actually lands.
+  // The first step is personalized with the searched type and street.
+  function loadingSteps(address, type) {
+    const kind = type && type.toLowerCase() !== "other" ? type.toLowerCase() : "property";
+    const place = (address || "").split(",")[0].trim();
+    return [
+      { at: 0,     text: place ? `Searching recent ${kind} listings near ${place}…` : `Searching recent ${kind} listings…` },
+      { at: 4500,  text: "Scanning brokerage and listing sites…" },
+      { at: 10000, text: "Pulling recent sale and lease records…" },
+      { at: 16500, text: "Comparing size, age, and location…" },
+      { at: 24000, text: "Calculating price per square foot…" },
+      { at: 32000, text: "Cross-checking the strongest comps…" },
+      { at: 42000, text: "Assembling your report — almost there…" },
+    ];
+  }
   let loadingMsgTimer = null;
   let loadingProgressTimer = null;
   let loadingProgress = 0;
@@ -1200,12 +1236,22 @@
   function setLoadingProgress(pct) {
     loadingProgress = pct;
     document.getElementById("loadingBar").style.width = pct + "%";
+    document.getElementById("loadingNinja").style.left = pct + "%";  // the runner rides the fill edge
   }
 
-  function showLoadingCard() {
+  // Cross-fade the stage headline instead of snapping the text.
+  function swapHeadline(headline, text) {
+    headline.style.opacity = "0";
+    setTimeout(() => { headline.textContent = text; headline.style.opacity = "1"; }, 220);
+  }
+
+  function showLoadingCard(address, type) {
     const headline = document.getElementById("loadingHeadline");
-    let i = 0;
-    headline.textContent = LOADING_STEPS[0];
+    const steps = loadingSteps(address, type);
+    const started = Date.now();
+    let shown = 0;
+    headline.style.opacity = "1";
+    headline.textContent = steps[0].text;
     document.getElementById("loadingCard").classList.remove("hidden");
 
     // Install-style fill: jump off the line, then creep toward ~90%, slowing as it
@@ -1219,20 +1265,24 @@
       else setLoadingProgress(next);
     }, 350);
 
-    // Cycle the stage messages, holding on the last one.
+    // Advance the stage messages on their schedule, holding on the last one.
     clearInterval(loadingMsgTimer);
     loadingMsgTimer = setInterval(() => {
-      i = Math.min(i + 1, LOADING_STEPS.length - 1);
-      headline.textContent = LOADING_STEPS[i];
-      if (i === LOADING_STEPS.length - 1) { clearInterval(loadingMsgTimer); loadingMsgTimer = null; }
-    }, 3500);
+      const elapsed = Date.now() - started;
+      let next = shown;
+      while (next + 1 < steps.length && steps[next + 1].at <= elapsed) next++;
+      if (next !== shown) { shown = next; swapHeadline(headline, steps[shown].text); }
+      if (shown === steps.length - 1) { clearInterval(loadingMsgTimer); loadingMsgTimer = null; }
+    }, 400);
   }
 
   // Snap to a satisfying 100% finish, then resolve so the results can render.
   function completeLoadingCard() {
     clearInterval(loadingProgressTimer); loadingProgressTimer = null;
     clearInterval(loadingMsgTimer); loadingMsgTimer = null;
-    document.getElementById("loadingHeadline").textContent = "Report ready!";
+    const headline = document.getElementById("loadingHeadline");
+    headline.style.opacity = "1";      // in case a cross-fade was mid-flight
+    headline.textContent = "Report ready!";
     setLoadingProgress(100);
     return new Promise((resolve) => setTimeout(resolve, 550));
   }
@@ -2477,7 +2527,7 @@
     document.getElementById("results").classList.add("hidden");
     hideStatus();
     setLoading(true);
-    showLoadingCard();
+    showLoadingCard(address, type);
 
     try {
       const res = await fetch("/api/comps", {

@@ -18,6 +18,10 @@ are one.
 There is no build step, no test suite, no linter, and **no npm dependencies** — it
 runs on plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 
+The one build-*ish* artifact is **`tailwind.css`**: a vendored, pre-generated
+Tailwind build (checked in, served by `server.js`) that replaced the Play CDN.
+It is NOT regenerated automatically — see the rule under "Restart rule".
+
 ## Running it
 
 ```bash
@@ -38,6 +42,18 @@ a **portable (no-admin) copy**, so it's launched by full path instead:
 - Editing **`server.js`** (e.g. the prompt) **requires restarting the process** —
   it's loaded once at startup. Kill the process listening on port 3000 and
   relaunch.
+- Adding **new Tailwind utility classes** to `index.html` requires regenerating
+  the vendored **`tailwind.css`** — a class missing from it silently won't
+  style. With node on PATH, run from the project root:
+
+  ```powershell
+  $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64;" + $env:Path
+  npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i tailwind.input.css -o tailwind.css --minify
+  ```
+
+  Classes already used anywhere in `index.html` (including inside JS strings)
+  are covered; only genuinely new utilities need a regen. Commit the updated
+  `tailwind.css` alongside the HTML change.
 
 ## Configuration (environment / `.env`)
 
@@ -103,7 +119,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.
 
-**`index.html`** — the entire front-end (Tailwind via CDN, html2canvas via CDN).
+**`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
+html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
 CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
 

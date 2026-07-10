@@ -71,19 +71,14 @@
   </script>
   <!-- Favicon: minimal CompNinja glyph (headband bar with eye notches on an ink tile) -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Crect width='44' height='44' rx='10' fill='%231E293B'/%3E%3Crect x='6' y='17' width='32' height='10' rx='5' fill='%23DC2626'/%3E%3Ccircle cx='17' cy='22' r='2.8' fill='%231E293B'/%3E%3Ccircle cx='27' cy='22' r='2.8' fill='%231E293B'/%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    // CompNinja brand palette: ninja red accents on ink and steel neutrals.
-    tailwind.config = {
-      theme: { extend: { colors: { brand: {
-        50: "#FEF2F2", 100: "#FEE2E2", 200: "#FECACA", 300: "#FCA5A5", 400: "#F87171",
-        500: "#EF4444", 600: "#DC2626", 700: "#B91C1C", 800: "#991B1B", 900: "#7F1D1D",
-      } } } },
-    };
-  </script>
+  <!-- Vendored Tailwind build (replaces the Play CDN + its runtime compiler).
+       After adding NEW utility classes to this file, regenerate it or they
+       won't style — see tailwind.config.js for the one-line command. -->
+  <link rel="stylesheet" href="/tailwind.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />

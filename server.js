@@ -593,15 +593,22 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Static: the social-preview image referenced by the og:image meta tag ---
-  if (req.method === "GET" && req.url === "/og-image.png") {
-    fs.readFile(path.join(__dirname, "og-image.png"), (err, data) => {
+  // --- Static assets: allowlisted files only, never arbitrary paths. The CSS
+  // gets a short max-age so a redeploy with new classes reaches browsers fast;
+  // images are stable and can cache for a day.
+  const STATIC_FILES = {
+    "/tailwind.css": { file: "tailwind.css", type: "text/css; charset=utf-8", maxAge: 300 },
+    "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
+    "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
+  };
+  if (req.method === "GET" && STATIC_FILES[req.url]) {
+    const { file, type, maxAge } = STATIC_FILES[req.url];
+    fs.readFile(path.join(__dirname, file), (err, data) => {
       if (err) {
         res.writeHead(404, { "content-type": "text/plain" });
         return res.end("Not found");
       }
-      // Scrapers (LinkedIn, iMessage, Slack) re-fetch rarely; a day of caching is safe.
-      res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+      res.writeHead(200, { "content-type": type, "cache-control": `public, max-age=${maxAge}` });
       res.end(data);
     });
     return;

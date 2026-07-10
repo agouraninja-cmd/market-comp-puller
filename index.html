@@ -1706,6 +1706,16 @@
 
   renderSavedChips();
 
+  // Restore the last-searched property type (saved on each submit) so repeat
+  // visitors don't reselect their asset class every session.
+  try {
+    const lastType = localStorage.getItem("lastPropertyType");
+    const typeSel = document.getElementById("propertyType");
+    if (lastType && [...typeSel.options].some((o) => o.value === lastType)) {
+      typeSel.value = lastType;
+    }
+  } catch (_) { /* private mode etc. — a nicety, not a requirement */ }
+
   // ----------------------------------------------------------------------------
   // Rotating example addresses — the search field quietly cycles through
   // realistic placeholders while it sits empty.
@@ -2302,6 +2312,9 @@
       document.getElementById("lookbackCustom").focus();
       return;
     }
+
+    // Returning users usually search the same asset class — remember it.
+    try { localStorage.setItem("lastPropertyType", type); } catch (_) {}
 
     document.getElementById("results").classList.add("hidden");
     hideStatus();

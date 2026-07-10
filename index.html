@@ -2112,8 +2112,8 @@
     return badge;
   }
 
-  function renderTableBody() {
-    renderCards();
+  function renderTableBody(animateIn = true) {
+    renderCards(animateIn);
     // The badge legend only earns its space when a verified comp is on screen.
     document.getElementById("verifiedLegend").classList
       .toggle("hidden", !visibleComps().some(isVerifiedComp));
@@ -2130,13 +2130,17 @@
     }
     comps.forEach((comp, idx) => {
       const tr = document.createElement("tr");
-      tr.className = "hover:bg-slate-50 row-in";
-      tr.style.animationDelay = Math.min(idx * 45, 450) + "ms";
+      // Re-sorts skip the entrance cascade — rows FLIP to their new spots instead.
+      tr.className = "hover:bg-slate-50" + (animateIn ? " row-in" : "");
+      if (animateIn) tr.style.animationDelay = Math.min(idx * 45, 450) + "ms";
       COLUMNS.forEach((col) => {
         const td = document.createElement("td");
         td.className = "px-4 py-3 align-top " +
           (col.key === "notes" ? "text-slate-500 min-w-[200px]" : "whitespace-nowrap") +
           (col.numeric ? " text-right" : "");
+        // Cell content lives in an inner div: table rows/cells can't be CSS-
+        // transformed, so the sort FLIP animation slides these divs instead.
+        const cell = document.createElement("div");
         const val = comp[col.key];
         if (col.isLink) {
           const url = String(val || "");
@@ -2148,21 +2152,22 @@
             a.textContent = "View";
             a.title = url;
             a.className = "text-brand-700 underline decoration-brand-300 hover:decoration-brand-700";
-            td.appendChild(a);
+            cell.appendChild(a);
           } else {
-            td.textContent = "-";
+            cell.textContent = "-";
           }
         } else {
-          td.textContent = (val === undefined || val === null || val === "") ? "-" : val;
+          cell.textContent = (val === undefined || val === null || val === "") ? "-" : val;
           if (col.key === "address") {
             const b = verifiedBadge(comp);
-            if (b) td.appendChild(b);
+            if (b) cell.appendChild(b);
           }
           if (col.isDate) {
             const b = outsideWindowBadge(val);
-            if (b) td.appendChild(b);
+            if (b) cell.appendChild(b);
           }
         }
+        td.appendChild(cell);
         tr.appendChild(td);
       });
       body.appendChild(tr);
@@ -2172,7 +2177,7 @@
   // Mobile rendering of the same comps: stacked cards instead of the wide
   // table. Shares COLUMNS and visibleComps() with the table, so the Sale/Lease
   // filter, per-type columns, and any active sort all carry over.
-  function renderCards() {
+  function renderCards(animateIn = true) {
     const list = document.getElementById("cardList");
     list.innerHTML = "";
     const comps = visibleComps();
@@ -2187,8 +2192,8 @@
     }
     comps.forEach((comp, idx) => {
       const card = document.createElement("div");
-      card.className = "px-6 py-4 row-in";
-      card.style.animationDelay = Math.min(idx * 45, 450) + "ms";
+      card.className = "px-6 py-4" + (animateIn ? " row-in" : "");
+      if (animateIn) card.style.animationDelay = Math.min(idx * 45, 450) + "ms";
 
       const head = document.createElement("div");
       head.className = "font-semibold text-slate-900 text-sm leading-snug";
@@ -2274,6 +2279,16 @@
     if (!col) return;
     if (sortState.key === key) { sortState.dir *= -1; }
     else { sortState.key = key; sortState.dir = 1; }
+
+    // FLIP: remember where each row sits now, so after the re-render the rows
+    // can slide to their new spots instead of teleporting — the eye keeps
+    // track of which comp went where.
+    const body = document.getElementById("tableBody");
+    const beforeComps = visibleComps();
+    const oldTops = new Map();
+    Array.from(body.children).forEach((row, i) => {
+      if (beforeComps[i]) oldTops.set(beforeComps[i], row.getBoundingClientRect().top);
+    });
     currentComps.sort((a, b) => {
       let av = a[key], bv = b[key];
       if (col.isDate) {
@@ -2294,7 +2309,26 @@
       return av.localeCompare(bv) * sortState.dir;
     });
     renderTableHead();
-    renderTableBody();
+    renderTableBody(false);   // no entrance cascade on a re-sort
+
+    // Slide each row's cell contents from their old position into the new one
+    // (Web Animations API — the divs inside the cells carry the motion, since
+    // table rows and cells themselves can't be transformed).
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const rows = Array.from(body.children);
+    const afterComps = visibleComps();
+    rows.forEach((row, i) => {
+      const was = oldTops.get(afterComps[i]);
+      if (was === undefined) return;
+      const delta = was - row.getBoundingClientRect().top;
+      if (!delta) return;
+      row.querySelectorAll("td > div").forEach((cell) => {
+        if (cell.animate) cell.animate(
+          [{ transform: "translateY(" + delta + "px)" }, { transform: "none" }],
+          { duration: 280, easing: "ease" }
+        );
+      });
+    });
   }
 
   // ----------------------------------------------------------------------------

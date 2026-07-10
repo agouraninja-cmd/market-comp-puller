@@ -1562,24 +1562,33 @@
     let span = dMax - dMin;
     if (span < 0.01) { span = Math.max(Math.abs(dMax) * 0.1, 1); dMin -= span / 2; dMax += span / 2; span = dMax - dMin; }
     dMin -= span * 0.06; dMax += span * 0.06;
-    const x = (v) => 30 + ((v - dMin) / (dMax - dMin)) * 540;
+
+    // Compact geometry below sm — the fixed desktop viewBox scales phone text
+    // down to ~7px. Fewer horizontal units + a taller box keeps labels legible.
+    const compact = window.matchMedia("(max-width: 639px)").matches;
+    const W = compact ? 360 : 600, H = compact ? 150 : 110;
+    const EDGE = 30;
+    const x = (v) => EDGE + ((v - dMin) / (dMax - dMin)) * (W - 2 * EDGE);
+    const fs = compact ? 12 : 11;
 
     // Draw-in choreography: baseline, then dots left-to-right, then the
     // average and range labels, with the subject marker landing last.
-    const baseY = 62;
-    let svg = `<svg width="100%" viewBox="0 0 600 110" role="img" aria-label="Sale comps by price per square foot">`;
-    svg += `<line class="ch-fade" x1="30" y1="${baseY}" x2="570" y2="${baseY}" stroke="#e2e8f0" stroke-width="2"/>`;
+    const baseY = compact ? 76 : 62;
+    const avgExt = compact ? 28 : 22;            // avg line half-height
+    const bandHalf = compact ? 18 : 14;          // subject band half-height
+    let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per square foot">`;
+    svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="#e2e8f0" stroke-width="2"/>`;
 
     // Subject band behind everything else.
     if (youLo !== null && isBand) {
-      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="48" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="28" fill="#DC2626" fill-opacity="0.12"/>`;
+      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="#DC2626" fill-opacity="0.12"/>`;
     }
 
     // Average line + label, anchor flipped near the edges so it stays inside.
     const ax = x(avg);
-    const aAnchor = ax < 70 ? "start" : ax > 530 ? "end" : "middle";
-    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="40" x2="${ax.toFixed(1)}" y2="84" stroke="#1E293B" stroke-width="2"/>`;
-    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="32" text-anchor="${aAnchor}" font-size="11" font-weight="600" fill="#1E293B" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
+    const aAnchor = ax < EDGE + 40 ? "start" : ax > W - EDGE - 40 ? "end" : "middle";
+    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="#1E293B" stroke-width="2"/>`;
+    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="#1E293B" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
 
     // Comp dots with vertical jitter when they crowd each other.
     const offsets = [0, -11, 11, -22];
@@ -1595,15 +1604,16 @@
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="100" text-anchor="start" font-size="11" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="100" text-anchor="end" font-size="11" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    const loHiY = compact ? baseY + 52 : baseY + 38;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
       const yx = x(youMid);
       svg += `<path class="ch-pop" style="animation-delay:.75s" d="M${yx.toFixed(1)},${baseY - 8} l7,8 l-7,8 l-7,-8 Z" fill="#DC2626" stroke="#fff" stroke-width="1.5"/>`;
-      const yAnchor = yx < 50 ? "start" : yx > 550 ? "end" : "middle";
-      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="90" text-anchor="${yAnchor}" font-size="11" font-weight="700" fill="#DC2626" font-family="Inter, sans-serif">You</text>`;
+      const yAnchor = yx < EDGE + 20 ? "start" : yx > W - EDGE - 20 ? "end" : "middle";
+      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="#DC2626" font-family="Inter, sans-serif">You</text>`;
     }
     svg += `</svg>`;
 
@@ -1613,6 +1623,13 @@
     card.classList.remove("hidden");
     armWhenVisible(card, "in-view");
   }
+
+  // Rebuild the chart when the sm breakpoint flips (rotation, window resize) so
+  // it picks up the matching geometry. The media query only fires on the flip
+  // itself, so this can't loop.
+  window.matchMedia("(max-width: 639px)").addEventListener("change", () => {
+    if (currentComps.length) renderMarketChart();
+  });
 
   // ----------------------------------------------------------------------------
   // Comp map — plots the subject (blue pin) and comps (gray dots) on OSM tiles.
@@ -2375,7 +2392,7 @@
       card.appendChild(head);
 
       const rows = document.createElement("dl");
-      rows.className = "mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm";
+      rows.className = "mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm";
       COLUMNS.forEach((col) => {
         if (col.key === "address") return;   // already the card header
         const val = comp[col.key];
@@ -2385,13 +2402,14 @@
         // Long values get a full-width row so they don't wrap awkwardly.
         const wide = col.key === "notes" || col.isLink ||
           col.key === "price_or_rate" || col.key === "dock_doors";
+        // Label stacked over value — side-by-side rows collide at phone widths.
         const row = document.createElement("div");
-        row.className = "flex justify-between gap-3" + (wide ? " col-span-2" : "");
+        row.className = wide ? "col-span-2" : "";
         const dt = document.createElement("dt");
-        dt.className = "text-slate-400 shrink-0";
+        dt.className = "text-[10px] font-medium uppercase tracking-wide text-slate-400";
         dt.textContent = col.label;
         const dd = document.createElement("dd");
-        dd.className = "text-right " + (col.key === "notes" ? "text-slate-500" : "text-slate-700");
+        dd.className = "mt-0.5 " + (col.key === "notes" ? "text-slate-500" : "text-slate-700");
         if (col.isLink && /^https?:\/\//i.test(String(val || ""))) {
           const a = document.createElement("a");
           a.href = val;

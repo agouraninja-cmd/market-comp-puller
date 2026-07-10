@@ -173,21 +173,28 @@
     @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
     #loadingHeadline { transition: opacity .22s ease; }
 
-    /* Trust badges pop in once, just after their row lands. */
-    .badge-in { opacity: 0; animation: badgePop .35s ease-out forwards; }
+    /* Trust badges pop in once, just after their row lands. Both this and the
+       chart below start paused: the results section is unhidden and glided
+       to via smooth-scroll in the same instant the DOM is built, so an
+       animation tied to insertion time can finish before it's ever on
+       screen. JS arms these (adds .in-view) only once IntersectionObserver
+       confirms the card is actually visible — see armWhenVisible(). */
+    .badge-in { opacity: 0; animation: badgePop .35s ease-out forwards; animation-play-state: paused; }
+    #compsCard.in-view .badge-in { animation-play-state: running; }
     @keyframes badgePop {
       from { opacity: 0; transform: scale(.6); }
       70%  { opacity: 1; transform: scale(1.08); }
       to   { opacity: 1; transform: none; }
     }
 
-    /* The market chart draws itself in when a report renders:
-       baseline, then dots left-to-right, then average, subject last. */
-    #chartWrap .ch-fade { opacity: 0; animation: chFade .45s ease-out forwards; }
+    /* The market chart draws itself in when actually visible: baseline, then
+       dots left-to-right, then average, subject last. */
+    #chartWrap .ch-fade { opacity: 0; animation: chFade .45s ease-out forwards; animation-play-state: paused; }
     #chartWrap .ch-pop {
       opacity: 0; transform-box: fill-box; transform-origin: center;
-      animation: chPop .4s ease-out forwards;
+      animation: chPop .4s ease-out forwards; animation-play-state: paused;
     }
+    #chartCard.in-view .ch-fade, #chartCard.in-view .ch-pop { animation-play-state: running; }
     @keyframes chFade { to { opacity: 1; } }
     @keyframes chPop {
       from { opacity: 0; transform: scale(.3); }
@@ -809,7 +816,7 @@
         </div>
 
         <!-- Comps table -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
+        <div id="compsCard" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
           <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200">
             <h2 class="text-lg font-semibold text-slate-900">Comparable Properties</h2>
             <div class="flex items-center gap-3">
@@ -1439,6 +1446,25 @@
     card.classList.remove("hidden");
   }
 
+  // Arms an entrance animation only once its card is actually on screen —
+  // renderResults builds the whole report while #results is still hidden,
+  // then unhides it and smooth-scrolls down in the same tick, so an
+  // animation tied to DOM-insertion time can finish before anyone sees it
+  // (most visible on the sample report: one click from the top of the page
+  // means a long scroll). className is added once, then the card is
+  // unobserved so a later re-render can arm it again from scratch.
+  function armWhenVisible(el, className) {
+    if (!el) return;
+    el.classList.remove(className);
+    if (!("IntersectionObserver" in window)) { el.classList.add(className); return; }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) { en.target.classList.add(className); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.15 });
+    io.observe(el);
+  }
+
   // ----------------------------------------------------------------------------
   // Market position chart — every sale comp's $/SF as a dot on a strip, with
   // the average marked and (when subject inputs exist) a "You" marker. Pure
@@ -1526,6 +1552,7 @@
       `${pts.length} sale comps` + (youLo !== null ? " · subject shown" : "");
     document.getElementById("chartWrap").innerHTML = svg;
     card.classList.remove("hidden");
+    armWhenVisible(card, "in-view");
   }
 
   // ----------------------------------------------------------------------------
@@ -2201,6 +2228,9 @@
       });
       body.appendChild(tr);
     });
+    // Only a first render adds .badge-in in the first place; re-sorts have
+    // nothing to arm.
+    if (animateIn) armWhenVisible(document.getElementById("compsCard"), "in-view");
   }
 
   // Mobile rendering of the same comps: stacked cards instead of the wide

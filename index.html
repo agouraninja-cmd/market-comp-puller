@@ -143,6 +143,41 @@
     /* Brand micro-moment: ninja-red text selection. */
     ::selection { background: #DC2626; color: #fff; }
 
+    /* Brand easter egg: a ninja crouched on a left rooftop of the hero skyline.
+       Tap him and he parkours across the rooftops and off the page (until reload). */
+    .skyline-ninja {
+      position: absolute;
+      left: 17.2%;            /* rooftop spanning viewBox x 196–240 */
+      bottom: 71px;           /* roof line y=38 in the fixed 110px band; -1px so the feet touch */
+      width: 26px; height: 26px;
+      z-index: 1;             /* above the hero content wrapper, or taps never reach him */
+      pointer-events: auto;   /* the skyline svg is pointer-events-none; he is not */
+      cursor: pointer;
+    }
+    .skyline-ninja svg { display: block; width: 100%; height: 100%; }
+    .skyline-ninja .ninja-body, .skyline-ninja .ninja-band { fill: rgb(255 255 255 / .12); transition: fill .2s ease; }
+    .skyline-ninja:hover .ninja-body, .skyline-ninja:hover .ninja-band { fill: rgb(255 255 255 / .22); }
+    .skyline-ninja.is-running { animation: ninjaRunX 4.6s linear forwards; pointer-events: none; }
+    .skyline-ninja.is-running svg { animation: ninjaHops 4.6s ease-in-out forwards; }
+    .skyline-ninja.is-running .ninja-band { fill: rgb(239 68 68 / .6); }
+    .skyline-ninja.is-gone { display: none; }
+    /* Phones squeeze the rooftop to ~14px; shrink him so he keeps his footing. */
+    @media (max-width: 640px) { .skyline-ninja { width: 20px; height: 20px; left: 16.6%; } }
+    @keyframes ninjaRunX { to { transform: translateX(86vw); } }
+    @keyframes ninjaHops {
+      0%   { transform: translateY(0); }
+      9%   { transform: translateY(-34px); }
+      17%  { transform: translateY(14px); }
+      27%  { transform: translateY(-20px); }
+      36%  { transform: translateY(6px); }
+      48%  { transform: translateY(-40px) rotate(180deg); }  /* big hop with a flip */
+      60%  { transform: translateY(10px) rotate(360deg); }
+      71%  { transform: translateY(-24px) rotate(360deg); }
+      80%  { transform: translateY(2px) rotate(360deg); }
+      91%  { transform: translateY(-30px) rotate(360deg); }
+      100% { transform: translateY(18px) rotate(360deg); }
+    }
+
     /* FAQ accordions: replace the native disclosure marker with a chevron that
        turns when opened. Scoped to #faq — the form's details keeps its marker. */
     #faq summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -373,6 +408,17 @@
          preserveAspectRatio="none" aria-hidden="true">
       <path fill="rgb(255 255 255 / .05)" d="M0 110V74h34V47h10v-9h12v9h8v27h30V58h40v-16h6V30h6v12h6v16h26v52h18V38h44v-14h30v14h12v72h22V64h38v-20h28v20h14v46h24V50h8V26h10v-6h6v6h10v24h8v60h30V70h36v-26h8v-14h10v14h8v26h20v40h16V54h42v-24h26v24h14v56h24V78h32v-30h36v30h12v32h20V44h10V22h12v22h8v66h26V60h40v-24h8V22h8v14h8v24h24v50h18V70h34v-22h30v22h10v40h22V52h36v-20h6V20h8v12h8v20h20v58h16V80h34v-40h24v40h14v30z"/>
     </svg>
+    <!-- Easter egg: a ninja perched on a rooftop. Tap him and he parkours off the page. -->
+    <div id="skylineNinja" class="skyline-ninja" aria-hidden="true">
+      <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <!-- headband tail -->
+        <path class="ninja-band" d="M19.5 6 Q13 3 8 5 Q13 7.5 19 8.5 Z"/>
+        <!-- head -->
+        <circle class="ninja-body" cx="22.5" cy="8" r="4"/>
+        <!-- lunging body: forward arm, front leg planted, back leg trailing; feet on the roofline -->
+        <path class="ninja-body" d="M20 12 Q26 13 27.5 17.5 L26 19 Q24.5 16.5 21.5 15.5 Q22 19 19.5 21 Q23 23 23.5 27 L25.5 29.5 Q26 30.5 24.5 30.5 L21.5 30.5 Q21 27 19 24.5 Q15 26 11.5 25 L7 29.5 Q6 30.5 5.5 29.5 Q7.5 25 9.5 22.5 Q12 19.5 15 14.5 Q16.5 12 20 12 Z"/>
+      </svg>
+    </div>
     <div class="relative max-w-5xl mx-auto px-4">
       <!-- Brand row: icon mark + CompNinja lockup in the site's own headline face. -->
       <div class="py-4 flex items-center gap-3">
@@ -1826,6 +1872,17 @@
     revealEls.forEach((el) => io.observe(el));
   } else {
     revealEls.forEach((el) => el.classList.add("revealed"));
+  }
+
+  // Easter egg: the skyline ninja parkours off the page when discovered.
+  const ninjaEl = document.getElementById("skylineNinja");
+  if (ninjaEl) {
+    ninjaEl.addEventListener("click", () => {
+      if (!ninjaEl.classList.contains("is-running")) ninjaEl.classList.add("is-running");
+    });
+    ninjaEl.addEventListener("animationend", (e) => {
+      if (e.animationName === "ninjaRunX") ninjaEl.classList.add("is-gone");
+    });
   }
 
   function renderTableHead() {

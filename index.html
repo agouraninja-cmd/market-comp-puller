@@ -173,6 +173,28 @@
     @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
     #loadingHeadline { transition: opacity .22s ease; }
 
+    /* Trust badges pop in once, just after their row lands. */
+    .badge-in { opacity: 0; animation: badgePop .35s ease-out forwards; }
+    @keyframes badgePop {
+      from { opacity: 0; transform: scale(.6); }
+      70%  { opacity: 1; transform: scale(1.08); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* The market chart draws itself in when a report renders:
+       baseline, then dots left-to-right, then average, subject last. */
+    #chartWrap .ch-fade { opacity: 0; animation: chFade .45s ease-out forwards; }
+    #chartWrap .ch-pop {
+      opacity: 0; transform-box: fill-box; transform-origin: center;
+      animation: chPop .4s ease-out forwards;
+    }
+    @keyframes chFade { to { opacity: 1; } }
+    @keyframes chPop {
+      from { opacity: 0; transform: scale(.3); }
+      70%  { opacity: 1; transform: scale(1.15); }
+      to   { opacity: 1; transform: none; }
+    }
+
     /* The parkour run itself is generated in JS (Web Animations API) from the
        skyline's real roofline, so his feet land on actual rooftops. */
     .skyline-ninja.is-running { pointer-events: none; }
@@ -1457,43 +1479,46 @@
     dMin -= span * 0.06; dMax += span * 0.06;
     const x = (v) => 30 + ((v - dMin) / (dMax - dMin)) * 540;
 
+    // Draw-in choreography: baseline, then dots left-to-right, then the
+    // average and range labels, with the subject marker landing last.
     const baseY = 62;
     let svg = `<svg width="100%" viewBox="0 0 600 110" role="img" aria-label="Sale comps by price per square foot">`;
-    svg += `<line x1="30" y1="${baseY}" x2="570" y2="${baseY}" stroke="#e2e8f0" stroke-width="2"/>`;
+    svg += `<line class="ch-fade" x1="30" y1="${baseY}" x2="570" y2="${baseY}" stroke="#e2e8f0" stroke-width="2"/>`;
 
     // Subject band behind everything else.
     if (youLo !== null && isBand) {
-      svg += `<rect x="${x(youLo).toFixed(1)}" y="48" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="28" fill="#DC2626" fill-opacity="0.12"/>`;
+      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="48" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="28" fill="#DC2626" fill-opacity="0.12"/>`;
     }
 
     // Average line + label, anchor flipped near the edges so it stays inside.
     const ax = x(avg);
     const aAnchor = ax < 70 ? "start" : ax > 530 ? "end" : "middle";
-    svg += `<line x1="${ax.toFixed(1)}" y1="40" x2="${ax.toFixed(1)}" y2="84" stroke="#1E293B" stroke-width="2"/>`;
-    svg += `<text x="${ax.toFixed(1)}" y="32" text-anchor="${aAnchor}" font-size="11" font-weight="600" fill="#1E293B" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
+    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="40" x2="${ax.toFixed(1)}" y2="84" stroke="#1E293B" stroke-width="2"/>`;
+    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="32" text-anchor="${aAnchor}" font-size="11" font-weight="600" fill="#1E293B" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
 
     // Comp dots with vertical jitter when they crowd each other.
     const offsets = [0, -11, 11, -22];
     let prevX = -Infinity, oi = 0;
-    pts.forEach((p) => {
+    pts.forEach((p, i) => {
       const px = x(p.v);
       if (px - prevX < 12) { oi = (oi + 1) % offsets.length; } else { oi = 0; }
       const py = baseY + offsets[oi];
       prevX = px;
-      svg += `<circle cx="${px.toFixed(1)}" cy="${py}" r="6" fill="#64748b" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
+      const delay = Math.min(0.15 + i * 0.07, 0.8).toFixed(2);
+      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="#64748b" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
     });
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
-    svg += `<text x="${x(lo).toFixed(1)}" y="100" text-anchor="start" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text x="${x(hi).toFixed(1)}" y="100" text-anchor="end" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="100" text-anchor="start" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="100" text-anchor="end" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
       const yx = x(youMid);
-      svg += `<path d="M${yx.toFixed(1)},${baseY - 8} l7,8 l-7,8 l-7,-8 Z" fill="#DC2626" stroke="#fff" stroke-width="1.5"/>`;
+      svg += `<path class="ch-pop" style="animation-delay:.75s" d="M${yx.toFixed(1)},${baseY - 8} l7,8 l-7,8 l-7,-8 Z" fill="#DC2626" stroke="#fff" stroke-width="1.5"/>`;
       const yAnchor = yx < 50 ? "start" : yx > 550 ? "end" : "middle";
-      svg += `<text x="${yx.toFixed(1)}" y="90" text-anchor="${yAnchor}" font-size="11" font-weight="700" fill="#DC2626" font-family="Inter, sans-serif">You</text>`;
+      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="90" text-anchor="${yAnchor}" font-size="11" font-weight="700" fill="#DC2626" font-family="Inter, sans-serif">You</text>`;
     }
     svg += `</svg>`;
 
@@ -2160,7 +2185,11 @@
           cell.textContent = (val === undefined || val === null || val === "") ? "-" : val;
           if (col.key === "address") {
             const b = verifiedBadge(comp);
-            if (b) cell.appendChild(b);
+            if (b) {
+              // Pop in just after the row's own entrance; re-sorts skip it.
+              if (animateIn) { b.classList.add("badge-in"); b.style.animationDelay = (Math.min(idx * 45, 450) + 250) + "ms"; }
+              cell.appendChild(b);
+            }
           }
           if (col.isDate) {
             const b = outsideWindowBadge(val);
@@ -2199,7 +2228,10 @@
       head.className = "font-semibold text-slate-900 text-sm leading-snug";
       head.textContent = comp.address || "-";
       const vb = verifiedBadge(comp);
-      if (vb) head.appendChild(vb);
+      if (vb) {
+        if (animateIn) { vb.classList.add("badge-in"); vb.style.animationDelay = (Math.min(idx * 45, 450) + 250) + "ms"; }
+        head.appendChild(vb);
+      }
       const db = outsideWindowBadge(comp.date);
       if (db) head.appendChild(db);
       card.appendChild(head);

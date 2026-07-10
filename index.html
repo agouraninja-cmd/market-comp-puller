@@ -202,6 +202,36 @@
       to   { opacity: 1; transform: none; }
     }
 
+    /* Export buttons briefly confirm a finished download (element+class beats
+       the Tailwind color utilities without !important). */
+    button.export-done { color: #047857; background-color: #ecfdf5; border-color: #6ee7b7; }
+
+    /* Report arrival: the Avg $/SF tile pulses a soft brand ring once, and its
+       spread bar sweeps low→high with the comp average marked. Both start
+       paused and are armed on visibility (armWhenVisible) so the auto-scroll
+       to the report can't play them off-screen. */
+    .tile-spotlight { animation: tileSpot 1.5s ease-out forwards; animation-play-state: paused; }
+    #statTiles.in-view .tile-spotlight { animation-play-state: running; }
+    @keyframes tileSpot {
+      0%   { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(220 38 38 / 0); }
+      30%  { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 4px rgb(220 38 38 / .22); }
+      100% { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(220 38 38 / 0); }
+    }
+    .spread-track { position: relative; height: 5px; border-radius: 999px; background: #e2e8f0; }
+    .spread-fill {
+      position: absolute; inset: 0; border-radius: 999px;
+      background: linear-gradient(90deg, #fca5a5, #dc2626);
+      transform: scaleX(0); transform-origin: left;
+    }
+    .spread-marker {
+      position: absolute; top: 50%; width: 2px; height: 11px;
+      background: #1e293b; border-radius: 2px; transform: translate(-50%, -50%) scaleY(0);
+    }
+    #statTiles.in-view .spread-fill { animation: spreadSweep .6s ease-out .1s forwards; }
+    #statTiles.in-view .spread-marker { animation: markerPop .3s ease-out .5s forwards; }
+    @keyframes spreadSweep { to { transform: scaleX(1); } }
+    @keyframes markerPop { to { transform: translate(-50%, -50%) scaleY(1); } }
+
     /* The parkour run itself is generated in JS (Web Animations API) from the
        skyline's real roofline, so his feet land on actual rooftops. */
     .skyline-ninja.is-running { pointer-events: none; }
@@ -1639,12 +1669,37 @@
   // ----------------------------------------------------------------------------
   // Key stats row — the scannable numbers a comp package leads with. A tile
   // only renders when its stat exists; the whole row hides if none do.
+  // A low→high range bar with the comp average marked, tucked under the Avg
+  // $/SF tile so the headline number carries its spread at a glance.
+  function buildSpreadBar({ lo, hi, avg }) {
+    const pct = hi > lo ? Math.max(2, Math.min(98, ((avg - lo) / (hi - lo)) * 100)) : 50;
+    const el = document.createElement("div");
+    el.className = "mt-3";
+    el.innerHTML =
+      '<div class="spread-track"><div class="spread-fill"></div>' +
+      '<div class="spread-marker" style="left:' + pct.toFixed(1) + '%"></div></div>' +
+      '<div class="flex justify-between mt-1 text-[10px] text-slate-400">' +
+        '<span>' + formatUsd(lo, { maximumFractionDigits: 0 }) + '</span>' +
+        '<span>' + formatUsd(hi, { maximumFractionDigits: 0 }) + '</span>' +
+      '</div>';
+    return el;
+  }
+
   function renderStatTiles(parsed, meta) {
     const wrap = document.getElementById("statTiles");
     const sizes = currentComps
       .map((c) => numericValue(c.size_sqft))
       .filter(isFinite)
       .sort((a, b) => a - b);
+    // Sale-comp $/SF spread — powers the little range bar under the Avg tile.
+    const ppsf = currentComps
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => numericValue(c.price_per_sqft))
+      .filter((v) => isFinite(v) && v > 0)
+      .sort((a, b) => a - b);
+    const spread = ppsf.length >= 2
+      ? { lo: ppsf[0], hi: ppsf[ppsf.length - 1], avg: ppsf.reduce((s, v) => s + v, 0) / ppsf.length }
+      : null;
     const mid = sizes.length / 2;
     const median = sizes.length === 0 ? NaN
       : sizes.length % 2 ? sizes[Math.floor(mid)]
@@ -1672,9 +1727,15 @@
       if (t.animate) animateValue(value, t.animate.target, t.animate.format);
       else value.textContent = t.value;
       tile.append(label, value);
+      // The Avg $/SF tile gets the arrival spotlight and its spread bar.
+      if (t.label === "Avg $/SF") {
+        tile.classList.add("tile-spotlight");
+        if (spread) tile.appendChild(buildSpreadBar(spread));
+      }
       wrap.appendChild(tile);
     });
     wrap.classList.toggle("hidden", tiles.length === 0);
+    if (tiles.length) armWhenVisible(wrap, "in-view");
   }
 
   function renderResults(parsed, meta) {
@@ -2396,6 +2457,23 @@
   // ----------------------------------------------------------------------------
   // CSV / Image / Print
   // ----------------------------------------------------------------------------
+  // Briefly confirm a completed export: swap the button to a check + label,
+  // then restore it. Mirrors the summary Copy → "Copied" micro-confirmation.
+  function flashExportDone(btn, label) {
+    if (!btn || btn.dataset.flashing === "1") return;
+    btn.dataset.flashing = "1";
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' +
+      (label || "Done");
+    btn.classList.add("export-done");
+    setTimeout(() => {
+      btn.innerHTML = originalHTML;
+      btn.classList.remove("export-done");
+      btn.dataset.flashing = "0";
+    }, 1600);
+  }
+
   function exportCsv() {
     if (!currentComps.length) return;
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -2411,13 +2489,16 @@
     const a = document.createElement("a");
     a.href = url; a.download = "market-comps.csv"; a.click();
     URL.revokeObjectURL(url);
+    flashExportDone(document.getElementById("csvBtn"), "Saved");
   }
 
   async function downloadImage() {
     const node = document.getElementById("reportArea");
     const btn = document.getElementById("imgBtn");
-    const original = btn.textContent;
+    // Preserve the button's icon + label — a textContent swap dropped the SVG.
+    const originalHTML = btn.innerHTML;
     btn.textContent = "Rendering…"; btn.disabled = true;
+    let ok = false;
     try {
       // The Leaflet map is skipped in the capture — cross-origin tiles would
       // otherwise taint the canvas and break the whole export.
@@ -2429,12 +2510,14 @@
       a.download = "market-comp-report.png";
       a.href = canvas.toDataURL("image/png");
       a.click();
+      ok = true;
     } catch (e) {
       console.error(e);
       alert("Couldn't generate the image. You can use Print / PDF instead.");
     } finally {
-      btn.textContent = original; btn.disabled = false;
+      btn.innerHTML = originalHTML; btn.disabled = false;
     }
+    if (ok) flashExportDone(btn, "Saved");
   }
 
   // ----------------------------------------------------------------------------
@@ -2516,7 +2599,10 @@
 
   document.getElementById("csvBtn").addEventListener("click", gatedExport(exportCsv));
   document.getElementById("imgBtn").addEventListener("click", gatedExport(downloadImage));
-  document.getElementById("printBtn").addEventListener("click", gatedExport(() => window.print()));
+  document.getElementById("printBtn").addEventListener("click", gatedExport(() => {
+    window.print();
+    flashExportDone(document.getElementById("printBtn"), "Done");
+  }));
 
   // ----------------------------------------------------------------------------
   // Broker comp submission — outside brokers offer verified comps; stored

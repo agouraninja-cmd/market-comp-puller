@@ -254,16 +254,16 @@
     /* Phones squeeze the rooftop to ~14px; shrink him so he keeps his footing. */
     @media (max-width: 640px) { .skyline-ninja { width: 20px; height: 20px; left: 16.6%; } }
 
-    /* FAQ accordions: replace the native disclosure marker with a chevron that
-       turns when opened. Scoped to #faq — the form's details keeps its marker. */
-    #faq summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-    #faq summary::-webkit-details-marker { display: none; }
-    #faq summary::after {
+    /* Disclosure accordions (FAQ + the form's "Compare your property"): replace
+       the native marker with a chevron that turns when opened. */
+    #faq summary, #compForm details summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    #faq summary::-webkit-details-marker, #compForm details summary::-webkit-details-marker { display: none; }
+    #faq summary::after, #compForm details summary::after {
       content: ""; width: 1rem; height: 1rem; flex-shrink: 0;
       background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
       transition: transform .25s ease;
     }
-    #faq details[open] summary::after { transform: rotate(180deg); }
+    #faq details[open] summary::after, #compForm details[open] summary::after { transform: rotate(180deg); }
 
     /* Soft cross-fade when the example address in the placeholder rotates. */
     #address::placeholder { transition: color .3s ease; }
@@ -363,7 +363,7 @@
       </div>
       <p class="text-sm text-slate-500 mb-4">Please enter your access password to continue.</p>
       <form id="gateForm" class="space-y-3">
-        <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Access password"
+        <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Access password" aria-label="Access password"
           class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <p id="gateError" class="hidden text-sm text-red-600"></p>
         <button type="submit"
@@ -380,14 +380,14 @@
       <h2 class="text-lg font-semibold text-slate-900">Unlock your export</h2>
       <p class="text-sm text-slate-500 mt-1 mb-4">Tell us who you are and we'll unlock CSV, image, and PDF exports for this browser, and follow up about your property and market.</p>
       <form id="leadForm" class="space-y-3">
-        <input id="leadName" type="text" autocomplete="name" placeholder="Full name *"
+        <input id="leadName" type="text" autocomplete="name" placeholder="Full name *" aria-label="Full name"
           class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-        <input id="leadEmail" type="email" autocomplete="email" placeholder="Email *"
+        <input id="leadEmail" type="email" autocomplete="email" placeholder="Email *" aria-label="Email"
           class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input id="leadPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)"
+          <input id="leadPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)" aria-label="Phone (optional)"
             class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <input id="leadCompany" type="text" autocomplete="organization" placeholder="Company (optional)"
+          <input id="leadCompany" type="text" autocomplete="organization" placeholder="Company (optional)" aria-label="Company (optional)"
             class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         </div>
         <p id="leadError" class="hidden text-sm text-red-600"></p>
@@ -411,25 +411,26 @@
         <h2 class="text-lg font-semibold text-slate-900">Submit a comp</h2>
         <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission, and brokers who contribute get qualified leads from us in return.</p>
         <form id="compForm2" class="space-y-3">
+          <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Your details</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input id="compBrokerName" type="text" autocomplete="name" placeholder="Your name *"
+            <input id="compBrokerName" type="text" autocomplete="name" placeholder="Your name *" aria-label="Your name"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="compBrokerEmail" type="email" autocomplete="email" placeholder="Email *"
+            <input id="compBrokerEmail" type="email" autocomplete="email" placeholder="Email *" aria-label="Email"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input id="compBrokerPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)"
+            <input id="compBrokerPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)" aria-label="Phone (optional)"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="compBrokerCompany" type="text" autocomplete="organization" placeholder="Brokerage (optional)"
+            <input id="compBrokerCompany" type="text" autocomplete="organization" placeholder="Brokerage (optional)" aria-label="Brokerage (optional)"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <div class="border-t border-slate-200 pt-3">
             <div class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">The comp</div>
-            <input id="compAddress" type="text" placeholder="Property address *"
+            <input id="compAddress" type="text" placeholder="Property address *" aria-label="Property address"
               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <select id="compType"
+            <select id="compType" aria-label="Property type"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
               <option value="Industrial" selected>Industrial</option>
               <option value="Office">Office</option>
@@ -438,25 +439,27 @@
               <option value="Land">Land</option>
               <option value="Residential">Residential</option>
             </select>
-            <select id="compTx"
+            <select id="compTx" aria-label="Transaction type"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
               <option value="Sale" selected>Sale</option>
               <option value="Lease">Lease</option>
             </select>
           </div>
-          <div class="grid grid-cols-2 gap-3">
-            <input id="compDate" type="text" placeholder="Close date, e.g. Mar 2026"
+          <!-- These placeholders double as field labels, so they stack on phones
+               instead of clipping in a half-width column. -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="compDate" type="text" placeholder="Close date, e.g. Mar 2026" aria-label="Close date"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="compSize" type="text" placeholder="Size (SF), e.g. 86,400"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <input id="compPrice" type="text" placeholder="Price / rate *"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="compCapRate" type="text" placeholder="Cap rate (optional)"
+            <input id="compSize" type="text" placeholder="Size (SF), e.g. 86,400" aria-label="Size in square feet"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
-          <textarea id="compNotes" rows="2" placeholder="Notes: tenant, condition, terms (optional)"
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="compPrice" type="text" placeholder="Price / rate *" aria-label="Price or rate"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="compCapRate" type="text" placeholder="Cap rate (optional)" aria-label="Cap rate (optional)"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <textarea id="compNotes" rows="2" placeholder="Notes: tenant, condition, terms (optional)" aria-label="Notes (optional)"
             class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
           <p id="compError" class="hidden text-sm text-red-600"></p>
           <button id="compSubmitBtn" type="submit"
@@ -592,7 +595,7 @@
         <!-- Target property (optional) -->
         <details class="border border-slate-200 rounded-lg bg-slate-50/60">
           <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-slate-700">
-            Compare your property <span class="text-slate-400 font-normal">(optional)</span>
+            <span>Compare your property <span class="text-slate-400 font-normal">(optional)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
             <p class="text-xs text-slate-500 mb-3">Enter your property's size and price (a single value or a range) to see how its $/SF stacks up against the comp average.</p>

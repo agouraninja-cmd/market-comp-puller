@@ -143,6 +143,17 @@
     /* The report is a data document: tabular (fixed-width) numerals keep digits
        aligned down the comps table, stat tiles, and value bands. */
     #reportArea { font-variant-numeric: tabular-nums; }
+
+    /* Comp number roundel — the same number marks the comp's table row, its
+       mobile card, and its map pin, comp-package style. Ink matches the
+       table header (slate-800). */
+    .comp-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.25rem; height: 1.25rem; border-radius: 9999px; flex-shrink: 0;
+      background: #1e293b; color: #fff;
+      font-size: 10px; font-weight: 600; line-height: 1;
+      font-variant-numeric: normal;
+    }
     @keyframes brandDrift {
       0%, 100% { background-position: 0% 0%; }
       50%      { background-position: 100% 100%; }
@@ -808,7 +819,7 @@
           </div>
           <div id="compMap" style="height: 340px;"></div>
           <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100">
-            Pin locations are approximate. <span class="font-medium text-brand-700">Red pin</span> = your property, gray dots = comps. Click a pin for details.
+            Pin locations are approximate. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
           </p>
         </div>
 
@@ -1702,15 +1713,17 @@
       bounds.push([sLat, sLng]);
     }
     pts.forEach((p) => {
+      // Each pin carries the comp's report-wide number, matching its table row.
       const dotIcon = L.divIcon({
         className: "",
-        html: '<div style="width:15px;height:15px;border-radius:50%;background:#64748b;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.35)"></div>',
-        iconSize: [15, 15], iconAnchor: [8, 8],
+        html: '<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#1e293b;color:#fff;font:600 11px Inter,sans-serif;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.35)">' + (p.c._num || "") + '</div>',
+        iconSize: [20, 20], iconAnchor: [10, 10],
       });
       const line2 = [p.c.price_or_rate, p.c.transaction].filter(Boolean).map(escMap).join(" · ");
+      const title = (p.c._num ? "Comp " + p.c._num + " — " : "") + (p.c.address || "Comp");
       L.marker([p.lat, p.lng], { icon: dotIcon })
         .addTo(mapInstance)
-        .bindPopup(`<strong>${escMap(p.c.address || "Comp")}</strong>${line2 ? "<br>" + line2 : ""}`);
+        .bindPopup(`<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`);
       bounds.push([p.lat, p.lng]);
     });
 
@@ -1812,6 +1825,10 @@
       throw new Error("Parsed response is missing a 'comps' array.");
     }
     currentComps = parsed.comps;
+    // Number the comps once, in arrival order. The number is the comp's
+    // identity for the whole report — it survives sorting and filtering, and
+    // the map pin carries the same digit.
+    currentComps.forEach((c, i) => { c._num = i + 1; });
     currentMeta = meta;
     sortState = { key: null, dir: 1 };
     COLUMNS = columnsForType(meta.type);   // Industrial adds Clear Height + Dock Doors
@@ -2281,6 +2298,35 @@
     return comp.verified === true || String(comp.verified).toLowerCase() === "true";
   }
 
+  // The comp's report-wide number (assigned in renderResults) as a roundel.
+  function compNumBadge(comp) {
+    if (!comp._num) return null;
+    const n = document.createElement("span");
+    n.className = "comp-num";
+    n.textContent = comp._num;
+    return n;
+  }
+
+  // Sale = filled chip, Lease = outlined chip — tells apart at a glance
+  // without leaving the slate palette.
+  function transactionPill(val) {
+    const pill = document.createElement("span");
+    const isLease = String(val).toLowerCase().startsWith("lease");
+    pill.className = "inline-flex items-center text-xs font-medium rounded-full px-2.5 py-0.5 border " +
+      (isLease ? "bg-white border-slate-300 text-slate-600" : "bg-slate-100 border-slate-200 text-slate-700");
+    pill.textContent = val;
+    return pill;
+  }
+
+  // Address split for two-line cells: street bold, city/state small and gray.
+  function addressLines(val) {
+    const s = String(val || "-");
+    const comma = s.indexOf(",");
+    return comma > -1
+      ? { street: s.slice(0, comma), rest: s.slice(comma + 1).trim() }
+      : { street: s, rest: "" };
+  }
+
   function verifiedBadge(comp) {
     // Broker-submitted comps reviewed by the team get a trust badge.
     if (!isVerifiedComp(comp)) return null;
@@ -2346,16 +2392,35 @@
           } else {
             cell.textContent = "-";
           }
+        } else if (col.key === "address") {
+          // Numbered roundel + two-line address (street bold, city gray).
+          // Margins, not flex gap — the PNG exporter can't render gap.
+          cell.className = "flex items-start";
+          const num = compNumBadge(comp);
+          if (num) { num.classList.add("mr-1.5", "mt-0.5"); cell.appendChild(num); }
+          const wrap = document.createElement("div");
+          const { street, rest } = addressLines(val);
+          const line1 = document.createElement("div");
+          line1.className = "font-medium text-slate-900";
+          line1.textContent = street;
+          const b = verifiedBadge(comp);
+          if (b) {
+            // Pop in just after the row's own entrance; re-sorts skip it.
+            if (animateIn) { b.classList.add("badge-in"); b.style.animationDelay = (Math.min(idx * 45, 450) + 250) + "ms"; }
+            line1.appendChild(b);
+          }
+          wrap.appendChild(line1);
+          if (rest) {
+            const line2 = document.createElement("div");
+            line2.className = "text-xs text-slate-500 mt-0.5";
+            line2.textContent = rest;
+            wrap.appendChild(line2);
+          }
+          cell.appendChild(wrap);
+        } else if (col.key === "transaction" && val) {
+          cell.appendChild(transactionPill(val));
         } else {
           cell.textContent = (val === undefined || val === null || val === "") ? "-" : val;
-          if (col.key === "address") {
-            const b = verifiedBadge(comp);
-            if (b) {
-              // Pop in just after the row's own entrance; re-sorts skip it.
-              if (animateIn) { b.classList.add("badge-in"); b.style.animationDelay = (Math.min(idx * 45, 450) + 250) + "ms"; }
-              cell.appendChild(b);
-            }
-          }
           if (col.isDate) {
             const b = outsideWindowBadge(val);
             if (b) cell.appendChild(b);
@@ -2392,16 +2457,31 @@
       card.className = "px-6 py-4" + (animateIn ? " row-in" : "");
       if (animateIn) card.style.animationDelay = Math.min(idx * 45, 450) + "ms";
 
+      // Card header mirrors the table's address cell: roundel + two-line address.
       const head = document.createElement("div");
-      head.className = "font-semibold text-slate-900 text-sm leading-snug";
-      head.textContent = comp.address || "-";
+      head.className = "flex items-start";
+      const num = compNumBadge(comp);
+      if (num) { num.classList.add("mr-1.5", "mt-0.5"); head.appendChild(num); }
+      const headText = document.createElement("div");
+      const { street, rest } = addressLines(comp.address);
+      const line1 = document.createElement("div");
+      line1.className = "font-semibold text-slate-900 text-sm leading-snug";
+      line1.textContent = street;
       const vb = verifiedBadge(comp);
       if (vb) {
         if (animateIn) { vb.classList.add("badge-in"); vb.style.animationDelay = (Math.min(idx * 45, 450) + 250) + "ms"; }
-        head.appendChild(vb);
+        line1.appendChild(vb);
       }
       const db = outsideWindowBadge(comp.date);
-      if (db) head.appendChild(db);
+      if (db) line1.appendChild(db);
+      headText.appendChild(line1);
+      if (rest) {
+        const line2 = document.createElement("div");
+        line2.className = "text-xs text-slate-500 mt-0.5";
+        line2.textContent = rest;
+        headText.appendChild(line2);
+      }
+      head.appendChild(headText);
       card.appendChild(head);
 
       const rows = document.createElement("dl");
@@ -2432,6 +2512,8 @@
           a.title = val;
           a.className = "text-brand-700 underline decoration-brand-300";
           dd.appendChild(a);
+        } else if (col.key === "transaction" && !empty) {
+          dd.appendChild(transactionPill(val));
         } else {
           dd.textContent = empty ? "-" : val;
         }

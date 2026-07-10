@@ -576,10 +576,10 @@
         <!-- Target property (optional) -->
         <details class="border border-slate-200 rounded-lg bg-slate-50/60">
           <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-slate-700">
-            Compare a subject property <span class="text-slate-400 font-normal">(optional)</span>
+            Compare your property <span class="text-slate-400 font-normal">(optional)</span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p class="text-xs text-slate-500 mb-3">Enter your subject property's size and price (a single value or a range) to see how its $/SF stacks up against the comp average.</p>
+            <p class="text-xs text-slate-500 mb-3">Enter your property's size and price (a single value or a range) to see how its $/SF stacks up against the comp average.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Target Size (SF)</label>
@@ -780,16 +780,16 @@
           </div>
           <div id="compMap" style="height: 340px;"></div>
           <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100">
-            Pin locations are approximate. <span class="font-medium text-brand-700">Blue pin</span> = subject property, gray dots = comps. Click a pin for details.
+            Pin locations are approximate. <span class="font-medium text-brand-700">Blue pin</span> = your property, gray dots = comps. Click a pin for details.
           </p>
         </div>
 
         <!-- Target comparison card -->
         <div id="compareCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
-          <h2 class="text-lg font-semibold text-slate-900 mb-4">Subject vs. Market</h2>
+          <h2 class="text-lg font-semibold text-slate-900 mb-4">Your Property vs. Market</h2>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs uppercase tracking-wide text-slate-400">Subject $/SF</div>
+              <div class="text-xs uppercase tracking-wide text-slate-400">Your Property $/SF</div>
               <div id="targetPpsfVal" class="text-2xl font-bold text-slate-900 mt-1">-</div>
               <div id="targetBasis" class="text-xs text-slate-400 mt-1"></div>
             </div>
@@ -841,7 +841,7 @@
             </div>
           </div>
           <p class="text-xs text-slate-500 mt-4">
-            Computed by applying the sale comps&rsquo; $/SF range to the subject&rsquo;s square footage. An indication of market positioning, not an appraisal.
+            Computed by applying the sale comps&rsquo; $/SF range to your property&rsquo;s square footage. An indication of market positioning, not an appraisal.
           </p>
         </div>
 
@@ -954,7 +954,7 @@
               <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-white text-sm font-bold shrink-0 shadow-sm">3</span>
               <h3 class="font-semibold text-slate-900">Get a decision-ready report</h3>
             </div>
-            <p class="text-sm text-slate-500 leading-relaxed">Market summary, average $/SF, a sortable comp table, and a subject-vs-market comparison, ready in under a minute.</p>
+            <p class="text-sm text-slate-500 leading-relaxed">Market summary, average $/SF, a sortable comp table, and a comparison of your property vs. the market, ready in under a minute.</p>
           </div>
         </div>
       </section>
@@ -975,7 +975,7 @@
             <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-6 4 3 5-7"/></svg>
             </span>
-            <h3 class="font-semibold text-slate-900 mb-1">Subject vs. market</h3>
+            <h3 class="font-semibold text-slate-900 mb-1">Your property vs. market</h3>
             <p class="text-sm text-slate-500 leading-relaxed">See your property's $/SF against the comp average, with the premium or discount quantified.</p>
           </div>
           <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
@@ -1404,7 +1404,7 @@
       deltaVal.textContent = "-";
       deltaPct.textContent = "";
       verdict.textContent =
-        "The comparables did not return a numeric average $/SF, so a direct numeric comparison isn't available. The subject property's $/SF is shown above. Review it against the $/SF column in the table below.";
+        "The comparables did not return a numeric average $/SF, so a direct numeric comparison isn't available. Your property's $/SF is shown above. Review it against the $/SF column in the table below.";
       card.classList.remove("hidden");
       return;
     }
@@ -1416,7 +1416,7 @@
       deltaVal.textContent = "In range";
       deltaPct.textContent = "market avg falls inside your range";
       verdict.textContent =
-        `The comparable average (${formatUsd(marketPpsf)} per SF) falls within the subject's range of ${formatUsd(ppsfLo)}–${formatUsd(ppsfHi)} per SF. The subject is priced in line with the market.`;
+        `The comparable average (${formatUsd(marketPpsf)} per SF) falls within your property's range of ${formatUsd(ppsfLo)}–${formatUsd(ppsfHi)} per SF. Your property is priced in line with the market.`;
       card.classList.remove("hidden");
       return;
     }
@@ -1434,8 +1434,8 @@
     deltaPct.textContent = Math.abs(pct).toFixed(1) + "% " + (above ? "above" : "below") + " market average" + (isRange ? " (midpoint)" : "");
 
     verdict.textContent = above
-      ? `The subject property is priced approximately ${Math.abs(pct).toFixed(1)}% above the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF). Confirm that quality, location, or income supports the premium.`
-      : `The subject property is priced approximately ${Math.abs(pct).toFixed(1)}% below the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF), which may indicate value, subject to condition and income.`;
+      ? `Your property is priced approximately ${Math.abs(pct).toFixed(1)}% above the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF). Confirm that quality, location, or income supports the premium.`
+      : `Your property is priced approximately ${Math.abs(pct).toFixed(1)}% below the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF), which may indicate value, subject to condition and income.`;
 
     card.classList.remove("hidden");
   }
@@ -1579,7 +1579,7 @@
     svg += `</svg>`;
 
     document.getElementById("chartBasis").textContent =
-      `${pts.length} sale comps` + (youLo !== null ? " · subject shown" : "");
+      `${pts.length} sale comps` + (youLo !== null ? " · your property shown" : "");
     document.getElementById("chartWrap").innerHTML = svg;
     card.classList.remove("hidden");
     armWhenVisible(card, "in-view");
@@ -1639,7 +1639,7 @@
       });
       L.marker([sLat, sLng], { icon: subjIcon, zIndexOffset: 1000 })
         .addTo(mapInstance)
-        .bindPopup(`<strong>Subject:</strong> ${escMap(meta.address)}`);
+        .bindPopup(`<strong>Your property:</strong> ${escMap(meta.address)}`);
       bounds.push([sLat, sLng]);
     }
     pts.forEach((p) => {

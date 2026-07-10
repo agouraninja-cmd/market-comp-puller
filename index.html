@@ -773,7 +773,9 @@
             <div class="min-w-0">
               <div class="text-xs uppercase tracking-wider text-brand-700 font-semibold">Market Comparables Report</div>
               <h2 id="reportAddress" class="text-2xl font-bold text-slate-900 mt-1"></h2>
-              <div id="reportMeta" class="flex flex-wrap gap-1.5 mt-2"></div>
+              <!-- Chip spacing uses margins, not flex gap — html2canvas (PNG
+                   export) doesn't render flex gap and would fuse the chips. -->
+              <div id="reportMeta" class="flex flex-wrap mt-1"></div>
             </div>
           </div>
         </div>
@@ -1824,7 +1826,7 @@
     metaBox.innerHTML = "";
     metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
       const chip = document.createElement("span");
-      chip.className = "inline-flex items-center bg-slate-100 text-slate-600 text-xs rounded-full px-2.5 py-1";
+      chip.className = "inline-flex items-center bg-slate-100 text-slate-600 text-xs rounded-full px-2.5 py-1 mr-1.5 mt-1";
       chip.textContent = part;
       metaBox.appendChild(chip);
     });

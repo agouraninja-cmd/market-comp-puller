@@ -325,6 +325,8 @@
       body { background: #fff; }
       .no-print { display: none !important; }
       .print-only { display: block; }
+      /* The letterhead above the report already carries the brand on paper. */
+      .report-lockup { display: none; }
       #reportArea { box-shadow: none; }
       .print-shadow-none { box-shadow: none !important; border-color: #e2e8f0 !important; }
       @page { margin: 14mm 12mm; }
@@ -750,15 +752,13 @@
           </div>
         </div>
 
-        <!-- Report header (gives the screenshot context) -->
+        <!-- Report header (gives the screenshot context). The lockup is first in
+             the DOM so it tops the stack on phones; sm:flex-row-reverse puts it
+             back on the right on wider screens. Hidden in print — the letterhead
+             above already carries the brand there. -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <div class="text-xs uppercase tracking-wider text-brand-700 font-semibold">Market Comparables Report</div>
-              <h2 id="reportAddress" class="text-xl font-bold text-slate-900 mt-1"></h2>
-              <div id="reportMeta" class="text-sm text-slate-500 mt-0.5"></div>
-            </div>
-            <div class="shrink-0 flex items-center gap-2">
+          <div class="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
+            <div class="report-lockup shrink-0 flex items-center gap-2">
               <svg class="h-7 w-7 shrink-0" viewBox="0 0 44 44" aria-hidden="true">
                 <rect width="44" height="44" rx="10" fill="#1E293B"/>
                 <rect x="6" y="17" width="32" height="10" rx="5" fill="#DC2626"/>
@@ -766,6 +766,11 @@
                 <circle cx="27" cy="22" r="2.8" fill="#1E293B"/>
               </svg>
               <div class="font-brand uppercase text-xl font-semibold tracking-wide text-slate-900">Comp<span class="text-brand-600">Ninja</span></div>
+            </div>
+            <div class="min-w-0">
+              <div class="text-xs uppercase tracking-wider text-brand-700 font-semibold">Market Comparables Report</div>
+              <h2 id="reportAddress" class="text-2xl font-bold text-slate-900 mt-1"></h2>
+              <div id="reportMeta" class="flex flex-wrap gap-1.5 mt-2"></div>
             </div>
           </div>
         </div>
@@ -794,7 +799,7 @@
           </div>
           <div id="compMap" style="height: 340px;"></div>
           <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100">
-            Pin locations are approximate. <span class="font-medium text-brand-700">Blue pin</span> = your property, gray dots = comps. Click a pin for details.
+            Pin locations are approximate. <span class="font-medium text-brand-700">Red pin</span> = your property, gray dots = comps. Click a pin for details.
           </p>
         </div>
 
@@ -1131,8 +1136,8 @@
   let currentMeta = null;
   let sortState = { key: null, dir: 1 };
 
-  // "Industrial · submarket note · Last 24 months · Sales & Leases"
-  function metaLine(meta) {
+  // ["Industrial", "submarket note", "Last 24 months", "Sales & Leases"]
+  function metaParts(meta) {
     const parts = [meta.type];
     if (meta.note) parts.push(meta.note);
     if (meta.months) parts.push(meta.months === 1 ? "Last 1 month" : `Last ${meta.months} months`);
@@ -1140,8 +1145,9 @@
       parts.push(meta.txFocus === "sales" ? "Sales only"
                : meta.txFocus === "leases" ? "Leases only" : "Sales & Leases");
     }
-    return parts.join(" · ");
+    return parts;
   }
+  function metaLine(meta) { return metaParts(meta).join(" · "); }
 
   // Lookback controls — the select's "custom" option reveals a months input.
   const lookbackSel = document.getElementById("lookback");
@@ -1435,7 +1441,7 @@
     animateValue(document.getElementById("marketPpsfVal"), marketPpsf, (v) => formatUsd(v));
 
     if (isRange && marketPpsf >= ppsfLo && marketPpsf <= ppsfHi) {
-      deltaTile.className = "rounded-lg border p-4 bg-sky-50 border-sky-200 text-sky-800";
+      deltaTile.className = "rounded-lg border p-4 bg-slate-50 border-slate-300 text-slate-800";
       deltaVal.textContent = "In range";
       deltaPct.textContent = "market avg falls inside your range";
       verdict.textContent =
@@ -1589,8 +1595,8 @@
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="100" text-anchor="start" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="100" text-anchor="end" font-size="10" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="100" text-anchor="start" font-size="11" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="100" text-anchor="end" font-size="11" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
@@ -1657,7 +1663,7 @@
     if (hasSubject) {
       const subjIcon = L.divIcon({
         className: "",
-        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#145192;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
+        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       L.marker([sLat, sLng], { icon: subjIcon, zIndexOffset: 1000 })
@@ -1743,13 +1749,23 @@
       label.className = "text-xs font-semibold uppercase tracking-wider text-slate-400";
       label.textContent = t.label;
       const value = document.createElement("div");
-      // Avg $/SF can come back as a long range string — step the size down so it fits.
-      value.className = (String(t.value).length > 14 ? "text-base" : "text-2xl") +
+      // A parenthetical qualifier ("$113 (sale comps)") moves to a sub-label so
+      // every tile's number renders at the same size.
+      const qual = String(t.value).match(/^(.*?)\s*\((.+)\)\s*$/);
+      const valueText = qual ? qual[1] : String(t.value);
+      // Only a genuinely long cleaned value (e.g. a $ range) steps down, one notch.
+      value.className = (valueText.length > 16 ? "text-xl" : "text-2xl") +
         " font-bold text-slate-900 mt-1 leading-snug break-words";
       // Purely numeric stats count up once; string stats render as-is.
       if (t.animate) animateValue(value, t.animate.target, t.animate.format);
-      else value.textContent = t.value;
+      else value.textContent = valueText;
       tile.append(label, value);
+      if (qual) {
+        const sub = document.createElement("div");
+        sub.className = "text-xs text-slate-400 mt-1";
+        sub.textContent = qual[2];
+        tile.appendChild(sub);
+      }
       // The Avg $/SF tile gets the arrival spotlight and its spread bar.
       if (t.label === "Avg $/SF") {
         tile.classList.add("tile-spotlight");
@@ -1779,8 +1795,16 @@
     // Report header (reopened reports keep their original generation date)
     document.getElementById("reportAddress").textContent = meta.address;
     const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-    document.getElementById("reportMeta").textContent =
-      `${metaLine(meta)} · Generated ${dateStr}`;
+    // Each meta part renders as a small chip — scans better than one dot-joined
+    // line, especially in the PNG export and on phones.
+    const metaBox = document.getElementById("reportMeta");
+    metaBox.innerHTML = "";
+    metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
+      const chip = document.createElement("span");
+      chip.className = "inline-flex items-center bg-slate-100 text-slate-600 text-xs rounded-full px-2.5 py-1";
+      chip.textContent = part;
+      metaBox.appendChild(chip);
+    });
     document.getElementById("printDate").textContent = "Generated " + dateStr;
 
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";

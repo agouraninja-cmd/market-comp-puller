@@ -145,12 +145,13 @@
     #reportArea { font-variant-numeric: tabular-nums; }
 
     /* Comp number roundel — the same number marks the comp's table row, its
-       mobile card, and its map pin, comp-package style. Ink matches the
-       table header (slate-800). */
+       mobile card, and its map pin, comp-package style. In the table it stays
+       quiet (light chip); the map pin carries the strong dark version inline,
+       where it needs to read against the basemap. */
     .comp-num {
       display: inline-flex; align-items: center; justify-content: center;
       width: 1.25rem; height: 1.25rem; border-radius: 9999px; flex-shrink: 0;
-      background: #1e293b; color: #fff;
+      background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
       font-size: 10px; font-weight: 600; line-height: 1;
       font-variant-numeric: normal;
     }

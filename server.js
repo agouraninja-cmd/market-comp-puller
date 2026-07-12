@@ -219,7 +219,7 @@ async function fetchVerifiedComps(type, txFocus) {
   }
 }
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps) {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -240,8 +240,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 
   // Industrial comps carry two extra physical-spec fields.
   const compShape = isIndustrial
-    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "", "verified": false }`
-    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "lat": "", "lng": "", "verified": false }`;
+    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`
+    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`;
 
   // Trusted internal comps get their own prompt section when any exist.
   const verifiedBlock = (verifiedComps && verifiedComps.length) ? [
@@ -258,6 +258,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `TARGET PROPERTY:`,
     `- Address: ${address}`,
     `- Property type: ${type}`,
+    subjectSizeSqft ? `- Approximate building size: ${subjectSizeSqft.toLocaleString("en-US")} SF` : "",
     note ? `- Market note / radius: ${note}` : `- Market note / radius: (none specified — use the immediate submarket)`,
     ``,
     `TASK: Find 3 to ${maxComps} RECENT ${
@@ -268,6 +269,9 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Today's date is ${todayStr}. Comps MUST be dated ${cutoffStr} or later (the last ${months === 1 ? "1 month" : months + " months"}). If you cannot find at least 3 comps inside that window, you may include older comps to reach 3, but you MUST state in "summary" that some comps fall outside the requested ${months}-month window.`,
     txFocus === "sales"  ? `Include ONLY sale transactions — do NOT include lease comps.` :
     txFocus === "leases" ? `Include ONLY lease transactions or active lease listings — do NOT include sale comps.` : "",
+    ownerMode
+      ? `This report is for the property OWNER estimating what their building is worth. Strongly prefer closed SALES of ${type} properties of broadly similar size (roughly half to double the subject square footage) in the same submarket. Recency and physical similarity matter more than hitting the maximum comp count.`
+      : "",
     typeGuidance[type] || "",
     isIndustrial
       ? `For EACH industrial comp, also report two building specs: "clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level"). Search listing pages, brokerage flyers, and property records for these. If a spec genuinely can't be found, use an empty string "" — do not guess.`
@@ -283,12 +287,15 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `  "avg_price_per_sqft": "string or null",`,
     `  "subject_lat": "",`,
     `  "subject_lng": "",`,
+    ...(ownerMode ? [`  "market_cap_rate_range": { "low": "", "high": "" },`] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
     `}`,
     ``,
     `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
+    ...(ownerMode ? [`"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`] : []),
   ].join("\n");
 }
 
@@ -322,17 +329,36 @@ function stripEmDashes(value) {
   return value;
 }
 
+// source_type drives a trust badge and lands in CSV exports, so stray model
+// values are coerced onto the enum. Unknown maps to "estimate": the label may
+// under-claim a comp's provenance, never over-claim it.
+const SOURCE_TYPES = ["public_record", "listing", "news", "estimate"];
+function normalizeSourceTypes(parsed) {
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  for (const c of parsed.comps) {
+    if (!c || typeof c !== "object") continue;
+    const raw = String(c.source_type || "").toLowerCase();
+    c.source_type =
+      SOURCE_TYPES.find((t) => raw === t) ||
+      (/record|assessor|deed|tax|county|public/.test(raw) ? "public_record"
+        : /list|broker|flyer|loopnet|crexi|costar/.test(raw) ? "listing"
+        : /news|article|press|announc/.test(raw) ? "news"
+        : "estimate");
+  }
+  return parsed;
+}
+
 // ---------------------------------------------------------------------------
 // Call the Anthropic Messages API with web search enabled
 // ---------------------------------------------------------------------------
 const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft) {
   const body = {
     model: MODEL,
     max_tokens: 3200,
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps) }],
+    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft) }],
   };
 
   const controller = new AbortController();
@@ -375,10 +401,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
-  return parseCompJson(text);
+  return normalizeSourceTypes(parseCompJson(text));
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus) {
+async function getComps(address, type, note, months, maxComps, txFocus, ownerMode, subjectSizeSqft) {
   const verifiedComps = await fetchVerifiedComps(type, txFocus);
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
@@ -386,11 +412,11 @@ async function getComps(address, type, note, months, maxComps, txFocus) {
   // The model occasionally wraps the JSON in stray text; one silent retry
   // resolves most of those instead of surfacing a parse error to the user.
   try {
-    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps);
+    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
-      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps);
+      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft);
     }
     throw err;
   }
@@ -423,7 +449,7 @@ const server = http.createServer((req, res) => {
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus, mode, subjectSizeSqft } = JSON.parse(body || "{}");
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
@@ -437,7 +463,10 @@ const server = http.createServer((req, res) => {
         const monthsOk = Number.isFinite(monthsNum) ? Math.min(120, Math.max(1, monthsNum)) : 24;
         const maxCompsOk = [4, 6, 8].includes(Number(maxComps)) ? Number(maxComps) : 8;
         const txFocusOk = ["both", "sales", "leases"].includes(String(txFocus)) ? String(txFocus) : "both";
-        const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "", monthsOk, maxCompsOk, txFocusOk);
+        const ownerMode = mode === "owner";
+        const sizeNum = Math.round(Number(subjectSizeSqft));
+        const sizeOk = Number.isFinite(sizeNum) && sizeNum > 0 ? Math.min(20_000_000, sizeNum) : null;
+        const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "", monthsOk, maxCompsOk, txFocusOk, ownerMode, sizeOk);
         return sendJson(res, 200, result);
       } catch (err) {
         console.error("Error handling /api/comps:", err);
@@ -463,7 +492,7 @@ const server = http.createServer((req, res) => {
         if (rateLimited("lead:" + clientIp(req))) {
           return sendJson(res, 429, { error: "Too many submissions. Please try again later." });
         }
-        const { name, email, phone, company, address, type } = JSON.parse(body || "{}");
+        const { name, email, phone, company, address, type, source } = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
         const lead = {
           ts: new Date().toISOString(),
@@ -473,6 +502,9 @@ const server = http.createServer((req, res) => {
           company: clean(company, 120),
           address: clean(address, 300),
           type: clean(type, 40),
+          // "bov" = the owner-mode Broker Opinion of Value request; anything
+          // else is the export-unlock form.
+          source: ["export", "bov"].includes(source) ? source : "export",
         };
         if (!lead.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
           return sendJson(res, 400, { error: "A name and a valid email are required." });
@@ -494,7 +526,7 @@ const server = http.createServer((req, res) => {
   // handed to a contributing broker; new leads arrive with it empty.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/leads") {
     return sendCsvDownload(req, res, "leads", LEADS_FILE,
-      ["ts", "name", "email", "phone", "company", "address", "type", "referred_to"], "leads.csv");
+      ["ts", "name", "email", "phone", "company", "address", "type", "source", "referred_to"], "leads.csv");
   }
 
   // --- Broker comp submission: stores a comp offered by an outside broker ---

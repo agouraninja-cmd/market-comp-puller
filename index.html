@@ -866,6 +866,15 @@
           <p id="summaryText" class="text-slate-700 leading-relaxed max-w-4xl"></p>
         </div>
 
+        <!-- What's driving your number (owner mode only) — the market trend and
+             the concrete factors behind the estimate, in plain English. Built by
+             renderValueDrivers(); hidden when the model returns neither. -->
+        <div id="driversCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-3">What's Driving Your Number</h2>
+          <p id="marketTrend" class="hidden text-sm font-medium text-slate-700"></p>
+          <div id="driversList" class="text-sm text-slate-600 leading-relaxed"></div>
+        </div>
+
         <!-- Comp map (shown when the comps carry coordinates) -->
         <div id="mapCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
           <div class="px-6 py-4 border-b border-slate-200">
@@ -903,7 +912,7 @@
         <!-- Market position: each sale comp $/SF on a strip, with the average and the subject -->
         <div id="chartCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-1">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Market Position</h2>
+            <h2 id="chartTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Market Position</h2>
             <span id="chartBasis" class="text-xs text-slate-400"></span>
           </div>
           <p class="text-xs text-slate-400 mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
@@ -938,8 +947,16 @@
           </p>
         </div>
 
-        <!-- Comps table -->
+        <!-- Comps table. In owner mode the whole body is tucked behind the
+             disclosure row below — the owner report leads with the answer and
+             keeps the evidence one click away (print force-opens it). -->
         <div id="compsCard" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
+          <button id="compsToggle" type="button" style="display:none"
+            class="no-print w-full items-center justify-between gap-3 px-6 py-4 text-left hover:bg-slate-50">
+            <span class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">See the <span id="compsToggleCount"></span> sales behind this estimate</span>
+            <svg id="compsChev" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0 text-slate-400" style="transition: transform .25s ease" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="compsBody">
           <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comparable Properties</h2>
             <div class="flex items-center gap-3">
@@ -968,6 +985,7 @@
                Built by renderBadgeLegend(). -->
           <p id="badgeLegend" class="hidden text-xs text-slate-400 px-6 py-2.5 border-t border-slate-100"></p>
           <p class="hidden sm:block text-xs text-slate-400 px-6 py-2 border-t border-slate-100 no-print">Click a column header to sort.</p>
+          </div>
         </div>
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
@@ -983,12 +1001,18 @@
 
       <!-- Broker CTA — screen only, shown on lead-capture deployments -->
       <div id="ctaCard" class="hidden no-print mt-6 rounded-xl bg-gradient-to-br from-slate-900 to-brand-900 text-white p-6 sm:p-8 fade-in">
-        <h2 class="text-lg font-bold">Thinking about selling or leasing this property?</h2>
-        <p class="text-sm text-slate-300 mt-1 mb-4 max-w-2xl">These comps are a starting point. Reach out and we will connect you with a local broker who really knows your market, at no cost to you.</p>
+        <h2 id="ctaTitle" class="text-lg font-bold">Thinking about selling or leasing this property?</h2>
+        <p id="ctaText" class="text-sm text-slate-300 mt-1 mb-4 max-w-2xl">These comps are a starting point. Reach out and we will connect you with a local broker who really knows your market, at no cost to you.</p>
         <a id="ctaLink" href="mailto:agouraninja@gmail.com"
           class="btn-live inline-flex items-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50">
           Get in touch
         </a>
+        <!-- Owner-mode counterpart: the closing ask is the same BOV request as
+             the hero button, for readers who scrolled past it. -->
+        <button id="ctaBovBtn" type="button"
+          class="hidden btn-live inline-flex items-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50 disabled:opacity-60 disabled:cursor-not-allowed">
+          Get a free Broker Opinion of Value
+        </button>
       </div>
     </div>
 
@@ -1775,10 +1799,38 @@
     }
 
     // Fresh CTA state per report — a prior "Request sent" shouldn't stick.
-    const btn = document.getElementById("bovCtaBtn");
-    btn.disabled = false;
-    btn.textContent = "Get a free Broker Opinion of Value";
+    // Both BOV buttons (hero + closing card) reset together.
+    ["bovCtaBtn", "ctaBovBtn"].forEach((id) => {
+      const btn = document.getElementById(id);
+      btn.disabled = false;
+      btn.textContent = "Get a free Broker Opinion of Value";
+    });
 
+    card.classList.remove("hidden");
+  }
+
+  // "What's driving your number" — owner-mode card listing the market trend and
+  // the concrete factors the model found behind the estimate. Hidden whenever
+  // the report has neither (comps mode, legacy saved reports, thin data).
+  function renderValueDrivers(parsed, meta) {
+    const card = document.getElementById("driversCard");
+    const trendEl = document.getElementById("marketTrend");
+    const listEl = document.getElementById("driversList");
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+    const owner = meta && meta.mode === "owner";
+    const trend = owner && parsed ? String(parsed.market_trend || "").trim() : "";
+    const drivers = owner && parsed && Array.isArray(parsed.value_drivers)
+      ? parsed.value_drivers.map((d) => String(d || "").trim()).filter(Boolean).slice(0, 4)
+      : [];
+    if (!trend && !drivers.length) { card.classList.add("hidden"); return; }
+
+    trendEl.textContent = trend;
+    trendEl.classList.toggle("hidden", !trend);
+    // Text bullets + margins (not list markup or flex gap) so the PNG exporter
+    // renders the spacing faithfully.
+    listEl.innerHTML = drivers.map((d) => `<p class="mt-2">&bull; ${esc(d)}</p>`).join("");
     card.classList.remove("hidden");
   }
 
@@ -2120,6 +2172,7 @@
     // Hero first: a looked-up building size auto-fills the form input, and the
     // comparison + chart below read that same input.
     renderOwnerHero(parsed, meta);
+    renderValueDrivers(parsed, meta);
     renderComparison(parsed);
     if (meta.mode === "owner") {
       // The owner hero is the headline valuation; the standalone value card
@@ -2128,18 +2181,37 @@
     } else {
       renderValueEstimate();
     }
+    document.getElementById("chartTitle").textContent =
+      meta.mode === "owner" ? "Where Your Building Sits" : "Market Position";
     renderMarketChart();
     renderTableHead();
     renderTableBody();
+
+    // Owner mode tucks the comp table behind a disclosure — the report leads
+    // with the answer and keeps the evidence one click away. Comps mode keeps
+    // the table always expanded, exactly as before.
+    const ownerReport = meta.mode === "owner";
+    document.getElementById("compsToggle").style.display = ownerReport ? "flex" : "none";
+    document.getElementById("compsToggleCount").textContent = String(visibleComps().length);
+    document.getElementById("compsBody").classList.toggle("hidden", ownerReport);
+    document.getElementById("compsChev").style.transform = "";
     if (!meta.sample && !meta.fromHistory) {
       saveRecentSearch(meta);
       saveReport(meta, parsed);
     }
-    // Broker CTA — only on lead-capture (public) deployments, with the subject
-    // property prefilled so the inbound email says which building it's about.
+    // Broker CTA — only on lead-capture (public) deployments. Comps mode keeps
+    // the mailto ask; owner mode repurposes the card as a closing BOV request
+    // (the same ask as the hero button, for readers who scrolled past it).
     const cta = document.getElementById("ctaCard");
-    // Owner mode hides the mailto CTA — the hero's BOV button is the same ask.
-    cta.classList.toggle("hidden", !leadCaptureEnabled || meta.mode === "owner");
+    cta.classList.toggle("hidden", !leadCaptureEnabled);
+    document.getElementById("ctaTitle").textContent = ownerReport
+      ? "Want a number you can act on?"
+      : "Thinking about selling or leasing this property?";
+    document.getElementById("ctaText").textContent = ownerReport
+      ? "This estimate is a starting point. Get a free Broker Opinion of Value from a licensed local broker who knows your market. No cost, no obligation."
+      : "These comps are a starting point. Reach out and we will connect you with a local broker who really knows your market, at no cost to you.";
+    document.getElementById("ctaLink").classList.toggle("hidden", ownerReport);
+    document.getElementById("ctaBovBtn").classList.toggle("hidden", !ownerReport);
     document.getElementById("ctaLink").href =
       "mailto:agouraninja@gmail.com?subject=" +
       encodeURIComponent(`What is my property worth? ${meta.address}`);
@@ -3089,11 +3161,14 @@
       try { localStorage.setItem("leadInfo", JSON.stringify({ name: payload.name, email: payload.email })); } catch (_) {}
       document.getElementById("leadModal").classList.add("hidden");
       if (leadContext === "bov") {
-        // A BOV request is its own ask — confirm on the CTA, don't run exports.
+        // A BOV request is its own ask — confirm on both CTAs (hero + closing
+        // card), don't run exports.
         pendingExport = null;
-        const cta = document.getElementById("bovCtaBtn");
-        cta.disabled = true;
-        cta.textContent = "Request sent. We'll be in touch.";
+        ["bovCtaBtn", "ctaBovBtn"].forEach((id) => {
+          const cta = document.getElementById(id);
+          cta.disabled = true;
+          cta.textContent = "Request sent. We'll be in touch.";
+        });
       } else {
         const run = pendingExport;
         pendingExport = null;
@@ -3116,9 +3191,23 @@
     flashExportDone(document.getElementById("printBtn"), "Done");
   }));
 
-  // Owner-mode hero CTA — always opens the modal (an explicit BOV request,
+  // Owner-mode BOV CTAs — always open the modal (an explicit BOV request,
   // not an export gate), even when exports are already unlocked.
   document.getElementById("bovCtaBtn").addEventListener("click", () => openLeadModal("bov"));
+  document.getElementById("ctaBovBtn").addEventListener("click", () => openLeadModal("bov"));
+
+  // Owner-mode comp-table disclosure.
+  document.getElementById("compsToggle").addEventListener("click", () => {
+    const open = !document.getElementById("compsBody").classList.toggle("hidden");
+    document.getElementById("compsChev").style.transform = open ? "rotate(180deg)" : "";
+  });
+  // Print must include the evidence even when the owner view keeps it tucked away.
+  window.addEventListener("beforeprint", () => {
+    if (currentMeta && currentMeta.mode === "owner") {
+      document.getElementById("compsBody").classList.remove("hidden");
+      document.getElementById("compsChev").style.transform = "rotate(180deg)";
+    }
+  });
 
   // ----------------------------------------------------------------------------
   // Broker comp submission — outside brokers offer verified comps; stored

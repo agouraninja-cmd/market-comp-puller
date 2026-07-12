@@ -286,11 +286,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ``,
     `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
     `{`,
-    `  "summary": "2-3 sentence written takeaway about the local market",`,
+    ownerMode
+      ? `  "summary": "3-5 sentence plain-English takeaway written directly TO the property owner",`
+      : `  "summary": "2-3 sentence written takeaway about the local market",`,
     `  "avg_price_per_sqft": "string or null",`,
     `  "subject_lat": "",`,
     `  "subject_lng": "",`,
-    ...(ownerMode ? [`  "market_cap_rate_range": { "low": "", "high": "" },`] : []),
+    ...(ownerMode ? [`  "market_cap_rate_range": { "low": "", "high": "" },`, `  "value_drivers": ["", ""],`, `  "market_trend": "",`] : []),
     ...(ownerMode && !subjectSizeSqft ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
     `  "comps": [`,
     `    ${compShape}`,
@@ -299,7 +301,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ``,
     `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
-    ...(ownerMode ? [`"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`] : []),
+    ...(ownerMode ? [`"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
+      `Write "summary" directly TO the property owner in plain English, second person ("Buildings like yours..."). 3-5 sentences. Explain any industry term you use in the same breath. "value_drivers" = 2 to 4 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess.`] : []),
     ...(ownerMode && !subjectSizeSqft ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
   ].join("\n");
 }

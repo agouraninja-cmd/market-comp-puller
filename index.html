@@ -59,7 +59,7 @@
       {
         "@type": "Question",
         "name": "Can I find out what my building is worth?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Switch the form to 'What's my building worth?', enter your address, property type, and square footage (NOI optional), and you'll get an estimated value range based on recent comparable sales. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free." }
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Switch the form to 'What's my building worth?' and enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and NOI is optional for an income-approach cross-check. You'll get an estimated value range based on recent comparable sales. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free." }
       },
       {
         "@type": "Question",
@@ -1123,7 +1123,7 @@
           </details>
           <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">Can I find out what my building is worth?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Yes. Switch the form to "What's my building worth?", enter your address, property type, and square footage (NOI optional), and you'll get an estimated value range based on recent comparable sales. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free.</p>
+            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Yes. Switch the form to "What's my building worth?" and enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and NOI is optional for an income-approach cross-check. You'll get an estimated value range based on recent comparable sales. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free.</p>
           </details>
           <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">What property types are covered?</summary>
@@ -1213,6 +1213,7 @@
 
   let currentComps = [];
   let currentMeta = null;
+  let currentParsed = null;   // last rendered report, for client-side recomputes
   let sortState = { key: null, dir: 1 };
 
   // ["Industrial", "submarket note", "Last 24 months", "Sales & Leases"]
@@ -1316,10 +1317,10 @@
       ? "Your property details"
       : 'Compare your property <span class="text-slate-400 font-normal">(optional)</span>';
     document.getElementById("subjectHint").textContent = owner
-      ? "Square footage drives the estimate. Add NOI for an income-approach cross-check (it never leaves your browser)."
+      ? "Leave the size blank and we'll pull it from public records, or enter it to override. Add NOI for an income-approach cross-check (it never leaves your browser)."
       : "Enter your property's size and price (a single value or a range) to see how its $/SF stacks up against the comp average.";
     document.getElementById("targetSizeLabel").innerHTML = owner
-      ? 'Building Size (SF) <span class="text-brand-600">*</span>'
+      ? 'Building Size (SF) <span class="text-slate-400 font-normal">(optional, pulled from public records if blank)</span>'
       : "Target Size (SF)";
     document.getElementById("targetPriceLabel").textContent = owner
       ? "Asking / Expected Price ($, optional)"
@@ -1343,6 +1344,34 @@
   // The #owner deep link wins over the remembered mode.
   setMode(location.hash === "#owner" ? "owner"
     : (() => { try { return localStorage.getItem("appMode") || "comps"; } catch (_) { return "comps"; } })());
+
+  // Editing the subject inputs after an owner report recomputes the estimate
+  // in place — pure client-side math, no new billed search. (Programmatic
+  // value assignment, e.g. the hero's looked-up-size autofill, does not fire
+  // "input", so this can't loop.)
+  let subjectEditTimer = null;
+  ["targetSize", "targetSizeMax", "targetPrice", "targetPriceMax", "noi"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", () => {
+      if (!currentParsed || !currentMeta || currentMeta.mode !== "owner") return;
+      clearTimeout(subjectEditTimer);
+      subjectEditTimer = setTimeout(() => {
+        const sizeR = targetRange("targetSize", "targetSizeMax");
+        const priceR = targetRange("targetPrice", "targetPriceMax");
+        const noiVal = numericValue(document.getElementById("noi").value);
+        currentMeta.subject = {
+          sizeMin: sizeR ? sizeR.min : null,
+          sizeMax: sizeR ? sizeR.max : null,
+          priceMin: priceR ? priceR.min : null,
+          priceMax: priceR ? priceR.max : null,
+          noi: noiVal > 0 ? noiVal : null,
+        };
+        renderOwnerHero(currentParsed, currentMeta);
+        renderComparison(currentParsed);
+        renderMarketChart();
+        if (!currentMeta.sample && !currentMeta.fromHistory) saveReport(currentMeta, currentParsed);
+      }, 300);
+    });
+  });
 
   // ----------------------------------------------------------------------------
   // Password gate
@@ -1662,7 +1691,21 @@
     const card = document.getElementById("ownerHero");
     if (!meta || meta.mode !== "owner") { card.classList.add("hidden"); return; }
 
-    const sizeR = subjectRangeFromMeta("size");
+    // The user's own size always wins; otherwise fall back to the size the
+    // model looked up from public records / listings for this address.
+    let sizeR = subjectRangeFromMeta("size");
+    let sizeSource = null;   // null = user-entered
+    if (!sizeR && parsed) {
+      const found = numericValue(parsed.subject_size_sqft);
+      if (found > 0) {
+        sizeR = { min: found, max: found };
+        sizeSource = parsed.subject_size_source || "estimate";
+        // Surface the looked-up size in the form input (only if still empty)
+        // so the override path is obvious and the comparison/chart pick it up.
+        const sizeInput = document.getElementById("targetSize");
+        if (!sizeInput.value) sizeInput.value = Math.round(found);
+      }
+    }
     // Sale comps only — lease $/SF/yr is a different unit and would skew the range.
     const ppsfs = currentComps
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
@@ -1700,7 +1743,12 @@
       setPpsf("ownerLowPpsf", "at " + formatUsd(lo) + "/SF · lowest sale comp");
       setPpsf("ownerMidPpsf", "at " + formatUsd(avg) + "/SF · sale comp average");
       setPpsf("ownerHighPpsf", "at " + formatUsd(hi) + "/SF · highest sale comp");
-      basisEl.textContent = `${sizeLabel} × $/SF from ${ppsfs.length} recent sale comps`;
+      const srcPhrase = sizeSource === "public_record" ? "from public records"
+        : sizeSource === "listing" ? "from a listing"
+        : sizeSource ? "estimated from public data" : null;
+      basisEl.textContent = srcPhrase
+        ? `${sizeLabel} (${srcPhrase}; edit Building Size above if wrong) × $/SF from ${ppsfs.length} recent sale comps`
+        : `${sizeLabel} × $/SF from ${ppsfs.length} recent sale comps`;
       if (noi && capOk) {
         incomeEl.textContent =
           `Income-approach cross-check: ${fmtTotal(noi / (capHi / 100))} – ${fmtTotal(noi / (capLo / 100))} ` +
@@ -1721,7 +1769,9 @@
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
-      basisEl.textContent = "Not enough sale comps returned to compute a numeric range";
+      basisEl.textContent = !sizeR
+        ? "We couldn't find this building's square footage. Enter it under 'Your property details' and the estimate updates instantly."
+        : "Not enough sale comps returned to compute a numeric range";
     }
 
     // Fresh CTA state per report — a prior "Request sent" shouldn't stick.
@@ -2034,6 +2084,7 @@
     // the map pin carries the same digit.
     currentComps.forEach((c, i) => { c._num = i + 1; });
     currentMeta = meta;
+    currentParsed = parsed;
     sortState = { key: null, dir: 1 };
     COLUMNS = columnsForType(meta.type);   // Industrial adds Clear Height + Dock Doors
 
@@ -2066,6 +2117,9 @@
 
     updateCompCount();
 
+    // Hero first: a looked-up building size auto-fills the form input, and the
+    // comparison + chart below read that same input.
+    renderOwnerHero(parsed, meta);
     renderComparison(parsed);
     if (meta.mode === "owner") {
       // The owner hero is the headline valuation; the standalone value card
@@ -2074,7 +2128,6 @@
     } else {
       renderValueEstimate();
     }
-    renderOwnerHero(parsed, meta);
     renderMarketChart();
     renderTableHead();
     renderTableBody();
@@ -3162,12 +3215,6 @@
     const priceR = targetRange("targetPrice", "targetPriceMax");
     const noiVal = numericValue(document.getElementById("noi").value);
     if (!address) return;
-    if (owner && !sizeR) {
-      showStatus("Enter your building's square footage. The value estimate is computed from it.", "error");
-      document.getElementById("subjectDetails").open = true;
-      document.getElementById("targetSize").focus();
-      return;
-    }
     if (!months) {
       showStatus("Enter a custom lookback window between 1 and 120 months.", "error");
       document.getElementById("lookbackCustom").focus();

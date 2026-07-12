@@ -272,6 +272,9 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ownerMode
       ? `This report is for the property OWNER estimating what their building is worth. Strongly prefer closed SALES of ${type} properties of broadly similar size (roughly half to double the subject square footage) in the same submarket. Recency and physical similarity matter more than hitting the maximum comp count.`
       : "",
+    ownerMode && !subjectSizeSqft
+      ? `Also determine the TARGET property's building size in square feet from public records, assessor data, or listing pages for the target address. This is the BUILDING square footage, not the lot or land size.`
+      : "",
     typeGuidance[type] || "",
     isIndustrial
       ? `For EACH industrial comp, also report two building specs: "clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level"). Search listing pages, brokerage flyers, and property records for these. If a spec genuinely can't be found, use an empty string "" — do not guess.`
@@ -288,6 +291,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `  "subject_lat": "",`,
     `  "subject_lng": "",`,
     ...(ownerMode ? [`  "market_cap_rate_range": { "low": "", "high": "" },`] : []),
+    ...(ownerMode && !subjectSizeSqft ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -296,6 +300,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
     ...(ownerMode ? [`"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`] : []),
+    ...(ownerMode && !subjectSizeSqft ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
   ].join("\n");
 }
 
@@ -357,7 +362,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const body = {
     model: MODEL,
     max_tokens: 3200,
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+    // The subject-size lookup gets two extra searches so it doesn't crowd out
+    // the comp searches themselves.
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: ownerMode && !subjectSizeSqft ? 8 : 6 }],
     messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft) }],
   };
 

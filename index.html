@@ -1888,7 +1888,7 @@
     // "You" marker on top.
     if (youLo !== null) {
       const yx = x(youMid);
-      svg += `<path class="ch-pop" style="animation-delay:.75s" d="M${yx.toFixed(1)},${baseY - 8} l7,8 l-7,8 l-7,-8 Z" fill="#DC2626" stroke="#fff" stroke-width="1.5"/>`;
+      svg += `<circle class="ch-pop" style="animation-delay:.75s" cx="${yx.toFixed(1)}" cy="${baseY}" r="7" fill="#DC2626" stroke="#fff" stroke-width="1.5"/>`;
       const yAnchor = yx < EDGE + 20 ? "start" : yx > W - EDGE - 20 ? "end" : "middle";
       svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="#DC2626" font-family="Inter, sans-serif">You</text>`;
     }

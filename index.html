@@ -1952,8 +1952,9 @@
         crossOrigin: "anonymous",
       }),
     ]);
-    let mapView = "street";
-    try { if (localStorage.getItem("mapView") === "satellite") mapView = "satellite"; } catch (_) {}
+    // Satellite is the default; "Map" is the opt-out, remembered per browser.
+    let mapView = "satellite";
+    try { if (localStorage.getItem("mapView") === "street") mapView = "street"; } catch (_) {}
     (mapView === "satellite" ? satelliteLayer : streetLayer).addTo(mapInstance);
     L.control.layers({ "Map": streetLayer, "Satellite": satelliteLayer }, null, { position: "topright" }).addTo(mapInstance);
     mapInstance.on("baselayerchange", (e) => {

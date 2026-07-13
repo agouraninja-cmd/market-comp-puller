@@ -219,7 +219,7 @@ async function fetchVerifiedComps(type, txFocus) {
   }
 }
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft) {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -269,10 +269,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Today's date is ${todayStr}. Comps MUST be dated ${cutoffStr} or later (the last ${months === 1 ? "1 month" : months + " months"}). If you cannot find at least 3 comps inside that window, you may include older comps to reach 3, but you MUST state in "summary" that some comps fall outside the requested ${months}-month window.`,
     txFocus === "sales"  ? `Include ONLY sale transactions — do NOT include lease comps.` :
     txFocus === "leases" ? `Include ONLY lease transactions or active lease listings — do NOT include sale comps.` : "",
-    ownerMode
-      ? `This report is for the property OWNER estimating what their building is worth. Strongly prefer closed SALES of ${type} properties of broadly similar size (roughly half to double the subject square footage) in the same submarket. Recency and physical similarity matter more than hitting the maximum comp count.`
-      : "",
-    ownerMode && !subjectSizeSqft
+    !subjectSizeSqft
       ? `Also determine the TARGET property's building size in square feet from public records, assessor data, or listing pages for the target address. This is the BUILDING square footage, not the lot or land size.`
       : "",
     typeGuidance[type] || "",
@@ -286,14 +283,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ``,
     `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
     `{`,
-    ownerMode
-      ? `  "summary": "3-5 sentence plain-English takeaway written directly TO the property owner",`
-      : `  "summary": "2-3 sentence written takeaway about the local market",`,
+    `  "summary": "2-4 sentence plain-English takeaway about the local market, understandable to a non-professional",`,
     `  "avg_price_per_sqft": "string or null",`,
     `  "subject_lat": "",`,
     `  "subject_lng": "",`,
-    ...(ownerMode ? [`  "market_cap_rate_range": { "low": "", "high": "" },`, `  "value_drivers": ["", ""],`, `  "market_trend": "",`] : []),
-    ...(ownerMode && !subjectSizeSqft ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
+    `  "market_cap_rate_range": { "low": "", "high": "" },`,
+    `  "value_drivers": ["", ""],`,
+    `  "market_trend": "",`,
+    ...(!subjectSizeSqft ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -301,9 +298,9 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ``,
     `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
-    ...(ownerMode ? [`"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
-      `Write "summary" directly TO the property owner in plain English, second person ("Buildings like yours..."). 3-5 sentences. Explain any industry term you use in the same breath. "value_drivers" = 2 to 4 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess.`] : []),
-    ...(ownerMode && !subjectSizeSqft ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
+    `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
+    `"value_drivers" = 2 to 4 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess.`,
+    ...(!subjectSizeSqft ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
   ].join("\n");
 }
 
@@ -361,14 +358,14 @@ function normalizeSourceTypes(parsed) {
 // ---------------------------------------------------------------------------
 const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft) {
   const body = {
     model: MODEL,
     max_tokens: 3200,
     // The subject-size lookup gets two extra searches so it doesn't crowd out
     // the comp searches themselves.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: ownerMode && !subjectSizeSqft ? 8 : 6 }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft) }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: !subjectSizeSqft ? 8 : 6 }],
+    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft) }],
   };
 
   const controller = new AbortController();
@@ -414,7 +411,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   return normalizeSourceTypes(parseCompJson(text));
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus, ownerMode, subjectSizeSqft) {
+async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft) {
   const verifiedComps = await fetchVerifiedComps(type, txFocus);
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
@@ -422,11 +419,11 @@ async function getComps(address, type, note, months, maxComps, txFocus, ownerMod
   // The model occasionally wraps the JSON in stray text; one silent retry
   // resolves most of those instead of surfacing a parse error to the user.
   try {
-    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft);
+    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
-      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, ownerMode, subjectSizeSqft);
+      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft);
     }
     throw err;
   }
@@ -459,7 +456,7 @@ const server = http.createServer((req, res) => {
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus, mode, subjectSizeSqft } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft } = JSON.parse(body || "{}");
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
@@ -473,10 +470,9 @@ const server = http.createServer((req, res) => {
         const monthsOk = Number.isFinite(monthsNum) ? Math.min(120, Math.max(1, monthsNum)) : 24;
         const maxCompsOk = [4, 6, 8].includes(Number(maxComps)) ? Number(maxComps) : 8;
         const txFocusOk = ["both", "sales", "leases"].includes(String(txFocus)) ? String(txFocus) : "both";
-        const ownerMode = mode === "owner";
         const sizeNum = Math.round(Number(subjectSizeSqft));
         const sizeOk = Number.isFinite(sizeNum) && sizeNum > 0 ? Math.min(20_000_000, sizeNum) : null;
-        const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "", monthsOk, maxCompsOk, txFocusOk, ownerMode, sizeOk);
+        const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "", monthsOk, maxCompsOk, txFocusOk, sizeOk);
         return sendJson(res, 200, result);
       } catch (err) {
         console.error("Error handling /api/comps:", err);

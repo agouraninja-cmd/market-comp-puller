@@ -59,7 +59,7 @@
       {
         "@type": "Question",
         "name": "Can I find out what my building is worth?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Switch the form to 'What's my building worth?' and enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and NOI is optional for an income-approach cross-check. You'll get an estimated value range based on recent comparable sales. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free." }
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and every report opens with an estimated value range based on recent comparable sales. Add NOI for an income-approach cross-check. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free." }
       },
       {
         "@type": "Question",
@@ -559,12 +559,6 @@
     <!-- Form Card — floats over the hero's bottom edge -->
     <div class="relative z-10 -mt-16 sm:-mt-20 bg-white rounded-xl shadow-xl border border-slate-200 p-6 no-print enter enter-2">
       <form id="compForm" class="space-y-4">
-        <!-- Report mode: comp search vs. owner value estimate. Segmented
-             control, slate-900 ink = selected (site design tokens). -->
-        <div id="modeToggle" class="inline-flex items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50" role="tablist" aria-label="Report mode">
-          <button type="button" data-mode="comps" class="text-sm font-medium px-3 py-1.5 rounded-md">Find comps</button>
-          <button type="button" data-mode="owner" class="text-sm font-medium px-3 py-1.5 rounded-md">What's my building worth?</button>
-        </div>
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Property Address</label>
           <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX"
@@ -619,17 +613,17 @@
           </div>
         </div>
 
-        <!-- Target property (optional in comps mode; owner mode pins it open
-             and requires the square footage) -->
+        <!-- Subject property (all optional — the size is looked up from public
+             records when left blank, so every report can estimate a value) -->
         <details id="subjectDetails" class="border border-slate-200 rounded-lg bg-slate-50/60">
           <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-slate-700">
-            <span id="subjectSummary">Compare your property <span class="text-slate-400 font-normal">(optional)</span></span>
+            <span id="subjectSummary">Your property details <span class="text-slate-400 font-normal">(optional)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-slate-500 mb-3">Enter your property's size and price (a single value or a range) to see how its $/SF stacks up against the comp average.</p>
+            <p id="subjectHint" class="text-xs text-slate-500 mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label id="targetSizeLabel" class="block text-sm font-medium text-slate-700 mb-1">Target Size (SF)</label>
+                <label id="targetSizeLabel" class="block text-sm font-medium text-slate-700 mb-1">Building Size (SF) <span class="text-slate-400 font-normal">(pulled from public records if blank)</span></label>
                 <div class="flex items-center gap-2">
                   <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000"
                     class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
@@ -639,7 +633,7 @@
                 </div>
               </div>
               <div>
-                <label id="targetPriceLabel" class="block text-sm font-medium text-slate-700 mb-1">Target / Asking Price ($)</label>
+                <label id="targetPriceLabel" class="block text-sm font-medium text-slate-700 mb-1">Asking / Expected Price <span class="text-slate-400 font-normal">($, optional)</span></label>
                 <div class="flex items-center gap-2">
                   <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000"
                     class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
@@ -648,7 +642,7 @@
                     class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
                 </div>
               </div>
-              <div id="noiWrap" class="hidden">
+              <div id="noiWrap">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Net Operating Income <span class="text-slate-400 font-normal">($/yr, optional)</span></label>
                 <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000"
                   class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
@@ -818,7 +812,7 @@
              in the browser via renderOwnerHero; NOI never leaves the page. -->
         <div id="ownerHero" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">What Your Building Is Worth</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">What This Building Is Worth</h2>
             <span id="ownerBasis" class="text-xs text-slate-400 text-right"></span>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -870,7 +864,7 @@
              the concrete factors behind the estimate, in plain English. Built by
              renderValueDrivers(); hidden when the model returns neither. -->
         <div id="driversCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
-          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-3">What's Driving Your Number</h2>
+          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-3">What's Driving Prices Here</h2>
           <p id="marketTrend" class="hidden text-sm font-medium text-slate-700"></p>
           <div id="driversList" class="text-sm text-slate-600 leading-relaxed"></div>
         </div>
@@ -919,44 +913,8 @@
           <div id="chartWrap"></div>
         </div>
 
-        <!-- Estimated value range (computed from sale-comp $/SF × subject SF) -->
-        <div id="valueCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Estimated Value Range</h2>
-            <span id="valueBasis" class="text-xs text-slate-400"></span>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Low</div>
-              <div id="valueLow" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="valueLowPpsf" class="text-xs text-slate-400 mt-1"></div>
-            </div>
-            <div class="rounded-lg bg-brand-50 border border-brand-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-brand-500">Likely</div>
-              <div id="valueMid" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="valueMidPpsf" class="text-xs text-slate-500 mt-1"></div>
-            </div>
-            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">High</div>
-              <div id="valueHigh" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="valueHighPpsf" class="text-xs text-slate-400 mt-1"></div>
-            </div>
-          </div>
-          <p class="text-xs text-slate-500 mt-4">
-            Computed by applying the sale comps&rsquo; $/SF range to your property&rsquo;s square footage. An indication of market positioning, not an appraisal.
-          </p>
-        </div>
-
-        <!-- Comps table. In owner mode the whole body is tucked behind the
-             disclosure row below — the owner report leads with the answer and
-             keeps the evidence one click away (print force-opens it). -->
+        <!-- Comps table -->
         <div id="compsCard" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
-          <button id="compsToggle" type="button" style="display:none"
-            class="no-print w-full items-center justify-between gap-3 px-6 py-4 text-left hover:bg-slate-50">
-            <span class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">See the <span id="compsToggleCount"></span> sales behind this estimate</span>
-            <svg id="compsChev" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0 text-slate-400" style="transition: transform .25s ease" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          <div id="compsBody">
           <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comparable Properties</h2>
             <div class="flex items-center gap-3">
@@ -985,7 +943,6 @@
                Built by renderBadgeLegend(). -->
           <p id="badgeLegend" class="hidden text-xs text-slate-400 px-6 py-2.5 border-t border-slate-100"></p>
           <p class="hidden sm:block text-xs text-slate-400 px-6 py-2 border-t border-slate-100 no-print">Click a column header to sort.</p>
-          </div>
         </div>
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
@@ -1007,12 +964,6 @@
           class="btn-live inline-flex items-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50">
           Get in touch
         </a>
-        <!-- Owner-mode counterpart: the closing ask is the same BOV request as
-             the hero button, for readers who scrolled past it. -->
-        <button id="ctaBovBtn" type="button"
-          class="hidden btn-live inline-flex items-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50 disabled:opacity-60 disabled:cursor-not-allowed">
-          Get a free Broker Opinion of Value
-        </button>
       </div>
     </div>
 
@@ -1147,7 +1098,7 @@
           </details>
           <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">Can I find out what my building is worth?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Yes. Switch the form to "What's my building worth?" and enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and NOI is optional for an income-approach cross-check. You'll get an estimated value range based on recent comparable sales. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free.</p>
+            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Yes. Enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and every report opens with an estimated value range based on recent comparable sales. Add NOI for an income-approach cross-check. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free.</p>
           </details>
           <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">What property types are covered?</summary>
@@ -1243,7 +1194,6 @@
   // ["Industrial", "submarket note", "Last 24 months", "Sales & Leases"]
   function metaParts(meta) {
     const parts = [meta.type];
-    if (meta.mode === "owner") parts.push("Owner estimate");
     if (meta.subject && meta.subject.sizeMin) {
       parts.push(meta.subject.sizeMax && meta.subject.sizeMax !== meta.subject.sizeMin
         ? `${meta.subject.sizeMin.toLocaleString()}-${meta.subject.sizeMax.toLocaleString()} SF`
@@ -1320,63 +1270,19 @@
   }
 
   // ----------------------------------------------------------------------------
-  // Report mode — "comps" (find comps) vs "owner" (what's my building worth?).
-  // Owner mode reuses the same form: it pins the subject block open, requires
-  // square footage, reveals the NOI field, and forces a sales-only search.
+  // #owner deep link — legacy entry point from ads and social posts. There is
+  // only one mode now; the link just pre-opens the property-details section.
   // ----------------------------------------------------------------------------
-  let appMode = "comps";
-  const MODE_BTN_ACTIVE = "bg-slate-900 text-white";
-  const MODE_BTN_IDLE = "text-slate-500 hover:text-slate-900";
+  if (location.hash === "#owner") document.getElementById("subjectDetails").open = true;
 
-  function setMode(mode) {
-    appMode = mode === "owner" ? "owner" : "comps";
-    const owner = appMode === "owner";
-    document.querySelectorAll("#modeToggle [data-mode]").forEach((btn) => {
-      const active = btn.dataset.mode === appMode;
-      btn.className = "text-sm font-medium px-3 py-1.5 rounded-md " + (active ? MODE_BTN_ACTIVE : MODE_BTN_IDLE);
-      btn.setAttribute("aria-selected", active ? "true" : "false");
-    });
-    if (owner) document.getElementById("subjectDetails").open = true;
-    document.getElementById("subjectSummary").innerHTML = owner
-      ? "Your property details"
-      : 'Compare your property <span class="text-slate-400 font-normal">(optional)</span>';
-    document.getElementById("subjectHint").textContent = owner
-      ? "Leave the size blank and we'll pull it from public records, or enter it to override. Add NOI for an income-approach cross-check (it never leaves your browser)."
-      : "Enter your property's size and price (a single value or a range) to see how its $/SF stacks up against the comp average.";
-    document.getElementById("targetSizeLabel").innerHTML = owner
-      ? 'Building Size (SF) <span class="text-slate-400 font-normal">(optional, pulled from public records if blank)</span>'
-      : "Target Size (SF)";
-    document.getElementById("targetPriceLabel").textContent = owner
-      ? "Asking / Expected Price ($, optional)"
-      : "Target / Asking Price ($)";
-    document.getElementById("noiWrap").classList.toggle("hidden", !owner);
-    document.getElementById("txFocusWrap").classList.toggle("hidden", owner);
-    document.getElementById("btnLabel").textContent = owner ? "Get My Value Estimate" : "Generate Report";
-    try { localStorage.setItem("appMode", appMode); } catch (_) {}
-  }
-
-  // A collapsed subject block would hide the required SF field in owner mode,
-  // so re-open it whenever the user tries to close it.
-  document.getElementById("subjectDetails").addEventListener("toggle", (e) => {
-    if (appMode === "owner" && !e.target.open) e.target.open = true;
-  });
-
-  document.querySelectorAll("#modeToggle [data-mode]").forEach((btn) => {
-    btn.addEventListener("click", () => setMode(btn.dataset.mode));
-  });
-
-  // The #owner deep link wins over the remembered mode.
-  setMode(location.hash === "#owner" ? "owner"
-    : (() => { try { return localStorage.getItem("appMode") || "comps"; } catch (_) { return "comps"; } })());
-
-  // Editing the subject inputs after an owner report recomputes the estimate
+  // Editing the subject inputs after a report recomputes the estimate
   // in place — pure client-side math, no new billed search. (Programmatic
   // value assignment, e.g. the hero's looked-up-size autofill, does not fire
   // "input", so this can't loop.)
   let subjectEditTimer = null;
   ["targetSize", "targetSizeMax", "targetPrice", "targetPriceMax", "noi"].forEach((id) => {
     document.getElementById(id).addEventListener("input", () => {
-      if (!currentParsed || !currentMeta || currentMeta.mode !== "owner") return;
+      if (!currentParsed || !currentMeta) return;
       clearTimeout(subjectEditTimer);
       subjectEditTimer = setTimeout(() => {
         const sizeR = targetRange("targetSize", "targetSizeMax");
@@ -1464,7 +1370,7 @@
   function setLoading(isLoading) {
     document.getElementById("btnLabel").textContent = isLoading
       ? "Generating…"
-      : (appMode === "owner" ? "Get My Value Estimate" : "Generate Report");
+      : "Generate Report";
     document.getElementById("submitBtn").disabled = isLoading;
   }
   function showStatus(html, kind = "info") {
@@ -1671,49 +1577,14 @@
   }
 
   // ----------------------------------------------------------------------------
-  // Estimated value range — sale-comp $/SF spread applied to the subject's SF.
-  // Client-side only: no extra API cost.
-  // ----------------------------------------------------------------------------
-  function renderValueEstimate() {
-    const card = document.getElementById("valueCard");
-    const sizeR = subjectRangeFromMeta("size");
-    if (!sizeR) { card.classList.add("hidden"); return; }
-
-    // Sale comps only — lease $/SF/yr is a different unit and would skew the range.
-    const ppsfs = currentComps
-      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => numericValue(c.price_per_sqft))
-      .filter((v) => v > 0);
-    if (ppsfs.length < 2) { card.classList.add("hidden"); return; }
-
-    const lo = Math.min(...ppsfs);
-    const hi = Math.max(...ppsfs);
-    const avg = ppsfs.reduce((s, v) => s + v, 0) / ppsfs.length;
-    const midSize = (sizeR.min + sizeR.max) / 2;
-    const fmtTotal = (v) => "$" + Math.round(v).toLocaleString();
-    const sizeLabel = sizeR.min === sizeR.max
-      ? `${sizeR.min.toLocaleString()} SF`
-      : `${sizeR.min.toLocaleString()}–${sizeR.max.toLocaleString()} SF`;
-
-    document.getElementById("valueBasis").textContent =
-      `${sizeLabel} × $/SF from ${ppsfs.length} sale comps`;
-    animateValue(document.getElementById("valueLow"), lo * sizeR.min, fmtTotal);
-    animateValue(document.getElementById("valueMid"), avg * midSize, fmtTotal);
-    animateValue(document.getElementById("valueHigh"), hi * sizeR.max, fmtTotal);
-    document.getElementById("valueLowPpsf").textContent = "at " + formatUsd(lo) + "/SF · lowest comp";
-    document.getElementById("valueMidPpsf").textContent = "at " + formatUsd(avg) + "/SF · comp average";
-    document.getElementById("valueHighPpsf").textContent = "at " + formatUsd(hi) + "/SF · highest comp";
-    card.classList.remove("hidden");
-  }
-
-  // ----------------------------------------------------------------------------
-  // Owner value hero — the headline of an owner-mode report. Sales-comparison
-  // range from the comps, with an optional NOI / market-cap-rate cross-check.
+  // Value hero — the headline of every report. Sales-comparison range from the
+  // comps applied to the subject's SF (entered or looked up from public
+  // records), with an optional NOI / market-cap-rate cross-check.
   // All arithmetic is client-side; the model only supplies market figures.
   // ----------------------------------------------------------------------------
   function renderOwnerHero(parsed, meta) {
     const card = document.getElementById("ownerHero");
-    if (!meta || meta.mode !== "owner") { card.classList.add("hidden"); return; }
+    if (!meta) { card.classList.add("hidden"); return; }
 
     // The user's own size always wins; otherwise fall back to the size the
     // model looked up from public records / listings for this address.
@@ -1799,29 +1670,25 @@
     }
 
     // Fresh CTA state per report — a prior "Request sent" shouldn't stick.
-    // Both BOV buttons (hero + closing card) reset together.
-    ["bovCtaBtn", "ctaBovBtn"].forEach((id) => {
-      const btn = document.getElementById(id);
-      btn.disabled = false;
-      btn.textContent = "Get a free Broker Opinion of Value";
-    });
+    const btn = document.getElementById("bovCtaBtn");
+    btn.disabled = false;
+    btn.textContent = "Get a free Broker Opinion of Value";
 
     card.classList.remove("hidden");
   }
 
-  // "What's driving your number" — owner-mode card listing the market trend and
-  // the concrete factors the model found behind the estimate. Hidden whenever
-  // the report has neither (comps mode, legacy saved reports, thin data).
-  function renderValueDrivers(parsed, meta) {
+  // "What's driving prices here" — the market trend and the concrete factors
+  // the model found behind current pricing. Hidden whenever the report has
+  // neither (legacy saved reports, thin data).
+  function renderValueDrivers(parsed) {
     const card = document.getElementById("driversCard");
     const trendEl = document.getElementById("marketTrend");
     const listEl = document.getElementById("driversList");
     const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
-    const owner = meta && meta.mode === "owner";
-    const trend = owner && parsed ? String(parsed.market_trend || "").trim() : "";
-    const drivers = owner && parsed && Array.isArray(parsed.value_drivers)
+    const trend = parsed ? String(parsed.market_trend || "").trim() : "";
+    const drivers = parsed && Array.isArray(parsed.value_drivers)
       ? parsed.value_drivers.map((d) => String(d || "").trim()).filter(Boolean).slice(0, 4)
       : [];
     if (!trend && !drivers.length) { card.classList.add("hidden"); return; }
@@ -2147,8 +2014,6 @@
     document.getElementById("txFilter").style.display = hasTx ? "flex" : "none";
 
     // Report header (reopened reports keep their original generation date)
-    document.getElementById("reportKicker").textContent =
-      meta.mode === "owner" ? "Owner Value Report" : "Market Comparables Report";
     document.getElementById("reportAddress").textContent = meta.address;
     const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
     // Each meta part renders as a small chip — scans better than one dot-joined
@@ -2172,46 +2037,19 @@
     // Hero first: a looked-up building size auto-fills the form input, and the
     // comparison + chart below read that same input.
     renderOwnerHero(parsed, meta);
-    renderValueDrivers(parsed, meta);
+    renderValueDrivers(parsed);
     renderComparison(parsed);
-    if (meta.mode === "owner") {
-      // The owner hero is the headline valuation; the standalone value card
-      // would repeat the same numbers lower down.
-      document.getElementById("valueCard").classList.add("hidden");
-    } else {
-      renderValueEstimate();
-    }
-    document.getElementById("chartTitle").textContent =
-      meta.mode === "owner" ? "Where Your Building Sits" : "Market Position";
     renderMarketChart();
     renderTableHead();
     renderTableBody();
-
-    // Owner mode tucks the comp table behind a disclosure — the report leads
-    // with the answer and keeps the evidence one click away. Comps mode keeps
-    // the table always expanded, exactly as before.
-    const ownerReport = meta.mode === "owner";
-    document.getElementById("compsToggle").style.display = ownerReport ? "flex" : "none";
-    document.getElementById("compsToggleCount").textContent = String(visibleComps().length);
-    document.getElementById("compsBody").classList.toggle("hidden", ownerReport);
-    document.getElementById("compsChev").style.transform = "";
     if (!meta.sample && !meta.fromHistory) {
       saveRecentSearch(meta);
       saveReport(meta, parsed);
     }
-    // Broker CTA — only on lead-capture (public) deployments. Comps mode keeps
-    // the mailto ask; owner mode repurposes the card as a closing BOV request
-    // (the same ask as the hero button, for readers who scrolled past it).
+    // Broker CTA — only on lead-capture (public) deployments, with the subject
+    // property prefilled so the inbound email says which building it's about.
     const cta = document.getElementById("ctaCard");
     cta.classList.toggle("hidden", !leadCaptureEnabled);
-    document.getElementById("ctaTitle").textContent = ownerReport
-      ? "Want a number you can act on?"
-      : "Thinking about selling or leasing this property?";
-    document.getElementById("ctaText").textContent = ownerReport
-      ? "This estimate is a starting point. Get a free Broker Opinion of Value from a licensed local broker who knows your market. No cost, no obligation."
-      : "These comps are a starting point. Reach out and we will connect you with a local broker who really knows your market, at no cost to you.";
-    document.getElementById("ctaLink").classList.toggle("hidden", ownerReport);
-    document.getElementById("ctaBovBtn").classList.toggle("hidden", !ownerReport);
     document.getElementById("ctaLink").href =
       "mailto:agouraninja@gmail.com?subject=" +
       encodeURIComponent(`What is my property worth? ${meta.address}`);
@@ -2240,7 +2078,7 @@
     try {
       const list = loadRecentSearches()
         .filter((s) => !(s.address === meta.address && s.type === meta.type));
-      list.unshift({ address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, mode: meta.mode || "comps", subject: meta.subject || null });
+      list.unshift({ address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null });
       localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)));
     } catch (_) { /* private mode etc. — recents are a nicety, not a requirement */ }
     renderRecentChips();
@@ -2259,7 +2097,6 @@
       btn.textContent = `${s.address} · ${s.type}`;
       btn.title = "Run this search again";
       btn.addEventListener("click", () => {
-        setMode(s.mode === "owner" ? "owner" : "comps");
         document.getElementById("address").value = s.address;
         document.getElementById("propertyType").value = s.type;
         document.getElementById("marketNote").value = s.note || "";
@@ -2297,7 +2134,7 @@
         .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
       list.unshift({
         ts: Date.now(),
-        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, mode: meta.mode || "comps", subject: meta.subject || null },
+        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null },
         data,
       });
       while (list.length > 10) list.pop();
@@ -2388,6 +2225,13 @@
     avg_price_per_sqft: "$113 (sale comps)",
     subject_lat: "32.7715",
     subject_lng: "-96.8460",
+    market_cap_rate_range: { low: "5.8%", high: "6.3%" },
+    market_trend: "Sale prices for mid-size DFW industrial have held roughly flat over the past year after a strong 2024 run-up.",
+    value_drivers: [
+      "Mid-bay distribution space under 100,000 SF stays scarce in the mid-cities corridor",
+      "Two new spec projects near DFW Airport add supply pressure on larger boxes",
+      "Owner-user demand from regional contractors keeps sub-$10M deals competitive",
+    ],
     comps: [
       { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true },
       { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer", source_url: "", source_type: "news", lat: "32.7020", lng: "-96.9510" },
@@ -3161,14 +3005,11 @@
       try { localStorage.setItem("leadInfo", JSON.stringify({ name: payload.name, email: payload.email })); } catch (_) {}
       document.getElementById("leadModal").classList.add("hidden");
       if (leadContext === "bov") {
-        // A BOV request is its own ask — confirm on both CTAs (hero + closing
-        // card), don't run exports.
+        // A BOV request is its own ask — confirm on the CTA, don't run exports.
         pendingExport = null;
-        ["bovCtaBtn", "ctaBovBtn"].forEach((id) => {
-          const cta = document.getElementById(id);
-          cta.disabled = true;
-          cta.textContent = "Request sent. We'll be in touch.";
-        });
+        const cta = document.getElementById("bovCtaBtn");
+        cta.disabled = true;
+        cta.textContent = "Request sent. We'll be in touch.";
       } else {
         const run = pendingExport;
         pendingExport = null;
@@ -3191,23 +3032,9 @@
     flashExportDone(document.getElementById("printBtn"), "Done");
   }));
 
-  // Owner-mode BOV CTAs — always open the modal (an explicit BOV request,
-  // not an export gate), even when exports are already unlocked.
+  // Hero BOV CTA — always opens the modal (an explicit BOV request, not an
+  // export gate), even when exports are already unlocked.
   document.getElementById("bovCtaBtn").addEventListener("click", () => openLeadModal("bov"));
-  document.getElementById("ctaBovBtn").addEventListener("click", () => openLeadModal("bov"));
-
-  // Owner-mode comp-table disclosure.
-  document.getElementById("compsToggle").addEventListener("click", () => {
-    const open = !document.getElementById("compsBody").classList.toggle("hidden");
-    document.getElementById("compsChev").style.transform = open ? "rotate(180deg)" : "";
-  });
-  // Print must include the evidence even when the owner view keeps it tucked away.
-  window.addEventListener("beforeprint", () => {
-    if (currentMeta && currentMeta.mode === "owner") {
-      document.getElementById("compsBody").classList.remove("hidden");
-      document.getElementById("compsChev").style.transform = "rotate(180deg)";
-    }
-  });
 
   // ----------------------------------------------------------------------------
   // Broker comp submission — outside brokers offer verified comps; stored
@@ -3300,9 +3127,7 @@
     const type = document.getElementById("propertyType").value;
     const note = document.getElementById("marketNote").value.trim();
     const months = selectedLookbackMonths();
-    const owner = appMode === "owner";
-    // Owner mode is sales-only: the value range is computed from sale $/SF.
-    const txFocus = owner ? "sales" : document.getElementById("txFocus").value;
+    const txFocus = document.getElementById("txFocus").value;
     const sizeR = targetRange("targetSize", "targetSizeMax");
     const priceR = targetRange("targetPrice", "targetPriceMax");
     const noiVal = numericValue(document.getElementById("noi").value);
@@ -3329,8 +3154,7 @@
         // the comp search toward similar buildings.
         body: JSON.stringify({
           address, type, note, months, txFocus,
-          mode: appMode,
-          subjectSizeSqft: owner && sizeR ? Math.round((sizeR.min + sizeR.max) / 2) : undefined,
+          subjectSizeSqft: sizeR ? Math.round((sizeR.min + sizeR.max) / 2) : undefined,
         }),
       });
 
@@ -3351,7 +3175,6 @@
       hideLoadingCard();
       renderResults(parsed, {
         address, type, note, months, txFocus,
-        mode: appMode,
         // Subject inputs ride along in meta so saved/reopened reports can
         // re-render the comparison and value cards without the form.
         subject: {

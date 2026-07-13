@@ -56,6 +56,7 @@ const DB_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
 // anything you care about, or download via the admin endpoints before deploying.
 const LEADS_FILE = path.join(__dirname, "leads.jsonl");
 const COMP_SUBMISSIONS_FILE = path.join(__dirname, "comp-submissions.jsonl");
+const SEARCH_CACHE_FILE = path.join(__dirname, "search-cache.json");
 
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
@@ -72,6 +73,18 @@ const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "agouraninja@gmail.c
 // in sync with the canonical/og:url tags in index.html. Override with SITE_URL
 // when the site moves to a custom domain.
 const SITE_URL = (process.env.SITE_URL || "https://market-comp-puller.onrender.com").replace(/\/+$/, "");
+
+// Two people searching the same address within a few days shouldn't both bill
+// the Anthropic account for identical work. TTL is deliberately short — comp
+// data goes stale — but long enough to absorb the common case of the same
+// property being searched more than once in a short window.
+const SEARCH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Backstop against a runaway script or scraper burning the Anthropic budget
+// overnight — the per-IP limiter above stops one connection, not a
+// determined caller with rotating IPs. Counts only genuinely billed searches
+// (cache hits are free and don't count). Override via env for more headroom.
+const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(process.env.DAILY_SEARCH_CAP) : 150;
 
 // ---------------------------------------------------------------------------
 // Lead storage — Supabase REST when configured, local file otherwise
@@ -200,6 +213,138 @@ function rateLimited(ip, max = RATE_MAX) {
     }
   }
   return hits.length > max;
+}
+
+// ---------------------------------------------------------------------------
+// Daily search cap — a simple in-memory counter, reset at UTC midnight. It
+// resets on redeploy/spin-down too, which is fine for this threat model:
+// sustained abuse keeps a free instance warm rather than letting it spin down.
+// ---------------------------------------------------------------------------
+let dailySearchDay = "";
+let dailySearchCount = 0;
+let dailyCapEmailSent = false;
+
+function todayUTC() { return new Date().toISOString().slice(0, 10); }
+
+// Returns true and reserves a slot for a billed search, or false if today's
+// cap is already spent. Emails the owner once per day the first time it bites.
+function tryConsumeDailySearch() {
+  const today = todayUTC();
+  if (today !== dailySearchDay) {
+    dailySearchDay = today;
+    dailySearchCount = 0;
+    dailyCapEmailSent = false;
+  }
+  if (dailySearchCount >= DAILY_SEARCH_CAP) {
+    if (!dailyCapEmailSent) {
+      dailyCapEmailSent = true;
+      notifyByEmail(`CompNinja hit its daily search cap (${DAILY_SEARCH_CAP})`, [
+        ["Date (UTC)", today],
+        ["Cap", String(DAILY_SEARCH_CAP)],
+        ["What this means", "New searches are being declined until UTC midnight."],
+        ["To raise it", "Set DAILY_SEARCH_CAP to a higher number in Render's Environment settings."],
+      ]);
+    }
+    return false;
+  }
+  dailySearchCount += 1;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Search result cache — Supabase when configured, a keyed JSON file
+// otherwise, mirrored in an in-memory Map so a warm process never touches
+// disk for a repeat lookup. The key folds in everything that changes the
+// prompt (including a signature of the verified comps offered to the model),
+// so an approved broker comp naturally busts the cache for its property type.
+// ---------------------------------------------------------------------------
+const searchCacheMem = new Map();
+
+function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps }) {
+  const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const verifiedSig = (verifiedComps || [])
+    .map((c) => `${c.address}|${c.deal_date}|${c.price_or_rate}`)
+    .sort()
+    .join(";");
+  const raw = [norm(address), type, norm(note), months, maxComps, txFocus, subjectSizeSqft || "", verifiedSig].join("::");
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+async function loadSearchCacheFile() {
+  try {
+    return JSON.parse(await fs.promises.readFile(SEARCH_CACHE_FILE, "utf8"));
+  } catch (_) {
+    return {};
+  }
+}
+
+async function getCachedSearch(key) {
+  const now = Date.now();
+  const mem = searchCacheMem.get(key);
+  if (mem) {
+    if (now - mem.ts < SEARCH_CACHE_TTL_MS) return mem.payload;
+    searchCacheMem.delete(key);
+  }
+  if (DB_CONFIGURED) {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/search_cache?cache_key=eq.${key}&select=payload,created_at&limit=1`,
+        { headers: supabaseHeaders() }
+      );
+      if (r.ok) {
+        const rows = await r.json();
+        const hit = rows[0];
+        if (hit) {
+          const ts = new Date(hit.created_at).getTime();
+          if (now - ts < SEARCH_CACHE_TTL_MS) {
+            searchCacheMem.set(key, { payload: hit.payload, ts });
+            return hit.payload;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Search cache DB read failed:", err.message);
+    }
+  }
+  const fileCache = await loadSearchCacheFile();
+  const entry = fileCache[key];
+  if (entry && now - entry.ts < SEARCH_CACHE_TTL_MS) {
+    searchCacheMem.set(key, entry);
+    return entry.payload;
+  }
+  return null;
+}
+
+async function storeCachedSearch(key, payload) {
+  const now = Date.now();
+  searchCacheMem.set(key, { payload, ts: now });
+  if (DB_CONFIGURED) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/search_cache?on_conflict=cache_key`, {
+        method: "POST",
+        headers: { ...supabaseHeaders(), prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ cache_key: key, payload, created_at: new Date(now).toISOString() }),
+      });
+      if (r.ok) return;
+      console.error(`Search cache DB write failed (${r.status}) — falling back to file.`);
+    } catch (err) {
+      console.error("Search cache DB write failed — falling back to file:", err.message);
+    }
+  }
+  try {
+    const fileCache = await loadSearchCacheFile();
+    fileCache[key] = { payload, ts: now };
+    // Trim to the most recent 500 entries so the file can't grow unbounded.
+    const keys = Object.keys(fileCache);
+    if (keys.length > 500) {
+      keys.sort((a, b) => fileCache[a].ts - fileCache[b].ts)
+        .slice(0, keys.length - 500)
+        .forEach((k) => delete fileCache[k]);
+    }
+    await fs.promises.writeFile(SEARCH_CACHE_FILE, JSON.stringify(fileCache));
+  } catch (err) {
+    console.error("Search cache file write failed:", err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -446,8 +591,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   return normalizeSourceTypes(parseCompJson(text));
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft) {
-  const verifiedComps = await fetchVerifiedComps(type, txFocus);
+async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
   }
@@ -507,7 +651,33 @@ const server = http.createServer((req, res) => {
         const txFocusOk = ["both", "sales", "leases"].includes(String(txFocus)) ? String(txFocus) : "both";
         const sizeNum = Math.round(Number(subjectSizeSqft));
         const sizeOk = Number.isFinite(sizeNum) && sizeNum > 0 ? Math.min(20_000_000, sizeNum) : null;
-        const result = await getComps(String(address).trim(), String(type), note ? String(note).trim() : "", monthsOk, maxCompsOk, txFocusOk, sizeOk);
+        const addressOk = String(address).trim();
+        const typeOk = String(type);
+        const noteOk = note ? String(note).trim() : "";
+
+        // Verified comps are fetched once, both for the model and as part of
+        // the cache key — approving a new broker comp naturally invalidates
+        // any cached report for that property type.
+        const verifiedComps = await fetchVerifiedComps(typeOk, txFocusOk);
+        const cacheKey = cacheKeyFor({
+          address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
+          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
+        });
+
+        const cached = await getCachedSearch(cacheKey);
+        if (cached) {
+          console.log(`Cache hit (no Anthropic call): ${addressOk} — ${typeOk}`);
+          return sendJson(res, 200, cached);
+        }
+
+        if (!tryConsumeDailySearch()) {
+          return sendJson(res, 429, {
+            error: "This site has reached its daily search limit. Please try again after midnight UTC.",
+          });
+        }
+
+        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps);
+        await storeCachedSearch(cacheKey, result);
         return sendJson(res, 200, result);
       } catch (err) {
         console.error("Error handling /api/comps:", err);
@@ -783,4 +953,6 @@ server.listen(PORT, () => {
   console.log(RESEND_API_KEY
     ? `📧 Lead notifications ENABLED — new leads and comp submissions email ${LEAD_NOTIFY_EMAIL}.`
     : "Lead notifications disabled — set RESEND_API_KEY (free at resend.com) to get an email for every new lead.");
+  console.log(`🗄  Search cache: ${DB_CONFIGURED ? "Supabase" : path.basename(SEARCH_CACHE_FILE) + " (EPHEMERAL on most hosts)"}, ${SEARCH_CACHE_TTL_MS / 3600000}h TTL.`);
+  console.log(`💵 Daily search cap: ${DAILY_SEARCH_CAP} billed searches/day (set DAILY_SEARCH_CAP to change).`);
 });

@@ -96,6 +96,12 @@ dependency. `.env` is git-ignored — never commit it.
   registered with the notify address itself.
 - `LEAD_NOTIFY_EMAIL` — where those notifications go; defaults to
   agouraninja@gmail.com.
+- `DAILY_SEARCH_CAP` — optional (default 150). Hard ceiling on *billed*
+  Anthropic searches per UTC day; cache hits don't count. On the (cap+1)th
+  search the server returns 429 to visitors and emails the owner once (via the
+  same Resend notifier). An in-memory counter reset at UTC midnight and on
+  process restart — a backstop against a rotating-IP scraper the per-IP limiter
+  can't stop, not precise accounting.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. If the site moves to a custom domain, set this AND update
   the canonical/`og:url` tags in `index.html` (they are hard-coded).
@@ -122,7 +128,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   budget the lookup. Every response carries `market_cap_rate_range`,
   `value_drivers`, `market_trend`, and a per-comp `source_type` that the
   server normalizes onto its enum (unknown → `estimate`, so badges can
-  under-claim provenance but never over-claim).
+  under-claim provenance but never over-claim). **Cached**: identical requests
+  within a 7-day TTL are served from the `search_cache` layer (Supabase table
+  `search_cache`, keyed by a SHA-256 of address+type+note+window+size+a
+  signature of the offered verified comps — so approving a broker comp busts
+  the cache for that type; in-memory Map + file fallback when Supabase is
+  unconfigured). A cache hit does NOT call Anthropic and does NOT count against
+  `DAILY_SEARCH_CAP`.
 - `GET /api/config` — tells the front-end whether a password is required and
   whether lead capture is on (`{ authRequired, leadCapture }`).
 - `POST /api/login` — validates a password so the UI can confirm before searching.

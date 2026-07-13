@@ -12,3 +12,6 @@ server.err.log
 # Captured leads and broker comp submissions (contact info) — never commit
 leads.jsonl
 comp-submissions.jsonl
+
+# File-fallback search cache (used only when Supabase isn't configured)
+search-cache.json

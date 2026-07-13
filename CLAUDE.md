@@ -88,6 +88,14 @@ dependency. `.env` is git-ignored — never commit it.
   as CSV (send the key via `x-admin-key` header or `?key=`). Unset = that
   endpoint is disabled. Without Supabase configured, leads live only in
   `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
+- `RESEND_API_KEY` — optional. When set, every stored lead AND every broker
+  comp submission fires an email notification via Resend's REST API (plain
+  fetch, free tier is plenty). Fire-and-forget: a failing provider is logged
+  but never breaks the request. Caveat: without a verified domain Resend only
+  delivers to the address that owns the Resend account, so the account must be
+  registered with the notify address itself.
+- `LEAD_NOTIFY_EMAIL` — where those notifications go; defaults to
+  agouraninja@gmail.com.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. If the site moves to a custom domain, set this AND update
   the canonical/`og:url` tags in `index.html` (they are hard-coded).

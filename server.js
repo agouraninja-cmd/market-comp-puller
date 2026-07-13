@@ -61,6 +61,13 @@ const COMP_SUBMISSIONS_FILE = path.join(__dirname, "comp-submissions.jsonl");
 // that endpoint is disabled entirely.
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
 
+// Optional email ping on every new lead / broker comp submission, sent via
+// Resend's REST API (free tier, plain fetch — no dependency). Note: without a
+// verified domain Resend only delivers to the address that owns the Resend
+// account, so sign up with the notify address itself.
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").trim();
+const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "agouraninja@gmail.com").trim();
+
 // Public URL of this deployment, used in robots.txt/sitemap.xml and best kept
 // in sync with the canonical/og:url tags in index.html. Override with SITE_URL
 // when the site moves to a custom domain.
@@ -193,6 +200,34 @@ function rateLimited(ip, max = RATE_MAX) {
     }
   }
   return hits.length > max;
+}
+
+// ---------------------------------------------------------------------------
+// Lead email notification — fire-and-forget so a slow or failing email
+// provider never delays or breaks the request that captured the lead.
+// Empty fields are dropped from the body.
+// ---------------------------------------------------------------------------
+function notifyByEmail(subject, fields) {
+  if (!RESEND_API_KEY) return;
+  const text = fields
+    .filter(([, v]) => String(v || "").trim())
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: "CompNinja <onboarding@resend.dev>",
+      to: [LEAD_NOTIFY_EMAIL],
+      subject,
+      text,
+    }),
+    signal: AbortSignal.timeout(8000),
+  })
+    .then(async (r) => {
+      if (!r.ok) console.error("Lead notification failed:", r.status, (await r.text().catch(() => "")).slice(0, 300));
+    })
+    .catch((err) => console.error("Lead notification failed:", err.message));
 }
 
 // ---------------------------------------------------------------------------
@@ -517,6 +552,20 @@ const server = http.createServer((req, res) => {
         }
         const dest = await storeRow("leads", LEADS_FILE, lead);
         console.log(`Lead captured (${dest}): ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
+        notifyByEmail(
+          `${lead.source === "bov" ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
+          [
+            ["Name", lead.name],
+            ["Email", lead.email],
+            ["Phone", lead.phone],
+            ["Company", lead.company],
+            ["Property", lead.address],
+            ["Property type", lead.type],
+            ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ["Stored in", dest],
+            ["Time", lead.ts],
+          ]
+        );
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -604,6 +653,16 @@ const server = http.createServer((req, res) => {
         }
         const dest = await storeRow("comp_submissions", COMP_SUBMISSIONS_FILE, submission);
         console.log(`Comp submitted (${dest}): ${submission.address} — ${submission.broker_name} <${submission.broker_email}>`);
+        notifyByEmail(
+          `New broker comp submitted: ${submission.address}`,
+          [
+            ["Broker", submission.broker_name],
+            ["Email", submission.broker_email],
+            ["Comp", submission.address],
+            ["Price/rate", submission.price_or_rate],
+            ["Next step", 'Review it in Supabase (comp_submissions, status "pending") and set status to "approved" to add it to the verified layer.'],
+          ]
+        );
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -721,4 +780,7 @@ server.listen(PORT, () => {
   if (LEAD_CAPTURE && !ADMIN_KEY) {
     console.warn("⚠  ADMIN_KEY is not set — GET /api/leads (lead download) is disabled.");
   }
+  console.log(RESEND_API_KEY
+    ? `📧 Lead notifications ENABLED — new leads and comp submissions email ${LEAD_NOTIFY_EMAIL}.`
+    : "Lead notifications disabled — set RESEND_API_KEY (free at resend.com) to get an email for every new lead.");
 });

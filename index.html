@@ -876,7 +876,7 @@
           </div>
           <div id="compMap" style="height: 340px;"></div>
           <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100">
-            Pin locations are approximate. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
+            Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
           </p>
         </div>
 
@@ -1828,13 +1828,75 @@
   });
 
   // ----------------------------------------------------------------------------
-  // Comp map — plots the subject (blue pin) and comps (gray dots) on OSM tiles.
-  // Coordinates come from the model per comp; pins are approximate.
+  // Address geocoding — the model's lat/lng values are block-level guesses at
+  // best (it has no real geocoder and routinely lands on the wrong street), so
+  // map pins are re-placed from real sources: the US Census geocoder via our
+  // /api/geocode proxy (house-number precision, but no CORS so it can't be
+  // called directly), then OSM Nominatim from the browser as a fallback.
+  // Hits AND misses are cached in localStorage so reopening reports is free.
+  // ----------------------------------------------------------------------------
+  const GEO_CACHE_KEY = "geoCache.v1";
+  let geoCache = (() => { try { return JSON.parse(localStorage.getItem(GEO_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
+
+  function geoCacheStore(key, val) {
+    geoCache[key] = val;
+    try {
+      const keys = Object.keys(geoCache);
+      // Oldest-first trim (object keys keep insertion order).
+      if (keys.length > 300) keys.slice(0, keys.length - 300).forEach((k) => delete geoCache[k]);
+      localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(geoCache));
+    } catch (_) { /* private mode — the cache is a nicety */ }
+  }
+
+  function geoFetch(url) {
+    return Promise.race([
+      fetch(url).then((r) => r.json()),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("geocode timeout")), 7000)),
+    ]);
+  }
+
+  // Nominatim's usage policy asks for at most 1 request/second — a promise
+  // chain spaces the calls out. Failures resolve to null, never reject.
+  let nominatimQueue = Promise.resolve();
+  function nominatimGeocode(address) {
+    const run = () => geoFetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(address))
+      .then((j) => (Array.isArray(j) && j[0] && isFinite(parseFloat(j[0].lat))
+        ? { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) }
+        : null))
+      .catch(() => null);
+    const result = nominatimQueue.then(run);
+    nominatimQueue = result.then(() => new Promise((r) => setTimeout(r, 1100)));
+    return result;
+  }
+
+  async function geocodeAddress(address) {
+    const key = String(address || "").trim().toLowerCase();
+    if (!key) return null;
+    if (key in geoCache) {
+      const hit = geoCache[key];
+      return hit && isFinite(hit.lat) ? hit : null;
+    }
+    let found = null;
+    try {
+      const j = await geoFetch("/api/geocode?address=" + encodeURIComponent(address));
+      if (j && isFinite(j.lat) && isFinite(j.lng)) found = { lat: j.lat, lng: j.lng };
+    } catch (_) { /* proxy down — try the fallback */ }
+    if (!found) found = await nominatimGeocode(address);
+    geoCacheStore(key, found);   // null is cached too: a known miss
+    return found;
+  }
+
+  // ----------------------------------------------------------------------------
+  // Comp map — plots the subject (red pin) and comps (numbered dots) on OSM
+  // tiles. Pins paint immediately from the model's approximate coordinates,
+  // then move to geocoded positions as lookups resolve.
   // ----------------------------------------------------------------------------
   let mapInstance = null;
+  let mapGeneration = 0;   // stale async geocodes must not touch a newer map
 
-  function renderMap(parsed, meta) {
+  function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
+    const gen = ++mapGeneration;
     const escMap = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
@@ -1847,8 +1909,24 @@
     const sLng = parseFloat(parsed.subject_lng);
     const hasSubject = isFinite(sLat) && isFinite(sLng);
 
-    if (typeof L === "undefined" || (pts.length === 0 && !hasSubject)) {
+    if (typeof L === "undefined") { card.classList.add("hidden"); return; }
+    if (pts.length === 0 && !hasSubject) {
+      // No model coordinates at all — try to rescue the map by geocoding the
+      // addresses, then render once (isRetry stops a second rescue loop).
       card.classList.add("hidden");
+      if (!isRetry) {
+        (async () => {
+          let found = false;
+          const subj = await geocodeAddress(meta.address);
+          if (subj) { parsed.subject_lat = String(subj.lat); parsed.subject_lng = String(subj.lng); found = true; }
+          for (const c of currentComps || []) {
+            if (!c.address) continue;
+            const ll = await geocodeAddress(c.address);
+            if (ll) { c.lat = String(ll.lat); c.lng = String(ll.lng); found = true; }
+          }
+          if (found && gen === mapGeneration) renderMap(parsed, meta, true);
+        })();
+      }
       return;
     }
     card.classList.remove("hidden");
@@ -1873,30 +1951,41 @@
       mapEl.addEventListener("mouseleave", () => { if (mapInstance) mapInstance.scrollWheelZoom.disable(); });
     }
 
-    const bounds = [];
-    if (hasSubject) {
+    // Marker builders double as refinement hooks: refinePins() moves existing
+    // markers to geocoded spots, or creates ones the model gave no coords for.
+    let subjMarker = null;
+    const compMarkersByNum = {};
+    const addSubjMarker = (lat, lng) => {
       const subjIcon = L.divIcon({
         className: "",
         html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
-      L.marker([sLat, sLng], { icon: subjIcon, zIndexOffset: 1000 })
+      return L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 })
         .addTo(mapInstance)
         .bindPopup(`<strong>Your property:</strong> ${escMap(meta.address)}`);
-      bounds.push([sLat, sLng]);
-    }
-    pts.forEach((p) => {
+    };
+    const addCompMarker = (c, lat, lng) => {
       // Each pin carries the comp's report-wide number, matching its table row.
       const dotIcon = L.divIcon({
         className: "",
-        html: '<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#1e293b;color:#fff;font:600 11px Inter,sans-serif;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.35)">' + (p.c._num || "") + '</div>',
+        html: '<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#1e293b;color:#fff;font:600 11px Inter,sans-serif;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.35)">' + (c._num || "") + '</div>',
         iconSize: [20, 20], iconAnchor: [10, 10],
       });
-      const line2 = [p.c.price_or_rate, p.c.transaction].filter(Boolean).map(escMap).join(" · ");
-      const title = (p.c._num ? "Comp " + p.c._num + " — " : "") + (p.c.address || "Comp");
-      L.marker([p.lat, p.lng], { icon: dotIcon })
+      const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
+      const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
+      return L.marker([lat, lng], { icon: dotIcon })
         .addTo(mapInstance)
         .bindPopup(`<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`);
+    };
+
+    const bounds = [];
+    if (hasSubject) {
+      subjMarker = addSubjMarker(sLat, sLng);
+      bounds.push([sLat, sLng]);
+    }
+    pts.forEach((p) => {
+      compMarkersByNum[p.c._num] = addCompMarker(p.c, p.lat, p.lng);
       bounds.push([p.lat, p.lng]);
     });
 
@@ -1907,6 +1996,41 @@
       mapInstance.invalidateSize();
       mapInstance.fitBounds(bounds, { padding: [35, 35], maxZoom: 14 });
     }, 120);
+
+    // Re-place every pin from real geocoding; the model's coordinates were
+    // only the fast first paint. Runs after render so the map never waits.
+    (async () => {
+      const jobs = [geocodeAddress(meta.address).then((ll) => ({ subject: true, ll }))];
+      (currentComps || []).forEach((c) => {
+        if (c.address) jobs.push(geocodeAddress(c.address).then((ll) => ({ c, ll })));
+      });
+      const results = await Promise.all(jobs);
+      if (gen !== mapGeneration || !mapInstance) return;   // a newer report took over
+      let moved = false;
+      results.forEach((r) => {
+        if (!r.ll) return;
+        moved = true;
+        if (r.subject) {
+          if (subjMarker) subjMarker.setLatLng([r.ll.lat, r.ll.lng]);
+          else subjMarker = addSubjMarker(r.ll.lat, r.ll.lng);
+          parsed.subject_lat = String(r.ll.lat);
+          parsed.subject_lng = String(r.ll.lng);
+        } else {
+          const existing = compMarkersByNum[r.c._num];
+          if (existing) existing.setLatLng([r.ll.lat, r.ll.lng]);
+          else compMarkersByNum[r.c._num] = addCompMarker(r.c, r.ll.lat, r.ll.lng);
+          r.c.lat = String(r.ll.lat);
+          r.c.lng = String(r.ll.lng);
+        }
+      });
+      if (!moved) return;
+      const refined = [];
+      if (subjMarker) refined.push(subjMarker.getLatLng());
+      Object.values(compMarkersByNum).forEach((m) => refined.push(m.getLatLng()));
+      mapInstance.fitBounds(refined, { padding: [35, 35], maxZoom: 14 });
+      // Corrected coordinates ride along in the saved copy of the report.
+      if (!meta.sample && !meta.fromHistory) saveReport(meta, parsed);
+    })();
   }
 
   // ----------------------------------------------------------------------------

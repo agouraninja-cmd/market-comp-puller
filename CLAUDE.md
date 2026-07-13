@@ -122,6 +122,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   + the searched address/type + `source`: `"export"` for export unlocks,
   `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
   a matching `source` column). Rate-limited per IP.
+- `GET /api/geocode?address=` — CORS pass-through to the free US Census
+  geocoder. The model's per-comp `lat`/`lng` are block-level guesses used only
+  for the map's first paint; the front-end re-places every pin from real
+  geocoding (this proxy, then browser-direct Nominatim as fallback, results
+  cached in localStorage under `geoCache.v1`). Rate-limited per IP.
 - `GET /api/leads` — downloads captured leads as CSV; requires `ADMIN_KEY`.
 - `POST /api/comp-submission` — stores a broker-submitted comp (broker contact +
   comp details, `status: "pending"`) in the Supabase `comp_submissions` table

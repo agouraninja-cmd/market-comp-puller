@@ -182,7 +182,7 @@ function clientIp(req) {
   return req.socket.remoteAddress || "unknown";
 }
 
-function rateLimited(ip) {
+function rateLimited(ip, max = RATE_MAX) {
   const now = Date.now();
   const hits = (rateHits.get(ip) || []).filter((t) => now - t < RATE_WINDOW_MS);
   hits.push(now);
@@ -192,7 +192,7 @@ function rateLimited(ip) {
       if (!v.some((t) => now - t < RATE_WINDOW_MS)) rateHits.delete(k);
     }
   }
-  return hits.length > RATE_MAX;
+  return hits.length > max;
 }
 
 // ---------------------------------------------------------------------------
@@ -524,6 +524,37 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 500, { error: "Could not save your details. Please try again." });
       }
     });
+    return;
+  }
+
+  // --- Geocode proxy. The model's lat/lng values are block-level guesses, so
+  // the front-end re-places map pins from the free US Census geocoder — which
+  // has no CORS headers, hence this pass-through. Failures return {} so the
+  // browser can fall back to Nominatim (which it can reach directly). ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/geocode") {
+    const address = (new URL(req.url, "http://localhost").searchParams.get("address") || "").trim().slice(0, 200);
+    if (!address) return sendJson(res, 400, { error: "address is required." });
+    // Generous cap: one report geocodes the subject plus up to 8 comps.
+    if (rateLimited("geo:" + clientIp(req), 120)) {
+      return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
+    }
+    (async () => {
+      try {
+        const r = await fetch(
+          "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=" +
+            encodeURIComponent(address),
+          { signal: AbortSignal.timeout(6000) }
+        );
+        const j = await r.json();
+        const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+        if (m && m.coordinates && isFinite(m.coordinates.y) && isFinite(m.coordinates.x)) {
+          return sendJson(res, 200, { lat: m.coordinates.y, lng: m.coordinates.x, source: "census" });
+        }
+        return sendJson(res, 200, {});
+      } catch (_) {
+        return sendJson(res, 200, {}); // soft failure — the client falls back
+      }
+    })();
     return;
   }
 

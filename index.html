@@ -1886,32 +1886,6 @@
     return found;
   }
 
-  // Aerial thumbnail for a pin popup: free Esri World Imagery tiles stitched
-  // into a crop centered on the property's geocoded point (a crop smaller than
-  // one 256px tile touches at most 4 tiles). Built lazily at popup-open time
-  // so closed popups cost nothing, and the marker's CURRENT position is used —
-  // i.e. the geocoded spot, not the model's first guess. A red dot marks the
-  // exact point; tiles that fail to load simply hide.
-  function aerialThumb(ll, w = 220, h = 140, z = 18) {
-    const scale = 256 * Math.pow(2, z);
-    const x = ((ll.lng + 180) / 360) * scale;
-    const latRad = (ll.lat * Math.PI) / 180;
-    const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale;
-    const ox = x - w / 2, oy = y - h / 2;   // crop origin in global pixels
-    let imgs = "";
-    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + h - 1) / 256); ty++) {
-      for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + w - 1) / 256); tx++) {
-        imgs += `<img src="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}" ` +
-          `style="position:absolute;left:${Math.round(tx * 256 - ox)}px;top:${Math.round(ty * 256 - oy)}px;width:256px;height:256px;max-width:none" ` +
-          `alt="" onerror="this.style.display='none'">`;
-      }
-    }
-    return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:8px;margin-top:6px;background:#e2e8f0">` +
-      imgs +
-      `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
-      `</div><div style="font-size:10px;color:#94a3b8;margin-top:2px">Aerial imagery &copy; Esri</div>`;
-  }
-
   // ----------------------------------------------------------------------------
   // Comp map — plots the subject (red pin) and comps (numbered dots) on OSM
   // tiles. Pins paint immediately from the model's approximate coordinates,
@@ -1958,12 +1932,33 @@
     card.classList.remove("hidden");
 
     mapInstance = L.map("compMap", { scrollWheelZoom: false });
-    // Carto Positron: muted light-gray basemap so the pins carry the color.
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    // Two base views, switchable from the control in the top-right corner:
+    // "Map" — Carto Positron, muted light-gray so the pins carry the color;
+    // "Satellite" — Esri photorealistic imagery with a street/place label
+    // overlay. The choice persists and is reapplied on every report's map.
+    const streetLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 18,
       crossOrigin: "anonymous",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(mapInstance);
+    });
+    const satelliteLayer = L.layerGroup([
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 18,
+        crossOrigin: "anonymous",
+        attribution: "Imagery &copy; Esri &amp; contributors",
+      }),
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 18,
+        crossOrigin: "anonymous",
+      }),
+    ]);
+    let mapView = "street";
+    try { if (localStorage.getItem("mapView") === "satellite") mapView = "satellite"; } catch (_) {}
+    (mapView === "satellite" ? satelliteLayer : streetLayer).addTo(mapInstance);
+    L.control.layers({ "Map": streetLayer, "Satellite": satelliteLayer }, null, { position: "topright" }).addTo(mapInstance);
+    mapInstance.on("baselayerchange", (e) => {
+      try { localStorage.setItem("mapView", e.name === "Satellite" ? "satellite" : "street"); } catch (_) {}
+    });
 
     // Wheel zoom is opt-in (armed by a click, disarmed when the cursor leaves)
     // so wheel-scrolling the report past the map never zooms it by accident.
@@ -1987,11 +1982,9 @@
         html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
-      const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
-      // Popup content is a function so the aerial photo is built at open time,
-      // from wherever the pin sits NOW (post-geocoding), not where it started.
-      m.bindPopup(() => `<strong>Your property:</strong> ${escMap(meta.address)}` + aerialThumb(m.getLatLng()));
-      return m;
+      return L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 })
+        .addTo(mapInstance)
+        .bindPopup(`<strong>Your property:</strong> ${escMap(meta.address)}`);
     };
     const addCompMarker = (c, lat, lng) => {
       // Each pin carries the comp's report-wide number, matching its table row.
@@ -2002,9 +1995,9 @@
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
       const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
-      const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
-      m.bindPopup(() => `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}` + aerialThumb(m.getLatLng()));
-      return m;
+      return L.marker([lat, lng], { icon: dotIcon })
+        .addTo(mapInstance)
+        .bindPopup(`<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`);
     };
 
     const bounds = [];

@@ -4,16 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A commercial real estate comp tool, branded **CompNinja** (the owner's
-independent brand — it previously carried Adler Industrial branding; do not
-reintroduce Adler anywhere). A user enters a property address + type; the
-server asks Claude (with web search) for recent comparable sales/leases and
-returns a structured comp report (summary, average $/SF, comp table, optional
-subject-vs-market comparison). The front-end is a single HTML file; a small
-Node proxy holds the API key so the browser never sees it. The public contact
-email across the site is agouraninja@gmail.com. The owner is not a licensed
-broker: site copy must say we "connect you with a local broker", never that we
-are one.
+A commercial real estate comp + valuation tool, branded **CompNinja** (the
+owner's independent brand — it previously carried Adler Industrial branding;
+do not reintroduce Adler anywhere). A user enters a property address + type;
+the server asks Claude (with web search) for recent comparable sales/leases
+and returns one unified report that both answers and proves: a "What This
+Building Is Worth" value hero (the building's SF is looked up from public
+records when not entered), a plain-English market summary, a "What's Driving
+Prices Here" card (model-supplied `value_drivers` + `market_trend`), a market
+position chart, a comp map, and the full sortable comp table with per-comp
+source-confidence badges (Verified / Public record / Listing / News /
+Estimate). There is deliberately **no mode toggle** — an earlier owner-mode /
+comps-mode split was merged (commit 87095aa); `#owner` survives only as a
+deep link that pre-opens the property-details section. The hero carries a
+"Get a free Broker Opinion of Value" button — the site's lead funnel; those
+leads are stored with `source: "bov"` (vs `"export"` for export unlocks).
+The front-end is a single HTML file; a small Node proxy holds the API key so
+the browser never sees it. The public contact email across the site is
+agouraninja@gmail.com. The owner is not a licensed broker: site copy must say
+we "connect you with a local broker", never that we are one, and every
+valuation is labeled an automated estimate, never an appraisal.
 
 There is no build step, no test suite, no linter, and **no npm dependencies** — it
 runs on plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
@@ -98,12 +108,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`server.js`** — zero-dependency Node HTTP server. Routes:
 - `POST /api/comps` — the core endpoint. Enforces the password gate (if set),
   builds the prompt, calls Anthropic with the `web_search` tool enabled, and
-  returns parsed JSON.
+  returns parsed JSON. Body takes optional `subjectSizeSqft`; when absent the
+  prompt also asks the model to look up the building's size (returned as
+  `subject_size_sqft` + `subject_size_source`) and `max_uses` rises 6 → 8 to
+  budget the lookup. Every response carries `market_cap_rate_range`,
+  `value_drivers`, `market_trend`, and a per-comp `source_type` that the
+  server normalizes onto its enum (unknown → `estimate`, so badges can
+  under-claim provenance but never over-claim).
 - `GET /api/config` — tells the front-end whether a password is required and
   whether lead capture is on (`{ authRequired, leadCapture }`).
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
-  + the searched address/type). Rate-limited per IP.
+  + the searched address/type + `source`: `"export"` for export unlocks,
+  `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
+  a matching `source` column). Rate-limited per IP.
 - `GET /api/leads` — downloads captured leads as CSV; requires `ADMIN_KEY`.
 - `POST /api/comp-submission` — stores a broker-submitted comp (broker contact +
   comp details, `status: "pending"`) in the Supabase `comp_submissions` table
@@ -124,7 +142,7 @@ html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
 CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
 
-### Two non-obvious flows to know before editing
+### Non-obvious flows to know before editing
 
 1. **Web-search response parsing (`server.js`).** A web-search response is a mix
    of block types. The code keeps only `block.type === "text"`, joins them, then
@@ -142,6 +160,18 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    active `COLUMNS` array is rebuilt per search in `renderResults()`. **Any new
    type-specific field must be changed in both places** — the prompt's comp shape
    and the front-end column set — or it won't display/export.
+
+3. **All valuation math is client-side; the model only supplies market
+   figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
+   range from sale-comp $/SF (leases are excluded even on mixed searches) ×
+   the subject SF — the user's entry wins over the looked-up
+   `subject_size_sqft`, and a looked-up size is auto-filled into the form
+   input as an editable override. NOI is **never sent to the server**: the
+   income-approach cross-check divides the browser-held NOI by the model's
+   `market_cap_rate_range`. Subject inputs persist in each report's `meta`
+   (saved reports re-render without the form), and editing size/price/NOI
+   after a report re-renders the hero/comparison/chart in place — no new
+   billed search.
 
 ## Deployment
 

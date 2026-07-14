@@ -57,6 +57,7 @@ const DB_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
 const LEADS_FILE = path.join(__dirname, "leads.jsonl");
 const COMP_SUBMISSIONS_FILE = path.join(__dirname, "comp-submissions.jsonl");
 const SEARCH_CACHE_FILE = path.join(__dirname, "search-cache.json");
+const SHARED_REPORTS_FILE = path.join(__dirname, "shared-reports.json");
 
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
@@ -344,6 +345,80 @@ async function storeCachedSearch(key, payload) {
     await fs.promises.writeFile(SEARCH_CACHE_FILE, JSON.stringify(fileCache));
   } catch (err) {
     console.error("Search cache file write failed:", err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared reports — a report the visitor chose to publish under a short id so
+// they can send the link to a partner, lender, or the property owner. Same
+// storage shape as the search cache (Supabase table `shared_reports` keyed by
+// id, in-memory Map + JSON file fallback) but with NO expiry: a shared
+// valuation link that dies later is worse than a few stale KB in Postgres.
+// ---------------------------------------------------------------------------
+const sharedReportsMem = new Map();
+
+function newShareId() {
+  // 8 random bytes -> 11 url-safe chars. Ample against collision at this scale.
+  return crypto.randomBytes(8).toString("base64url");
+}
+
+async function loadSharedReportsFile() {
+  try {
+    return JSON.parse(await fs.promises.readFile(SHARED_REPORTS_FILE, "utf8"));
+  } catch (_) {
+    return {};
+  }
+}
+
+async function getSharedReport(id) {
+  const mem = sharedReportsMem.get(id);
+  if (mem) return mem;
+  if (DB_CONFIGURED) {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/shared_reports?id=eq.${encodeURIComponent(id)}&select=payload&limit=1`,
+        { headers: supabaseHeaders() }
+      );
+      if (r.ok) {
+        const rows = await r.json();
+        if (rows[0]) {
+          sharedReportsMem.set(id, rows[0].payload);
+          return rows[0].payload;
+        }
+      }
+    } catch (err) {
+      console.error("Shared report DB read failed:", err.message);
+    }
+  }
+  const fileStore = await loadSharedReportsFile();
+  if (fileStore[id]) {
+    sharedReportsMem.set(id, fileStore[id]);
+    return fileStore[id];
+  }
+  return null;
+}
+
+async function storeSharedReport(id, payload) {
+  sharedReportsMem.set(id, payload);
+  if (DB_CONFIGURED) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/shared_reports`, {
+        method: "POST",
+        headers: { ...supabaseHeaders(), prefer: "return=minimal" },
+        body: JSON.stringify({ id, payload, created_at: new Date().toISOString() }),
+      });
+      if (r.ok) return;
+      console.error(`Shared report DB write failed (${r.status}) — falling back to file.`);
+    } catch (err) {
+      console.error("Shared report DB write failed — falling back to file:", err.message);
+    }
+  }
+  try {
+    const fileStore = await loadSharedReportsFile();
+    fileStore[id] = payload;
+    await fs.promises.writeFile(SHARED_REPORTS_FILE, JSON.stringify(fileStore));
+  } catch (err) {
+    console.error("Shared report file write failed:", err.message);
   }
 }
 
@@ -876,8 +951,66 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Static: serve index.html for "/" or "/index.html" ---
-  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
+  // --- Publish a report under a short id so the visitor can share the link ---
+  if (req.method === "POST" && req.url === "/api/share") {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 3e5) req.destroy(); // a report is a few KB; 300KB is plenty
+    });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("share:" + clientIp(req), 30)) {
+          return sendJson(res, 429, { error: "Too many shares from this connection. Please wait a few minutes." });
+        }
+        const parsed = JSON.parse(body || "{}");
+        const report = parsed && parsed.data, meta = parsed && parsed.meta;
+        // Only publish something that actually looks like a rendered report.
+        if (!report || !Array.isArray(report.comps) || !meta || !meta.address) {
+          return sendJson(res, 400, { error: "A complete report is required to share." });
+        }
+        // NOI is the owner's private income figure — never let it ride along on
+        // a link that can be forwarded. The sales-comparison value still shows;
+        // only the income-approach cross-check drops out.
+        const safeMeta = { ...meta };
+        if (safeMeta.subject) {
+          safeMeta.subject = { ...safeMeta.subject, noi: null };
+        }
+        delete safeMeta.sample;
+        delete safeMeta.fromHistory;
+        safeMeta.shared = true;
+        safeMeta.generatedAt = meta.generatedAt || Date.now();
+        const id = newShareId();
+        await storeSharedReport(id, { data: report, meta: safeMeta });
+        return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}` });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Failed to store shared report:", err);
+        return sendJson(res, 500, { error: "Could not create the share link. Please try again." });
+      }
+    });
+    return;
+  }
+
+  // --- Fetch a published report by id (public: anyone with the link) ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/shared") {
+    const id = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+    if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
+      return sendJson(res, 400, { error: "Invalid share id." });
+    }
+    getSharedReport(id).then((payload) => {
+      if (!payload) return sendJson(res, 404, { error: "This shared report was not found." });
+      return sendJson(res, 200, payload);
+    }).catch((err) => {
+      console.error("Shared report lookup failed:", err);
+      return sendJson(res, 500, { error: "Could not load the shared report." });
+    });
+    return;
+  }
+
+  // --- Static: serve index.html for "/", "/index.html", or a /r/<id> share link.
+  // The SPA reads the id off the path and fetches the report from /api/shared. ---
+  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(req.url))) {
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
       if (err) {
         res.writeHead(500);

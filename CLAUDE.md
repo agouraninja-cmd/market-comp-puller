@@ -142,6 +142,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   + the searched address/type + `source`: `"export"` for export unlocks,
   `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
   a matching `source` column). Rate-limited per IP.
+- `POST /api/share` — publishes the current report (`{ data, meta }`) under a
+  short random id so the visitor can share the link; returns `{ id, url }`.
+  Strips `meta.subject.noi` (private income figure) before storing. Stored in
+  the Supabase `shared_reports` table (id/payload/created_at), in-memory Map +
+  `shared-reports.json` file fallback, **no expiry**. Rate-limited per IP.
+- `GET /api/shared?id=` — returns a published report's `{ data, meta }` (public;
+  the whole point is that anyone with the link can view it). `meta.shared` is
+  true so the front-end renders it without saving to the viewer's history.
+- `GET /r/<id>` — serves `index.html`; the SPA reads the id off the path and
+  fetches the report from `/api/shared`. (server.js allow-lists this path
+  alongside `/` and `/index.html`.)
 - `GET /api/geocode?address=` — CORS pass-through to the free US Census
   geocoder. The model's per-comp `lat`/`lng` are block-level guesses used only
   for the map's first paint; the front-end re-places every pin from real

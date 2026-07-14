@@ -744,6 +744,11 @@
 
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
+        <button id="shareBtn" style="margin-right:auto"
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 border border-brand-600 rounded-lg px-3 py-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span id="shareBtnLabel">Share link</span>
+        </button>
         <button id="imgBtn"
           class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 21"/></svg>
@@ -1298,7 +1303,7 @@
         renderOwnerHero(currentParsed, currentMeta);
         renderComparison(currentParsed);
         renderMarketChart();
-        if (!currentMeta.sample && !currentMeta.fromHistory) saveReport(currentMeta, currentParsed);
+        if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveReport(currentMeta, currentParsed);
       }, 300);
     });
   });
@@ -1363,6 +1368,33 @@
   });
 
   initGate();
+
+  // A /r/<id> share link: load the published report and render it read-only-ish
+  // (it doesn't save into the viewer's history). The form above is pre-filled
+  // with the property so the viewer can run their own fresh search in a click.
+  (function loadSharedReport() {
+    const m = location.pathname.match(/^\/r\/([A-Za-z0-9_-]{6,32})$/);
+    if (!m) return;
+    fetch("/api/shared?id=" + encodeURIComponent(m[1]))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("not found"))))
+      .then((payload) => {
+        if (!payload || !payload.data || !payload.meta) throw new Error("bad payload");
+        const meta = payload.meta;
+        // Pre-fill the search form from the shared report's context.
+        if (meta.address) document.getElementById("address").value = meta.address;
+        if (meta.type) document.getElementById("propertyType").value = meta.type;
+        const s = meta.subject || {};
+        if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
+        if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
+        if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
+        if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
+        renderResults(payload.data, meta);
+        showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
+      })
+      .catch(() => {
+        showStatus("That shared report link is invalid or is no longer available.", "error");
+      });
+  })();
 
   // ----------------------------------------------------------------------------
   // Loading / status helpers
@@ -2074,7 +2106,7 @@
       Object.values(compMarkersByNum).forEach((m) => refined.push(m.getLatLng()));
       mapInstance.fitBounds(refined, { padding: [35, 35], maxZoom: 14 });
       // Corrected coordinates ride along in the saved copy of the report.
-      if (!meta.sample && !meta.fromHistory) saveReport(meta, parsed);
+      if (!meta.sample && !meta.fromHistory && !meta.shared) saveReport(meta, parsed);
     })();
   }
 
@@ -2211,10 +2243,14 @@
     renderMarketChart();
     renderTableHead();
     renderTableBody();
-    if (!meta.sample && !meta.fromHistory) {
+    if (!meta.sample && !meta.fromHistory && !meta.shared) {
       saveRecentSearch(meta);
       saveReport(meta, parsed);
     }
+    // Sharing publishes a real valuation; the sample is illustrative, so hide
+    // the share link for it.
+    document.getElementById("shareBtn").classList.toggle("hidden", !!meta.sample);
+
     // Broker CTA — only on lead-capture (public) deployments, with the subject
     // property prefilled so the inbound email says which building it's about.
     const cta = document.getElementById("ctaCard");
@@ -3204,6 +3240,42 @@
   // Hero BOV CTA — always opens the modal (an explicit BOV request, not an
   // export gate), even when exports are already unlocked.
   document.getElementById("bovCtaBtn").addEventListener("click", () => openLeadModal("bov"));
+
+  // Share link — publish the current report server-side and copy its URL. NOT
+  // gated by lead capture: sharing spreads the product, so we want zero
+  // friction. The recipient lands on the full report with the BOV ask in view.
+  document.getElementById("shareBtn").addEventListener("click", async () => {
+    if (!currentParsed || !currentMeta) return;
+    const btn = document.getElementById("shareBtn");
+    const label = document.getElementById("shareBtnLabel");
+    if (btn.dataset.busy === "1") return;
+    btn.dataset.busy = "1";
+    const original = "Share link";
+    label.textContent = "Creating link…";
+    try {
+      const r = await fetch("/api/share", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ data: currentParsed, meta: currentMeta }),
+      });
+      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) || "Share failed.");
+      const { url } = await r.json();
+      label.textContent = original;   // restore before flash captures the HTML
+      let copied = false;
+      try { await navigator.clipboard.writeText(url); copied = true; } catch (_) {}
+      if (copied) {
+        flashExportDone(btn, "Link copied!");
+      } else {
+        // Clipboard blocked (non-secure context, permissions) — show it to copy by hand.
+        window.prompt("Copy this shareable link:", url);
+      }
+    } catch (err) {
+      label.textContent = "Try again";
+      setTimeout(() => { label.textContent = original; }, 1800);
+    } finally {
+      btn.dataset.busy = "0";
+    }
+  });
 
   // ----------------------------------------------------------------------------
   // Broker comp submission — outside brokers offer verified comps; stored

@@ -1,0 +1,749 @@
+{
+  "industrial-ontario-ca": {
+    "type": "Industrial",
+    "city": "Ontario",
+    "state": "CA",
+    "generatedAt": "2026-07-14",
+    "summary": "The Ontario, CA industrial submarket (Inland Empire West) is in a post-peak recalibration phase. Direct vacancy has climbed to roughly 7.7% to 8.5% in early 2026, up sharply from sub-2% pandemic-era lows, as a wave of speculative construction delivered vacant space faster than demand could absorb it. Lease rates have fallen roughly 34% from their 2023 peak to around $0.99 to $1.08 per SF per month NNN, giving tenants meaningful negotiating leverage including free-rent concessions. Sale prices have pulled back to roughly $220 to $320 per SF depending on asset quality and size, with cap rates averaging in the mid-4% to low-5% range for stabilized product.",
+    "market_trend": "Industrial sale prices in Ontario/Inland Empire West pulled back roughly 15% from 2022 peak levels through mid-2026, with the average transaction price settling in the $259-$275/SF range during 2025, compared to highs above $300/SF in 2022.",
+    "value_drivers": [
+      "Rising vacancy (7.7%-8.5% direct in Q1 2026) driven by excess speculative deliveries is pushing lease rates and values down",
+      "Lease rates down roughly 34% from 2023 peak to ~$0.99-$1.08 NNN/SF/month, eroding NOI and limiting upward pricing pressure on sales",
+      "Scarcity of smaller sub-100,000 SF modern logistics product is keeping that size band more competitive than big-box",
+      "Proximity to Ontario International Airport and I-10/I-15/SR-60 interchange continues to support long-term logistics demand and prevents deeper value declines"
+    ],
+    "cap_rate_low": "4.5%",
+    "cap_rate_high": "5.5%",
+    "ppsf": {
+      "count": 3,
+      "median": 259,
+      "low": 241,
+      "high": 288,
+      "min": 222,
+      "max": 316
+    },
+    "date_range": "Mar 2025 – Mar 2026",
+    "comps": [
+      {
+        "address": "West Ontario Distribution Center, Ontario, CA 91761",
+        "date": "Q1 2025",
+        "transaction": "Sale",
+        "size_sqft": "174494",
+        "price_or_rate": "$55,200,000",
+        "price_per_sqft": "$316",
+        "source_type": "news"
+      },
+      {
+        "address": "Serrano Business Park, Ontario/San Bernardino County, CA",
+        "date": "Q1 2025",
+        "transaction": "Sale",
+        "size_sqft": "332725",
+        "price_or_rate": "$86,000,000",
+        "price_per_sqft": "$259",
+        "source_type": "news"
+      },
+      {
+        "address": "Ontario, CA (Orden Company acquisition, 257,000 SF industrial/office)",
+        "date": "Jan 2026",
+        "transaction": "Sale",
+        "size_sqft": "257000",
+        "price_or_rate": "$57,000,000",
+        "price_per_sqft": "$222",
+        "source_type": "news"
+      },
+      {
+        "address": "Ontario, CA - Airport Area Submarket Warehouse (274,312 SF building)",
+        "date": "Mar 2026",
+        "transaction": "Lease",
+        "size_sqft": "185342",
+        "price_or_rate": "$1.08/SF/month NNN ($12.96/SF/yr NNN)",
+        "price_per_sqft": "$12.96",
+        "source_type": "listing"
+      },
+      {
+        "address": "Ontario, CA - Airport Area Submarket Warehouse (22,411 SF)",
+        "date": "Mar 2025",
+        "transaction": "Lease",
+        "size_sqft": "22411",
+        "price_or_rate": "$1.25/SF/month NNN ($15.00/SF/yr NNN)",
+        "price_per_sqft": "$15.00",
+        "source_type": "listing"
+      },
+      {
+        "address": "1540 E Acacia St - Thoroughbred Business Park, Ontario, CA 91761",
+        "date": "Mar 2025",
+        "transaction": "Lease",
+        "size_sqft": "82252",
+        "price_or_rate": "$1.30/SF/month IG ($15.60/SF/yr)",
+        "price_per_sqft": "$15.60",
+        "source_type": "listing"
+      },
+      {
+        "address": "Ontario, CA - Airport Area Submarket Warehouse (50,976 SF building)",
+        "date": "Mar 2025",
+        "transaction": "Lease",
+        "size_sqft": "37722",
+        "price_or_rate": "$1.15/SF/month NNN ($13.80/SF/yr NNN)",
+        "price_per_sqft": "$13.80",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "industrial-dallas-tx": {
+    "type": "Industrial",
+    "city": "Dallas",
+    "state": "TX",
+    "generatedAt": "2026-07-14",
+    "summary": "The Dallas industrial market is one of the most active in the United States, with vacancy declining to 8.7-8.8% in Q1 2026 and average asking rents reaching approximately $10.24/SF NNN annually. Investment sale pricing averaged $143-147/SF in Q1 2026, with cap rates holding near 6.2% on stabilized assets. Demand from 3PL, e-commerce, and logistics users is outpacing new deliveries for the first time in several years, signaling a tightening leasing environment ahead, though elevated sublease availability continues to give tenants some negotiating leverage.",
+    "market_trend": "Dallas-Fort Worth industrial sale prices trended upward from an average of approximately $129/SF in Q4 2025 to $143-147/SF by Q1 2026, reflecting continued investor demand for stabilized logistics assets despite a more cautious transaction environment.",
+    "value_drivers": [
+      "Vacancy declining 137 bps from peak to 8.7-8.8%, reducing tenant leverage in bulk logistics submarkets",
+      "Elevated sublease availability near 10.5% of market continues to suppress effective rents and compress pricing on value-add assets",
+      "Infill submarkets (South Stemmons, DFW Airport corridor) face land scarcity, pushing premium pricing well above metro averages",
+      "Record 2025 leasing volume of 56 million SF - 50% above long-term norms - driven by 3PL and e-commerce users supporting rent growth"
+    ],
+    "cap_rate_low": "5.8%",
+    "cap_rate_high": "6.8%",
+    "ppsf": {
+      "count": 3,
+      "median": 129,
+      "low": 117,
+      "high": 136,
+      "min": 105,
+      "max": 143
+    },
+    "date_range": "Jun 2026 – Jun 2026",
+    "comps": [
+      {
+        "address": "Speedway Logistics Crossing Building 3, South Dallas, TX",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "796000",
+        "price_or_rate": "$83,500,000",
+        "price_per_sqft": "$105",
+        "source_type": "listing"
+      },
+      {
+        "address": "1650 Lakeside Parkway, Flower Mound, TX (Dallas metro)",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "292850",
+        "price_or_rate": "",
+        "price_per_sqft": "$129",
+        "source_type": "listing"
+      },
+      {
+        "address": "11271 Leo Ln, Dallas, TX 75229",
+        "date": "Jun 2026",
+        "transaction": "Lease",
+        "size_sqft": "9360",
+        "price_or_rate": "$11.80/SF/yr NNN",
+        "price_per_sqft": "$11.80",
+        "source_type": "listing"
+      },
+      {
+        "address": "South Stemmons Industrial Submarket - Brookhollow, Dallas, TX",
+        "date": "Jun 2026",
+        "transaction": "Lease",
+        "size_sqft": "175176",
+        "price_or_rate": "$12.17/SF/yr NNN",
+        "price_per_sqft": "$12.17",
+        "source_type": "listing"
+      },
+      {
+        "address": "Industrial Warehouse, Dallas Design District / I-35 Corridor, Dallas, TX",
+        "date": "Jun 2026",
+        "transaction": "Lease",
+        "size_sqft": "21840",
+        "price_or_rate": "$11.44/SF/yr NNN",
+        "price_per_sqft": "$11.44",
+        "source_type": "listing"
+      },
+      {
+        "address": "Industrial/Manufacturing Building, Dallas, TX (I-35E / LBJ corridor)",
+        "date": "Jun 2026",
+        "transaction": "Lease",
+        "size_sqft": "54600",
+        "price_or_rate": "$11.80/SF/yr NNN",
+        "price_per_sqft": "$11.80",
+        "source_type": "listing"
+      },
+      {
+        "address": "72,031 SF Renovated Warehouse, Dallas County, TX",
+        "date": "Jun 2026",
+        "transaction": "Lease",
+        "size_sqft": "72031",
+        "price_or_rate": "$11.44/SF/yr NNN",
+        "price_per_sqft": "$11.44",
+        "source_type": "listing"
+      },
+      {
+        "address": "North Dallas Industrial Portfolio (180,000+ SF), North Dallas, TX",
+        "date": "Q1 2026",
+        "transaction": "Sale",
+        "size_sqft": "180000",
+        "price_or_rate": "",
+        "price_per_sqft": "$143",
+        "source_type": "news"
+      }
+    ]
+  },
+  "industrial-atlanta-ga": {
+    "type": "Industrial",
+    "city": "Atlanta",
+    "state": "GA",
+    "generatedAt": "2026-07-14",
+    "summary": "Atlanta's metro industrial market is in a gradual recovery after vacancy peaked near 9% in mid-2025. Vacancy has since declined to approximately 7.5-7.6% as of Q1 2026, driven by improved leasing absorption and a sharp pullback in new construction deliveries. Average sale prices for metro warehouses have ranged from roughly $90 to $179 per square foot according to CBRE and Colliers, with the all-market average hitting an all-time high of approximately $146 per square foot in Q4 2025. NNN asking rents have softened to around $8.81 per square foot annually but are expected to firm as the pipeline tightens further.",
+    "market_trend": "Average industrial sale prices in metro Atlanta rose sharply to an all-time high of approximately $146 per square foot in Q4 2025, up 34.5% quarter-over-quarter, after ranging between $90 and $179 per square foot across 2024-2025 transactions per CBRE and Colliers.",
+    "value_drivers": [
+      "Vacancy compression from 9.0% in mid-2025 to 7.5-7.6% by Q1 2026 is tightening available supply and supporting pricing",
+      "New construction deliveries have fallen sharply to an 11-year low in Q4 2025, constraining future supply and limiting rent-dilutive new product",
+      "Large-block mid-size space (100,000-500,000 SF) faces highest availability, making smaller infill assets relatively scarce and better priced",
+      "Tariff-related supply chain reshoring activity and sustained e-commerce demand from I-85 North and I-20 West submarkets are driving leasing velocity"
+    ],
+    "cap_rate_low": "6.5%",
+    "cap_rate_high": "7.5%",
+    "ppsf": {
+      "count": 3,
+      "median": 127,
+      "low": 125,
+      "high": 128,
+      "min": 122,
+      "max": 129
+    },
+    "date_range": "Feb 2026 – Apr 2026",
+    "comps": [
+      {
+        "address": "Greenwood Industrial Park, Atlanta Metro, GA",
+        "date": "Q3 2025",
+        "transaction": "Lease",
+        "size_sqft": "300000",
+        "price_or_rate": "$8.82 NNN/SF/yr (market avg)",
+        "price_per_sqft": "$8.82",
+        "source_type": "listing"
+      },
+      {
+        "address": "Shannon 85 Distribution Center, Atlanta Metro, GA",
+        "date": "Q3 2025",
+        "transaction": "Lease",
+        "size_sqft": "209192",
+        "price_or_rate": "$8.82 NNN/SF/yr (market avg)",
+        "price_per_sqft": "$8.82",
+        "source_type": "listing"
+      },
+      {
+        "address": "Buffington Business Center, Atlanta Metro, GA",
+        "date": "Q3 2025",
+        "transaction": "Lease",
+        "size_sqft": "207684",
+        "price_or_rate": "$8.82 NNN/SF/yr (market avg)",
+        "price_per_sqft": "$8.82",
+        "source_type": "listing"
+      },
+      {
+        "address": "Stonemont Park 75 South, Locust Grove, GA (approx. 30 miles S of Atlanta)",
+        "date": "Apr 2026",
+        "transaction": "Lease",
+        "size_sqft": "",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Industrial Warehouse Portfolio, Social Circle, GA (approx. 50 miles E of Atlanta)",
+        "date": "Feb 2026",
+        "transaction": "Sale",
+        "size_sqft": "1000000",
+        "price_or_rate": "$129,000,000",
+        "price_per_sqft": "$129",
+        "source_type": "news"
+      },
+      {
+        "address": "HQ Industrial (300,000 SF), Atlanta Metro, GA",
+        "date": "Q2 2025",
+        "transaction": "Sale",
+        "size_sqft": "300000",
+        "price_or_rate": "$127/SF (market avg)",
+        "price_per_sqft": "$127",
+        "source_type": "listing"
+      },
+      {
+        "address": "North Haven Net REIT Acquisition, Atlanta Metro, GA",
+        "date": "Q3 2025",
+        "transaction": "Sale",
+        "size_sqft": "1512552",
+        "price_or_rate": "$122/SF (market avg)",
+        "price_per_sqft": "$122",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "industrial-phoenix-az": {
+    "type": "Industrial",
+    "city": "Phoenix",
+    "state": "AZ",
+    "generatedAt": "2026-07-14",
+    "summary": "The Phoenix metro industrial market is actively recovering after absorbing over 91 million SF of new supply delivered between 2023 and 2025. Vacancy has been declining for four consecutive quarters, reaching roughly 9.2% to 12.4% depending on the source and methodology, as Q1 2026 absorption of 4.8 to 5.0 million SF outpaced new deliveries of just 1.4 million SF by a 3-to-1 margin. Sale prices rose sharply in Q1 2026 to an average of $245 per SF, up 17% year-over-year, with the largest deals concentrated in Class A logistics buildings in the Northwest and Southwest corridors. Small-bay and infill industrial space remains the tightest segment of the market, with vacancy as low as 4 to 6%, while large-format logistics buildings face more competition from available sublease space.",
+    "market_trend": "Phoenix industrial sale prices rose approximately 17% year-over-year to an average of $245 per SF in Q1 2026, recovering from a 2024-2025 trough driven by record oversupply, with institutional capital re-engaging aggressively for stabilized Class A assets.",
+    "value_drivers": [
+      "Vacancy compression: four consecutive quarters of declining vacancy as absorption outpaces sharply reduced new deliveries (down 82% YOY in Q1 2026)",
+      "Semiconductor and advanced manufacturing demand surge: TSMC, Amkor, and 60+ industry expansions since 2020 driving structural industrial demand independent of logistics cycle",
+      "Sharp bifurcation between small-bay (4-6% vacancy, rent growth) and large-format logistics (16%+ vacancy, oversupply still working through)",
+      "Tariff-driven metals inflation (steel up 20.7% YOY) and power/electrical gear lead times of 42-52 weeks constraining new construction starts and supporting existing asset values"
+    ],
+    "cap_rate_low": "5.5%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 5,
+      "median": 117,
+      "low": 113,
+      "high": 202,
+      "min": 97,
+      "max": 227
+    },
+    "date_range": "Sep 2025 – Jun 2026",
+    "comps": [
+      {
+        "address": "7111 S Crismon Rd (The Cubes at Mesa Gateway, Bldg C), Mesa, AZ 85212",
+        "date": "Jun 2026",
+        "transaction": "Sale",
+        "size_sqft": "1200000",
+        "price_or_rate": "$116,000,000",
+        "price_per_sqft": "$96.70",
+        "source_type": "news"
+      },
+      {
+        "address": "Luke Field Bldg C, approx 13803 Northern Ave, Glendale, AZ 85307",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "1300000",
+        "price_or_rate": "$152,200,000",
+        "price_per_sqft": "$117.08",
+        "source_type": "news"
+      },
+      {
+        "address": "Park303, Litchfield Park, AZ (approx 13500 W Camelback Rd area)",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "1300000",
+        "price_or_rate": "$147,000,000",
+        "price_per_sqft": "$113.08",
+        "source_type": "news"
+      },
+      {
+        "address": "7000 W Buckeye Rd, Phoenix, AZ 85043",
+        "date": "Oct 2025",
+        "transaction": "Sale",
+        "size_sqft": "285900",
+        "price_or_rate": "$57,750,000",
+        "price_per_sqft": "$202.00",
+        "source_type": "news"
+      },
+      {
+        "address": "Cotton 303 Logistics Center, approx Loop 303 / I-10 corridor, Goodyear/Surprise, AZ",
+        "date": "Q1 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$104,000,000",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Two-building portfolio, Tolleson, AZ (approx 91st Ave corridor)",
+        "date": "Q1 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$94,100,000",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "700 S 94th Ave (West 94 Commerce Park), Tolleson, AZ 85353",
+        "date": "Sep 2025",
+        "transaction": "Lease",
+        "size_sqft": "85000",
+        "price_or_rate": "$0.85/SF/mo NNN ($10.20/SF/yr NNN)",
+        "price_per_sqft": "$10.20/SF/yr NNN",
+        "source_type": "listing"
+      },
+      {
+        "address": "Prologis Phoenix portfolio (multiple buildings), Phoenix Metro, AZ",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "221512",
+        "price_or_rate": "$50,300,000",
+        "price_per_sqft": "$227.08",
+        "source_type": "news"
+      }
+    ]
+  },
+  "industrial-columbus-oh": {
+    "type": "Industrial",
+    "city": "Columbus",
+    "state": "OH",
+    "generatedAt": "2026-07-14",
+    "summary": "The Columbus, OH industrial market has shown strong momentum over the past two years, with industrial vacancy falling sharply from 9.4% in Q1 2025 to 6.6% by Q1 2026 as demand significantly outpaced new supply. Investment sales volume reached $1.1 billion through the first nine months of 2025, the highest since 2022, driven by both institutional and private buyers. Average asking NNN lease rates hover around $9 to $10 per square foot, while sale prices across the market average roughly $95 to $155 per square foot depending on building class and submarket. Modern Class A bulk distribution facilities and Rickenbacker logistics corridor assets command significant premiums over general industrial product.",
+    "market_trend": "Industrial sale prices in Columbus have firmed over the 2024-2026 window, with total investment volume reaching $1.1 billion through Q3 2025 (highest since 2022) and average per-square-foot pricing supported by institutional re-entry and record demand absorption.",
+    "value_drivers": [
+      "Vacancy falling sharply from 9.4% in Q1 2025 to 6.6% in Q1 2026 as net absorption far exceeded new deliveries",
+      "Speculative construction pipeline at its smallest since 2019 with deliveries slowing 39% year-over-year, tightening available supply",
+      "Scarcity of modern Class A bulk distribution product, which commands rents 9% above general industrial and drives outsized sale prices along Rickenbacker logistics corridor",
+      "Growing manufacturing demand from Anduril Arsenal-1 and onshoring activity increasing competition for mid-size and flex industrial space"
+    ],
+    "cap_rate_low": "5.5%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 3,
+      "median": 216,
+      "low": 165,
+      "high": 241,
+      "min": 113,
+      "max": 265
+    },
+    "date_range": "Jun 2025 – Oct 2025",
+    "comps": [
+      {
+        "address": "11555 Briscoe Parkway, Lockbourne, OH 43137",
+        "date": "Q2 2025",
+        "transaction": "Sale",
+        "size_sqft": "1200000",
+        "price_or_rate": "$136,000,000",
+        "price_per_sqft": "$113",
+        "source_type": "news"
+      },
+      {
+        "address": "4448 Rickenbacker Parkway East, Columbus, OH 43125",
+        "date": "Q2 2025",
+        "transaction": "Sale",
+        "size_sqft": "253680",
+        "price_or_rate": "$67,400,000",
+        "price_per_sqft": "$265",
+        "source_type": "news"
+      },
+      {
+        "address": "North Wilson Road, Columbus, OH 43228",
+        "date": "Oct 2025",
+        "transaction": "Sale",
+        "size_sqft": "86389",
+        "price_or_rate": "$18,700,000",
+        "price_per_sqft": "$216",
+        "source_type": "news"
+      },
+      {
+        "address": "840 Hilliard Rome Road, Columbus, OH 43228",
+        "date": "Q3 2025",
+        "transaction": "Lease",
+        "size_sqft": "367633",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "1665 Westbelt Drive, Columbus, OH 43228",
+        "date": "Jun 2025",
+        "transaction": "Lease",
+        "size_sqft": "40000",
+        "price_or_rate": "$16.20 NNN (est. gross incl. CAM)",
+        "price_per_sqft": "$16.20",
+        "source_type": "listing"
+      },
+      {
+        "address": "660 North Hague Avenue, Columbus, OH 43204",
+        "date": "Jun 2025",
+        "transaction": "Lease",
+        "size_sqft": "200000",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      },
+      {
+        "address": "3538 Tradeport Court, Columbus, OH 43217",
+        "date": "Q3 2025",
+        "transaction": "Lease",
+        "size_sqft": "337200",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      }
+    ]
+  },
+  "office-dallas-tx": {
+    "type": "Office",
+    "city": "Dallas",
+    "state": "TX",
+    "generatedAt": "2026-07-14",
+    "summary": "The Dallas office market is highly bifurcated: trophy and Class A Uptown and Preston Center assets attracted a surge of institutional capital in 2024-2026, with sale prices ranging from roughly $350/SF to over $747/SF for the best buildings, while overall metro vacancy remains elevated near 24-25% and Class B properties continue to post negative absorption. Asking rents hit a record high of $33-$34/SF full-service across the metro in early 2026, with Uptown commanding roughly $60/SF. The strongest leasing and investment activity is concentrated in Uptown, Preston Center, and the North Dallas Corridor, while the CBD and Las Colinas submarkets face ongoing headwinds from high vacancy and tenant consolidations.",
+    "market_trend": "Sale prices for Dallas office assets rose sharply for institutional-quality properties in 2025, with the two largest Uptown trades pricing at $639-$747/SF and total metro sales volume jumping from $107M in all of 2024 to $1.46B through August 2025, though distressed and Class B assets continued to trade at steep discounts or go to foreclosure.",
+    "value_drivers": [
+      "Trophy and Class A office vacancy in Uptown and Preston Center tightened sharply, with Preston Center availability at just 6.8% in H1 2026, creating significant rent and pricing premiums over the metro average",
+      "Class B office posted 493,000 SF of negative net absorption in Q1 2026, widening the pricing gap between quality tiers and pushing commodity office cap rates above 7.5% to clear",
+      "No new office deliveries in Q1 2026 for the first time in 30 years, reducing supply-side pressure in submarkets with strong demand and supporting rent growth of 6% year-over-year",
+      "AT&T's planned exit of 2 million SF from Downtown Dallas by 2028 is expected to push CBD vacancy well above its current 33%, depressing values in that submarket"
+    ],
+    "cap_rate_low": "6.0%",
+    "cap_rate_high": "8.5%",
+    "ppsf": {
+      "count": 4,
+      "median": 495,
+      "low": 275,
+      "high": 666,
+      "min": 48,
+      "max": 747
+    },
+    "date_range": "Nov 2024 – Dec 2025",
+    "comps": [
+      {
+        "address": "2601 Olive Street, Dallas, TX (The Link at Uptown)",
+        "date": "Jul 2025",
+        "transaction": "Sale",
+        "size_sqft": "292000",
+        "price_or_rate": "$218,000,000",
+        "price_per_sqft": "$747",
+        "source_type": "news"
+      },
+      {
+        "address": "2000 McKinney Avenue, Dallas, TX (Texas Capital Center)",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "457000",
+        "price_or_rate": "~$292,000,000",
+        "price_per_sqft": "~$639",
+        "source_type": "news"
+      },
+      {
+        "address": "2100 McKinney Avenue, Dallas, TX",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "360000",
+        "price_or_rate": "Undisclosed (~$170M+ financing)",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "8111-8117 Preston Road, Dallas, TX (Preston Commons)",
+        "date": "Nov 2024",
+        "transaction": "Sale",
+        "size_sqft": "427799",
+        "price_or_rate": "~$150,000,000",
+        "price_per_sqft": "~$351",
+        "source_type": "news"
+      },
+      {
+        "address": "5949 Sherry Lane, Dallas, TX (Sterling Plaza)",
+        "date": "Jul 2025",
+        "transaction": "Sale",
+        "size_sqft": "313600",
+        "price_or_rate": "Undisclosed",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "The Connection at 8600, Dallas, TX (Iron Mountain Lease)",
+        "date": "Q1 2026",
+        "transaction": "Lease",
+        "size_sqft": "95000",
+        "price_or_rate": "~$33-$37/SF/yr (market asking rate)",
+        "price_per_sqft": "$33-$37/SF/yr",
+        "source_type": "listing"
+      },
+      {
+        "address": "4544 McKinney Avenue, Dallas, TX (Jones Day Lease)",
+        "date": "Q1 2026",
+        "transaction": "Lease",
+        "size_sqft": "76000",
+        "price_or_rate": "~$50-$60/SF/yr (Uptown submarket asking rate)",
+        "price_per_sqft": "$50-$60/SF/yr",
+        "source_type": "listing"
+      },
+      {
+        "address": "17950 Preston Road, Dallas, TX (Preston Plaza)",
+        "date": "Apr 2025",
+        "transaction": "Sale",
+        "size_sqft": "290000",
+        "price_or_rate": "$13,850,000",
+        "price_per_sqft": "~$48",
+        "source_type": "news"
+      }
+    ]
+  },
+  "office-atlanta-ga": {
+    "type": "Office",
+    "city": "Atlanta",
+    "state": "GA",
+    "generatedAt": "2026-07-14",
+    "summary": "The Atlanta office market remains a tale of two cities: premier Class A and Trophy buildings in Midtown and Buckhead are trading at $158 to $228 per square foot with strong leasing demand driven by a flight-to-quality trend, while the broader market averaged $131 per square foot in 2025, down slightly from 2024. Overall vacancy hovers near 21 to 27 percent depending on the source, but the construction pipeline is at its lowest level in over a decade, which is expected to tighten supply and support Class A rents going forward. Investment sales activity in 2025 surged 56 percent year-over-year, signaling returning buyer confidence, though many assets are still trading well below replacement cost. Tenants are consolidating into higher-quality spaces, leaving older Class B and C product with elevated vacancy and flat rental rates.",
+    "market_trend": "Office sale prices in Atlanta declined modestly in 2025, with the average price per square foot falling 2.66% year-over-year to $131/SF broadly, though top-tier Midtown Class A assets traded at $158 to $228/SF, outperforming the market average as investors selectively targeted stabilized, well-leased buildings.",
+    "value_drivers": [
+      "Flight-to-quality: 73.5% of new leasing activity concentrated in Trophy/Class A assets, leaving Class B/C with elevated vacancy and flat absorption",
+      "Supply scarcity: construction pipeline at lowest level since 2011, with only ~272,000 SF under construction metro-wide, reducing future supply pressure",
+      "Persistent high vacancy: overall market vacancy of 26-27% is keeping broad sale prices well below 2019 peaks and replacement cost",
+      "Return-to-office mandates: corporate RTO policies are supporting leasing demand in premium Midtown and Buckhead submarkets, pushing Class A asking rents above $40/SF"
+    ],
+    "cap_rate_low": "8.2%",
+    "cap_rate_high": "9.1%",
+    "ppsf": {
+      "count": 3,
+      "median": 213,
+      "low": 186,
+      "high": 221,
+      "min": 158,
+      "max": 228
+    },
+    "date_range": "Jun 2024 – May 2025",
+    "comps": [
+      {
+        "address": "1100 Peachtree St NE, Atlanta, GA 30309 (Eleven Hundred Peachtree)",
+        "date": "May 2025",
+        "transaction": "Sale",
+        "size_sqft": "587079",
+        "price_or_rate": "$133,750,000",
+        "price_per_sqft": "$228/SF",
+        "source_type": "listing"
+      },
+      {
+        "address": "1420 Peachtree St NE, Atlanta, GA 30309 (Pershing Park Plaza)",
+        "date": "Oct 2024",
+        "transaction": "Sale",
+        "size_sqft": "160000",
+        "price_or_rate": "$34,000,000",
+        "price_per_sqft": "$213/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "1170 Peachtree St NE, Atlanta, GA 30309 (Proscenium)",
+        "date": "Aug 2024",
+        "transaction": "Sale",
+        "size_sqft": "526000",
+        "price_or_rate": "$83,000,000",
+        "price_per_sqft": "$158/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "3225 Cumberland Blvd SE, Atlanta, GA 30339 (Cumberland Center IV)",
+        "date": "2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$53,000,000",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      },
+      {
+        "address": "2002 Summit Blvd, Atlanta, GA 30319 (Perimeter Summit - Summit Two)",
+        "date": "Oct 2024",
+        "transaction": "Lease",
+        "size_sqft": "178666",
+        "price_or_rate": "Rate not publicly disclosed",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "1230 Peachtree St NE, Atlanta, GA 30309 (Promenade Tower)",
+        "date": "2024",
+        "transaction": "Lease",
+        "size_sqft": "115000",
+        "price_or_rate": "Rate not publicly disclosed; avg in-place rents at building ~$39/SF FSG per Q3 2023 data",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Concourse Office Park, 8800 Roswell Rd, Sandy Springs, GA 30350",
+        "date": "Jun 2024",
+        "transaction": "Lease",
+        "size_sqft": "180000",
+        "price_or_rate": "Rate not publicly disclosed",
+        "price_per_sqft": "",
+        "source_type": "news"
+      }
+    ]
+  },
+  "retail-phoenix-az": {
+    "type": "Retail",
+    "city": "Phoenix",
+    "state": "AZ",
+    "generatedAt": "2026-07-14",
+    "summary": "The Phoenix retail market is performing strongly entering mid-2026, with vacancy holding near 5.0% and average asking rents reaching $26.57/SF in Q4 2025 after five-plus consecutive years of annual rent growth averaging around 5-6%. Investment activity has accelerated, with transaction volume in 2025 running more than 25% above 2024 levels and new-construction grocery-anchored centers trading above $650/SF while larger power centers clear in the $250-$270/SF range. Unanchored and non-grocery-anchored strip centers typically trade at 7-8% cap rates, with top-tier stabilized assets compressing into the 6% range. No specific building address was provided for the target property, so a subject building size could not be determined from public records.",
+    "market_trend": "Phoenix retail sale prices have risen significantly over the 2024-2026 window, with new-construction stabilized assets trading at record per-SF levels above $650/SF and the broader market averaging $187/SF on large-format investment-grade product, supported by accelerating transaction volume that surpassed $2 billion in the trailing twelve months through Q3 2025.",
+    "value_drivers": [
+      "Sustained sub-5% retail vacancy driving landlord pricing power and above-market rent escalations",
+      "New-construction grocery-anchored and daily-needs centers commanding $600+/SF as private all-cash buyers bypass debt markets",
+      "Over $600M in maturing CMBS retail loans by 2026 may push value-add inventory to market, creating acquisition opportunities",
+      "National chain bankruptcies (99 Cents Only, Joann) temporarily lifted availability to 5.1% but space is being rapidly backfilled by off-price, fitness, and experiential tenants"
+    ],
+    "cap_rate_low": "6.0%",
+    "cap_rate_high": "8.0%",
+    "ppsf": {
+      "count": 6,
+      "median": 351,
+      "low": 254,
+      "high": 596,
+      "min": 187,
+      "max": 657
+    },
+    "date_range": "Jul 2024 – Jul 2026",
+    "comps": [
+      {
+        "address": "Ninety Nine Ave, 99th Avenue & McDowell Road, West Phoenix, AZ 85037",
+        "date": "May 2026",
+        "transaction": "Sale",
+        "size_sqft": "47201",
+        "price_or_rate": "$30,700,000",
+        "price_per_sqft": "$650.41",
+        "source_type": "news"
+      },
+      {
+        "address": "Pecan Plaza Shops, NWC Ellsworth Road & Riggs Road, Queen Creek, AZ 85142",
+        "date": "May 2026",
+        "transaction": "Sale",
+        "size_sqft": "20325",
+        "price_or_rate": "$13,350,000",
+        "price_per_sqft": "$656.83",
+        "source_type": "news"
+      },
+      {
+        "address": "Vineyard Towne Center, NWC Gantzel Road & Combs Road, Queen Creek, AZ 85140",
+        "date": "May 2026",
+        "transaction": "Sale",
+        "size_sqft": "260000",
+        "price_or_rate": "$69,600,000",
+        "price_per_sqft": "$267.69",
+        "source_type": "news"
+      },
+      {
+        "address": "Biltmore Fashion Park (50% interest), 2502 E Camelback Road, Phoenix, AZ 85016",
+        "date": "Jul 2024",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$110,000,000 (50% share)",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Phoenix Metro Retail Investment Sales Portfolio (67 properties >20,000 SF, >$1M), Greater Phoenix, AZ",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$1,080,000,000 aggregate (67 properties)",
+        "price_per_sqft": "$187",
+        "source_type": "news"
+      },
+      {
+        "address": "Phoenix Metro Retail Market (Q1 2024 snapshot), Greater Phoenix, AZ",
+        "date": "Q1 2024",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$249 avg sale price PSF",
+        "price_per_sqft": "$249",
+        "source_type": "news"
+      },
+      {
+        "address": "Phoenix Metro Arizona Strip Malls (active listings), Greater Phoenix / Arizona, AZ",
+        "date": "Jul 2026",
+        "transaction": "Sale",
+        "size_sqft": "20688",
+        "price_or_rate": "$434 avg asking price PSF",
+        "price_per_sqft": "$434",
+        "source_type": "listing"
+      }
+    ]
+  }
+}

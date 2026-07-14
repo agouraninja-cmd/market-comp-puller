@@ -169,6 +169,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   the Address column. Rate-limited per IP.
 - `GET /api/comp-submissions` — downloads submitted comps as CSV; requires
   `ADMIN_KEY`.
+- `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
+  (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
+  **Server-rendered, self-contained HTML** (own inline `<style>`, so they do
+  NOT depend on the purged `tailwind.css`) built from `market-seed.json` —
+  static data committed to the repo, so pages survive redeploys and serve
+  instantly with no DB. Each page: median/quartile $/SF, cap-rate range, a
+  market summary + `value_drivers` narrative, a recent-comps table, and a
+  valuation CTA into the app. Regenerate/expand with `node gen-market-seed.js`
+  (edit its `TARGETS` list; it runs one cached search per market against a
+  locally-running server and keeps only markets with ≥3 priced sale comps, so
+  no thin pages). `sitemap.xml` lists `/`, `/markets`, and every market page.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.

@@ -745,5 +745,347 @@
         "source_type": "listing"
       }
     ]
+  },
+  "industrial-fontana-ca": {
+    "type": "Industrial",
+    "city": "Fontana",
+    "state": "CA",
+    "generatedAt": "2026-07-14",
+    "summary": "The Fontana industrial submarket within Inland Empire West remains one of Southern California's most active logistics corridors, anchored by major freeway access to I-10, I-15, I-210, and SR-60. Institutional buyers including Bridge Logistics Properties and Rexford Industrial closed multiple large transactions between late 2024 and early 2026, with stabilized Class A assets trading in the $250 to $265 per square foot range. The market's vacancy rate stood at approximately 8.4 percent at year-end 2025, slightly elevated versus prior years due to a wave of new completions, yet demand from large logistics users including Amazon continues to absorb supply. Average asking NNN rents for warehouse and distribution space in Fontana are approximately $17 per square foot annually.",
+    "market_trend": "Stabilized mid-size Class A industrial sale prices in Fontana held in the $250-$265 per square foot range from late 2024 through early 2026, while large vacant big-box assets traded at a discount near $158 per square foot, reflecting bifurcated pricing between leased and vacant product.",
+    "value_drivers": [
+      "Scarcity of large-format Class A industrial sites due to AB 98 and land constraints limiting new development pipelines",
+      "Elevated vacancy in the 8-9% range for big-box product above 500,000 SF creating pricing dislocation for mega-scale assets",
+      "Sustained demand from e-commerce and 3PL tenants such as Amazon absorbing mid-size and large distribution space",
+      "Proximity to I-10, I-15, and Ontario International Airport sustaining rent premiums for well-located Fontana product"
+    ],
+    "cap_rate_low": "5.5%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 4,
+      "median": 251,
+      "low": 228,
+      "high": 255,
+      "min": 158,
+      "max": 265
+    },
+    "date_range": "Oct 2024 – Mar 2026",
+    "comps": [
+      {
+        "address": "6260 Mango Ave, Fontana, CA 92336",
+        "date": "Mar 2026",
+        "transaction": "Sale",
+        "size_sqft": "113930",
+        "price_or_rate": "$30,200,000",
+        "price_per_sqft": "$265/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "13201 Dahlia St, Fontana, CA 92337",
+        "date": "Oct 2024",
+        "transaction": "Sale",
+        "size_sqft": "278650",
+        "price_or_rate": "$70,100,000",
+        "price_per_sqft": "$251.60/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "14074 Rancho Ct / 14019 Rose Ave / 14928 Washington Dr, Fontana, CA",
+        "date": "Jul 2025",
+        "transaction": "Sale",
+        "size_sqft": "332793",
+        "price_or_rate": "$83,500,000",
+        "price_per_sqft": "$251/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "10681 Production Ave, Fontana, CA 92337",
+        "date": "Nov 2025",
+        "transaction": "Sale",
+        "size_sqft": "1101900",
+        "price_or_rate": "$174,000,000",
+        "price_per_sqft": "$158/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "4121 Coyote Canyon Rd (I-15 Logistics Center), Fontana, CA",
+        "date": "Late 2024",
+        "transaction": "Lease",
+        "size_sqft": "1000000",
+        "price_or_rate": "Undisclosed NNN",
+        "price_per_sqft": "",
+        "source_type": "news"
+      }
+    ]
+  },
+  "industrial-las-vegas-nv": {
+    "type": "Industrial",
+    "city": "Las Vegas",
+    "state": "NV",
+    "generatedAt": "2026-07-14",
+    "summary": "The Las Vegas industrial market is working through the tail end of a supply-driven correction, with vacancy at roughly 11.4% in Q1 2026 but absorption trending positive at 5.1 million SF in 2025. Sale prices show a wide spread, from about $152/SF for large institutional big-box product up to $290/SF for smaller Class A infill assets, with the Southwest submarket commanding a clear premium. Asking rents have stabilized around $14 to $16 NNN annually, and most well-priced industrial product is clearing with little to no concession. The spec construction pipeline has effectively paused, which should support gradual absorption of standing vacancy through the rest of 2026.",
+    "market_trend": "Industrial sale prices in Las Vegas have bifurcated over the past 24 months: small-bay infill assets in the Southwest submarket have held or edged higher ($250-$300/SF range), while large-format distribution properties have seen price compression to $140-$165/SF as buyer discovery works through elevated vacancy.",
+    "value_drivers": [
+      "Vacancy rose from sub-5% lows to 11.4% in Q1 2026 due to 2023-2025 supply wave, compressing values on large-bay product",
+      "Spec groundbreakings paused broadly across the market, reducing near-term pipeline and supporting rent stability",
+      "Sublease shadow supply reached 2.6 million SF, creating direct competition with landlords for mid-size tenants",
+      "Small-bay infill product under 25,000 SF in Southwest Las Vegas remains scarce and trades at a 60% premium to the broader valley"
+    ],
+    "cap_rate_low": "6.0%",
+    "cap_rate_high": "7.5%",
+    "ppsf": {
+      "count": 5,
+      "median": 277,
+      "low": 162,
+      "high": 290,
+      "min": 153,
+      "max": 290
+    },
+    "date_range": "May 2025 – Feb 2026",
+    "comps": [
+      {
+        "address": "4550 Nexus Way, North Las Vegas, NV 89081",
+        "date": "Feb 2026",
+        "transaction": "Sale",
+        "size_sqft": "813120",
+        "price_or_rate": "$124,000,000",
+        "price_per_sqft": "$152.50",
+        "source_type": "news"
+      },
+      {
+        "address": "6950 Miller Lane, Las Vegas, NV",
+        "date": "Feb 2026",
+        "transaction": "Sale",
+        "size_sqft": "75900",
+        "price_or_rate": "$22,000,000",
+        "price_per_sqft": "$290",
+        "source_type": "news"
+      },
+      {
+        "address": "3020 S Valley View Blvd, Las Vegas, NV 89102",
+        "date": "Q1 2026",
+        "transaction": "Sale",
+        "size_sqft": "28400",
+        "price_or_rate": "$4,601,000",
+        "price_per_sqft": "$162",
+        "source_type": "news"
+      },
+      {
+        "address": "Southwest Submarket Class A Facility (undisclosed address), Las Vegas, NV",
+        "date": "May 2025",
+        "transaction": "Sale",
+        "size_sqft": "83280",
+        "price_or_rate": "$24,151,200",
+        "price_per_sqft": "$290",
+        "source_type": "news"
+      },
+      {
+        "address": "3837 Bay Lake Trail / 3717 Bay Lake Trail / 3200 E Gowan Road, North Las Vegas, NV",
+        "date": "Jun 2025",
+        "transaction": "Sale",
+        "size_sqft": "1046211",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "3670 W Oquendo Road, Las Vegas, NV 89118",
+        "date": "2025",
+        "transaction": "Sale",
+        "size_sqft": "28420",
+        "price_or_rate": "$7,875,000",
+        "price_per_sqft": "$277",
+        "source_type": "news"
+      },
+      {
+        "address": "5325 S Valley View Blvd, Las Vegas, NV 89118",
+        "date": "2025",
+        "transaction": "Lease",
+        "size_sqft": "31144",
+        "price_or_rate": "$12.00/SF/yr NNN",
+        "price_per_sqft": "$12.00/SF/yr NNN",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "industrial-savannah-ga": {
+    "type": "Industrial",
+    "city": "Savannah",
+    "state": "GA",
+    "generatedAt": "2026-07-14",
+    "summary": "The Savannah industrial market remains one of the strongest in the Southeast, driven by record Port of Savannah cargo volumes and proximity to the Hyundai EV manufacturing plant. Vacancy rose through much of 2024-2025 due to a wave of speculative deliveries but began stabilizing near 9.9%-14.1% by early 2026 as new construction slowed. Average sale prices for Class A product tracked around $99-$137 per square foot in 2024-2025, while NNN asking rents for functional warehouse space in the immediate Savannah submarket ranged from roughly $8.54 to $12.00 per square foot annually. Investment activity remains robust with institutional and private buyers active across the Highway 21 corridor and port-adjacent submarkets.",
+    "market_trend": "Average industrial sale prices in Savannah rose from approximately $85-$100 per square foot in early 2024 to $130-$133 per square foot by Q4 2025, reflecting continued institutional demand despite rising vacancy from new supply deliveries.",
+    "value_drivers": [
+      "Port of Savannah cargo volume growth creating sustained logistics tenant demand along I-16 and I-95 corridors",
+      "Hyundai EV plant generating 8,100 projected jobs and new supplier demand for proximate industrial space",
+      "Elevated vacancy (9.9%-14.1%) from 2023-2025 speculative construction wave pressuring rent growth and lease-up timelines",
+      "Declining new development pipeline in 2025-2026 beginning to rebalance supply and support stabilization"
+    ],
+    "cap_rate_low": "5.5%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 3,
+      "median": 138,
+      "low": 118,
+      "high": 152,
+      "min": 98,
+      "max": 167
+    },
+    "date_range": "Oct 2024 – Jun 2025",
+    "comps": [
+      {
+        "address": "1001 Gateway Pkwy, Rincon, GA 31326",
+        "date": "Oct 2024",
+        "transaction": "Sale",
+        "size_sqft": "204800",
+        "price_or_rate": "$34,100,000",
+        "price_per_sqft": "$166.50",
+        "source_type": "news"
+      },
+      {
+        "address": "1000 Gateway Pkwy (Bldg 1E), Rincon, GA 31326",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "380800",
+        "price_or_rate": "$52,509,188",
+        "price_per_sqft": "$137.88",
+        "source_type": "listing"
+      },
+      {
+        "address": "447 Logistics Dr, Ellabell, GA 31308",
+        "date": "Jan 2025",
+        "transaction": "Sale",
+        "size_sqft": "2100000",
+        "price_or_rate": "$205,500,000",
+        "price_per_sqft": "$97.86",
+        "source_type": "news"
+      },
+      {
+        "address": "Georgia International Trade Center (GITC), Savannah, GA 31408",
+        "date": "May 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$309,000,000 (portfolio)",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "231 Bourne Blvd, Savannah, GA 31408",
+        "date": "Jun 2025",
+        "transaction": "Lease",
+        "size_sqft": "46200",
+        "price_or_rate": "$9.00/SF/yr NNN",
+        "price_per_sqft": "$9.00",
+        "source_type": "listing"
+      },
+      {
+        "address": "25 Artley Rd, Savannah, GA 31408",
+        "date": "Dec 2024",
+        "transaction": "Lease",
+        "size_sqft": "37500",
+        "price_or_rate": "$10.50/SF/yr NNN",
+        "price_per_sqft": "$10.50",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "office-austin-tx": {
+    "type": "Office",
+    "city": "Austin",
+    "state": "TX",
+    "generatedAt": "2026-07-14",
+    "summary": "Austin's office market remains tenant-favorable in mid-2026, with a citywide vacancy rate near 24-25% - one of the highest among major U.S. metros - giving tenants strong negotiating leverage on rents and concessions. Closed sale prices in 2025 averaged around $216/SF across all classes, above the national average of $192/SF, though individual deals ranged from under $130/SF for value-add suburban assets to over $400/SF for trophy downtown towers. Lease rates for Class A space run roughly $45-$65/SF full-service in the CBD and $28-$45/SF in suburban submarkets. A shrinking construction pipeline and early return-to-office mandates from major tech employers point toward gradual tightening of conditions through 2026 and into 2027.",
+    "market_trend": "Austin office sale prices declined from a 2024 average of ~$403/SF (inflated by the $521.8M Block 185 trophy trade) to a 2025 average of ~$216/SF as institutional sellers like Starwood exited at deep discounts and value-add buyers dominated deal flow.",
+    "value_drivers": [
+      "Elevated overall vacancy (~24.6% as of early 2026) suppressing values and keeping buyers cautious",
+      "Shrinking new construction pipeline (down 91% quarter-over-quarter in Q3 2025) reducing future supply pressure",
+      "Return-to-office mandates from tech tenants (NVIDIA 230K SF expansion, NinjaOne HQ) absorbing sublease inventory",
+      "Texas SB 840 enabling office-to-residential conversions creating optionality and floor for distressed asset pricing"
+    ],
+    "cap_rate_low": "6.0%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 3,
+      "median": 126,
+      "low": 124,
+      "high": 265,
+      "min": 122,
+      "max": 404
+    },
+    "date_range": "Dec 2024 – Nov 2025",
+    "comps": [
+      {
+        "address": "301 Congress Ave, Austin, TX 78701 (Block 185)",
+        "date": "Dec 2024",
+        "transaction": "Sale",
+        "size_sqft": "1291000",
+        "price_or_rate": "$521,800,000",
+        "price_per_sqft": "$404",
+        "source_type": "listing"
+      },
+      {
+        "address": "3300 N Interstate 35, Austin, TX 78722 (University Park)",
+        "date": "Q1 2025",
+        "transaction": "Sale",
+        "size_sqft": "206349",
+        "price_or_rate": "$26,000,000",
+        "price_per_sqft": "$126",
+        "source_type": "news"
+      },
+      {
+        "address": "5707 Southwest Parkway, Austin, TX 78735 (Encino Trace I and II)",
+        "date": "Q3 2025",
+        "transaction": "Sale",
+        "size_sqft": "326852",
+        "price_or_rate": "Undisclosed",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "7600 Chevy Chase Drive, Austin, TX 78752 (Chase Park)",
+        "date": "Q3 2025",
+        "transaction": "Sale",
+        "size_sqft": "313988",
+        "price_or_rate": "Undisclosed",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "1250 S. Capital of Texas Highway, West Lake Hills, TX 78746 (Cielo Center)",
+        "date": "Nov 2025",
+        "transaction": "Sale",
+        "size_sqft": "286000",
+        "price_or_rate": "Undisclosed (assessed taxable value ~$35M / ~$122/SF)",
+        "price_per_sqft": "~$122 (assessed)",
+        "source_type": "news"
+      },
+      {
+        "address": "9001 N Interstate 35, Austin, TX 78753 (Northview Business Center)",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "261546",
+        "price_or_rate": "Undisclosed",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "301 Congress Ave, Austin, TX 78701 (NinjaOne HQ)",
+        "date": "Q1 2025",
+        "transaction": "Lease",
+        "size_sqft": "60033",
+        "price_or_rate": "Undisclosed (market rate; CBD Class A ~$59-$65/SF FS)",
+        "price_per_sqft": "~$59-$65/SF/yr (est.)",
+        "source_type": "news"
+      },
+      {
+        "address": "3232 E Cesar Chavez St, Austin, TX 78702",
+        "date": "2025",
+        "transaction": "Lease",
+        "size_sqft": "26207",
+        "price_or_rate": "$42.00 - $45.00/SF/yr",
+        "price_per_sqft": "$42-$45/SF/yr",
+        "source_type": "listing"
+      }
+    ]
   }
 }

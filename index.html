@@ -361,6 +361,9 @@
     .rd-badge.li { color: #7A5B12; background: #F7EFDC; }
     .rd-drv { font-size: 13px; color: #374253; padding: 7px 0; border-top: 1px solid #F0EFE9; display: flex; gap: 8px; }
     .rd-drv b { color: #B91C1C; font-weight: 700; }
+    /* Full-bleed alt band — the background spans the whole viewport while the
+       content stays in the centered column (the mockup's #F5F4EF section grounds). */
+    .rd-band { background: #F5F4EF; box-shadow: 0 0 0 100vmax #F5F4EF; clip-path: inset(0 -100vmax); }
     /* Method steps + broker cards */
     .rd-steps { border: 1px solid #D8D4C9; border-radius: 6px; overflow: hidden; background: #fff; }
     .rd-step { padding: 22px 24px; border-right: 1px solid #ECEAE3; }
@@ -612,19 +615,20 @@
           </div>
         </details>
 
-        <!-- Submit row; docks to the bottom of the screen on phones -->
+        <!-- Submit row; docks to the bottom of the screen on phones. On desktop the
+             red button sits on the right, per the approved mockup. -->
         <div class="sticky bottom-0 px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3 sm:static">
           <button id="submitBtn" type="submit"
-            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
+            class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Run a report</span>
           </button>
           <button id="sampleBtn" type="button"
-            class="btn-live w-full sm:w-auto inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
+            class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
             View a sample report
           </button>
-          <span class="sm:ml-auto text-[12.5px] text-[#8A8577]">Free · No account required · An automated estimate, not an appraisal</span>
         </div>
       </form>
+      <div class="text-[12.5px] text-[#8A8577] mt-3">Free · No account required · An automated estimate, not an appraisal</div>
     </div>
 
     <!-- Recent searches (stored locally in this browser only) -->
@@ -952,7 +956,7 @@
       </div>
 
       <!-- The Report — sample exhibit -->
-      <section class="mt-14 reveal">
+      <section class="mt-10 py-12 rd-band reveal">
         <div class="rd-kicker">The Report</div>
         <h2 class="rd-h text-[27px] mt-2">One page that answers, then proves.</h2>
         <p class="text-sm text-[#4C5665] mt-1 mb-5 max-w-[60ch]">A value range for the subject, what's driving prices in the market, and the comp table behind both — with a confidence badge on every source.</p>
@@ -992,7 +996,7 @@
 
       <!-- Method -->
       <!-- two anchors: "how-it-works" is the footer link target (pre-existing), "method" is the header nav target -->
-      <section id="how-it-works" class="mt-14 reveal"><span id="method"></span>
+      <section id="how-it-works" class="py-12 reveal"><span id="method"></span>
         <div class="rd-kicker">Method</div>
         <h2 class="rd-h text-[27px] mt-2 mb-5">How a report comes together.</h2>
         <div class="rd-steps grid grid-cols-1 sm:grid-cols-3">
@@ -1003,7 +1007,7 @@
       </section>
 
       <!-- For Brokers -->
-      <section id="for-brokers" class="mt-14 reveal">
+      <section id="for-brokers" class="py-12 rd-band reveal">
         <div class="rd-kicker">For Brokers</div>
         <h2 class="rd-h text-[27px] mt-2 mb-5">The comps get better because brokers make them better.</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -1023,7 +1027,7 @@
       </section>
 
       <!-- Markets -->
-      <section class="mt-14 reveal">
+      <section class="py-12 reveal">
         <div class="rd-kicker">Coverage</div>
         <h2 class="rd-h text-[27px] mt-2 mb-5">Market pages, updated as reports run.</h2>
         <div class="columns-2 sm:columns-4 gap-8 text-[13.5px] leading-8 text-[#46536A]">
@@ -1043,7 +1047,7 @@
       </section>
 
       <!-- FAQ (visible copy matches the FAQPage structured data in the head) -->
-      <section id="faq" class="mt-14 reveal">
+      <section id="faq" class="pt-12 reveal">
         <div class="rd-kicker">Questions</div>
         <h2 class="rd-h text-[27px] mt-2 mb-5">FAQ</h2>
         <div class="space-y-3">

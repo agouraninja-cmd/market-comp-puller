@@ -943,141 +943,130 @@
     <!-- Home info — fills out the landing view; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
 
-      <!-- Trust strip: true claims only — no invented usage numbers. -->
-      <div class="mt-12 reveal">
-        <dl class="flex flex-wrap justify-center gap-x-10 gap-y-4 text-center">
-          <div>
-            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Property types</dt>
-            <dd class="text-xl font-bold text-slate-900 mt-0.5">6</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Comps per report</dt>
-            <dd class="text-xl font-bold text-slate-900 mt-0.5">3–6</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Typical report time</dt>
-            <dd class="text-xl font-bold text-slate-900 mt-0.5">Under 1 min</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Broker-submitted comps</dt>
-            <dd class="text-xl font-bold text-slate-900 mt-0.5">Verified</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Cost</dt>
-            <dd class="text-xl font-bold text-slate-900 mt-0.5">Free</dd>
-          </div>
-        </dl>
+      <!-- Stat strip: true claims only — keep "27" in sync with market-seed.json -->
+      <div class="mt-12 reveal border-y rd-hairline grid grid-cols-2 sm:grid-cols-4">
+        <div class="rd-stat p-4 sm:p-5 border-r rd-hairline"><div class="n">27</div><div class="l">Markets covered</div></div>
+        <div class="rd-stat p-4 sm:p-5 sm:border-r rd-hairline"><div class="n">3–6</div><div class="l">Cited comps per report</div></div>
+        <div class="rd-stat p-4 sm:p-5 border-r rd-hairline"><div class="n">~60s</div><div class="l">Search to report</div></div>
+        <div class="rd-stat p-4 sm:p-5"><div class="n">100%</div><div class="l">Sources disclosed</div></div>
       </div>
 
-      <!-- How it works -->
-      <section id="how-it-works" class="mt-12 reveal">
-        <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Process</div>
-        <h2 class="text-2xl font-bold text-slate-900 tracking-tight mt-1">How it works</h2>
-        <p class="text-sm text-slate-500 mt-1 mb-4">From address to comp report in three steps</p>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <div class="flex items-center gap-3 mb-2">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-white text-sm font-bold shrink-0 shadow-sm">1</span>
-              <h3 class="font-semibold text-slate-900">Describe the property</h3>
+      <!-- The Report — sample exhibit -->
+      <section class="mt-14 reveal">
+        <div class="rd-kicker">The Report</div>
+        <h2 class="rd-h text-[27px] mt-2">One page that answers, then proves.</h2>
+        <p class="text-sm text-[#4C5665] mt-1 mb-5 max-w-[60ch]">A value range for the subject, what's driving prices in the market, and the comp table behind both — with a confidence badge on every source.</p>
+        <div class="rd-exhibit">
+          <div class="rd-cap flex justify-between"><span>Sample report · Industrial · Rancho Cucamonga, CA</span><span class="hidden sm:inline">Exported Jul 2026</span></div>
+          <div class="flex flex-col lg:flex-row">
+            <div class="p-6 lg:border-r border-b lg:border-b-0 border-[#ECEAE3] lg:w-[38%]">
+              <div class="rd-lab">Estimated value</div>
+              <div class="rd-h text-[32px] mt-0.5" style="font-variant-numeric:tabular-nums">$4.6M–$5.3M</div>
+              <div class="text-[13px] text-[#5A6473] mb-4">$212–$245 / SF · 21,600 SF (public record)</div>
+              <div class="rd-lab mb-1">What's driving prices</div>
+              <div class="rd-drv"><b>▲</b> Inland Empire vacancy tightening near the I-15 corridor</div>
+              <div class="rd-drv"><b>▲</b> Sub-25K SF buildings trade at a premium — scarce supply</div>
+              <div class="rd-drv"><b>–</b> Rate environment holding cap rates near 5.9–6.4%</div>
             </div>
-            <p class="text-sm text-slate-500 leading-relaxed">Enter the address and property type. Add a radius or submarket note to focus the search where it matters.</p>
+            <div class="p-6 flex-1 overflow-x-auto">
+              <table class="rd-comps">
+                <thead><tr><th>Address</th><th>Sold</th><th>SF</th><th>$/SF</th><th>Source</th></tr></thead>
+                <tbody>
+                  <tr><td>9020 Center Ave</td><td>May 26</td><td>21,400</td><td>$238</td><td><span class="rd-badge v">Verified · via Lee &amp; Assoc.</span></td></tr>
+                  <tr><td>11215 4th St</td><td>Mar 26</td><td>18,750</td><td>$226</td><td><span class="rd-badge p">Public record</span></td></tr>
+                  <tr><td>8933 Utica Ave</td><td>Feb 26</td><td>24,100</td><td>$219</td><td><span class="rd-badge li">Listing</span></td></tr>
+                  <tr><td>10722 Arrow Route</td><td>Dec 25</td><td>19,900</td><td>$214</td><td><span class="rd-badge p">Public record</span></td></tr>
+                  <tr><td>12190 6th St</td><td>Nov 25</td><td>26,300</td><td>$208</td><td><span class="rd-badge li">Listing</span></td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <div class="flex items-center gap-3 mb-2">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-white text-sm font-bold shrink-0 shadow-sm">2</span>
-              <h3 class="font-semibold text-slate-900">We search the market</h3>
-            </div>
-            <p class="text-sm text-slate-500 leading-relaxed">A live web search scans public records, listings, and brokerage announcements for recent comparable transactions.</p>
+        </div>
+        <div class="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-[13px] text-[#4C5665]">
+          <span class="flex items-center gap-2"><span class="rd-badge v">Verified</span> confirmed by a local broker</span>
+          <span class="flex items-center gap-2"><span class="rd-badge p">Public record</span> county recorder / assessor</span>
+          <span class="flex items-center gap-2"><span class="rd-badge li">Listing</span> active or closed listing</span>
+          <span class="text-[#8A93A0]">Badges under-claim, never over-claim.</span>
+        </div>
+      </section>
+
+      <!-- Method -->
+      <section id="how-it-works" class="mt-14 reveal"><span id="method"></span>
+        <div class="rd-kicker">Method</div>
+        <h2 class="rd-h text-[27px] mt-2 mb-5">How a report comes together.</h2>
+        <div class="rd-steps grid grid-cols-1 sm:grid-cols-3">
+          <div class="rd-step"><div class="rd-num">I.</div><h3 class="font-semibold text-[15px] text-[#1A2433] mb-1.5">Search live</h3><p class="text-[13.5px] text-[#5A6473]">Public records, listings, and news are searched at request time — not read from a stale database.</p></div>
+          <div class="rd-step"><div class="rd-num">II.</div><h3 class="font-semibold text-[15px] text-[#1A2433] mb-1.5">Cite everything</h3><p class="text-[13.5px] text-[#5A6473]">Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up.</p></div>
+          <div class="rd-step"><div class="rd-num">III.</div><h3 class="font-semibold text-[15px] text-[#1A2433] mb-1.5">Value the subject</h3><p class="text-[13.5px] text-[#5A6473]">Building size comes from public records; the range comes from sale comps. Your price and NOI stay in your browser.</p></div>
+        </div>
+      </section>
+
+      <!-- For Brokers -->
+      <section id="for-brokers" class="mt-14 reveal">
+        <div class="rd-kicker">For Brokers</div>
+        <h2 class="rd-h text-[27px] mt-2 mb-5">The comps get better because brokers make them better.</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div class="rd-bcard">
+            <div class="rd-lab">Contribute</div>
+            <h3 class="rd-h text-[19px] mt-1.5 mb-2">Submit a comp, get the credit.</h3>
+            <p class="text-sm text-[#4C5665] mb-4">Approved comps appear with a green Verified badge and your firm's name on every report that uses them — visible proof you know your market.</p>
+            <button id="brokerCtaBtn" type="button" class="btn-live text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">Submit a comp →</button>
           </div>
-          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <div class="flex items-center gap-3 mb-2">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-white text-sm font-bold shrink-0 shadow-sm">3</span>
-              <h3 class="font-semibold text-slate-900">Get a decision-ready report</h3>
-            </div>
-            <p class="text-sm text-slate-500 leading-relaxed">Market summary, average $/SF, a sortable comp table, and a comparison of your property vs. the market, ready in under a minute.</p>
+          <div class="rd-bcard">
+            <div class="rd-lab">Connect</div>
+            <h3 class="rd-h text-[19px] mt-1.5 mb-2">Meet owners already asking about value.</h3>
+            <p class="text-sm text-[#4C5665] mb-4">Owners requesting a Broker Opinion of Value are matched with brokers active in that market. No cold lists — people mid-decision.</p>
+            <a href="mailto:agouraninja@gmail.com?subject=Broker%20introduction%20—%20CompNinja" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">Get introduced →</a>
           </div>
         </div>
       </section>
 
-      <!-- What you get -->
-      <section class="mt-12 reveal">
-        <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">The report</div>
-        <h2 class="text-2xl font-bold text-slate-900 tracking-tight mt-1">What you get</h2>
-        <p class="text-sm text-slate-500 mt-1 mb-4">Everything a comp package needs</p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M19 21V11a2 2 0 0 0-2-2h-2"/><path d="M9 7h2M9 11h2M9 15h2"/></svg>
-            </span>
-            <h3 class="font-semibold text-slate-900 mb-1">Type-aware analysis</h3>
-            <p class="text-sm text-slate-500 leading-relaxed">Industrial, Office, Retail, Multifamily, Land, and Residential each get tailored treatment; industrial comps include clear height and dock doors.</p>
-          </div>
-          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-6 4 3 5-7"/></svg>
-            </span>
-            <h3 class="font-semibold text-slate-900 mb-1">Your property vs. market</h3>
-            <p class="text-sm text-slate-500 leading-relaxed">See your property's $/SF against the comp average, with the premium or discount quantified.</p>
-          </div>
-          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-            </span>
-            <h3 class="font-semibold text-slate-900 mb-1">One-click exports</h3>
-            <p class="text-sm text-slate-500 leading-relaxed">Share clean, branded reports as CSV, PNG image, or print-ready PDF.</p>
-          </div>
-          <div class="card-hover bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-slate-900 to-brand-800 text-white mb-3 shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg>
-            </span>
-            <h3 class="font-semibold text-slate-900 mb-1">Fresh, public data</h3>
-            <p class="text-sm text-slate-500 leading-relaxed">Every search runs live against public listings and records. Nothing stale, no subscription required.</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Broker comp submission CTA -->
-      <section class="mt-12 reveal">
-        <div class="rounded-xl bg-gradient-to-br from-slate-900 to-brand-900 text-white p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
-          <div class="flex-1">
-            <div class="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">For brokers</div>
-            <h2 class="text-2xl font-bold tracking-tight">Know a deal we're missing?</h2>
-            <p class="text-sm text-slate-300 mt-1 max-w-2xl">Submit a recent sale or lease comp. Every submission is reviewed by our team. Approved comps carry your firm's credit in reports and on our market pages, and contributing brokers are first in line when owners here request a Broker Opinion of Value.</p>
-          </div>
-          <button id="brokerCtaBtn" type="button"
-            class="btn-live shrink-0 inline-flex items-center justify-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50">
-            Submit a comp
-          </button>
+      <!-- Markets -->
+      <section class="mt-14 reveal">
+        <div class="rd-kicker">Coverage</div>
+        <h2 class="rd-h text-[27px] mt-2 mb-5">Market pages, updated as reports run.</h2>
+        <div class="columns-2 sm:columns-4 gap-8 text-[13.5px] leading-8 text-[#46536A]">
+          <a href="/market/industrial-ontario-ca" class="block hover:text-[#1A2433]">Industrial · Ontario, CA</a>
+          <a href="/market/industrial-fontana-ca" class="block hover:text-[#1A2433]">Industrial · Fontana, CA</a>
+          <a href="/market/industrial-dallas-tx" class="block hover:text-[#1A2433]">Industrial · Dallas, TX</a>
+          <a href="/market/industrial-phoenix-az" class="block hover:text-[#1A2433]">Industrial · Phoenix, AZ</a>
+          <a href="/market/industrial-las-vegas-nv" class="block hover:text-[#1A2433]">Industrial · Las Vegas, NV</a>
+          <a href="/market/office-austin-tx" class="block hover:text-[#1A2433]">Office · Austin, TX</a>
+          <a href="/market/office-nashville-tn" class="block hover:text-[#1A2433]">Office · Nashville, TN</a>
+          <a href="/market/office-denver-co" class="block hover:text-[#1A2433]">Office · Denver, CO</a>
+          <a href="/market/industrial-savannah-ga" class="block hover:text-[#1A2433]">Industrial · Savannah, GA</a>
+          <a href="/market/multifamily-atlanta-ga" class="block hover:text-[#1A2433]">Multifamily · Atlanta, GA</a>
+          <a href="/market/retail-orlando-fl" class="block hover:text-[#1A2433]">Retail · Orlando, FL</a>
+          <a href="/markets" class="block font-semibold text-[#B91C1C] hover:text-[#991B1B]">All 27 markets →</a>
         </div>
       </section>
 
       <!-- FAQ (visible copy matches the FAQPage structured data in the head) -->
       <section id="faq" class="mt-12 reveal">
-        <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Questions</div>
-        <h2 class="text-2xl font-bold text-slate-900 tracking-tight mt-1">FAQ</h2>
-        <p class="text-sm text-slate-500 mt-1 mb-4">Quick answers about comps, data sources, and reports</p>
+        <div class="rd-kicker">Questions</div>
+        <h2 class="rd-h text-[27px] mt-2 mb-5">FAQ</h2>
         <div class="space-y-3">
-          <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
+          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">What is a comp in commercial real estate?</summary>
             <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command.</p>
           </details>
-          <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
+          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">How much does a comp report cost?</summary>
             <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Nothing. Reports are free and there is no subscription. We only ask for your contact details when you export a report, so we can follow up about your property and market.</p>
           </details>
-          <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
+          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">Where does the data come from?</summary>
             <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it.</p>
           </details>
-          <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
+          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">Can I find out what my building is worth?</summary>
             <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Yes. Enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and every report opens with an estimated value range based on recent comparable sales. Add NOI for an income-approach cross-check. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free.</p>
           </details>
-          <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
+          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">What property types are covered?</summary>
             <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Industrial, office, retail, multifamily, land, and residential. Industrial reports also include building specs such as clear height and dock doors.</p>
           </details>
-          <details class="bg-white rounded-xl shadow-sm border border-slate-200 px-5 py-4">
+          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
             <summary class="cursor-pointer select-none font-semibold text-slate-900">How accurate are the reports?</summary>
             <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one.</p>
           </details>

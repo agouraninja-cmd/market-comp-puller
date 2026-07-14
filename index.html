@@ -79,7 +79,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <!-- Vendored Tailwind build (replaces the Play CDN + its runtime compiler).
        After adding NEW utility classes to this file, regenerate it or they
        won't style — see tailwind.config.js for the one-line command. -->
@@ -127,23 +127,8 @@
     .enter-3 { animation-delay: 260ms; }
     .enter-4 { animation-delay: 360ms; }
 
-    /* Hero — deep navy gradient with a slow ambient drift, soft light glows,
-       and a faint dot grid. The form card floats over its bottom edge. */
-    #hero {
-      background: linear-gradient(150deg, #020617 0%, #0F172A 45%, #1E293B 100%);
-      background-size: 180% 180%;
-      animation: fadeIn .5s ease-out forwards, brandDrift 18s ease-in-out infinite;
-      border-bottom: 3px solid #DC2626; /* the ninja-red brand rule */
-    }
-    .hero-glow {
-      background:
-        radial-gradient(600px 300px at 85% 15%, rgb(220 38 38 / .16), transparent 60%),
-        radial-gradient(500px 280px at 8% 95%, rgb(148 163 184 / .10), transparent 60%),
-        radial-gradient(circle at 1px 1px, rgb(255 255 255 / .05) 1px, transparent 0);
-      background-size: auto, auto, 26px 26px;
-    }
-    /* Condensed, wide-tracked type for the hero heading. */
-    .font-brand { font-family: 'Oswald', 'Inter', sans-serif; }
+    /* Display face — serif, Research Desk. Report headings inherit it too. */
+    .font-brand { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; }
 
     /* The report is a data document: tabular (fixed-width) numerals keep digits
        aligned down the comps table, stat tiles, and value bands. */
@@ -160,11 +145,6 @@
       font-size: 10px; font-weight: 600; line-height: 1;
       font-variant-numeric: normal;
     }
-    @keyframes brandDrift {
-      0%, 100% { background-position: 0% 0%; }
-      50%      { background-position: 100% 100%; }
-    }
-
     /* Info cards lift gently on hover. */
     .card-hover { transition: transform .2s ease, box-shadow .2s ease; }
     .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -12px rgb(15 23 42 / .18); }
@@ -176,22 +156,8 @@
     .reveal.revealed { opacity: 1; transform: none; }
 
     /* Brand micro-moment: ninja-red text selection. */
-    ::selection { background: #DC2626; color: #fff; }
+    ::selection { background: #B91C1C; color: #fff; }
 
-    /* Brand easter egg: a ninja crouched on a left rooftop of the hero skyline.
-       Tap him and he parkours across the rooftops and off the page (until reload). */
-    .skyline-ninja {
-      position: absolute;
-      left: 17.2%;            /* rooftop spanning viewBox x 196–240 */
-      bottom: 71px;           /* roof line y=38 in the fixed 110px band; -1px so the feet touch */
-      width: 26px; height: 26px;
-      z-index: 1;             /* above the hero content wrapper, or taps never reach him */
-      pointer-events: auto;   /* the skyline svg is pointer-events-none; he is not */
-      cursor: pointer;
-    }
-    .skyline-ninja svg { display: block; width: 100%; height: 100%; }
-    .skyline-ninja .ninja-body, .skyline-ninja .ninja-band { fill: rgb(255 255 255 / .12); transition: fill .2s ease; }
-    .skyline-ninja:hover .ninja-body, .skyline-ninja:hover .ninja-band { fill: rgb(255 255 255 / .22); }
     /* Loading card: the ninja jogs along the progress bar's leading edge while
        the search runs, and the stage headline cross-fades between steps. */
     .loading-ninja {
@@ -267,13 +233,6 @@
     @keyframes spreadSweep { to { transform: scaleX(1); } }
     @keyframes markerPop { to { transform: translate(-50%, -50%) scaleY(1); } }
 
-    /* The parkour run itself is generated in JS (Web Animations API) from the
-       skyline's real roofline, so his feet land on actual rooftops. */
-    .skyline-ninja.is-running { pointer-events: none; }
-    .skyline-ninja.is-running .ninja-band { fill: rgb(239 68 68 / .6); }
-    .skyline-ninja.is-gone { display: none; }
-    /* Phones squeeze the rooftop to ~14px; shrink him so he keeps his footing. */
-    @media (max-width: 640px) { .skyline-ninja { width: 20px; height: 20px; left: 16.6%; } }
 
     /* Disclosure accordions (FAQ + the form's "Compare your property"): replace
        the native marker with a chevron that turns when opened. */
@@ -369,9 +328,48 @@
       /* Print always uses the table, never the mobile card list. */
       #cardList { display: none !important; }
     }
+
+    /* ---------------- Research Desk landing system ---------------- */
+    .rd-kicker { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #B91C1C; font-weight: 600; }
+    .rd-h { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; }
+    .rd-hairline { border-color: #E4E2DA; }
+    .rd-wordmark { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: #1A2433; }
+    .rd-wordmark b { color: #B91C1C; font-weight: 600; }
+    /* Form-as-unit: bordered cells, micro labels, borderless inputs */
+    .rd-form { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; }
+    .rd-cell { padding: 11px 16px; border-right: 1px solid #ECEAE3; }
+    .rd-cell:last-child { border-right: 0; }
+    .rd-row { border-bottom: 1px solid #ECEAE3; }
+    .rd-lab { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A93A0; font-weight: 600; margin-bottom: 2px; }
+    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 14.5px; color: #1A2433; background: transparent; }
+    .rd-in::placeholder { color: #9AA2AD; }
+    select.rd-in { appearance: auto; }
+    @media (max-width: 640px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
+    /* Stat strip */
+    .rd-stat .n { font-size: 22px; font-weight: 650; color: #1A2433; font-variant-numeric: tabular-nums; }
+    .rd-stat .l { font-size: 11.5px; color: #8A93A0; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
+    /* Exhibit (sample report) */
+    .rd-exhibit { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; overflow: hidden; }
+    .rd-cap { padding: 12px 20px; border-bottom: 1px solid #ECEAE3; font-size: 11.5px; color: #8A93A0; letter-spacing: 0.06em; text-transform: uppercase; }
+    .rd-comps { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .rd-comps th { text-align: left; color: #8A93A0; font-weight: 600; padding: 7px 8px 7px 0; border-bottom: 1px solid #D8D4C9; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; }
+    .rd-comps td { padding: 9px 8px 9px 0; border-bottom: 1px solid #F0EFE9; }
+    .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; }
+    .rd-badge.v { color: #06603A; background: #E3F2EA; }
+    .rd-badge.p { color: #46536A; background: #EAEEF4; }
+    .rd-badge.li { color: #7A5B12; background: #F7EFDC; }
+    .rd-drv { font-size: 13px; color: #374253; padding: 7px 0; border-top: 1px solid #F0EFE9; display: flex; gap: 8px; }
+    .rd-drv b { color: #B91C1C; font-weight: 700; }
+    /* Method steps + broker cards */
+    .rd-steps { border: 1px solid #D8D4C9; border-radius: 6px; overflow: hidden; background: #fff; }
+    .rd-step { padding: 22px 24px; border-right: 1px solid #ECEAE3; }
+    .rd-step:last-child { border-right: 0; }
+    .rd-num { font-family: Georgia, serif; font-size: 13px; color: #B91C1C; margin-bottom: 8px; }
+    .rd-bcard { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; padding: 24px; }
+    @media (max-width: 640px) { .rd-step { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-step:last-child { border-bottom: 0; } }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 min-h-screen">
+<body class="bg-[#FBFBF9] text-slate-800 min-h-screen">
 
   <!-- Password gate overlay (shown only if the server requires a password) -->
   <div id="gate" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">

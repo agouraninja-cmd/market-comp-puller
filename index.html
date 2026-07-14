@@ -501,74 +501,46 @@
     </div>
   </div>
 
-  <!-- Hero -->
-  <div id="hero" class="relative overflow-hidden text-white no-print">
-    <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
-    <!-- Faint static skyline along the hero's bottom edge — character, not motion. -->
-    <svg class="absolute bottom-0 inset-x-0 w-full h-[110px] pointer-events-none" viewBox="0 0 1200 110"
-         preserveAspectRatio="none" aria-hidden="true">
-      <path fill="rgb(255 255 255 / .05)" d="M0 110V74h34V47h10v-9h12v9h8v27h30V58h40v-16h6V30h6v12h6v16h26v52h18V38h44v-14h30v14h12v72h22V64h38v-20h28v20h14v46h24V50h8V26h10v-6h6v6h10v24h8v60h30V70h36v-26h8v-14h10v14h8v26h20v40h16V54h42v-24h26v24h14v56h24V78h32v-30h36v30h12v32h20V44h10V22h12v22h8v66h26V60h40v-24h8V22h8v14h8v24h24v50h18V70h34v-22h30v22h10v40h22V52h36v-20h6V20h8v12h8v20h20v58h16V80h34v-40h24v40h14v30z"/>
-    </svg>
-    <!-- Easter egg: a ninja perched on a rooftop. Tap him and he parkours off the page. -->
-    <div id="skylineNinja" class="skyline-ninja" aria-hidden="true">
-      <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-        <!-- headband tail -->
-        <path class="ninja-band" d="M19.5 6 Q13 3 8 5 Q13 7.5 19 8.5 Z"/>
-        <!-- head -->
-        <circle class="ninja-body" cx="22.5" cy="8" r="4"/>
-        <!-- lunging body: forward arm, front leg planted, back leg trailing; feet on the roofline -->
-        <path class="ninja-body" d="M20 12 Q26 13 27.5 17.5 L26 19 Q24.5 16.5 21.5 15.5 Q22 19 19.5 21 Q23 23 23.5 27 L25.5 29.5 Q26 30.5 24.5 30.5 L21.5 30.5 Q21 27 19 24.5 Q15 26 11.5 25 L7 29.5 Q6 30.5 5.5 29.5 Q7.5 25 9.5 22.5 Q12 19.5 15 14.5 Q16.5 12 20 12 Z"/>
-      </svg>
-    </div>
-    <div class="relative max-w-7xl mx-auto px-4">
-      <!-- Brand row: icon mark + CompNinja lockup in the site's own headline face. -->
-      <div class="py-4 flex items-center gap-3">
-        <svg class="h-10 w-10 shrink-0" viewBox="0 0 44 44" aria-hidden="true">
-          <rect width="44" height="44" rx="10" fill="#1E293B"/>
-          <rect x="6" y="17" width="32" height="10" rx="5" fill="#DC2626"/>
-          <circle cx="17" cy="22" r="2.8" fill="#1E293B"/>
-          <circle cx="27" cy="22" r="2.8" fill="#1E293B"/>
+  <!-- Header -->
+  <header class="no-print border-b rd-hairline bg-[#FBFBF9]">
+    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
+          <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
+          <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
         </svg>
-        <div class="font-brand uppercase text-2xl font-semibold tracking-wide leading-none text-white">Comp<span class="text-brand-500">Ninja</span></div>
+        <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </div>
-      <!-- Hero copy -->
-      <div class="pt-8 pb-24 sm:pt-10 sm:pb-28">
-        <h1 class="font-brand uppercase text-4xl sm:text-5xl font-semibold tracking-wide max-w-2xl enter enter-1">Comparable Sales &amp; Lease Analysis</h1>
-        <p class="text-slate-300 mt-3 text-lg max-w-2xl enter enter-1">Recent sale and lease comps for any commercial property. Searched live, summarized, and export-ready in under a minute.</p>
-        <div class="mt-6 flex flex-wrap gap-2 enter enter-2">
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-white/10 ring-1 ring-white/15 text-slate-200 text-sm px-3 py-1">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            Live web-search data
-          </span>
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-white/10 ring-1 ring-white/15 text-slate-200 text-sm px-3 py-1">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            3–6 recent comps per report
-          </span>
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-white/10 ring-1 ring-white/15 text-slate-200 text-sm px-3 py-1">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            CSV · PNG · PDF exports
-          </span>
-        </div>
-      </div>
+      <nav class="flex items-center gap-6 text-[13.5px] text-[#5A6473]">
+        <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
+        <button type="button" data-scroll-to="for-brokers" class="hover:text-[#1A2433]">For Brokers</button>
+        <button type="button" data-scroll-to="method" class="hover:text-[#1A2433] hidden sm:inline">Methodology</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div id="hero" class="no-print bg-[#FBFBF9]">
+    <div class="max-w-5xl mx-auto px-4 pt-12 sm:pt-14 pb-4">
+      <div class="rd-kicker enter enter-1">Commercial Comp Reports</div>
+      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] mt-3 max-w-[22ch] enter enter-1">Know what the building is worth before you make the call.</h1>
+      <p class="text-[#4C5665] mt-4 text-[16.5px] max-w-[58ch] enter enter-1">Recent sale and lease comparables for any U.S. commercial property — searched live from public records and listings, every comp cited, delivered in about a minute.</p>
     </div>
   </div>
 
-  <div class="max-w-7xl mx-auto px-4 pb-8">
+  <div class="max-w-5xl mx-auto px-4 pb-8">
 
-    <!-- Form Card — floats over the hero's bottom edge -->
-    <div class="relative z-10 -mt-16 sm:-mt-20 bg-white rounded-xl shadow-xl border border-slate-200 p-6 no-print enter enter-2">
-      <form id="compForm" class="space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Property Address</label>
-          <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Property Type</label>
-            <select id="propertyType"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+    <!-- Search form — one bordered unit -->
+    <div class="relative z-10 mt-4 no-print enter enter-2">
+      <form id="compForm" class="rd-form">
+        <div class="rd-row grid grid-cols-1 sm:grid-cols-[2.2fr_1fr]">
+          <div class="rd-cell">
+            <label class="rd-lab" for="address">Property address</label>
+            <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
+          </div>
+          <div class="rd-cell">
+            <label class="rd-lab" for="propertyType">Property type</label>
+            <select id="propertyType" class="rd-in">
               <option>Industrial</option>
               <option>Office</option>
               <option>Retail</option>
@@ -577,18 +549,11 @@
               <option>Residential</option>
             </select>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Radius / Market Note <span class="text-slate-400 font-normal">(optional)</span></label>
-            <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          </div>
         </div>
-
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Lookback Window</label>
-            <select id="lookback"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+        <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
+          <div class="rd-cell">
+            <label class="rd-lab" for="lookback">Lookback</label>
+            <select id="lookback" class="rd-in">
               <option value="6">Last 6 months</option>
               <option value="12">Last 12 months</option>
               <option value="24" selected>Last 24 months</option>
@@ -596,71 +561,68 @@
               <option value="custom">Custom…</option>
             </select>
             <div id="lookbackCustomWrap" class="hidden mt-2 flex items-center gap-2">
-              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18"
-                class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
               <span class="text-sm text-slate-500 shrink-0">months</span>
             </div>
           </div>
-          <div id="txFocusWrap">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Transaction Focus</label>
-            <select id="txFocus"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-              <option value="both" selected>Sales &amp; Leases</option>
+          <div class="rd-cell" id="txFocusWrap">
+            <label class="rd-lab" for="txFocus">Focus</label>
+            <select id="txFocus" class="rd-in">
+              <option value="both" selected>Sales &amp; leases</option>
               <option value="sales">Sales only</option>
               <option value="leases">Leases only</option>
             </select>
           </div>
+          <div class="rd-cell">
+            <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+            <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="rd-in" />
+          </div>
         </div>
 
-        <!-- Subject property (all optional — the size is looked up from public
-             records when left blank, so every report can estimate a value) -->
-        <details id="subjectDetails" class="border border-slate-200 rounded-lg bg-slate-50/60">
-          <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-slate-700">
-            <span id="subjectSummary">Your property details <span class="text-slate-400 font-normal">(optional)</span></span>
+        <!-- Subject property (optional; size auto-pulled from public records when blank) -->
+        <details id="subjectDetails" class="rd-row group">
+          <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
+            <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(size, price, NOI — optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-slate-500 mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check.</p>
+            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label id="targetSizeLabel" class="block text-sm font-medium text-slate-700 mb-1">Building Size (SF) <span class="text-slate-400 font-normal">(pulled from public records if blank)</span></label>
+                <label id="targetSizeLabel" class="rd-lab">Building size (SF)</label>
                 <div class="flex items-center gap-2">
-                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000"
-                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                   <span class="text-sm text-slate-400 shrink-0">to</span>
-                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)"
-                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
               </div>
               <div>
-                <label id="targetPriceLabel" class="block text-sm font-medium text-slate-700 mb-1">Asking / Expected Price <span class="text-slate-400 font-normal">($, optional)</span></label>
+                <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
                 <div class="flex items-center gap-2">
-                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000"
-                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                   <span class="text-sm text-slate-400 shrink-0">to</span>
-                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)"
-                    class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
               </div>
               <div id="noiWrap">
-                <label class="block text-sm font-medium text-slate-700 mb-1">Net Operating Income <span class="text-slate-400 font-normal">($/yr, optional)</span></label>
-                <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000"
-                  class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-                <p class="text-xs text-slate-500 mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
+                <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
+                <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                <p class="text-xs text-[#8A93A0] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
               </div>
             </div>
           </div>
         </details>
 
-        <!-- On phones this row docks to the bottom of the screen while the form is visible. -->
-        <div class="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white border-t border-slate-100 rounded-b-xl flex flex-col sm:flex-row gap-3 sm:static sm:m-0 sm:p-0 sm:bg-transparent sm:border-0">
+        <!-- Submit row; docks to the bottom of the screen on phones -->
+        <div class="sticky bottom-0 px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3 sm:static">
           <button id="submitBtn" type="submit"
-            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-6 py-2.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed">
-            <span id="btnLabel">Generate Report</span>
+            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
+            <span id="btnLabel">Run a report</span>
           </button>
           <button id="sampleBtn" type="button"
-            class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold px-6 py-2.5 rounded-lg border border-slate-300">
-            View sample report
+            class="btn-live w-full sm:w-auto inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
+            View a sample report
           </button>
+          <span class="sm:ml-auto text-[12.5px] text-[#8A8577]">Free · No account required · An automated estimate, not an appraisal</span>
         </div>
       </form>
     </div>
@@ -1409,7 +1371,7 @@
   function setLoading(isLoading) {
     document.getElementById("btnLabel").textContent = isLoading
       ? "Generating…"
-      : "Generate Report";
+      : "Run a report";
     document.getElementById("submitBtn").disabled = isLoading;
   }
   function showStatus(html, kind = "info") {

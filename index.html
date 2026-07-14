@@ -2460,6 +2460,7 @@
   // renders, so section links reveal them again before scrolling.
   // ----------------------------------------------------------------------------
   function smoothScrollTo(el) {
+    if (!el) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   }

@@ -75,9 +75,11 @@ with:
 .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 14.5px; color: #1A2433; background: transparent; }
 .rd-in::placeholder { color: #9AA2AD; }
 select.rd-in { appearance: auto; }
-@media (max-width: 640px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
+/* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
+.rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
+@media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
 /* Stat strip */
-.rd-stat .n { font-size: 22px; font-weight: 650; color: #1A2433; font-variant-numeric: tabular-nums; }
+.rd-stat .n { font-size: 22px; font-weight: 600; color: #1A2433; font-variant-numeric: tabular-nums; }
 .rd-stat .l { font-size: 11.5px; color: #8A93A0; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
 /* Exhibit (sample report) */
 .rd-exhibit { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; overflow: hidden; }
@@ -97,7 +99,7 @@ select.rd-in { appearance: auto; }
 .rd-step:last-child { border-right: 0; }
 .rd-num { font-family: Georgia, serif; font-size: 13px; color: #B91C1C; margin-bottom: 8px; }
 .rd-bcard { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; padding: 24px; }
-@media (max-width: 640px) { .rd-step { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-step:last-child { border-bottom: 0; } }
+@media (max-width: 639.98px) { .rd-step { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-step:last-child { border-bottom: 0; } }
 ```
 
 - [ ] **Step 6: Body ground** (line 374). Replace:
@@ -239,7 +241,7 @@ git commit -m "Landing redesign 2/6: cut-card logo — favicon, letterhead, repo
               <option value="custom">Custom…</option>
             </select>
             <div id="lookbackCustomWrap" class="hidden mt-2 flex items-center gap-2">
-              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="rd-in border border-slate-300 rounded px-2 py-1" style="width:auto" />
+              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
               <span class="text-sm text-slate-500 shrink-0">months</span>
             </div>
           </div>
@@ -268,22 +270,22 @@ git commit -m "Landing redesign 2/6: cut-card logo — favicon, letterhead, repo
               <div>
                 <label id="targetSizeLabel" class="rd-lab">Building size (SF)</label>
                 <div class="flex items-center gap-2">
-                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000" class="rd-in border border-slate-300 rounded px-2.5 py-1.5" />
+                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                   <span class="text-sm text-slate-400 shrink-0">to</span>
-                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="rd-in border border-slate-300 rounded px-2.5 py-1.5" />
+                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
               </div>
               <div>
                 <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
                 <div class="flex items-center gap-2">
-                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="rd-in border border-slate-300 rounded px-2.5 py-1.5" />
+                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                   <span class="text-sm text-slate-400 shrink-0">to</span>
-                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)" class="rd-in border border-slate-300 rounded px-2.5 py-1.5" />
+                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
               </div>
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
-                <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="rd-in border border-slate-300 rounded px-2.5 py-1.5" />
+                <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 <p class="text-xs text-[#8A93A0] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
               </div>
             </div>

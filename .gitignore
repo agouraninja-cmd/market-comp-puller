@@ -16,3 +16,4 @@ comp-submissions.jsonl
 # File fallbacks used only when Supabase isn't configured
 search-cache.json
 shared-reports.json
+analytics.jsonl

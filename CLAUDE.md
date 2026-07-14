@@ -180,6 +180,16 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (edit its `TARGETS` list; it runs one cached search per market against a
   locally-running server and keeps only markets with ≥3 priced sale comps, so
   no thin pages). `sitemap.xml` lists `/`, `/markets`, and every market page.
+- `GET /admin`, `GET /api/stats` — a small analytics dashboard. Every search,
+  lead, share, and comp submission is logged as a **PII-free** event (`ts`,
+  `kind`, `prop_type`, `market` = city+state only, `source`, `cached`) via
+  `logEvent()` → the Supabase `analytics_events` table (`analytics.jsonl` file
+  fallback). `/admin` is a self-contained page (own inline CSS/JS) that fetches
+  `/api/stats` with the key as an `x-admin-key` header; `/api/stats` is
+  `ADMIN_KEY`-gated and returns aggregates (searches/day billed-vs-cached, cache
+  hit rate, by-type, top markets, leads by source, conversion %). **Logging is
+  always on**; the dashboard only renders once `ADMIN_KEY` is set (same key as
+  the lead CSV). `/admin` is `noindex` + `Disallow`ed in robots.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.

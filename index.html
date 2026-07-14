@@ -233,7 +233,6 @@
     @keyframes spreadSweep { to { transform: scaleX(1); } }
     @keyframes markerPop { to { transform: translate(-50%, -50%) scaleY(1); } }
 
-
     /* Disclosure accordions (FAQ + the form's "Compare your property"): replace
        the native marker with a chevron that turns when opened. */
     #faq summary, #compForm details summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -344,9 +343,11 @@
     .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 14.5px; color: #1A2433; background: transparent; }
     .rd-in::placeholder { color: #9AA2AD; }
     select.rd-in { appearance: auto; }
-    @media (max-width: 640px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
+    /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
+    .rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
+    @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
     /* Stat strip */
-    .rd-stat .n { font-size: 22px; font-weight: 650; color: #1A2433; font-variant-numeric: tabular-nums; }
+    .rd-stat .n { font-size: 22px; font-weight: 600; color: #1A2433; font-variant-numeric: tabular-nums; }
     .rd-stat .l { font-size: 11.5px; color: #8A93A0; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
     /* Exhibit (sample report) */
     .rd-exhibit { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; overflow: hidden; }
@@ -366,7 +367,7 @@
     .rd-step:last-child { border-right: 0; }
     .rd-num { font-family: Georgia, serif; font-size: 13px; color: #B91C1C; margin-bottom: 8px; }
     .rd-bcard { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; padding: 24px; }
-    @media (max-width: 640px) { .rd-step { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-step:last-child { border-bottom: 0; } }
+    @media (max-width: 639.98px) { .rd-step { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-step:last-child { border-bottom: 0; } }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-slate-800 min-h-screen">

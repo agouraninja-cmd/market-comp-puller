@@ -80,11 +80,16 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 // account, so sign up with the notify address itself.
 const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").trim();
 const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "agouraninja@gmail.com").trim();
+// From-address for mail to leads/brokers, e.g. `CompNinja <reports@domain.com>`.
+// Leave UNSET until a custom domain is verified in Resend — the free tier only
+// delivers to the account owner, so outbound mail silently no-ops without it.
+const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 
-// Public URL of this deployment, used in robots.txt/sitemap.xml and best kept
-// in sync with the canonical/og:url tags in index.html. Override with SITE_URL
-// when the site moves to a custom domain.
-const SITE_URL = (process.env.SITE_URL || "https://market-comp-puller.onrender.com").replace(/\/+$/, "");
+// Public URL of this deployment, used in robots.txt/sitemap.xml. index.html's
+// canonical/og:url tags are written against DEFAULT_SITE_URL and rewritten to
+// SITE_URL at serve time, so moving to a custom domain is a single env change.
+const DEFAULT_SITE_URL = "https://market-comp-puller.onrender.com";
+const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 
 // Two people searching the same address within a few days shouldn't both bill
 // the Anthropic account for identical work. TTL is deliberately short — comp
@@ -434,31 +439,53 @@ async function storeSharedReport(id, payload) {
 }
 
 // ---------------------------------------------------------------------------
-// Lead email notification — fire-and-forget so a slow or failing email
-// provider never delays or breaks the request that captured the lead.
-// Empty fields are dropped from the body.
+// Email via Resend — all sends are fire-and-forget so a slow or failing email
+// provider never delays or breaks the request that triggered them.
+//
+// Two tiers:
+//   notifyByEmail     — internal notifications to the owner. Works on the
+//                       Resend free tier (delivers to the account address).
+//   sendOutboundEmail — mail to leads/brokers. Gated on EMAIL_FROM, which
+//                       should only be set once a custom domain is verified
+//                       in Resend; until then these calls silently no-op
+//                       (with a console line so tests can see the skip).
 // ---------------------------------------------------------------------------
-function notifyByEmail(subject, fields) {
+function sendEmail(to, subject, text, { from, replyTo } = {}) {
   if (!RESEND_API_KEY) return;
-  const text = fields
-    .filter(([, v]) => String(v || "").trim())
-    .map(([k, v]) => `${k}: ${v}`)
-    .join("\n");
   fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: "CompNinja <onboarding@resend.dev>",
-      to: [LEAD_NOTIFY_EMAIL],
+      from: from || "CompNinja <onboarding@resend.dev>",
+      to: [to],
       subject,
       text,
+      ...(replyTo ? { reply_to: replyTo } : {}),
     }),
     signal: AbortSignal.timeout(8000),
   })
     .then(async (r) => {
-      if (!r.ok) console.error("Lead notification failed:", r.status, (await r.text().catch(() => "")).slice(0, 300));
+      if (!r.ok) console.error(`Email send failed (${subject}):`, r.status, (await r.text().catch(() => "")).slice(0, 300));
     })
-    .catch((err) => console.error("Lead notification failed:", err.message));
+    .catch((err) => console.error(`Email send failed (${subject}):`, err.message));
+}
+
+// Internal notification to the owner. Empty fields are dropped from the body.
+function notifyByEmail(subject, fields) {
+  const text = fields
+    .filter(([, v]) => String(v || "").trim())
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  sendEmail(LEAD_NOTIFY_EMAIL, subject, text);
+}
+
+// Outbound mail to a lead or broker. Replies route to the owner.
+function sendOutboundEmail(to, subject, text) {
+  if (!RESEND_API_KEY || !EMAIL_FROM) {
+    console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
+    return;
+  }
+  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL });
 }
 
 // ---------------------------------------------------------------------------
@@ -784,6 +811,7 @@ h1{font-size:30px;line-height:1.2;margin:8px 0 6px}
 .tile .n{font-size:12px;color:#64748b;margin-top:2px}
 .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:22px;margin:18px 0}
 .card h2{font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:#334155;margin:0 0 12px}
+.card h3{font-size:15px;margin:14px 0 4px}
 .card p{margin:0 0 10px}.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{background:#1e293b;color:#f1f5f9;text-align:left;padding:9px 10px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
@@ -808,6 +836,44 @@ footer{border-top:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:13px
 const MARKET_BAR =
   `<div class="bar"><a class="brand" href="/">Comp<b>Ninja</b></a>` +
   `<nav><a href="/markets">Markets</a><a href="/">Get a valuation</a></nav></div>`;
+
+// ---------------------------------------------------------------------------
+// Public broker credit — which firms have approved comps in each market, so
+// market pages can credit contributors (the visible payoff of the broker
+// loop). Cached in-process with stale-while-revalidate so pages keep serving
+// synchronously with no per-request DB call; empty when Supabase is
+// unconfigured, so the credit line simply never renders. Only the display
+// name (firm or broker name — the same string already public as verified_by
+// in reports) is ever exposed; never email or phone.
+// ---------------------------------------------------------------------------
+const MARKET_CREDIT = { byMarket: {}, fetchedAt: 0, refreshing: false };
+const MARKET_CREDIT_TTL_MS = 10 * 60 * 1000;
+async function refreshMarketCredit() {
+  if (!DB_CONFIGURED || MARKET_CREDIT.refreshing) return;
+  MARKET_CREDIT.refreshing = true;
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/comp_submissions?status=eq.approved` +
+      `&select=broker_name,broker_company,address&order=ts.desc&limit=500`,
+      { headers: supabaseHeaders() }
+    );
+    if (!r.ok) throw new Error(`Supabase read failed (${r.status}).`);
+    const byMarket = {};
+    for (const row of await r.json()) {
+      const market = marketOf(row.address).toLowerCase();
+      const name = String(row.broker_company || row.broker_name || "").trim();
+      if (!market || !name) continue;
+      if (!byMarket[market]) byMarket[market] = [];
+      if (!byMarket[market].includes(name)) byMarket[market].push(name);
+    }
+    MARKET_CREDIT.byMarket = byMarket;
+    MARKET_CREDIT.fetchedAt = Date.now();
+  } catch (err) {
+    console.error("Market credit refresh failed; keeping previous:", err.message);
+  } finally {
+    MARKET_CREDIT.refreshing = false;
+  }
+}
 
 const MARKET_FOOTER =
   `<footer>CompNinja &middot; <a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a> &middot; ` +
@@ -864,6 +930,35 @@ function renderMarketPageHTML(slug, p) {
       `<tbody>${compRows}</tbody></table></div></div>`
     : "";
 
+  // Quiet contributor credit — the public half of the broker loop.
+  const creditNames = (MARKET_CREDIT.byMarket[`${p.city}, ${p.state}`.toLowerCase()] || []).slice(0, 6);
+  const creditLine = creditNames.length
+    ? `<p class="disc">Our verified comp layer for this market includes comps contributed by local brokers: ` +
+      `${creditNames.map(escHtml).join(", ")}. Are you a broker in ${escHtml(p.city)}? <a href="/">Submit a comp</a>.</p>`
+    : "";
+
+  // One Q/A array feeds both the visible FAQ block and the FAQPage JSON-LD,
+  // so the two can never drift (Google flags mismatched FAQ markup).
+  const typeLc = p.type.toLowerCase();
+  const faq = [
+    [`What is the average price per square foot for ${typeLc} space in ${p.city}, ${p.state}?`,
+     `Recent sale comps put the median around ${usd0(p.ppsf.median)}/SF, with a typical range of ` +
+     `${rangeTxt}/SF across ${p.ppsf.count} recent sales${p.date_range ? " (" + p.date_range + ")" : ""}.`],
+    ...(p.cap_rate_low && p.cap_rate_high ? [[
+      `What cap rates are ${typeLc} properties trading at in ${p.city}?`,
+      `Recent market data suggests roughly ${p.cap_rate_low}–${p.cap_rate_high} for stabilized ${typeLc} deals in the ${p.city} area.`]] : []),
+    [`How are these numbers calculated?`,
+     `They are automated estimates built from recent comparable sales found in public listings, property records, ` +
+     `and brokerage announcements. They are not an appraisal or a broker opinion of value.`],
+    [`How do I find out what my ${p.city} ${typeLc} property is worth?`,
+     `Run a free valuation on CompNinja: enter the address and property type and you get an estimated value range ` +
+     `from recent comps in under a minute. For a real opinion of value, we connect you with a licensed local broker at no cost.`],
+  ];
+  const faqCard =
+    `<div class="card"><h2>Frequently asked questions</h2>` +
+    faq.map(([q, a]) => `<h3>${escHtml(q)}</h3><p>${escHtml(a)}</p>`).join("") +
+    `</div>`;
+
   const others = Object.keys(MARKET_PAGES).filter((s) => s !== slug).slice(0, 6);
   const related = others.length
     ? `<div class="card"><h2>Other markets</h2><div class="related">` +
@@ -873,18 +968,30 @@ function renderMarketPageHTML(slug, p) {
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "WebPage",
-    name: title,
-    description,
-    url: canonical,
-    isPartOf: { "@type": "WebSite", name: "CompNinja", url: `${SITE_URL}/` },
-    breadcrumb: {
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Markets", item: `${SITE_URL}/markets` },
-        { "@type": "ListItem", position: 2, name: title, item: canonical },
-      ],
-    },
+    "@graph": [
+      {
+        "@type": "WebPage",
+        name: title,
+        description,
+        url: canonical,
+        isPartOf: { "@type": "WebSite", name: "CompNinja", url: `${SITE_URL}/` },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Markets", item: `${SITE_URL}/markets` },
+            { "@type": "ListItem", position: 2, name: title, item: canonical },
+          ],
+        },
+      },
+      {
+        "@type": "FAQPage",
+        mainEntity: faq.map(([q, a]) => ({
+          "@type": "Question",
+          name: q,
+          acceptedAnswer: { "@type": "Answer", text: a },
+        })),
+      },
+    ],
   });
 
   const body =
@@ -895,6 +1002,8 @@ function renderMarketPageHTML(slug, p) {
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     compsTable +
+    creditLine +
+    faqCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
     `<p>Get a free, instant estimate from recent comps — then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>` +
@@ -1176,7 +1285,7 @@ const server = http.createServer((req, res) => {
         if (rateLimited("lead:" + clientIp(req))) {
           return sendJson(res, 429, { error: "Too many submissions. Please try again later." });
         }
-        const { name, email, phone, company, address, type, source } = JSON.parse(body || "{}");
+        const { name, email, phone, company, address, type, source, report_url } = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
         const lead = {
           ts: new Date().toISOString(),
@@ -1190,6 +1299,17 @@ const server = http.createServer((req, res) => {
           // else is the export-unlock form.
           source: ["export", "bov"].includes(source) ? source : "export",
         };
+        // Share link for the lead's report. Validated hard against our own
+        // /r/<id> shape so this endpoint can't be abused to email arbitrary
+        // attacker-supplied links. NOT stored in the lead row (the Supabase
+        // leads table has no such column) — email/notification only.
+        const reportUrl = (() => {
+          const u = clean(report_url, 300);
+          for (const origin of new Set([SITE_URL, DEFAULT_SITE_URL])) {
+            if (new RegExp(`^${origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/r/[A-Za-z0-9_-]{6,32}$`).test(u)) return u;
+          }
+          return "";
+        })();
         if (!lead.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
           return sendJson(res, 400, { error: "A name and a valid email are required." });
         }
@@ -1217,11 +1337,44 @@ const server = http.createServer((req, res) => {
             ["Property", lead.address],
             ["Property type", lead.type],
             ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ["Report link", reportUrl],
             ...brokerField,
             ["Stored in", dest],
             ["Time", lead.ts],
           ]
         );
+        // Follow-up to the lead: their report link + what happens next.
+        // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
+        if (lead.source === "bov") {
+          sendOutboundEmail(
+            lead.email,
+            "Your CompNinja report + what happens next",
+            [
+              `Hi ${lead.name},`,
+              ``,
+              `Thanks for requesting a free Broker Opinion of Value${lead.address ? " for " + lead.address : ""}.`,
+              ...(reportUrl ? [
+                ``,
+                `Your comp report: ${reportUrl}`,
+                `That link is yours to keep or forward.`,
+              ] : []),
+              ``,
+              `What happens next:`,
+              `1. We review your request.`,
+              `2. We connect you with a licensed local broker who knows your market,`,
+              `   usually within a couple of business days.`,
+              `3. The broker prepares a no-cost opinion of value. No obligation.`,
+              ``,
+              `A note on the numbers: everything in the report is an automated estimate`,
+              `built from recent comparable sales. It is not an appraisal and not a`,
+              `broker opinion of value.`,
+              ``,
+              `Questions? Just reply to this email.`,
+              ``,
+              `CompNinja · ${LEAD_NOTIFY_EMAIL}`,
+            ].join("\n")
+          );
+        }
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -1309,7 +1462,7 @@ const server = http.createServer((req, res) => {
         }
         const dest = await storeRow("comp_submissions", COMP_SUBMISSIONS_FILE, submission);
         console.log(`Comp submitted (${dest}): ${submission.address} — ${submission.broker_name} <${submission.broker_email}>`);
-        logEvent("comp", { prop_type: submission.type, market: marketOf(submission.address) });
+        logEvent("comp", { prop_type: submission.property_type, market: marketOf(submission.address) });
         notifyByEmail(
           `New broker comp submitted: ${submission.address}`,
           [
@@ -1319,6 +1472,33 @@ const server = http.createServer((req, res) => {
             ["Price/rate", submission.price_or_rate],
             ["Next step", 'Review it in Supabase (comp_submissions, status "pending") and set status to "approved" to add it to the verified layer.'],
           ]
+        );
+        // Confirmation to the broker. Dormant until EMAIL_FROM is set
+        // (custom domain verified in Resend).
+        const firm = submission.broker_company || submission.broker_name;
+        sendOutboundEmail(
+          submission.broker_email,
+          `We got your comp: ${submission.address}`,
+          [
+            `Hi ${submission.broker_name},`,
+            ``,
+            `Thanks for submitting a comp:`,
+            `${submission.address}${submission.transaction ? " — " + submission.transaction : ""}, ${submission.price_or_rate}` +
+              `${submission.deal_date ? ", closed " + submission.deal_date : ""}${submission.size_sqft ? ", " + submission.size_sqft + " SF" : ""}`,
+            ``,
+            `What happens next:`,
+            `1. Our team reviews every submission by hand, usually within a couple`,
+            `   of business days.`,
+            `2. Once approved, your comp joins the verified layer: it shows up in`,
+            `   matching reports with a "Verified - via ${firm}" credit, and your`,
+            `   firm is credited on our public market page for that area.`,
+            `3. When an owner in your market requests a Broker Opinion of Value`,
+            `   through CompNinja, contributing brokers are who we reach out to first.`,
+            ``,
+            `Need to correct anything? Just reply to this email.`,
+            ``,
+            `CompNinja · ${LEAD_NOTIFY_EMAIL}`,
+          ].join("\n")
         );
         return sendJson(res, 200, { ok: true });
       } catch (err) {
@@ -1432,7 +1612,9 @@ const server = http.createServer((req, res) => {
       // no-store: the whole front-end is this one file, so a stale cached copy
       // means users silently miss every update. It's small; always fetch fresh.
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      res.end(data);
+      // Canonical/og/JSON-LD URLs in index.html are written against the default
+      // origin; rewrite them when SITE_URL is overridden (custom domain).
+      res.end(SITE_URL === DEFAULT_SITE_URL ? data : data.toString("utf8").split(DEFAULT_SITE_URL).join(SITE_URL));
     });
     return;
   }
@@ -1472,6 +1654,9 @@ const server = http.createServer((req, res) => {
   if (marketMatch) {
     const page = MARKET_PAGES[marketMatch[1]];
     if (!page) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Market not found"); }
+    // Stale-while-revalidate: serve from the current credit cache and kick a
+    // background refresh when it's old — the response never waits on the DB.
+    if (Date.now() - MARKET_CREDIT.fetchedAt > MARKET_CREDIT_TTL_MS) refreshMarketCredit();
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
     return res.end(renderMarketPageHTML(marketMatch[1], page));
   }
@@ -1520,6 +1705,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
+  refreshMarketCredit();   // warm the broker-credit cache for market pages
   if (!API_KEY) {
     console.warn("⚠  ANTHROPIC_API_KEY is not set — /api/comps will return an error until you set it.");
   }

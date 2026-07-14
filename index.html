@@ -430,7 +430,7 @@
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-8">
       <div id="compFormWrap">
         <h2 class="text-lg font-semibold text-slate-900">Submit a comp</h2>
-        <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission, and brokers who contribute get qualified leads from us in return.</p>
+        <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission. Approved comps carry your firm's name in every matching report and on our public market pages — and when an owner in your market requests a Broker Opinion of Value, contributing brokers are who we reach out to first.</p>
         <form id="compForm2" class="space-y-3">
           <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Your details</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -493,7 +493,7 @@
       <div id="compSuccess" class="hidden text-center py-6">
         <div class="text-3xl mb-2">🤝</div>
         <h2 class="text-lg font-semibold text-slate-900">Thanks, we got it.</h2>
-        <p class="text-sm text-slate-500 mt-1">Our team reviews every submission. We'll reach out with leads that fit your market.</p>
+        <p class="text-sm text-slate-500 mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit — and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Submit another</button>
           <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Done</button>
@@ -838,13 +838,24 @@
             </div>
           </div>
           <p id="ownerIncome" class="hidden text-sm text-slate-600 mt-4"></p>
+          <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
+               render flex gap, and #ownerHero IS captured in the image export. -->
+          <p id="ownerTrust" class="hidden text-xs text-slate-500 mt-4"></p>
           <p class="text-xs text-slate-400 mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-slate-100">
             <button id="bovCtaBtn" type="button"
               class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-5 py-2.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed">
               Get a free Broker Opinion of Value
             </button>
-            <p class="text-xs text-slate-500 mt-2">Want a real number? We'll connect you with a licensed local broker who knows your market. No cost, no obligation.</p>
+            <p id="bovCtaHelper" class="text-xs text-slate-500 mt-2">Want a real number? We'll connect you with a licensed local broker who knows your market. No cost, no obligation.</p>
+            <!-- Post-submit confirmation — replaces the button so the lead sees
+                 what happens next instead of a dead control. -->
+            <div id="bovConfirmPanel" class="hidden rounded-lg bg-slate-50 border border-slate-200 p-4">
+              <p class="text-sm font-semibold text-slate-800">Request received.</p>
+              <p class="text-sm text-slate-600 mt-1">We'll review your request and connect you with a licensed local broker who knows your market, usually within a couple of business days. The broker's opinion of value is free, with no obligation.</p>
+              <p id="bovShareLinkWrap" class="hidden text-sm text-slate-600 mt-2">Meanwhile, here's a link to this report you can keep or forward:<br>
+                <a id="bovShareLink" class="text-brand-700 underline break-all" href="#" target="_blank" rel="noopener"></a></p>
+            </div>
           </div>
         </div>
 
@@ -1074,7 +1085,7 @@
           <div class="flex-1">
             <div class="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">For brokers</div>
             <h2 class="text-2xl font-bold tracking-tight">Know a deal we're missing?</h2>
-            <p class="text-sm text-slate-300 mt-1 max-w-2xl">Submit a recent sale or lease comp. Every submission is reviewed by our team, and in return we send contributing brokers qualified leads from this site.</p>
+            <p class="text-sm text-slate-300 mt-1 max-w-2xl">Submit a recent sale or lease comp. Every submission is reviewed by our team. Approved comps carry your firm's credit in reports and on our market pages, and contributing brokers are first in line when owners here request a Broker Opinion of Value.</p>
           </div>
           <button id="brokerCtaBtn" type="button"
             class="btn-live shrink-0 inline-flex items-center justify-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50">
@@ -1652,11 +1663,14 @@
         if (!sizeInput.value) sizeInput.value = Math.round(found);
       }
     }
-    // Sale comps only — lease $/SF/yr is a different unit and would skew the range.
-    const ppsfs = currentComps
+    // Sale comps only — lease $/SF/yr is a different unit and would skew the
+    // range. Comp objects are kept alongside their $/SF so the trust line can
+    // count provenance tiers.
+    const saleComps = currentComps
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => numericValue(c.price_per_sqft))
-      .filter((v) => v > 0);
+      .map((c) => ({ comp: c, v: numericValue(c.price_per_sqft) }))
+      .filter((x) => x.v > 0);
+    const ppsfs = saleComps.map((x) => x.v);
 
     const fmtTotal = (v) => "$" + Math.round(v).toLocaleString();
     const lowEl = document.getElementById("ownerLow");
@@ -1665,8 +1679,11 @@
     const basisEl = document.getElementById("ownerBasis");
     const incomeEl = document.getElementById("ownerIncome");
     const setPpsf = (id, text) => { document.getElementById(id).textContent = text; };
+    const trustEl = document.getElementById("ownerTrust");
     incomeEl.classList.add("hidden");
     incomeEl.textContent = "";
+    trustEl.classList.add("hidden");
+    trustEl.textContent = "";
 
     // Income approach: NOI (kept browser-side) over the model's market cap-rate range.
     const noi = meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
@@ -1700,6 +1717,21 @@
       basisEl.textContent = srcPhrase
         ? `${sizeLabel} (${srcPhrase}; edit Building Size above if wrong) × ${compsPhrase}`
         : `${sizeLabel} × ${compsPhrase}`;
+      // Trust line: provenance mix + spread in one quiet sentence. Legacy
+      // saved reports predate source_type (compTier returns null) and just
+      // get the count + spread.
+      const pubN = saleComps.filter((x) => compTier(x.comp) === "public_record").length;
+      const verN = saleComps.filter((x) => compTier(x.comp) === "verified").length;
+      const spreadRatio = rr.mid > 0 ? (rr.high - rr.low) / rr.mid : 0;
+      const spreadPhrase = spreadRatio <= 0.15 ? "The comps agree closely."
+        : spreadRatio <= 0.35 ? "A typical spread for this market."
+        : "The comps span a wide range, so treat the midpoint loosely.";
+      const srcBits = [];
+      if (pubN) srcBits.push(`${pubN} from public records`);
+      if (verN) srcBits.push(`${verN} broker-verified`);
+      trustEl.textContent = `Based on ${ppsfs.length} sale comps`
+        + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`;
+      trustEl.classList.remove("hidden");
       if (noi && capOk) {
         incomeEl.textContent =
           `Income-approach cross-check: ${fmtTotal(noi / (capHi / 100))} – ${fmtTotal(noi / (capLo / 100))} ` +
@@ -1725,10 +1757,13 @@
         : "Not enough sale comps returned to compute a numeric range";
     }
 
-    // Fresh CTA state per report — a prior "Request sent" shouldn't stick.
+    // Fresh CTA state per report — a prior confirmation shouldn't stick.
     const btn = document.getElementById("bovCtaBtn");
     btn.disabled = false;
-    btn.textContent = "Get a free Broker Opinion of Value";
+    btn.classList.remove("hidden");
+    document.getElementById("bovCtaHelper").classList.remove("hidden");
+    document.getElementById("bovConfirmPanel").classList.add("hidden");
+    document.getElementById("bovShareLinkWrap").classList.add("hidden");
 
     card.classList.remove("hidden");
   }
@@ -3209,6 +3244,13 @@
     btn.disabled = true;
     const original = btn.textContent;
     btn.textContent = leadContext === "bov" ? "Sending…" : "Unlocking…";
+    // BOV: publish the report first so the lead email and the confirmation
+    // panel carry a share link. Publish failure must never block the lead.
+    let reportUrl = "";
+    if (leadContext === "bov" && currentParsed && currentMeta) {
+      try { reportUrl = await publishCurrentReport(); } catch (_) {}
+      if (reportUrl) payload.report_url = reportUrl;
+    }
     try {
       const r = await fetch("/api/lead", {
         method: "POST",
@@ -3223,11 +3265,21 @@
       try { localStorage.setItem("leadInfo", JSON.stringify({ name: payload.name, email: payload.email })); } catch (_) {}
       document.getElementById("leadModal").classList.add("hidden");
       if (leadContext === "bov") {
-        // A BOV request is its own ask — confirm on the CTA, don't run exports.
+        // A BOV request is its own ask — swap the CTA for a confirmation
+        // panel (what happens next + their report link), don't run exports.
         pendingExport = null;
-        const cta = document.getElementById("bovCtaBtn");
-        cta.disabled = true;
-        cta.textContent = "Request sent. We'll be in touch.";
+        document.getElementById("bovCtaBtn").classList.add("hidden");
+        document.getElementById("bovCtaHelper").classList.add("hidden");
+        const linkWrap = document.getElementById("bovShareLinkWrap");
+        if (reportUrl) {
+          const a = document.getElementById("bovShareLink");
+          a.href = reportUrl;
+          a.textContent = reportUrl;
+          linkWrap.classList.remove("hidden");
+        } else {
+          linkWrap.classList.add("hidden");
+        }
+        document.getElementById("bovConfirmPanel").classList.remove("hidden");
       } else {
         const run = pendingExport;
         pendingExport = null;
@@ -3254,6 +3306,26 @@
   // export gate), even when exports are already unlocked.
   document.getElementById("bovCtaBtn").addEventListener("click", () => openLeadModal("bov"));
 
+  // Publish the current report under a share id and return its URL. Used by
+  // the Share button and the BOV flow (the lead gets their report link).
+  // Memoized per report object so BOV-after-share doesn't publish twice; a
+  // viewer already on /r/<id> just reuses that link.
+  let lastPublished = { parsed: null, url: "" };
+  async function publishCurrentReport() {
+    if (!currentParsed || !currentMeta) throw new Error("No report to share.");
+    if (currentMeta.shared && /^\/r\/[A-Za-z0-9_-]+$/.test(location.pathname)) return location.href;
+    if (lastPublished.parsed === currentParsed && lastPublished.url) return lastPublished.url;
+    const r = await fetch("/api/share", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: currentParsed, meta: currentMeta }),
+    });
+    if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) || "Share failed.");
+    const { url } = await r.json();
+    lastPublished = { parsed: currentParsed, url };
+    return url;
+  }
+
   // Share link — publish the current report server-side and copy its URL. NOT
   // gated by lead capture: sharing spreads the product, so we want zero
   // friction. The recipient lands on the full report with the BOV ask in view.
@@ -3266,13 +3338,7 @@
     const original = "Share link";
     label.textContent = "Creating link…";
     try {
-      const r = await fetch("/api/share", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ data: currentParsed, meta: currentMeta }),
-      });
-      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) || "Share failed.");
-      const { url } = await r.json();
+      const url = await publishCurrentReport();
       label.textContent = original;   // restore before flash captures the HTML
       let copied = false;
       try { await navigator.clipboard.writeText(url); copied = true; } catch (_) {}

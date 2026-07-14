@@ -96,6 +96,13 @@ dependency. `.env` is git-ignored — never commit it.
   registered with the notify address itself.
 - `LEAD_NOTIFY_EMAIL` — where those notifications go; defaults to
   agouraninja@gmail.com.
+- `EMAIL_FROM` — optional, e.g. `CompNinja <reports@yourdomain.com>`. The single
+  gate for OUTBOUND mail (to leads and brokers, not the owner): a BOV lead gets
+  a follow-up with their report share link, and a broker gets a confirmation
+  after submitting a comp. Leave UNSET until a custom domain is verified in
+  Resend — the free tier only delivers to the owner, so without it these sends
+  log `Outbound email skipped` and silently no-op. Replies go to
+  `LEAD_NOTIFY_EMAIL` (Resend `reply_to`).
 - `DAILY_SEARCH_CAP` — optional (default 150). Hard ceiling on *billed*
   Anthropic searches per UTC day; cache hits don't count. On the (cap+1)th
   search the server returns 429 to visitors and emails the owner once (via the
@@ -103,8 +110,9 @@ dependency. `.env` is git-ignored — never commit it.
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
-  to the Render URL. If the site moves to a custom domain, set this AND update
-  the canonical/`og:url` tags in `index.html` (they are hard-coded).
+  to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
+  against the default origin and rewritten to `SITE_URL` at serve time, so
+  moving to a custom domain is a single env change — no HTML edits.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 `MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a

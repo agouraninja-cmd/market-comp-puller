@@ -166,7 +166,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   search fetches approved comps of the matching property type and offers them
   to the model as trusted candidates; comps the model includes from that list
   carry `"verified": true` and the front-end shows a green Verified badge in
-  the Address column. Rate-limited per IP.
+  the Address column. **Broker loop**: the server matches each returned verified
+  comp back to its submission (by normalized address) and attaches
+  `verified_by` (firm or broker name), which renders as "Verified · via
+  <firm>" — visible credit for the contributor. And a BOV lead's owner email
+  lists any brokers who've contributed approved comps in that same market
+  (`findBrokersForMarket`), so the owner can connect them. Routing is
+  owner-mediated: broker contact info goes only to the owner, never the
+  reverse — owner PII is never auto-forwarded to a broker (also, Resend's free
+  tier only delivers to the owner address anyway). Rate-limited per IP.
 - `GET /api/comp-submissions` — downloads submitted comps as CSV; requires
   `ADMIN_KEY`.
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages

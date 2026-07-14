@@ -2439,7 +2439,7 @@
       "Owner-user demand from regional contractors keeps sub-$10M deals competitive",
     ],
     comps: [
-      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true },
+      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true, verified_by: "Lonestar Industrial Advisors" },
       { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer", source_url: "", source_type: "news", lat: "32.7020", lng: "-96.9510" },
       { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space", source_url: "", source_type: "listing", lat: "32.7330", lng: "-97.0110" },
       { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "", source_type: "public_record", lat: "32.7120", lng: "-97.1350" },
@@ -2750,8 +2750,20 @@
     const badge = document.createElement("span");
     badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide border rounded px-1 py-0.5 " + t.cls;
     badge.textContent = t.label;
-    badge.title = t.legend.charAt(0).toUpperCase() + t.legend.slice(1);
-    return badge;
+    // Credit the contributing broker on a verified comp (server sets verified_by
+    // by matching the comp back to the submission that supplied it).
+    const by = tier === "verified" ? String(comp.verified_by || "").trim() : "";
+    badge.title = by ? "Verified — comp contributed by " + by
+      : (t.legend.charAt(0).toUpperCase() + t.legend.slice(1));
+    if (!by) return badge;
+    const wrap = document.createElement("span");
+    wrap.className = "inline align-middle";
+    wrap.appendChild(badge);
+    const cred = document.createElement("span");
+    cred.className = "ml-1.5 text-[10px] text-emerald-700 align-middle";
+    cred.textContent = "· " + by;
+    wrap.appendChild(cred);
+    return wrap;
   }
   function outsideWindowBadge(dateVal) {
     // Flag comps the model returned from before the requested window.

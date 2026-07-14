@@ -472,7 +472,7 @@ async function fetchVerifiedComps(type, txFocus) {
   try {
     let url = `${SUPABASE_URL}/rest/v1/comp_submissions` +
       `?status=eq.approved&property_type=eq.${encodeURIComponent(type)}` +
-      `&select=address,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes` +
+      `&select=address,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes,broker_name,broker_company` +
       `&order=ts.desc&limit=25`;
     if (txFocus === "sales") url += `&transaction=eq.Sale`;
     else if (txFocus === "leases") url += `&transaction=eq.Lease`;
@@ -619,6 +619,57 @@ function normalizeSourceTypes(parsed) {
   return parsed;
 }
 
+// Credit the contributing broker on any verified comp the model included, by
+// matching its (faithfully-copied) address back to the submitted comp. Closes
+// the loop: brokers who feed us data get visible credit in every report.
+function attachVerifiedAttribution(parsed, verifiedComps) {
+  if (!parsed || !Array.isArray(parsed.comps) || !verifiedComps || !verifiedComps.length) return parsed;
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const offered = verifiedComps
+    .map((v) => ({ a: norm(v.address), by: String(v.broker_company || v.broker_name || "").trim() }))
+    .filter((v) => v.a && v.by);
+  if (!offered.length) return parsed;
+  for (const c of parsed.comps) {
+    if (!c || c.verified !== true) continue;
+    const ca = norm(c.address);
+    if (!ca) continue;
+    // The model copies the address faithfully, so an exact or prefix match
+    // (either direction, guarded by length) reliably ties it to the submission.
+    const m = offered.find((v) =>
+      v.a === ca || (v.a.length >= 8 && ca.length >= 8 && (ca.startsWith(v.a) || v.a.startsWith(ca))));
+    if (m) c.verified_by = m.by;
+  }
+  return parsed;
+}
+
+// Brokers who have contributed approved comps in a given market ("City, ST"),
+// for owner-mediated lead routing. Owner PII is never sent to brokers — the
+// owner sees who covers the market and connects them.
+async function findBrokersForMarket(market) {
+  if (!DB_CONFIGURED || !market) return [];
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/comp_submissions?status=eq.approved` +
+        `&select=broker_name,broker_company,broker_email,broker_phone,address&limit=200`,
+      { headers: supabaseHeaders() }
+    );
+    if (!r.ok) return [];
+    const rows = await r.json();
+    const seen = new Set();
+    const out = [];
+    for (const row of rows) {
+      if (marketOf(row.address) !== market) continue;
+      const key = String(row.broker_email || row.broker_name || "").toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+    }
+    return out;
+  } catch (_) {
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Call the Anthropic Messages API with web search enabled
 // ---------------------------------------------------------------------------
@@ -674,7 +725,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
-  return normalizeSourceTypes(parseCompJson(text));
+  const parsed = normalizeSourceTypes(parseCompJson(text));
+  return attachVerifiedAttribution(parsed, verifiedComps);
 }
 
 async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps) {
@@ -1144,6 +1196,17 @@ const server = http.createServer((req, res) => {
         const dest = await storeRow("leads", LEADS_FILE, lead);
         console.log(`Lead captured (${dest}): ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
         logEvent("lead", { source: lead.source, prop_type: lead.type, market: marketOf(lead.address) });
+        // For a BOV request, surface any brokers who've contributed comps in
+        // this market so the owner can connect them — the loop's payoff for the
+        // broker. Owner-mediated: the broker isn't contacted automatically.
+        let brokerField = [];
+        if (lead.source === "bov") {
+          const brokers = await findBrokersForMarket(marketOf(lead.address));
+          if (brokers.length) {
+            brokerField = [["Brokers active in this market", brokers.map((b) =>
+              `${b.broker_name}${b.broker_company ? " (" + b.broker_company + ")" : ""} — ${b.broker_email}${b.broker_phone ? ", " + b.broker_phone : ""}`).join("; ")]];
+          }
+        }
         notifyByEmail(
           `${lead.source === "bov" ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
           [
@@ -1154,6 +1217,7 @@ const server = http.createServer((req, res) => {
             ["Property", lead.address],
             ["Property type", lead.type],
             ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ...brokerField,
             ["Stored in", dest],
             ["Time", lead.ts],
           ]

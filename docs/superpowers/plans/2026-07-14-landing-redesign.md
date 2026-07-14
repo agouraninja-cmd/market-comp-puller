@@ -132,14 +132,14 @@ The cut-card mark (navy comp card sliced by a red diagonal), used everywhere the
 ```html
 <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
   <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-  <polygon points="2,26 28,4 28,10 8,26" fill="#B91C1C"/>
+  <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
 </svg>
 ```
 
 **Canonical wordmark markup (ink-on-light; on dark grounds swap `rd-wordmark` color via a `text-white`-style override shown in Task 5):**
 
 ```html
-<span class="rd-wordmark uppercase">COMP<b>NINJA</b></span>
+<span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
 ```
 
 **Files:**
@@ -149,13 +149,13 @@ The cut-card mark (navy comp card sliced by a red diagonal), used everywhere the
 
 ```html
 <!-- Favicon: CompNinja cut-card mark (navy comp card, red diagonal slice) -->
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect x='2' y='4' width='26' height='22' rx='2' fill='%231A2433'/%3E%3Cpolygon points='2,26 28,4 28,10 8,26' fill='%23B91C1C'/%3E%3C/svg%3E" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect x='2' y='4' width='26' height='22' rx='2' fill='%231A2433'/%3E%3Cpolygon points='3.5,26 28,5.5 28,10 8,26' fill='%23B91C1C'/%3E%3C/svg%3E" />
 ```
 
 - [ ] **Step 2: Print letterhead** (lines ~773-789). Replace the old 44-viewBox SVG + `font-brand` wordmark span with the canonical mark (class `h-7 w-7 shrink-0`) and:
 
 ```html
-<span class="rd-wordmark uppercase text-slate-900">COMP<b>NINJA</b></span>
+<span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
 ```
 
 Keep the surrounding letterhead structure (email + `printDate`) untouched.
@@ -187,9 +187,9 @@ git commit -m "Landing redesign 2/6: cut-card logo — favicon, letterhead, repo
       <div class="flex items-center gap-2.5">
         <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
           <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-          <polygon points="2,26 28,4 28,10 8,26" fill="#B91C1C"/>
+          <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
         </svg>
-        <span class="rd-wordmark uppercase">COMP<b>NINJA</b></span>
+        <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </div>
       <nav class="flex items-center gap-6 text-[13.5px] text-[#5A6473]">
         <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
@@ -478,9 +478,9 @@ git commit -m "Landing redesign 4/6: stat strip, report exhibit, method, broker 
           <div class="flex items-center gap-2.5">
             <svg class="h-6 w-6 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
               <rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>
-              <polygon points="2,26 28,4 28,10 8,26" fill="#B91C1C"/>
+              <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
             </svg>
-            <span class="rd-wordmark uppercase" style="color:#fff">COMP<b>NINJA</b></span>
+            <span class="rd-wordmark uppercase" style="color:#fff">Comp<b>Ninja</b></span>
           </div>
           <p class="mt-3 leading-relaxed text-[#8F99A8]">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage — we connect you with local brokers for opinions of value. Comparables derive from publicly available data; verify independently before underwriting.</p>
           <p class="mt-3 text-[#8F99A8]">© 2026 CompNinja</p>

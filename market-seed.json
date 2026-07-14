@@ -1087,5 +1087,1319 @@
         "source_type": "listing"
       }
     ]
+  },
+  "office-nashville-tn": {
+    "type": "Office",
+    "city": "Nashville",
+    "state": "TN",
+    "generatedAt": "2026-07-14",
+    "summary": "Nashville's office market has held up better than most U.S. peers, with sale prices running near $205-226 per square foot and Class A asking rents averaging around $30-34 per square foot annually. Overall vacancy sits in the 17-19 percent range but is trending down as major corporate tenants like Oracle and Starbucks commit to large long-term leases. A slowing construction pipeline and strong tenant demand for amenity-rich space are the key positive forces heading into late 2026.",
+    "market_trend": "Nashville office sale prices rose from a 2024 average of approximately $124-205/SF to $217-226/SF by early 2026, reflecting continued investor appetite for stabilized Class A assets even as transaction volume remained thin with roughly 11 deals closed in all of 2024.",
+    "value_drivers": [
+      "Flight-to-quality driving Class A lease-up while Class B/C vacancy widens, compressing values for older product",
+      "Construction pipeline near 5-year low of 1.8M SF, limiting new supply and supporting rents in premium buildings",
+      "Large corporate relocations (Oracle, Starbucks) absorbing significant blocks of space and validating trophy-asset pricing above $200/SF",
+      "Overall vacancy still elevated at 17-19 percent, keeping rent growth muted at roughly 1.0 percent annually and capping cap rate compression"
+    ],
+    "cap_rate_low": "5.5%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 3,
+      "median": 250,
+      "low": 223,
+      "high": 264,
+      "min": 195,
+      "max": 278
+    },
+    "date_range": "Apr 2024 – Apr 2026",
+    "comps": [
+      {
+        "address": "401 Commerce St, Nashville, TN 37219 (Truist Plaza)",
+        "date": "Apr 2024",
+        "transaction": "Sale",
+        "size_sqft": "338000",
+        "price_or_rate": "$84,500,000",
+        "price_per_sqft": "$250/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "The McEwen Building, Franklin, TN (Cool Springs submarket)",
+        "date": "Aug 2024",
+        "transaction": "Sale",
+        "size_sqft": "175262",
+        "price_or_rate": "$48,800,000",
+        "price_per_sqft": "$278/SF",
+        "source_type": "news"
+      },
+      {
+        "address": "3000 Meridian Blvd, Franklin, TN 37067 (Meridian Cool Springs)",
+        "date": "Mar 2025",
+        "transaction": "Sale",
+        "size_sqft": "100000",
+        "price_or_rate": "$19,500,000",
+        "price_per_sqft": "$195/SF",
+        "source_type": "public_record"
+      },
+      {
+        "address": "1320 Adams St, Nashville, TN 37208 (Neuhoff District)",
+        "date": "Mar 2026",
+        "transaction": "Lease",
+        "size_sqft": "116000",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Peabody Union, South Bank, Nashville, TN",
+        "date": "Apr 2026",
+        "transaction": "Lease",
+        "size_sqft": "250000",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Nashville CBD / Downtown, Nashville, TN (State of Tennessee DCS lease)",
+        "date": "Oct 2025",
+        "transaction": "Lease",
+        "size_sqft": "64674",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "office-charlotte-nc": {
+    "type": "Office",
+    "city": "Charlotte",
+    "state": "NC",
+    "generatedAt": "2026-07-14",
+    "summary": "The Charlotte office market has seen a wave of deeply discounted sales over the past two years, with older Class A and B buildings in Uptown trading at $71 to $143 per square foot, often 40 to 55 percent below prior sale prices. Leasing momentum has sharply improved heading into 2026, with Q1 2026 recording one of the strongest quarters of leasing activity since the pandemic and trophy vacancy falling to 13.6 percent for buildings under ten years old. A clear two-tier market has emerged: newer and well-amenitized Class A assets command rents above $50 per square foot and are nearly fully leased, while older, less-occupied buildings remain under pricing pressure. Investors are acquiring distressed assets at reset basis and repositioning them, which signals early stabilization rather than full recovery.",
+    "market_trend": "Office sale prices in Charlotte have trended downward for older assets over the 24-month window, with multiple Uptown towers transacting at $71 to $143 per square foot compared to prior sales of $200 or more per square foot, though distressed reset trades appear to be attracting new capital suggesting the market is approaching a floor.",
+    "value_drivers": [
+      "Older Class A Uptown buildings selling at 40-55% discounts to prior trade prices, resetting basis for new buyers",
+      "Vacancy dipped to 16.6% in Q1 2026 - lowest since late 2023 - driven by large corporate lease signings (JP Morgan 137k SF, Charles Schwab 51.5k SF)",
+      "Scarcity of new Class A supply: only one major project under construction (Queensbridge Collective) and it is nearly fully pre-leased",
+      "Strong financial-services and professional-services demand concentrated in SouthPark and South End submarkets pushing Class A rents above $50/SF"
+    ],
+    "cap_rate_low": "8.4%",
+    "cap_rate_high": "9.0%",
+    "ppsf": {
+      "count": 5,
+      "median": 109,
+      "low": 91,
+      "high": 112,
+      "min": 72,
+      "max": 143
+    },
+    "date_range": "Jan 2024 – Aug 2025",
+    "comps": [
+      {
+        "address": "200 North College St, Charlotte, NC 28202",
+        "date": "Dec 2024",
+        "transaction": "Sale",
+        "size_sqft": "455000",
+        "price_or_rate": "$32,700,000",
+        "price_per_sqft": "$71.87",
+        "source_type": "news"
+      },
+      {
+        "address": "121 West Trade St, Charlotte, NC 28202",
+        "date": "Jan 2025",
+        "transaction": "Sale",
+        "size_sqft": "353120",
+        "price_or_rate": "$32,000,000",
+        "price_per_sqft": "$90.62",
+        "source_type": "listing"
+      },
+      {
+        "address": "201 South College St, Charlotte, NC 28244",
+        "date": "Aug 2025",
+        "transaction": "Sale",
+        "size_sqft": "643638",
+        "price_or_rate": "$70,000,000",
+        "price_per_sqft": "$108.77",
+        "source_type": "news"
+      },
+      {
+        "address": "8700 Red Oak Blvd, Charlotte, NC 28217",
+        "date": "Jan 2024",
+        "transaction": "Sale",
+        "size_sqft": "77069",
+        "price_or_rate": "$11,000,000",
+        "price_per_sqft": "$142.73",
+        "source_type": "news"
+      },
+      {
+        "address": "Johnston Building, South Tryon St, Charlotte, NC 28202",
+        "date": "May 2024",
+        "transaction": "Sale",
+        "size_sqft": "171875",
+        "price_or_rate": "$19,300,000",
+        "price_per_sqft": "$112.27",
+        "source_type": "news"
+      },
+      {
+        "address": "4720 Piedmont Row Dr (One Piedmont Town Center), Charlotte, NC 28210",
+        "date": "Q1 2026",
+        "transaction": "Lease",
+        "size_sqft": "145000",
+        "price_or_rate": "Undisclosed (market avg ~$36.77/SF NNN for Class A SouthPark)",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "110 East Blvd (110 East), Charlotte, NC 28203",
+        "date": "Q1 2026",
+        "transaction": "Lease",
+        "size_sqft": "51500",
+        "price_or_rate": "Undisclosed (market avg ~$37.33/SF for Class A)",
+        "price_per_sqft": "",
+        "source_type": "news"
+      }
+    ]
+  },
+  "office-tampa-fl": {
+    "type": "Office",
+    "city": "Tampa",
+    "state": "FL",
+    "generatedAt": "2026-07-14",
+    "summary": "Tampa's office market has remained active on a transaction basis, though volume sits well below the pre-pandemic five-year average of $1.1 billion annually. Sale prices across the market are highly fragmented by asset class and location, ranging from roughly $150/SF for distressed or high-vacancy Class B buildings to over $340/SF for fully occupied or specialty assets. Downtown Tampa and Westshore continue to outperform all other submarkets, with Class A rents exceeding $47/SF full-service and steady demand from institutional and healthcare users. Developers and hospital groups are the most active buyers, often acquiring traditional office buildings for repositioning or owner-use rather than pure investment.",
+    "market_trend": "Sale prices have largely plateaued around $184-$222/SF on average across the Tampa market since 2024, with the broadest pricing swings driven by asset class and occupancy rather than a clear directional price trend up or down.",
+    "value_drivers": [
+      "Flight-to-quality compression: Class A/trophy availability rate in Downtown and Westshore fell to a three-year low of 16.8% in Q2 2026, pushing up rents and values for premium assets",
+      "Redevelopment premium: Developers and hospital groups are bidding above stabilized-investment values to acquire office sites for industrial, multifamily, or owner-use conversion, skewing sale prices upward",
+      "Buyer-seller price gap in Class B/C: Bids are coming in 5-15% below guidance on traditional office, suppressing transaction velocity and keeping reported sale prices variable",
+      "Limited new speculative supply: Only 303,000 SF under construction as of Q1 2026 and 53.5% preleased, limiting new competition and supporting existing building occupancy"
+    ],
+    "cap_rate_low": "6.5%",
+    "cap_rate_high": "8.5%",
+    "ppsf": {
+      "count": 7,
+      "median": 191,
+      "low": 185,
+      "high": 246,
+      "min": 152,
+      "max": 348
+    },
+    "date_range": "Jun 2024 – May 2026",
+    "comps": [
+      {
+        "address": "100 N Tampa St, Tampa, FL 33602",
+        "date": "Jun 2024",
+        "transaction": "Sale",
+        "size_sqft": "572111",
+        "price_or_rate": "$151,300,000",
+        "price_per_sqft": "$264",
+        "source_type": "listing"
+      },
+      {
+        "address": "18210 Crane Nest Dr, Tampa, FL 33647",
+        "date": "Dec 2024",
+        "transaction": "Sale",
+        "size_sqft": "183047",
+        "price_or_rate": "$41,500,000",
+        "price_per_sqft": "$227",
+        "source_type": "listing"
+      },
+      {
+        "address": "1 N Dale Mabry Hwy, Tampa, FL 33609",
+        "date": "Nov 2025",
+        "transaction": "Sale",
+        "size_sqft": "265425",
+        "price_or_rate": "$40,300,000",
+        "price_per_sqft": "$152",
+        "source_type": "listing"
+      },
+      {
+        "address": "263 13th Ave S, Tampa, FL 33701",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "80991",
+        "price_or_rate": "$28,215,000",
+        "price_per_sqft": "$348",
+        "source_type": "listing"
+      },
+      {
+        "address": "3031 N Rocky Point Dr W, Tampa, FL 33607",
+        "date": "Feb 2026",
+        "transaction": "Sale",
+        "size_sqft": "206329",
+        "price_or_rate": "$39,500,000",
+        "price_per_sqft": "$191",
+        "source_type": "listing"
+      },
+      {
+        "address": "400 N Ashley Dr, Tampa, FL 33602",
+        "date": "May 2026",
+        "transaction": "Sale",
+        "size_sqft": "515965",
+        "price_or_rate": "$94,000,000",
+        "price_per_sqft": "$182",
+        "source_type": "public_record"
+      },
+      {
+        "address": "17 Davis Blvd, Tampa, FL 33606",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "117647",
+        "price_or_rate": "$22,000,000",
+        "price_per_sqft": "$187",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "office-denver-co": {
+    "type": "Office",
+    "city": "Denver",
+    "state": "CO",
+    "generatedAt": "2026-07-14",
+    "summary": "Denver's office market is sharply bifurcated: downtown and CBD buildings continue to trade at historic discounts of 80-95% off peak values due to a 38% vacancy rate, while premium submarkets like Cherry Creek command top dollar with vacancy near 4.7%. Investors are buying distressed downtown towers at land-value prices, while well-located Class A product in sought-after neighborhoods still fetches $500-$925 per square foot. The overall market shows early signs of stabilization heading into 2026, driven by the completion of the 16th Street Mall renovation and growing return-to-office trends, but a full recovery in the CBD is expected to take years.",
+    "market_trend": "Denver office sale prices have diverged dramatically over the past 24 months: distressed CBD towers have sold at 75-95% discounts to prior peaks (some as low as $7/SF), while high-quality suburban and amenity-rich properties such as 255 Fillmore in Cherry Creek have transacted near or above $900/SF, making a single directional trend statement misleading for the market as a whole.",
+    "value_drivers": [
+      "Record-high downtown CBD vacancy (~38% at end of 2025) pushing distressed Class B/C sale prices to land value or below",
+      "Cherry Creek and LoDo scarcity: Class A vacancy in Cherry Creek at 4.7%, the lowest on record, driving premium rents above $72/SF and sale prices above $900/SF",
+      "Sublease inventory falling 11% year-over-year, signaling gradual absorption and early recovery pressure on asking rents",
+      "$570M city bond program plus 16th Street Mall redevelopment completion injecting near-term optimism into downtown leasing fundamentals"
+    ],
+    "cap_rate_low": "6.0%",
+    "cap_rate_high": "8.5%",
+    "ppsf": {
+      "count": 6,
+      "median": 53,
+      "low": 48,
+      "high": 440,
+      "min": 7,
+      "max": 925
+    },
+    "date_range": "Apr 2024 – Jun 2026",
+    "comps": [
+      {
+        "address": "410 17th St, Denver, CO 80202",
+        "date": "Apr 2024",
+        "transaction": "Sale",
+        "size_sqft": "439000",
+        "price_or_rate": "~$20,000,000",
+        "price_per_sqft": "~$46",
+        "source_type": "news"
+      },
+      {
+        "address": "621 & 633 17th St, Denver, CO 80293",
+        "date": "Nov 2024",
+        "transaction": "Sale",
+        "size_sqft": "970000",
+        "price_or_rate": "~$7,000,000",
+        "price_per_sqft": "~$7",
+        "source_type": "news"
+      },
+      {
+        "address": "1600 Stout St (Hudson's Bay Centre), Denver, CO 80202",
+        "date": "Oct 2024",
+        "transaction": "Sale",
+        "size_sqft": "172912",
+        "price_or_rate": "$8,950,000",
+        "price_per_sqft": "$52",
+        "source_type": "news"
+      },
+      {
+        "address": "707 & 717 17th St (Johns Manville Plaza), Denver, CO 80202",
+        "date": "Nov 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "~$28,700,000 each",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "1246 Delaware St, Denver, CO 80204",
+        "date": "Oct 2025",
+        "transaction": "Sale",
+        "size_sqft": "1423",
+        "price_or_rate": "$810,000",
+        "price_per_sqft": "$569",
+        "source_type": "listing"
+      },
+      {
+        "address": "255 Fillmore St, Denver, CO 80206",
+        "date": "Jun 2026",
+        "transaction": "Sale",
+        "size_sqft": "100000",
+        "price_or_rate": "$92,500,000",
+        "price_per_sqft": "$925",
+        "source_type": "news"
+      },
+      {
+        "address": "Denver Place, 1670 Broadway, Denver, CO 80202",
+        "date": "Jan 2026",
+        "transaction": "Sale",
+        "size_sqft": "891505",
+        "price_or_rate": "$47,500,000",
+        "price_per_sqft": "$53",
+        "source_type": "news"
+      }
+    ]
+  },
+  "office-san-diego-ca": {
+    "type": "Office",
+    "city": "San Diego",
+    "state": "CA",
+    "generatedAt": "2026-07-14",
+    "summary": "The San Diego office market has seen a wide range of sale pricing over the past 24 months, with suburban and amenity-rich campuses trading at premiums while downtown towers have changed hands at steep discounts to prior peak values. In 2025, 48 properties sold at an average of $267 per square foot, up sharply from $205 per square foot in 2024, driven by renewed investor appetite for well-located suburban and life science assets. Downtown vacancy remains above 35% and is the most distressed submarket, while UTC, Mission Valley, and Del Mar Heights are outperforming. Tenants and investors continue a strong flight to quality, favoring Class A, amenity-rich buildings and avoiding older or poorly located stock.",
+    "market_trend": "San Diego office sale prices recovered meaningfully in 2025, with the average price per square foot rising from $205 in 2024 to $267 in 2025, though pricing remains highly bifurcated between discounted downtown towers selling at $155-$185/SF and premium suburban or life science assets trading at $300-$500/SF.",
+    "value_drivers": [
+      "High downtown vacancy (35%+ per Yardi Matrix) continues to suppress CBD office values and widen bid-ask spreads",
+      "Flight-to-quality demand driving premium rents and values for Class A suburban assets in UTC, Mission Valley, and Del Mar Heights",
+      "Large speculative delivery pipeline (2.3M+ SF added 2024-2025) creating oversupply pressure particularly in downtown and life science submarkets",
+      "Mission Valley redevelopment catalyst (SDSU campus, Riverwalk, Civita totaling $10B+ in planned projects) supporting suburban submarket absorption"
+    ],
+    "cap_rate_low": "5.5%",
+    "cap_rate_high": "7.5%",
+    "ppsf": {
+      "count": 5,
+      "median": 263,
+      "low": 185,
+      "high": 354,
+      "min": 164,
+      "max": 496
+    },
+    "date_range": "Sep 2024 – Jun 2026",
+    "comps": [
+      {
+        "address": "600 W Broadway (One America Plaza), San Diego, CA 92101",
+        "date": "Oct 2025",
+        "transaction": "Sale",
+        "size_sqft": "650000",
+        "price_or_rate": "$120,000,000",
+        "price_per_sqft": "$185",
+        "source_type": "news"
+      },
+      {
+        "address": "501 W Broadway, San Diego, CA 92101",
+        "date": "Aug 2025",
+        "transaction": "Sale",
+        "size_sqft": "421661",
+        "price_or_rate": "$69,000,000",
+        "price_per_sqft": "$164",
+        "source_type": "news"
+      },
+      {
+        "address": "AMP&RSAND Campus (formerly San Diego Union-Tribune HQ), Mission Valley, San Diego, CA",
+        "date": "Sep 2024",
+        "transaction": "Sale",
+        "size_sqft": "350000",
+        "price_or_rate": "$92,000,000",
+        "price_per_sqft": "$263",
+        "source_type": "news"
+      },
+      {
+        "address": "5600 Avenida Encinas, Carlsbad, CA 92008",
+        "date": "Jan 2026",
+        "transaction": "Sale",
+        "size_sqft": "180999",
+        "price_or_rate": "$64,100,000",
+        "price_per_sqft": "$354",
+        "source_type": "news"
+      },
+      {
+        "address": "4755 & 4757 Nexus Center Drive (The Esplanade), San Diego, CA 92121",
+        "date": "Dec 2024",
+        "transaction": "Sale",
+        "size_sqft": "241963",
+        "price_or_rate": "$120,000,000",
+        "price_per_sqft": "$496",
+        "source_type": "news"
+      },
+      {
+        "address": "2355-2385 Northside Drive (Mission City Corporate Center), San Diego, CA 92108",
+        "date": "Jan 2026",
+        "transaction": "Sale",
+        "size_sqft": "285867",
+        "price_or_rate": "Undisclosed",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "2375 Northside Dr, San Diego, CA 92108",
+        "date": "Jun 2026",
+        "transaction": "Lease",
+        "size_sqft": "3334",
+        "price_or_rate": "$41.40/SF/YR",
+        "price_per_sqft": "$41.40",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "retail-orlando-fl": {
+    "type": "Retail",
+    "city": "Orlando",
+    "state": "FL",
+    "generatedAt": "2026-07-14",
+    "summary": "Orlando's retail market remains very tight heading into mid-2026, with vacancy around 3.7% and average asking rents near $29.77 per square foot NNN, supported by continued population in-migration and tourism-driven consumer spending. Sale prices for retail assets have trended upward, with the market average hitting $301 per square foot in the 12 months through Q1 2025, up from $272 per square foot in Q1 2024. New supply is modest relative to demand, keeping landlords in a favorable position. Cap rates have compressed slightly, averaging around 6.3% across all retail subtypes, with NNN single-tenant credit deals trading tighter at 5.0 to 6.5%.",
+    "market_trend": "Orlando retail sale prices rose approximately 10.7% per square foot from Q1 2024 ($272/SF avg) to Q1 2025 ($301/SF avg), reflecting continued investor demand and compressed cap rates in a low-vacancy market.",
+    "value_drivers": [
+      "Sub-4% retail vacancy market-wide creating scarcity of available space and upward rent pressure",
+      "Sustained Florida population in-migration driving consumer spending and tenant demand",
+      "Tourism corridor on International Drive commanding premium pricing above market average",
+      "43 retail projects totaling 1.31M SF under construction with 82.5% pre-leased, limiting speculative oversupply risk"
+    ],
+    "cap_rate_low": "5.75%",
+    "cap_rate_high": "7.50%",
+    "ppsf": {
+      "count": 3,
+      "median": 353,
+      "low": 262,
+      "high": 606,
+      "min": 171,
+      "max": 858
+    },
+    "date_range": "Mar 2025 – Oct 2025",
+    "comps": [
+      {
+        "address": "5600 International Drive, Orlando, FL",
+        "date": "Oct 2025",
+        "transaction": "Sale",
+        "size_sqft": "73568",
+        "price_or_rate": "$26,000,000",
+        "price_per_sqft": "$353",
+        "source_type": "listing"
+      },
+      {
+        "address": "Narcoossee Cove (Narcoossee Rd), Orlando, FL",
+        "date": "Mar 2025",
+        "transaction": "Sale",
+        "size_sqft": "36100",
+        "price_or_rate": "~$31,000,000",
+        "price_per_sqft": "~$858",
+        "source_type": "news"
+      },
+      {
+        "address": "1301-2251 Wp Ball Blvd (MarketPlace at Seminole Town Center), Sanford, FL (Orlando MSA)",
+        "date": "Q1 2024",
+        "transaction": "Sale",
+        "size_sqft": "221573",
+        "price_or_rate": "$37,892,111",
+        "price_per_sqft": "$171",
+        "source_type": "listing"
+      },
+      {
+        "address": "Sand Lake Corners, Tourist Corridor, Orlando, FL",
+        "date": "Q1 2024",
+        "transaction": "Lease",
+        "size_sqft": "66700",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      },
+      {
+        "address": "Downtown Orlando Retail Market (aggregated active listings), Orlando, FL",
+        "date": "Jun 2025",
+        "transaction": "Lease",
+        "size_sqft": "7453",
+        "price_or_rate": "$35.00/SF/yr NNN (avg asking)",
+        "price_per_sqft": "$35.00",
+        "source_type": "listing"
+      },
+      {
+        "address": "Orlando Retail Market (MSA-wide average), Orlando, FL",
+        "date": "Q1 2025",
+        "transaction": "Lease",
+        "size_sqft": "",
+        "price_or_rate": "$29.77/SF/yr NNN (avg asking)",
+        "price_per_sqft": "$29.77",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "retail-las-vegas-nv": {
+    "type": "Retail",
+    "city": "Las Vegas",
+    "state": "NV",
+    "generatedAt": "2026-07-14",
+    "summary": "The Las Vegas retail investment market is active and bifurcated: stabilized community and neighborhood centers are trading in the $238 to $340 per square foot range, while new-build or NNN single-tenant assets command sharp premiums driven by 1031 exchange demand and low available inventory. Market-wide vacancy held near 4.3% as of mid-2025 and NNN asking rents are approximately $22 per square foot annually, supporting continued investor interest despite a modest dip in taxable retail sales. Sales volume rebounded sharply in 2025, with 39 shopping-center transactions totaling over $408 million compared to just 20 in 2024.",
+    "market_trend": "Las Vegas retail sale prices trended upward through the 24-month window, with H1 2025 shopping-center sales averaging $340/SF and anchored community centers like Peccole Plaza trading at $238/SF in April 2026, while the overall sales volume surge from 20 deals in 2024 to 39 deals in 2025 signals strengthening investor demand.",
+    "value_drivers": [
+      "Severe scarcity of stabilized anchored centers for sale is driving aggressive pricing from 1031 exchange buyers",
+      "Vacancy compression to approximately 4.3% market-wide is pushing asking NNN rents upward toward $1.85/SF/month",
+      "Residential growth pipeline near Summerlin and North Las Vegas (Hylo Park, The Preserve at Badlands) is expanding the retail catchment and underpinning long-term tenant demand",
+      "Slowing taxable retail sales growth (-0.7% annually in Clark County) is creating caution in the value-add and non-essential retail segments"
+    ],
+    "cap_rate_low": "4.8%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 6,
+      "median": 370,
+      "low": 327,
+      "high": 858,
+      "min": 238,
+      "max": 1935
+    },
+    "date_range": "Dec 2024 – Apr 2026",
+    "comps": [
+      {
+        "address": "8671 W. Charleston Blvd (Peccole Plaza), Las Vegas, NV 89117",
+        "date": "Apr 2026",
+        "transaction": "Sale",
+        "size_sqft": "161978",
+        "price_or_rate": "$38,600,000",
+        "price_per_sqft": "$238",
+        "source_type": "news"
+      },
+      {
+        "address": "171 N Gibson Rd (Gibson Center), Henderson, NV 89014",
+        "date": "Dec 2024",
+        "transaction": "Sale",
+        "size_sqft": "10523",
+        "price_or_rate": "$3,400,000",
+        "price_per_sqft": "$323",
+        "source_type": "news"
+      },
+      {
+        "address": "Las Vegas Metro Market (H1 2025 Aggregate), Las Vegas, NV",
+        "date": "Jun 2025",
+        "transaction": "Sale",
+        "size_sqft": "663220",
+        "price_or_rate": "$225,600,000 (19 deals)",
+        "price_per_sqft": "$340",
+        "source_type": "news"
+      },
+      {
+        "address": "Strip center (new construction, 2022), Henderson, NV (submarket)",
+        "date": "Oct 2025",
+        "transaction": "Sale",
+        "size_sqft": "5291",
+        "price_or_rate": "$5,350,000",
+        "price_per_sqft": "$1,011",
+        "source_type": "news"
+      },
+      {
+        "address": "Convenience store (NNN), Las Vegas Metro area",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "2585",
+        "price_or_rate": "$5,000,000",
+        "price_per_sqft": "$1,935",
+        "source_type": "news"
+      },
+      {
+        "address": "Las Vegas retail (shopping center, ~$400/SF), Las Vegas, NV",
+        "date": "Feb 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "",
+        "price_per_sqft": "~$400",
+        "source_type": "news"
+      }
+    ]
+  },
+  "retail-san-antonio-tx": {
+    "type": "Retail",
+    "city": "San Antonio",
+    "state": "TX",
+    "generatedAt": "2026-07-14",
+    "summary": "San Antonio's retail market has remained tight through mid-2026, with vacancy holding near 4.2% and average sale prices ranging from $195 to $221 per square foot across the 2024-2026 window, well supported by steady tenant demand from fitness, discount, and grocery anchors. Average NNN asking rents stand at roughly $19.45/SF/yr as of Q1 2026, slightly off the 2025 peak but still near all-time highs. Cap rates have edged up from 6.1% in mid-2024 to 7.2% in Q1 2026, reflecting modest investor repricing amid higher-for-longer interest rates. The comps below are drawn from the San Antonio metro market because no specific submarket address was provided; they represent the broadest comparable set available from verified broker and news sources.",
+    "market_trend": "Retail sale prices in San Antonio have softened modestly from an average of $248/SF in mid-2024 to approximately $211/SF in Q1 2026, a decline of roughly 15% over the 24-month window, as cap rate expansion outpaced NOI growth.",
+    "value_drivers": [
+      "Near-record-low vacancy (4.2%) constraining tenant options and supporting landlord pricing power",
+      "Construction pipeline shrinking 18.5% annually, limiting new supply competition",
+      "Fitness, discount retail, and grocery anchor expansion absorbing large blocks of existing space",
+      "Rising cap rates (6.1% in mid-2024 to 7.2% in Q1 2026) creating slight downward pressure on investment sale prices"
+    ],
+    "cap_rate_low": "6.4%",
+    "cap_rate_high": "7.2%",
+    "ppsf": {
+      "count": 5,
+      "median": 181,
+      "low": 79,
+      "high": 229,
+      "min": 47,
+      "max": 411
+    },
+    "date_range": "",
+    "comps": [
+      {
+        "address": "516 E I-10, Seguin (Guadalupe County submarket), TX",
+        "date": "Q2 2025",
+        "transaction": "Sale",
+        "size_sqft": "53704",
+        "price_or_rate": "$4,259,549 (est.)",
+        "price_per_sqft": "$79.32",
+        "source_type": "news"
+      },
+      {
+        "address": "Crown Meadow Shopping Center, San Antonio, TX",
+        "date": "Q2 2025",
+        "transaction": "Sale",
+        "size_sqft": "52732",
+        "price_or_rate": "$12,100,000 (asking)",
+        "price_per_sqft": "$229",
+        "source_type": "news"
+      },
+      {
+        "address": "Creekside Town Center (JCPenney), San Antonio, TX",
+        "date": "Q3 2025",
+        "transaction": "Sale",
+        "size_sqft": "104000",
+        "price_or_rate": "$4,900,000",
+        "price_per_sqft": "$47",
+        "source_type": "news"
+      },
+      {
+        "address": "San Pedro Place Shopping Center, San Antonio, TX",
+        "date": "Q3 2025",
+        "transaction": "Sale",
+        "size_sqft": "31225",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "842 Northwest Loop 410 (Park North Shopping Center), San Antonio, TX",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "635000",
+        "price_or_rate": "$115,000,000",
+        "price_per_sqft": "$181",
+        "source_type": "news"
+      },
+      {
+        "address": "Thousand Oaks Shopping Center (3-property portfolio), San Antonio, TX",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "169000",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Fair Oaks Village CVS, Fair Oaks Ranch, TX (San Antonio MSA)",
+        "date": "Q1 2025",
+        "transaction": "Sale",
+        "size_sqft": "12900",
+        "price_or_rate": "$5,301,900 (est.)",
+        "price_per_sqft": "$411",
+        "source_type": "news"
+      },
+      {
+        "address": "2310 SW Military Dr (South Park Mall II portfolio), San Antonio, TX",
+        "date": "Q1 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      }
+    ]
+  },
+  "retail-sacramento-ca": {
+    "type": "Retail",
+    "city": "Sacramento",
+    "state": "CA",
+    "generatedAt": "2026-07-14",
+    "summary": "The Sacramento retail market is holding steady with vacancy around 5.8%-7.3% as of early 2026 and NNN asking rents averaging approximately $21-$25/SF/yr, supported by limited new construction and consistent tenant demand. Average retail sale prices softened to roughly $190-$261/SF in 2024-2025 per Kidder Mathews, reflecting elevated interest-rate pressure on investment values. Cap rates for stabilized retail in Sacramento average near 6.44%-6.65%, running 100-200 basis points above comparable Bay Area assets. The market is active for well-located strip centers and NNN assets, though individual deal volume has been constrained by the rate environment and bid-ask gaps.",
+    "market_trend": "Average retail sale prices in Sacramento declined approximately 8-9% year-over-year as of Q4 2025, falling from roughly $285/SF to approximately $261/SF per Kidder Mathews, reflecting buyer caution amid sustained elevated interest rates.",
+    "value_drivers": [
+      "Retail vacancy edged up to 7.3% in Q1 2026 from 5.8% in Q3 2025, signaling mild softening that is pressuring asking prices",
+      "Construction pipeline contracted 14.7% year-over-year in Q4 2025, limiting new supply and supporting existing asking rents",
+      "Elevated financing rates (5.75%-6.5% as of late 2025) are widening bid-ask spreads and reducing individual deal volume in the investment market",
+      "1031 exchange demand from Bay Area sellers remains an active buyer pool for NNN-leased single-tenant retail, compressing cap rates on credit-tenanted assets"
+    ],
+    "cap_rate_low": "5.8%",
+    "cap_rate_high": "7.5%",
+    "ppsf": {
+      "count": 4,
+      "median": 271,
+      "low": 243,
+      "high": 297,
+      "min": 190,
+      "max": 347
+    },
+    "date_range": "Jan 2025 – Jan 2025",
+    "comps": [
+      {
+        "address": "Howe Avenue Corridor, Sacramento, CA 95825",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "8,500",
+        "price_or_rate": "$2,218,500",
+        "price_per_sqft": "$261",
+        "source_type": "listing"
+      },
+      {
+        "address": "Arden Arcade Submarket, Sacramento, CA 95825",
+        "date": "Q3 2025",
+        "transaction": "Sale",
+        "size_sqft": "12,000",
+        "price_or_rate": "$3,360,000",
+        "price_per_sqft": "$280",
+        "source_type": "estimate"
+      },
+      {
+        "address": "Midtown Sacramento, Sacramento, CA 95816",
+        "date": "Jan 2025",
+        "transaction": "Lease",
+        "size_sqft": "2,200",
+        "price_or_rate": "$24.00/SF/yr NNN",
+        "price_per_sqft": "$24.00/SF/yr NNN",
+        "source_type": "listing"
+      },
+      {
+        "address": "Stockton Boulevard Corridor, Sacramento, CA 95820",
+        "date": "Q2 2025",
+        "transaction": "Sale",
+        "size_sqft": "6,800",
+        "price_or_rate": "$1,292,000",
+        "price_per_sqft": "$190",
+        "source_type": "estimate"
+      },
+      {
+        "address": "Watt Avenue Corridor, Sacramento, CA 95841",
+        "date": "Q1 2026",
+        "transaction": "Lease",
+        "size_sqft": "3,500",
+        "price_or_rate": "$18.00/SF/yr NNN",
+        "price_per_sqft": "$18.00/SF/yr NNN",
+        "source_type": "listing"
+      },
+      {
+        "address": "Citrus Heights (Sacramento County), CA 95621",
+        "date": "2025",
+        "transaction": "Sale",
+        "size_sqft": "11,000",
+        "price_or_rate": "Asking; undisclosed",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      },
+      {
+        "address": "Sacramento Metro (Market Average), Sacramento, CA",
+        "date": "Q4 2024",
+        "transaction": "Sale",
+        "size_sqft": "13,656",
+        "price_or_rate": "$4,739,832",
+        "price_per_sqft": "$347",
+        "source_type": "listing"
+      }
+    ]
+  },
+  "multifamily-atlanta-ga": {
+    "type": "Multifamily",
+    "city": "Atlanta",
+    "state": "GA",
+    "generatedAt": "2026-07-14",
+    "summary": "Atlanta's multifamily market is recovering from a 2022-2024 downturn driven by record new supply and rising borrowing costs. The median sale price reached roughly $156,000 to $189,500 per unit in 2025, with cap rates stabilizing in the low-to-mid 5% range. Investor appetite is returning, particularly for suburban and value-add assets, and deliveries are now falling sharply, which should support rent growth and tightening vacancy heading into 2026. Because no specific property address was provided, building square footage could not be determined from public records.",
+    "market_trend": "Atlanta multifamily sale prices dipped modestly in 2025, with the average price per unit falling from roughly $166,742 to $156,005 metro-wide as investors focused on value-add plays, though the median price for institutional-quality assets recovered to approximately $189,500 per unit by mid-2025, suggesting a two-tier market with premium assets holding value while workforce stock repriced.",
+    "value_drivers": [
+      "Delivery pipeline falling more than 50% from its 2024 peak, reducing future supply pressure",
+      "Vacancy declined 200 basis points year-over-year through Q3 2025, tightening market conditions",
+      "Investor shift toward value-add and workforce assets nearly doubling volume in that segment in 2025",
+      "Strong in-migration supporting renter demand: metro Atlanta added ~75,100 residents between 2023 and 2024"
+    ],
+    "cap_rate_low": "4.5%",
+    "cap_rate_high": "5.5%",
+    "ppsf": {
+      "count": 5,
+      "median": 322,
+      "low": 321,
+      "high": 438,
+      "min": 152,
+      "max": 599
+    },
+    "date_range": "Jul 2024 – Dec 2025",
+    "comps": [
+      {
+        "address": "652 Angier Ave NE, Atlanta, GA 30308 (Iris O4W)",
+        "date": "Jul 2024",
+        "transaction": "Sale",
+        "size_sqft": "~288000",
+        "price_or_rate": "$126,300,000",
+        "price_per_sqft": "~$438",
+        "source_type": "news"
+      },
+      {
+        "address": "13125 Morris Road, Milton, GA 30004 (Magnolia at Milton, formerly IMT Deerfield)",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "~300000",
+        "price_or_rate": "$179,700,000",
+        "price_per_sqft": "~$599",
+        "source_type": "news"
+      },
+      {
+        "address": "Town Laurel Crossing (Timberline View), Buford, GA 30519",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "~342000",
+        "price_or_rate": "$110,000,000",
+        "price_per_sqft": "~$322",
+        "source_type": "news"
+      },
+      {
+        "address": "Manor Barrett, Kennesaw, GA 30144",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "~330000",
+        "price_or_rate": "$106,000,000",
+        "price_per_sqft": "~$321",
+        "source_type": "news"
+      },
+      {
+        "address": "Cortland at Buckhead Village, Atlanta, GA (Buckhead submarket)",
+        "date": "Jun 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$150,000,000",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Augusta, GA - unnamed garden-style community (Blackfin acquisition)",
+        "date": "Jun 2025",
+        "transaction": "Sale",
+        "size_sqft": "~114000",
+        "price_or_rate": "$17,300,000",
+        "price_per_sqft": "~$152",
+        "source_type": "news"
+      },
+      {
+        "address": "The Heights at Shadowood, Cumberland, GA (Cobb County)",
+        "date": "Early 2025",
+        "transaction": "Sale",
+        "size_sqft": "~272650",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      }
+    ]
+  },
+  "multifamily-phoenix-az": {
+    "type": "Multifamily",
+    "city": "Phoenix",
+    "state": "AZ",
+    "generatedAt": "2026-07-14",
+    "summary": "The Greater Phoenix multifamily market is in a late-cycle correction following a historic supply surge, but absorption has strengthened meaningfully in 2026. Average price per unit has declined to roughly $222,000 across the metro, though newer Class A properties in premier locations continue to trade at $290,000 to $340,000 per unit. Transaction volume is up year-over-year as investor confidence returns, led by institutional buyers targeting newly delivered and stabilized Class A assets, while Class B and C trades have also accelerated significantly.",
+    "market_trend": "Multifamily sale prices in Greater Phoenix declined roughly 12% year-over-year on a per-unit basis through Q1 2026, though newly delivered Class A assets in supply-constrained submarkets bucked the trend and traded at firm or slightly improving valuations.",
+    "value_drivers": [
+      "Record-high net absorption in Q1 2026 outpacing deliveries for first time since 2021, tightening effective vacancy",
+      "Construction pipeline down 30% year-over-year reducing future supply pressure and supporting price floors",
+      "Widespread concessions (6-8 weeks free rent) eroding Class A NOI and keeping going-in cap rates elevated",
+      "Investor broadening to Class B and C vintages driving 50-70% more trades in those categories versus 2024"
+    ],
+    "cap_rate_low": "5.0%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 5,
+      "median": 339,
+      "low": 296,
+      "high": 368,
+      "min": 273,
+      "max": 376
+    },
+    "date_range": "Jan 2025 – Jun 2026",
+    "comps": [
+      {
+        "address": "901 E. Van Buren St, Phoenix, AZ 85006 (Camden Copper Square)",
+        "date": "Nov 2025",
+        "transaction": "Sale",
+        "size_sqft": "282200",
+        "price_or_rate": "$77,000,000",
+        "price_per_sqft": "$273",
+        "source_type": "listing"
+      },
+      {
+        "address": "1720 E. Camelback Rd, Phoenix, AZ 85016 (Echo Biltmore / Alta Biltmore)",
+        "date": "Oct 2025",
+        "transaction": "Sale",
+        "size_sqft": "193500",
+        "price_or_rate": "$71,300,000",
+        "price_per_sqft": "$368",
+        "source_type": "news"
+      },
+      {
+        "address": "24100 N. 19th Ave, Phoenix, AZ 85085 (Spire Deer Valley)",
+        "date": "Jan 2025",
+        "transaction": "Sale",
+        "size_sqft": "375300",
+        "price_or_rate": "$141,000,000",
+        "price_per_sqft": "$376",
+        "source_type": "news"
+      },
+      {
+        "address": "80 N. McQueen Rd, Gilbert, AZ 85233 (Alta Rise)",
+        "date": "Jun 2026",
+        "transaction": "Sale",
+        "size_sqft": "241026",
+        "price_or_rate": "$81,600,000",
+        "price_per_sqft": "$339",
+        "source_type": "news"
+      },
+      {
+        "address": "2950 N. Recker Rd, Mesa, AZ 85215 (Ascend at Longbow Highpoint)",
+        "date": "May 2026",
+        "transaction": "Sale",
+        "size_sqft": "322050",
+        "price_or_rate": "$95,250,000",
+        "price_per_sqft": "$296",
+        "source_type": "news"
+      }
+    ]
+  },
+  "multifamily-dallas-tx": {
+    "type": "Multifamily",
+    "city": "Dallas",
+    "state": "TX",
+    "generatedAt": "2026-07-14",
+    "summary": "The Dallas multifamily market is working through an elevated supply cycle but is approaching equilibrium heading into late 2026. Transaction volume rose 3% in 2025 to over $4.3 billion, with the average price per unit recovering to roughly $168,000-$190,000 after bottoming near $124,000 in mid-2024. Cap rates have stabilized around 5.2%-5.7% for stabilized assets, and the construction pipeline is contracting sharply, which should support modest rent and occupancy gains by year-end 2026. Buyers are focused on well-located, newer suburban assets, while value-add and distressed deals are also clearing at significant discounts.",
+    "market_trend": "Dallas multifamily sale prices per unit recovered from a mid-2024 trough of ~$124,000 to ~$168,000-$190,000 by Q4 2025 and Q1 2026, representing a roughly 35-50% rebound over the 24-month window, though distressed sales continue to clear at steep discounts to stabilized market pricing.",
+    "value_drivers": [
+      "Pipeline contraction: DFW units under construction fell to a decade-low ~30,000 in Q3 2025, tightening future supply",
+      "Elevated vacancy at 12% citywide pressuring rents downward and pushing buyer cap rate requirements higher for older assets",
+      "Distressed deal flow: foreclosure auction sales clearing at $57,000-$82,000 per unit, dragging down blended market averages",
+      "Shift in transaction mix toward mid-rise and high-rise newer assets (35% of Q1 2026 deals vs. 18% a year prior), supporting price-per-unit appreciation for Class A product"
+    ],
+    "cap_rate_low": "5.2%",
+    "cap_rate_high": "6.25%",
+    "ppsf": {
+      "count": 4,
+      "median": 165,
+      "low": 144,
+      "high": 181,
+      "min": 110,
+      "max": 199
+    },
+    "date_range": "Jul 2024 – Jun 2026",
+    "comps": [
+      {
+        "address": "9312 Beck Avenue, Dallas, TX 75218",
+        "date": "Feb 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$8,500,000",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "9600 Coit Road, Frisco, TX 75035",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "387000",
+        "price_or_rate": "~$77,000,000",
+        "price_per_sqft": "~$199",
+        "source_type": "news"
+      },
+      {
+        "address": "Dallas, TX (DFW Metro - Q4 2025 Market Average)",
+        "date": "Q4 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$190,000/unit avg",
+        "price_per_sqft": "~$175",
+        "source_type": "news"
+      },
+      {
+        "address": "Dallas, TX (DFW Metro - Q1 2026 Market Average)",
+        "date": "Mar 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$175,300/unit avg",
+        "price_per_sqft": "~$155",
+        "source_type": "news"
+      },
+      {
+        "address": "1415 Bennett Avenue, Dallas, TX 75206",
+        "date": "Jun 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      },
+      {
+        "address": "East Dallas, Dallas, TX (Live Oak Manor area)",
+        "date": "Jun 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      },
+      {
+        "address": "Dallas, TX (DFW Metro - Mid-2024 Trough)",
+        "date": "Jul 2024",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$123,965/unit avg",
+        "price_per_sqft": "~$110",
+        "source_type": "news"
+      }
+    ]
+  },
+  "multifamily-austin-tx": {
+    "type": "Multifamily",
+    "city": "Austin",
+    "state": "TX",
+    "generatedAt": "2026-07-14",
+    "summary": "Austin's multifamily market is working through a deep supply overhang following a 33% surge in apartment inventory from 2020 to 2025 -- the fastest rate nationwide -- which pushed vacancy to roughly 13.5% and rents down nearly 4.7% year-over-year as of Q1 2026. Transaction volume has picked up, rising 41.5% in 2025 versus 2024, though it still trails the decade average, with the average sale price per unit reaching approximately $177,000-$224,000 depending on asset class. Buyers are focusing on stabilized cash flow and well-located assets, with market cap rates settling near 5.7% in early 2026 as the supply pipeline begins to thin. The outlook is cautiously improving: absorption is outpacing deliveries, suggesting vacancy should continue to drift lower through 2026 and into 2027.",
+    "market_trend": "Multifamily sale prices in Austin declined from their 2022 peak and remained under pressure through 2024-2025 due to oversupply, but showed early stabilization in late 2025 with the average price per unit rising 2.1% to approximately $177,000 in 2025 and cap rates compressing modestly toward 5.5-5.7%.",
+    "value_drivers": [
+      "Supply overhang: 30,002 new units delivered in 2025 (8.7% of stock) kept vacancy elevated at 13.5% in Q1 2026, pressuring rents and pricing",
+      "Thinning construction pipeline: new starts fell 18.9% year-over-year in 2025, reducing future supply pressure and supporting recovery expectations",
+      "Absorption outpacing deliveries: Austin absorbed 3,800 units vs. 2,000 delivered in Q1 2026, gradually burning through excess inventory",
+      "Distressed loan maturities driving deal flow: loan workouts and forced dispositions are pushing more assets to market at dislocated pricing, attracting value-add and opportunistic buyers"
+    ],
+    "cap_rate_low": "5.3%",
+    "cap_rate_high": "6.2%",
+    "ppsf": {
+      "count": 5,
+      "median": 211,
+      "low": 192,
+      "high": 213,
+      "min": 168,
+      "max": 214
+    },
+    "date_range": "Apr 2026 – Apr 2026",
+    "comps": [
+      {
+        "address": "1900 Onion Creek Pkwy, Austin, TX 78748 (Adair Onion Creek)",
+        "date": "Apr 2026",
+        "transaction": "Sale",
+        "size_sqft": "228528",
+        "price_or_rate": "Undisclosed individual asset price (part of portfolio transaction; total deal including net debt ~$1.2B)",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "1909 Alexander Ave, Austin, TX 78722 (Bridge at the Blockyard)",
+        "date": "Early 2026",
+        "transaction": "Sale",
+        "size_sqft": "~400000",
+        "price_or_rate": "Undisclosed; acquired by CWS Capital Partners from Trammell Crow",
+        "price_per_sqft": "~$192",
+        "source_type": "news"
+      },
+      {
+        "address": "10301 FM 2222 Rd, Austin, TX 78730 (Bridge at River Place)",
+        "date": "Early 2026",
+        "transaction": "Sale",
+        "size_sqft": "~415000",
+        "price_or_rate": "Undisclosed; Blackstone sold to Austin Affordable Housing Corp",
+        "price_per_sqft": "~$213",
+        "source_type": "news"
+      },
+      {
+        "address": "Austin Metro -- Q3 2025 Market Composite (Round Rock / Georgetown / North Suburbs)",
+        "date": "Q3 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$224,000/unit avg; ~$205M quarterly volume",
+        "price_per_sqft": "~$214",
+        "source_type": "news"
+      },
+      {
+        "address": "Austin Metro -- H1 2025 Market Composite (Class B Focus)",
+        "date": "H1 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$221,800/unit avg for Class B; overall avg $201,100/unit",
+        "price_per_sqft": "~$211",
+        "source_type": "news"
+      },
+      {
+        "address": "Austin Metro -- Full Year 2025 Market Composite (Yardi Matrix)",
+        "date": "2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$176,871/unit avg (up 2.1% YoY); $1.3B total investment volume",
+        "price_per_sqft": "~$168",
+        "source_type": "news"
+      },
+      {
+        "address": "Austin Metro -- Q1 2026 Investment Market (Matthews / CoStar)",
+        "date": "Q1 2026",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "Market cap rate 5.7%; asking rents avg $1,500/unit",
+        "price_per_sqft": "",
+        "source_type": "news"
+      }
+    ]
+  },
+  "multifamily-charlotte-nc": {
+    "type": "Multifamily",
+    "city": "Charlotte",
+    "state": "NC",
+    "generatedAt": "2026-07-14",
+    "summary": "Charlotte's multifamily market is emerging from a historic supply surge, with over 16,000 units delivered in 2024 and another wave in 2025, pushing vacancy to around 8-12% and keeping rents slightly negative year-over-year. Despite elevated supply, demand has been exceptionally strong, absorbing a record 14,500 units in 2025, and the investment market is recovering with median per-unit prices rising about 19-28% from 2024 lows to roughly $211,000-$226,000 per unit. Cap rates have stabilized around 5.0%, and with construction starts now down roughly 40%, analysts expect improving fundamentals and a return to rent growth in 2026-2027. Institutional-grade trades are pricing in the $240,000-$300,000 per-unit range for newer, Class A product.",
+    "market_trend": "Charlotte multifamily sale prices trended lower through 2024, bottoming at a median of roughly $177,000-$184,000 per unit, then rebounded sharply in 2025 to approximately $211,000-$226,000 per unit as newer-vintage assets began trading, though prices remain below the 2021-2023 cycle peak.",
+    "value_drivers": [
+      "Construction starts down approximately 40% from peak, signaling an approaching supply gap in 2026-2027 that should tighten vacancy and lift rents",
+      "Vacancy elevated at 8-12% due to 2024-2025 delivery wave, depressing NOI and keeping some sellers and buyers cautious",
+      "Record absorption of 14,500+ units in 2025 demonstrates exceptionally strong renter demand anchored by Charlotte's second-highest job growth nationally in 2025",
+      "Transaction mix shifting toward 2020s-vintage assets, with newer Class A product trading at $240,000-$300,000 per unit versus mid-$170,000s for older B/C stock in 2024"
+    ],
+    "cap_rate_low": "4.75%",
+    "cap_rate_high": "5.50%",
+    "ppsf": {
+      "count": 5,
+      "median": 232,
+      "low": 184,
+      "high": 264,
+      "min": 175,
+      "max": 315
+    },
+    "date_range": "Jul 2025 – Jan 2026",
+    "comps": [
+      {
+        "address": "11110 Hyde Pointe Ct, Charlotte, NC 28262 (Hyde Glen)",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "70200",
+        "price_or_rate": "$12,300,000",
+        "price_per_sqft": "$175",
+        "source_type": "listing"
+      },
+      {
+        "address": "8710 Research Dr, Charlotte, NC 28262 (Flats at 87Ten)",
+        "date": "Jul 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$9,700,000",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Avalon at Palisades, Charlotte, NC (Palisades area, SW Charlotte)",
+        "date": "Aug 2025",
+        "transaction": "Sale",
+        "size_sqft": "273726",
+        "price_or_rate": "$72,300,000",
+        "price_per_sqft": "$264",
+        "source_type": "news"
+      },
+      {
+        "address": "1001 Tyvola Rd, Charlotte, NC 28217",
+        "date": "Jan 2026",
+        "transaction": "Sale",
+        "size_sqft": "285120",
+        "price_or_rate": "$66,200,000",
+        "price_per_sqft": "$232",
+        "source_type": "news"
+      },
+      {
+        "address": "Loft One35, Charlotte, NC (Charlotte metro area)",
+        "date": "Nov 2025",
+        "transaction": "Sale",
+        "size_sqft": "298000",
+        "price_or_rate": "$94,000,000",
+        "price_per_sqft": "$315",
+        "source_type": "news"
+      },
+      {
+        "address": "Delta Crossing, E.W.T. Harris Blvd & Albemarle Rd, Charlotte, NC (East Charlotte)",
+        "date": "2025",
+        "transaction": "Sale",
+        "size_sqft": "178000",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "listing"
+      },
+      {
+        "address": "Charlotte, NC Metro Market - 2024 Cohort (median B/C vintage)",
+        "date": "2024",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$184,060 per unit (avg)",
+        "price_per_sqft": "$184",
+        "source_type": "news"
+      }
+    ]
+  },
+  "multifamily-las-vegas-nv": {
+    "type": "Multifamily",
+    "city": "Las Vegas",
+    "state": "NV",
+    "generatedAt": "2026-07-14",
+    "summary": "The Las Vegas multifamily market has shown measured price appreciation over the past two years, with the median sale price rising from roughly $172,500 per unit in early 2024 to approximately $227,500 per unit by end of 2025, a gain of about 7%. Institutional buyers remain active, with several nine-figure trades closing in 2025, though elevated vacancy (near 9.4% in late 2025), new supply pressure, and elevated interest rates are keeping operators cautious. Cap rates have generally clustered in the low-to-mid 5% range for stabilized assets, with value-add and older Class C product trading at wider spreads. The market is expected to stabilize through 2026 as the construction pipeline slows and population-driven demand gradually absorbs recent deliveries.",
+    "market_trend": "Las Vegas multifamily sale prices trended upward over the 24-month window, with the median price per unit rising from approximately $172,500 in the first half of 2024 to $227,500 by full-year 2025, driven by institutional demand for stabilized assets despite softer operating fundamentals.",
+    "value_drivers": [
+      "Vacancy rose to ~9.4% in 2025 as heavy new supply deliveries outpaced absorption, pressuring asking rents and NOI",
+      "Multifamily construction deliveries fell ~30% in 2025 to roughly 4,000 units, beginning to relieve supply pressure through 2026",
+      "Median sale price per unit climbed 7% year-over-year in 2025, reflecting continued institutional demand for stabilized Class A and B assets",
+      "Elevated interest rates and stricter lending requirements are suppressing overall transaction volume and widening cap rates for value-add product"
+    ],
+    "cap_rate_low": "5.2%",
+    "cap_rate_high": "6.5%",
+    "ppsf": {
+      "count": 5,
+      "median": 207,
+      "low": 207,
+      "high": 233,
+      "min": 155,
+      "max": 273
+    },
+    "date_range": "Jun 2024 – Dec 2025",
+    "comps": [
+      {
+        "address": "2150 N Tenaya Way, Las Vegas, NV 89128",
+        "date": "Jul 2024",
+        "transaction": "Sale",
+        "size_sqft": "388800",
+        "price_or_rate": "$90,500,000",
+        "price_per_sqft": "$233",
+        "source_type": "news"
+      },
+      {
+        "address": "7100 Grand Montecito Pkwy, Las Vegas, NV 89149",
+        "date": "Sep 2024",
+        "transaction": "Sale",
+        "size_sqft": "341100",
+        "price_or_rate": "$93,000,000",
+        "price_per_sqft": "$273",
+        "source_type": "news"
+      },
+      {
+        "address": "Elysian at Post, Las Vegas, NV",
+        "date": "Sep 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$121,475,000",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "The Lyric at Silverado Ranch, Las Vegas, NV 89183",
+        "date": "2025",
+        "transaction": "Sale",
+        "size_sqft": "338400",
+        "price_or_rate": "",
+        "price_per_sqft": "",
+        "source_type": "news"
+      },
+      {
+        "address": "Las Vegas, NV Metro (Class B suburban, H1 2024 median benchmark)",
+        "date": "Jun 2024",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$172,500 per unit (median)",
+        "price_per_sqft": "$155",
+        "source_type": "news"
+      },
+      {
+        "address": "Las Vegas, NV Metro (full-year 2025 median benchmark)",
+        "date": "Dec 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$227,500 per unit (median)",
+        "price_per_sqft": "$207",
+        "source_type": "news"
+      },
+      {
+        "address": "Las Vegas, NV (Q2 2025 Lee Associates benchmark)",
+        "date": "Jun 2025",
+        "transaction": "Sale",
+        "size_sqft": "",
+        "price_or_rate": "$221,000 per unit (avg)",
+        "price_per_sqft": "$207",
+        "source_type": "news"
+      }
+    ]
   }
 }

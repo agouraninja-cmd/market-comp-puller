@@ -1577,6 +1577,24 @@
   }
 
   // ----------------------------------------------------------------------------
+  // Robust $/SF range for the value hero. A single freak comp (a trophy sale, a
+  // distressed flip) used to blow the Low/High wide open because they were the
+  // literal min and max. With 4+ comps we instead take the interquartile band
+  // (25th–75th percentile) around the median, so outliers can't dominate the
+  // headline; with fewer comps there's nothing to trust as an outlier, so we
+  // show the full observed spread. Linear-interpolation percentiles (R-7).
+  function robustPpsfRange(vals) {
+    const s = [...vals].sort((a, b) => a - b);
+    const n = s.length;
+    const pct = (p) => {
+      const r = (p / 100) * (n - 1);
+      const lo = Math.floor(r), hi = Math.ceil(r);
+      return lo === hi ? s[lo] : s[lo] + (r - lo) * (s[hi] - s[lo]);
+    };
+    if (n >= 4) return { low: pct(25), mid: pct(50), high: pct(75), trimmed: true };
+    return { low: s[0], mid: pct(50), high: s[n - 1], trimmed: false };
+  }
+
   // Value hero — the headline of every report. Sales-comparison range from the
   // comps applied to the subject's SF (entered or looked up from public
   // records), with an optional NOI / market-cap-rate cross-check.
@@ -1625,25 +1643,30 @@
     const capOk = capLo > 0 && capHi >= capLo;
 
     if (sizeR && ppsfs.length >= 2) {
-      const lo = Math.min(...ppsfs);
-      const hi = Math.max(...ppsfs);
-      const avg = ppsfs.reduce((s, v) => s + v, 0) / ppsfs.length;
+      // Outlier-resistant $/SF band (see robustPpsfRange) instead of raw min/max.
+      const rr = robustPpsfRange(ppsfs);
       const midSize = (sizeR.min + sizeR.max) / 2;
       const sizeLabel = sizeR.min === sizeR.max
         ? `${sizeR.min.toLocaleString()} SF`
         : `${sizeR.min.toLocaleString()}–${sizeR.max.toLocaleString()} SF`;
-      animateValue(lowEl, lo * sizeR.min, fmtTotal);
-      animateValue(midEl, avg * midSize, fmtTotal);
-      animateValue(highEl, hi * sizeR.max, fmtTotal);
-      setPpsf("ownerLowPpsf", "at " + formatUsd(lo) + "/SF · lowest sale comp");
-      setPpsf("ownerMidPpsf", "at " + formatUsd(avg) + "/SF · sale comp average");
-      setPpsf("ownerHighPpsf", "at " + formatUsd(hi) + "/SF · highest sale comp");
+      animateValue(lowEl, rr.low * sizeR.min, fmtTotal);
+      animateValue(midEl, rr.mid * midSize, fmtTotal);
+      animateValue(highEl, rr.high * sizeR.max, fmtTotal);
+      const ppsf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });   // $/SF reads as whole dollars
+      setPpsf("ownerLowPpsf", "at " + ppsf0(rr.low) + "/SF");
+      setPpsf("ownerMidPpsf", "at " + ppsf0(rr.mid) + "/SF · comp median");
+      setPpsf("ownerHighPpsf", "at " + ppsf0(rr.high) + "/SF");
       const srcPhrase = sizeSource === "public_record" ? "from public records"
         : sizeSource === "listing" ? "from a listing"
         : sizeSource ? "estimated from public data" : null;
+      // "middle range" signals the outlier trim; plain "$/SF from" when N is too
+      // small to trim.
+      const compsPhrase = rr.trimmed
+        ? `the middle range of ${ppsfs.length} sale comps`
+        : `$/SF from ${ppsfs.length} sale comps`;
       basisEl.textContent = srcPhrase
-        ? `${sizeLabel} (${srcPhrase}; edit Building Size above if wrong) × $/SF from ${ppsfs.length} recent sale comps`
-        : `${sizeLabel} × $/SF from ${ppsfs.length} recent sale comps`;
+        ? `${sizeLabel} (${srcPhrase}; edit Building Size above if wrong) × ${compsPhrase}`
+        : `${sizeLabel} × ${compsPhrase}`;
       if (noi && capOk) {
         incomeEl.textContent =
           `Income-approach cross-check: ${fmtTotal(noi / (capHi / 100))} – ${fmtTotal(noi / (capLo / 100))} ` +

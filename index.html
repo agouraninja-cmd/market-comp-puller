@@ -1592,6 +1592,14 @@
   function renderOwnerHero(parsed, meta) {
     const card = document.getElementById("ownerHero");
     if (!meta) { card.classList.add("hidden"); return; }
+    // Market-level search (a city like "Boise ID", no street number) — there's
+    // no building to value, so the whole hero (incl. the BOV button) hides.
+    // Any user-entered subject value signals building intent and re-shows it,
+    // which also serves street-number-less real addresses ("One Wilshire Blvd").
+    const hasStreetNumber = /^\s*\d+\s/.test(String(meta.address || ""));
+    const s = meta.subject || {};
+    const hasUserSubject = [s.sizeMin, s.sizeMax, s.priceMin, s.priceMax, s.noi].some((v) => v > 0);
+    if (!hasStreetNumber && !hasUserSubject) { card.classList.add("hidden"); return; }
 
     // The user's own size always wins; otherwise fall back to the size the
     // model looked up from public records / listings for this address.

@@ -525,6 +525,49 @@ async function storeDynamicMarketPage(slug, payload) {
   }
 }
 
+// Piggyback publisher: every billed /api/comps search already paid for fresh
+// comp data, so distill it into the market-page layer too — coverage grows
+// and refreshes as reports run, at zero extra API cost. Quietly skips
+// anything that doesn't parse to a clean "City, ST", isn't one of the four
+// page-proven property types, collides with a curated seed page, or misses
+// the ≥MIN_PRICED_SALE_COMPS publish gate. Fire-and-forget: never blocks or
+// fails the search that triggered it.
+function maybePublishMarketSnapshot(type, address, data) {
+  try {
+    const typeOk = EXPLORE_TYPES.find((t) => t.toLowerCase() === String(type).trim().toLowerCase());
+    if (!typeOk) return;
+    // Same best-effort parse as marketOf(), but strict: publishable pages need
+    // a real two-letter state and a plausible city, or we skip entirely.
+    const parts = String(address || "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length < 2) return;
+    const state = (parts[parts.length - 1].match(/^([A-Za-z]{2})\b/) || [])[1];
+    const cityRaw = parts[parts.length - 2].replace(/\s+/g, " ");
+    if (!state || !US_STATES.has(state.toUpperCase())) return;
+    if (!/^[a-zA-Z][a-zA-Z .'\-]{1,39}$/.test(cityRaw)) return;
+    const city = cityRaw.toLowerCase().replace(/(^|[\s.'\-])[a-z]/g, (ch) => ch.toUpperCase());
+
+    const slug = slugifyMarket(typeOk, city, state.toUpperCase());
+    if (MARKET_PAGES[slug]) return; // curated seed page wins — don't write shadowed rows
+    const { snapshot, pricedSaleCount } = distillMarketSnapshot(
+      { type: typeOk, city, state: state.toUpperCase() }, data);
+    if (!snapshot || pricedSaleCount < MIN_PRICED_SALE_COMPS) return;
+
+    const isNew = !DYNAMIC_MARKET_PAGES[slug];
+    storeDynamicMarketPage(slug, snapshot).then(() => {
+      if (isNew) {
+        console.log(`🧭 Market page published from a report search: ${slug} (${pricedSaleCount} priced sale comps)`);
+        notifyByEmail(`New market page published from a report search: ${typeOk} — ${city}, ${state.toUpperCase()}`, [
+          ["Market", `${city}, ${state.toUpperCase()}`], ["Type", typeOk],
+          ["Priced sale comps", String(pricedSaleCount)],
+          ["URL", `${SITE_URL}/market/${slug}`],
+        ]);
+      }
+    }).catch((err) => console.error("Market snapshot piggyback store failed:", err.message));
+  } catch (err) {
+    console.error("Market snapshot piggyback failed:", err.message);
+  }
+}
+
 // Thin-data Explorer previews: shown once to the visitor who generated them,
 // in-memory only (losing them on restart is fine — the search cache makes a
 // re-explore free for 7 days).
@@ -1373,6 +1416,7 @@ const server = http.createServer((req, res) => {
         if (cached) {
           console.log(`Cache hit (no Anthropic call): ${addressOk} — ${typeOk}`);
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true });
+          maybePublishMarketSnapshot(typeOk, addressOk, cached);
           return sendJson(res, 200, cached);
         }
 
@@ -1385,6 +1429,7 @@ const server = http.createServer((req, res) => {
         const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps);
         await storeCachedSearch(cacheKey, result);
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false });
+        maybePublishMarketSnapshot(typeOk, addressOk, result);
         return sendJson(res, 200, result);
       } catch (err) {
         console.error("Error handling /api/comps:", err);

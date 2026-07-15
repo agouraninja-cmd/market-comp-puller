@@ -1028,10 +1028,11 @@
 
       <!-- Markets -->
       <section class="py-12 reveal">
-        <div class="rd-kicker">Coverage</div>
-        <h2 class="rd-h text-[27px] mt-2 mb-5">Explore the markets we cover.</h2>
+        <div class="rd-kicker">Market Explorer</div>
+        <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the page.</h2>
+        <p class="text-sm text-[#4C5665] mb-5 max-w-[58ch]">Pick a covered market below, or search a new one — we'll pull recent sales and build its page on the spot (about a minute).</p>
         <div class="relative max-w-sm mb-5">
-          <input id="marketSearch" type="search" placeholder="Find a market — e.g. industrial Dallas" autocomplete="off"
+          <input id="marketSearch" type="search" placeholder="Try any market — e.g. industrial Boise ID" autocomplete="off"
                  class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
           <div id="marketSearchResults" class="hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
         </div>
@@ -1047,7 +1048,7 @@
           <a href="/market/industrial-savannah-ga" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Savannah, GA</a>
           <a href="/market/multifamily-atlanta-ga" class="block break-inside-avoid hover:text-[#1A2433]">Multifamily · Atlanta, GA</a>
           <a href="/market/retail-orlando-fl" class="block break-inside-avoid hover:text-[#1A2433]">Retail · Orlando, FL</a>
-          <a href="/markets" class="block break-inside-avoid font-semibold text-[#B91C1C] hover:text-[#991B1B]">All 27 markets →</a>
+          <a href="/markets" class="block break-inside-avoid font-semibold text-[#B91C1C] hover:text-[#991B1B]">All markets →</a>
         </div>
       </section>
 
@@ -2460,27 +2461,31 @@
   // Same modal action the in-page broker CTA uses.
   document.getElementById("footerSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
 
-  // Coverage market search: matches one of the seeded market pages, or falls
-  // through to the valuation form pre-filled with whatever was typed. The
-  // list comes from /api/markets (static seed data — never a billed search).
+  // Market Explorer: matches covered market pages as you type; an uncovered
+  // market can be generated on the spot (POST /api/explore-market — one billed
+  // search, ~30-60s) or handed to the valuation form pre-filled. The list
+  // comes from /api/markets (seed + explorer pages — never a billed search).
   (() => {
     const input = document.getElementById("marketSearch");
     const resultsEl = document.getElementById("marketSearchResults");
     if (!input || !resultsEl) return;
     const escq = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
-    let markets = null, loading = null;
+    let markets = null, loading = null, exploring = false;
     const loadMarkets = () =>
       loading || (loading = fetch("/api/markets")
         .then((r) => (r.ok ? r.json() : []))
         .then((list) => (markets = list))
         .catch(() => (markets = [])));
     const TYPE_WORDS = ["industrial", "office", "retail", "multifamily", "land", "residential"];
+    const EXPLORE_TYPES = ["industrial", "office", "retail", "multifamily"];
+    const US_STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
+    const cap = (s) => s[0].toUpperCase() + s.slice(1);
     const runValuation = () => {
       const q = input.value.trim();
       if (!q) return;
       const typeWord = TYPE_WORDS.find((t) => q.toLowerCase().includes(t));
-      if (typeWord) document.getElementById("propertyType").value = typeWord[0].toUpperCase() + typeWord.slice(1);
+      if (typeWord) document.getElementById("propertyType").value = cap(typeWord);
       const addr = document.getElementById("address");
       // The type belongs in the dropdown, not the address text.
       addr.value = q.replace(new RegExp(typeWord || "$^", "i"), "").replace(/\s{2,}/g, " ").trim() || q;
@@ -2488,8 +2493,55 @@
       smoothScrollTo(document.getElementById("compForm"));
       addr.focus();
     };
-    const hide = () => { resultsEl.classList.add("hidden"); resultsEl.innerHTML = ""; };
+    const hide = () => {
+      if (exploring) return; // generation in progress — keep the status row up
+      resultsEl.classList.add("hidden");
+      resultsEl.innerHTML = "";
+    };
+    // "industrial Boise ID" -> {type, city, state}; otherwise {reason} for a hint row.
+    const parseExploreQuery = (q) => {
+      let tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+      const type = EXPLORE_TYPES.find((t) => tokens.includes(t));
+      tokens = tokens.filter((t) => t !== type);
+      const last = tokens[tokens.length - 1] || "";
+      const state = US_STATES.includes(last.toUpperCase()) ? last.toUpperCase() : null;
+      const city = (state ? tokens.slice(0, -1) : tokens).map(cap).join(" ");
+      if (!city) return { reason: "no-city" };
+      if (!state) return { reason: "no-state" };
+      if (!type) return { reason: "no-type", city, state };
+      return { type: cap(type), city, state };
+    };
+    const explore = ({ type, city, state }) => {
+      exploring = false; // allow the swap below, then lock
+      resultsEl.innerHTML =
+        `<div class="px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot — ` +
+        `checking recent sales. Usually 30–60 seconds.</div>`;
+      resultsEl.classList.remove("hidden");
+      exploring = true;
+      input.disabled = true;
+      fetch("/api/explore-market", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-app-password": getStoredPassword() },
+        body: JSON.stringify({ type, city, state }),
+      })
+        .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+        .then(({ ok, data }) => {
+          if (ok && data.url) { window.location.href = data.url; return; }
+          exploring = false;
+          input.disabled = false;
+          resultsEl.innerHTML =
+            `<div class="px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong — please try again.")}</div>` +
+            `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
+          document.getElementById("marketSearchRun").addEventListener("click", runValuation);
+        })
+        .catch(() => {
+          exploring = false;
+          input.disabled = false;
+          resultsEl.innerHTML = `<div class="px-3 py-1.5 text-[#B91C1C]">Connection lost — please try again.</div>`;
+        });
+    };
     const render = () => {
+      if (exploring) return;
       const q = input.value.trim().toLowerCase();
       if (!q) return hide();
       const tokens = q.split(/\s+/);
@@ -2497,12 +2549,29 @@
         const hay = `${m.type} ${m.city}, ${m.state}`.toLowerCase();
         return tokens.every((t) => hay.includes(t));
       }).slice(0, 8);
-      resultsEl.innerHTML =
-        matches.map((m) =>
-          `<a href="/market/${escq(m.slug)}" class="block px-3 py-1.5 text-[#46536A] hover:text-[#1A2433] hover:bg-[#FBFBF9]">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</a>`).join("") +
-        `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
+      let html = matches.map((m) =>
+        `<a href="/market/${escq(m.slug)}" class="block px-3 py-1.5 text-[#46536A] hover:text-[#1A2433] hover:bg-[#FBFBF9]">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</a>`).join("");
+      // Explorer rows — only when the query doesn't resolve to a covered page.
+      const p = parseExploreQuery(input.value.trim());
+      const exactMatch = p.type && matches.some((m) =>
+        m.type.toLowerCase() === p.type.toLowerCase() && m.city.toLowerCase() === p.city.toLowerCase() && m.state === p.state);
+      if (p.type && !exactMatch) {
+        html += `<button type="button" id="marketSearchExplore" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Explore this market — build the ${escq(p.type)} · ${escq(p.city)}, ${escq(p.state)} page →</button>`;
+      } else if (p.reason === "no-state" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Add the state to explore a new market — e.g. “industrial Boise ID”</div>`;
+      } else if (p.reason === "no-type" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Explore ${escq(p.city)}, ${escq(p.state)} as:</div>` +
+          EXPLORE_TYPES.map((t) =>
+            `<button type="button" data-explore-type="${t}" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">${cap(t)} →</button>`).join("");
+      }
+      html += `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
+      resultsEl.innerHTML = html;
       resultsEl.classList.remove("hidden");
       document.getElementById("marketSearchRun").addEventListener("click", runValuation);
+      const exploreBtn = document.getElementById("marketSearchExplore");
+      if (exploreBtn) exploreBtn.addEventListener("click", () => explore(p));
+      resultsEl.querySelectorAll("[data-explore-type]").forEach((btn) =>
+        btn.addEventListener("click", () => explore({ type: cap(btn.dataset.exploreType), city: p.city, state: p.state })));
     };
     input.addEventListener("focus", loadMarkets);
     input.addEventListener("input", () => loadMarkets().then(render));
@@ -2510,8 +2579,11 @@
       if (e.key === "Escape") return hide();
       if (e.key !== "Enter") return;
       e.preventDefault();
+      if (exploring) return;
       const first = resultsEl.querySelector("a");
+      const exploreBtn = document.getElementById("marketSearchExplore");
       if (first) window.location.href = first.getAttribute("href");
+      else if (exploreBtn) exploreBtn.click();
       else runValuation();
     });
     document.addEventListener("mousedown", (e) => {

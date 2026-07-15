@@ -1650,6 +1650,17 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY) });
   }
 
+  // --- Market list for the landing page's market-search box (static seed
+  // data only — never triggers a billed search) ---
+  if (req.method === "GET" && req.url === "/api/markets") {
+    const list = Object.keys(MARKET_PAGES).map((slug) => {
+      const p = MARKET_PAGES[slug];
+      return { slug, type: p.type, city: p.city, state: p.state };
+    });
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=3600" });
+    return res.end(JSON.stringify(list));
+  }
+
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && req.url === "/markets") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });

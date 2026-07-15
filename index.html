@@ -1029,7 +1029,12 @@
       <!-- Markets -->
       <section class="py-12 reveal">
         <div class="rd-kicker">Coverage</div>
-        <h2 class="rd-h text-[27px] mt-2 mb-5">Market pages, updated as reports run.</h2>
+        <h2 class="rd-h text-[27px] mt-2 mb-5">Explore the markets we cover.</h2>
+        <div class="relative max-w-sm mb-5">
+          <input id="marketSearch" type="search" placeholder="Find a market — e.g. industrial Dallas" autocomplete="off"
+                 class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+          <div id="marketSearchResults" class="hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
+        </div>
         <div class="columns-2 sm:columns-4 gap-8 text-[13.5px] leading-8 text-[#46536A]">
           <a href="/market/industrial-ontario-ca" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Ontario, CA</a>
           <a href="/market/industrial-fontana-ca" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Fontana, CA</a>
@@ -2454,6 +2459,65 @@
   });
   // Same modal action the in-page broker CTA uses.
   document.getElementById("footerSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
+
+  // Coverage market search: matches one of the seeded market pages, or falls
+  // through to the valuation form pre-filled with whatever was typed. The
+  // list comes from /api/markets (static seed data — never a billed search).
+  (() => {
+    const input = document.getElementById("marketSearch");
+    const resultsEl = document.getElementById("marketSearchResults");
+    if (!input || !resultsEl) return;
+    const escq = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    let markets = null, loading = null;
+    const loadMarkets = () =>
+      loading || (loading = fetch("/api/markets")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((list) => (markets = list))
+        .catch(() => (markets = [])));
+    const TYPE_WORDS = ["industrial", "office", "retail", "multifamily", "land", "residential"];
+    const runValuation = () => {
+      const q = input.value.trim();
+      if (!q) return;
+      const typeWord = TYPE_WORDS.find((t) => q.toLowerCase().includes(t));
+      if (typeWord) document.getElementById("propertyType").value = typeWord[0].toUpperCase() + typeWord.slice(1);
+      const addr = document.getElementById("address");
+      // The type belongs in the dropdown, not the address text.
+      addr.value = q.replace(new RegExp(typeWord || "$^", "i"), "").replace(/\s{2,}/g, " ").trim() || q;
+      hide();
+      smoothScrollTo(document.getElementById("compForm"));
+      addr.focus();
+    };
+    const hide = () => { resultsEl.classList.add("hidden"); resultsEl.innerHTML = ""; };
+    const render = () => {
+      const q = input.value.trim().toLowerCase();
+      if (!q) return hide();
+      const tokens = q.split(/\s+/);
+      const matches = (markets || []).filter((m) => {
+        const hay = `${m.type} ${m.city}, ${m.state}`.toLowerCase();
+        return tokens.every((t) => hay.includes(t));
+      }).slice(0, 8);
+      resultsEl.innerHTML =
+        matches.map((m) =>
+          `<a href="/market/${escq(m.slug)}" class="block px-3 py-1.5 text-[#46536A] hover:text-[#1A2433] hover:bg-[#FBFBF9]">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</a>`).join("") +
+        `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
+      resultsEl.classList.remove("hidden");
+      document.getElementById("marketSearchRun").addEventListener("click", runValuation);
+    };
+    input.addEventListener("focus", loadMarkets);
+    input.addEventListener("input", () => loadMarkets().then(render));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") return hide();
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const first = resultsEl.querySelector("a");
+      if (first) window.location.href = first.getAttribute("href");
+      else runValuation();
+    });
+    document.addEventListener("mousedown", (e) => {
+      if (!resultsEl.contains(e.target) && e.target !== input) hide();
+    });
+  })();
 
   // Copy the market summary for pasting into an email or memo.
   const copySummaryBtn = document.getElementById("copySummaryBtn");

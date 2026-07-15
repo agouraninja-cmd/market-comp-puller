@@ -1640,8 +1640,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Health check (handy for hosting platforms) ---
-  if (req.method === "GET" && req.url === "/healthz") {
+  // --- Health check (handy for hosting platforms + uptime pingers, which
+  // typically probe with HEAD to save bandwidth) ---
+  if ((req.method === "GET" || req.method === "HEAD") && req.url === "/healthz") {
+    if (req.method === "HEAD") {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end();
+    }
     return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY) });
   }
 

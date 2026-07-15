@@ -1469,10 +1469,10 @@ const server = http.createServer((req, res) => {
             }
             if (pricedSaleCount >= MIN_PRICED_SALE_COMPS) {
               await storeDynamicMarketPage(slug, snapshot);
-              notifyByEmail(`New market page published via Explorer: ${typeOk} — ${address}`, {
-                Market: address, Type: typeOk, "Priced sale comps": String(pricedSaleCount),
-                URL: `${SITE_URL}/market/${slug}`,
-              });
+              notifyByEmail(`New market page published via Explorer: ${typeOk} — ${address}`, [
+                ["Market", address], ["Type", typeOk], ["Priced sale comps", String(pricedSaleCount)],
+                ["URL", `${SITE_URL}/market/${slug}`],
+              ]);
               return { status: 200, body: { url: `/market/${slug}`, slug, published: true } };
             }
             previewPagesMem.set(slug, { payload: snapshot, ts: Date.now() });

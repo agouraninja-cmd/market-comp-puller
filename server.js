@@ -1039,6 +1039,8 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
     `<meta property="og:url" content="${canonical}"/>\n` +
     `<meta property="og:image" content="${SITE_URL}/og-image.png"/>\n` +
     `<meta name="twitter:card" content="summary_large_image"/>\n` +
+    `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
+    `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${MARKET_BAR}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
@@ -1892,6 +1894,9 @@ const server = http.createServer((req, res) => {
     "/tailwind.css": { file: "tailwind.css", type: "text/css; charset=utf-8", maxAge: 300 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
+    "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
+    "/favicon.svg": { file: "favicon.svg", type: "image/svg+xml", maxAge: 86400 },
+    "/favicon.png": { file: "favicon.png", type: "image/png", maxAge: 86400 },
   };
   if (req.method === "GET" && STATIC_FILES[req.url]) {
     const { file, type, maxAge } = STATIC_FILES[req.url];

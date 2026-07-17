@@ -1674,7 +1674,7 @@ const server = http.createServer((req, res) => {
         const j = await r.json();
         const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
         if (m && m.coordinates && isFinite(m.coordinates.y) && isFinite(m.coordinates.x)) {
-          return sendJson(res, 200, { lat: m.coordinates.y, lng: m.coordinates.x, source: "census" });
+          return sendJson(res, 200, { lat: m.coordinates.y, lng: m.coordinates.x, matchedAddress: m.matchedAddress || undefined, source: "census" });
         }
         return sendJson(res, 200, {});
       } catch (_) {

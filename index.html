@@ -507,6 +507,25 @@
     </div>
   </div>
 
+  <!-- Property confirmation — free geocode check before the billed comp search -->
+  <div id="confirmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+      <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Confirm property</div>
+      <h2 class="text-lg font-semibold text-slate-900 mt-1">Is this the property you're looking for?</h2>
+      <p class="text-sm text-slate-500 mt-3">You searched for:</p>
+      <p id="confirmTyped" class="text-sm font-medium text-slate-900"></p>
+      <div id="confirmMatchedWrap" class="hidden mt-2">
+        <p class="text-sm text-slate-500">We matched it to:</p>
+        <p id="confirmMatched" class="text-sm font-medium text-slate-900"></p>
+      </div>
+      <div id="confirmMap" class="mt-4 h-[200px] rounded-lg border border-slate-200 overflow-hidden"></div>
+      <div class="mt-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+        <button id="confirmEditBtn" type="button" class="text-sm text-[#5A6473] hover:text-[#1A2433]">No — edit address</button>
+        <button id="confirmRunBtn" type="button" class="btn-live inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded">Yes — run the report</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="no-print border-b rd-hairline bg-[#FBFBF9]">
     <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -1908,7 +1927,7 @@
   function nominatimGeocode(address) {
     const run = () => geoFetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(address))
       .then((j) => (Array.isArray(j) && j[0] && isFinite(parseFloat(j[0].lat))
-        ? { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) }
+        ? { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon), label: j[0].display_name || undefined }
         : null))
       .catch(() => null);
     const result = nominatimQueue.then(run);
@@ -1926,7 +1945,7 @@
     let found = null;
     try {
       const j = await geoFetch("/api/geocode?address=" + encodeURIComponent(address));
-      if (j && isFinite(j.lat) && isFinite(j.lng)) found = { lat: j.lat, lng: j.lng };
+      if (j && isFinite(j.lat) && isFinite(j.lng)) found = { lat: j.lat, lng: j.lng, label: j.matchedAddress || undefined };
     } catch (_) { /* proxy down — try the fallback */ }
     if (!found) found = await nominatimGeocode(address);
     geoCacheStore(key, found);   // null is cached too: a known miss
@@ -3319,6 +3338,85 @@
   });
 
   // ----------------------------------------------------------------------------
+  // Property confirmation — a free geocode check before the billed search, so a
+  // mistyped or ambiguous address never wastes a paid /api/comps call. Only
+  // fresh form submissions confirm; saved/shared/sample renders never enter the
+  // submit handler, and a confirmed (or unresolvable) address skips the modal
+  // for the rest of the session — which also lets the error-path retry button
+  // re-submit without asking twice.
+  // ----------------------------------------------------------------------------
+  const confirmModal = document.getElementById("confirmModal");
+  const confirmedAddresses = new Set(); // normalized (trim+lowercase) keys
+  let confirmMapInstance = null;
+  let pendingConfirmKey = null;
+
+  function openConfirmModal({ typed, key, geo }) {
+    pendingConfirmKey = key;
+    document.getElementById("confirmTyped").textContent = typed;
+    const matchedWrap = document.getElementById("confirmMatchedWrap");
+    if (geo.label && geo.label.trim().toLowerCase() !== typed.trim().toLowerCase()) {
+      document.getElementById("confirmMatched").textContent = geo.label;
+      matchedWrap.classList.remove("hidden");
+    } else {
+      matchedWrap.classList.add("hidden");
+    }
+    confirmModal.classList.remove("hidden");
+
+    // Single-pin mini map; text-only fallback when Leaflet or coords are absent.
+    const mapEl = document.getElementById("confirmMap");
+    if (confirmMapInstance) { confirmMapInstance.remove(); confirmMapInstance = null; }
+    if (typeof L === "undefined" || !isFinite(geo.lat) || !isFinite(geo.lng)) {
+      mapEl.classList.add("hidden");
+    } else {
+      mapEl.classList.remove("hidden");
+      confirmMapInstance = L.map("confirmMap", { scrollWheelZoom: false, zoomControl: false });
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        maxZoom: 18,
+        crossOrigin: "anonymous",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      }).addTo(confirmMapInstance);
+      const pinIcon = L.divIcon({
+        className: "",
+        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
+        iconSize: [22, 22], iconAnchor: [11, 22],
+      });
+      L.marker([geo.lat, geo.lng], { icon: pinIcon }).addTo(confirmMapInstance);
+      confirmMapInstance.setView([geo.lat, geo.lng], 16);
+      // A map built inside a just-unhidden container measures at 0x0 until told
+      // to re-measure.
+      setTimeout(() => { if (confirmMapInstance) confirmMapInstance.invalidateSize(); }, 60);
+    }
+    document.getElementById("confirmRunBtn").focus();
+  }
+
+  function closeConfirmModal() {
+    confirmModal.classList.add("hidden");
+    if (confirmMapInstance) { confirmMapInstance.remove(); confirmMapInstance = null; }
+    pendingConfirmKey = null;
+  }
+
+  function cancelConfirmModal() {
+    closeConfirmModal();
+    const addrEl = document.getElementById("address");
+    addrEl.focus();
+    addrEl.select();
+  }
+
+  document.getElementById("confirmRunBtn").addEventListener("click", () => {
+    const key = pendingConfirmKey; // read before close nulls it
+    closeConfirmModal();
+    if (key) {
+      confirmedAddresses.add(key);
+      document.getElementById("compForm").requestSubmit();
+    }
+  });
+  document.getElementById("confirmEditBtn").addEventListener("click", cancelConfirmModal);
+  confirmModal.addEventListener("click", (e) => { if (e.target === confirmModal) cancelConfirmModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !confirmModal.classList.contains("hidden")) cancelConfirmModal();
+  });
+
+  // ----------------------------------------------------------------------------
   // Broker comp submission — outside brokers offer verified comps; stored
   // server-side (status: pending) for manual review.
   // ----------------------------------------------------------------------------
@@ -3418,6 +3516,26 @@
       showStatus("Enter a custom lookback window between 1 and 120 months.", "error");
       document.getElementById("lookbackCustom").focus();
       return;
+    }
+
+    // Free geocode confirmation before the billed search. Confirmed addresses
+    // (and known geocode misses) skip straight through — including the retry
+    // button, which re-enters this handler via requestSubmit().
+    const confirmKey = address.toLowerCase();
+    if (!confirmedAddresses.has(confirmKey)) {
+      const submitBtn = document.getElementById("submitBtn");
+      const btnLabel = document.getElementById("btnLabel");
+      submitBtn.disabled = true;
+      btnLabel.textContent = "Checking address…";
+      let geo = null;
+      try { geo = await geocodeAddress(address); } catch (_) {}
+      submitBtn.disabled = false;
+      btnLabel.textContent = "Run a report";
+      if (geo) {
+        openConfirmModal({ typed: address, key: confirmKey, geo });
+        return; // Confirm re-submits; Edit/Escape just closes
+      }
+      confirmedAddresses.add(confirmKey); // geocoder down or no match — never block
     }
 
     // Returning users usually search the same asset class — remember it.

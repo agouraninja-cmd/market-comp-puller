@@ -820,7 +820,11 @@
               <div id="ownerHighPpsf" class="text-xs text-slate-400 mt-1"></div>
             </div>
           </div>
-          <p id="ownerIncome" class="hidden text-sm text-slate-600 mt-4"></p>
+          <!-- Approach reconciliation — the classic appraisal framing (sales
+               comparison / income / cost), each labeled and explained in plain
+               English. Built by renderOwnerHero; margins only, no flex gap
+               (this block IS captured in the PNG export). -->
+          <div id="ownerApproaches" class="hidden mt-4 pt-4 border-t border-slate-100"></div>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-slate-500 mt-4"></p>
@@ -1718,13 +1722,38 @@
     const midEl = document.getElementById("ownerMid");
     const highEl = document.getElementById("ownerHigh");
     const basisEl = document.getElementById("ownerBasis");
-    const incomeEl = document.getElementById("ownerIncome");
     const setPpsf = (id, text) => { document.getElementById(id).textContent = text; };
     const trustEl = document.getElementById("ownerTrust");
-    incomeEl.classList.add("hidden");
-    incomeEl.textContent = "";
     trustEl.classList.add("hidden");
     trustEl.textContent = "";
+
+    // The classic appraisal framing, labeled explicitly so the report reads
+    // like a reconciliation rather than one unexplained number. Each entry:
+    // { label, text, muted }. Built fresh per render.
+    const approachesEl = document.getElementById("ownerApproaches");
+    approachesEl.classList.add("hidden");
+    approachesEl.innerHTML = "";
+    const renderApproaches = (entries) => {
+      if (!entries.length) return;
+      entries.forEach((e, i) => {
+        const p = document.createElement("p");
+        p.className = (e.muted ? "text-xs text-slate-400" : "text-sm text-slate-600") + (i ? " mt-2" : "");
+        const b = document.createElement("strong");
+        b.className = e.muted ? "" : "text-slate-700";
+        b.textContent = e.label + ": ";
+        p.appendChild(b);
+        p.appendChild(document.createTextNode(e.text));
+        approachesEl.appendChild(p);
+      });
+      approachesEl.classList.remove("hidden");
+    };
+    const costApproachEntry = {
+      label: "Cost approach",
+      text: "not modeled. The third classic method (land value + cost to rebuild, minus depreciation) needs "
+        + "replacement-cost data that public sources don't reliably show, and it carries the least weight "
+        + "for stabilized buildings anyway.",
+      muted: true,
+    };
 
     // Income approach: NOI (kept browser-side) over the model's market cap-rate range.
     const noi = meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
@@ -1773,12 +1802,36 @@
       trustEl.textContent = `Based on ${ppsfs.length} sale comps`
         + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`;
       trustEl.classList.remove("hidden");
+
+      const entries = [{
+        label: "Sales comparison approach",
+        text: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)} — what ${ppsfs.length} recent `
+          + `sale comps say buyers pay per square foot, applied to your building's size. This is the headline range above.`,
+      }];
       if (noi && capOk) {
-        incomeEl.textContent =
-          `Income-approach cross-check: ${fmtTotal(noi / (capHi / 100))} – ${fmtTotal(noi / (capLo / 100))} ` +
-          `based on your NOI at a ${capLo}%–${capHi}% market cap rate.`;
-        incomeEl.classList.remove("hidden");
+        const incLo = noi / (capHi / 100);
+        const incHi = noi / (capLo / 100);
+        const salesLo = rr.low * sizeR.min;
+        const salesHi = rr.high * sizeR.max;
+        const agree = incLo <= salesHi && incHi >= salesLo
+          ? "The two approaches overlap, which strengthens the estimate."
+          : incLo > salesHi
+            ? "The income approach comes in higher than the sale comps — either the market prices this asset type below its income, or the NOI and cap-rate inputs deserve a second look."
+            : "The income approach comes in lower than the sale comps — worth a second look at the NOI and cap-rate inputs before leaning on either number.";
+        entries.push({
+          label: "Income approach",
+          text: `${fmtTotal(incLo)} – ${fmtTotal(incHi)} — your net operating income valued at the market's `
+            + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
+        });
+      } else {
+        entries.push({
+          label: "Income approach",
+          text: "not run — enter your NOI under 'Your property details' and the building gets valued on its income too.",
+          muted: true,
+        });
       }
+      entries.push(costApproachEntry);
+      renderApproaches(entries);
     } else if (noi && capOk) {
       // No usable sale range — lead with the income approach instead.
       const loVal = noi / (capHi / 100);
@@ -1790,6 +1843,19 @@
       setPpsf("ownerMidPpsf", "income approach midpoint");
       setPpsf("ownerHighPpsf", "at a " + capLo + "% cap rate");
       basisEl.textContent = "Your NOI over the market cap-rate range (income approach)";
+      renderApproaches([
+        {
+          label: "Income approach",
+          text: `${fmtTotal(loVal)} – ${fmtTotal(hiVal)} — your net operating income valued at the market's `
+            + `${capLo}%–${capHi}% cap-rate range. This is the headline range above.`,
+        },
+        {
+          label: "Sales comparison approach",
+          text: "not enough priced sale comps came back in this window to build a per-square-foot range.",
+          muted: true,
+        },
+        costApproachEntry,
+      ]);
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");

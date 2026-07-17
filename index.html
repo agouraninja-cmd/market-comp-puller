@@ -112,7 +112,7 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     /* Skeleton loading — calm gray placeholders shaped like the report. The
        sweep is slow and faint on purpose; the progress bar carries the motion. */
-    .skeleton { position: relative; overflow: hidden; background: #e2e8f0; border-radius: .375rem; }
+    .skeleton { position: relative; overflow: hidden; background: #E4E2DA; border-radius: .375rem; }
     .skeleton::after {
       content: ""; position: absolute; inset: 0; transform: translateX(-100%);
       background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent);
@@ -121,7 +121,7 @@
     @keyframes shimmer { 100% { transform: translateX(100%); } }
 
     th.sortable { cursor: pointer; user-select: none; }
-    th.sortable:hover { background-color: #334155; }
+    #compsTable th.sortable:hover { background-color: #F5F4EF; color: #374253; }
 
     /* Page-load entrance — the brand bar, heading, and form drift in on first paint. */
     .enter { opacity: 0; animation: fadeIn .5s ease-out forwards; }
@@ -144,7 +144,7 @@
     .comp-num {
       display: inline-flex; align-items: center; justify-content: center;
       width: 1.25rem; height: 1.25rem; border-radius: 9999px; flex-shrink: 0;
-      background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+      background: #F5F4EF; color: #5A6473; border: 1px solid #E4E2DA;
       font-size: 10px; font-weight: 600; line-height: 1;
       font-variant-numeric: normal;
     }
@@ -217,19 +217,19 @@
     .tile-spotlight { animation: tileSpot 1.5s ease-out forwards; animation-play-state: paused; }
     #statTiles.in-view .tile-spotlight { animation-play-state: running; }
     @keyframes tileSpot {
-      0%   { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(220 38 38 / 0); }
-      30%  { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 4px rgb(220 38 38 / .22); }
-      100% { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(220 38 38 / 0); }
+      0%   { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(185 28 28 / 0); }
+      30%  { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 4px rgb(185 28 28 / .22); }
+      100% { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(185 28 28 / 0); }
     }
-    .spread-track { position: relative; height: 5px; border-radius: 999px; background: #e2e8f0; }
+    .spread-track { position: relative; height: 5px; border-radius: 999px; background: #E4E2DA; }
     .spread-fill {
       position: absolute; inset: 0; border-radius: 999px;
-      background: linear-gradient(90deg, #fca5a5, #dc2626);
+      background: linear-gradient(90deg, #FCA5A5, #B91C1C);
       transform: scaleX(0); transform-origin: left;
     }
     .spread-marker {
       position: absolute; top: 50%; width: 2px; height: 11px;
-      background: #1e293b; border-radius: 2px; transform: translate(-50%, -50%) scaleY(0);
+      background: #1A2433; border-radius: 2px; transform: translate(-50%, -50%) scaleY(0);
     }
     #statTiles.in-view .spread-fill { animation: spreadSweep .6s ease-out .1s forwards; }
     #statTiles.in-view .spread-marker { animation: markerPop .3s ease-out .5s forwards; }
@@ -310,7 +310,7 @@
       /* The letterhead above the report already carries the brand on paper. */
       .report-lockup { display: none; }
       #reportArea { box-shadow: none; }
-      .print-shadow-none { box-shadow: none !important; border-color: #e2e8f0 !important; }
+      .print-shadow-none { box-shadow: none !important; border-color: #E4E2DA !important; }
       @page { margin: 14mm 12mm; }
       /* Keep each report card on one page. The entrance cascade starts cards
          at opacity 0, so they must be forced visible for a fast Ctrl+P. */
@@ -374,6 +374,29 @@
     .rd-num { font-family: Georgia, serif; font-size: 13px; color: #B91C1C; margin-bottom: 8px; }
     .rd-bcard { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; padding: 24px; }
     @media (max-width: 639.98px) { .rd-step { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-step:last-child { border-bottom: 0; } }
+
+    /* ------------- Research Desk report tokens (live report restyle) ------------- */
+    /* Neutral value tile: paper alt tone + hairline — replaces the slate-50 bubbles. */
+    .rd-tile { background: #F5F4EF; border: 1px solid #E4E2DA; border-radius: 5px; padding: 16px; }
+    /* Highlight tile (Likely / Hold DCF): white with a single red hairline and a
+       red uppercase label — quietly distinct, editorial, not a colored bubble. */
+    .rd-tile-hi { background: #fff; border: 1px solid #B91C1C; border-radius: 5px; padding: 16px; }
+    .rd-tile-hi .rd-lab { color: #B91C1C; }
+    /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
+    .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: #4C5665; background: #F0EFE9; border: 1px solid #E4E2DA; border-radius: 3px; padding: 2px 8px; }
+    .rd-chip.o { background: #fff; border-color: #D8D4C9; color: #5A6473; }
+    /* Badge tiers the live report needs beyond the landing set: news (weakest,
+       nearly typographic) + estimate (caution sienna, distinct from .li gold). */
+    .rd-badge.n { color: #5A6473; background: #F0EFE9; }
+    .rd-badge.e { color: #9A3412; background: #F8E9DC; }
+    /* Live comps table header — the landing exhibit's editorial th at the live
+       table's own geometry (padding/alignment stay in the JS-built classes).
+       No background here so the sortable hover rule can win. */
+    #compsTable thead th { color: #8A93A0; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 1px solid #D8D4C9; }
+    /* Driver rows: .rd-drv's hairline rhythm without flex gap (PNG exporter). */
+    #driversList p { border-top: 1px solid #F0EFE9; padding: 7px 0; margin: 0; }
+    #driversList p:first-child { border-top: 0; }
+    #driversList b { color: #B91C1C; }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-slate-800 min-h-screen">
@@ -437,7 +460,7 @@
         <h2 class="text-lg font-semibold text-slate-900">Submit a comp</h2>
         <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission. Approved comps carry your firm's name in every matching report and on our public market pages — and when an owner in your market requests a Broker Opinion of Value, contributing brokers are who we reach out to first.</p>
         <form id="compForm2" class="space-y-3">
-          <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Your details</div>
+          <div class="rd-lab">Your details</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compBrokerName" type="text" autocomplete="name" placeholder="Your name *" aria-label="Your name"
               class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
@@ -510,7 +533,7 @@
   <!-- Property confirmation — free geocode check before the billed comp search -->
   <div id="confirmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
-      <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Confirm property</div>
+      <div class="rd-lab">Confirm property</div>
       <h2 class="text-lg font-semibold text-slate-900 mt-1">Is this the property you're looking for?</h2>
       <p class="text-sm text-slate-500 mt-3">You searched for:</p>
       <p id="confirmTyped" class="text-sm font-medium text-slate-900"></p>
@@ -615,22 +638,22 @@
               <div>
                 <label id="targetSizeLabel" class="rd-lab">Building size (SF)</label>
                 <div class="flex items-center gap-2">
-                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                   <span class="text-sm text-slate-400 shrink-0">to</span>
-                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
               </div>
               <div>
                 <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
                 <div class="flex items-center gap-2">
-                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                   <span class="text-sm text-slate-400 shrink-0">to</span>
-                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
               </div>
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
-                <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 <p class="text-xs text-[#8A93A0] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
               </div>
             </div>
@@ -655,13 +678,13 @@
 
     <!-- Recent searches (stored locally in this browser only) -->
     <div id="recentWrap" class="hidden mt-3 flex flex-wrap items-center gap-2 no-print">
-      <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Re-run:</span>
+      <span class="rd-lab">Re-run:</span>
       <div id="recentChips" class="flex flex-wrap gap-2"></div>
     </div>
 
     <!-- Saved reports (full report data stored locally; reopening is free) -->
     <div id="savedWrap" class="hidden mt-2 flex flex-wrap items-center gap-2 no-print">
-      <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Saved reports:</span>
+      <span class="rd-lab">Saved reports:</span>
       <div id="savedChips" class="flex flex-wrap gap-2"></div>
       <button id="clearSavedBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
     </div>
@@ -671,7 +694,7 @@
 
     <!-- Loading state: step text + progress, over a skeleton of the report taking shape -->
     <div id="loadingCard" class="hidden mt-6 no-print" role="status" aria-live="polite">
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 flex flex-col items-center text-center fade-in">
+      <div class="bg-white rounded-md border border-[#D8D4C9] p-8 flex flex-col items-center text-center fade-in">
         <p id="loadingHeadline" class="text-base font-semibold text-slate-900">Searching recent listings…</p>
         <p class="text-sm text-slate-400 mt-1">This usually takes 20–40 seconds.</p>
         <div class="w-full max-w-xs mt-5 relative">
@@ -692,30 +715,30 @@
            in the same card shells the finished report renders into. -->
       <div class="mt-6 space-y-6" aria-hidden="true">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          <div class="bg-white rounded-md border border-[#D8D4C9] p-4">
             <div class="skeleton h-3 w-16"></div>
             <div class="skeleton h-7 w-24 mt-2"></div>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          <div class="bg-white rounded-md border border-[#D8D4C9] p-4">
             <div class="skeleton h-3 w-20"></div>
             <div class="skeleton h-7 w-12 mt-2"></div>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          <div class="bg-white rounded-md border border-[#D8D4C9] p-4">
             <div class="skeleton h-3 w-20"></div>
             <div class="skeleton h-7 w-28 mt-2"></div>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          <div class="bg-white rounded-md border border-[#D8D4C9] p-4">
             <div class="skeleton h-3 w-16"></div>
             <div class="skeleton h-7 w-24 mt-2"></div>
           </div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div class="bg-white rounded-md border border-[#D8D4C9] p-6">
           <div class="skeleton h-5 w-40"></div>
           <div class="skeleton h-4 w-full mt-4"></div>
           <div class="skeleton h-4 w-full mt-2.5"></div>
           <div class="skeleton h-4 w-2/3 mt-2.5"></div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div class="bg-white rounded-md border border-[#D8D4C9] p-6">
           <div class="skeleton h-5 w-56"></div>
           <div class="skeleton h-9 w-full mt-4"></div>
           <div class="skeleton h-8 w-full mt-2"></div>
@@ -732,22 +755,22 @@
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
         <button id="shareBtn" style="margin-right:auto"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 border border-brand-600 rounded-lg px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] border border-[#B91C1C] rounded px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span id="shareBtnLabel">Share link</span>
         </button>
         <button id="imgBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 21"/></svg>
           Download Image
         </button>
         <button id="printBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
           Print / PDF
         </button>
         <button id="csvBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
           Export CSV
         </button>
@@ -777,7 +800,7 @@
              the DOM so it tops the stack on phones; sm:flex-row-reverse puts it
              back on the right on wider screens. Hidden in print — the letterhead
              above already carries the brand there. -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+        <div class="rd-bcard print-shadow-none fade-in">
           <div class="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
             <div class="report-lockup shrink-0 flex items-center gap-2">
               <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
@@ -787,8 +810,8 @@
               <div class="rd-wordmark uppercase">Comp<b>Ninja</b></div>
             </div>
             <div class="min-w-0">
-              <div id="reportKicker" class="text-xs uppercase tracking-wider text-brand-700 font-semibold">Market Comparables Report</div>
-              <h2 id="reportAddress" class="text-2xl font-bold text-slate-900 mt-1"></h2>
+              <div id="reportKicker" class="rd-kicker">Market Comparables Report</div>
+              <h2 id="reportAddress" class="rd-h text-[26px] leading-snug mt-1"></h2>
               <!-- Chip spacing uses margins, not flex gap — html2canvas (PNG
                    export) doesn't render flex gap and would fuse the chips. -->
               <div id="reportMeta" class="flex flex-wrap mt-1"></div>
@@ -798,49 +821,49 @@
 
         <!-- Owner value estimate hero (owner mode only). Sales-comp math runs
              in the browser via renderOwnerHero; NOI never leaves the page. -->
-        <div id="ownerHero" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+        <div id="ownerHero" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">What This Building Is Worth</h2>
-            <span id="ownerBasis" class="text-xs text-slate-400 text-right"></span>
+            <span id="ownerBasis" class="text-xs text-[#8A93A0] text-right"></span>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Low</div>
-              <div id="ownerLow" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="ownerLowPpsf" class="text-xs text-slate-400 mt-1"></div>
+            <div class="rd-tile">
+              <div class="rd-lab">Low</div>
+              <div id="ownerLow" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="ownerLowPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
-            <div class="rounded-lg bg-brand-50 border border-brand-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-brand-500">Likely</div>
-              <div id="ownerMid" class="text-3xl font-bold text-slate-900 mt-1">-</div>
-              <div id="ownerMidPpsf" class="text-xs text-slate-500 mt-1"></div>
+            <div class="rd-tile-hi">
+              <div class="rd-lab">Likely</div>
+              <div id="ownerMid" class="rd-h text-[30px] mt-1">-</div>
+              <div id="ownerMidPpsf" class="text-xs text-[#5A6473] mt-1"></div>
             </div>
-            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">High</div>
-              <div id="ownerHigh" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="ownerHighPpsf" class="text-xs text-slate-400 mt-1"></div>
+            <div class="rd-tile">
+              <div class="rd-lab">High</div>
+              <div id="ownerHigh" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="ownerHighPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
           </div>
           <!-- Approach reconciliation — the classic appraisal framing (sales
                comparison / income / cost), each labeled and explained in plain
                English. Built by renderOwnerHero; margins only, no flex gap
                (this block IS captured in the PNG export). -->
-          <div id="ownerApproaches" class="hidden mt-4 pt-4 border-t border-slate-100"></div>
+          <div id="ownerApproaches" class="hidden mt-4 pt-4 border-t border-[#ECEAE3]"></div>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
-          <p id="ownerTrust" class="hidden text-xs text-slate-500 mt-4"></p>
-          <p class="text-xs text-slate-400 mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
-          <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-slate-100">
+          <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
+          <p class="text-xs text-[#8A93A0] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
+          <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
             <button id="bovCtaBtn" type="button"
-              class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-5 py-2.5 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed">
+              class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
               Get a free Broker Opinion of Value
             </button>
-            <p id="bovCtaHelper" class="text-xs text-slate-500 mt-2">Want a real number? We'll connect you with a licensed local broker who knows your market. No cost, no obligation.</p>
+            <p id="bovCtaHelper" class="text-xs text-[#5A6473] mt-2">Want a real number? We'll connect you with a licensed local broker who knows your market. No cost, no obligation.</p>
             <!-- Post-submit confirmation — replaces the button so the lead sees
                  what happens next instead of a dead control. -->
-            <div id="bovConfirmPanel" class="hidden rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <p class="text-sm font-semibold text-slate-800">Request received.</p>
-              <p class="text-sm text-slate-600 mt-1">We'll review your request and connect you with a licensed local broker who knows your market, usually within a couple of business days. The broker's opinion of value is free, with no obligation.</p>
-              <p id="bovShareLinkWrap" class="hidden text-sm text-slate-600 mt-2">Meanwhile, here's a link to this report you can keep or forward:<br>
+            <div id="bovConfirmPanel" class="hidden rd-tile">
+              <p class="text-sm font-semibold text-[#1A2433]">Request received.</p>
+              <p class="text-sm text-[#4C5665] mt-1">We'll review your request and connect you with a licensed local broker who knows your market, usually within a couple of business days. The broker's opinion of value is free, with no obligation.</p>
+              <p id="bovShareLinkWrap" class="hidden text-sm text-[#4C5665] mt-2">Meanwhile, here's a link to this report you can keep or forward:<br>
                 <a id="bovShareLink" class="text-brand-700 underline break-all" href="#" target="_blank" rel="noopener"></a></p>
             </div>
           </div>
@@ -850,174 +873,174 @@
              (never sent to the server), shown only when an NOI is entered.
              Assumption inputs are no-print: the explanation paragraph restates
              them, so exports stay clean. Built by renderDcfCard(). -->
-        <div id="dcfCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+        <div id="dcfCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Hold or Sell? (DCF Analysis)</h2>
-            <span id="dcfBasis" class="text-xs text-slate-400 text-right"></span>
+            <span id="dcfBasis" class="text-xs text-[#8A93A0] text-right"></span>
           </div>
           <div class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <div>
-              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfYears">Hold period (yrs)</label>
+              <label class="rd-lab" for="dcfYears">Hold period (yrs)</label>
               <input id="dcfYears" type="number" min="1" max="30" step="1"
-                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
             </div>
             <div>
-              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfGrowth">NOI growth %/yr</label>
+              <label class="rd-lab" for="dcfGrowth">NOI growth %/yr</label>
               <input id="dcfGrowth" type="number" min="-10" max="15" step="0.1"
-                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
             </div>
             <div>
-              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfDisc">Discount rate %</label>
+              <label class="rd-lab" for="dcfDisc">Discount rate %</label>
               <input id="dcfDisc" type="number" min="0.1" max="30" step="0.1"
-                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
             </div>
             <div>
-              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfExitCap">Exit cap rate %</label>
+              <label class="rd-lab" for="dcfExitCap">Exit cap rate %</label>
               <input id="dcfExitCap" type="number" min="0.1" max="25" step="0.1"
-                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
             </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div id="dcfSellTile" class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sell today (est.)</div>
-              <div id="dcfSellVal" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="dcfSellSub" class="text-xs text-slate-400 mt-1"></div>
+            <div id="dcfSellTile" class="rd-tile">
+              <div class="rd-lab">Sell today (est.)</div>
+              <div id="dcfSellVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="dcfSellSub" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
-            <div class="rounded-lg bg-brand-50 border border-brand-200 p-4">
-              <div id="dcfHoldLabel" class="text-xs font-semibold uppercase tracking-wider text-brand-500">Hold (DCF value)</div>
-              <div id="dcfValue" class="text-3xl font-bold text-slate-900 mt-1">-</div>
-              <div id="dcfValueSub" class="text-xs text-slate-500 mt-1">income + resale, in today's dollars</div>
+            <div class="rd-tile-hi">
+              <div id="dcfHoldLabel" class="rd-lab">Hold (DCF value)</div>
+              <div id="dcfValue" class="rd-h text-[30px] mt-1">-</div>
+              <div id="dcfValueSub" class="text-xs text-[#5A6473] mt-1">income + resale, in today's dollars</div>
             </div>
-            <div id="dcfVerdictTile" class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Verdict</div>
-              <div id="dcfVerdict" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="dcfVerdictSub" class="text-xs text-slate-400 mt-1"></div>
+            <div id="dcfVerdictTile" class="rd-tile">
+              <div class="rd-lab">Verdict</div>
+              <div id="dcfVerdict" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="dcfVerdictSub" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
           </div>
-          <p id="dcfWhatIs" class="text-sm text-slate-600 mt-4"></p>
-          <p id="dcfHoldSell" class="text-sm text-slate-600 mt-2"></p>
-          <p class="text-xs text-slate-400 mt-4">Automated planning estimate — unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
+          <p id="dcfWhatIs" class="text-sm text-[#4C5665] leading-relaxed mt-4"></p>
+          <p id="dcfHoldSell" class="text-sm text-[#4C5665] leading-relaxed mt-2"></p>
+          <p class="text-xs text-[#8A93A0] mt-4">Automated planning estimate — unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
         </div>
 
         <!-- Key stats row — the report leads with scannable numbers (built per search) -->
         <div id="statTiles" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
 
         <!-- Summary card -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+        <div class="rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-3">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Market Summary</h2>
             <!-- no-print + skipped by the PNG capture: a button in an exported report is noise -->
             <button id="copySummaryBtn" type="button"
-              class="btn-live no-print inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1">
+              class="btn-live no-print inline-flex items-center gap-1.5 text-xs font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-2.5 py-1">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
               <span id="copySummaryLabel">Copy</span>
             </button>
           </div>
-          <p id="summaryText" class="text-slate-700 leading-relaxed max-w-4xl"></p>
+          <p id="summaryText" class="text-[15px] text-[#374253] leading-relaxed max-w-4xl"></p>
         </div>
 
         <!-- What's driving your number (owner mode only) — the market trend and
              the concrete factors behind the estimate, in plain English. Built by
              renderValueDrivers(); hidden when the model returns neither. -->
-        <div id="driversCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+        <div id="driversCard" class="hidden rd-bcard print-shadow-none fade-in">
           <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-3">What's Driving Prices Here</h2>
-          <p id="marketTrend" class="hidden text-sm font-medium text-slate-700"></p>
-          <div id="driversList" class="text-sm text-slate-600 leading-relaxed"></div>
+          <p id="marketTrend" class="hidden text-sm font-medium text-[#374253]"></p>
+          <div id="driversList" class="text-sm text-[#374253] mt-1"></div>
         </div>
 
         <!-- Comp map (shown when the comps carry coordinates) -->
-        <div id="mapCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
-          <div class="px-6 py-4 border-b border-slate-200">
+        <div id="mapCard" class="hidden rd-exhibit overflow-hidden print-shadow-none fade-in">
+          <div class="px-6 py-4 border-b border-[#ECEAE3]">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comp Map</h2>
           </div>
           <div id="compMap" style="height: 340px;"></div>
-          <p class="text-xs text-slate-400 px-6 py-2 border-t border-slate-100">
+          <p class="text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9]">
             Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
           </p>
         </div>
 
         <!-- Target comparison card -->
-        <div id="compareCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+        <div id="compareCard" class="hidden rd-bcard print-shadow-none fade-in">
           <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-4">Your Property vs. Market</h2>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Your Property $/SF</div>
-              <div id="targetPpsfVal" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div id="targetBasis" class="text-xs text-slate-400 mt-1"></div>
+            <div class="rd-tile">
+              <div class="rd-lab">Your Property $/SF</div>
+              <div id="targetPpsfVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="targetBasis" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
-            <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Market Avg $/SF</div>
-              <div id="marketPpsfVal" class="text-2xl font-bold text-slate-900 mt-1">-</div>
-              <div class="text-xs text-slate-400 mt-1">from pulled comps</div>
+            <div class="rd-tile">
+              <div class="rd-lab">Market Avg $/SF</div>
+              <div id="marketPpsfVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div class="text-xs text-[#8A93A0] mt-1">from pulled comps</div>
             </div>
-            <div id="deltaTile" class="rounded-lg border p-4">
+            <div id="deltaTile" class="rd-tile">
               <div class="text-xs font-semibold uppercase tracking-wider opacity-70">Difference vs. Market</div>
-              <div id="deltaVal" class="text-2xl font-bold mt-1">-</div>
+              <div id="deltaVal" class="text-2xl font-semibold mt-1">-</div>
               <div id="deltaPct" class="text-xs opacity-80 mt-1"></div>
             </div>
           </div>
-          <p id="verdictText" class="text-sm text-slate-600 mt-4"></p>
+          <p id="verdictText" class="text-sm text-[#4C5665] leading-relaxed mt-4"></p>
         </div>
 
         <!-- Market position: each sale comp $/SF on a strip, with the average and the subject -->
-        <div id="chartCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+        <div id="chartCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-1">
             <h2 id="chartTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Market Position</h2>
-            <span id="chartBasis" class="text-xs text-slate-400"></span>
+            <span id="chartBasis" class="text-xs text-[#8A93A0]"></span>
           </div>
-          <p class="text-xs text-slate-400 mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
+          <p class="text-xs text-[#8A93A0] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
           <div id="chartWrap"></div>
         </div>
 
         <!-- Comps table -->
-        <div id="compsCard" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-shadow-none fade-in">
-          <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200">
+        <div id="compsCard" class="rd-exhibit overflow-hidden print-shadow-none fade-in">
+          <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#ECEAE3]">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comparable Properties</h2>
             <div class="flex items-center gap-3">
-              <div id="txFilter" style="display:none" class="items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50 no-print">
-                <button type="button" data-tx="all"    class="text-xs font-medium px-2.5 py-1 rounded-md">All</button>
-                <button type="button" data-tx="sales"  class="text-xs font-medium px-2.5 py-1 rounded-md">Sales</button>
-                <button type="button" data-tx="leases" class="text-xs font-medium px-2.5 py-1 rounded-md">Leases</button>
+              <div id="txFilter" style="display:none" class="items-center rounded border border-[#D8D4C9] p-0.5 bg-[#F5F4EF] no-print">
+                <button type="button" data-tx="all"    class="text-xs font-medium px-2.5 py-1 rounded">All</button>
+                <button type="button" data-tx="sales"  class="text-xs font-medium px-2.5 py-1 rounded">Sales</button>
+                <button type="button" data-tx="leases" class="text-xs font-medium px-2.5 py-1 rounded">Leases</button>
               </div>
-              <span id="compCount" class="text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap"></span>
+              <span id="compCount" class="rd-chip whitespace-nowrap"></span>
             </div>
           </div>
           <!-- Mobile card list: same data as the table, stacked for small screens -->
-          <div id="cardList" class="sm:hidden divide-y divide-slate-100"></div>
+          <div id="cardList" class="sm:hidden divide-y divide-[#F0EFE9]"></div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
                Scrollbars are hidden for a cleaner look (see .no-scrollbar). -->
           <div id="scrollBody" class="hidden sm:block overflow-x-auto no-scrollbar cursor-grab">
             <table id="compsTable" class="w-full text-sm">
-              <thead class="bg-slate-800 text-slate-100">
+              <thead>
                 <tr id="tableHead"></tr>
               </thead>
-              <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
+              <tbody id="tableBody" class="divide-y divide-[#F0EFE9]"></tbody>
             </table>
           </div>
           <!-- Legend listing the provenance badges present in the visible comps; kept
                in exports so the badges are explained wherever the report travels.
                Built by renderBadgeLegend(). -->
-          <p id="badgeLegend" class="hidden text-xs text-slate-400 px-6 py-2.5 border-t border-slate-100"></p>
-          <p class="hidden sm:block text-xs text-slate-400 px-6 py-2 border-t border-slate-100 no-print">Click a column header to sort.</p>
+          <p id="badgeLegend" class="hidden text-xs text-[#8A93A0] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
+          <p class="hidden sm:block text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9] no-print">Click a column header to sort.</p>
         </div>
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
-        <p class="text-center text-xs text-slate-400">
+        <p class="text-center text-xs text-[#8A93A0]">
           Prepared by CompNinja · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
         </p>
 
         <!-- Print footer -->
-        <div class="print-only pt-3 mt-2 border-t border-slate-200 text-center text-xs text-slate-400">
+        <div class="print-only pt-3 mt-2 border-t border-[#E4E2DA] text-center text-xs text-[#8A93A0]">
           CompNinja · agouraninja@gmail.com · https://market-comp-puller.onrender.com
         </div>
       </div>
 
       <!-- Broker CTA — screen only, shown on lead-capture deployments -->
-      <div id="ctaCard" class="hidden no-print mt-6 rounded-xl bg-gradient-to-br from-slate-900 to-brand-900 text-white p-6 sm:p-8 fade-in">
+      <div id="ctaCard" class="hidden no-print mt-6 rounded-md bg-[#1A2433] text-white p-6 sm:p-8 fade-in">
         <h2 id="ctaTitle" class="text-lg font-bold">Thinking about selling or leasing this property?</h2>
-        <p id="ctaText" class="text-sm text-slate-300 mt-1 mb-4 max-w-2xl">These comps are a starting point. Reach out and we will connect you with a local broker who really knows your market, at no cost to you.</p>
+        <p id="ctaText" class="text-sm text-white/75 mt-1 mb-4 max-w-2xl">These comps are a starting point. Reach out and we will connect you with a local broker who really knows your market, at no cost to you.</p>
         <a id="ctaLink" href="mailto:agouraninja@gmail.com"
-          class="btn-live inline-flex items-center gap-2 bg-white text-brand-800 font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-50">
+          class="btn-live inline-flex items-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">
           Get in touch
         </a>
       </div>
@@ -1617,7 +1640,7 @@
 
     if (!(marketPpsf > 0)) {
       document.getElementById("marketPpsfVal").textContent = "n/a";
-      deltaTile.className = "rounded-lg border p-4 bg-slate-50 border-slate-200 text-slate-500";
+      deltaTile.className = "rd-tile text-[#5A6473]";
       deltaVal.textContent = "-";
       deltaPct.textContent = "";
       verdict.textContent =
@@ -1629,7 +1652,7 @@
     animateValue(document.getElementById("marketPpsfVal"), marketPpsf, (v) => formatUsd(v));
 
     if (isRange && marketPpsf >= ppsfLo && marketPpsf <= ppsfHi) {
-      deltaTile.className = "rounded-lg border p-4 bg-slate-50 border-slate-300 text-slate-800";
+      deltaTile.className = "rd-tile text-[#1A2433]";
       deltaVal.textContent = "In range";
       deltaPct.textContent = "market avg falls inside your range";
       verdict.textContent =
@@ -1643,10 +1666,9 @@
     const above = delta > 0;
     const basisLabel = isRange ? `range midpoint ${formatUsd(targetPpsf)}` : formatUsd(targetPpsf);
 
-    deltaTile.className =
-      "rounded-lg border p-4 " +
-      (above ? "bg-amber-50 border-amber-200 text-amber-800"
-             : "bg-emerald-50 border-emerald-200 text-emerald-800");
+    // Neutral paper tile; above/below semantics carried by text color drawn
+    // from the badge palette (children inherit via the opacity utilities).
+    deltaTile.className = "rd-tile " + (above ? "text-[#7A5B12]" : "text-[#06603A]");
     animateValue(deltaVal, Math.abs(delta), (v) => formatUsd(v), above ? "+" : "−");
     deltaPct.textContent = Math.abs(pct).toFixed(1) + "% " + (above ? "above" : "below") + " market average" + (isRange ? " (midpoint)" : "");
 
@@ -1737,9 +1759,9 @@
       if (!entries.length) return;
       entries.forEach((e, i) => {
         const p = document.createElement("p");
-        p.className = (e.muted ? "text-xs text-slate-400" : "text-sm text-slate-600") + (i ? " mt-2" : "");
+        p.className = (e.muted ? "text-xs text-[#8A93A0]" : "text-sm text-[#4C5665] leading-relaxed") + (i ? " mt-2" : "");
         const b = document.createElement("strong");
-        b.className = e.muted ? "" : "text-slate-700";
+        b.className = e.muted ? "" : "text-[#1A2433]";
         b.textContent = e.label + ": ";
         p.appendChild(b);
         p.appendChild(document.createTextNode(e.text));
@@ -2061,7 +2083,7 @@
     trendEl.classList.toggle("hidden", !trend);
     // Text bullets + margins (not list markup or flex gap) so the PNG exporter
     // renders the spacing faithfully.
-    listEl.innerHTML = drivers.map((d) => `<p class="mt-2">&bull; ${esc(d)}</p>`).join("");
+    listEl.innerHTML = drivers.map((d) => `<p><b>&bull;</b> ${esc(d)}</p>`).join("");
     card.classList.remove("hidden");
   }
 
@@ -2137,18 +2159,18 @@
     const avgExt = compact ? 28 : 22;            // avg line half-height
     const bandHalf = compact ? 18 : 14;          // subject band half-height
     let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per square foot">`;
-    svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="#e2e8f0" stroke-width="2"/>`;
+    svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="#E4E2DA" stroke-width="2"/>`;
 
     // Subject band behind everything else.
     if (youLo !== null && isBand) {
-      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="#DC2626" fill-opacity="0.12"/>`;
+      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="#B91C1C" fill-opacity="0.12"/>`;
     }
 
     // Average line + label, anchor flipped near the edges so it stays inside.
     const ax = x(avg);
     const aAnchor = ax < EDGE + 40 ? "start" : ax > W - EDGE - 40 ? "end" : "middle";
-    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="#1E293B" stroke-width="2"/>`;
-    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="#1E293B" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
+    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="#1A2433" stroke-width="2"/>`;
+    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
 
     // Comp dots with vertical jitter when they crowd each other.
     const offsets = [0, -11, 11, -22];
@@ -2159,21 +2181,21 @@
       const py = baseY + offsets[oi];
       prevX = px;
       const delay = Math.min(0.15 + i * 0.07, 0.8).toFixed(2);
-      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="#64748b" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
+      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="#5A6473" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
     });
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
     const loHiY = compact ? baseY + 52 : baseY + 38;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="#94a3b8" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="#8A93A0" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="#8A93A0" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
       const yx = x(youMid);
-      svg += `<circle class="ch-pop" style="animation-delay:.75s" cx="${yx.toFixed(1)}" cy="${baseY}" r="7" fill="#DC2626" stroke="#fff" stroke-width="1.5"/>`;
+      svg += `<circle class="ch-pop" style="animation-delay:.75s" cx="${yx.toFixed(1)}" cy="${baseY}" r="7" fill="#B91C1C" stroke="#fff" stroke-width="1.5"/>`;
       const yAnchor = yx < EDGE + 20 ? "start" : yx > W - EDGE - 20 ? "end" : "middle";
-      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="#DC2626" font-family="Inter, sans-serif">You</text>`;
+      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="#B91C1C" font-family="Inter, sans-serif">You</text>`;
     }
     svg += `</svg>`;
 
@@ -2433,7 +2455,7 @@
     el.innerHTML =
       '<div class="spread-track"><div class="spread-fill"></div>' +
       '<div class="spread-marker" style="left:' + pct.toFixed(1) + '%"></div></div>' +
-      '<div class="flex justify-between mt-1 text-[10px] text-slate-400">' +
+      '<div class="flex justify-between mt-1 text-[10px] text-[#8A93A0]">' +
         '<span>' + formatUsd(lo, { maximumFractionDigits: 0 }) + '</span>' +
         '<span>' + formatUsd(hi, { maximumFractionDigits: 0 }) + '</span>' +
       '</div>';
@@ -2470,9 +2492,9 @@
     wrap.innerHTML = "";
     tiles.forEach((t) => {
       const tile = document.createElement("div");
-      tile.className = "bg-white rounded-xl shadow-sm border border-slate-200 p-4 print-shadow-none";
+      tile.className = "bg-white rounded-md border border-[#D8D4C9] p-4 print-shadow-none";
       const label = document.createElement("div");
-      label.className = "text-xs font-semibold uppercase tracking-wider text-slate-400";
+      label.className = "rd-lab";
       label.textContent = t.label;
       const value = document.createElement("div");
       // A parenthetical qualifier ("$113 (sale comps)") moves to a sub-label so
@@ -2481,7 +2503,7 @@
       const valueText = qual ? qual[1] : String(t.value);
       // Only a genuinely long cleaned value (e.g. a $ range) steps down, one notch.
       value.className = (valueText.length > 16 ? "text-xl" : "text-2xl") +
-        " font-bold text-slate-900 mt-1 leading-snug break-words";
+        " font-semibold text-[#1A2433] mt-1 leading-snug break-words";
       // Purely numeric stats count up once; string stats render as-is.
       if (t.animate) animateValue(value, t.animate.target, t.animate.format);
       else value.textContent = valueText;
@@ -2532,7 +2554,7 @@
     metaBox.innerHTML = "";
     metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
       const chip = document.createElement("span");
-      chip.className = "inline-flex items-center bg-slate-100 text-slate-600 text-xs rounded-full px-2.5 py-1 mr-1.5 mt-1";
+      chip.className = "rd-chip mr-1.5 mt-1.5";
       chip.textContent = part;
       metaBox.appendChild(chip);
     });
@@ -2994,8 +3016,8 @@
   function updateTxButtons() {
     document.querySelectorAll("#txFilter [data-tx]").forEach((btn) => {
       const active = btn.dataset.tx === txFilter;
-      btn.className = "text-xs font-medium px-2.5 py-1 rounded-md transition-colors " +
-        (active ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900");
+      btn.className = "text-xs font-medium px-2.5 py-1 rounded transition-colors " +
+        (active ? "bg-[#1A2433] text-white" : "text-[#5A6473] hover:text-[#1A2433]");
     });
   }
 
@@ -3023,12 +3045,11 @@
   }
 
   // Sale = filled chip, Lease = outlined chip — tells apart at a glance
-  // without leaving the slate palette.
+  // without leaving the paper palette.
   function transactionPill(val) {
     const pill = document.createElement("span");
     const isLease = String(val).toLowerCase().startsWith("lease");
-    pill.className = "inline-flex items-center text-xs font-medium rounded-full px-2.5 py-0.5 border " +
-      (isLease ? "bg-white border-slate-300 text-slate-600" : "bg-slate-100 border-slate-200 text-slate-700");
+    pill.className = "rd-chip" + (isLease ? " o" : "");
     pill.textContent = val;
     return pill;
   }
@@ -3047,12 +3068,13 @@
   // the model-asserted source_type. Order = strongest to weakest, and the
   // legend lists tiers in this order. Legacy saved reports predate
   // source_type and simply get no badge.
+  // cls letters map onto the .rd-badge tier variants (landing design system).
   const SOURCE_TIERS = {
-    verified:      { label: "Verified",      cls: "text-emerald-700 bg-emerald-50 border-emerald-200", legend: "submitted by a local broker and reviewed by our team" },
-    public_record: { label: "Public record", cls: "text-slate-700 bg-slate-100 border-slate-200",      legend: "from a county assessor, deed, or tax record" },
-    listing:       { label: "Listing",       cls: "text-slate-600 bg-white border-slate-300",          legend: "from a listing page or brokerage flyer" },
-    news:          { label: "News",          cls: "text-slate-500 bg-white border-slate-200",          legend: "from a news article or press release" },
-    estimate:      { label: "Estimate",      cls: "text-amber-700 bg-amber-50 border-amber-200",       legend: "not tied to a single source; verify before relying on it" },
+    verified:      { label: "Verified",      cls: "v",  legend: "submitted by a local broker and reviewed by our team" },
+    public_record: { label: "Public record", cls: "p",  legend: "from a county assessor, deed, or tax record" },
+    listing:       { label: "Listing",       cls: "li", legend: "from a listing page or brokerage flyer" },
+    news:          { label: "News",          cls: "n",  legend: "from a news article or press release" },
+    estimate:      { label: "Estimate",      cls: "e",  legend: "not tied to a single source; verify before relying on it" },
   };
   function compTier(comp) {
     if (isVerifiedComp(comp)) return "verified";
@@ -3063,7 +3085,7 @@
     if (!tier) return null;
     const t = SOURCE_TIERS[tier];
     const badge = document.createElement("span");
-    badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide border rounded px-1 py-0.5 " + t.cls;
+    badge.className = "ml-1.5 align-middle rd-badge " + t.cls;
     badge.textContent = t.label;
     // Credit the contributing broker on a verified comp (server sets verified_by
     // by matching the comp back to the submission that supplied it).
@@ -3075,7 +3097,7 @@
     wrap.className = "inline align-middle";
     wrap.appendChild(badge);
     const cred = document.createElement("span");
-    cred.className = "ml-1.5 text-[10px] text-emerald-700 align-middle";
+    cred.className = "ml-1.5 text-[10px] text-[#06603A] align-middle";
     cred.textContent = "· " + by;
     wrap.appendChild(cred);
     return wrap;
@@ -3086,8 +3108,8 @@
     const d = Date.parse(dateVal);
     if (!cutoff || isNaN(d) || d >= cutoff.getTime()) return null;
     const badge = document.createElement("span");
-    badge.className = "ml-1.5 inline-block align-middle text-[10px] font-medium uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5";
-    badge.textContent = "outside window";
+    badge.className = "ml-1.5 align-middle rd-badge e";
+    badge.textContent = "Outside window";
     badge.title = `Older than the requested last ${currentMeta.months} months`;
     return badge;
   }
@@ -3103,7 +3125,7 @@
     tiers.forEach((tier) => {
       const t = SOURCE_TIERS[tier];
       const chip = document.createElement("span");
-      chip.className = "inline-block align-middle text-[10px] font-medium uppercase tracking-wide border rounded px-1 py-0.5 mr-1 " + t.cls;
+      chip.className = "align-middle rd-badge mr-1 " + t.cls;
       chip.textContent = t.label;
       const text = document.createElement("span");
       text.className = "mr-3";
@@ -3123,19 +3145,19 @@
       const tr = document.createElement("tr");
       const msg = currentComps.length === 0 ? "No comps found."
         : (txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.");
-      tr.innerHTML = `<td colspan="${COLUMNS.length}" class="px-4 py-6 text-center text-slate-400">${msg}</td>`;
+      tr.innerHTML = `<td colspan="${COLUMNS.length}" class="px-4 py-6 text-center text-[#8A93A0]">${msg}</td>`;
       body.appendChild(tr);
       return;
     }
     comps.forEach((comp, idx) => {
       const tr = document.createElement("tr");
       // Re-sorts skip the entrance cascade — rows FLIP to their new spots instead.
-      tr.className = "hover:bg-slate-50" + (animateIn ? " row-in" : "");
+      tr.className = "hover:bg-[#F5F4EF]" + (animateIn ? " row-in" : "");
       if (animateIn) tr.style.animationDelay = Math.min(idx * 45, 450) + "ms";
       COLUMNS.forEach((col) => {
         const td = document.createElement("td");
         td.className = "px-4 py-3 align-top " +
-          (col.key === "notes" ? "text-slate-500 min-w-[200px]" : "whitespace-nowrap") +
+          (col.key === "notes" ? "text-[#5A6473] min-w-[200px]" : "whitespace-nowrap") +
           (col.numeric ? " text-right" : "");
         // Cell content lives in an inner div: table rows/cells can't be CSS-
         // transformed, so the sort FLIP animation slides these divs instead.
@@ -3164,7 +3186,7 @@
           const wrap = document.createElement("div");
           const { street, rest } = addressLines(val);
           const line1 = document.createElement("div");
-          line1.className = "font-medium text-slate-900";
+          line1.className = "font-medium text-[#1A2433]";
           line1.textContent = street;
           const b = sourceBadge(comp);
           if (b) {
@@ -3175,7 +3197,7 @@
           wrap.appendChild(line1);
           if (rest) {
             const line2 = document.createElement("div");
-            line2.className = "text-xs text-slate-500 mt-0.5";
+            line2.className = "text-xs text-[#5A6473] mt-0.5";
             line2.textContent = rest;
             wrap.appendChild(line2);
           }
@@ -3210,7 +3232,7 @@
       const msg = currentComps.length === 0 ? "No comps found."
         : (txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.");
       const p = document.createElement("p");
-      p.className = "px-6 py-6 text-center text-sm text-slate-400";
+      p.className = "px-6 py-6 text-center text-sm text-[#8A93A0]";
       p.textContent = msg;
       list.appendChild(p);
       return;
@@ -3228,7 +3250,7 @@
       const headText = document.createElement("div");
       const { street, rest } = addressLines(comp.address);
       const line1 = document.createElement("div");
-      line1.className = "font-semibold text-slate-900 text-sm leading-snug";
+      line1.className = "font-semibold text-[#1A2433] text-sm leading-snug";
       line1.textContent = street;
       const vb = sourceBadge(comp);
       if (vb) {
@@ -3240,7 +3262,7 @@
       headText.appendChild(line1);
       if (rest) {
         const line2 = document.createElement("div");
-        line2.className = "text-xs text-slate-500 mt-0.5";
+        line2.className = "text-xs text-[#5A6473] mt-0.5";
         line2.textContent = rest;
         headText.appendChild(line2);
       }
@@ -3262,10 +3284,10 @@
         const row = document.createElement("div");
         row.className = wide ? "col-span-2" : "";
         const dt = document.createElement("dt");
-        dt.className = "text-[10px] font-medium uppercase tracking-wide text-slate-400";
+        dt.className = "text-[10px] font-medium uppercase tracking-wide text-[#8A93A0]";
         dt.textContent = col.label;
         const dd = document.createElement("dd");
-        dd.className = "mt-0.5 " + (col.key === "notes" ? "text-slate-500" : "text-slate-700");
+        dd.className = "mt-0.5 " + (col.key === "notes" ? "text-[#5A6473]" : "text-[#374253]");
         if (col.isLink && /^https?:\/\//i.test(String(val || ""))) {
           const a = document.createElement("a");
           a.href = val;
@@ -3429,7 +3451,7 @@
       // The Leaflet map is skipped in the capture — cross-origin tiles would
       // otherwise taint the canvas and break the whole export.
       const canvas = await html2canvas(node, {
-        scale: 2, backgroundColor: "#f1f5f9", useCORS: true,
+        scale: 2, backgroundColor: "#FBFBF9", useCORS: true,
         ignoreElements: (el) => el.id === "mapCard" || el.id === "copySummaryBtn" || el.id === "bovCtaWrap",
       });
       const a = document.createElement("a");

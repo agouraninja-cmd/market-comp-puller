@@ -610,7 +610,7 @@
             <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(size, price, NOI — optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check.</p>
+            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label id="targetSizeLabel" class="rd-lab">Building size (SF)</label>
@@ -840,6 +840,59 @@
                 <a id="bovShareLink" class="text-brand-700 underline break-all" href="#" target="_blank" rel="noopener"></a></p>
             </div>
           </div>
+        </div>
+
+        <!-- DCF + hold/sell analysis — client-side math on the browser-held NOI
+             (never sent to the server), shown only when an NOI is entered.
+             Assumption inputs are no-print: the explanation paragraph restates
+             them, so exports stay clean. Built by renderDcfCard(). -->
+        <div id="dcfCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-6 print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Hold or Sell? (DCF Analysis)</h2>
+            <span id="dcfBasis" class="text-xs text-slate-400 text-right"></span>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfYears">Hold period (yrs)</label>
+              <input id="dcfYears" type="number" min="1" max="30" step="1"
+                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfGrowth">NOI growth %/yr</label>
+              <input id="dcfGrowth" type="number" min="-10" max="15" step="0.1"
+                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfDisc">Discount rate %</label>
+              <input id="dcfDisc" type="number" min="0.1" max="30" step="0.1"
+                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400" for="dcfExitCap">Exit cap rate %</label>
+              <input id="dcfExitCap" type="number" min="0.1" max="25" step="0.1"
+                class="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div id="dcfSellTile" class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sell today (est.)</div>
+              <div id="dcfSellVal" class="text-2xl font-bold text-slate-900 mt-1">-</div>
+              <div id="dcfSellSub" class="text-xs text-slate-400 mt-1"></div>
+            </div>
+            <div class="rounded-lg bg-brand-50 border border-brand-200 p-4">
+              <div id="dcfHoldLabel" class="text-xs font-semibold uppercase tracking-wider text-brand-500">Hold (DCF value)</div>
+              <div id="dcfValue" class="text-3xl font-bold text-slate-900 mt-1">-</div>
+              <div id="dcfValueSub" class="text-xs text-slate-500 mt-1">income + resale, in today's dollars</div>
+            </div>
+            <div id="dcfVerdictTile" class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+              <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Verdict</div>
+              <div id="dcfVerdict" class="text-2xl font-bold text-slate-900 mt-1">-</div>
+              <div id="dcfVerdictSub" class="text-xs text-slate-400 mt-1"></div>
+            </div>
+          </div>
+          <p id="dcfWhatIs" class="text-sm text-slate-600 mt-4"></p>
+          <p id="dcfHoldSell" class="text-sm text-slate-600 mt-2"></p>
+          <p class="text-xs text-slate-400 mt-4">Automated planning estimate — unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
         </div>
 
         <!-- Key stats row — the report leads with scannable numbers (built per search) -->
@@ -1280,6 +1333,7 @@
           noi: noiVal > 0 ? noiVal : null,
         };
         renderOwnerHero(currentParsed, currentMeta);
+        renderDcfCard(currentParsed, currentMeta, false);
         renderComparison(currentParsed);
         renderMarketChart();
         if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveReport(currentMeta, currentParsed);
@@ -1742,6 +1796,172 @@
 
     card.classList.remove("hidden");
   }
+
+  // ----------------------------------------------------------------------------
+  // DCF + hold/sell — a Director-of-Asset-Management-style analysis, entirely
+  // client-side: the browser-held NOI is projected over a hold period, the
+  // exit sale is added, everything is discounted to today, and the result is
+  // compared against selling now at the comp-based value. Shown only when an
+  // NOI is entered; assumptions default from the market cap-rate range and
+  // stay editable in the card (edits recompute in place, nothing is billed).
+  // ----------------------------------------------------------------------------
+
+  // The same "sell today" number the hero leads with: comp $/SF midpoint × SF,
+  // falling back to the income-approach midpoint when sale comps are thin.
+  function sellTodayEstimate(parsed, meta) {
+    let sizeR = subjectRangeFromMeta("size");
+    if (!sizeR && parsed) {
+      const found = numericValue(parsed.subject_size_sqft);
+      if (found > 0) sizeR = { min: found, max: found };
+    }
+    const ppsfs = currentComps
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => numericValue(c.price_per_sqft))
+      .filter((v) => v > 0);
+    if (sizeR && ppsfs.length >= 2) {
+      const rr = robustPpsfRange(ppsfs);
+      return { value: rr.mid * (sizeR.min + sizeR.max) / 2, source: "comp-based likely value" };
+    }
+    const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
+    const capLo = capR ? numericValue(capR.low) : NaN;
+    const capHi = capR ? numericValue(capR.high) : NaN;
+    if (noi && capLo > 0 && capHi >= capLo) {
+      return { value: Math.sqrt((noi / (capHi / 100)) * (noi / (capLo / 100))), source: "income-approach midpoint" };
+    }
+    return null;
+  }
+
+  // Implied annual return of holding: the discount rate at which holding for N
+  // years is worth exactly the sell-today price. Bisection — the NPV is
+  // monotonic in r, so 60 halvings pin it well past display precision.
+  function impliedHoldReturn(sellToday, cashflows, terminal) {
+    const npvAt = (r) => {
+      let v = -sellToday;
+      cashflows.forEach((cf, i) => { v += cf / Math.pow(1 + r, i + 1); });
+      return v + terminal / Math.pow(1 + r, cashflows.length);
+    };
+    let lo = -0.9, hi = 1.5;
+    if (npvAt(lo) < 0 || npvAt(hi) > 0) return null; // no crossing in a sane range
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      (npvAt(mid) > 0 ? lo = mid : hi = mid);
+    }
+    return ((lo + hi) / 2) * 100;
+  }
+
+  function renderDcfCard(parsed, meta, resetAssumptions) {
+    const card = document.getElementById("dcfCard");
+    const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    if (!noi) { card.classList.add("hidden"); return; }
+
+    // Defaults keyed to this market: exit cap just above the going-in range's
+    // midpoint (buildings age), discount rate = cap midpoint + a 200bps risk
+    // premium. Generic fallbacks when the model returned no cap-rate range.
+    const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
+    const capLo = capR ? numericValue(capR.low) : NaN;
+    const capHi = capR ? numericValue(capR.high) : NaN;
+    const capMid = capLo > 0 && capHi >= capLo ? (capLo + capHi) / 2 : null;
+    const inYears = document.getElementById("dcfYears");
+    const inGrowth = document.getElementById("dcfGrowth");
+    const inDisc = document.getElementById("dcfDisc");
+    const inExit = document.getElementById("dcfExitCap");
+    if (resetAssumptions || !inYears.value) {
+      inYears.value = 10;
+      inGrowth.value = 2.5;
+      inDisc.value = capMid ? Math.round((capMid + 2.0) * 10) / 10 : 8.5;
+      inExit.value = capMid ? Math.round((capMid + 0.25) * 10) / 10 : 6.5;
+    }
+    const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
+    const years = clamp(Math.round(numericValue(inYears.value)), 1, 30, 10);
+    const growth = clamp(numericValue(inGrowth.value), -10, 15, 2.5) / 100;
+    const disc = clamp(numericValue(inDisc.value), 0.1, 30, 8.5) / 100;
+    const exitCap = clamp(numericValue(inExit.value), 0.1, 25, 6.5) / 100;
+
+    // Year-by-year NOI (year 1 = the entered NOI), exit sale at end of hold.
+    const cashflows = [];
+    for (let t = 1; t <= years; t++) cashflows.push(noi * Math.pow(1 + growth, t - 1));
+    const terminal = (noi * Math.pow(1 + growth, years)) / exitCap;
+    let dcf = 0;
+    cashflows.forEach((cf, i) => { dcf += cf / Math.pow(1 + disc, i + 1); });
+    const pvTerminal = terminal / Math.pow(1 + disc, years);
+    dcf += pvTerminal;
+
+    const fmtTotal = (v) => "$" + Math.round(v).toLocaleString();
+    const pct1 = (v) => (Math.round(v * 10) / 10).toLocaleString();
+    document.getElementById("dcfHoldLabel").textContent = `Hold ${years} yrs (DCF value)`;
+    const valueEl = document.getElementById("dcfValue");
+    if (resetAssumptions) animateValue(valueEl, dcf, fmtTotal);
+    else valueEl.textContent = fmtTotal(dcf);
+    document.getElementById("dcfBasis").textContent =
+      `${pct1(growth * 100)}% growth · ${pct1(disc * 100)}% discount · ${pct1(exitCap * 100)}% exit cap`;
+
+    document.getElementById("dcfWhatIs").textContent =
+      `What this is: a DCF (discounted cash flow) values the building by adding up the income it should ` +
+      `produce — your ${fmtTotal(noi)} NOI growing ${pct1(growth * 100)}% a year for ${years} years — plus ` +
+      `an estimated sale at the end (year-${years + 1} income at a ${pct1(exitCap * 100)}% exit cap rate, ` +
+      `worth ${fmtTotal(terminal)} then), with every future dollar discounted back to today at ` +
+      `${pct1(disc * 100)}% a year, because money later is worth less than money now.`;
+
+    // Hold vs sell needs a sell-today number; without one the DCF stands alone.
+    const sell = sellTodayEstimate(parsed, meta);
+    const sellTile = document.getElementById("dcfSellTile");
+    const verdictTile = document.getElementById("dcfVerdictTile");
+    const holdSellEl = document.getElementById("dcfHoldSell");
+    if (!sell || !(sell.value > 0)) {
+      sellTile.classList.add("hidden");
+      verdictTile.classList.add("hidden");
+      holdSellEl.textContent =
+        "Hold vs. sell: no sale value could be estimated for this building (not enough sale comps or size data), " +
+        "so there's nothing to compare holding against. The DCF value above stands on its own.";
+      card.classList.remove("hidden");
+      return;
+    }
+    sellTile.classList.remove("hidden");
+    verdictTile.classList.remove("hidden");
+    document.getElementById("dcfSellVal").textContent = fmtTotal(sell.value);
+    document.getElementById("dcfSellSub").textContent = sell.source;
+
+    const delta = dcf - sell.value;
+    const deltaPct = (delta / sell.value) * 100;
+    const verdictEl = document.getElementById("dcfVerdict");
+    const verdictSubEl = document.getElementById("dcfVerdictSub");
+    let verdict;
+    if (Math.abs(deltaPct) < 2.5) {
+      verdict = "Toss-up";
+      verdictSubEl.textContent = "within " + pct1(Math.abs(deltaPct)) + "% — effectively a wash";
+    } else if (delta > 0) {
+      verdict = "Hold";
+      verdictSubEl.textContent = "holding is worth " + fmtTotal(delta) + " more (" + pct1(deltaPct) + "%)";
+    } else {
+      verdict = "Sell";
+      verdictSubEl.textContent = "selling nets " + fmtTotal(-delta) + " more (" + pct1(-deltaPct) + "%)";
+    }
+    verdictEl.textContent = verdict;
+
+    const irr = impliedHoldReturn(sell.value, cashflows, terminal);
+    holdSellEl.textContent =
+      `Hold vs. sell: this compares the DCF value of holding against selling today at the ${sell.source} ` +
+      `(${fmtTotal(sell.value)}).` +
+      (irr != null
+        ? ` Put differently, holding pencils out to an implied ~${pct1(irr)}%/yr unlevered return on today's ` +
+          `value — if you can reliably earn more than that elsewhere, selling wins; if not, holding wins. ` +
+          `Your ${pct1(disc * 100)}% discount rate is that benchmark: the verdict flips where they cross.`
+        : "");
+
+    card.classList.remove("hidden");
+  }
+
+  // Assumption edits recompute in place — client-side math only, no billing.
+  // Debounced lightly so typing "12" doesn't render at "1".
+  let dcfEditTimer = null;
+  ["dcfYears", "dcfGrowth", "dcfDisc", "dcfExitCap"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", () => {
+      if (!currentParsed || !currentMeta) return;
+      clearTimeout(dcfEditTimer);
+      dcfEditTimer = setTimeout(() => renderDcfCard(currentParsed, currentMeta, false), 200);
+    });
+  });
 
   // "What's driving prices here" — the market trend and the concrete factors
   // the model found behind current pricing. Hidden whenever the report has
@@ -2249,6 +2469,7 @@
     // Hero first: a looked-up building size auto-fills the form input, and the
     // comparison + chart below read that same input.
     renderOwnerHero(parsed, meta);
+    renderDcfCard(parsed, meta, true);
     renderValueDrivers(parsed);
     renderComparison(parsed);
     renderMarketChart();

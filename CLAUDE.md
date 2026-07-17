@@ -185,6 +185,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   tier only delivers to the owner address anyway). Rate-limited per IP.
 - `GET /api/comp-submissions` — downloads submitted comps as CSV; requires
   `ADMIN_KEY`.
+- **Comp corpus** (not a route — a persistence layer): every search response
+  (billed AND cached) has its comps harvested by `harvestComps()` into the
+  Supabase `comp_corpus` table (file fallback `comp-corpus.jsonl`, git-ignored),
+  deduped by a normalized address|date|price key (unique constraint +
+  ignore-duplicates upsert; in-memory seen-set for the file path). Fire-and-
+  forget — a corpus failure never affects the request. This is the permanent
+  raw-data layer that broker verification and future retrieval features build
+  on; the DDL lives in a comment above `harvestComps` in server.js.
+  `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`).
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
   (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do

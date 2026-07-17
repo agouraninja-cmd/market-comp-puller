@@ -18,3 +18,7 @@ search-cache.json
 shared-reports.json
 analytics.jsonl
 market-pages-dynamic.json
+comp-corpus.jsonl
+
+# Owner's local planning spreadsheets — not app code
+CompNinja*.xlsx

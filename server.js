@@ -586,6 +586,7 @@ function maybePublishMarketSnapshot(type, address, data) {
 //     property_type text not null, market text not null, address text not null,
 //     transaction text, deal_date text, size_sqft text, price_or_rate text,
 //     price_per_sqft text, cap_rate text, clear_height text, dock_doors text,
+//     tenancy text, year_built text,
 //     notes text, source_url text, source_type text, lat text, lng text,
 //     verified boolean default false
 //   );
@@ -633,6 +634,8 @@ async function harvestComps(type, searchAddress, payload) {
         cap_rate: String(c.cap_rate || ""),
         clear_height: String(c.clear_height || ""),
         dock_doors: String(c.dock_doors || ""),
+        tenancy: String(c.tenancy || ""),
+        year_built: String(c.year_built || ""),
         notes: String(c.notes || ""),
         source_url: String(c.source_url || ""),
         source_type: String(c.source_type || ""),
@@ -776,10 +779,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   const todayStr = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const cutoffStr = cutoff.toLocaleString("en-US", { month: "long", year: "numeric" });
 
-  // Industrial comps carry two extra physical-spec fields.
-  const compShape = isIndustrial
-    ? `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "clear_height": "", "dock_doors": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`
-    : `{ "address": "", "date": "", "transaction": "", "size_sqft": "", "price_or_rate": "", "price_per_sqft": "", "cap_rate": "", "notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`;
+  // Comp JSON shape: every building type carries tenancy + year-built (tenant
+  // quality moves pricing); Industrial adds two physical-spec fields; Land has
+  // no building, so it carries neither.
+  const isLand = type === "Land";
+  const industrialFields = isIndustrial ? `"clear_height": "", "dock_doors": "", ` : ``;
+  const buildingFields = isLand ? `` : `"tenancy": "", "year_built": "", `;
+  const compShape = `{ "address": "", "date": "", "transaction": "", "size_sqft": "", ${industrialFields}"price_or_rate": "", "price_per_sqft": "", "cap_rate": "", ${buildingFields}"notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`;
 
   // Trusted internal comps get their own prompt section when any exist.
   const verifiedBlock = (verifiedComps && verifiedComps.length) ? [
@@ -813,6 +819,9 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     typeGuidance[type] || "",
     isIndustrial
       ? `For EACH industrial comp, also report two building specs: "clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level"). Search listing pages, brokerage flyers, and property records for these. If a spec genuinely can't be found, use an empty string "" — do not guess.`
+      : "",
+    !isLand
+      ? `For EACH comp, also report "tenancy" = who occupies the building and the lease structure, naming the tenant when it is a single-tenant property (e.g. "Single-tenant NNN - Starbucks", "Multi-tenant, 85% occupied", "Owner-user", "Vacant"). Tenant quality moves pricing, so name national or credit tenants specifically when a source shows one. Also report "year_built" = the year the building was constructed as a 4-digit year (e.g. "1998"). If either genuinely can't be found, use an empty string "" — do not guess.`
       : "",
     verifiedBlock,
     ``,
@@ -1893,7 +1902,8 @@ const server = http.createServer((req, res) => {
     return sendCsvDownload(req, res, "comp_corpus", COMP_CORPUS_FILE,
       ["ts", "property_type", "market", "address", "transaction", "deal_date",
        "size_sqft", "price_or_rate", "price_per_sqft", "cap_rate", "clear_height",
-       "dock_doors", "notes", "source_url", "source_type", "verified"], "comp-corpus.csv");
+       "dock_doors", "tenancy", "year_built", "notes", "source_url", "source_type",
+       "verified"], "comp-corpus.csv");
   }
 
   // --- Tells the front-end whether a password is required ---

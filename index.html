@@ -1212,11 +1212,23 @@
     { key: "dock_doors",   label: "Dock Doors",   numeric: true },
   ];
 
+  // Every building type (i.e. everything except Land) carries tenancy +
+  // year-built columns after Cap Rate — tenant quality moves pricing.
+  const BUILDING_COLUMNS = [
+    { key: "tenancy",    label: "Tenancy",    numeric: false },
+    { key: "year_built", label: "Year Built", numeric: true  },
+  ];
+
   function columnsForType(type) {
-    if (type !== "Industrial") return BASE_COLUMNS.slice();
     const cols = BASE_COLUMNS.slice();
-    const sizeIdx = cols.findIndex((c) => c.key === "size_sqft");
-    cols.splice(sizeIdx + 1, 0, ...INDUSTRIAL_COLUMNS);
+    if (type !== "Land") {
+      const capIdx = cols.findIndex((c) => c.key === "cap_rate");
+      cols.splice(capIdx + 1, 0, ...BUILDING_COLUMNS);
+    }
+    if (type === "Industrial") {
+      const sizeIdx = cols.findIndex((c) => c.key === "size_sqft");
+      cols.splice(sizeIdx + 1, 0, ...INDUSTRIAL_COLUMNS);
+    }
     return cols;
   }
 
@@ -2670,11 +2682,11 @@
       "Owner-user demand from regional contractors keeps sub-$10M deals competitive",
     ],
     comps: [
-      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true, verified_by: "Lonestar Industrial Advisors" },
-      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", notes: "Cross-dock; sold to institutional buyer", source_url: "", source_type: "news", lat: "32.7020", lng: "-96.9510" },
-      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", notes: "5-year lease; rear-load flex space", source_url: "", source_type: "listing", lat: "32.7330", lng: "-97.0110" },
-      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "", source_type: "public_record", lat: "32.7120", lng: "-97.1350" },
-      { address: "900 113th St, Arlington, TX", date: "Jun 2025", transaction: "Sale", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000", price_per_sqft: "$122", cap_rate: "5.8%", notes: "2022 construction; single tenant on NNN lease", source_url: "", source_type: "estimate", lat: "32.6490", lng: "-97.0830" },
+      { address: "2801 S Great Southwest Pkwy, Grand Prairie, TX", date: "Mar 2026", transaction: "Sale", size_sqft: "86,400", clear_height: "28 ft", dock_doors: "12 dock-high, 2 grade", price_or_rate: "$9,940,000", price_per_sqft: "$115", cap_rate: "", tenancy: "Single-tenant NNN - regional 3PL", year_built: "2019", notes: "Class B distribution; 2019 build with 130' truck court", source_url: "", lat: "32.6990", lng: "-97.0430", verified: true, verified_by: "Lonestar Industrial Advisors" },
+      { address: "4650 Mountain Creek Pkwy, Dallas, TX", date: "Jan 2026", transaction: "Sale", size_sqft: "152,000", clear_height: "32 ft", dock_doors: "24 dock-high", price_or_rate: "$16,700,000", price_per_sqft: "$110", cap_rate: "6.1%", tenancy: "Multi-tenant, 92% occupied", year_built: "2001", notes: "Cross-dock; sold to institutional buyer", source_url: "", source_type: "news", lat: "32.7020", lng: "-96.9510" },
+      { address: "1310 Avenue R, Grand Prairie, TX", date: "Nov 2025", transaction: "Lease", size_sqft: "42,750", clear_height: "24 ft", dock_doors: "8 dock-high", price_or_rate: "$7.25/SF/yr NNN", price_per_sqft: "", cap_rate: "", tenancy: "Single-tenant NNN - building products distributor", year_built: "1996", notes: "5-year lease; rear-load flex space", source_url: "", source_type: "listing", lat: "32.7330", lng: "-97.0110" },
+      { address: "2222 W Pioneer Pkwy, Arlington, TX", date: "Sep 2025", transaction: "Sale", size_sqft: "61,200", clear_height: "26 ft", dock_doors: "10 dock-high, 1 ramp", price_or_rate: "$6,400,000", price_per_sqft: "$105", cap_rate: "", tenancy: "Owner-user", year_built: "1988", notes: "Owner-user sale; includes 1.2 AC fenced yard", source_url: "", source_type: "public_record", lat: "32.7120", lng: "-97.1350" },
+      { address: "900 113th St, Arlington, TX", date: "Jun 2025", transaction: "Sale", size_sqft: "118,500", clear_height: "30 ft", dock_doors: "18 dock-high, 2 grade", price_or_rate: "$14,500,000", price_per_sqft: "$122", cap_rate: "5.8%", tenancy: "Single-tenant NNN - national e-commerce tenant", year_built: "2022", notes: "2022 construction; single tenant on NNN lease", source_url: "", source_type: "estimate", lat: "32.6490", lng: "-97.0830" },
     ],
   };
 
@@ -3179,7 +3191,7 @@
         if (empty && !core) return;          // omit optional empties for compactness
         // Long values get a full-width row so they don't wrap awkwardly.
         const wide = col.key === "notes" || col.isLink ||
-          col.key === "price_or_rate" || col.key === "dock_doors";
+          col.key === "price_or_rate" || col.key === "dock_doors" || col.key === "tenancy";
         // Label stacked over value — side-by-side rows collide at phone widths.
         const row = document.createElement("div");
         row.className = wide ? "col-span-2" : "";

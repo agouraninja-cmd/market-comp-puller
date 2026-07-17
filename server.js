@@ -830,7 +830,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ``,
     `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
     `{`,
-    `  "summary": "2-4 sentence plain-English takeaway about the local market, understandable to a non-professional",`,
+    `  "summary": "3-4 sentence plain-English takeaway about the local market, understandable to a non-professional",`,
     `  "avg_price_per_sqft": "string or null",`,
     `  "subject_lat": "",`,
     `  "subject_lng": "",`,

@@ -358,7 +358,9 @@
     .rd-comps { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
     .rd-comps th { text-align: left; color: #8A93A0; font-weight: 600; padding: 7px 8px 7px 0; border-bottom: 1px solid #D8D4C9; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; }
     .rd-comps td { padding: 9px 8px 9px 0; border-bottom: 1px solid #F0EFE9; }
-    .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; }
+    /* Own line-height so the chip box stays compact even inside a roomier
+       parent line (the badge legend uses leading-6 to keep wrapped rows apart). */
+    .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
     .rd-badge.v { color: #06603A; background: #E3F2EA; }
     .rd-badge.p { color: #46536A; background: #EAEEF4; }
     .rd-badge.li { color: #7A5B12; background: #F7EFDC; }
@@ -832,10 +834,10 @@
               <div id="ownerLow" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
               <div id="ownerLowPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
-            <div class="rd-tile-hi">
+            <div class="rd-tile">
               <div class="rd-lab">Likely</div>
-              <div id="ownerMid" class="rd-h text-[30px] mt-1">-</div>
-              <div id="ownerMidPpsf" class="text-xs text-[#5A6473] mt-1"></div>
+              <div id="ownerMid" class="text-3xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="ownerMidPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
             <div class="rd-tile">
               <div class="rd-lab">High</div>
@@ -1020,7 +1022,7 @@
           <!-- Legend listing the provenance badges present in the visible comps; kept
                in exports so the badges are explained wherever the report travels.
                Built by renderBadgeLegend(). -->
-          <p id="badgeLegend" class="hidden text-xs text-[#8A93A0] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
+          <p id="badgeLegend" class="hidden text-xs leading-6 text-[#8A93A0] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
           <p class="hidden sm:block text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9] no-print">Click a column header to sort.</p>
         </div>
 
@@ -2758,7 +2760,7 @@
   // instantly without spending a live search.
   // ----------------------------------------------------------------------------
   const SAMPLE_REPORT = {
-    summary: "The DFW mid-cities industrial submarket remains tight, with Class B distribution product trading between roughly $105 and $122 per SF over the past 12 months and newer single-tenant buildings commanding a premium. Rear-load lease rates are holding near $7.25/SF NNN, and cap rates on stabilized deals have compressed into the high-5% to low-6% range.",
+    summary: "The DFW mid-cities industrial submarket remains tight, with Class B distribution product trading between roughly $105 and $122 per SF over the past 12 months and newer single-tenant buildings commanding a premium. Rear-load lease rates are holding near $7.25/SF NNN, and cap rates on stabilized deals have compressed into the high-5% to low-6% range. Owner-user demand from regional contractors continues to keep sub-$10M deals competitive, with well-located mid-bay buildings drawing multiple offers.",
     avg_price_per_sqft: "$113 (sale comps)",
     subject_lat: "32.7715",
     subject_lng: "-96.8460",

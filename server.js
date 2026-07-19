@@ -231,9 +231,11 @@ const RATE_MAX = 10; // searches per IP per window
 const rateHits = new Map();
 
 function clientIp(req) {
-  // Hosts like Render sit behind a proxy; the real client is in x-forwarded-for.
+  // Hosts like Render sit behind a proxy; the proxy APPENDS the real client to
+  // x-forwarded-for, so the last entry is the trustworthy one (earlier entries
+  // are client-supplied and spoofable — they'd let a scraper reset the limiter).
   const fwd = req.headers["x-forwarded-for"];
-  if (fwd) return String(fwd).split(",")[0].trim();
+  if (fwd) return String(fwd).split(",").pop().trim();
   return req.socket.remoteAddress || "unknown";
 }
 
@@ -2176,6 +2178,64 @@ const server = http.createServer((req, res) => {
     })().catch((err) => {
       console.error("Account delete error:", err);
       sendJson(res, 500, { error: "Could not delete the account." });
+    });
+    return;
+  }
+
+  // --- Password reset: request a link, then set the new password -----------
+  if (req.method === "POST" && req.url === "/api/account/forgot") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("acctf:" + clientIp(req), 10, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const email = String((JSON.parse(body || "{}").email) || "").trim().toLowerCase();
+        const user = email ? await findUserByEmail(email) : null;
+        if (user) {
+          const token = await createPasswordReset(user.id);
+          const link = `${SITE_URL}/#reset=${token}`;
+          if (EMAIL_FROM) {
+            sendOutboundEmail(user.email, "Reset your CompNinja password",
+              `Someone (hopefully you) asked to reset the password for this CompNinja account.\n\n` +
+              `Reset it here (link works for 1 hour):\n${link}\n\n` +
+              `If this wasn't you, ignore this email — your password is unchanged.`);
+          } else {
+            console.log(`Password reset link for ${user.email} (EMAIL_FROM unset, not emailed): ${link}`);
+          }
+        }
+        // Same answer either way — never confirms whether an account exists.
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error("forgot error:", err);
+        return sendJson(res, 500, { error: "Could not process the request." });
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/account/reset") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("acct:" + clientIp(req), 10, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const { token, password } = JSON.parse(body || "{}");
+        if (String(password || "").length < 8) {
+          return sendJson(res, 400, { error: "Password must be at least 8 characters." });
+        }
+        const userId = await consumePasswordReset(String(token || ""));
+        if (!userId) return sendJson(res, 400, { error: "That reset link is invalid or has expired — request a new one." });
+        await updateUserPassword(userId, await hashPassword(password));
+        await deleteSessionsForUser(userId); // every device must sign in again
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error("reset error:", err);
+        return sendJson(res, 500, { error: "Could not reset the password." });
+      }
     });
     return;
   }

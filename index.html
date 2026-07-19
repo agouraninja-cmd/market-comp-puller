@@ -828,6 +828,11 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span id="shareBtnLabel">Share link</span>
         </button>
+        <button id="portfolioBtn"
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+          <span id="portfolioBtnLabel">Save to portfolio</span>
+        </button>
         <button id="imgBtn"
           class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 21"/></svg>
@@ -1332,6 +1337,8 @@
   let COLUMNS = BASE_COLUMNS.slice();
 
   let currentComps = [];
+  let lastValuation = null;          // {low, likely, high, median_psf} from the last hero render
+  let pendingPortfolioRefresh = null; // portfolio item id awaiting a fresh billed report
   let currentMeta = null;
   let currentParsed = null;   // last rendered report, for client-side recomputes
   let sortState = { key: null, dir: 1 };
@@ -1773,6 +1780,7 @@
   // All arithmetic is client-side; the model only supplies market figures.
   // ----------------------------------------------------------------------------
   function renderOwnerHero(parsed, meta) {
+    lastValuation = null;
     const card = document.getElementById("ownerHero");
     if (!meta) { card.classList.add("hidden"); return; }
     // Market-level search (a city like "Boise ID", no street number) — there's
@@ -1863,6 +1871,12 @@
       animateValue(lowEl, rr.low * sizeR.min, fmtTotal);
       animateValue(midEl, rr.mid * midSize, fmtTotal);
       animateValue(highEl, rr.high * sizeR.max, fmtTotal);
+      lastValuation = {
+        low: Math.round(rr.low * sizeR.min),
+        likely: Math.round(rr.mid * midSize),
+        high: Math.round(rr.high * sizeR.max),
+        median_psf: Math.round(rr.mid * 100) / 100,
+      };
       const ppsf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });   // $/SF reads as whole dollars
       setPpsf("ownerLowPpsf", "at " + ppsf0(rr.low) + "/SF");
       setPpsf("ownerMidPpsf", "at " + ppsf0(rr.mid) + "/SF · comp median");
@@ -2843,7 +2857,10 @@
     document.getElementById("acctModal").classList.remove("hidden");
     document.getElementById(acctMode === "reset" ? "acctPassword" : "acctEmail").focus();
   }
-  function closeAcctModal() { document.getElementById("acctModal").classList.add("hidden"); }
+  function closeAcctModal() {
+    pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
+    document.getElementById("acctModal").classList.add("hidden");
+  }
 
   document.getElementById("signInLink").addEventListener("click", () => openAcctModal("signin"));
   document.getElementById("acctTabIn").addEventListener("click", () => setAcctMode("signin"));
@@ -2888,6 +2905,10 @@
         email, password, name: document.getElementById("acctName").value.trim(),
       });
       refreshAccountUI();
+      // Capture the pending-save flag BEFORE closing: closeAcctModal clears it
+      // (so a cancelled nudge can't fire a surprise save after a later sign-in).
+      const firePendingSave = pendingPortfolioSave;
+      pendingPortfolioSave = false;
       const saved = loadSavedReports();
       if (isUp && saved.length) {
         document.getElementById("acctImportCount").textContent = String(saved.length);
@@ -2896,7 +2917,7 @@
       } else {
         closeAcctModal();
       }
-      if (pendingPortfolioSave) { pendingPortfolioSave = false; savePortfolioCurrent(); }
+      if (firePendingSave) savePortfolioCurrent();
     } catch (ex) {
       err.textContent = ex.message;
       err.classList.remove("hidden");
@@ -2930,7 +2951,49 @@
     if (m) { resetToken = m[1]; openAcctModal("reset"); }
   })();
 
-  function savePortfolioCurrent() {} // replaced in the portfolio task
+  // Save the on-screen report into the server-side portfolio. currentMeta /
+  // currentParsed are the same objects the local savedReports flow uses.
+  async function savePortfolioCurrent() {
+    if (!currentParsed || !currentMeta) return;
+    if (!currentUser) {
+      pendingPortfolioSave = true;
+      openAcctModal("signup", "Create a free account to keep this report in your portfolio on any device.");
+      return;
+    }
+    const label = document.getElementById("portfolioBtnLabel");
+    label.textContent = "Saving…";
+    try {
+      const meta = {
+        address: currentMeta.address, type: currentMeta.type, note: currentMeta.note || "",
+        months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
+      };
+      await acctApi("POST", "/api/portfolio", {
+        payload: { meta, data: currentParsed },
+        snapshot: lastValuation,
+      });
+      label.textContent = "Saved ✓";
+      if (typeof renderMyDesk === "function") renderMyDesk();
+      setTimeout(() => { label.textContent = "Save to portfolio"; }, 2500);
+    } catch (ex) {
+      label.textContent = "Save to portfolio";
+      showStatus(ex.message, "error");
+    }
+  }
+  document.getElementById("portfolioBtn").addEventListener("click", savePortfolioCurrent);
+
+  document.getElementById("acctImportYes").addEventListener("click", async () => {
+    const btn = document.getElementById("acctImportYes");
+    btn.disabled = true; btn.textContent = "Importing…";
+    for (const r of loadSavedReports()) {
+      try {
+        await acctApi("POST", "/api/portfolio", { payload: { meta: r.meta, data: r.data }, snapshot: null });
+      } catch (_) { /* duplicates/failures — keep going */ }
+    }
+    btn.disabled = false; btn.textContent = "Import";
+    closeAcctModal();
+    if (typeof renderMyDesk === "function") renderMyDesk();
+  });
+  document.getElementById("acctImportNo").addEventListener("click", closeAcctModal);
 
   // ----------------------------------------------------------------------------
   // Saved reports — the full data of the last 10 real reports, stored in this
@@ -2961,6 +3024,18 @@
         localStorage.setItem(SAVED_KEY, JSON.stringify(list));
       }
     } catch (_) { /* private mode etc. — saved reports are a nicety */ }
+    // A pending "Refresh valuation" also updates the portfolio item. Deferred a
+    // tick so renderOwnerHero (called during the same render pass) has already
+    // computed lastValuation.
+    if (currentUser && pendingPortfolioRefresh) {
+      const refreshId = pendingPortfolioRefresh;
+      pendingPortfolioRefresh = null;
+      setTimeout(() => {
+        acctApi("POST", "/api/portfolio", {
+          id: refreshId, payload: { meta, data }, snapshot: lastValuation,
+        }).then(() => { if (typeof renderMyDesk === "function") renderMyDesk(); }).catch(() => {});
+      }, 0);
+    }
     renderSavedChips();
   }
 

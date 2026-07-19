@@ -634,6 +634,10 @@ function cleanSnapshot(snap) {
   const out = { ts: new Date().toISOString(), low: n(snap.low), likely: n(snap.likely), high: n(snap.high), median_psf: n(snap.median_psf) };
   return out.likely ? out : null; // a snapshot with no likely value is noise
 }
+// Guard route ids before they hit a Postgres uuid cast — a non-UUID id would
+// 500 in DB mode while file mode 404s. File-mode ids are crypto.randomUUID(),
+// so the same regex matches both modes.
+function isUuidish(v) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || "")); }
 
 // ---------------------------------------------------------------------------
 // Daily search cap — a simple in-memory counter, reset at UTC midnight. It
@@ -2318,6 +2322,7 @@ const server = http.createServer((req, res) => {
         if (!user) return;
         const id = new URL(req.url, "http://localhost").searchParams.get("id");
         if (id) {
+          if (!isUuidish(id)) return sendJson(res, 404, { error: "Not found." });
           const item = await getPortfolioItem(user.id, id);
           if (!item) return sendJson(res, 404, { error: "Not found." });
           return sendJson(res, 200, item);
@@ -2328,13 +2333,17 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === "POST") {
       let body = "";
-      req.on("data", (c) => { body += c; if (body.length > 2e6) req.destroy(); }); // full reports are big
+      req.setEncoding("utf8"); // decode per chunk — += on raw buffers mangles a multibyte char split across chunks
+      req.on("data", (c) => { body += c; if (body.length > 3e5) req.destroy(); }); // a report is a few KB; 300KB is plenty
       req.on("end", async () => {
         try {
+          if (rateLimited("pf:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
           const user = await requireUser(req, res);
           if (!user) return;
           const { id, payload, snapshot } = JSON.parse(body || "{}");
-          if (!payload || typeof payload !== "object" || !payload.meta || !payload.data) {
+          if (!payload || typeof payload !== "object" || !payload.meta || !payload.data || !Array.isArray(payload.data.comps)) {
             return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
           }
           const address = String(payload.meta.address || "").trim().slice(0, 300);
@@ -2342,6 +2351,7 @@ const server = http.createServer((req, res) => {
           if (!address || !property_type) return sendJson(res, 400, { error: "The report is missing its address or type." });
           const snap = cleanSnapshot(snapshot);
           if (id) {
+            if (!isUuidish(String(id))) return sendJson(res, 404, { error: "Not found." });
             const updated = await updatePortfolioItem(user.id, String(id), { payload, snapshot: snap });
             if (!updated) return sendJson(res, 404, { error: "Not found." });
             logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
@@ -2366,6 +2376,7 @@ const server = http.createServer((req, res) => {
         if (!user) return;
         const id = new URL(req.url, "http://localhost").searchParams.get("id");
         if (!id) return sendJson(res, 400, { error: "id is required." });
+        if (!isUuidish(id)) return sendJson(res, 200, { ok: true }); // same no-op as deleting a nonexistent scoped row
         await deletePortfolioItem(user.id, id);
         return sendJson(res, 200, { ok: true });
       })().catch((err) => { console.error("portfolio DELETE error:", err); sendJson(res, 500, { error: "Portfolio delete failed." }); });

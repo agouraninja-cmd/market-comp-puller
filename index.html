@@ -758,6 +758,23 @@
       <button id="clearSavedBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
     </div>
 
+    <!-- My Desk — the signed-in home: portfolio, watchlist, updates feed -->
+    <section id="myDesk" class="hidden mt-10 no-print">
+      <div class="flex items-center justify-between border-b rd-hairline pb-2">
+        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">My Desk</h2>
+        <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
+      </div>
+      <div class="mt-4">
+        <div class="flex items-center gap-2">
+          <span class="rd-lab">Portfolio</span>
+          <span id="deskCount" class="text-xs text-[#8A93A0]"></span>
+        </div>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and press "Save to portfolio" to start tracking a property here.</p>
+        <div id="portfolioGrid" class="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </div>
+      <div id="deskWatch" class="mt-8"><!-- watchlist + feed land here in the next task --></div>
+    </section>
+
     <!-- Status / Error -->
     <div id="statusBox" class="hidden mt-6 no-print" role="status" aria-live="polite"></div>
 
@@ -1338,7 +1355,7 @@
 
   let currentComps = [];
   let lastValuation = null;          // {low, likely, high, median_psf} from the last hero render
-  let pendingPortfolioRefresh = null; // portfolio item id awaiting a fresh billed report
+  let pendingPortfolioRefresh = null; // {id, address, type} of a portfolio item awaiting a fresh billed report
   let currentMeta = null;
   let currentParsed = null;   // last rendered report, for client-side recomputes
   let sortState = { key: null, dir: 1 };
@@ -2996,6 +3013,106 @@
   document.getElementById("acctImportNo").addEventListener("click", closeAcctModal);
 
   // ----------------------------------------------------------------------------
+  // My Desk — portfolio grid. Fetches summaries; opening a card pulls the full
+  // payload and re-renders the report locally (free). "Refresh" re-runs the
+  // live search through the normal form path (billed, cached, capped).
+  // ----------------------------------------------------------------------------
+  const fmtDeskUsd = (v) => "$" + Math.round(v).toLocaleString();
+
+  async function openPortfolioItem(id) {
+    try {
+      const item = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id));
+      hideLoadingCard();
+      showStatus(`Reopened from your portfolio (saved ${new Date(item.updated_at).toLocaleDateString()}). Refresh valuation for fresh data.`, "info");
+      renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, generatedAt: Date.parse(item.updated_at) });
+    } catch (ex) { showStatus(ex.message, "error"); }
+  }
+
+  function refreshPortfolioItem(item) {
+    // Replay the stored inputs through the real form so every rule (validation,
+    // cache, caps, type-specific columns) applies; saveReport's guarded hook
+    // writes the result + snapshot back onto this portfolio item when the
+    // matching report lands.
+    const meta = item.payload.meta;
+    document.getElementById("address").value = meta.address || "";
+    const typeSel = document.getElementById("propertyType");
+    if ([...typeSel.options].some((o) => o.value === meta.type)) typeSel.value = meta.type;
+    if (meta.subject && meta.subject.sizeMin) document.getElementById("targetSize").value = meta.subject.sizeMin;
+    pendingPortfolioRefresh = { id: item.id, address: meta.address || "", type: meta.type || "" };
+    document.getElementById("compForm").requestSubmit();
+  }
+
+  async function renderMyDesk() {
+    const desk = document.getElementById("myDesk");
+    if (!currentUser) { desk.classList.add("hidden"); return; }
+    desk.classList.remove("hidden");
+    document.getElementById("deskHello").textContent = currentUser.name ? `Signed in as ${currentUser.name}` : currentUser.email;
+    let items = [];
+    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
+    document.getElementById("deskCount").textContent = items.length ? `${items.length} propert${items.length === 1 ? "y" : "ies"}` : "";
+    document.getElementById("deskEmpty").classList.toggle("hidden", items.length > 0);
+    const grid = document.getElementById("portfolioGrid");
+    grid.innerHTML = "";
+    items.forEach((item) => {
+      const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
+      const last = snaps[snaps.length - 1] || null;
+      const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
+      const card = document.createElement("div");
+      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1";
+      const addr = document.createElement("button");
+      addr.type = "button";
+      addr.className = "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C] truncate";
+      addr.textContent = item.address;
+      addr.title = "Open this report (no new search, no cost)";
+      addr.addEventListener("click", () => openPortfolioItem(item.id));
+      card.appendChild(addr);
+      const sub = document.createElement("div");
+      sub.className = "text-xs text-[#8A93A0]";
+      sub.textContent = `${item.property_type} · updated ${new Date(item.updated_at).toLocaleDateString()}`;
+      card.appendChild(sub);
+      const val = document.createElement("div");
+      val.className = "text-lg font-semibold text-[#1A2433]";
+      val.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
+      card.appendChild(val);
+      if (last && prev && last.likely && prev.likely) {
+        const pct = ((last.likely - prev.likely) / prev.likely) * 100;
+        const d = document.createElement("div");
+        d.className = "text-xs font-medium " + (pct >= 0 ? "text-emerald-700" : "text-red-700");
+        d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% since ${new Date(prev.ts).toLocaleDateString()}`;
+        card.appendChild(d);
+      }
+      const row = document.createElement("div");
+      row.className = "flex items-center gap-3 mt-1 text-xs";
+      const refresh = document.createElement("button");
+      refresh.type = "button";
+      refresh.className = "text-[#5A6473] hover:text-[#1A2433] underline";
+      refresh.textContent = "Refresh valuation";
+      refresh.title = "Runs a new live search for this property";
+      refresh.addEventListener("click", async () => {
+        const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(item.id)).catch(() => null);
+        if (full) refreshPortfolioItem(full);
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "text-[#8A93A0] hover:text-red-700";
+      del.textContent = "Remove";
+      del.addEventListener("click", async () => {
+        if (!confirm(`Remove ${item.address} from your portfolio?`)) return;
+        try { await acctApi("DELETE", "/api/portfolio?id=" + encodeURIComponent(item.id)); } catch (_) {}
+        renderMyDesk();
+      });
+      row.appendChild(refresh); row.appendChild(del);
+      card.appendChild(row);
+      grid.appendChild(card);
+    });
+  }
+
+  document.getElementById("myDeskLink").addEventListener("click", () => {
+    renderMyDesk();
+    smoothScrollTo(document.getElementById("myDesk"));
+  });
+
+  // ----------------------------------------------------------------------------
   // Saved reports — the full data of the last 10 real reports, stored in this
   // browser (localStorage). Reopening one is instant and costs nothing.
   // ----------------------------------------------------------------------------
@@ -3024,11 +3141,16 @@
         localStorage.setItem(SAVED_KEY, JSON.stringify(list));
       }
     } catch (_) { /* private mode etc. — saved reports are a nicety */ }
-    // A pending "Refresh valuation" also updates the portfolio item. Deferred a
-    // tick so renderOwnerHero (called during the same render pass) has already
-    // computed lastValuation.
-    if (currentUser && pendingPortfolioRefresh) {
-      const refreshId = pendingPortfolioRefresh;
+    // A pending "Refresh valuation" also updates the portfolio item — but only
+    // when THIS report matches the item that requested the refresh (address +
+    // type), so an unrelated saveReport (subject-input edit, a different
+    // search) can never overwrite the portfolio item with the wrong report.
+    // Deferred a tick so renderOwnerHero (called during the same render pass)
+    // has already computed lastValuation.
+    if (currentUser && pendingPortfolioRefresh &&
+        pendingPortfolioRefresh.address === meta.address &&
+        pendingPortfolioRefresh.type === meta.type) {
+      const refreshId = pendingPortfolioRefresh.id;
       pendingPortfolioRefresh = null;
       setTimeout(() => {
         acctApi("POST", "/api/portfolio", {
@@ -4262,6 +4384,9 @@
     } catch (err) {
       console.error(err);
       hideLoadingCard();
+      // A failed search can't fulfill a pending portfolio refresh — clear it so
+      // a later unrelated report can never be written onto that item.
+      pendingPortfolioRefresh = null;
       const msg = err && err.message ? err.message : String(err);
       showStatus(
         `<strong>Something went wrong.</strong><br>${msg}` +

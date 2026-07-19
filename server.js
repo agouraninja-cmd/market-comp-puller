@@ -1747,6 +1747,93 @@ function renderBrokerProfileHTML(profile, subs) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Market intelligence — the corpus as visible data. Trends key on parsed DEAL
+// dates (harvesting only began 2026-07-17, so harvest ts can't draw a trend);
+// unparseable dates drop out of trends but stay in counts. Cached in-process
+// like MARKET_CREDIT: one corpus query per TTL, no per-request DB reads.
+// ---------------------------------------------------------------------------
+const MONTHS_IDX = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+// "2025" | "Q1 2025" | "Apr 2026" | "April 2026" | "04/2026" | "2026-04(-15)"
+// -> fractional year (mid-period), else null.
+function parseDealDate(s) {
+  const t = String(s || "").trim().toLowerCase();
+  if (!t) return null;
+  let m;
+  if ((m = t.match(/^(19|20)\d{2}$/))) return Number(t) + 0.5;
+  if ((m = t.match(/^q([1-4])\s*((19|20)\d{2})$/))) return Number(m[2]) + (Number(m[1]) * 3 - 1.5) / 12;
+  if ((m = t.match(/^([a-z]{3,9})\.?\s+((19|20)\d{2})$/))) {
+    const mo = MONTHS_IDX[m[1].slice(0, 3)];
+    return mo ? Number(m[2]) + (mo - 0.5) / 12 : null;
+  }
+  if ((m = t.match(/^(\d{1,2})\/((19|20)\d{2})$/))) {
+    const mo = Number(m[1]);
+    return mo >= 1 && mo <= 12 ? Number(m[2]) + (mo - 0.5) / 12 : null;
+  }
+  if ((m = t.match(/^((19|20)\d{2})-(\d{2})(-\d{2})?$/))) {
+    const mo = Number(m[3]);
+    return mo >= 1 && mo <= 12 ? Number(m[1]) + (mo - 0.5) / 12 : null;
+  }
+  return null;
+}
+// Sale rows with a parseable date and numeric $/SF — the trendable subset.
+function saleRowsWithDates(rows) {
+  return (rows || [])
+    .filter((r) => String(r.transaction || "").toLowerCase().startsWith("sale"))
+    .map((r) => ({ yearFrac: parseDealDate(r.deal_date), psf: corpusNum(r.price_per_sqft), dealText: String(r.deal_date || "") }))
+    .filter((r) => r.yearFrac != null && r.psf > 0);
+}
+function medianPsfOf(nums) { // upper-middle, matching the feed's formula
+  if (!nums.length) return null;
+  const sorted = [...nums].sort((a, b) => a - b);
+  return Math.round(sorted[Math.floor(sorted.length / 2)] * 100) / 100;
+}
+function halfYearBuckets(dated) {
+  const by = {};
+  dated.forEach((d) => {
+    const y = Math.floor(d.yearFrac);
+    const k = `${y} ${d.yearFrac - y < 0.5 ? "H1" : "H2"}`;
+    (by[k] = by[k] || []).push(d.psf);
+  });
+  return Object.keys(by).sort().map((k) => ({ label: k, count: by[k].length, medianPsf: medianPsfOf(by[k]) }));
+}
+
+const MARKET_INTEL = { byKey: {}, fetchedAt: 0, refreshing: false };
+const MARKET_INTEL_TTL_MS = 10 * 60 * 1000;
+async function refreshMarketIntel() {
+  if (MARKET_INTEL.refreshing) return;
+  MARKET_INTEL.refreshing = true;
+  try {
+    let rows = [];
+    if (DB_CONFIGURED) {
+      // 5000-row headroom note: revisit when the corpus approaches it.
+      rows = await sbRequest("GET",
+        "comp_corpus?select=market,property_type,address,transaction,deal_date,price_per_sqft,ts&order=ts.desc&limit=5000") || [];
+    } else {
+      rows = await readRowsFromFile(COMP_CORPUS_FILE);
+    }
+    const byKey = {};
+    for (const r of rows) {
+      const k = `${String(r.market || "").toLowerCase()}|${r.property_type || ""}`;
+      (byKey[k] = byKey[k] || []).push({
+        address: r.address, transaction: r.transaction, deal_date: r.deal_date,
+        price_per_sqft: r.price_per_sqft, ts: r.ts,
+      });
+    }
+    MARKET_INTEL.byKey = byKey;
+    MARKET_INTEL.fetchedAt = Date.now();
+  } catch (err) {
+    console.error("Market intel refresh failed; keeping previous:", err.message);
+  } finally {
+    MARKET_INTEL.refreshing = false;
+  }
+}
+// Stale-while-revalidate accessor — callers get the current cache instantly.
+function marketIntelRows(market, propertyType) {
+  if (Date.now() - MARKET_INTEL.fetchedAt > MARKET_INTEL_TTL_MS) refreshMarketIntel();
+  return MARKET_INTEL.byKey[`${String(market).toLowerCase()}|${propertyType}`] || [];
+}
+
 const MARKET_FOOTER =
   `<footer>CompNinja &middot; <a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a> &middot; ` +
   `Automated market estimates, not an appraisal. <a href="/">Run a live valuation &rarr;</a></footer>`;
@@ -3371,6 +3458,7 @@ server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
+  refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)
   loadDynamicMarketPages().then((n) => {
     console.log(`🧭 Market Explorer: ${n} visitor-generated page(s) loaded (${DB_CONFIGURED ? "Supabase market_pages" : path.basename(DYNAMIC_MARKETS_FILE) + " — EPHEMERAL on most hosts; run the market_pages DDL in Supabase for durable storage"}).`);
   });

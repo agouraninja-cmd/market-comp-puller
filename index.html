@@ -399,6 +399,19 @@
     #driversList p { border-top: 1px solid #F0EFE9; padding: 7px 0; margin: 0; }
     #driversList p:first-child { border-top: 0; }
     #driversList b { color: #B91C1C; }
+    /* Map fullscreen: a CSS viewport takeover (works on iOS too, where the
+       native Fullscreen API doesn't cover arbitrary elements). !important
+       beats the container's inline 340px height; dvh tracks mobile browser
+       chrome. body.map-locked stops the page scrolling underneath. */
+    /* position needs !important: Leaflet writes an inline position:relative
+       onto its container at init. */
+    #compMap.map-fullscreen { position: fixed !important; inset: 0; z-index: 1300; height: 100vh !important; height: 100dvh !important; width: 100vw; }
+    /* The card's entrance animation leaves a transform on #mapCard, and any
+       transformed ancestor becomes the containing block for fixed children —
+       pinning the "fullscreen" map to the card instead of the viewport. Clear
+       it while hosting the fullscreen map (identity transform: no visual change). */
+    #mapCard.map-fullscreen-host { transform: none !important; animation: none !important; }
+    body.map-locked { overflow: hidden; }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-slate-800 min-h-screen">
@@ -2281,6 +2294,12 @@
   // ----------------------------------------------------------------------------
   let mapInstance = null;
   let mapGeneration = 0;   // stale async geocodes must not touch a newer map
+  // Set by each renderMap; Esc exits fullscreen from anywhere. One listener,
+  // added once — renderMap runs per search and must not stack handlers.
+  let exitMapFullscreen = null;
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && exitMapFullscreen) exitMapFullscreen();
+  });
 
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
@@ -2348,6 +2367,53 @@
     mapInstance.on("baselayerchange", (e) => {
       try { localStorage.setItem("mapView", e.name === "Satellite" ? "satellite" : "street"); } catch (_) {}
     });
+
+    // Fullscreen toggle — a Leaflet-styled button under the zoom controls.
+    // CSS viewport takeover (not the Fullscreen API) so phones work too;
+    // Esc exits via the module-level handler. Every render starts windowed.
+    const FS_ENTER = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+    const FS_EXIT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+    let fsBtn = null;
+    const setMapFullscreen = (on) => {
+      const el = document.getElementById("compMap");
+      el.classList.toggle("map-fullscreen", on);
+      document.getElementById("mapCard").classList.toggle("map-fullscreen-host", on);
+      document.body.classList.toggle("map-locked", on);
+      if (fsBtn) {
+        fsBtn.innerHTML = on ? FS_EXIT : FS_ENTER;
+        fsBtn.title = on ? "Exit fullscreen (Esc)" : "Fullscreen";
+      }
+      if (mapInstance) {
+        mapInstance.invalidateSize();
+        // Fullscreen gets natural wheel zoom; windowed returns to click-to-arm.
+        if (on) mapInstance.scrollWheelZoom.enable();
+        else mapInstance.scrollWheelZoom.disable();
+      }
+    };
+    exitMapFullscreen = () => {
+      if (document.getElementById("compMap").classList.contains("map-fullscreen")) setMapFullscreen(false);
+    };
+    const FsControl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd() {
+        const div = L.DomUtil.create("div", "leaflet-bar");
+        const a = L.DomUtil.create("a", "", div);
+        a.href = "#";
+        a.setAttribute("role", "button");
+        a.setAttribute("aria-label", "Toggle fullscreen map");
+        a.style.display = "flex";
+        a.style.alignItems = "center";
+        a.style.justifyContent = "center";
+        fsBtn = a;
+        L.DomEvent.on(a, "click", (ev) => {
+          L.DomEvent.stop(ev);
+          setMapFullscreen(!document.getElementById("compMap").classList.contains("map-fullscreen"));
+        });
+        return div;
+      },
+    });
+    new FsControl().addTo(mapInstance);
+    setMapFullscreen(false); // fresh render always starts windowed; also sets the glyph
 
     // Wheel zoom is opt-in (armed by a click, disarmed when the cursor leaves)
     // so wheel-scrolling the report past the map never zooms it by accident.

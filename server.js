@@ -251,6 +251,279 @@ function rateLimited(ip, max = RATE_MAX, windowMs = RATE_WINDOW_MS) {
 }
 
 // ---------------------------------------------------------------------------
+// Accounts — email+password users, hashed session tokens, portfolio +
+// watchlist stores. Supabase when configured, one local JSON file otherwise.
+// DDL (run in the Supabase SQL editor; legacy service_role key already works):
+//
+//   create table users (
+//     id uuid primary key default gen_random_uuid(),
+//     email text not null unique,
+//     password_hash text not null,
+//     name text,
+//     created_at timestamptz not null default now()
+//   );
+//   create table sessions (
+//     token_hash text primary key,
+//     user_id uuid not null references users(id) on delete cascade,
+//     created_at timestamptz not null default now(),
+//     expires_at timestamptz not null
+//   );
+//   create table portfolio_items (
+//     id uuid primary key default gen_random_uuid(),
+//     user_id uuid not null references users(id) on delete cascade,
+//     address text not null,
+//     property_type text not null,
+//     payload jsonb not null,
+//     snapshots jsonb not null default '[]',
+//     created_at timestamptz not null default now(),
+//     updated_at timestamptz not null default now()
+//   );
+//   create table watchlist_items (
+//     id uuid primary key default gen_random_uuid(),
+//     user_id uuid not null references users(id) on delete cascade,
+//     market text not null,
+//     property_type text not null,
+//     last_seen_at timestamptz not null default now(),
+//     created_at timestamptz not null default now(),
+//     unique (user_id, market, property_type)
+//   );
+//   create table password_resets (
+//     token_hash text primary key,
+//     user_id uuid not null references users(id) on delete cascade,
+//     expires_at timestamptz not null,
+//     used boolean not null default false,
+//     created_at timestamptz not null default now()
+//   );
+// ---------------------------------------------------------------------------
+const ACCOUNT_STORE_FILE = path.join(__dirname, "account-store.json");
+const SESSION_COOKIE = "cn_session";
+const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;   // stay signed in ~90 days
+const RESET_TTL_MS = 60 * 60 * 1000;               // reset links live 1 hour
+
+function sha256Hex(s) { return crypto.createHash("sha256").update(String(s)).digest("hex"); }
+
+const SCRYPT_N = 16384, SCRYPT_R = 8, SCRYPT_P = 1, SCRYPT_KEYLEN = 64;
+function hashPassword(password) {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16);
+    crypto.scrypt(String(password), salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P }, (err, dk) => {
+      if (err) return reject(err);
+      resolve(`scrypt$N=${SCRYPT_N},r=${SCRYPT_R},p=${SCRYPT_P}$${salt.toString("base64")}$${dk.toString("base64")}`);
+    });
+  });
+}
+function verifyPassword(password, stored) {
+  return new Promise((resolve) => {
+    try {
+      const [algo, params, saltB64, hashB64] = String(stored || "").split("$");
+      if (algo !== "scrypt") return resolve(false);
+      const opts = {};
+      params.split(",").forEach((kv) => { const [k, v] = kv.split("="); opts[k] = Number(v); });
+      const salt = Buffer.from(saltB64, "base64");
+      const expected = Buffer.from(hashB64, "base64");
+      crypto.scrypt(String(password), salt, expected.length, { N: opts.N, r: opts.r, p: opts.p }, (err, dk) => {
+        if (err) return resolve(false);
+        resolve(dk.length === expected.length && crypto.timingSafeEqual(dk, expected));
+      });
+    } catch (_) { resolve(false); }
+  });
+}
+// Equalizes login timing whether or not the email exists.
+let DUMMY_HASH = "";
+hashPassword("dummy-timing-equalizer").then((h) => { DUMMY_HASH = h; }).catch(() => {});
+
+function parseCookies(req) {
+  const out = {};
+  String(req.headers.cookie || "").split(";").forEach((p) => {
+    const i = p.indexOf("=");
+    if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
+  });
+  return out;
+}
+function setSessionCookie(res, req, token, maxAgeSec) {
+  const secure = /^(localhost|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  res.setHeader("set-cookie",
+    `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`);
+}
+
+// --- storage: Supabase REST when configured, account-store.json otherwise ---
+async function sbRequest(method, pathAndQuery, body, extraHeaders) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${pathAndQuery}`, {
+    method,
+    headers: { ...supabaseHeaders(), ...(extraHeaders || {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`Supabase ${method} ${pathAndQuery.split("?")[0]} failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
+  const text = await r.text();
+  return text ? JSON.parse(text) : null;
+}
+
+let accountStoreCache = null;
+async function accountStore() {
+  if (accountStoreCache) return accountStoreCache;
+  try {
+    accountStoreCache = JSON.parse(await fs.promises.readFile(ACCOUNT_STORE_FILE, "utf8"));
+  } catch (_) {
+    accountStoreCache = { users: [], sessions: [], portfolio: [], watchlist: [] };
+  }
+  for (const k of ["users", "sessions", "portfolio", "watchlist"]) {
+    if (!Array.isArray(accountStoreCache[k])) accountStoreCache[k] = [];
+  }
+  return accountStoreCache;
+}
+async function saveAccountStore() {
+  await fs.promises.writeFile(ACCOUNT_STORE_FILE, JSON.stringify(accountStoreCache));
+}
+
+// --- users ---
+async function findUserByEmail(email) {
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("GET", `users?email=eq.${encodeURIComponent(email)}&limit=1`);
+    return rows && rows[0] ? rows[0] : null;
+  }
+  return (await accountStore()).users.find((u) => u.email === email) || null;
+}
+async function findUserById(id) {
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("GET", `users?id=eq.${encodeURIComponent(id)}&limit=1`);
+    return rows && rows[0] ? rows[0] : null;
+  }
+  return (await accountStore()).users.find((u) => u.id === id) || null;
+}
+async function createUser({ email, password_hash, name }) {
+  const row = { email, password_hash, name: name || "", created_at: new Date().toISOString() };
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("POST", "users", row, { prefer: "return=representation" });
+    return rows[0];
+  }
+  row.id = crypto.randomUUID();
+  (await accountStore()).users.push(row);
+  await saveAccountStore();
+  return row;
+}
+async function updateUserPassword(id, password_hash) {
+  if (DB_CONFIGURED) {
+    return sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { password_hash });
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.password_hash = password_hash; await saveAccountStore(); }
+}
+async function deleteUserCascade(id) {
+  if (DB_CONFIGURED) {
+    // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
+    return sbRequest("DELETE", `users?id=eq.${encodeURIComponent(id)}`);
+  }
+  const s = await accountStore();
+  s.users = s.users.filter((u) => u.id !== id);
+  s.sessions = s.sessions.filter((x) => x.user_id !== id);
+  s.portfolio = s.portfolio.filter((x) => x.user_id !== id);
+  s.watchlist = s.watchlist.filter((x) => x.user_id !== id);
+  await saveAccountStore();
+}
+
+// --- sessions (raw token only ever lives in the cookie; we store its hash) ---
+const sessionCache = new Map(); // token_hash -> { user_id, expires_at }
+async function createSession(userId) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const row = {
+    token_hash: sha256Hex(token),
+    user_id: userId,
+    created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+  };
+  if (DB_CONFIGURED) {
+    await sbRequest("POST", "sessions", row, { prefer: "return=minimal" });
+  } else {
+    (await accountStore()).sessions.push(row);
+    await saveAccountStore();
+  }
+  sessionCache.set(row.token_hash, { user_id: row.user_id, expires_at: row.expires_at });
+  return token;
+}
+async function findSessionByHash(tokenHash) {
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("GET", `sessions?token_hash=eq.${encodeURIComponent(tokenHash)}&limit=1`);
+    return rows && rows[0] ? rows[0] : null;
+  }
+  return (await accountStore()).sessions.find((x) => x.token_hash === tokenHash) || null;
+}
+async function deleteSessionByToken(token) {
+  const th = sha256Hex(token);
+  sessionCache.delete(th);
+  if (DB_CONFIGURED) return sbRequest("DELETE", `sessions?token_hash=eq.${encodeURIComponent(th)}`);
+  const s = await accountStore();
+  s.sessions = s.sessions.filter((x) => x.token_hash !== th);
+  await saveAccountStore();
+}
+async function deleteSessionsForUser(userId) {
+  for (const [k, v] of sessionCache) { if (v.user_id === userId) sessionCache.delete(k); }
+  if (DB_CONFIGURED) return sbRequest("DELETE", `sessions?user_id=eq.${encodeURIComponent(userId)}`);
+  const s = await accountStore();
+  s.sessions = s.sessions.filter((x) => x.user_id !== userId);
+  await saveAccountStore();
+}
+async function getSessionUser(req) {
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (!token) return null;
+  const th = sha256Hex(token);
+  let sess = sessionCache.get(th);
+  if (!sess) {
+    try { sess = await findSessionByHash(th); } catch (e) { console.error("Session lookup failed:", e.message); return null; }
+    if (sess) {
+      sessionCache.set(th, { user_id: sess.user_id, expires_at: sess.expires_at });
+      if (sessionCache.size > 5000) sessionCache.clear(); // crude cap; repopulates on demand
+    }
+  }
+  if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
+  try {
+    const user = await findUserById(sess.user_id);
+    return user ? { id: user.id, email: user.email, name: user.name || "" } : null;
+  } catch (e) { console.error("User lookup failed:", e.message); return null; }
+}
+// Route guard: replies 401 itself; callers bail on null.
+async function requireUser(req, res) {
+  const user = await getSessionUser(req);
+  if (!user) { sendJson(res, 401, { error: "Not signed in." }); return null; }
+  return user;
+}
+
+// --- password resets (memory + best-effort DB, 1-hour tokens) ---
+const resetCache = new Map(); // token_hash -> { user_id, expires_at, used }
+async function createPasswordReset(userId) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const row = {
+    token_hash: sha256Hex(token),
+    user_id: userId,
+    expires_at: new Date(Date.now() + RESET_TTL_MS).toISOString(),
+    used: false,
+    created_at: new Date().toISOString(),
+  };
+  resetCache.set(row.token_hash, row);
+  if (DB_CONFIGURED) {
+    sbRequest("POST", "password_resets", row, { prefer: "return=minimal" })
+      .catch((e) => console.error("Reset row DB insert failed (memory copy still works):", e.message));
+  }
+  return token;
+}
+async function consumePasswordReset(token) {
+  const th = sha256Hex(token);
+  let row = resetCache.get(th);
+  if (!row && DB_CONFIGURED) {
+    try {
+      const rows = await sbRequest("GET", `password_resets?token_hash=eq.${encodeURIComponent(th)}&limit=1`);
+      row = rows && rows[0] ? rows[0] : null;
+    } catch (_) { row = null; }
+  }
+  if (!row || row.used || new Date(row.expires_at).getTime() < Date.now()) return null;
+  row.used = true;
+  resetCache.set(th, row);
+  if (DB_CONFIGURED) {
+    sbRequest("PATCH", `password_resets?token_hash=eq.${encodeURIComponent(th)}`, { used: true }).catch(() => {});
+  }
+  return row.user_id;
+}
+
+// ---------------------------------------------------------------------------
 // Daily search cap — a simple in-memory counter, reset at UTC midnight. It
 // resets on redeploy/spin-down too, which is fine for this threat model:
 // sustained abuse keeps a free instance warm rather than letting it spin down.

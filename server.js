@@ -2094,6 +2094,92 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Accounts: signup / login / logout / me / delete ---------------------
+  if (req.method === "POST" && (req.url === "/api/account/signup" || req.url === "/api/account/login")) {
+    const isSignup = req.url === "/api/account/signup";
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("acct:" + clientIp(req), 10, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const { email, password, name } = JSON.parse(body || "{}");
+        const emailOk = String(email || "").trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOk)) {
+          return sendJson(res, 400, { error: "A valid email is required." });
+        }
+        if (isSignup && String(password || "").length < 8) {
+          return sendJson(res, 400, { error: "Password must be at least 8 characters." });
+        }
+        const existing = await findUserByEmail(emailOk);
+        if (isSignup) {
+          if (existing) return sendJson(res, 409, { error: "An account with this email already exists — sign in instead." });
+          const user = await createUser({
+            email: emailOk,
+            password_hash: await hashPassword(password),
+            name: String(name || "").trim().slice(0, 120),
+          });
+          const token = await createSession(user.id);
+          setSessionCookie(res, req, token, Math.floor(SESSION_TTL_MS / 1000));
+          logEvent("signup", {});
+          console.log(`Account created: ${emailOk}`);
+          return sendJson(res, 200, { email: user.email, name: user.name || "" });
+        }
+        // login — identical 401 for unknown email and wrong password.
+        const ok = await verifyPassword(password, existing ? existing.password_hash : DUMMY_HASH);
+        if (!existing || !ok) return sendJson(res, 401, { error: "Incorrect email or password." });
+        const token = await createSession(existing.id);
+        setSessionCookie(res, req, token, Math.floor(SESSION_TTL_MS / 1000));
+        logEvent("login", {});
+        return sendJson(res, 200, { email: existing.email, name: existing.name || "" });
+      } catch (err) {
+        console.error(`Error handling ${req.url}:`, err);
+        return sendJson(res, 500, { error: "Account request failed. Please try again." });
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/account/logout") {
+    req.on("data", () => {});
+    req.on("end", async () => {
+      try {
+        const token = parseCookies(req)[SESSION_COOKIE];
+        if (token) await deleteSessionByToken(token);
+      } catch (err) { console.error("Logout error:", err.message); }
+      setSessionCookie(res, req, "", 0);
+      return sendJson(res, 200, { ok: true });
+    });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/account/me") {
+    getSessionUser(req).then((user) => {
+      if (!user) return sendJson(res, 401, { error: "Not signed in." });
+      return sendJson(res, 200, { email: user.email, name: user.name });
+    }).catch((err) => {
+      console.error("me error:", err);
+      sendJson(res, 500, { error: "Account lookup failed." });
+    });
+    return;
+  }
+
+  if (req.method === "DELETE" && req.url === "/api/account") {
+    (async () => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      await deleteUserCascade(user.id);
+      setSessionCookie(res, req, "", 0);
+      console.log(`Account deleted: ${user.email}`);
+      return sendJson(res, 200, { ok: true });
+    })().catch((err) => {
+      console.error("Account delete error:", err);
+      sendJson(res, 500, { error: "Could not delete the account." });
+    });
+    return;
+  }
+
   // --- Geocode proxy. The model's lat/lng values are block-level guesses, so
   // the front-end re-places map pins from the free US Census geocoder — which
   // has no CORS headers, hence this pass-through. Failures return {} so the

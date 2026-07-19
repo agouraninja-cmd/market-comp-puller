@@ -1199,7 +1199,10 @@ async function fetchVerifiedComps(type, txFocus) {
   try {
     let url = `${SUPABASE_URL}/rest/v1/comp_submissions` +
       `?status=eq.approved&property_type=eq.${encodeURIComponent(type)}` +
-      `&select=address,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes,broker_name,broker_company` +
+      // id/broker_email feed citation tracking + profile links. Deliberately
+      // NOT cited_count: the cache signature hashes offered-comp fields, and a
+      // count that changes on every citation would bust the search cache.
+      `&select=id,broker_email,address,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes,broker_name,broker_company` +
       `&order=ts.desc&limit=25`;
     if (txFocus === "sales") url += `&transaction=eq.Sale`;
     else if (txFocus === "leases") url += `&transaction=eq.Lease`;
@@ -1355,13 +1358,37 @@ function normalizeSourceTypes(parsed) {
 // Credit the contributing broker on any verified comp the model included, by
 // matching its (faithfully-copied) address back to the submitted comp. Closes
 // the loop: brokers who feed us data get visible credit in every report.
+// Fire-and-forget +1 on each cited submission's cited_count — the broker
+// dashboard's "your comp appeared in N reports" line. Read-modify-write is
+// fine here: single server instance, and an occasional lost increment costs
+// a vanity-counter tick, never data.
+async function bumpCitedCounts(ids) {
+  if (!DB_CONFIGURED || !ids.length) return;
+  try {
+    const rows = await sbRequest("GET",
+      `comp_submissions?id=in.(${ids.join(",")})&select=id,cited_count`);
+    for (const r of rows || []) {
+      await sbRequest("PATCH", `comp_submissions?id=eq.${r.id}`,
+        { cited_count: (Number(r.cited_count) || 0) + 1 });
+    }
+  } catch (err) {
+    console.error("cited_count bump failed:", err.message);
+  }
+}
+
 function attachVerifiedAttribution(parsed, verifiedComps) {
   if (!parsed || !Array.isArray(parsed.comps) || !verifiedComps || !verifiedComps.length) return parsed;
   const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const offered = verifiedComps
-    .map((v) => ({ a: norm(v.address), by: String(v.broker_company || v.broker_name || "").trim() }))
+    .map((v) => ({
+      a: norm(v.address),
+      by: String(v.broker_company || v.broker_name || "").trim(),
+      id: Number(v.id) || null,
+      email: String(v.broker_email || "").trim().toLowerCase(),
+    }))
     .filter((v) => v.a && v.by);
   if (!offered.length) return parsed;
+  const citedIds = new Set(); // two returned comps can match one submission
   for (const c of parsed.comps) {
     if (!c || c.verified !== true) continue;
     const ca = norm(c.address);
@@ -1370,8 +1397,12 @@ function attachVerifiedAttribution(parsed, verifiedComps) {
     // (either direction, guarded by length) reliably ties it to the submission.
     const m = offered.find((v) =>
       v.a === ca || (v.a.length >= 8 && ca.length >= 8 && (ca.startsWith(v.a) || v.a.startsWith(ca))));
-    if (m) c.verified_by = m.by;
+    if (m) {
+      c.verified_by = m.by;
+      if (m.id) citedIds.add(m.id);
+    }
   }
+  if (citedIds.size) bumpCitedCounts([...citedIds]).catch(() => {});
   return parsed;
 }
 

@@ -3746,6 +3746,15 @@
         m.textContent = `median $${w.median_psf}/SF of recently collected sale comps`;
         right.appendChild(m);
       }
+      // Direction suffix — only when the server had >=3 dated sale comps in
+      // BOTH six-month deal windows (median_trend is omitted otherwise).
+      if (w.median_trend) {
+        const up = w.median_trend.current >= w.median_trend.prior;
+        const t = document.createElement("span");
+        t.className = up ? "text-[#06603A]" : "text-[#8A6D1A]";
+        t.textContent = `${up ? "▲" : "▼"} from $${w.median_trend.prior} (deals 6–12 mo ago)`;
+        right.appendChild(t);
+      }
       const un = document.createElement("button");
       un.type = "button";
       un.className = "hover:text-red-700";

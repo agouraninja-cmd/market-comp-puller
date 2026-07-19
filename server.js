@@ -2877,9 +2877,18 @@ const server = http.createServer((req, res) => {
           .sort((a, b) => a - b);
         const median_psf = salePsf.length
           ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
+        // Direction: deal-date medians, last 6 months vs the 6 before —
+        // >=3 comps each side or the field is omitted entirely.
+        const datedSales = saleRowsWithDates(rows);
+        const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
+        const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
+        const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
+        const median_trend = curWin.length >= 3 && priWin.length >= 3
+          ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
         out.push({
           id: w.id, market: w.market, property_type: w.property_type,
           median_psf, new_count: fresh.length,
+          ...(median_trend ? { median_trend } : {}),
           comps: fresh.map((r) => ({
             ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
             price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,

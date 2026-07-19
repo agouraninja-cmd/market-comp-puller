@@ -2484,12 +2484,17 @@
   }
 
   // The whole analysis cluster re-renders together so every card reads the
-  // same assumptions.
+  // same assumptions. Signed-out visitors with an NOI see one calm lock card
+  // in place of the debt + sensitivity cards (the DCF stays open to all).
   function renderAnalysisCluster(parsed, meta, resetAssumptions) {
     renderDcfCard(parsed, meta, resetAssumptions);
     renderDebtCard(parsed, meta, resetAssumptions);
     renderSensCard(parsed, meta);
+    const hasNoi = Boolean(meta && meta.subject && meta.subject.noi > 0);
+    document.getElementById("analysisLockCard").classList.toggle("hidden", Boolean(currentUser) || !hasNoi);
   }
+  document.getElementById("analysisLockBtn").addEventListener("click", () =>
+    openAcctModal("signup", "Create a free account to unlock the debt and sensitivity analysis for this report."));
 
   // Assumption edits recompute in place — client-side math only, no billing.
   // Debounced lightly so typing "12" doesn't render at "1". Inputs are
@@ -3189,6 +3194,11 @@
     const pb = document.getElementById("portfolioBtn");
     if (pb) pb.classList.remove("hidden");
     if (typeof renderMyDesk === "function") renderMyDesk();
+    // Sign-in/out swaps the analysis lock card and the real debt/sensitivity
+    // cards in place on whatever report is on screen.
+    if (typeof renderAnalysisCluster === "function" && currentParsed && currentMeta) {
+      renderAnalysisCluster(currentParsed, currentMeta, false);
+    }
   }
 
   function setAcctMode(mode) {

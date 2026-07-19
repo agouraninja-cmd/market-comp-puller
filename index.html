@@ -4811,6 +4811,25 @@
       }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aRows), "Assumptions");
 
+      const rr = (a.rentRoll || []).filter((l) => l && (l.sf > 0 || l.rent > 0));
+      if (rr.length) {
+        const subjectSf2 = s.sizeMin > 0 ? (s.sizeMin + (s.sizeMax || s.sizeMin)) / 2 : null;
+        const st = rentRollStats(rr, subjectSf2);
+        const rrAoa = [
+          ["Suite / tenant", "SF", "Annual base rent", "Expires"],
+          ...rr.map((l) => [l.label || "", l.sf || "", l.rent || "", l.endYear || ""]),
+          [],
+          ["WALT (yrs)", st.walt != null ? Math.round(st.walt * 10) / 10 : ""],
+          ...(st.occupancy != null ? [["Occupancy", Math.round(st.occupancy * 100) + "%"]] : []),
+          ["Total base rent", Math.round(st.totRent)],
+          [],
+          ["Rollover", "Leases", "SF", "% of rent"],
+          ...st.buckets.map((b) => [b.year, b.count, b.sf,
+            st.totRent > 0 ? Math.round((b.rent / st.totRent) * 100) + "%" : ""]),
+        ];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rrAoa), "Rent Roll");
+      }
+
       const slug = String(currentMeta.address).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "report";
       XLSX.writeFile(wb, `compninja-${slug}.xlsx`);
       flashExportDone(btn, "Saved");

@@ -215,6 +215,23 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   hit rate, by-type, top markets, leads by source, conversion %). **Logging is
   always on**; the dashboard only renders once `ADMIN_KEY` is set (same key as
   the lead CSV). `/admin` is `noindex` + `Disallow`ed in robots.
+- **Accounts + My Desk** (added 2026-07-19; spec/plan in `docs/superpowers/`):
+  email+password accounts with a server-synced property **portfolio**
+  (value-snapshot history per re-run) and an in-app market **watchlist** whose
+  updates feed reads the comp corpus. Auth is built into server.js — scrypt
+  (Node built-in) password hashes, 90-day session tokens stored as SHA-256
+  hashes, `cn_session` httpOnly cookie. Routes: `POST /api/account/signup|
+  login|logout|forgot|reset`, `GET /api/account/me`, `DELETE /api/account`,
+  `GET|POST|DELETE /api/portfolio`, `GET|POST|DELETE /api/watchlist`,
+  `GET /api/watchlist/feed` (exact URL, no query string), `POST
+  /api/watchlist/seen`. Storage: Supabase tables `users`, `sessions`,
+  `portfolio_items`, `watchlist_items`, `password_resets` (DDL in a comment
+  atop the Accounts section of server.js) with a git-ignored
+  `account-store.json` file fallback for local dev. Search stays fully open
+  to visitors — accounts only gate saving/watching. The feed marks items
+  "seen" only on explicit My Desk/bell clicks, never on render. Password
+  reset emails go through the Resend outbound gate (`EMAIL_FROM` +
+  `RESEND_API_KEY`); with either unset the link logs to console instead.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.
@@ -248,12 +265,17 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×
    the subject SF — the user's entry wins over the looked-up
    `subject_size_sqft`, and a looked-up size is auto-filled into the form
-   input as an editable override. NOI is **never sent to the server**: the
-   income-approach cross-check divides the browser-held NOI by the model's
-   `market_cap_rate_range`. Subject inputs persist in each report's `meta`
-   (saved reports re-render without the form), and editing size/price/NOI
-   after a report re-renders the hero/comparison/chart in place — no new
-   billed search.
+   input as an editable override. NOI **never reaches the model or any public
+   surface**: the income-approach cross-check divides the browser-held NOI by
+   the model's `market_cap_rate_range`, `/api/comps` never receives it, and
+   `/api/share` strips it before publishing. The one deliberate exception is
+   the signed-in **portfolio**: a saved report's `meta.subject` (including
+   NOI) is stored in the owner's own authenticated `portfolio_items` row so
+   the income approach re-renders cross-device — any future share-from-
+   portfolio feature must strip it the way `/api/share` does. Subject inputs
+   persist in each report's `meta` (saved reports re-render without the
+   form), and editing size/price/NOI after a report re-renders the
+   hero/comparison/chart in place — no new billed search.
 
 ## Deployment
 

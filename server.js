@@ -2273,6 +2273,7 @@ const server = http.createServer((req, res) => {
         logEvent("login", {});
         return sendJson(res, 200, { email: existing.email, name: existing.name || "" });
       } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error(`Error handling ${req.url}:`, err);
         return sendJson(res, 500, { error: "Account request failed. Please try again." });
       }
@@ -2333,18 +2334,21 @@ const server = http.createServer((req, res) => {
         if (user) {
           const token = await createPasswordReset(user.id);
           const link = `${SITE_URL}/#reset=${token}`;
-          if (EMAIL_FROM) {
+          // Gate on BOTH vars: sendOutboundEmail silently no-ops without a
+          // RESEND_API_KEY, which would swallow the reset link entirely.
+          if (EMAIL_FROM && RESEND_API_KEY) {
             sendOutboundEmail(user.email, "Reset your CompNinja password",
               `Someone (hopefully you) asked to reset the password for this CompNinja account.\n\n` +
               `Reset it here (link works for 1 hour):\n${link}\n\n` +
               `If this wasn't you, ignore this email — your password is unchanged.`);
           } else {
-            console.log(`Password reset link for ${user.email} (EMAIL_FROM unset, not emailed): ${link}`);
+            console.log(`Password reset link for ${user.email} (outbound email not configured, not emailed): ${link}`);
           }
         }
         // Same answer either way — never confirms whether an account exists.
         return sendJson(res, 200, { ok: true });
       } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("forgot error:", err);
         return sendJson(res, 500, { error: "Could not process the request." });
       }
@@ -2370,6 +2374,7 @@ const server = http.createServer((req, res) => {
         await deleteSessionsForUser(userId); // every device must sign in again
         return sendJson(res, 200, { ok: true });
       } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("reset error:", err);
         return sendJson(res, 500, { error: "Could not reset the password." });
       }
@@ -2427,6 +2432,7 @@ const server = http.createServer((req, res) => {
           logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
           return sendJson(res, 200, { id: item.id, snapshots: item.snapshots });
         } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("portfolio POST error:", err);
           return sendJson(res, 500, { error: "Portfolio save failed." });
         }
@@ -2482,6 +2488,7 @@ const server = http.createServer((req, res) => {
           logEvent("watchlist_add", { prop_type: typeOk, market: marketOk });
           return sendJson(res, 200, { id: item.id });
         } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("watchlist POST error:", err);
           return sendJson(res, 500, { error: "Watchlist save failed." });
         }

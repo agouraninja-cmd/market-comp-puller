@@ -4433,8 +4433,13 @@
   // ----------------------------------------------------------------------------
   // Submit -> our backend proxy (key stays on the server)
   // ----------------------------------------------------------------------------
+  // One billed search at a time — the portfolio Refresh button and the error
+  // retry button both re-enter this handler via requestSubmit(), where the
+  // disabled submit button alone can't stop a double fire.
+  let searchInFlight = false;
   document.getElementById("compForm").addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (searchInFlight) return;
     const address = document.getElementById("address").value.trim();
     const type = document.getElementById("propertyType").value;
     const note = document.getElementById("marketNote").value.trim();
@@ -4472,6 +4477,9 @@
 
     // Returning users usually search the same asset class — remember it.
     try { localStorage.setItem("lastPropertyType", type); } catch (_) {}
+
+    if (searchInFlight) return; // re-check: the geocode await above can interleave a second submit
+    searchInFlight = true;
 
     document.getElementById("results").classList.add("hidden");
     hideStatus();
@@ -4532,6 +4540,7 @@
       const retry = document.getElementById("retryBtn");
       if (retry) retry.addEventListener("click", () => document.getElementById("compForm").requestSubmit());
     } finally {
+      searchInFlight = false;
       setLoading(false);
     }
   });

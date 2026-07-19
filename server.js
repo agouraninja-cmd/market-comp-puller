@@ -2459,9 +2459,13 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === "POST") {
       let body = "";
+      req.setEncoding("utf8"); // decode per chunk — += on raw buffers mangles a multibyte char split across chunks
       req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
       req.on("end", async () => {
         try {
+          if (rateLimited("wl:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
           const user = await requireUser(req, res);
           if (!user) return;
           const { market, property_type } = JSON.parse(body || "{}");
@@ -2500,6 +2504,9 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "GET" && req.url === "/api/watchlist/feed") {
     (async () => {
+      if (rateLimited("wlf:" + clientIp(req), 60)) {
+        return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+      }
       const user = await requireUser(req, res);
       if (!user) return;
       const items = await listWatchlist(user.id);

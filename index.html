@@ -772,7 +772,21 @@
         <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and press "Save to portfolio" to start tracking a property here.</p>
         <div id="portfolioGrid" class="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
       </div>
-      <div id="deskWatch" class="mt-8"><!-- watchlist + feed land here in the next task --></div>
+      <div id="deskWatch" class="mt-8">
+        <span class="rd-lab">Watchlist</span>
+        <form id="watchForm" class="mt-2 flex flex-wrap items-center gap-2">
+          <input id="watchCity" type="text" placeholder="City" aria-label="City"
+            class="w-40 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
+            class="w-14 rounded-lg border border-slate-300 px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <select id="watchType" aria-label="Property type"
+            class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
+          <button type="submit"
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Watch market</button>
+          <span id="watchError" class="hidden text-sm text-red-600"></span>
+        </form>
+        <div id="feedWrap" class="mt-3 space-y-4"></div>
+      </div>
     </section>
 
     <!-- Status / Error -->
@@ -3105,10 +3119,132 @@
       card.appendChild(row);
       grid.appendChild(card);
     });
+    renderWatchFeed();
   }
 
   document.getElementById("myDeskLink").addEventListener("click", () => {
     renderMyDesk();
+    renderWatchFeed({ markSeen: true });
+    smoothScrollTo(document.getElementById("myDesk"));
+  });
+
+  // ----------------------------------------------------------------------------
+  // Watchlist + updates feed. The bell badge shows unseen comp count; opening
+  // My Desk (or the bell) marks everything seen — rendering alone never does.
+  // ----------------------------------------------------------------------------
+  (function initWatchTypeOptions() {
+    const src = document.getElementById("propertyType");
+    const dst = document.getElementById("watchType");
+    [...src.options].forEach((o) => { if (o.value) dst.appendChild(new Option(o.textContent, o.value)); });
+  })();
+
+  function setBell(unseen) {
+    const badge = document.getElementById("bellBadge");
+    badge.textContent = unseen > 99 ? "99+" : String(unseen);
+    badge.classList.toggle("hidden", !unseen);
+  }
+
+  async function renderWatchFeed({ markSeen } = {}) {
+    if (!currentUser) return;
+    let feed = null;
+    try { feed = await acctApi("GET", "/api/watchlist/feed"); } catch (_) { return; }
+    setBell(feed.unseen);
+    const wrap = document.getElementById("feedWrap");
+    wrap.innerHTML = "";
+    if (!feed.items.length) {
+      const p = document.createElement("p");
+      p.className = "text-sm text-[#5A6473]";
+      p.textContent = "Watch a market above and new comps will show up here as they're found.";
+      wrap.appendChild(p);
+    }
+    feed.items.forEach((w) => {
+      const box = document.createElement("div");
+      box.className = "border border-[#D8D4C9] rounded-lg bg-white p-3";
+      const head = document.createElement("div");
+      head.className = "flex items-center justify-between gap-2";
+      const title = document.createElement("div");
+      title.className = "text-sm font-medium text-[#1A2433]";
+      title.textContent = `${w.property_type} · ${w.market}`;
+      const right = document.createElement("div");
+      right.className = "flex items-center gap-3 text-xs text-[#8A93A0]";
+      if (w.median_psf) {
+        const m = document.createElement("span");
+        m.textContent = `median $${w.median_psf}/SF of recently collected sale comps`;
+        right.appendChild(m);
+      }
+      const un = document.createElement("button");
+      un.type = "button";
+      un.className = "hover:text-red-700";
+      un.textContent = "Unwatch";
+      un.addEventListener("click", async () => {
+        try { await acctApi("DELETE", "/api/watchlist?id=" + encodeURIComponent(w.id)); } catch (_) {}
+        renderWatchFeed();
+      });
+      right.appendChild(un);
+      head.appendChild(title); head.appendChild(right);
+      box.appendChild(head);
+      if (w.comps.length) {
+        const label = document.createElement("div");
+        label.className = "text-xs font-medium text-[#B91C1C] mt-2";
+        label.textContent = `${w.new_count} new comp${w.new_count === 1 ? "" : "s"} since your last visit`;
+        box.appendChild(label);
+        const ul = document.createElement("ul");
+        ul.className = "mt-1 space-y-1";
+        w.comps.forEach((c) => {
+          const li = document.createElement("li");
+          li.className = "text-xs text-[#4C5665] flex flex-wrap items-center gap-x-2";
+          const bits = [c.address, c.transaction, c.deal_date, c.price_or_rate,
+            c.price_per_sqft ? c.price_per_sqft + "/SF" : "", c.cap_rate].filter(Boolean);
+          li.textContent = bits.join(" · ");
+          if (/^https?:\/\//i.test(String(c.source_url || ""))) {
+            const a = document.createElement("a");
+            a.href = c.source_url;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.className = "text-[#8A93A0] underline hover:text-[#1A2433]";
+            a.textContent = "source";
+            li.appendChild(a);
+          }
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      } else {
+        const q = document.createElement("div");
+        q.className = "text-xs text-[#8A93A0] mt-2";
+        q.textContent = "Quiet since your last visit.";
+        box.appendChild(q);
+      }
+      wrap.appendChild(box);
+    });
+    if (markSeen && feed.unseen) {
+      try { await acctApi("POST", "/api/watchlist/seen"); } catch (_) {}
+      setBell(0);
+    }
+  }
+
+  document.getElementById("watchForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById("watchError");
+    errEl.classList.add("hidden");
+    const city = document.getElementById("watchCity").value.trim().replace(/[‘’]/g, "'");
+    const st = document.getElementById("watchState").value.trim().toUpperCase();
+    try {
+      await acctApi("POST", "/api/watchlist", {
+        market: `${city}, ${st}`,
+        property_type: document.getElementById("watchType").value,
+      });
+      document.getElementById("watchCity").value = "";
+      document.getElementById("watchState").value = "";
+      renderWatchFeed();
+    } catch (ex) {
+      errEl.textContent = ex.message;
+      errEl.classList.remove("hidden");
+    }
+  });
+
+  document.getElementById("bellBtn").addEventListener("click", () => {
+    renderMyDesk();
+    renderWatchFeed({ markSeen: true });
     smoothScrollTo(document.getElementById("myDesk"));
   });
 

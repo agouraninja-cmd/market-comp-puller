@@ -959,7 +959,13 @@ const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft) {
   const body = {
     model: MODEL,
-    max_tokens: 3200,
+    // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
+    // text plus the final JSON. The per-comp schema has grown (clear_height/
+    // dock_doors, tenancy, year_built, a 3-4 sentence summary), so 3200 could
+    // get cut off mid-array on a busy 8-comp Industrial report. Billing is by
+    // actual tokens generated, not this cap, so raising it costs nothing on
+    // the (much more common) shorter reports.
+    max_tokens: 8000,
     // The subject-size lookup gets two extra searches so it doesn't crowd out
     // the comp searches themselves.
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: !subjectSizeSqft ? 8 : 6 }],
@@ -1014,14 +1020,25 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
   }
-  // The model occasionally wraps the JSON in stray text; one silent retry
-  // resolves most of those instead of surfacing a parse error to the user.
+  // The model occasionally wraps the JSON in stray text, or truncates it on a
+  // long busy report; one silent retry resolves most of those instead of
+  // surfacing a parse error to the user. If the retry ALSO fails to parse,
+  // never leak the raw JSON.parse error text to the client — it's meaningless
+  // to a visitor and reads like a broken site rather than a one-off hiccup.
   try {
     return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
-      return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft);
+      try {
+        return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft);
+      } catch (err2) {
+        if (err2 instanceof SyntaxError) {
+          console.warn("Comp JSON failed to parse on retry too; giving up.", err2.message);
+          throw new Error("The search came back in an unexpected format. Please try again.");
+        }
+        throw err2;
+      }
     }
     throw err;
   }

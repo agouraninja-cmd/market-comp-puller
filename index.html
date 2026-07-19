@@ -409,8 +409,11 @@
     /* The card's entrance animation leaves a transform on #mapCard, and any
        transformed ancestor becomes the containing block for fixed children —
        pinning the "fullscreen" map to the card instead of the viewport. Clear
-       it while hosting the fullscreen map (identity transform: no visual change). */
-    #mapCard.map-fullscreen-host { transform: none !important; animation: none !important; }
+       it while hosting the fullscreen map. CRITICAL: #reportArea > * has a
+       base opacity of 0 (the entrance animation's fill is what makes cards
+       visible), so killing the animation MUST come with opacity:1 — without
+       it the fullscreen map is an invisible click-blocking overlay. */
+    #mapCard.map-fullscreen-host { transform: none !important; opacity: 1 !important; animation: none !important; }
     body.map-locked { overflow: hidden; }
   </style>
 </head>

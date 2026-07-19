@@ -312,9 +312,13 @@
       #reportArea { box-shadow: none; }
       .print-shadow-none { box-shadow: none !important; border-color: #E4E2DA !important; }
       @page { margin: 14mm 12mm; }
-      /* Keep each report card on one page. The entrance cascade starts cards
-         at opacity 0, so they must be forced visible for a fast Ctrl+P. */
-      #reportArea > * {
+      /* Tabs are screen-only navigation — a printed report is the whole
+         document, so both tab panels are forced visible. */
+      #tabReport, #tabAnalysis { display: block !important; }
+      /* Keep each report card on one page (cards now sit one level deeper,
+         inside the tab wrappers). The entrance cascade starts cards at
+         opacity 0, so they must be forced visible for a fast Ctrl+P. */
+      #reportArea > *, #tabReport > *, #tabAnalysis > * {
         break-inside: avoid; page-break-inside: avoid;
         animation: none !important; opacity: 1 !important;
       }
@@ -995,6 +999,16 @@
           </div>
         </div>
 
+        <!-- Report | Analysis tabs — the hero stays above; everything below
+             splits into two wrappers. Screen-only navigation: print CSS forces
+             both wrappers visible so PDFs keep the whole document. -->
+        <div id="reportTabs" class="no-print flex items-center gap-6 border-b rd-hairline">
+          <button id="tabBtnReport" type="button" class="pb-2 text-sm font-semibold text-[#1A2433] border-b-2 border-[#B91C1C] -mb-px">Market Report</button>
+          <button id="tabBtnAnalysis" type="button" class="pb-2 text-sm font-medium text-[#5A6473] border-b-2 border-transparent -mb-px hover:text-[#1A2433]">Analysis</button>
+        </div>
+
+        <div id="tabAnalysis" class="hidden space-y-6">
+
         <!-- DCF + hold/sell analysis — client-side math on the browser-held NOI
              (never sent to the server), shown only when an NOI is entered.
              Assumption inputs are no-print: the explanation paragraph restates
@@ -1128,6 +1142,12 @@
           <p id="sensNote" class="text-xs text-[#8A93A0] mt-3"></p>
         </div>
 
+        <p id="analysisEmpty" class="hidden text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
+
+        </div><!-- /tabAnalysis -->
+
+        <div id="tabReport" class="space-y-6">
+
         <!-- Key stats row — the report leads with scannable numbers (built per search) -->
         <div id="statTiles" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
 
@@ -1229,6 +1249,8 @@
           <p id="badgeLegend" class="hidden text-xs leading-6 text-[#8A93A0] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
           <p class="hidden sm:block text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9] no-print">Click a column header to sort.</p>
         </div>
+
+        </div><!-- /tabReport -->
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
         <p class="text-center text-xs text-[#8A93A0]">
@@ -2489,6 +2511,23 @@
     card.classList.remove("hidden");
   }
 
+  // Report | Analysis tabs — pure class toggling; print CSS ignores them
+  // (both panels forced visible on paper).
+  function setReportTab(which) {
+    const isReport = which !== "analysis";
+    document.getElementById("tabReport").classList.toggle("hidden", !isReport);
+    document.getElementById("tabAnalysis").classList.toggle("hidden", isReport);
+    const on = "pb-2 text-sm font-semibold text-[#1A2433] border-b-2 border-[#B91C1C] -mb-px";
+    const off = "pb-2 text-sm font-medium text-[#5A6473] border-b-2 border-transparent -mb-px hover:text-[#1A2433]";
+    document.getElementById("tabBtnReport").className = isReport ? on : off;
+    document.getElementById("tabBtnAnalysis").className = isReport ? off : on;
+    if (!isReport && currentParsed && currentMeta) renderAnalysisCluster(currentParsed, currentMeta, false);
+    // Leaflet renders blank tiles if its container was hidden — re-measure.
+    if (isReport && mapInstance) setTimeout(() => mapInstance.invalidateSize(), 50);
+  }
+  document.getElementById("tabBtnReport").addEventListener("click", () => setReportTab("report"));
+  document.getElementById("tabBtnAnalysis").addEventListener("click", () => setReportTab("analysis"));
+
   // The whole analysis cluster re-renders together so every card reads the
   // same assumptions. Signed-out visitors with an NOI see one calm lock card
   // in place of the debt + sensitivity cards (the DCF stays open to all).
@@ -2498,6 +2537,7 @@
     renderSensCard(parsed, meta);
     const hasNoi = Boolean(meta && meta.subject && meta.subject.noi > 0);
     document.getElementById("analysisLockCard").classList.toggle("hidden", Boolean(currentUser) || !hasNoi);
+    document.getElementById("analysisEmpty").classList.toggle("hidden", hasNoi);
   }
   document.getElementById("analysisLockBtn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to unlock the debt and sensitivity analysis for this report."));
@@ -3083,6 +3123,7 @@
     // comparison + chart below read that same input.
     renderOwnerHero(parsed, meta);
     renderAnalysisCluster(parsed, meta, true);
+    setReportTab("report");   // every fresh render lands on the familiar report
     renderValueDrivers(parsed);
     renderComparison(parsed);
     renderMarketChart();

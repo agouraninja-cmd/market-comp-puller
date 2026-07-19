@@ -576,6 +576,7 @@
         <div class="text-3xl mb-2">🤝</div>
         <h2 class="text-lg font-semibold text-slate-900">Thanks, we got it.</h2>
         <p class="text-sm text-slate-500 mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit — and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
+        <p class="text-xs text-slate-400 mt-2">Tip: create a free CompNinja account with this same email to track your submissions and see when reports cite your comps.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Submit another</button>
           <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Done</button>
@@ -786,6 +787,24 @@
           <span id="watchError" class="hidden text-sm text-red-600"></span>
         </form>
         <div id="feedWrap" class="mt-3 space-y-4"></div>
+      </div>
+      <div id="deskBroker" class="hidden mt-8">
+        <div class="flex items-center gap-2">
+          <span class="rd-lab">Broker</span>
+          <span id="brokerStats" class="text-xs text-[#8A93A0]"></span>
+        </div>
+        <div id="brokerRows" class="mt-2 space-y-1.5"></div>
+        <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+          <button id="brokerSubmitBtn" type="button"
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Submit another comp</button>
+          <label id="brokerProfileWrap" class="hidden flex items-center gap-2 text-[#4C5665] cursor-pointer">
+            <input id="brokerProfileToggle" type="checkbox" class="accent-[#B91C1C]" />
+            <span>Public broker profile</span>
+          </label>
+          <a id="brokerProfileLink" class="hidden text-[#B91C1C] underline" href="#" target="_blank" rel="noopener">View profile</a>
+          <span id="brokerProfileErr" class="hidden text-red-600 text-xs"></span>
+        </div>
+        <p class="text-xs text-[#8A93A0] mt-1.5">Your public profile shows your name, firm, and contribution stats — never your email or phone.</p>
       </div>
     </section>
 
@@ -3120,6 +3139,7 @@
       grid.appendChild(card);
     });
     renderWatchFeed();
+    renderBrokerDesk();
   }
 
   document.getElementById("myDeskLink").addEventListener("click", () => {
@@ -3246,6 +3266,89 @@
     renderMyDesk();
     renderWatchFeed({ markSeen: true });
     smoothScrollTo(document.getElementById("myDesk"));
+  });
+
+  // ----------------------------------------------------------------------------
+  // Broker desk — appears when the signed-in account's email matches comp
+  // submissions. Server returns only the user's own rows; everything renders
+  // via createElement/textContent (submission text is broker-typed).
+  // ----------------------------------------------------------------------------
+  const BROKER_STATUS_CHIP = {
+    approved: "text-[#06603A] bg-[#E7F5EE] border-[#BFE5D2]",
+    pending:  "text-[#8A6D1A] bg-[#FBF3DC] border-[#EDDFB0]",
+    rejected: "text-[#8A93A0] bg-[#F1F0EC] border-[#D8D4C9]",
+  };
+  async function renderBrokerDesk() {
+    const box = document.getElementById("deskBroker");
+    if (!currentUser) { box.classList.add("hidden"); return; }
+    let d = null;
+    try { d = await acctApi("GET", "/api/broker/me"); } catch (_) { box.classList.add("hidden"); return; }
+    if (!d.isBroker) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    document.getElementById("brokerStats").textContent =
+      `${d.stats.approved} approved · ${d.stats.citations} report citation${d.stats.citations === 1 ? "" : "s"}`;
+    const rowsEl = document.getElementById("brokerRows");
+    rowsEl.innerHTML = "";
+    d.submissions.forEach((sub) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const addr = document.createElement("span");
+      addr.className = "font-medium text-[#1A2433]";
+      addr.textContent = sub.address;
+      row.appendChild(addr);
+      const meta = document.createElement("span");
+      meta.className = "text-xs text-[#8A93A0]";
+      meta.textContent = [sub.property_type, sub.transaction, sub.deal_date].filter(Boolean).join(" · ");
+      row.appendChild(meta);
+      const st = ["approved", "rejected"].includes(sub.status) ? sub.status : "pending";
+      const chip = document.createElement("span");
+      chip.className = "text-[10px] font-semibold uppercase tracking-wide border rounded-full px-2 py-0.5 " + BROKER_STATUS_CHIP[st];
+      chip.textContent = st;
+      row.appendChild(chip);
+      if (sub.cited_count > 0) {
+        const cited = document.createElement("span");
+        cited.className = "text-xs text-[#06603A]";
+        cited.textContent = `cited ${sub.cited_count}×`;
+        row.appendChild(cited);
+      }
+      rowsEl.appendChild(row);
+    });
+    const wrap = document.getElementById("brokerProfileWrap");
+    const toggle = document.getElementById("brokerProfileToggle");
+    const link = document.getElementById("brokerProfileLink");
+    wrap.classList.toggle("hidden", !d.db);
+    toggle.checked = Boolean(d.profile && d.profile.public);
+    link.classList.toggle("hidden", !(d.profile && d.profile.public));
+    if (d.profile) link.href = d.profile.url;
+  }
+  document.getElementById("brokerSubmitBtn").addEventListener("click", () => {
+    openCompModal();
+    // Returning contributor — spare them retyping who they are.
+    if (currentUser) {
+      const name = document.getElementById("compBrokerName");
+      const email = document.getElementById("compBrokerEmail");
+      if (!email.value) email.value = currentUser.email;
+      if (!name.value && currentUser.name) name.value = currentUser.name;
+    }
+  });
+  document.getElementById("brokerProfileToggle").addEventListener("change", async (e) => {
+    const toggle = e.target;
+    const err = document.getElementById("brokerProfileErr");
+    err.classList.add("hidden");
+    const want = toggle.checked;
+    toggle.disabled = true;
+    try {
+      const r = await acctApi("POST", "/api/broker/profile", { public: want });
+      const link = document.getElementById("brokerProfileLink");
+      link.href = r.url;
+      link.classList.toggle("hidden", !r.public);
+    } catch (ex) {
+      toggle.checked = !want;
+      err.textContent = ex.message;
+      err.classList.remove("hidden");
+    } finally {
+      toggle.disabled = false;
+    }
   });
 
   // ----------------------------------------------------------------------------
@@ -3707,9 +3810,19 @@
     const wrap = document.createElement("span");
     wrap.className = "inline align-middle";
     wrap.appendChild(badge);
-    const cred = document.createElement("span");
-    cred.className = "ml-1.5 text-[10px] text-[#06603A] align-middle";
+    // A public contributor profile turns the credit into a link (server only
+    // attaches verified_by_slug when the broker opted in).
+    const slug = String(comp.verified_by_slug || "");
+    const linked = /^[a-z0-9-]{3,80}$/.test(slug);
+    const cred = document.createElement(linked ? "a" : "span");
+    cred.className = "ml-1.5 text-[10px] text-[#06603A] align-middle" + (linked ? " underline hover:text-[#04452A]" : "");
     cred.textContent = "· " + by;
+    if (linked) {
+      cred.href = "/broker/" + encodeURIComponent(slug);
+      cred.target = "_blank";
+      cred.rel = "noopener";
+      cred.title = "View " + by + "'s contributor profile";
+    }
     wrap.appendChild(cred);
     return wrap;
   }

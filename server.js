@@ -3147,15 +3147,22 @@ const server = http.createServer((req, res) => {
         if (!report || !Array.isArray(report.comps) || !meta || !meta.address) {
           return sendJson(res, 400, { error: "A complete report is required to share." });
         }
-        // NOI is the owner's private income figure — never let it ride along on
-        // a link that can be forwarded. The sales-comparison value still shows;
-        // only the income-approach cross-check drops out.
+        // NOI and loan terms are the owner's private finances — never let them
+        // ride along on a link that can be forwarded. The sales-comparison
+        // value still shows; the income-approach cross-check and the debt
+        // module drop out. DCF assumptions (hold/growth/discount/exit cap)
+        // stay: they're opinions, not finances.
         const safeMeta = { ...meta };
         if (safeMeta.subject) {
           safeMeta.subject = { ...safeMeta.subject, noi: null };
         }
+        if (safeMeta.assumptions && typeof safeMeta.assumptions === "object") {
+          safeMeta.assumptions = { ...safeMeta.assumptions };
+          delete safeMeta.assumptions.debt;
+        }
         delete safeMeta.sample;
         delete safeMeta.fromHistory;
+        delete safeMeta.portfolioId;
         safeMeta.shared = true;
         safeMeta.generatedAt = meta.generatedAt || Date.now();
         const id = newShareId();

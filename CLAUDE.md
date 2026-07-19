@@ -268,11 +268,15 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    input as an editable override. NOI **never reaches the model or any public
    surface**: the income-approach cross-check divides the browser-held NOI by
    the model's `market_cap_rate_range`, `/api/comps` never receives it, and
-   `/api/share` strips it before publishing. The one deliberate exception is
-   the signed-in **portfolio**: a saved report's `meta.subject` (including
-   NOI) is stored in the owner's own authenticated `portfolio_items` row so
-   the income approach re-renders cross-device — any future share-from-
-   portfolio feature must strip it the way `/api/share` does. Subject inputs
+   `/api/share` strips it before publishing. The same rule covers **debt
+   terms** (`meta.assumptions.debt` — loan amount/rate/amortization, powering
+   the debt & refi card): private finances, stripped from shares. The DCF's
+   four assumptions (hold/growth/discount/exit cap) are opinions, not
+   finances, and stay in shares. The one deliberate exception for both NOI
+   and debt is the signed-in **portfolio**: a saved report's `meta.subject`
+   and `meta.assumptions` are stored in the owner's own authenticated
+   `portfolio_items` row so the analysis re-renders cross-device — any future
+   share-from-portfolio feature must strip them the way `/api/share` does. Subject inputs
    persist in each report's `meta` (saved reports re-render without the
    form), and editing size/price/NOI after a report re-renders the
    hero/comparison/chart in place — no new billed search.

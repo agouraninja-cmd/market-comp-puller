@@ -1881,6 +1881,74 @@ function renderMarketPageHTML(slug, p, opts = {}) {
       `<ul>${p.value_drivers.map((d) => `<li>${escHtml(d)}</li>`).join("")}</ul></div>`
     : "";
 
+  // Market intelligence — the live corpus view (plus this page's own seeded
+  // comps, deduped). Under-claim rule: a trend renders only with >=6 dated
+  // sale comps across >=2 half-years; thin markets get the tracking line.
+  const normAddr = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const corpusRows = marketIntelRows(`${p.city}, ${p.state}`, p.type);
+  const seenKeys = new Set(corpusRows.map((r) => `${normAddr(r.address)}|${String(r.deal_date || "").toLowerCase()}`));
+  const mergedRows = [
+    ...corpusRows,
+    ...(p.comps || [])
+      .filter((c) => !seenKeys.has(`${normAddr(c.address)}|${String(c.date || "").toLowerCase()}`))
+      .map((c) => ({ address: c.address, transaction: c.transaction, deal_date: c.date, price_per_sqft: c.price_per_sqft, ts: null })),
+  ];
+  const dated = saleRowsWithDates(mergedRows);
+  const buckets = halfYearBuckets(dated).slice(-6); // label crowding cap
+  let trendSvg = "";
+  if (dated.length >= 6 && buckets.length >= 2) {
+    const w = 640, hgt = 120, pad = 34;
+    const meds = buckets.map((b) => b.medianPsf);
+    const lo = Math.min(...meds), hi = Math.max(...meds);
+    const x = (i) => pad + (i * (w - 2 * pad)) / Math.max(1, buckets.length - 1);
+    const y = (v) => (hi === lo ? hgt / 2 : hgt - pad - ((v - lo) * (hgt - 2 * pad)) / (hi - lo));
+    const pts = buckets.map((b, i) => `${Math.round(x(i))},${Math.round(y(b.medianPsf))}`).join(" ");
+    trendSvg =
+      `<svg viewBox="0 0 ${w} ${hgt + 30}" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Median price per square foot by half-year">` +
+      `<polyline fill="none" stroke="#0f172a" stroke-width="2" points="${pts}"/>` +
+      buckets.map((b, i) => {
+        const cx = Math.round(x(i)), cy = Math.round(y(b.medianPsf));
+        return `<circle cx="${cx}" cy="${cy}" r="4" fill="${i === buckets.length - 1 ? "#b91c1c" : "#0f172a"}"/>` +
+          `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">${usd0(b.medianPsf)}</text>` +
+          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#64748b">${escHtml(b.label)} &middot; ${b.count}</text>`;
+      }).join("") +
+      `</svg>`;
+  }
+  const nowD = new Date();
+  const nowFrac = nowD.getFullYear() + (nowD.getMonth() + 0.5) / 12;
+  const last12 = dated.filter((d) => nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
+  const median12 = last12.length >= 3 ? medianPsfOf(last12) : null;
+  const tsList = corpusRows.map((r) => Date.parse(r.ts)).filter((n) => n > 0);
+  const since = tsList.length ? new Date(Math.min(...tsList)) : null;
+  const latestDeal = dated.length ? dated.reduce((a, b) => (a.yearFrac >= b.yearFrac ? a : b)).dealText : null;
+  const statsBits = [
+    since ? `Tracking this market since ${since.toLocaleString("en-US", { month: "short", year: "numeric" })}` : `Tracking this market`,
+    `${mergedRows.length} comp${mergedRows.length === 1 ? "" : "s"}`,
+    median12 ? `12-month median ${usd0(median12)}/SF` : null,
+    latestDeal ? `latest deal ${escHtml(latestDeal)}` : null,
+  ].filter(Boolean).join(" &middot; ");
+  const qNum = Math.floor(nowD.getMonth() / 3) + 1;
+  const qStartTs = new Date(nowD.getFullYear(), (qNum - 1) * 3, 1).getTime();
+  const addedThisQ = corpusRows.filter((r) => Date.parse(r.ts) >= qStartTs).length;
+  const qLo = nowD.getFullYear() + ((qNum - 1) * 3) / 12, qHi = nowD.getFullYear() + (qNum * 3) / 12;
+  const pLo = qNum === 1 ? nowD.getFullYear() - 1 + 0.75 : nowD.getFullYear() + ((qNum - 2) * 3) / 12;
+  const pHi = qLo;
+  const curQ = dated.filter((d) => d.yearFrac >= qLo && d.yearFrac < qHi).map((d) => d.psf);
+  const priQ = dated.filter((d) => d.yearFrac >= pLo && d.yearFrac < pHi).map((d) => d.psf);
+  const priorQLabel = qNum === 1 ? `Q4 ${nowD.getFullYear() - 1}` : `Q${qNum - 1}`;
+  const quarterBits = [
+    `${addedThisQ} comp${addedThisQ === 1 ? "" : "s"} added to our corpus in Q${qNum} ${nowD.getFullYear()}`,
+    curQ.length >= 3 && priQ.length >= 3
+      ? `deals closed in Q${qNum}: median ${usd0(medianPsfOf(curQ))}/SF ${medianPsfOf(curQ) >= medianPsfOf(priQ) ? "&#9650;" : "&#9660;"} vs ${usd0(medianPsfOf(priQ))} in ${priorQLabel}`
+      : null,
+  ].filter(Boolean).join(" &middot; ");
+  const intelCard =
+    `<div class="card"><h2>Market intelligence</h2>` +
+    trendSvg +
+    `<p${trendSvg ? ' style="margin-top:10px"' : ""}>${statsBits}.</p>` +
+    `<p class="disc" style="margin-top:6px">This quarter: ${quarterBits}. Trend medians use closed-deal dates from our growing comp corpus; automated estimates, not an appraisal.</p>` +
+    `</div>`;
+
   const compRows = (p.comps || []).map((c) => {
     const badge = c.source_type ? `<span class="badge">${escHtml(c.source_type.replace("_", " "))}</span>` : "";
     return `<tr><td>${escHtml(c.address)} ${badge}</td><td>${escHtml(c.date)}</td><td>${escHtml(c.transaction)}</td>` +
@@ -1973,6 +2041,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     `<div class="tiles">${tiles}</div>` +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
+    intelCard +
     compsTable +
     creditLine +
     faqCard +

@@ -2753,6 +2753,121 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Broker dashboard: the signed-in view of a contributor's submissions.
+  // Linkage is by email match (account email == submission broker_email) —
+  // no separate broker auth. Only the user's OWN rows ever come back. ---
+  if (req.method === "GET" && req.url === "/api/broker/me") {
+    (async () => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      const subs = await fetchSubmissionsForEmail(user.email);
+      if (!subs.length) return sendJson(res, 200, { isBroker: false });
+      const approved = subs.filter((s) => s.status === "approved");
+      let profile = null;
+      if (DB_CONFIGURED) {
+        try {
+          const rows = await sbRequest("GET",
+            `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`);
+          const p = rows && rows[0];
+          if (p) {
+            profile = {
+              exists: true, public: Boolean(p.public), slug: p.slug,
+              display_name: p.display_name || "", company: p.company || "",
+              url: `/broker/${p.slug}`,
+            };
+          }
+        } catch (err) { console.error("broker profile read failed:", err.message); }
+      }
+      return sendJson(res, 200, {
+        isBroker: true,
+        db: DB_CONFIGURED,
+        stats: {
+          total: subs.length,
+          approved: approved.length,
+          citations: approved.reduce((n, s) => n + (Number(s.cited_count) || 0), 0),
+        },
+        submissions: subs.map((s) => ({
+          id: s.id, ts: s.ts, address: s.address, property_type: s.property_type,
+          transaction: s.transaction, deal_date: s.deal_date, price_or_rate: s.price_or_rate,
+          status: s.status || "pending", cited_count: Number(s.cited_count) || 0,
+        })),
+        profile,
+      });
+    })().catch((err) => { console.error("broker me error:", err); sendJson(res, 500, { error: "Broker lookup failed." }); });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/broker/profile") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("bprof:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const wantPublic = Boolean(JSON.parse(body || "{}").public);
+        if (!DB_CONFIGURED) return sendJson(res, 400, { error: "Public profiles require the database." });
+        const subs = await fetchSubmissionsForEmail(user.email);
+        const approved = subs.filter((s) => s.status === "approved");
+        if (wantPublic && !approved.length) {
+          return sendJson(res, 403, { error: "You need at least one approved comp before enabling a public profile." });
+        }
+        const existing = (await sbRequest("GET",
+          `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`) || [])[0];
+        let row = existing;
+        if (!existing) {
+          // First enable creates the row; identity comes from their latest
+          // submission (what the credit string already shows publicly).
+          const latest = subs[0];
+          const base = brokerSlugOf(latest.broker_company, latest.broker_name);
+          let created = null;
+          for (let n = 0; !created && n <= 20; n++) {
+            const slug = n === 0 ? base : `${base}-${n + 1}`;
+            try {
+              const ins = await sbRequest("POST", "broker_profiles", {
+                email: user.email,
+                display_name: String(latest.broker_name || "").trim(),
+                company: String(latest.broker_company || "").trim(),
+                slug, public: wantPublic,
+              }, { prefer: "return=representation" });
+              created = ins && ins[0];
+            } catch (err) {
+              // Unique-slug collision → try the next suffix; anything else rethrows.
+              if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+            }
+          }
+          if (!created) {
+            // 20 collisions — punt to a random suffix (unique constraint still backstops).
+            const slug = `${base}-${crypto.randomBytes(3).toString("hex")}`;
+            const ins = await sbRequest("POST", "broker_profiles", {
+              email: user.email,
+              display_name: String(subs[0].broker_name || "").trim(),
+              company: String(subs[0].broker_company || "").trim(),
+              slug, public: wantPublic,
+            }, { prefer: "return=representation" });
+            created = ins && ins[0];
+          }
+          row = created;
+        } else {
+          await sbRequest("PATCH", `broker_profiles?email=eq.${encodeURIComponent(user.email)}`,
+            { public: wantPublic, updated_at: new Date().toISOString() });
+          row = { ...existing, public: wantPublic };
+        }
+        BROKER_PROFILES.fetchedAt = 0; // bust so the next refresh isn't debounced
+        refreshBrokerProfiles();
+        logEvent("broker_profile", { source: wantPublic ? "on" : "off" });
+        return sendJson(res, 200, { ok: true, public: Boolean(row.public), slug: row.slug, url: `/broker/${row.slug}` });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("broker profile error:", err);
+        return sendJson(res, 500, { error: "Could not update the profile." });
+      }
+    });
+    return;
+  }
+
   // --- Geocode proxy. The model's lat/lng values are block-level guesses, so
   // the front-end re-places map pins from the free US Census geocoder — which
   // has no CORS headers, hence this pass-through. Failures return {} so the

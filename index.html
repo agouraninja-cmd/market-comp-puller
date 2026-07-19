@@ -1545,6 +1545,10 @@
       if (p < 1) requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
+    // rAF is throttled or suppressed in background tabs and some embedded
+    // contexts — land the exact final value regardless once the animation
+    // window has passed (idempotent when the animation completed normally).
+    setTimeout(() => { el.textContent = prefix + format(target); }, dur + 100);
   }
 
   // ----------------------------------------------------------------------------
@@ -2417,11 +2421,74 @@
     });
   });
 
+  // ----------------------------------------------------------------------------
+  // Sensitivity matrix — DCF value across exit cap (rows) × NOI growth (cols),
+  // every cell through the same dcfValue() the card uses. Center = current
+  // assumptions; cells tint by whether they beat selling today.
+  // ----------------------------------------------------------------------------
+  function renderSensCard(parsed, meta) {
+    const card = document.getElementById("sensCard");
+    const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    if (!noi || !currentUser) { card.classList.add("hidden"); return; }
+    const a = ensureAssumptions(meta, parsed);
+    const sell = sellTodayEstimate(parsed, meta);
+    const sellVal = sell && sell.value > 0 ? sell.value : null;
+    const caps = [-1, -0.5, 0, 0.5, 1].map((d) => Math.round((a.exitCapPct + d) * 10) / 10).filter((c) => c > 0.1);
+    const growths = [-2, -1, 0, 1, 2].map((d) => Math.round((a.noiGrowthPct + d) * 10) / 10);
+    const fmtM = (v) => v >= 1e6 ? "$" + (Math.round(v / 1e4) / 100).toFixed(2) + "M" : "$" + Math.round(v / 1000).toLocaleString() + "k";
+    const pct1 = (v) => (Math.round(v * 10) / 10).toLocaleString();
+
+    const body = document.getElementById("sensBody");
+    body.innerHTML = "";
+    const table = document.createElement("table");
+    table.className = "w-full text-xs border-collapse";
+    const head = document.createElement("tr");
+    const corner = document.createElement("th");
+    corner.className = "text-left font-medium text-[#8A93A0] p-1.5 whitespace-nowrap";
+    corner.textContent = "exit cap ↓ · growth →";
+    head.appendChild(corner);
+    growths.forEach((g) => {
+      const th = document.createElement("th");
+      th.className = "font-medium p-1.5 text-right whitespace-nowrap " + (g === a.noiGrowthPct ? "text-[#1A2433]" : "text-[#8A93A0]");
+      th.textContent = pct1(g) + "%";
+      head.appendChild(th);
+    });
+    table.appendChild(head);
+    caps.forEach((c) => {
+      const tr = document.createElement("tr");
+      const th = document.createElement("th");
+      th.className = "text-left font-medium p-1.5 whitespace-nowrap " + (c === a.exitCapPct ? "text-[#1A2433]" : "text-[#8A93A0]");
+      th.textContent = pct1(c) + "%";
+      tr.appendChild(th);
+      growths.forEach((g) => {
+        const td = document.createElement("td");
+        const v = dcfValue(noi, { holdYears: a.holdYears, noiGrowthPct: g, discountPct: a.discountPct, exitCapPct: c }).value;
+        const isCenter = c === a.exitCapPct && g === a.noiGrowthPct;
+        td.className = "p-1.5 text-right tabular-nums border border-[#EFEDE7] " +
+          (sellVal == null ? "text-[#4C5665] bg-white"
+            : v >= sellVal ? "text-[#06603A] bg-[#F4FAF6]" : "text-[#8A6D1A] bg-[#FBF8EF]") +
+          (isCenter ? " outline outline-1 outline-[#B91C1C] font-semibold" : "");
+        td.textContent = fmtM(v);
+        if (isCenter) td.title = "Current assumptions";
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+    body.appendChild(table);
+    document.getElementById("sensBasis").textContent =
+      `${a.holdYears}-yr hold · ${pct1(a.discountPct)}% discount`;
+    document.getElementById("sensNote").textContent = sellVal
+      ? `Green cells beat selling today (${"$" + Math.round(sellVal).toLocaleString()}); amber fall short. Outlined cell = your current exit cap and growth.`
+      : "No sell-today estimate for this building, so cells are unshaded. Outlined cell = your current assumptions.";
+    card.classList.remove("hidden");
+  }
+
   // The whole analysis cluster re-renders together so every card reads the
-  // same assumptions. Tasks below the DCF join this as they're built.
+  // same assumptions.
   function renderAnalysisCluster(parsed, meta, resetAssumptions) {
     renderDcfCard(parsed, meta, resetAssumptions);
     renderDebtCard(parsed, meta, resetAssumptions);
+    renderSensCard(parsed, meta);
   }
 
   // Assumption edits recompute in place — client-side math only, no billing.

@@ -894,6 +894,12 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
           Export CSV
         </button>
+        <button id="xlsxBtn"
+          class="hidden btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5"
+          title="Comps, valuation, and assumptions as a 3-sheet workbook">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6"/><path d="m15 13-6 6"/></svg>
+          Excel
+        </button>
       </div>
 
       <!-- Captured / printed region -->
@@ -3193,6 +3199,8 @@
     }
     const pb = document.getElementById("portfolioBtn");
     if (pb) pb.classList.remove("hidden");
+    const xb = document.getElementById("xlsxBtn");
+    if (xb) xb.classList.toggle("hidden", !on);
     if (typeof renderMyDesk === "function") renderMyDesk();
     // Sign-in/out swaps the analysis lock card and the real debt/sensitivity
     // cards in place on whatever report is on screen.
@@ -4478,6 +4486,116 @@
     URL.revokeObjectURL(url);
     flashExportDone(document.getElementById("csvBtn"), "Saved");
   }
+
+  // XLSX export — signed-in only (the account already captured the contact,
+  // so it skips the lead-unlock the other exports use). SheetJS loads lazily
+  // from the CDN on first use, same precedent as html2canvas.
+  let sheetJsPromise = null;
+  function loadSheetJs() {
+    if (window.XLSX) return Promise.resolve();
+    if (!sheetJsPromise) {
+      sheetJsPromise = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        s.onload = resolve;
+        s.onerror = () => {
+          sheetJsPromise = null;
+          reject(new Error("Could not load the Excel library — check your connection and try again."));
+        };
+        document.head.appendChild(s);
+      });
+    }
+    return sheetJsPromise;
+  }
+
+  async function exportXlsx() {
+    if (!currentComps.length || !currentMeta) return;
+    const btn = document.getElementById("xlsxBtn");
+    btn.disabled = true;
+    try {
+      await loadSheetJs();
+      const wb = XLSX.utils.book_new();
+
+      const compsAoa = [
+        [...COLUMNS.map((c) => c.label), "Source confidence"],
+        ...currentComps.map((comp) => [
+          ...COLUMNS.map((c) => String(comp[c.key] ?? "")),
+          (SOURCE_TIERS[compTier(comp)] || {}).label || "",
+        ]),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(compsAoa), "Comps");
+
+      const s = currentMeta.subject || {};
+      const capR = currentParsed && currentParsed.market_cap_rate_range;
+      const sell = sellTodayEstimate(currentParsed, currentMeta);
+      const vRows = [
+        ["Property", currentMeta.address],
+        ["Type", currentMeta.type],
+        ["Search", metaLine(currentMeta)],
+        ["Generated", new Date(currentMeta.generatedAt || Date.now()).toLocaleString()],
+        [],
+        ...(lastValuation ? [
+          ["Low", lastValuation.low],
+          ["Likely", lastValuation.likely],
+          ["High", lastValuation.high],
+          ["Comp median $/SF", lastValuation.median_psf],
+        ] : []),
+        ...(sell && sell.value > 0 && (!lastValuation || Math.round(sell.value) !== Math.round(lastValuation.likely))
+          ? [["Sell today (est.)", Math.round(sell.value)], ["Sell-today basis", sell.source]] : []),
+        ...(capR ? [["Market cap-rate range", `${capR.low}–${capR.high}`]] : []),
+        ...(s.noi > 0 ? [["NOI (yours)", s.noi]] : []),
+        ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
+        [],
+        ["Automated estimate, not an appraisal. Verify independently before underwriting."],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(vRows), "Valuation");
+
+      const a = ensureAssumptions(currentMeta, currentParsed);
+      const aRows = [
+        ["DCF assumptions"],
+        ["Hold period (yrs)", a.holdYears],
+        ["NOI growth %/yr", a.noiGrowthPct],
+        ["Discount rate %", a.discountPct],
+        ["Exit cap rate %", a.exitCapPct],
+      ];
+      if (s.noi > 0) {
+        aRows.push(["DCF value (hold)", Math.round(dcfValue(s.noi, a).value)]);
+        const d = a.debt || {};
+        const perDollar = d.ratePct > 0 ? annualDebtService(1, d.ratePct, d.amortYears || 30) : null;
+        if (d.loanAmount > 0 || perDollar) {
+          const value = lastValuation && lastValuation.likely > 0 ? lastValuation.likely
+            : (sell && sell.value > 0 ? sell.value : null);
+          aRows.push([], ["Debt"],
+            ["Loan balance", d.loanAmount || ""],
+            ["Interest rate %", d.ratePct || ""],
+            ["Amortization (yrs)", d.amortYears || ""]);
+          const svc = d.loanAmount > 0 && perDollar ? d.loanAmount * perDollar : null;
+          if (svc) {
+            aRows.push(["Annual debt service", Math.round(svc)],
+              ["DSCR", Math.round((s.noi / svc) * 100) / 100]);
+            if (value) aRows.push(["LTV", Math.round((d.loanAmount / value) * 100) + "%"]);
+            aRows.push(["Debt yield", (Math.round((s.noi / d.loanAmount) * 1000) / 10) + "%"]);
+          }
+          if (perDollar) {
+            const byDscr = s.noi / (REFI_DSCR * perDollar);
+            const maxLoan = value != null ? Math.min(byDscr, REFI_LTV * value) : byDscr;
+            aRows.push([`Max loan (at ${REFI_DSCR}× DSCR & ${Math.round(REFI_LTV * 100)}% LTV)`, Math.round(maxLoan)]);
+            if (d.loanAmount > 0) aRows.push(["Refi headroom", Math.round(maxLoan - d.loanAmount)]);
+          }
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aRows), "Assumptions");
+
+      const slug = String(currentMeta.address).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "report";
+      XLSX.writeFile(wb, `compninja-${slug}.xlsx`);
+      flashExportDone(btn, "Saved");
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  document.getElementById("xlsxBtn").addEventListener("click", exportXlsx);
 
   async function downloadImage() {
     const node = document.getElementById("reportArea");

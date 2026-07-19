@@ -618,10 +618,6 @@
         <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
         <button type="button" data-scroll-to="for-brokers" class="hover:text-[#1A2433]">For Brokers</button>
         <button type="button" data-scroll-to="method" class="hover:text-[#1A2433] hidden sm:inline">Methodology</button>
-        <button id="bellBtn" type="button" class="hidden relative hover:text-[#1A2433]" title="Watchlist updates" aria-label="Watchlist updates">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-          <span id="bellBadge" class="hidden absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-[#B91C1C] text-white text-[10px] font-semibold leading-4 text-center"></span>
-        </button>
         <button id="myDeskLink" type="button" class="hidden hover:text-[#1A2433] font-medium">My Desk</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
@@ -2865,7 +2861,6 @@
     document.getElementById("signInLink").classList.toggle("hidden", on);
     document.getElementById("acctMenuWrap").classList.toggle("hidden", !on);
     document.getElementById("myDeskLink").classList.toggle("hidden", !on);
-    document.getElementById("bellBtn").classList.toggle("hidden", !on);
     if (on) {
       const label = (currentUser.name || currentUser.email).trim();
       document.getElementById("acctMenuBtn").textContent = label.slice(0, 1).toUpperCase();
@@ -3149,8 +3144,9 @@
   });
 
   // ----------------------------------------------------------------------------
-  // Watchlist + updates feed. The bell badge shows unseen comp count; opening
-  // My Desk (or the bell) marks everything seen — rendering alone never does.
+  // Watchlist + updates feed. Opening My Desk marks the feed seen, so each
+  // market's "N new comps since your last visit" line resets on the next visit;
+  // a passive re-render never marks seen.
   // ----------------------------------------------------------------------------
   (function initWatchTypeOptions() {
     const src = document.getElementById("propertyType");
@@ -3158,17 +3154,10 @@
     [...src.options].forEach((o) => { if (o.value) dst.appendChild(new Option(o.textContent, o.value)); });
   })();
 
-  function setBell(unseen) {
-    const badge = document.getElementById("bellBadge");
-    badge.textContent = unseen > 99 ? "99+" : String(unseen);
-    badge.classList.toggle("hidden", !unseen);
-  }
-
   async function renderWatchFeed({ markSeen } = {}) {
     if (!currentUser) return;
     let feed = null;
     try { feed = await acctApi("GET", "/api/watchlist/feed"); } catch (_) { return; }
-    setBell(feed.unseen);
     const wrap = document.getElementById("feedWrap");
     wrap.innerHTML = "";
     if (!feed.items.length) {
@@ -3238,7 +3227,6 @@
     });
     if (markSeen && feed.unseen) {
       try { await acctApi("POST", "/api/watchlist/seen"); } catch (_) {}
-      setBell(0);
     }
   }
 
@@ -3262,11 +3250,6 @@
     }
   });
 
-  document.getElementById("bellBtn").addEventListener("click", () => {
-    renderMyDesk();
-    renderWatchFeed({ markSeen: true });
-    smoothScrollTo(document.getElementById("myDesk"));
-  });
 
   // ----------------------------------------------------------------------------
   // Broker desk — appears when the signed-in account's email matches comp

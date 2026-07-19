@@ -639,6 +639,69 @@ function cleanSnapshot(snap) {
 // so the same regex matches both modes.
 function isUuidish(v) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || "")); }
 
+// --- watchlist + feed (feed reads the existing comp_corpus) ---
+const WATCHLIST_MAX_ITEMS = 20;
+async function listWatchlist(userId) {
+  if (DB_CONFIGURED) {
+    return sbRequest("GET",
+      `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&order=created_at.asc&limit=50`) || [];
+  }
+  return (await accountStore()).watchlist.filter((x) => x.user_id === userId);
+}
+async function upsertWatchlistItem(userId, market, property_type) {
+  const now = new Date().toISOString();
+  const row = { user_id: userId, market, property_type, last_seen_at: now, created_at: now };
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("POST",
+      "watchlist_items?on_conflict=user_id,market,property_type", row,
+      { prefer: "resolution=ignore-duplicates,return=representation" });
+    return rows && rows[0] ? rows[0] : (await listWatchlist(userId)).find((x) => x.market === market && x.property_type === property_type);
+  }
+  const s = await accountStore();
+  const dup = s.watchlist.find((x) => x.user_id === userId && x.market === market && x.property_type === property_type);
+  if (dup) return dup;
+  row.id = crypto.randomUUID();
+  s.watchlist.push(row);
+  await saveAccountStore();
+  return row;
+}
+async function deleteWatchlistItem(userId, id) {
+  if (DB_CONFIGURED) {
+    return sbRequest("DELETE",
+      `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`);
+  }
+  const s = await accountStore();
+  s.watchlist = s.watchlist.filter((x) => !(x.user_id === userId && x.id === id));
+  await saveAccountStore();
+}
+async function markWatchlistSeen(userId) {
+  const now = new Date().toISOString();
+  if (DB_CONFIGURED) {
+    return sbRequest("PATCH", `watchlist_items?user_id=eq.${encodeURIComponent(userId)}`, { last_seen_at: now });
+  }
+  const s = await accountStore();
+  s.watchlist.forEach((x) => { if (x.user_id === userId) x.last_seen_at = now; });
+  await saveAccountStore();
+}
+function corpusNum(v) { const n = Number(String(v || "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; }
+// Corpus rows for one watched market: DB rows (when configured) + any rows
+// that fell back to the file, newest first.
+async function corpusRowsForMarket(market, property_type, limit) {
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        `comp_corpus?market=eq.${encodeURIComponent(market)}&property_type=eq.${encodeURIComponent(property_type)}` +
+        `&select=ts,address,transaction,deal_date,price_or_rate,price_per_sqft,cap_rate,source_url&order=ts.desc&limit=${limit}`) || [];
+    } catch (e) { console.error("corpus feed read failed:", e.message); }
+  }
+  const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
+    .filter((r) => r && r.market === market && r.property_type === property_type);
+  return [...dbRows, ...fileRows]
+    .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
+    .slice(0, limit);
+}
+
 // ---------------------------------------------------------------------------
 // Daily search cap — a simple in-memory counter, reset at UTC midnight. It
 // resets on redeploy/spin-down too, which is fine for this threat model:
@@ -2382,6 +2445,111 @@ const server = http.createServer((req, res) => {
       })().catch((err) => { console.error("portfolio DELETE error:", err); sendJson(res, 500, { error: "Portfolio delete failed." }); });
       return;
     }
+  }
+
+  // --- Watchlist: watched markets + the in-app updates feed ----------------
+  if (req.url === "/api/watchlist" || req.url.startsWith("/api/watchlist?")) {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        return sendJson(res, 200, { items: await listWatchlist(user.id) });
+      })().catch((err) => { console.error("watchlist GET error:", err); sendJson(res, 500, { error: "Watchlist read failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await requireUser(req, res);
+          if (!user) return;
+          const { market, property_type } = JSON.parse(body || "{}");
+          const marketOk = String(market || "").trim().slice(0, 60);
+          const typeOk = String(property_type || "").trim().slice(0, 40);
+          if (!/^[A-Za-z .'\-]{2,40}, [A-Z]{2}$/.test(marketOk)) {
+            return sendJson(res, 400, { error: 'Market must look like "City, ST".' });
+          }
+          if (!typeOk) return sendJson(res, 400, { error: "A property type is required." });
+          if ((await listWatchlist(user.id)).length >= WATCHLIST_MAX_ITEMS) {
+            return sendJson(res, 400, { error: `Watchlist is full (${WATCHLIST_MAX_ITEMS} markets).` });
+          }
+          const item = await upsertWatchlistItem(user.id, marketOk, typeOk);
+          logEvent("watchlist_add", { prop_type: typeOk, market: marketOk });
+          return sendJson(res, 200, { id: item.id });
+        } catch (err) {
+          console.error("watchlist POST error:", err);
+          return sendJson(res, 500, { error: "Watchlist save failed." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id");
+        if (!id) return sendJson(res, 400, { error: "id is required." });
+        if (!isUuidish(id)) return sendJson(res, 200, { ok: true });
+        await deleteWatchlistItem(user.id, id);
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => { console.error("watchlist DELETE error:", err); sendJson(res, 500, { error: "Watchlist delete failed." }); });
+      return;
+    }
+  }
+
+  if (req.method === "GET" && req.url === "/api/watchlist/feed") {
+    (async () => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      const items = await listWatchlist(user.id);
+      const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
+      let unseen = 0;
+      const out = [];
+      for (const w of items) {
+        const rows = await corpusRowsForMarket(w.market, w.property_type, 500);
+        const fresh = rows.filter((r) => String(r.ts) > String(w.last_seen_at)).slice(0, 20);
+        unseen += fresh.length;
+        // Median $/SF: sale rows only, trailing ~6 months — matches the
+        // client-side rule that lease $/SF never mixes into valuation.
+        const salePsf = rows
+          .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
+          .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+          .map((r) => corpusNum(r.price_per_sqft))
+          .filter(Boolean)
+          .sort((a, b) => a - b);
+        const median_psf = salePsf.length
+          ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
+        out.push({
+          id: w.id, market: w.market, property_type: w.property_type,
+          median_psf, new_count: fresh.length,
+          comps: fresh.map((r) => ({
+            ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
+            price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
+            cap_rate: r.cap_rate, source_url: r.source_url,
+          })),
+        });
+      }
+      logEvent("feed_view", {});
+      return sendJson(res, 200, { unseen, items: out });
+    })().catch((err) => { console.error("feed error:", err); sendJson(res, 500, { error: "Feed read failed." }); });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/watchlist/seen") {
+    req.on("data", () => {});
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        await markWatchlistSeen(user.id);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error("seen error:", err);
+        return sendJson(res, 500, { error: "Could not update the watchlist." });
+      }
+    });
+    return;
   }
 
   // --- Geocode proxy. The model's lat/lng values are block-level guesses, so

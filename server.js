@@ -3159,6 +3159,7 @@ const server = http.createServer((req, res) => {
         if (safeMeta.assumptions && typeof safeMeta.assumptions === "object") {
           safeMeta.assumptions = { ...safeMeta.assumptions };
           delete safeMeta.assumptions.debt;
+          delete safeMeta.assumptions.rentRoll;
         }
         delete safeMeta.sample;
         delete safeMeta.fromHistory;

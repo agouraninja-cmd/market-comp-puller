@@ -270,7 +270,9 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    the model's `market_cap_rate_range`, `/api/comps` never receives it, and
    `/api/share` strips it before publishing. The same rule covers **debt
    terms** (`meta.assumptions.debt` — loan amount/rate/amortization, powering
-   the debt & refi card): private finances, stripped from shares. The DCF's
+   the debt & refi card) and the **rent roll** (`meta.assumptions.rentRoll` —
+   tenant-level rents behind the rollover card): private finances, stripped
+   from shares. The DCF's
    four assumptions (hold/growth/discount/exit cap) are opinions, not
    finances, and stay in shares. The one deliberate exception for both NOI
    and debt is the signed-in **portfolio**: a saved report's `meta.subject`

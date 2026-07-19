@@ -565,6 +565,76 @@ async function consumePasswordReset(token) {
   return row.user_id;
 }
 
+// --- portfolio ---
+const PORTFOLIO_MAX_ITEMS = 100;
+const PORTFOLIO_MAX_SNAPSHOTS = 60;
+async function listPortfolio(userId) {
+  if (DB_CONFIGURED) {
+    return sbRequest("GET",
+      `portfolio_items?user_id=eq.${encodeURIComponent(userId)}` +
+      `&select=id,address,property_type,snapshots,created_at,updated_at&order=updated_at.desc&limit=200`) || [];
+  }
+  return (await accountStore()).portfolio.filter((x) => x.user_id === userId)
+    .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+    .map(({ payload, ...rest }) => rest);
+}
+async function getPortfolioItem(userId, id) {
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("GET",
+      `portfolio_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}&limit=1`);
+    return rows && rows[0] ? rows[0] : null;
+  }
+  return (await accountStore()).portfolio.find((x) => x.user_id === userId && x.id === id) || null;
+}
+async function insertPortfolioItem(userId, { address, property_type, payload, snapshot }) {
+  const now = new Date().toISOString();
+  const row = {
+    user_id: userId, address, property_type, payload,
+    snapshots: snapshot ? [snapshot] : [],
+    created_at: now, updated_at: now,
+  };
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("POST", "portfolio_items", row, { prefer: "return=representation" });
+    return rows[0];
+  }
+  row.id = crypto.randomUUID();
+  (await accountStore()).portfolio.push(row);
+  await saveAccountStore();
+  return row;
+}
+async function updatePortfolioItem(userId, id, { payload, snapshot }) {
+  const existing = await getPortfolioItem(userId, id);
+  if (!existing) return null;
+  const snapshots = Array.isArray(existing.snapshots) ? existing.snapshots.slice() : [];
+  if (snapshot) snapshots.push(snapshot);
+  while (snapshots.length > PORTFOLIO_MAX_SNAPSHOTS) snapshots.shift();
+  const patch = { payload, snapshots, updated_at: new Date().toISOString() };
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH",
+      `portfolio_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
+  } else {
+    Object.assign(existing, patch);
+    await saveAccountStore();
+  }
+  return { ...existing, ...patch };
+}
+async function deletePortfolioItem(userId, id) {
+  if (DB_CONFIGURED) {
+    return sbRequest("DELETE",
+      `portfolio_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`);
+  }
+  const s = await accountStore();
+  s.portfolio = s.portfolio.filter((x) => !(x.user_id === userId && x.id === id));
+  await saveAccountStore();
+}
+// Client-computed snapshot -> sanitized {ts, low, likely, high, median_psf} or null.
+function cleanSnapshot(snap) {
+  if (!snap || typeof snap !== "object") return null;
+  const n = (v) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? Math.round(x * 100) / 100 : null; };
+  const out = { ts: new Date().toISOString(), low: n(snap.low), likely: n(snap.likely), high: n(snap.high), median_psf: n(snap.median_psf) };
+  return out.likely ? out : null; // a snapshot with no likely value is noise
+}
+
 // ---------------------------------------------------------------------------
 // Daily search cap — a simple in-memory counter, reset at UTC midnight. It
 // resets on redeploy/spin-down too, which is fine for this threat model:
@@ -2238,6 +2308,69 @@ const server = http.createServer((req, res) => {
       }
     });
     return;
+  }
+
+  // --- Portfolio: the signed-in user's saved properties --------------------
+  if (req.url === "/api/portfolio" || req.url.startsWith("/api/portfolio?")) {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id");
+        if (id) {
+          const item = await getPortfolioItem(user.id, id);
+          if (!item) return sendJson(res, 404, { error: "Not found." });
+          return sendJson(res, 200, item);
+        }
+        return sendJson(res, 200, { items: await listPortfolio(user.id) });
+      })().catch((err) => { console.error("portfolio GET error:", err); sendJson(res, 500, { error: "Portfolio read failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 2e6) req.destroy(); }); // full reports are big
+      req.on("end", async () => {
+        try {
+          const user = await requireUser(req, res);
+          if (!user) return;
+          const { id, payload, snapshot } = JSON.parse(body || "{}");
+          if (!payload || typeof payload !== "object" || !payload.meta || !payload.data) {
+            return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
+          }
+          const address = String(payload.meta.address || "").trim().slice(0, 300);
+          const property_type = String(payload.meta.type || "").trim().slice(0, 40);
+          if (!address || !property_type) return sendJson(res, 400, { error: "The report is missing its address or type." });
+          const snap = cleanSnapshot(snapshot);
+          if (id) {
+            const updated = await updatePortfolioItem(user.id, String(id), { payload, snapshot: snap });
+            if (!updated) return sendJson(res, 404, { error: "Not found." });
+            logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
+            return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
+          }
+          if ((await listPortfolio(user.id)).length >= PORTFOLIO_MAX_ITEMS) {
+            return sendJson(res, 400, { error: `Portfolio is full (${PORTFOLIO_MAX_ITEMS} properties).` });
+          }
+          const item = await insertPortfolioItem(user.id, { address, property_type, payload, snapshot: snap });
+          logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
+          return sendJson(res, 200, { id: item.id, snapshots: item.snapshots });
+        } catch (err) {
+          console.error("portfolio POST error:", err);
+          return sendJson(res, 500, { error: "Portfolio save failed." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id");
+        if (!id) return sendJson(res, 400, { error: "id is required." });
+        await deletePortfolioItem(user.id, id);
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => { console.error("portfolio DELETE error:", err); sendJson(res, 500, { error: "Portfolio delete failed." }); });
+      return;
+    }
   }
 
   // --- Geocode proxy. The model's lat/lng values are block-level guesses, so

@@ -13,6 +13,9 @@ server.err.log
 leads.jsonl
 comp-submissions.jsonl
 
+# Account store (emails + password hashes; * covers .tmp/.corrupt sidecars) — never commit
+account-store.json*
+
 # File fallbacks used only when Supabase isn't configured
 search-cache.json
 shared-reports.json

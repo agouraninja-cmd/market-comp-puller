@@ -262,6 +262,7 @@ function rateLimited(ip, max = RATE_MAX, windowMs = RATE_WINDOW_MS) {
 //     name text,
 //     created_at timestamptz not null default now()
 //   );
+//   -- (consider: create unique index on users (lower(email));)
 //   create table sessions (
 //     token_hash text primary key,
 //     user_id uuid not null references users(id) on delete cascade,
@@ -321,6 +322,8 @@ function verifyPassword(password, stored) {
       params.split(",").forEach((kv) => { const [k, v] = kv.split("="); opts[k] = Number(v); });
       const salt = Buffer.from(saltB64, "base64");
       const expected = Buffer.from(hashB64, "base64");
+      // A truncated stored hash (empty final segment) must never verify.
+      if (expected.length !== SCRYPT_KEYLEN) return resolve(false);
       crypto.scrypt(String(password), salt, expected.length, { N: opts.N, r: opts.r, p: opts.p }, (err, dk) => {
         if (err) return resolve(false);
         resolve(dk.length === expected.length && crypto.timingSafeEqual(dk, expected));
@@ -336,12 +339,18 @@ function parseCookies(req) {
   const out = {};
   String(req.headers.cookie || "").split(";").forEach((p) => {
     const i = p.indexOf("=");
-    if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
+    if (i > 0) {
+      // Decode defensively: a third-party cookie with a raw % ("100%off") is
+      // legal but throws in decodeURIComponent — keep it verbatim instead.
+      const v = p.slice(i + 1).trim();
+      try { out[p.slice(0, i).trim()] = decodeURIComponent(v); }
+      catch (_) { out[p.slice(0, i).trim()] = v; }
+    }
   });
   return out;
 }
 function setSessionCookie(res, req, token, maxAgeSec) {
-  const secure = /^(localhost|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
   res.setHeader("set-cookie",
     `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`);
 }
@@ -358,25 +367,46 @@ async function sbRequest(method, pathAndQuery, body, extraHeaders) {
   return text ? JSON.parse(text) : null;
 }
 
-let accountStoreCache = null;
-async function accountStore() {
-  if (accountStoreCache) return accountStoreCache;
-  try {
-    accountStoreCache = JSON.parse(await fs.promises.readFile(ACCOUNT_STORE_FILE, "utf8"));
-  } catch (_) {
-    accountStoreCache = { users: [], sessions: [], portfolio: [], watchlist: [] };
+// Cache the load PROMISE (not the value) so concurrent cold-start calls share
+// one read and one store object instead of racing.
+let accountStorePromise = null;
+function accountStore() {
+  if (!accountStorePromise) {
+    accountStorePromise = (async () => {
+      let store;
+      try { store = JSON.parse(await fs.promises.readFile(ACCOUNT_STORE_FILE, "utf8")); }
+      catch (err) {
+        if (err.code !== "ENOENT") {
+          // Corrupt store: sideline it loudly rather than silently wiping accounts.
+          console.error("account-store.json unreadable — sidelining to .corrupt:", err.message);
+          try { await fs.promises.rename(ACCOUNT_STORE_FILE, ACCOUNT_STORE_FILE + ".corrupt"); } catch (_) {}
+        }
+        store = {};
+      }
+      for (const k of ["users", "sessions", "portfolio", "watchlist"]) {
+        if (!Array.isArray(store[k])) store[k] = [];
+      }
+      return store;
+    })();
   }
-  for (const k of ["users", "sessions", "portfolio", "watchlist"]) {
-    if (!Array.isArray(accountStoreCache[k])) accountStoreCache[k] = [];
-  }
-  return accountStoreCache;
+  return accountStorePromise;
 }
-async function saveAccountStore() {
-  await fs.promises.writeFile(ACCOUNT_STORE_FILE, JSON.stringify(accountStoreCache));
+// Saves are chained so overlapping writes can't interleave, and go through a
+// temp file + rename so a crash mid-write can't corrupt the store.
+let accountSaveChain = Promise.resolve();
+function saveAccountStore() {
+  accountSaveChain = accountSaveChain.then(async () => {
+    const store = await accountStore();
+    const tmp = ACCOUNT_STORE_FILE + ".tmp";
+    await fs.promises.writeFile(tmp, JSON.stringify(store));
+    await fs.promises.rename(tmp, ACCOUNT_STORE_FILE);
+  }).catch((e) => console.error("account store save failed:", e.message));
+  return accountSaveChain;
 }
 
 // --- users ---
 async function findUserByEmail(email) {
+  email = String(email || "").trim().toLowerCase();
   if (DB_CONFIGURED) {
     const rows = await sbRequest("GET", `users?email=eq.${encodeURIComponent(email)}&limit=1`);
     return rows && rows[0] ? rows[0] : null;
@@ -391,6 +421,7 @@ async function findUserById(id) {
   return (await accountStore()).users.find((u) => u.id === id) || null;
 }
 async function createUser({ email, password_hash, name }) {
+  email = String(email || "").trim().toLowerCase();
   const row = { email, password_hash, name: name || "", created_at: new Date().toISOString() };
   if (DB_CONFIGURED) {
     const rows = await sbRequest("POST", "users", row, { prefer: "return=representation" });
@@ -437,6 +468,7 @@ async function createSession(userId) {
     (await accountStore()).sessions.push(row);
     await saveAccountStore();
   }
+  if (sessionCache.size > 5000) sessionCache.clear(); // crude cap; repopulates on demand
   sessionCache.set(row.token_hash, { user_id: row.user_id, expires_at: row.expires_at });
   return token;
 }
@@ -498,6 +530,7 @@ async function createPasswordReset(userId) {
     used: false,
     created_at: new Date().toISOString(),
   };
+  if (resetCache.size > 5000) resetCache.clear(); // crude cap; repopulates on demand
   resetCache.set(row.token_hash, row);
   if (DB_CONFIGURED) {
     sbRequest("POST", "password_resets", row, { prefer: "return=minimal" })
@@ -518,7 +551,14 @@ async function consumePasswordReset(token) {
   row.used = true;
   resetCache.set(th, row);
   if (DB_CONFIGURED) {
-    sbRequest("PATCH", `password_resets?token_hash=eq.${encodeURIComponent(th)}`, { used: true }).catch(() => {});
+    // Await the used-flag write and fail closed: a fire-and-forget failure +
+    // restart would let a consumed token be replayed.
+    try {
+      await sbRequest("PATCH", `password_resets?token_hash=eq.${encodeURIComponent(th)}`, { used: true });
+    } catch (e) {
+      console.error("Reset consume PATCH failed — rejecting token:", e.message);
+      return null;
+    }
   }
   return row.user_id;
 }

@@ -1067,8 +1067,8 @@
         <div id="analysisLockCard" class="hidden rd-bcard print-shadow-none no-print">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Debt &amp; Sensitivity Analysis</h2>
-              <p class="text-sm text-[#5A6473] mt-1">DSCR, refi headroom, and a value sensitivity grid for this building — free with an account.</p>
+              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Debt, Sensitivity &amp; Rent-Roll Analysis</h2>
+              <p class="text-sm text-[#5A6473] mt-1">DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk for this building — free with an account.</p>
             </div>
             <button id="analysisLockBtn" type="button"
               class="btn-live text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Create a free account</button>
@@ -1140,6 +1140,39 @@
           </div>
           <div id="sensBody" class="overflow-x-auto"></div>
           <p id="sensNote" class="text-xs text-[#8A93A0] mt-3"></p>
+        </div>
+
+        <!-- Rent roll & rollover — standalone risk view (WALT, occupancy, expiry
+             schedule). Tenant rents are private finances: portfolio-only, shares
+             strip them. Built by renderRentRollCard(). -->
+        <div id="rentRollCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Rent Roll &amp; Rollover</h2>
+            <span id="rrBasis" class="text-xs text-[#8A93A0] text-right"></span>
+          </div>
+          <div id="rrRows" class="no-print space-y-2 mb-2"></div>
+          <button id="rrAdd" type="button" class="no-print btn-live text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5 mb-4">+ Add lease</button>
+          <div id="rrOut" class="hidden">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="rd-tile">
+                <div class="rd-lab">WALT</div>
+                <div id="rrWalt" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+                <div class="text-xs text-[#8A93A0] mt-1">rent-weighted avg lease term</div>
+              </div>
+              <div class="rd-tile">
+                <div class="rd-lab">Occupancy</div>
+                <div id="rrOcc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+                <div id="rrOccSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              </div>
+              <div class="rd-tile">
+                <div class="rd-lab">Total base rent</div>
+                <div id="rrRent" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+                <div id="rrRentSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              </div>
+            </div>
+            <div id="rrScheduleWrap" class="overflow-x-auto mt-4"></div>
+          </div>
+          <p class="text-xs text-[#8A93A0] mt-4">Lease data stays in your browser and your own portfolio — never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
         </div>
 
         <p id="analysisEmpty" class="hidden text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
@@ -2511,6 +2544,156 @@
     card.classList.remove("hidden");
   }
 
+  // ----------------------------------------------------------------------------
+  // Rent roll & rollover — standalone risk view. Leases live in
+  // meta.assumptions.rentRoll and ride the same persistence pipeline as the
+  // DCF/debt assumptions. Deliberately descriptive: the DCF keeps using the
+  // single NOI + growth; no renewal guesswork pretending to be precision.
+  // ----------------------------------------------------------------------------
+  const RR_MAX_LEASES = 12;
+
+  function rentRollStats(rentRoll, subjectSf) {
+    const yearNow = new Date().getFullYear();
+    const leases = (rentRoll || []).filter((l) => l && (l.sf > 0 || l.rent > 0));
+    const totRent = leases.reduce((n, l) => n + (l.rent || 0), 0);
+    const totSf = leases.reduce((n, l) => n + (l.sf || 0), 0);
+    const walt = totRent > 0
+      ? leases.reduce((n, l) => n + (l.rent || 0) * Math.max(0, (l.endYear || yearNow) - yearNow), 0) / totRent
+      : null;
+    // Next 10 calendar years + "later"; expired/MTM leases clamp to this year.
+    const buckets = [];
+    for (let y = yearNow; y < yearNow + 10; y++) buckets.push({ year: String(y), count: 0, sf: 0, rent: 0 });
+    buckets.push({ year: "Later", count: 0, sf: 0, rent: 0 });
+    leases.forEach((l) => {
+      const y = Math.max(yearNow, l.endYear || yearNow);
+      const b = y >= yearNow + 10 ? buckets[10] : buckets[y - yearNow];
+      b.count += 1; b.sf += l.sf || 0; b.rent += l.rent || 0;
+    });
+    return {
+      leases, totRent, totSf, walt,
+      occupancy: subjectSf > 0 && totSf > 0 ? totSf / subjectSf : null,
+      buckets: buckets.filter((b) => b.count > 0),
+    };
+  }
+
+  let rrEditTimer = null;
+  function rrRowEl(lease) {
+    const row = document.createElement("div");
+    row.className = "rr-row flex flex-wrap items-center gap-2";
+    const mk = (cls, ph, val, label) => {
+      const i = document.createElement("input");
+      i.className = cls + " rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none";
+      i.placeholder = ph;
+      i.setAttribute("aria-label", label);
+      if (val != null && val !== "") i.value = val;
+      return i;
+    };
+    row.appendChild(mk("rr-label flex-1 min-w-[110px]", "Suite / tenant (optional)", lease.label || "", "Suite or tenant"));
+    row.appendChild(mk("rr-sf w-24", "SF", lease.sf > 0 ? lease.sf : "", "Square feet"));
+    row.appendChild(mk("rr-rent w-32", "Annual rent $", lease.rent > 0 ? lease.rent : "", "Annual base rent"));
+    row.appendChild(mk("rr-end w-20", "Expires", lease.endYear || "", "Expiration year"));
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "text-[#8A93A0] hover:text-red-700 text-lg leading-none px-1";
+    del.textContent = "×";
+    del.title = "Remove lease";
+    del.addEventListener("click", () => { row.remove(); syncRentRoll(); });
+    row.appendChild(del);
+    row.querySelectorAll("input").forEach((i) => i.addEventListener("input", () => {
+      clearTimeout(rrEditTimer);
+      rrEditTimer = setTimeout(syncRentRoll, 300);
+    }));
+    return row;
+  }
+
+  // Row DOM -> assumptions.rentRoll -> persist + recompute (rows untouched, so
+  // typing never loses focus).
+  function syncRentRoll() {
+    if (!currentMeta || !currentParsed) return;
+    const a = ensureAssumptions(currentMeta, currentParsed);
+    const yearNow = new Date().getFullYear();
+    a.rentRoll = [...document.querySelectorAll("#rrRows .rr-row")].map((row) => {
+      const num = (sel) => numericValue(row.querySelector(sel).value);
+      const yr = Math.round(num(".rr-end"));
+      return {
+        label: row.querySelector(".rr-label").value.trim().slice(0, 60),
+        sf: num(".rr-sf") > 0 ? Math.round(num(".rr-sf")) : null,
+        rent: num(".rr-rent") > 0 ? Math.round(num(".rr-rent")) : null,
+        endYear: yr >= yearNow - 1 && yr <= yearNow + 30 ? yr : null,
+      };
+    }).filter((l) => l.sf > 0 || l.rent > 0);
+    persistAssumptions();
+    renderRentRollOutputs();
+  }
+
+  function renderRentRollOutputs() {
+    const a = ensureAssumptions(currentMeta, currentParsed);
+    const s = currentMeta.subject || {};
+    const subjectSf = s.sizeMin > 0 ? (s.sizeMin + (s.sizeMax || s.sizeMin)) / 2 : null;
+    const st = rentRollStats(a.rentRoll, subjectSf);
+    const out = document.getElementById("rrOut");
+    if (!st.leases.length) {
+      out.classList.add("hidden");
+      document.getElementById("rrBasis").textContent = "";
+      return;
+    }
+    out.classList.remove("hidden");
+    document.getElementById("rrWalt").textContent = st.walt != null ? (Math.round(st.walt * 10) / 10).toFixed(1) + " yrs" : "—";
+    document.getElementById("rrOcc").textContent = st.occupancy != null ? Math.round(st.occupancy * 100) + "%" : "—";
+    document.getElementById("rrOccSub").textContent = st.occupancy == null ? "enter the building SF above"
+      : st.occupancy > 1 ? "leased SF exceeds the entered building SF" : `${st.totSf.toLocaleString()} SF leased`;
+    document.getElementById("rrRent").textContent = st.totRent ? "$" + Math.round(st.totRent).toLocaleString() : "—";
+    document.getElementById("rrRentSub").textContent = s.noi > 0
+      ? `base rent before expenses & vacancy — your NOI is $${Math.round(s.noi).toLocaleString()}` : "";
+    document.getElementById("rrBasis").textContent = `${st.leases.length} lease${st.leases.length === 1 ? "" : "s"}`;
+    const wrap = document.getElementById("rrScheduleWrap");
+    wrap.innerHTML = "";
+    const table = document.createElement("table");
+    table.className = "w-full text-xs border-collapse";
+    const head = document.createElement("tr");
+    ["Expires", "Leases", "SF", "% of rent"].forEach((h, i) => {
+      const th = document.createElement("th");
+      th.className = "font-medium text-[#8A93A0] p-1.5 " + (i === 0 ? "text-left" : "text-right");
+      th.textContent = h;
+      head.appendChild(th);
+    });
+    table.appendChild(head);
+    st.buckets.forEach((b) => {
+      const share = st.totRent > 0 ? b.rent / st.totRent : 0;
+      const tr = document.createElement("tr");
+      tr.className = share > 0.5 ? "bg-[#FCF1EF]" : share > 0.3 ? "bg-[#FBF8EF]" : "";
+      [b.year, String(b.count), b.sf ? b.sf.toLocaleString() : "—", Math.round(share * 100) + "%"].forEach((c, i) => {
+        const td = document.createElement("td");
+        td.className = "p-1.5 border border-[#EFEDE7] tabular-nums " + (i === 0 ? "text-left" : "text-right") +
+          (share > 0.3 && i === 3 ? " font-semibold" : "");
+        td.textContent = c;
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+    wrap.appendChild(table);
+  }
+
+  function renderRentRollCard(parsed, meta, rebuildRows) {
+    const card = document.getElementById("rentRollCard");
+    const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    if (!noi || !currentUser) { card.classList.add("hidden"); return; }
+    const a = ensureAssumptions(meta, parsed);
+    if (!Array.isArray(a.rentRoll)) a.rentRoll = [];
+    const rowsEl = document.getElementById("rrRows");
+    if (rebuildRows || !rowsEl.children.length) {
+      rowsEl.innerHTML = "";
+      (a.rentRoll.length ? a.rentRoll : [{}]).forEach((l) => rowsEl.appendChild(rrRowEl(l)));
+    }
+    renderRentRollOutputs();
+    card.classList.remove("hidden");
+  }
+  document.getElementById("rrAdd").addEventListener("click", () => {
+    const rowsEl = document.getElementById("rrRows");
+    if (rowsEl.children.length >= RR_MAX_LEASES) return;
+    rowsEl.appendChild(rrRowEl({}));
+  });
+
   // Report | Analysis tabs — pure class toggling; print CSS ignores them
   // (both panels forced visible on paper).
   function setReportTab(which) {
@@ -2535,12 +2718,13 @@
     renderDcfCard(parsed, meta, resetAssumptions);
     renderDebtCard(parsed, meta, resetAssumptions);
     renderSensCard(parsed, meta);
+    renderRentRollCard(parsed, meta, resetAssumptions);
     const hasNoi = Boolean(meta && meta.subject && meta.subject.noi > 0);
     document.getElementById("analysisLockCard").classList.toggle("hidden", Boolean(currentUser) || !hasNoi);
     document.getElementById("analysisEmpty").classList.toggle("hidden", hasNoi);
   }
   document.getElementById("analysisLockBtn").addEventListener("click", () =>
-    openAcctModal("signup", "Create a free account to unlock the debt and sensitivity analysis for this report."));
+    openAcctModal("signup", "Create a free account to unlock the debt, sensitivity, and rent-roll analysis for this report."));
 
   // Assumption edits recompute in place — client-side math only, no billing.
   // Debounced lightly so typing "12" doesn't render at "1". Inputs are

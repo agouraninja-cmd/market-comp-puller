@@ -471,6 +471,42 @@
     </div>
   </div>
 
+  <!-- Account: one modal, four modes (signin / signup / forgot / reset) -->
+  <div id="acctModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+      <h2 id="acctTitle" class="text-lg font-semibold text-slate-900">Sign in</h2>
+      <p id="acctNudge" class="hidden text-sm text-slate-500 mt-1"></p>
+      <div id="acctTabs" class="flex gap-4 mt-3 mb-4 text-sm border-b border-slate-200">
+        <button id="acctTabIn" type="button" class="pb-2 border-b-2 border-brand-600 font-medium text-slate-900">Sign in</button>
+        <button id="acctTabUp" type="button" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">Create account</button>
+      </div>
+      <form id="acctForm" class="space-y-3">
+        <input id="acctName" type="text" autocomplete="name" placeholder="Name (optional)" aria-label="Name"
+          class="hidden w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+        <input id="acctEmail" type="email" autocomplete="email" placeholder="Email" aria-label="Email"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+        <input id="acctPassword" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+        <p id="acctError" class="hidden text-sm text-red-600"></p>
+        <p id="acctInfo" class="hidden text-sm text-slate-600"></p>
+        <button id="acctSubmit" type="submit"
+          class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">Sign in</button>
+        <div class="flex items-center justify-between text-sm">
+          <button id="acctForgotLink" type="button" class="text-slate-500 hover:text-slate-700">Forgot password?</button>
+          <button id="acctCancel" type="button" class="text-slate-500 hover:text-slate-700">Not now</button>
+        </div>
+      </form>
+      <div id="acctImport" class="hidden">
+        <p class="text-sm text-slate-600 mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser — import them into your portfolio?</p>
+        <div class="flex gap-2 mt-3">
+          <button id="acctImportYes" type="button" class="btn-live flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">Import</button>
+          <button id="acctImportNo" type="button" class="flex-1 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg">Skip</button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.</p>
+    </div>
+  </div>
+
   <!-- Broker comp-submission modal -->
   <div id="compModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-8">
@@ -581,6 +617,21 @@
         <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
         <button type="button" data-scroll-to="for-brokers" class="hover:text-[#1A2433]">For Brokers</button>
         <button type="button" data-scroll-to="method" class="hover:text-[#1A2433] hidden sm:inline">Methodology</button>
+        <button id="bellBtn" type="button" class="hidden relative hover:text-[#1A2433]" title="Watchlist updates" aria-label="Watchlist updates">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span id="bellBadge" class="hidden absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-[#B91C1C] text-white text-[10px] font-semibold leading-4 text-center"></span>
+        </button>
+        <button id="myDeskLink" type="button" class="hidden hover:text-[#1A2433] font-medium">My Desk</button>
+        <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
+        <div id="acctMenuWrap" class="hidden relative">
+          <button id="acctMenuBtn" type="button" aria-label="Account menu"
+            class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
+          <div id="acctMenu" class="hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+            <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
+            <button id="signOutBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-slate-50">Sign out</button>
+            <button id="deleteAcctBtn" type="button" class="block w-full text-left px-3 py-1.5 text-red-700 hover:bg-red-50">Delete account…</button>
+          </div>
+        </div>
       </nav>
     </div>
   </header>
@@ -2724,6 +2775,162 @@
   }
 
   renderRecentChips();
+
+  // ----------------------------------------------------------------------------
+  // Account state — cookie-backed session; the browser sends cn_session
+  // automatically on same-origin fetches.
+  // ----------------------------------------------------------------------------
+  let currentUser = null;           // { email, name } | null
+  let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
+  let acctMode = "signin";          // signin | signup | forgot | reset
+  let resetToken = "";
+
+  async function acctApi(method, url, bodyObj) {
+    const r = await fetch(url, {
+      method,
+      headers: bodyObj ? { "content-type": "application/json" } : undefined,
+      body: bodyObj ? JSON.stringify(bodyObj) : undefined,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `Request failed (${r.status}).`);
+    return data;
+  }
+
+  function refreshAccountUI() {
+    const on = Boolean(currentUser);
+    document.getElementById("signInLink").classList.toggle("hidden", on);
+    document.getElementById("acctMenuWrap").classList.toggle("hidden", !on);
+    document.getElementById("myDeskLink").classList.toggle("hidden", !on);
+    document.getElementById("bellBtn").classList.toggle("hidden", !on);
+    if (on) {
+      const label = (currentUser.name || currentUser.email).trim();
+      document.getElementById("acctMenuBtn").textContent = label.slice(0, 1).toUpperCase();
+      document.getElementById("acctMenuEmail").textContent = currentUser.email;
+    }
+    const pb = document.getElementById("portfolioBtn");
+    if (pb) pb.classList.remove("hidden");
+    if (typeof renderMyDesk === "function") renderMyDesk();
+  }
+
+  function setAcctMode(mode) {
+    acctMode = mode;
+    const t = { signin: "Sign in", signup: "Create your account", forgot: "Reset your password", reset: "Choose a new password" }[mode];
+    document.getElementById("acctTitle").textContent = t;
+    document.getElementById("acctSubmit").textContent =
+      { signin: "Sign in", signup: "Create account", forgot: "Send reset link", reset: "Set new password" }[mode];
+    document.getElementById("acctName").classList.toggle("hidden", mode !== "signup");
+    document.getElementById("acctEmail").classList.toggle("hidden", mode === "reset");
+    document.getElementById("acctPassword").classList.toggle("hidden", mode === "forgot");
+    document.getElementById("acctPassword").placeholder = mode === "reset" ? "New password (8+ characters)" : "Password";
+    document.getElementById("acctPassword").autocomplete = mode === "signin" ? "current-password" : "new-password";
+    document.getElementById("acctTabs").classList.toggle("hidden", mode === "reset");
+    document.getElementById("acctForgotLink").classList.toggle("hidden", mode !== "signin");
+    document.getElementById("acctTabIn").className = "pb-2 border-b-2 " +
+      (mode === "signin" ? "border-brand-600 font-medium text-slate-900" : "border-transparent text-slate-500 hover:text-slate-800");
+    document.getElementById("acctTabUp").className = "pb-2 border-b-2 " +
+      (mode === "signup" ? "border-brand-600 font-medium text-slate-900" : "border-transparent text-slate-500 hover:text-slate-800");
+    document.getElementById("acctError").classList.add("hidden");
+    document.getElementById("acctInfo").classList.add("hidden");
+  }
+
+  function openAcctModal(mode, nudge) {
+    setAcctMode(mode || "signin");
+    const n = document.getElementById("acctNudge");
+    n.textContent = nudge || "";
+    n.classList.toggle("hidden", !nudge);
+    document.getElementById("acctImport").classList.add("hidden");
+    document.getElementById("acctForm").classList.remove("hidden");
+    document.getElementById("acctModal").classList.remove("hidden");
+    document.getElementById(acctMode === "reset" ? "acctPassword" : "acctEmail").focus();
+  }
+  function closeAcctModal() { document.getElementById("acctModal").classList.add("hidden"); }
+
+  document.getElementById("signInLink").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("acctTabIn").addEventListener("click", () => setAcctMode("signin"));
+  document.getElementById("acctTabUp").addEventListener("click", () => setAcctMode("signup"));
+  document.getElementById("acctForgotLink").addEventListener("click", () => setAcctMode("forgot"));
+  document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
+  document.getElementById("acctMenuBtn").addEventListener("click", () =>
+    document.getElementById("acctMenu").classList.toggle("hidden"));
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("acctMenuWrap").contains(e.target)) {
+      document.getElementById("acctMenu").classList.add("hidden");
+    }
+  });
+
+  document.getElementById("acctForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = document.getElementById("acctError");
+    const info = document.getElementById("acctInfo");
+    err.classList.add("hidden"); info.classList.add("hidden");
+    const email = document.getElementById("acctEmail").value.trim();
+    const password = document.getElementById("acctPassword").value;
+    const btn = document.getElementById("acctSubmit");
+    btn.disabled = true;
+    try {
+      if (acctMode === "forgot") {
+        await acctApi("POST", "/api/account/forgot", { email });
+        info.textContent = "If an account exists for that email, a reset link is on its way (check spam too).";
+        info.classList.remove("hidden");
+        return;
+      }
+      if (acctMode === "reset") {
+        await acctApi("POST", "/api/account/reset", { token: resetToken, password });
+        resetToken = "";
+        history.replaceState(null, "", location.pathname + location.search);
+        setAcctMode("signin");
+        info.textContent = "Password updated — sign in with it below.";
+        info.classList.remove("hidden");
+        return;
+      }
+      const isUp = acctMode === "signup";
+      currentUser = await acctApi("POST", `/api/account/${isUp ? "signup" : "login"}`, {
+        email, password, name: document.getElementById("acctName").value.trim(),
+      });
+      refreshAccountUI();
+      const saved = loadSavedReports();
+      if (isUp && saved.length) {
+        document.getElementById("acctImportCount").textContent = String(saved.length);
+        document.getElementById("acctForm").classList.add("hidden");
+        document.getElementById("acctImport").classList.remove("hidden");
+      } else {
+        closeAcctModal();
+      }
+      if (pendingPortfolioSave) { pendingPortfolioSave = false; savePortfolioCurrent(); }
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("signOutBtn").addEventListener("click", async () => {
+    try { await acctApi("POST", "/api/account/logout"); } catch (_) {}
+    currentUser = null;
+    document.getElementById("acctMenu").classList.add("hidden");
+    refreshAccountUI();
+  });
+  document.getElementById("deleteAcctBtn").addEventListener("click", async () => {
+    if (!confirm("Delete your CompNinja account, portfolio, and watchlist? This can't be undone.")) return;
+    try { await acctApi("DELETE", "/api/account"); } catch (_) {}
+    currentUser = null;
+    document.getElementById("acctMenu").classList.add("hidden");
+    refreshAccountUI();
+  });
+
+  // Bootstrap: who am I? Then honor a /#reset=<token> link.
+  (async () => {
+    try {
+      const r = await fetch("/api/account/me", { cache: "no-store" });
+      currentUser = r.ok ? await r.json() : null;
+    } catch (_) { currentUser = null; }
+    refreshAccountUI();
+    const m = location.hash.match(/^#reset=([A-Za-z0-9_-]{20,})$/);
+    if (m) { resetToken = m[1]; openAcctModal("reset"); }
+  })();
+
+  function savePortfolioCurrent() {} // replaced in the portfolio task
 
   // ----------------------------------------------------------------------------
   // Saved reports — the full data of the last 10 real reports, stored in this

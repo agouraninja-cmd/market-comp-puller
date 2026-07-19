@@ -1494,7 +1494,7 @@
           noi: noiVal > 0 ? noiVal : null,
         };
         renderOwnerHero(currentParsed, currentMeta);
-        renderDcfCard(currentParsed, currentMeta, false);
+        renderAnalysisCluster(currentParsed, currentMeta, false);
         renderComparison(currentParsed);
         renderMarketChart();
         if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveReport(currentMeta, currentParsed);
@@ -2079,42 +2079,96 @@
     return ((lo + hi) / 2) * 100;
   }
 
+  // One object (meta.assumptions) owns every analysis input, so the DCF card,
+  // debt card, and sensitivity matrix can never drift apart — and it rides in
+  // meta, so saved reports and portfolio items remember edited assumptions.
+  // Seeds market-keyed defaults on first touch: exit cap just above the
+  // going-in range's midpoint (buildings age), discount = midpoint + 200bps.
+  function ensureAssumptions(meta, parsed) {
+    if (!meta) return null;
+    if (!meta.assumptions || typeof meta.assumptions !== "object") meta.assumptions = {};
+    const a = meta.assumptions;
+    if (!a.debt || typeof a.debt !== "object") a.debt = { loanAmount: null, ratePct: null, amortYears: 30 };
+    if (!(a.holdYears >= 1)) {
+      const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
+      const capLo = capR ? numericValue(capR.low) : NaN;
+      const capHi = capR ? numericValue(capR.high) : NaN;
+      const capMid = capLo > 0 && capHi >= capLo ? (capLo + capHi) / 2 : null;
+      a.holdYears = 10;
+      a.noiGrowthPct = 2.5;
+      a.discountPct = capMid ? Math.round((capMid + 2.0) * 10) / 10 : 8.5;
+      a.exitCapPct = capMid ? Math.round((capMid + 0.25) * 10) / 10 : 6.5;
+    }
+    return a;
+  }
+
+  // Pure DCF: year-1 NOI grown annually, exit sale at end of hold, everything
+  // discounted to today. The single source of truth — the card and the
+  // sensitivity matrix both call this, so they can't disagree.
+  function dcfValue(noi, { holdYears, noiGrowthPct, discountPct, exitCapPct }) {
+    const growth = noiGrowthPct / 100, disc = discountPct / 100, exitCap = exitCapPct / 100;
+    const cashflows = [];
+    for (let t = 1; t <= holdYears; t++) cashflows.push(noi * Math.pow(1 + growth, t - 1));
+    const terminal = (noi * Math.pow(1 + growth, holdYears)) / exitCap;
+    let dcf = 0;
+    cashflows.forEach((cf, i) => { dcf += cf / Math.pow(1 + disc, i + 1); });
+    dcf += terminal / Math.pow(1 + disc, holdYears);
+    return { value: dcf, cashflows, terminal };
+  }
+
+  // Debounced write-through: assumptions live in meta, so edits update the
+  // saved localStorage entry in place and — when this report was opened from
+  // a portfolio item — quietly PATCH that item too. No snapshot, no billing.
+  let assumptionsSaveTimer = null;
+  function persistAssumptions() {
+    clearTimeout(assumptionsSaveTimer);
+    assumptionsSaveTimer = setTimeout(() => {
+      if (!currentMeta) return;
+      try {
+        const list = loadSavedReports();
+        const hit = list.find((r) => r.meta.address === currentMeta.address && r.meta.type === currentMeta.type);
+        if (hit) {
+          hit.meta.assumptions = currentMeta.assumptions;
+          localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+        }
+      } catch (_) { /* private mode etc. */ }
+      if (currentUser && currentMeta.portfolioId && currentParsed) {
+        const meta = {
+          address: currentMeta.address, type: currentMeta.type, note: currentMeta.note || "",
+          months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
+          assumptions: currentMeta.assumptions || null,
+        };
+        acctApi("POST", "/api/portfolio", {
+          id: currentMeta.portfolioId, payload: { meta, data: currentParsed }, snapshot: null,
+        }).catch(() => {});
+      }
+    }, 1500);
+  }
+
   function renderDcfCard(parsed, meta, resetAssumptions) {
     const card = document.getElementById("dcfCard");
     const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
     if (!noi) { card.classList.add("hidden"); return; }
 
-    // Defaults keyed to this market: exit cap just above the going-in range's
-    // midpoint (buildings age), discount rate = cap midpoint + a 200bps risk
-    // premium. Generic fallbacks when the model returned no cap-rate range.
-    const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
-    const capLo = capR ? numericValue(capR.low) : NaN;
-    const capHi = capR ? numericValue(capR.high) : NaN;
-    const capMid = capLo > 0 && capHi >= capLo ? (capLo + capHi) / 2 : null;
+    const a = ensureAssumptions(meta, parsed);
     const inYears = document.getElementById("dcfYears");
     const inGrowth = document.getElementById("dcfGrowth");
     const inDisc = document.getElementById("dcfDisc");
     const inExit = document.getElementById("dcfExitCap");
+    // The object is the source of truth; inputs sync FROM it on a fresh
+    // render or reopen (mid-typing re-renders leave the inputs alone).
     if (resetAssumptions || !inYears.value) {
-      inYears.value = 10;
-      inGrowth.value = 2.5;
-      inDisc.value = capMid ? Math.round((capMid + 2.0) * 10) / 10 : 8.5;
-      inExit.value = capMid ? Math.round((capMid + 0.25) * 10) / 10 : 6.5;
+      inYears.value = a.holdYears;
+      inGrowth.value = a.noiGrowthPct;
+      inDisc.value = a.discountPct;
+      inExit.value = a.exitCapPct;
     }
-    const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
-    const years = clamp(Math.round(numericValue(inYears.value)), 1, 30, 10);
-    const growth = clamp(numericValue(inGrowth.value), -10, 15, 2.5) / 100;
-    const disc = clamp(numericValue(inDisc.value), 0.1, 30, 8.5) / 100;
-    const exitCap = clamp(numericValue(inExit.value), 0.1, 25, 6.5) / 100;
+    const years = a.holdYears;
+    const growth = a.noiGrowthPct / 100;
+    const disc = a.discountPct / 100;
+    const exitCap = a.exitCapPct / 100;
 
-    // Year-by-year NOI (year 1 = the entered NOI), exit sale at end of hold.
-    const cashflows = [];
-    for (let t = 1; t <= years; t++) cashflows.push(noi * Math.pow(1 + growth, t - 1));
-    const terminal = (noi * Math.pow(1 + growth, years)) / exitCap;
-    let dcf = 0;
-    cashflows.forEach((cf, i) => { dcf += cf / Math.pow(1 + disc, i + 1); });
-    const pvTerminal = terminal / Math.pow(1 + disc, years);
-    dcf += pvTerminal;
+    const { value: dcf, cashflows, terminal } = dcfValue(noi, a);
 
     const fmtTotal = (v) => "$" + Math.round(v).toLocaleString();
     const pct1 = (v) => (Math.round(v * 10) / 10).toLocaleString();
@@ -2181,14 +2235,30 @@
     card.classList.remove("hidden");
   }
 
+  // The whole analysis cluster re-renders together so every card reads the
+  // same assumptions. Tasks below the DCF join this as they're built.
+  function renderAnalysisCluster(parsed, meta, resetAssumptions) {
+    renderDcfCard(parsed, meta, resetAssumptions);
+  }
+
   // Assumption edits recompute in place — client-side math only, no billing.
-  // Debounced lightly so typing "12" doesn't render at "1".
+  // Debounced lightly so typing "12" doesn't render at "1". Inputs are
+  // clamped into the assumptions object here; the object is what computes.
   let dcfEditTimer = null;
   ["dcfYears", "dcfGrowth", "dcfDisc", "dcfExitCap"].forEach((id) => {
     document.getElementById(id).addEventListener("input", () => {
       if (!currentParsed || !currentMeta) return;
       clearTimeout(dcfEditTimer);
-      dcfEditTimer = setTimeout(() => renderDcfCard(currentParsed, currentMeta, false), 200);
+      dcfEditTimer = setTimeout(() => {
+        const a = ensureAssumptions(currentMeta, currentParsed);
+        const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
+        a.holdYears = clamp(Math.round(numericValue(document.getElementById("dcfYears").value)), 1, 30, 10);
+        a.noiGrowthPct = clamp(numericValue(document.getElementById("dcfGrowth").value), -10, 15, 2.5);
+        a.discountPct = clamp(numericValue(document.getElementById("dcfDisc").value), 0.1, 30, 8.5);
+        a.exitCapPct = clamp(numericValue(document.getElementById("dcfExitCap").value), 0.1, 25, 6.5);
+        persistAssumptions();
+        renderAnalysisCluster(currentParsed, currentMeta, false);
+      }, 200);
     });
   });
 
@@ -2751,7 +2821,7 @@
     // Hero first: a looked-up building size auto-fills the form input, and the
     // comparison + chart below read that same input.
     renderOwnerHero(parsed, meta);
-    renderDcfCard(parsed, meta, true);
+    renderAnalysisCluster(parsed, meta, true);
     renderValueDrivers(parsed);
     renderComparison(parsed);
     renderMarketChart();
@@ -3011,6 +3081,7 @@
       const meta = {
         address: currentMeta.address, type: currentMeta.type, note: currentMeta.note || "",
         months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
+        assumptions: currentMeta.assumptions || null,
       };
       await acctApi("POST", "/api/portfolio", {
         payload: { meta, data: currentParsed },
@@ -3052,7 +3123,8 @@
       const item = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id));
       hideLoadingCard();
       showStatus(`Reopened from your portfolio (saved ${new Date(item.updated_at).toLocaleDateString()}). Refresh valuation for fresh data.`, "info");
-      renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, generatedAt: Date.parse(item.updated_at) });
+      // portfolioId lets assumption edits PATCH back onto this exact item.
+      renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, portfolioId: item.id, generatedAt: Date.parse(item.updated_at) });
     } catch (ex) { showStatus(ex.message, "error"); }
   }
 
@@ -3351,7 +3423,7 @@
         .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
       list.unshift({
         ts: Date.now(),
-        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null },
+        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null, assumptions: meta.assumptions || null },
         data,
       });
       while (list.length > 10) list.pop();

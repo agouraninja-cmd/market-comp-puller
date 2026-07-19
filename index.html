@@ -1042,6 +1042,86 @@
           <p class="text-xs text-[#8A93A0] mt-4">Automated planning estimate — unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
         </div>
 
+        <!-- Signed-out gate for the toolkit below: one calm framed nudge stands
+             in for the debt + sensitivity cards until the visitor signs in. -->
+        <div id="analysisLockCard" class="hidden rd-bcard print-shadow-none no-print">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Debt &amp; Sensitivity Analysis</h2>
+              <p class="text-sm text-[#5A6473] mt-1">DSCR, refi headroom, and a value sensitivity grid for this building — free with an account.</p>
+            </div>
+            <button id="analysisLockBtn" type="button"
+              class="btn-live text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Create a free account</button>
+          </div>
+        </div>
+
+        <!-- Debt & refi — DSCR / LTV / debt yield + refi headroom, computed on the
+             browser-held NOI and loan terms. Loan terms never reach the server
+             except the owner's own portfolio; shares strip them. Signed-in only;
+             built by renderDebtCard(). -->
+        <div id="debtCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Debt &amp; Refi Check</h2>
+            <span id="debtBasis" class="text-xs text-[#8A93A0] text-right"></span>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label class="rd-lab" for="debtLoan">Loan balance ($)</label>
+              <input id="debtLoan" type="text" inputmode="numeric" placeholder="e.g. 2,000,000"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="debtRate">Interest rate %</label>
+              <input id="debtRate" type="number" min="0.1" max="20" step="0.05" placeholder="e.g. 6.75"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="debtAmort">Amortization (yrs)</label>
+              <input id="debtAmort" type="number" min="5" max="40" step="1"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="rd-tile">
+              <div class="rd-lab">Annual debt service</div>
+              <div id="debtSvc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtSvcSub" class="text-xs text-[#8A93A0] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">DSCR</div>
+              <div id="debtDscr" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtDscrSub" class="text-xs text-[#8A93A0] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">LTV</div>
+              <div id="debtLtv" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtLtvSub" class="text-xs text-[#8A93A0] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Debt yield</div>
+              <div id="debtYield" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtYieldSub" class="text-xs text-[#8A93A0] mt-1"></div>
+            </div>
+          </div>
+          <div class="rd-tile-hi mt-4">
+            <div class="rd-lab">Refi headroom</div>
+            <div id="debtHeadroom" class="rd-h text-[30px] mt-1">—</div>
+            <div id="debtHeadroomSub" class="text-xs text-[#5A6473] mt-1"></div>
+          </div>
+          <p class="text-xs text-[#8A93A0] mt-4">Loan terms stay in your browser and your own portfolio — never on shared links. Screening math at market-standard limits, not a loan quote.</p>
+        </div>
+
+        <!-- Sensitivity — DCF value across exit cap × NOI growth. Same math as
+             the DCF card (shared dcfValue); built by renderSensCard(). -->
+        <div id="sensCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Sensitivity (DCF Value)</h2>
+            <span id="sensBasis" class="text-xs text-[#8A93A0] text-right"></span>
+          </div>
+          <div id="sensBody" class="overflow-x-auto"></div>
+          <p id="sensNote" class="text-xs text-[#8A93A0] mt-3"></p>
+        </div>
+
         <!-- Key stats row — the report leads with scannable numbers (built per search) -->
         <div id="statTiles" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
 
@@ -2235,10 +2315,113 @@
     card.classList.remove("hidden");
   }
 
+  // ----------------------------------------------------------------------------
+  // Debt & refi — DSCR / LTV / debt yield and the refi headroom the tiles lead
+  // to: the max loan this NOI and value support at market screening limits.
+  // ----------------------------------------------------------------------------
+  const REFI_DSCR = 1.25;   // market-standard screening constants; shown in the
+  const REFI_LTV = 0.65;    // caption, deliberately not editable in v1.
+
+  // Standard amortizing payment (monthly compounding), annualized.
+  function annualDebtService(loan, ratePct, amortYears) {
+    const i = ratePct / 100 / 12, n = amortYears * 12;
+    if (!(loan > 0) || !(i > 0) || !(n > 0)) return null;
+    return loan * (i / (1 - Math.pow(1 + i, -n))) * 12;
+  }
+
+  function renderDebtCard(parsed, meta, resetAssumptions) {
+    const card = document.getElementById("debtCard");
+    const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    if (!noi || !currentUser) { card.classList.add("hidden"); return; }
+    const a = ensureAssumptions(meta, parsed);
+    const d = a.debt;
+    const inLoan = document.getElementById("debtLoan");
+    const inRate = document.getElementById("debtRate");
+    const inAmort = document.getElementById("debtAmort");
+    if (resetAssumptions || (!inLoan.value && !inRate.value)) {
+      inLoan.value = d.loanAmount > 0 ? Math.round(d.loanAmount).toLocaleString() : "";
+      inRate.value = d.ratePct > 0 ? d.ratePct : "";
+      inAmort.value = d.amortYears > 0 ? d.amortYears : 30;
+    }
+
+    const sell = sellTodayEstimate(parsed, meta);
+    const value = lastValuation && lastValuation.likely > 0 ? lastValuation.likely
+      : (sell && sell.value > 0 ? sell.value : null);
+    const fmtT = (v) => "$" + Math.round(v).toLocaleString();
+    const perDollarSvc = d.ratePct > 0 ? annualDebtService(1, d.ratePct, d.amortYears || 30) : null;
+    const svc = d.loanAmount > 0 && perDollarSvc ? d.loanAmount * perDollarSvc : null;
+    const dscr = svc ? noi / svc : null;
+    const ltv = d.loanAmount > 0 && value ? d.loanAmount / value : null;
+    const dyield = d.loanAmount > 0 ? noi / d.loanAmount : null;
+
+    const set = (id, txt, sub) => {
+      document.getElementById(id).textContent = txt;
+      document.getElementById(id + "Sub").textContent = sub || "";
+    };
+    set("debtSvc", svc ? fmtT(svc) : "—", svc ? "principal + interest / yr" : "enter loan terms");
+    const dscrEl = document.getElementById("debtDscr");
+    dscrEl.className = "text-2xl font-semibold mt-1 " +
+      (dscr == null ? "text-[#1A2433]" : dscr >= REFI_DSCR ? "text-[#06603A]" : dscr >= 1 ? "text-[#8A6D1A]" : "text-[#B91C1C]");
+    set("debtDscr", dscr ? (Math.round(dscr * 100) / 100).toFixed(2) + "×" : "—",
+      dscr == null ? "NOI ÷ debt service" :
+      dscr >= REFI_DSCR ? "comfortably covered" : dscr >= 1 ? "thin coverage — lenders want 1.25×+" : "NOI doesn't cover the payments");
+    set("debtLtv", ltv ? Math.round(ltv * 100) + "%" : "—",
+      ltv ? "of the likely value" : value ? "enter a loan balance" : "no value estimate yet");
+    set("debtYield", dyield ? (Math.round(dyield * 1000) / 10).toFixed(1) + "%" : "—",
+      dyield ? "NOI ÷ loan balance" : "");
+
+    // Refi headroom: the number an owner acts on.
+    const headEl = document.getElementById("debtHeadroom");
+    const headSub = document.getElementById("debtHeadroomSub");
+    if (!perDollarSvc) {
+      headEl.textContent = "—";
+      headSub.textContent = "Enter an interest rate to size the debt this building supports.";
+    } else {
+      const byDscr = noi / (REFI_DSCR * perDollarSvc);
+      const maxLoan = value != null ? Math.min(byDscr, REFI_LTV * value) : byDscr;
+      const binding = value != null && REFI_LTV * value < byDscr ? "LTV-limited" : "DSCR-limited";
+      if (d.loanAmount > 0) {
+        const room = maxLoan - d.loanAmount;
+        headEl.textContent = room >= 0 ? "+$" + Math.round(room).toLocaleString() : "−$" + Math.round(-room).toLocaleString();
+        headSub.textContent = (room >= 0
+          ? "room to borrow beyond today's balance"
+          : "over-levered vs. what this building supports") +
+          ` — max loan ~${fmtT(maxLoan)} (${binding})`;
+      } else {
+        headEl.textContent = fmtT(maxLoan);
+        headSub.textContent = `debt this building supports (${binding})`;
+      }
+    }
+    document.getElementById("debtBasis").textContent =
+      `at ${REFI_DSCR}× DSCR & ${Math.round(REFI_LTV * 100)}% LTV` + (value ? ` · value ${fmtT(value)}` : "");
+    card.classList.remove("hidden");
+  }
+
+  // Debt input edits: clamp into the shared assumptions object and re-render.
+  let debtEditTimer = null;
+  ["debtLoan", "debtRate", "debtAmort"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", () => {
+      if (!currentParsed || !currentMeta) return;
+      clearTimeout(debtEditTimer);
+      debtEditTimer = setTimeout(() => {
+        const a = ensureAssumptions(currentMeta, currentParsed);
+        const clamp = (v, lo, hi, fb) => (isFinite(v) && v >= lo && v <= hi ? v : fb);
+        const loan = numericValue(document.getElementById("debtLoan").value);
+        a.debt.loanAmount = loan > 0 ? Math.min(loan, 2e9) : null;
+        const rate = numericValue(document.getElementById("debtRate").value);
+        a.debt.ratePct = rate > 0 ? clamp(rate, 0.1, 20, null) : null;
+        a.debt.amortYears = clamp(Math.round(numericValue(document.getElementById("debtAmort").value)), 5, 40, 30);
+        persistAssumptions();
+        renderAnalysisCluster(currentParsed, currentMeta, false);
+      }, 250);
+    });
+  });
+
   // The whole analysis cluster re-renders together so every card reads the
   // same assumptions. Tasks below the DCF join this as they're built.
   function renderAnalysisCluster(parsed, meta, resetAssumptions) {
     renderDcfCard(parsed, meta, resetAssumptions);
+    renderDebtCard(parsed, meta, resetAssumptions);
   }
 
   // Assumption edits recompute in place — client-side math only, no billing.

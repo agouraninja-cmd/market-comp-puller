@@ -1400,6 +1400,10 @@ function attachVerifiedAttribution(parsed, verifiedComps) {
     if (m) {
       c.verified_by = m.by;
       if (m.id) citedIds.add(m.id);
+      // Public profile → the badge becomes a link. Cache holds only
+      // public=true rows, so presence implies consent.
+      const prof = BROKER_PROFILES.byEmail[m.email];
+      if (prof) c.verified_by_slug = prof.slug;
     }
   }
   if (citedIds.size) bumpCitedCounts([...citedIds]).catch(() => {});
@@ -1627,6 +1631,120 @@ async function refreshMarketCredit() {
   } finally {
     MARKET_CREDIT.refreshing = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Broker profiles — opt-in public pages (/broker/<slug>) for verified
+// contributors, the visibility currency of the broker loop. Cached in-process
+// like MARKET_CREDIT (public rows only); the page itself shows name/firm and
+// contribution stats ONLY — never email or phone. Contact is owner-mediated.
+// ---------------------------------------------------------------------------
+const BROKER_PROFILES = { byEmail: {}, bySlug: {}, fetchedAt: 0, refreshing: false };
+const BROKER_PROFILES_TTL_MS = 10 * 60 * 1000;
+async function refreshBrokerProfiles() {
+  if (!DB_CONFIGURED || BROKER_PROFILES.refreshing) return;
+  BROKER_PROFILES.refreshing = true;
+  try {
+    const rows = await sbRequest("GET",
+      "broker_profiles?public=eq.true&select=email,slug,display_name,company&limit=500");
+    const byEmail = {}, bySlug = {};
+    for (const p of rows || []) {
+      const email = String(p.email || "").toLowerCase();
+      if (!email || !p.slug) continue;
+      byEmail[email] = p;
+      bySlug[p.slug] = p;
+    }
+    BROKER_PROFILES.byEmail = byEmail;
+    BROKER_PROFILES.bySlug = bySlug;
+    BROKER_PROFILES.fetchedAt = Date.now();
+  } catch (err) {
+    console.error("Broker profile refresh failed; keeping previous:", err.message);
+  } finally {
+    BROKER_PROFILES.refreshing = false;
+  }
+}
+
+// Same char rules as the market-page slugs; source is firm-first.
+function brokerSlugOf(company, name) {
+  let s = String(company || name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  if (s.length < 3) s = ("broker-" + s).replace(/-$/, ""); // route regex needs >=3 chars
+  return s.slice(0, 60);
+}
+
+// All submissions for one broker email (lowercased match on both sides).
+// Fetch-then-filter like findBrokersForMarket — PostgREST ilike would treat
+// "_" in emails as a wildcard. Powers the dashboard and the public page.
+async function fetchSubmissionsForEmail(email) {
+  const target = String(email || "").trim().toLowerCase();
+  if (!target) return [];
+  let rows = [];
+  if (DB_CONFIGURED) {
+    try {
+      rows = await sbRequest("GET",
+        "comp_submissions?order=ts.desc&limit=500" +
+        "&select=id,ts,status,broker_email,broker_name,broker_company,address," +
+        "property_type,transaction,deal_date,price_or_rate,cited_count") || [];
+    } catch (err) {
+      console.error("Submission fetch for broker failed:", err.message);
+      rows = [];
+    }
+  } else {
+    rows = await readRowsFromFile(COMP_SUBMISSIONS_FILE);
+  }
+  return rows.filter((r) => String(r.broker_email || "").trim().toLowerCase() === target);
+}
+
+function renderBrokerProfileHTML(profile, subs) {
+  const display = String(profile.display_name || "").trim() || "Verified contributor";
+  const firm = String(profile.company || "").trim();
+  const headline = firm || display;
+  const approved = subs.filter((s) => s.status === "approved");
+  const citations = approved.reduce((n, s) => n + (Number(s.cited_count) || 0), 0);
+  const markets = [...new Set(approved.map((s) => marketOf(s.address)).filter(Boolean))];
+  const canonical = `${SITE_URL}/broker/${profile.slug}`;
+  const title = `${headline} · Verified Comp Contributor | CompNinja`;
+  const description = `${headline} contributes broker-verified commercial comp data to CompNinja` +
+    (markets.length ? ` in ${markets.slice(0, 3).join("; ")}` : "") +
+    ". Every comp is reviewed before it appears in a report.";
+
+  const tiles = [
+    ["Verified comps", String(approved.length), "approved by our review team"],
+    ["Report citations", String(citations), "times used in valuation reports"],
+    ["Markets", String(markets.length || 1), "metro areas covered"],
+  ].map(([k, v, n]) =>
+    `<div class="tile"><div class="k">${escHtml(k)}</div><div class="v">${escHtml(v)}</div><div class="n">${escHtml(n)}</div></div>`).join("");
+
+  const marketChips = markets.map((m) => {
+    const [city, state] = m.split(",").map((s) => s.trim());
+    const types = [...new Set(approved.filter((s) => marketOf(s.address) === m).map((s) => s.property_type).filter(Boolean))];
+    const linked = city && state && types
+      .map((t) => ({ t, slug: slugifyMarket(t, city, state) }))
+      .find((x) => getMarketPage(x.slug));
+    return linked
+      ? `<a href="/market/${linked.slug}">${escHtml(m)}</a>`
+      : `<span class="badge">${escHtml(m)}</span>`;
+  }).join("");
+
+  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent(`Broker introduction — ${headline}`)}`;
+  const body =
+    `<h1>${escHtml(headline)}</h1>` +
+    `<p class="sub">Verified comp contributor${firm && display && display !== firm ? " · " + escHtml(display) : ""} — ` +
+    `every comp below the green badge was submitted by this contributor and hand-reviewed by CompNinja.</p>` +
+    `<div class="tiles">${tiles}</div>` +
+    (marketChips ? `<div class="card"><h2>Markets contributed to</h2><div class="related">${marketChips}</div></div>` : "") +
+    `<div class="card"><h2>What &quot;Verified&quot; means</h2>` +
+    `<p>Comps carrying a <strong>Verified · via ${escHtml(headline)}</strong> badge were submitted by this contributor ` +
+    `and reviewed by our team before joining the comp layer — the highest provenance tier in a CompNinja report.</p></div>` +
+    `<div class="cta"><h2>Work with ${escHtml(headline)}</h2>` +
+    `<p>CompNinja connects property owners with the brokers who know their market. Introductions go through our team.</p>` +
+    `<a class="btn" href="${introHref}">Request an introduction</a>` +
+    `<p style="margin:14px 0 0"><a href="/" style="color:#fecaca">Or run a free valuation of your building &rarr;</a></p></div>` +
+    `<p class="disc">CompNinja is not a licensed brokerage; introductions are made by our team. Stats update as new reports run.</p>`;
+
+  return marketShell({
+    title, description, canonical, body,
+    jsonLd: JSON.stringify({ "@context": "https://schema.org", "@type": "ProfilePage", name: title, url: canonical }),
+  });
 }
 
 const MARKET_FOOTER =
@@ -3035,6 +3153,31 @@ const server = http.createServer((req, res) => {
     return res.end(renderMarketPageHTML(marketMatch[1], page));
   }
 
+  // --- Public broker profiles — opt-in pages for verified contributors ---
+  const brokerMatch = req.method === "GET" && req.url.match(/^\/broker\/([a-z0-9-]{3,80})$/);
+  if (brokerMatch) {
+    (async () => {
+      if (rateLimited("bpage:" + clientIp(req), 60)) {
+        res.writeHead(429, { "content-type": "text/plain" });
+        return res.end("Too many requests.");
+      }
+      if (!DB_CONFIGURED) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+      const rows = await sbRequest("GET",
+        `broker_profiles?slug=eq.${encodeURIComponent(brokerMatch[1])}&public=eq.true&limit=1`);
+      const profile = rows && rows[0];
+      if (!profile) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+      const subs = await fetchSubmissionsForEmail(profile.email);
+      // Short max-age so toggling a profile off propagates within minutes.
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" });
+      return res.end(renderBrokerProfileHTML(profile, subs));
+    })().catch((err) => {
+      console.error("broker page error:", err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("Something went wrong.");
+    });
+    return;
+  }
+
   // --- Explorer previews: thin-data market snapshots, visible only to whoever
   // generated them. In-memory with a short TTL, noindexed at every layer
   // (meta tag, X-Robots-Tag, robots.txt) and never linked from indexed pages.
@@ -3082,6 +3225,9 @@ const server = http.createServer((req, res) => {
       const lastmod = merged[slug].generatedAt;
       return `  <url><loc>${marketUrl(slug)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}</url>`;
     }).join("\n");
+    if (Date.now() - BROKER_PROFILES.fetchedAt > BROKER_PROFILES_TTL_MS) refreshBrokerProfiles();
+    const brokerUrls = Object.keys(BROKER_PROFILES.bySlug).map((slug) =>
+      `  <url><loc>${SITE_URL}/broker/${slug}</loc></url>`).join("\n");
     res.writeHead(200, { "content-type": "application/xml" });
     return res.end(
       `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -3089,6 +3235,7 @@ const server = http.createServer((req, res) => {
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +
       (marketUrls ? marketUrls + "\n" : "") +
+      (brokerUrls ? brokerUrls + "\n" : "") +
       `</urlset>\n`
     );
   }
@@ -3100,6 +3247,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
+  refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   loadDynamicMarketPages().then((n) => {
     console.log(`🧭 Market Explorer: ${n} visitor-generated page(s) loaded (${DB_CONFIGURED ? "Supabase market_pages" : path.basename(DYNAMIC_MARKETS_FILE) + " — EPHEMERAL on most hosts; run the market_pages DDL in Supabase for durable storage"}).`);
   });

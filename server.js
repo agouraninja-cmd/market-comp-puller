@@ -1897,6 +1897,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td{padding:7px 4px;bord
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">View analytics</button><div id="err" class="err"></div></div>
 <div id="dash" style="display:none"></div>
+<div id="subs" style="display:none"></div>
 </div>
 <script>
 var KEYK="cn_admin_key";
@@ -1926,13 +1927,50 @@ function render(d){
   document.getElementById("gate").style.display="none";
   document.getElementById("dash").style.display="block";
 }
+// Broker comp submissions: everything broker-supplied is attacker-controlled
+// text rendered into the admin's page, so every value goes through esc() and
+// buttons carry only a numeric data-id (no inline handlers built from data).
+function subRow(x){
+  var who=esc(x.broker_name)+(x.broker_company?" ("+esc(x.broker_company)+")":"")+" · "+esc(x.broker_email);
+  var comp=esc(x.address)+" — "+esc(x.property_type||"?")+(x.transaction?" · "+esc(x.transaction):"")+" · "+esc(x.price_or_rate)+(x.deal_date?" · "+esc(x.deal_date):"");
+  var notes=x.notes?"<div class=muted>"+esc(String(x.notes).slice(0,160))+"</div>":"";
+  return "<tr><td style='text-align:left'><div style='font-weight:600'>"+comp+"</div><div class=muted>"+who+"</div>"+notes+"</td>"+
+    "<td style='white-space:nowrap'><button class='btn ap' data-id='"+Number(x.id)+"'>Approve</button> "+
+    "<button class='btn rj' data-id='"+Number(x.id)+"' style='background:#64748b'>Reject</button></td></tr>";
+}
+function renderSubs(d,key){
+  var el=document.getElementById("subs"), inner;
+  if(!d.db){inner="<div class=muted>Approval requires Supabase (DB not configured on this server).</div>";}
+  else if(!d.rows.length){inner="<div class=muted>No pending submissions.</div>";}
+  else{inner="<table>"+d.rows.map(subRow).join("")+"</table>";}
+  el.innerHTML="<div class=card><h2>Pending comp submissions</h2>"+inner+"</div>";
+  el.style.display="block";
+  el.querySelectorAll("button.ap,button.rj").forEach(function(b){
+    b.addEventListener("click",function(){
+      var approve=b.classList.contains("ap");
+      if(!approve&&!confirm("Reject this submission? The broker is not notified."))return;
+      b.disabled=true;
+      fetch("/api/admin/submission-status",{method:"POST",headers:{"x-admin-key":key,"content-type":"application/json"},
+        body:JSON.stringify({id:Number(b.getAttribute("data-id")),status:approve?"approved":"rejected"})})
+      .then(function(r){if(!r.ok){throw new Error("Error "+r.status);}return r.json();})
+      .then(function(){loadSubs(key);})
+      .catch(function(e){alert(e.message);b.disabled=false;});
+    });
+  });
+}
+function loadSubs(key){
+  fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
+    .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
+    .then(function(d){renderSubs(d,key);})
+    .catch(function(e){console.error(e);});
+}
 function load(key){
   fetch("/api/stats",{headers:{"x-admin-key":key}}).then(function(r){
     if(r.status===401){throw new Error("Incorrect key.");}
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){} render(d);})
+  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){} render(d); loadSubs(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }

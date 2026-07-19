@@ -2699,6 +2699,100 @@ const server = http.createServer((req, res) => {
        "price_or_rate", "cap_rate", "notes"], "comp-submissions.csv");
   }
 
+  // --- Admin: broker submission review — list + approve/reject. The whole
+  // verified layer keys off comp_submissions.status, so this replaces the
+  // manual Supabase table edit with one click in /admin. Broker-network DDL
+  // (run 2026-07-19, alongside the hand-created comp_submissions table which
+  // already carries "id bigint generated always as identity"):
+  //
+  //   alter table comp_submissions
+  //     add column if not exists cited_count integer not null default 0;
+  //   create table broker_profiles (
+  //     id uuid primary key default gen_random_uuid(),
+  //     email text not null unique,          -- always stored lowercased
+  //     display_name text not null default '',
+  //     company text default '',
+  //     slug text not null unique,
+  //     public boolean not null default false,
+  //     created_at timestamptz not null default now(),
+  //     updated_at timestamptz not null default now()
+  //   );
+  //   alter table broker_profiles enable row level security;
+  // ---------------------------------------------------------------------------
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/submissions") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const key = req.headers["x-admin-key"] || new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    (async () => {
+      // The verified layer is DB-only, so review is too — file mode just tells
+      // the admin UI to render its "requires Supabase" note.
+      if (!DB_CONFIGURED) return sendJson(res, 200, { db: false, rows: [] });
+      const statusIn = new URL(req.url, "http://localhost").searchParams.get("status") || "pending";
+      const statusOk = ["pending", "approved", "rejected", "all"].includes(statusIn) ? statusIn : "pending";
+      const rows = await sbRequest("GET",
+        "comp_submissions?order=ts.desc&limit=200" +
+        (statusOk === "all" ? "" : `&status=eq.${statusOk}`) +
+        "&select=id,ts,status,broker_name,broker_email,broker_phone,broker_company," +
+        "address,property_type,transaction,deal_date,size_sqft,price_or_rate,cap_rate,notes,cited_count");
+      return sendJson(res, 200, { db: true, rows: rows || [] });
+    })().catch((err) => { console.error("admin submissions error:", err); sendJson(res, 500, { error: "Could not load submissions." }); });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/admin/submission-status") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+        if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+        if (rateLimited("astat:" + clientIp(req), 60)) return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        const { id, status } = JSON.parse(body || "{}");
+        const idOk = Number.isInteger(Number(id)) && Number(id) > 0 ? Number(id) : null;
+        if (!idOk || !["approved", "rejected"].includes(status)) {
+          return sendJson(res, 400, { error: "id and a status of approved/rejected are required." });
+        }
+        if (!DB_CONFIGURED) return sendJson(res, 409, { error: "Approval requires Supabase; set SUPABASE_URL + SUPABASE_SERVICE_KEY." });
+        const rows = await sbRequest("PATCH", `comp_submissions?id=eq.${idOk}`, { status }, { prefer: "return=representation" });
+        const row = rows && rows[0];
+        if (!row) return sendJson(res, 404, { error: "Not found." });
+        logEvent("comp_review", { prop_type: row.property_type, market: marketOf(row.address), source: status });
+        if (status === "approved") {
+          refreshMarketCredit(); // self-catching; public market-page credit updates ahead of its TTL
+          const firm = row.broker_company || row.broker_name;
+          sendOutboundEmail(
+            row.broker_email,
+            `Your comp is live: ${row.address}`,
+            [
+              `Hi ${row.broker_name},`,
+              ``,
+              `Good news — your comp was approved and is now part of CompNinja's`,
+              `verified layer:`,
+              `${row.address}${row.transaction ? " — " + row.transaction : ""}, ${row.price_or_rate}` +
+                `${row.deal_date ? ", closed " + row.deal_date : ""}`,
+              ``,
+              `It now appears in matching reports with a "Verified - via ${firm}"`,
+              `credit, and your firm is credited on our public market page for that`,
+              `area.`,
+              ``,
+              `Track your impact: create a free CompNinja account at ${SITE_URL}`,
+              `using this same email address to see your submissions, watch when`,
+              `reports cite your comps, and turn on a public broker profile.`,
+              ``,
+              `CompNinja · ${LEAD_NOTIFY_EMAIL}`,
+            ].join("\n")
+          );
+        }
+        return sendJson(res, 200, { ok: true, id: row.id, status: row.status });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("submission-status error:", err);
+        return sendJson(res, 500, { error: "Could not update the submission." });
+      }
+    });
+    return;
+  }
+
   // --- Comp corpus download (CSV). Disabled unless ADMIN_KEY is set. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/comp-corpus") {
     return sendCsvDownload(req, res, "comp_corpus", COMP_CORPUS_FILE,

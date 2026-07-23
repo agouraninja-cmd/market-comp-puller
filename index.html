@@ -1206,6 +1206,12 @@
           <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-3">What's Driving Prices Here</h2>
           <p id="marketTrend" class="hidden text-sm font-medium text-[#374253]"></p>
           <div id="driversList" class="text-sm text-[#374253] mt-1"></div>
+          <!-- Price-discovery read: the market's momentum + how open it looks to
+               pricing above recent comps. An automated read of conditions, not advice. -->
+          <div id="priceDiscovery" class="hidden mt-3 pt-3 border-t border-[#F0EFE9]">
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">Price Discovery<span id="priceDiscoveryDir"></span></div>
+            <p id="priceDiscoveryNote" class="text-sm text-[#374253]"></p>
+          </div>
         </div>
 
         <!-- Comp map (shown when the comps carry coordinates) -->
@@ -1268,6 +1274,9 @@
           <!-- Search radius: surfaces the geographic scope the model used to gather
                comps (wider in thin/rural markets). Hidden until the model returns one. -->
           <p id="searchRadiusNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
+          <!-- Breadth framing: how many transactions were weighed vs. how many were
+               kept as the most comparable. Hidden unless the model returns a count. -->
+          <p id="reviewedNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
           <!-- Mobile card list: same data as the table, stacked for small screens -->
           <div id="cardList" class="sm:hidden divide-y divide-[#F0EFE9]"></div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
@@ -2785,13 +2794,31 @@
     const drivers = parsed && Array.isArray(parsed.value_drivers)
       ? parsed.value_drivers.map((d) => String(d || "").trim()).filter(Boolean).slice(0, 4)
       : [];
-    if (!trend && !drivers.length) { card.classList.add("hidden"); return; }
+    // Price-discovery read (a user suggestion): the market's momentum and how open
+    // it looks to pricing above what recent comps strictly prove. Automated read.
+    const pd = parsed && parsed.price_discovery && typeof parsed.price_discovery === "object" ? parsed.price_discovery : {};
+    const pdNote = String(pd.note || "").trim();
+    const pdDir = String(pd.direction || "").trim().toLowerCase();
+
+    if (!trend && !drivers.length && !pdNote) { card.classList.add("hidden"); return; }
 
     trendEl.textContent = trend;
     trendEl.classList.toggle("hidden", !trend);
     // Text bullets + margins (not list markup or flex gap) so the PNG exporter
     // renders the spacing faithfully.
     listEl.innerHTML = drivers.map((d) => `<p><b>&bull;</b> ${esc(d)}</p>`).join("");
+
+    const pdBlock = document.getElementById("priceDiscovery");
+    if (pdNote) {
+      document.getElementById("priceDiscoveryNote").textContent = pdNote;
+      const dirWord = ["expanding", "flat", "contracting"].includes(pdDir)
+        ? pdDir.charAt(0).toUpperCase() + pdDir.slice(1) : "";
+      document.getElementById("priceDiscoveryDir").textContent = dirWord ? " · " + dirWord : "";
+      pdBlock.classList.remove("hidden");
+    } else {
+      pdBlock.classList.add("hidden");
+    }
+
     card.classList.remove("hidden");
   }
 
@@ -3329,6 +3356,18 @@
     const radiusTxt = parsed && parsed.search_radius ? String(parsed.search_radius).trim().slice(0, 140) : "";
     radiusNote.textContent = radiusTxt ? "Search radius: " + radiusTxt : "";
     radiusNote.classList.toggle("hidden", !radiusTxt);
+
+    // Breadth framing (a user suggestion): "selected the N most comparable from
+    // ~M reviewed". Numerator is the real returned-comp count; denominator is the
+    // model's rough estimate. Hidden unless the estimate exceeds the comp count.
+    const reviewedNote = document.getElementById("reviewedNote");
+    const compsN = parsed && Array.isArray(parsed.comps) ? parsed.comps.length : 0;
+    const reviewedN = parsed ? Math.round(numericValue(parsed.transactions_reviewed)) : NaN;
+    const showReviewed = compsN > 0 && Number.isFinite(reviewedN) && reviewedN > compsN;
+    reviewedNote.textContent = showReviewed
+      ? "Selected the " + compsN + " most comparable from ~" + reviewedN.toLocaleString() + " recent transactions reviewed"
+      : "";
+    reviewedNote.classList.toggle("hidden", !showReviewed);
 
     renderStatTiles(parsed, meta);
 
@@ -4067,6 +4106,8 @@
     market_cap_rate_range: { low: "5.8%", high: "6.3%" },
     market_trend: "Sale prices for mid-size DFW industrial have held roughly flat over the past year after a strong 2024 run-up.",
     search_radius: "Immediate submarket, ~5 miles",
+    transactions_reviewed: 34,
+    price_discovery: { direction: "flat", note: "Pricing has stabilized after the 2024 run-up, so buyers are underwriting to recent comps rather than chasing higher marks. A seller pushing materially above the comp range would likely need a standout building or a motivated buyer." },
     value_drivers: [
       "Mid-bay distribution space under 100,000 SF stays scarce in the mid-cities corridor",
       "Two new spec projects near DFW Airport add supply pressure on larger boxes",

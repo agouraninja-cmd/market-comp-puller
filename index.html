@@ -682,6 +682,7 @@
               <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
               <span class="text-sm text-slate-500 shrink-0">months</span>
             </div>
+            <div id="lookbackHint" class="text-xs text-[#8A93A0] mt-1"></div>
           </div>
           <div class="rd-cell" id="txFocusWrap">
             <label class="rd-lab" for="txFocus">Focus</label>
@@ -1574,6 +1575,26 @@
     lookbackCustomWrap.classList.toggle("hidden", preset);
     if (!preset) lookbackCustomInput.value = months;
   }
+
+  // Recommended lookback per property type (a user suggestion): multifamily and
+  // residential trade often, so a shorter, fresher window fits; office and land
+  // move slowly, so a longer one. Applied when the user picks a type — they can
+  // still override afterward. All values are preset windows, so the control snaps
+  // cleanly. Programmatic type sets (loading a saved/shared report) don't fire
+  // "change", so a restored report's window is never overwritten.
+  const RECOMMENDED_LOOKBACK = { Industrial: 12, Office: 24, Retail: 12, Multifamily: 6, Land: 24, Residential: 6 };
+  const propertyTypeSel = document.getElementById("propertyType");
+  const lookbackHint = document.getElementById("lookbackHint");
+  function applyRecommendedLookback() {
+    const rec = RECOMMENDED_LOOKBACK[propertyTypeSel.value];
+    if (!rec) { lookbackHint.textContent = ""; return; }
+    setLookbackControls(rec);
+    lookbackHint.textContent = "Recommended for " + propertyTypeSel.value;
+  }
+  propertyTypeSel.addEventListener("change", applyRecommendedLookback);
+  // Seed the default type's recommendation on first load, unless a report is
+  // already being restored into the form.
+  if (!currentMeta) applyRecommendedLookback();
 
   // First day of the report's lookback window, anchored to when the report was
   // generated (so reopened saved reports keep historically correct badges).

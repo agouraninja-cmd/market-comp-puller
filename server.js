@@ -1324,7 +1324,10 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `- Address: ${address}`,
     `- Property type: ${type}`,
     subjectSizeSqft ? `- Approximate building size: ${subjectSizeSqft.toLocaleString("en-US")} SF` : "",
-    note ? `- Market note / radius: ${note}` : `- Market note / radius: (none specified — use the immediate submarket)`,
+    note ? `- Market note / radius: ${note}` : `- Market note / radius: (none specified — pick the radius to fit the market; see RADIUS below)`,
+    // Calibrate the comp search radius to market density (a user suggestion):
+    // "within 5 miles" means something very different in Dallas vs. Boise.
+    `RADIUS: Scale how far "comparable" reaches to the market's size and density. In a large, dense metro (e.g. Dallas, Phoenix, Los Angeles), keep comps within the immediate submarket, a few miles out. In a smaller or rural market (e.g. Boise, Pocatello), widen the radius as needed to find enough genuinely comparable transactions, and note in "summary" when you reach beyond the immediate area.${note ? ' Respect the market note above where it specifies where to look.' : ''}`,
     ``,
     `TASK: Find 3 to ${maxComps} RECENT ${
       txFocus === "sales"  ? "comparable closed SALES" :

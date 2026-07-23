@@ -1265,6 +1265,9 @@
               <span id="compCount" class="rd-chip whitespace-nowrap"></span>
             </div>
           </div>
+          <!-- Search radius: surfaces the geographic scope the model used to gather
+               comps (wider in thin/rural markets). Hidden until the model returns one. -->
+          <p id="searchRadiusNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
           <!-- Mobile card list: same data as the table, stacked for small screens -->
           <div id="cardList" class="sm:hidden divide-y divide-[#F0EFE9]"></div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
@@ -3320,6 +3323,13 @@
 
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
 
+    // Search radius (makes the market-radius calibration visible): the geographic
+    // scope the model used. Hidden when the model didn't return one.
+    const radiusNote = document.getElementById("searchRadiusNote");
+    const radiusTxt = parsed && parsed.search_radius ? String(parsed.search_radius).trim().slice(0, 140) : "";
+    radiusNote.textContent = radiusTxt ? "Search radius: " + radiusTxt : "";
+    radiusNote.classList.toggle("hidden", !radiusTxt);
+
     renderStatTiles(parsed, meta);
 
     updateCompCount();
@@ -4056,6 +4066,7 @@
     subject_lng: "-96.8460",
     market_cap_rate_range: { low: "5.8%", high: "6.3%" },
     market_trend: "Sale prices for mid-size DFW industrial have held roughly flat over the past year after a strong 2024 run-up.",
+    search_radius: "Immediate submarket, ~5 miles",
     value_drivers: [
       "Mid-bay distribution space under 100,000 SF stays scarce in the mid-cities corridor",
       "Two new spec projects near DFW Airport add supply pressure on larger boxes",

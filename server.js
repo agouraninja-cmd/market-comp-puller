@@ -692,7 +692,7 @@ async function corpusRowsForMarket(market, property_type, limit) {
     try {
       dbRows = await sbRequest("GET",
         `comp_corpus?market=eq.${encodeURIComponent(market)}&property_type=eq.${encodeURIComponent(property_type)}` +
-        `&select=ts,address,transaction,deal_date,price_or_rate,price_per_sqft,cap_rate,source_url&order=ts.desc&limit=${limit}`) || [];
+        `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,source_url,source_type&order=ts.desc&limit=${limit}`) || [];
     } catch (e) { console.error("corpus feed read failed:", e.message); }
   }
   const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
@@ -700,6 +700,62 @@ async function corpusRowsForMarket(market, property_type, limit) {
   return [...dbRows, ...fileRows]
     .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
     .slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Corpus-first retrieval (cost saver). On a cache miss, before paying for a
+// fresh web search, pull comps we already harvested for this market+type. When
+// coverage is good AND recent, the model reuses them and we cut the web-search
+// budget hard (the expensive part of a call). Thin or stale coverage falls back
+// to today's full search, which then refreshes the corpus. Best-effort: any
+// failure returns empty coverage, i.e. unchanged behavior. Runs only after the
+// exact-address search cache misses, so it never touches the cache key.
+// ---------------------------------------------------------------------------
+async function retrieveCorpusComps(market, type, months, maxComps) {
+  try {
+    const rows = await corpusRowsForMarket(market, type, 300);
+    if (!rows.length) return { comps: [], coverage: 0, fresh: false };
+
+    // Window filter in year-fraction space (parseDealDate returns e.g. 2024.5).
+    const now = new Date();
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
+    const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
+
+    const usable = rows.filter((r) => {
+      // Only feed higher-confidence provenance; a rough guess ("estimate") or a
+      // news mention shouldn't seed a report.
+      const st = String(r.source_type || "").toLowerCase();
+      if (st === "estimate" || st === "news") return false;
+      const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
+      const d = parseDealDate(r.deal_date);
+      return Boolean(priced) && d != null && d >= cutoffFrac;
+    });
+
+    // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
+    // freshest we hold for this market. Stale coverage → fall back to the web.
+    const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
+    const fresh = Boolean(newest && (now - newest) < 45 * 24 * 3600 * 1000);
+
+    return { comps: usable.slice(0, maxComps * 2), coverage: usable.length, fresh };
+  } catch (e) {
+    console.error("Corpus retrieval failed (falling back to full search):", e.message);
+    return { comps: [], coverage: 0, fresh: false };
+  }
+}
+
+// A market is "corpus-strong" when we hold enough recent, priced comps to lean
+// on them instead of the web. One threshold, shared by the search budget and
+// the analytics tag so the two can never disagree.
+function corpusIsStrong(corpus) {
+  return Boolean(corpus && corpus.fresh && corpus.coverage >= 4);
+}
+
+// How many web searches to allow. Corpus-strong requests drop from today's 6-8
+// to a small floor (a subject-size lookup still needs ~2 searches when the size
+// is unknown). This is the actual cost lever.
+function searchBudgetFor(corpus, subjectSizeSqft) {
+  if (!corpusIsStrong(corpus)) return subjectSizeSqft ? 6 : 8;  // unchanged fallback
+  return subjectSizeSqft ? 2 : 3;                               // conservative floor, not 0/1
 }
 
 // ---------------------------------------------------------------------------
@@ -1215,7 +1271,7 @@ async function fetchVerifiedComps(type, txFocus) {
   }
 }
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft) {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -1251,6 +1307,16 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Include each verified internal comp in the "comps" array IF it is genuinely comparable to the target property (reasonably near the target address and inside the date window). Set "verified": true on those and copy their details faithfully; compute "price_per_sqft" from the given size and price where possible, and estimate "lat"/"lng" from the address. When a verified comp and a web result describe the same transaction, keep only the verified one. Verified comps count toward the comp total. Set "verified": false on every comp found via web search. Never include a verified comp that is clearly in a different city or market than the target.`,
   ].join("\n") : "";
 
+  // Comps we already pulled for this market in earlier searches. Offered so the
+  // model reuses them instead of paying to re-search the web for the same deals.
+  const corpusBlock = (corpusComps && corpusComps.length) ? [
+    ``,
+    `KNOWN RECENT COMPS: our own prior research already surfaced the following ${corpusComps.length === 1 ? "transaction" : "transactions"} in this market. They are already sourced — reuse them rather than re-searching for the same deals.`,
+    ...corpusComps.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${c.source_url ? " | " + c.source_url : ""}`),
+    `Include each one that is genuinely comparable to the target and inside the date window, copying its details faithfully (keep its source_url, and set "source_type" to match where it came from). Use web search only to (a) confirm the target's building size, (b) fill gaps if fewer than ${maxComps} of these are comparable, or (c) surface more recent transactions. When one of these and a fresh web result describe the same deal, keep only one. Set "verified": false on these unless they also appear in the verified list above. Never include one that is clearly in a different city or submarket than the target.`,
+  ].join("\n") : "";
+
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
     ``,
@@ -1279,6 +1345,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       ? `For EACH comp, also report "tenancy" = who occupies the building and the lease structure, naming the tenant when it is a single-tenant property (e.g. "Single-tenant NNN - Starbucks", "Multi-tenant, 85% occupied", "Owner-user", "Vacant"). Tenant quality moves pricing, so name national or credit tenants specifically when a source shows one. Also report "year_built" = the year the building was constructed as a 4-digit year (e.g. "1998"). If either genuinely can't be found, use an empty string "" — do not guess.`
       : "",
     verifiedBlock,
+    corpusBlock,
     ``,
     `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     `Do not use em dashes anywhere in your output text.`,
@@ -1443,7 +1510,7 @@ async function findBrokersForMarket(market) {
 // ---------------------------------------------------------------------------
 const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus) {
   const body = {
     model: MODEL,
     // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
@@ -1454,9 +1521,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // the (much more common) shorter reports.
     max_tokens: 8000,
     // The subject-size lookup gets two extra searches so it doesn't crowd out
-    // the comp searches themselves.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: !subjectSizeSqft ? 8 : 6 }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft) }],
+    // the comp searches themselves. When we already hold recent comps for this
+    // market (corpus-strong), the budget drops hard — that reuse is the saving.
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchBudgetFor(corpus, subjectSizeSqft) }],
+    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps) }],
   };
 
   const controller = new AbortController();
@@ -1503,7 +1571,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   return attachVerifiedAttribution(parsed, verifiedComps);
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps) {
+async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
   }
@@ -1513,12 +1581,12 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
   // never leak the raw JSON.parse error text to the client — it's meaningless
   // to a visitor and reads like a broken site rather than a one-off hiccup.
   try {
-    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft);
+    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
       try {
-        return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft);
+        return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus);
       } catch (err2) {
         if (err2 instanceof SyntaxError) {
           console.warn("Comp JSON failed to parse on retry too; giving up.", err2.message);
@@ -2349,9 +2417,17 @@ const server = http.createServer((req, res) => {
           });
         }
 
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps);
+        // Cache missed — see what we already hold for this market before paying
+        // for a fresh web search. Corpus-strong markets reuse known comps and
+        // run a much smaller search budget (see searchBudgetFor).
+        const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
+        if (corpusIsStrong(corpus)) {
+          console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
+        }
+
+        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus);
         await storeCachedSearch(cacheKey, result);
-        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false });
+        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined });
         maybePublishMarketSnapshot(typeOk, addressOk, result);
         harvestComps(typeOk, addressOk, result);
         return sendJson(res, 200, result);

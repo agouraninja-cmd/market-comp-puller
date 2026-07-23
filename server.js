@@ -2214,6 +2214,13 @@ function aggregateStats(rows) {
     arr.forEach((r) => { const k = (r[field] || "").trim() || "(unknown)"; m[k] = (m[k] || 0) + 1; });
     return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([label, count]) => ({ label, count }));
   };
+  // Corpus-first cost saver: of the searches we actually PAID for (billed report
+  // searches — excludes cache hits, which cost nothing, and Explorer, which
+  // runs the full search), how many reused the corpus and ran the reduced
+  // web-search budget. Forward-looking: the source:"corpus" tag only exists from
+  // the corpus-first-retrieval commit onward, so this reads low/empty at first.
+  const billedReport = searches.filter((r) => !r.cached && (r.source || "") !== "explore");
+  const corpusHits = billedReport.filter((r) => (r.source || "") === "corpus").length;
   return {
     totals: {
       searches: searches.length,
@@ -2228,6 +2235,11 @@ function aggregateStats(rows) {
     byType: countBy(searches, "prop_type"),
     topMarkets: countBy(searches, "market").slice(0, 12),
     leadsBySource: countBy(leads, "source"),
+    corpus: {
+      hits: corpusHits,
+      billedReport: billedReport.length,
+      pct: billedReport.length ? Math.round((corpusHits / billedReport.length) * 1000) / 10 : 0,
+    },
     eventCount: rows.length,
     capped: rows.length >= 10000,
   };
@@ -2278,6 +2290,7 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return
 function rows(a){return a.length?a.map(function(x){return "<tr><td>"+esc(x.label)+"</td><td>"+x.count+"</td></tr>";}).join(""):"<tr><td class=muted colspan=2>No data yet</td></tr>";}
 function render(d){
   var t=d.totals, hit=t.searches?Math.round(t.cached/t.searches*100):0;
+  var c=d.corpus||{hits:0,billedReport:0,pct:0};
   var max=Math.max(1,Math.max.apply(null,d.daily.map(function(x){return x.total;})));
   var bars=d.daily.map(function(x){var bh=Math.round(x.billed/max*120),ch=Math.round(x.cached/max*120);
     return "<div class=col title='"+x.date+": "+x.billed+" billed, "+x.cached+" cached'><div class=c style='height:"+ch+"px'></div><div class=b style='height:"+bh+"px'></div></div>";}).join("");
@@ -2287,6 +2300,7 @@ function render(d){
     "<div class=tile><div class=k>Searches</div><div class=v>"+t.searches+"</div></div>"+
     "<div class=tile><div class=k>Billed</div><div class=v>"+t.billed+"</div></div>"+
     "<div class=tile><div class=k>Cache hit rate</div><div class=v>"+hit+"%</div></div>"+
+    "<div class=tile><div class=k>Corpus hit rate</div><div class=v>"+c.pct+"%</div><div class=muted style='margin-top:2px'>"+c.hits+" of "+c.billedReport+" billed</div></div>"+
     "<div class=tile><div class=k>Leads</div><div class=v>"+t.leads+"</div></div>"+
     "<div class=tile><div class=k>Conversion</div><div class=v>"+d.conversionPct+"%</div></div>"+
     "<div class=tile><div class=k>Shares</div><div class=v>"+t.shares+"</div></div>"+

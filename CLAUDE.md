@@ -198,6 +198,44 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   raw-data layer that broker verification and future retrieval features build
   on; the DDL lives in a comment above `harvestComps` in server.js.
   `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`).
+  **Corpus health (`CORPUS_HEALTH` + `noteCorpusFailure()`).** Fire-and-forget
+  means both the write (`harvestComps`) and the read (`corpusRowsForMarket`)
+  swallow their errors, which once hid a total outage: ten per-comp columns
+  were missing because the `ALTER TABLE` was never run, so every insert 400'd
+  into the ephemeral file and every read returned empty. The corpus sat frozen
+  at 65 rows for **weeks** while the log said `Comp corpus +8` on each search
+  and `/admin` showed a 0% corpus hit rate with no explanation. So failures now
+  accumulate in `CORPUS_HEALTH` (write fallbacks, read failures, last error +
+  timestamp, and a `schemaMismatch` flag set when the message names a column or
+  the schema cache — PostgREST's `PGRST204`). `/api/stats` returns it as
+  `corpus.health` and `/admin` renders a red banner above the tiles whenever
+  anything is non-zero, naming the missing-column case specifically because it
+  has one concrete fix. Counters are in-memory and reset on restart — a smoke
+  alarm, not accounting. The harvest log also distinguishes a durable insert
+  from the ephemeral fallback; **a console line alone was not the fix** (one was
+  already logged on every failure and nobody tails Render's logs), which is why
+  this surfaces in the dashboard instead.
+- **Corpus-first retrieval** (the cost saver, not a route): on a cache *miss*,
+  before paying for a fresh web search, `retrieveCorpusComps()` pulls comps
+  already harvested for that market+type. Rows count as *usable* when the
+  provenance is better than `estimate`/`news`, a price parses, and
+  `parseDealDate()` puts the deal inside the requested lookback.
+  `corpusIsStrong()` — the single threshold shared by the search budget and the
+  analytics tag so the two can't disagree — is `coverage >= 4 && fresh`, where
+  fresh means the newest harvest for that market is under 45 days old. When
+  strong, the model is handed those comps and `searchBudgetFor()` cuts
+  `max_uses` from 8→3 (or 6→2 when the subject size was supplied) — a
+  deliberate floor rather than 0/1 — and the search is tagged
+  `source: "corpus"` in `analytics_events`. Failure is always safe: any error
+  returns zero coverage, i.e. today's normal full search.
+  Because the key is `marketOf(address)` and matched with a **case-sensitive**
+  `eq`, the write side (`harvestComps` files each comp under
+  `marketOf(comp.address)`) and the read side (`marketOf(subject.address)`) must
+  agree exactly — `marketOf()` canonicalizes to title-case city + uppercase
+  state for precisely this reason; see the note above it before touching that
+  parse. Verified end-to-end 2026-07-27 on both a 24-month and the default
+  12-month lookback. Note the threshold is per market **and** property type, so
+  it only pays off when traffic repeats in the same market.
 - `GET /how-it-works` — the standalone proof/FAQ page, reached from the header
   nav (the old "Methodology" item) and the footer. Holds the four blocks that
   used to sit below the fold on the home page: the stat strip, the sample-report
@@ -227,9 +265,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   fallback). `/admin` is a self-contained page (own inline CSS/JS) that fetches
   `/api/stats` with the key as an `x-admin-key` header; `/api/stats` is
   `ADMIN_KEY`-gated and returns aggregates (searches/day billed-vs-cached, cache
-  hit rate, by-type, top markets, leads by source, conversion %). **Logging is
-  always on**; the dashboard only renders once `ADMIN_KEY` is set (same key as
-  the lead CSV). `/admin` is `noindex` + `Disallow`ed in robots.
+  hit rate, by-type, top markets, leads by source, conversion %, and
+  `corpus.health` — see the corpus-health note under **Comp corpus**, which
+  renders as a red banner above the tiles). **Logging is always on**; the
+  dashboard only renders once `ADMIN_KEY` is set (same key as the lead CSV).
+  `/admin` is `noindex` + `Disallow`ed in robots (meta tag, `X-Robots-Tag`
+  header, and robots.txt).
+  Reading the **corpus hit rate** tile: the denominator is *every* billed
+  non-Explorer search ever, including the weeks before corpus-first retrieval
+  existed, so the lifetime figure reads far lower than current behavior — judge
+  the ratio going forward, not the headline. A hit requires ≥4 recent priced
+  comps in that exact market **and** property type, so it only fires on repeat
+  searches in the same market. `analytics_events` is queryable directly in
+  Supabase when the dashboard is unavailable: `source = 'corpus'` marks a hit.
 - **Accounts + My Desk** (added 2026-07-19; spec/plan in `docs/superpowers/`):
   email+password accounts with a server-synced property **portfolio**
   (value-snapshot history per re-run) and an in-app market **watchlist** whose
@@ -291,6 +339,24 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    needs a column per field. **Run the ALTER TABLE in the DDL comment before
    deploying a new field** — PostgREST 400s on an unknown column, which makes
    harvesting fall back to the ephemeral file and quietly lose data.
+   `ALL_TYPE_COMP_FIELDS` is also in the `select` of `corpusRowsForMarket()`,
+   so a missing column breaks **reads** too: retrieval returns empty, every
+   market looks uncovered, and the corpus hit rate pins at 0%. This has already
+   happened once (2026-07-27) and went unnoticed for weeks because both paths
+   swallow their errors; the corpus health alarm described under **Comp corpus**
+   exists to make the next occurrence visible on `/admin` within one search.
+   Verify after deploying a field:
+   ```sql
+   select c from unnest(array['clear_height','dock_doors','building_class',
+     'floor_plate','center_type','anchor_tenant','units','price_per_unit',
+     'lot_acres','price_per_acre','zoning','beds_baths']) as c
+   where not exists (select 1 from information_schema.columns
+                     where table_name='comp_corpus' and column_name = c);
+   ```
+   Zero rows means the schema is complete. Confirm harvesting actually resumed
+   by watching `select count(*) from comp_corpus` rise after a search — the row
+   count is the only unambiguous proof, since a fallback write still logs a
+   `+N` line and still returns a normal-looking report.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

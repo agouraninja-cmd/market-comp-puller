@@ -2022,33 +2022,42 @@
   // records), with an optional NOI / market-cap-rate cross-check.
   // All arithmetic is client-side; the model only supplies market figures.
   // ----------------------------------------------------------------------------
-  // Multifamily trades on price per unit and land on price per acre. When the
-  // owner supplied the count, express the same sale comps in the unit the
-  // market actually quotes. Returns null unless there is both a subject
-  // quantity and enough comps carrying the metric — one data point is not a
-  // median. Formats money locally so it does not depend on renderOwnerHero's
-  // internals.
+  // Multifamily trades on price per unit and land on price per acre, so for
+  // those types the same sale comps can be expressed in the unit the market
+  // actually quotes.
   const ALT_BASIS = {
-    Multifamily: { compKey: "price_per_unit", subjKey: "units",     noun: "unit", label: "Price per unit cross-check" },
-    Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", label: "Price per acre cross-check" },
+    Multifamily: { compKey: "price_per_unit", subjKey: "units",     noun: "unit", askFor: "unit count", label: "Price per unit cross-check" },
+    Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", askFor: "acreage",    label: "Price per acre cross-check" },
   };
 
-  function altBasisEntry(meta, subject, saleComps) {
+  // Shared by the cross-check line and the headline fallback so the two can
+  // never quote different statistics for the same comps. Deliberately reuses
+  // robustPpsfRange — the $/SF headline's outlier-resistant band — rather than
+  // a plain median, which on a 4-comp set could disagree with the headline by
+  // ~20% while sitting directly beneath it.
+  // Returns null unless the owner supplied the quantity AND enough comps carry
+  // the metric; one data point is not a range.
+  function altBasisRange(meta, subject, saleComps) {
     const spec = ALT_BASIS[meta.type];
     if (!spec) return null;
     const qty = numericValue((subject.details || {})[spec.subjKey]);
     if (!(qty > 0)) return null;
     const per = saleComps
       .map((x) => numericValue(x.comp[spec.compKey]))
-      .filter((v) => v > 0)
-      .sort((a, b) => a - b);
+      .filter((v) => v > 0);
     if (per.length < 3) return null;
-    const median = per[Math.floor(per.length / 2)];
+    return { spec, qty, per, rr: robustPpsfRange(per) };
+  }
+
+  function altBasisEntry(meta, subject, saleComps) {
+    const a = altBasisRange(meta, subject, saleComps);
+    if (!a) return null;
     const money = (v) => "$" + Math.round(v).toLocaleString();
+    const plural = a.qty === 1 ? "" : "s";
     return {
-      label: spec.label,
-      text: `${money(qty * median)} — ${qty.toLocaleString()} ${spec.noun}${qty === 1 ? "" : "s"} at the `
-        + `${money(median)} median price per ${spec.noun} across ${per.length} sale comps.`,
+      label: a.spec.label,
+      text: `${money(a.rr.low * a.qty)} – ${money(a.rr.high * a.qty)} — ${a.qty.toLocaleString()} ${a.spec.noun}${plural} at `
+        + `${money(a.rr.low)}–${money(a.rr.high)} per ${a.spec.noun} across ${a.per.length} sale comps.`,
     };
   }
 
@@ -2144,6 +2153,40 @@
     const capHi = capR ? numericValue(capR.high) : NaN;
     const capOk = capLo > 0 && capHi >= capLo;
 
+    // Built the same way whichever sales basis leads the hero, so the two
+    // headline branches can't drift apart. Takes the leading range so the
+    // agreement sentence compares like with like.
+    const incomeApproachEntry = (salesLo, salesHi) => {
+      if (!(noi && capOk)) {
+        // Land has no income to report — its NOI field is hidden, so pitching
+        // it here would point at a control the user cannot see.
+        if (meta.type === "Land") return null;
+        return {
+          label: "Income approach",
+          text: "not run — enter your NOI under 'Your property details' and the building gets valued on its income too.",
+          muted: true,
+        };
+      }
+      const incLo = noi / (capHi / 100);
+      const incHi = noi / (capLo / 100);
+      const agree = incLo <= salesHi && incHi >= salesLo
+        ? "The two approaches overlap, which strengthens the estimate."
+        : incLo > salesHi
+          ? "The income approach comes in higher than the sale comps — either the market prices this asset type below its income, or the NOI and cap-rate inputs deserve a second look."
+          : "The income approach comes in lower than the sale comps — worth a second look at the NOI and cap-rate inputs before leaning on either number.";
+      return {
+        label: "Income approach",
+        text: `${fmtTotal(incLo)} – ${fmtTotal(incHi)} — your net operating income valued at the market's `
+          + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
+      };
+    };
+
+    // Sales comparison on a per-unit / per-acre basis, when the type trades
+    // that way and the owner told us the count. Computed up front because it
+    // can either supplement the $/SF headline or, when no $/SF range exists,
+    // become the headline itself.
+    const altRange = altBasisRange(meta, s, saleComps);
+
     if (sizeR && ppsfs.length >= 2) {
       // Outlier-resistant $/SF band (see robustPpsfRange) instead of raw min/max.
       const rr = robustPpsfRange(ppsfs);
@@ -2200,30 +2243,44 @@
       // comps expressed in a different unit, not a separate approach.
       const altEntry = altBasisEntry(meta, s, saleComps);
       if (altEntry) entries.push(altEntry);
-      if (noi && capOk) {
-        const incLo = noi / (capHi / 100);
-        const incHi = noi / (capLo / 100);
-        const salesLo = rr.low * sizeR.min;
-        const salesHi = rr.high * sizeR.max;
-        const agree = incLo <= salesHi && incHi >= salesLo
-          ? "The two approaches overlap, which strengthens the estimate."
-          : incLo > salesHi
-            ? "The income approach comes in higher than the sale comps — either the market prices this asset type below its income, or the NOI and cap-rate inputs deserve a second look."
-            : "The income approach comes in lower than the sale comps — worth a second look at the NOI and cap-rate inputs before leaning on either number.";
-        entries.push({
-          label: "Income approach",
-          text: `${fmtTotal(incLo)} – ${fmtTotal(incHi)} — your net operating income valued at the market's `
-            + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
-        });
-      } else if (meta.type !== "Land") {
-        // Land has no income to report — the NOI field is hidden for this
-        // type, so pitching it here would point at a control the user can't see.
-        entries.push({
-          label: "Income approach",
-          text: "not run — enter your NOI under 'Your property details' and the building gets valued on its income too.",
-          muted: true,
-        });
-      }
+      const incEntry = incomeApproachEntry(rr.low * sizeR.min, rr.high * sizeR.max);
+      if (incEntry) entries.push(incEntry);
+      entries.push(costApproachEntry);
+      renderApproaches(entries);
+    } else if (altRange) {
+      // No usable $/SF range, but this asset class doesn't price on square feet
+      // anyway. A multifamily owner often doesn't know the building's SF and
+      // never needs to — buyers quote price per unit. Leading with it here is a
+      // real sales-comparison valuation, not a consolation prize, and beats
+      // showing dashes next to a complete answer.
+      const { spec, qty, per, rr } = altRange;
+      const plural = qty === 1 ? "" : "s";
+      animateValue(lowEl, rr.low * qty, fmtTotal);
+      animateValue(midEl, rr.mid * qty, fmtTotal);
+      animateValue(highEl, rr.high * qty, fmtTotal);
+      lastValuation = {
+        low: Math.round(rr.low * qty),
+        likely: Math.round(rr.mid * qty),
+        high: Math.round(rr.high * qty),
+        median_psf: null,   // this basis isn't per-SF, so there is no $/SF to report
+      };
+      const per0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+      setPpsf("ownerLowPpsf", "at " + per0(rr.low) + "/" + spec.noun);
+      setPpsf("ownerMidPpsf", "at " + per0(rr.mid) + "/" + spec.noun + " · comp median");
+      setPpsf("ownerHighPpsf", "at " + per0(rr.high) + "/" + spec.noun);
+      basisEl.textContent = `${qty.toLocaleString()} ${spec.noun}${plural} × ` + (rr.trimmed
+        ? `the middle range of ${per.length} sale comps`
+        : `price per ${spec.noun} from ${per.length} sale comps`);
+      trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
+        + `Building size wasn't needed for this estimate.`;
+      trustEl.classList.remove("hidden");
+      const entries = [{
+        label: "Sales comparison approach",
+        text: `${fmtTotal(rr.low * qty)} – ${fmtTotal(rr.high * qty)} — what ${per.length} recent sale comps say `
+          + `buyers pay per ${spec.noun}, applied to your ${qty.toLocaleString()} ${spec.noun}${plural}. This is the headline range above.`,
+      }];
+      const incEntry = incomeApproachEntry(rr.low * qty, rr.high * qty);
+      if (incEntry) entries.push(incEntry);
       entries.push(costApproachEntry);
       renderApproaches(entries);
     } else if (noi && capOk) {
@@ -2253,9 +2310,18 @@
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
-      basisEl.textContent = !sizeR
-        ? "We couldn't find this building's square footage. Enter it under 'Your property details' and the estimate updates instantly."
-        : "Not enough sale comps returned to compute a numeric range";
+      // When the type prices on units or acres and the comps carry that metric,
+      // the missing input is the count, not the square footage — pointing at SF
+      // would send the owner after a number this valuation never needs.
+      const altSpec = ALT_BASIS[meta.type];
+      const altCompN = altSpec
+        ? saleComps.filter((x) => numericValue(x.comp[altSpec.compKey]) > 0).length
+        : 0;
+      basisEl.textContent = altCompN >= 3
+        ? `Enter your ${altSpec.askFor} under 'Your property details' — ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
+        : !sizeR
+          ? "We couldn't find this building's square footage. Enter it under 'Your property details' and the estimate updates instantly."
+          : "Not enough sale comps returned to compute a numeric range";
     }
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.

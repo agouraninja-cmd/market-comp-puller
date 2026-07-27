@@ -1746,7 +1746,8 @@ footer{border-top:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:13px
 
 const MARKET_BAR =
   `<div class="bar"><a class="brand" href="/">Comp<b>Ninja</b></a>` +
-  `<nav><a href="/markets">Markets</a><a href="/">Get a valuation</a></nav></div>`;
+  `<nav><a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
+  `<a href="/">Get a valuation</a></nav></div>`;
 
 // ---------------------------------------------------------------------------
 // Public broker credit — which firms have approved comps in each market, so

@@ -680,6 +680,7 @@
                 <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 <p class="text-xs text-[#8A93A0] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
               </div>
+              <div id="subjectTypeFields" class="contents"></div>
             </div>
           </div>
         </details>
@@ -1436,6 +1437,85 @@
     return cols;
   }
 
+  // Subject-property detail inputs, mirroring TYPE_COMP_FIELDS in server.js
+  // minus the derived price metrics a user cannot type (price_per_unit,
+  // price_per_acre). Rendered into #subjectTypeFields whenever the type
+  // changes, the same way columnsForType() drives the comp table.
+  const TYPE_SUBJECT_FIELDS = {
+    Industrial: [
+      { key: "clear_height", label: "Clear height (ft)", type: "number", placeholder: "e.g. 32" },
+      { key: "dock_doors",   label: "Dock doors",        type: "number", placeholder: "e.g. 6" },
+    ],
+    Office: [
+      { key: "building_class", label: "Building class",   type: "select", options: ["", "Class A", "Class B", "Class C"] },
+      { key: "floor_plate",    label: "Floor plate (SF)", type: "number", placeholder: "e.g. 18000" },
+    ],
+    Retail: [
+      { key: "center_type",   label: "Center type",   type: "select", options: ["", "Neighborhood center", "Strip center", "Power center", "Single-tenant NNN", "Urban storefront"] },
+      { key: "anchor_tenant", label: "Anchor tenant", type: "text",   placeholder: "e.g. Kroger" },
+    ],
+    Multifamily: [
+      { key: "units", label: "Unit count", type: "number", placeholder: "e.g. 48" },
+    ],
+    Land: [
+      { key: "lot_acres", label: "Acres",  type: "number", placeholder: "e.g. 2.4" },
+      { key: "zoning",    label: "Zoning", type: "text",   placeholder: "e.g. M-1" },
+    ],
+    Residential: [
+      { key: "beds_baths", label: "Beds / baths", type: "text", placeholder: "e.g. 4 bd / 3 ba" },
+    ],
+  };
+
+  // "Building size" is wrong for two types; Land has no income to report.
+  const SIZE_LABELS = { Land: "Lot size (SF)", Residential: "Living area (SF)" };
+  const SUBJ_INPUT_CLASS = "w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none";
+
+  function renderSubjectFields(type) {
+    const wrap = document.getElementById("subjectTypeFields");
+    wrap.innerHTML = "";                       // switching type discards stale values
+    (TYPE_SUBJECT_FIELDS[type] || []).forEach((f) => {
+      const cell = document.createElement("div");
+      const label = document.createElement("label");
+      label.className = "rd-lab";
+      label.setAttribute("for", "subj_" + f.key);
+      label.textContent = f.label;
+      cell.appendChild(label);
+      let input;
+      if (f.type === "select") {
+        input = document.createElement("select");
+        f.options.forEach((o) => {
+          const opt = document.createElement("option");
+          opt.value = o;
+          opt.textContent = o || "—";
+          input.appendChild(opt);
+        });
+      } else {
+        input = document.createElement("input");
+        input.type = f.type;
+        if (f.placeholder) input.placeholder = f.placeholder;
+        if (f.type === "number") { input.min = "0"; input.step = "any"; }
+      }
+      input.id = "subj_" + f.key;
+      input.dataset.subjectKey = f.key;
+      input.className = SUBJ_INPUT_CLASS;
+      cell.appendChild(input);
+      wrap.appendChild(cell);
+    });
+    document.getElementById("targetSizeLabel").textContent = SIZE_LABELS[type] || "Building size (SF)";
+    document.getElementById("noiWrap").classList.toggle("hidden", type === "Land");
+  }
+
+  // Read the visible detail inputs into a flat object, dropping blanks so an
+  // untouched form yields {}.
+  function readSubjectDetails() {
+    const out = {};
+    document.querySelectorAll("#subjectTypeFields [data-subject-key]").forEach((el) => {
+      const v = String(el.value || "").trim();
+      if (v) out[el.dataset.subjectKey] = v;
+    });
+    return out;
+  }
+
   // Active columns for the current report; rebuilt per search in renderResults().
   let COLUMNS = BASE_COLUMNS.slice();
 
@@ -1506,7 +1586,11 @@
     setLookbackControls(rec);
     lookbackHint.textContent = "Recommended for " + propertyTypeSel.value;
   }
-  propertyTypeSel.addEventListener("change", applyRecommendedLookback);
+  propertyTypeSel.addEventListener("change", () => {
+    applyRecommendedLookback();
+    renderSubjectFields(propertyTypeSel.value);
+  });
+  renderSubjectFields(propertyTypeSel.value);   // initial paint (type may be restored from localStorage)
   // Seed the default type's recommendation on first load, unless a report is
   // already being restored into the form.
   if (!currentMeta) applyRecommendedLookback();

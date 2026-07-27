@@ -1,4 +1,12 @@
+# Secrets. The glob matters as much as the bare name: a plain `.env` rule
+# leaves backups like `.env.bak-1785181407` untracked-but-committable, so one
+# `git add -A` would publish ANTHROPIC_API_KEY to a public repo.
 .env
+.env.*
+*.env
+# ...but .env.example holds no secrets and documents the required vars, so it
+# stays tracked. Without this it would be re-ignored if ever removed and re-added.
+!.env.example
 node_modules/
 
 # Local runtime logs

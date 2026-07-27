@@ -133,15 +133,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   returns parsed JSON. Body takes optional `subjectSizeSqft`; when absent the
   prompt also asks the model to look up the building's size (returned as
   `subject_size_sqft` + `subject_size_source`) and `max_uses` rises 6 → 8 to
-  budget the lookup. Every response carries `market_cap_rate_range`,
+  budget the lookup. Body also takes optional `subjectDetails` — the per-type
+  facts about the user's own building (see flow 4), whitelisted by
+  `sanitizeSubjectDetails` against that type's `TYPE_COMP_FIELDS` keys and
+  shown to the model so comp selection matches the subject. Every response carries `market_cap_rate_range`,
   `value_drivers`, `market_trend`, and a per-comp `source_type` that the
   server normalizes onto its enum (unknown → `estimate`, so badges can
   under-claim provenance but never over-claim). **Cached**: identical requests
   within a 7-day TTL are served from the `search_cache` layer (Supabase table
   `search_cache`, keyed by a SHA-256 of address+type+note+window+size+a
   signature of the offered verified comps — so approving a broker comp busts
-  the cache for that type; in-memory Map + file fallback when Supabase is
-  unconfigured). A cache hit does NOT call Anthropic and does NOT count against
+  the cache for that type — plus a signature of `subjectDetails`, appended only
+  when non-empty so pre-existing cache entries keep their keys; in-memory Map +
+  file fallback when Supabase is unconfigured). A cache hit does NOT call Anthropic and does NOT count against
   `DAILY_SEARCH_CAP`.
 - `GET /api/config` — tells the front-end whether a password is required and
   whether lead capture is on (`{ authRequired, leadCapture }`).
@@ -276,9 +280,13 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    feeding `columnsForType()` in `index.html`, where each column's `after` key
    names the column it sits behind (specs follow **Size**, per-unit/per-acre
    pricing follows **$/SF**); the active `COLUMNS` array is rebuilt per search in
-   `renderResults()`. **Any new type-specific field must be changed in both
-   places** — `TYPE_COMP_FIELDS` and `TYPE_COLUMNS` — or it won't display/export.
-   A third place matters for durability: `harvestComps()` writes one flat corpus
+   `renderResults()`. **A per-type field now spans up to four maps** —
+   `TYPE_COMP_FIELDS` (server.js, the source of truth), `TYPE_COLUMNS`
+   (comp-table columns), `TYPE_SUBJECT_FIELDS` (the subject-property form
+   inputs, see flow 4), and `ALT_BASIS` (only for a denominator the market
+   quotes, like units or acres). **The `add-comp-field` skill is the checklist
+   — use it rather than working from memory.**
+   A further place matters for durability: `harvestComps()` writes one flat corpus
    row per comp using `ALL_TYPE_COMP_FIELDS`, so the Supabase `comp_corpus` table
    needs a column per field. **Run the ALTER TABLE in the DDL comment before
    deploying a new field** — PostgREST 400s on an unknown column, which makes
@@ -306,6 +314,34 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    persist in each report's `meta` (saved reports re-render without the
    form), and editing size/price/NOI after a report re-renders the
    hero/comparison/chart in place — no new billed search.
+
+4. **Per-type subject details (the user's own building).** The "Your property
+   details" section adapts to the property type: `TYPE_SUBJECT_FIELDS` +
+   `renderSubjectFields()` (`index.html`) rebuild the inputs whenever the type
+   changes, `readSubjectDetails()` reads them into a flat object, and the
+   values ride to `POST /api/comps` as `subjectDetails` and persist at
+   `meta.subject.details`. Four things are easy to get wrong here:
+   - **The subject keys must be a subset of that type's `TYPE_COMP_FIELDS`
+     fields.** `sanitizeSubjectDetails()` whitelists against exactly that list,
+     so an input whose key isn't a declared comp field is silently dropped.
+   - **`cacheKeyFor` includes the details**, appended only when non-empty so
+     existing cache entries keep their keys. Without this a 48-unit and a
+     6-unit building at one address collide and are served each other's comps.
+   - **Assigning `#propertyType.value` does not fire `change`.** Every
+     programmatic type change (localStorage restore, recent-search chips,
+     shared-report restore, market-explorer parse) must call
+     `syncSubjectFieldsToType()`, or the inputs keep the previous type's
+     fields. The localStorage restore runs long after the initial paint.
+   - **The subject-edit listener replaces `meta.subject` wholesale**, so it
+     re-reads `details` from the DOM rather than merging — anything not
+     re-read is lost on the next keystroke.
+   Unlike NOI/debt/rent-roll these are public property attributes, so they are
+   sent to the server and **kept** in shared reports. `units` and `lot_acres`
+   also drive the $/unit and $/acre cross-checks via `ALT_BASIS` /
+   `altBasisEntry`, which render as entries in the hero's `renderApproaches`
+   list (min 3 comps carrying the metric). Land is quoted in acres but the
+   valuation path is $/SF, so `renderOwnerHero` converts acres × 43,560 when no
+   SF is given.
 
 ## Deployment
 

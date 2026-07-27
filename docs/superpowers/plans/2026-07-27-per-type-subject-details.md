@@ -631,15 +631,21 @@ At `index.html:5307`, add `details` to the persisted subject:
 Reload the page, run a search or open the sample report so `currentMeta`
 exists, then in the console:
 
+Use `InputEvent(..., {bubbles: true})`, NOT `new Event("input")`. Plain `Event`
+defaults to `bubbles: false`, so it never reaches the delegated listener on
+`#subjectTypeFields` and the first assertion fails for a reason that has
+nothing to do with the code. Real typing produces a bubbling `InputEvent`, so
+this is the faithful simulation.
+
 ```js
 renderSubjectFields("Multifamily");
 document.getElementById("subj_units").value = "48";
-document.getElementById("subj_units").dispatchEvent(new Event("input"));
+document.getElementById("subj_units").dispatchEvent(new InputEvent("input", { bubbles: true }));
 await new Promise(r => setTimeout(r, 500));
 console.log("after detail edit:", JSON.stringify(currentMeta.subject.details));
 // now type in the SIZE box, which is what used to clobber details
 document.getElementById("targetSize").value = "25000";
-document.getElementById("targetSize").dispatchEvent(new Event("input"));
+document.getElementById("targetSize").dispatchEvent(new InputEvent("input", { bubbles: true }));
 await new Promise(r => setTimeout(r, 500));
 console.log("after size edit:", JSON.stringify(currentMeta.subject.details));
 ```
@@ -660,27 +666,28 @@ git commit -m "Persist subject details and send them with the search"
 ### Task 6: $/unit and $/acre valuation lines
 
 **Files:**
-- Modify: `index.html` (add an element next to `#ownerBasis`)
-- Modify: `index.html:1909` (`renderOwnerHero`)
+- Modify: `index.html` — `renderOwnerHero` (currently starts at line 2002)
 
-- [ ] **Step 1: Add the output element**
+**No new markup.** The hero already reconciles its valuation methods through a
+`renderApproaches(entries)` list rendered into `#ownerApproaches`, where each
+entry is `{label, text, muted?}` ("Sales comparison approach", "Income
+approach", "Cost approach"). The cross-check is one more entry in that list, so
+it inherits the existing styling, the print layout, and the PNG export. An
+earlier draft of this plan added a floating `<p id="ownerAltBasis">` next to
+`#ownerBasis` — that would have landed inside the title flex row and bypassed
+all of the above. Do not add it.
 
-Find the element with `id="ownerBasis"` in the hero markup and add
-immediately after it:
-
-```html
-            <p id="ownerAltBasis" class="hidden text-[13px] text-[#5A6473] mt-1"></p>
-```
-
-- [ ] **Step 2: Bridge Land acreage to square feet**
+- [ ] **Step 1: Bridge Land acreage to square feet**
 
 Land is quoted in acres but the whole valuation path is $/SF. Without this, a
 Land user who enters only acres gets no valuation at all.
 
-In `renderOwnerHero`, the size fallback chain starts at index.html:1924 with
-`let sizeR = subjectRangeFromMeta("size");`. Insert immediately after that
-line, **before** the `if (!sizeR && parsed)` block, so a user-entered acreage
-outranks the model's looked-up size:
+In `renderOwnerHero`, the size fallback chain starts at index.html:2017 with
+`let sizeR = subjectRangeFromMeta("size");`. NOTE there is a second identical
+line at 2215 in a different function — make sure you edit the one inside
+`renderOwnerHero`. Insert immediately after line 2017, **before** the
+`if (!sizeR && parsed)` block, so a user-entered acreage outranks the model's
+looked-up size:
 
 ```js
     // Land is quoted in acres; convert so the existing $/SF path still works.
@@ -694,7 +701,7 @@ outranks the model's looked-up size:
     }
 ```
 
-Also extend the "did the user signal building intent" test at index.html:1919
+Also extend the "did the user signal building intent" test at index.html:2012
 so a Land search with only acres entered still shows the hero:
 
 ```js
@@ -725,70 +732,111 @@ Note the bridge sets the internal `sizeR` only; it deliberately does not write
 into the `#targetSize` input, since that box is labelled in SF and the user
 typed acres.
 
-- [ ] **Step 3: Add the secondary-basis computation**
+- [ ] **Step 2: Add the cross-check entry builder**
 
-Inside `renderOwnerHero`, after `const ppsfs = saleComps.map((x) => x.v);`
-(index.html:1944), add:
+Add this helper immediately BEFORE `function renderOwnerHero(parsed, meta) {`
+(index.html:2002), at the same indentation as that function:
 
 ```js
-    // Secondary basis: $/unit for multifamily, $/acre for land. Both reuse the
-    // per-comp metrics added in #5 and only render with enough comps to be
-    // worth stating — one data point is not a range.
-    const altEl = document.getElementById("ownerAltBasis");
-    altEl.classList.add("hidden");
-    altEl.textContent = "";
-    const details = s.details || {};
-    const ALT = {
-      Multifamily: { compKey: "price_per_unit", subjKey: "units",     noun: "unit" },
-      Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre" },
-    }[meta.type];
-    if (ALT) {
-      const qty = numericValue(details[ALT.subjKey]);
-      const per = saleComps
-        .map((x) => numericValue(x.comp[ALT.compKey]))
-        .filter((v) => v > 0)
-        .sort((a, b) => a - b);
-      if (qty > 0 && per.length >= 3) {
-        const median = per[Math.floor(per.length / 2)];
-        altEl.textContent =
-          `Cross-check: ${qty.toLocaleString()} ${ALT.noun}${qty === 1 ? "" : "s"} x ` +
-          `${formatUsd(median, { maximumFractionDigits: 0 })} median per ${ALT.noun} ` +
-          `across ${per.length} sale comps = ${formatUsd(qty * median, { maximumFractionDigits: 0 })}.`;
-        altEl.classList.remove("hidden");
-      }
-    }
+  // Multifamily trades on price per unit and land on price per acre. When the
+  // owner supplied the count, express the same sale comps in the unit the
+  // market actually quotes. Returns null unless there is both a subject
+  // quantity and enough comps carrying the metric — one data point is not a
+  // median. Formats money locally so it does not depend on renderOwnerHero's
+  // internals.
+  const ALT_BASIS = {
+    Multifamily: { compKey: "price_per_unit", subjKey: "units",     noun: "unit", label: "Price per unit cross-check" },
+    Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", label: "Price per acre cross-check" },
+  };
+
+  function altBasisEntry(meta, subject, saleComps) {
+    const spec = ALT_BASIS[meta.type];
+    if (!spec) return null;
+    const qty = numericValue((subject.details || {})[spec.subjKey]);
+    if (!(qty > 0)) return null;
+    const per = saleComps
+      .map((x) => numericValue(x.comp[spec.compKey]))
+      .filter((v) => v > 0)
+      .sort((a, b) => a - b);
+    if (per.length < 3) return null;
+    const median = per[Math.floor(per.length / 2)];
+    const money = (v) => "$" + Math.round(v).toLocaleString();
+    return {
+      label: spec.label,
+      text: `${money(qty * median)} — ${qty.toLocaleString()} ${spec.noun}${qty === 1 ? "" : "s"} at the `
+        + `${money(median)} median price per ${spec.noun} across ${per.length} sale comps.`,
+    };
+  }
+```
+
+- [ ] **Step 3: Push the entry into the approach list**
+
+Inside `renderOwnerHero`, find the sale-comp branch where the approach list is
+seeded (index.html:2131):
+
+```js
+      const entries = [{
+        label: "Sales comparison approach",
+        text: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)} — what ${ppsfs.length} recent `
+          + `sale comps say buyers pay per square foot, applied to your building's size. This is the headline range above.`,
+      }];
+```
+
+Immediately after that closing `}];`, add:
+
+```js
+      // Sits right after the sales-comparison line because it is the same
+      // comps expressed in a different unit, not a separate approach.
+      const altEntry = altBasisEntry(meta, s, saleComps);
+      if (altEntry) entries.push(altEntry);
 ```
 
 - [ ] **Step 4: Verify with stubbed comps (free, no search)**
 
 Reload, open the sample report so the hero renders, then in the console:
 
+A helper that reads the rendered approach list, so the assertions check what
+the user actually sees rather than an internal variable:
+
+```js
+const approaches = () => [...document.querySelectorAll("#ownerApproaches *")]
+  .map(e => e.textContent.trim())
+  .filter(t => t.includes("cross-check") || t.includes("Cross-check"));
+```
+
 ```js
 currentComps = [
-  { transaction: "Sale", price_per_sqft: "$200", price_per_unit: "$150,000" },
-  { transaction: "Sale", price_per_sqft: "$210", price_per_unit: "$160,000" },
-  { transaction: "Sale", price_per_sqft: "$190", price_per_unit: "$170,000" },
+  { transaction: "Sale", size_sqft: "20000", price_per_sqft: "$200", price_per_unit: "$150,000" },
+  { transaction: "Sale", size_sqft: "20000", price_per_sqft: "$210", price_per_unit: "$160,000" },
+  { transaction: "Sale", size_sqft: "20000", price_per_sqft: "$190", price_per_unit: "$170,000" },
 ];
 currentMeta.type = "Multifamily";
-currentMeta.subject = { ...currentMeta.subject, details: { units: "48" } };
+currentMeta.subject = { sizeMin: 20000, sizeMax: 20000, priceMin: null, priceMax: null, noi: null, details: { units: "48" } };
 renderOwnerHero(currentParsed, currentMeta);
-document.getElementById("ownerAltBasis").textContent;
+approaches();
 ```
 
-Expected: `Cross-check: 48 units x $160,000 median per unit across 3 sale comps = $7,680,000.`
+Expected: one entry containing
+`$7,680,000 — 48 units at the $160,000 median price per unit across 3 sale comps.`
+(48 x the $160,000 median.)
 
-Then confirm the guards hold:
+Then confirm both guards hold — each must return an empty array:
 
 ```js
-currentComps = currentComps.slice(0, 2);          // only 2 comps
+currentComps = currentComps.slice(0, 2);          // only 2 comps carry the metric
 renderOwnerHero(currentParsed, currentMeta);
-document.getElementById("ownerAltBasis").classList.contains("hidden");   // true
+approaches();                                      // []
 ```
 
 ```js
-currentMeta.type = "Industrial";                   // type without an alt basis
+currentComps = [
+  { transaction: "Sale", size_sqft: "20000", price_per_sqft: "$200", price_per_unit: "$150,000" },
+  { transaction: "Sale", size_sqft: "20000", price_per_sqft: "$210", price_per_unit: "$160,000" },
+  { transaction: "Sale", size_sqft: "20000", price_per_sqft: "$190", price_per_unit: "$170,000" },
+];
+currentMeta.type = "Industrial";                   // type with no alt basis
 renderOwnerHero(currentParsed, currentMeta);
-document.getElementById("ownerAltBasis").classList.contains("hidden");   // true
+approaches();                                      // []
 ```
 
 - [ ] **Step 5: Commit**

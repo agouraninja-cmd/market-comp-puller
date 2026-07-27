@@ -4155,11 +4155,11 @@ const server = http.createServer((req, res) => {
         if (!report || !Array.isArray(report.comps) || !meta || !meta.address) {
           return sendJson(res, 400, { error: "A complete report is required to share." });
         }
-        // NOI and loan terms are the owner's private finances — never let them
-        // ride along on a link that can be forwarded. The sales-comparison
-        // value still shows; the income-approach cross-check and the debt
-        // module drop out. DCF assumptions (hold/growth/discount/exit cap)
-        // stay: they're opinions, not finances.
+        // NOI, loan terms, and the op-ex card's gross income are the owner's
+        // private finances — never let them ride along on a link that can be
+        // forwarded. The sales-comparison value still shows; the income-
+        // approach cross-check and the debt module drop out. DCF assumptions
+        // (hold/growth/discount/exit cap) stay: they're opinions, not finances.
         const safeMeta = { ...meta };
         if (safeMeta.subject) {
           safeMeta.subject = { ...safeMeta.subject, noi: null };
@@ -4168,6 +4168,7 @@ const server = http.createServer((req, res) => {
           safeMeta.assumptions = { ...safeMeta.assumptions };
           delete safeMeta.assumptions.debt;
           delete safeMeta.assumptions.rentRoll;
+          delete safeMeta.assumptions.opex;
         }
         delete safeMeta.sample;
         delete safeMeta.fromHistory;

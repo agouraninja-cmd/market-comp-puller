@@ -1360,6 +1360,21 @@ const TYPE_COMP_FIELDS = {
   },
 };
 
+// Subject details arrive from the browser, so they are untrusted input headed
+// for a prompt. Keep only the keys this property type actually reports, force
+// them to short strings, and drop blanks. Everything else is discarded rather
+// than sanitized in place.
+function sanitizeSubjectDetails(type, raw) {
+  const spec = TYPE_COMP_FIELDS[type];
+  if (!spec || !raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const key of spec.fields) {
+    const v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    if (v) out[key] = v;
+  }
+  return out;
+}
+
 // Every per-type field key, for the storage layers that keep one flat row per
 // comp regardless of type.
 const ALL_TYPE_COMP_FIELDS = [...new Set(

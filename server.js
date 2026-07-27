@@ -1437,6 +1437,26 @@ const ALL_TYPE_COMP_FIELDS = [...new Set(
   Object.values(TYPE_COMP_FIELDS).flatMap((t) => t.fields)
 )];
 
+// Display labels for the per-type comp fields, for the server-rendered market
+// pages. Flat and keyed by field name — NOT a fifth per-type map. These must
+// match index.html's TYPE_COLUMNS labels exactly, so the same field never
+// reads one way in the report and another on a market page;
+// .claude/skills/add-comp-field/check-field-maps.js enforces that.
+const FIELD_LABELS = {
+  clear_height: "Clear Height",
+  dock_doors: "Dock Doors",
+  building_class: "Class",
+  floor_plate: "Floor Plate",
+  center_type: "Center Type",
+  anchor_tenant: "Anchor",
+  units: "Units",
+  price_per_unit: "$/Unit",
+  lot_acres: "Acres",
+  zoning: "Zoning",
+  price_per_acre: "$/Acre",
+  beds_baths: "Beds / Baths",
+};
+
 function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, subjectDetails) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",

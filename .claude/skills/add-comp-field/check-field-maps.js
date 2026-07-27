@@ -30,6 +30,7 @@ const TYPE_COMP_FIELDS = grab("server.js", /const TYPE_COMP_FIELDS = \{[\s\S]*?\
 const TYPE_COLUMNS = grab("index.html", /const TYPE_COLUMNS = \{[\s\S]*?\n  \};/, "TYPE_COLUMNS");
 const TYPE_SUBJECT_FIELDS = grab("index.html", /const TYPE_SUBJECT_FIELDS = \{[\s\S]*?\n  \};/, "TYPE_SUBJECT_FIELDS");
 const ALT_BASIS = grab("index.html", /const ALT_BASIS = \{[\s\S]*?\n  \};/, "ALT_BASIS");
+const FIELD_LABELS = grab("server.js", /const FIELD_LABELS = \{[\s\S]*?\n\};/, "FIELD_LABELS");
 
 // Columns every type already has, so `after` anchors can resolve against them.
 const BASE_KEYS = new Set([
@@ -70,6 +71,28 @@ for (const [type, spec] of Object.entries(ALT_BASIS)) {
   const subjKeys = new Set((TYPE_SUBJECT_FIELDS[type] || []).map((f) => f.key));
   if (!compKeys.has(spec.compKey)) fail(`ALT_BASIS.${type}.compKey "${spec.compKey}" is not a ${type} comp field`);
   if (!subjKeys.has(spec.subjKey)) fail(`ALT_BASIS.${type}.subjKey "${spec.subjKey}" is not a ${type} subject input`);
+}
+
+// FIELD_LABELS (server.js, used by the market pages) must cover every per-type
+// field and agree with TYPE_COLUMNS (index.html, used by the report table).
+// Without this the same field can be labelled differently in the two tables.
+console.log("\nFIELD_LABELS vs TYPE_COLUMNS");
+const clientLabels = {};
+for (const cols of Object.values(TYPE_COLUMNS)) {
+  for (const col of cols) clientLabels[col.key] = col.label;
+}
+for (const spec of Object.values(TYPE_COMP_FIELDS)) {
+  for (const key of spec.fields) {
+    if (!(key in FIELD_LABELS)) {
+      fail(`FIELD_LABELS has no label for "${key}" — the market page would render a blank header`);
+      continue;
+    }
+    if (key in clientLabels && FIELD_LABELS[key] !== clientLabels[key]) {
+      fail(`label drift for "${key}": FIELD_LABELS "${FIELD_LABELS[key]}" vs TYPE_COLUMNS "${clientLabels[key]}"`);
+    } else {
+      console.log(`  ok    ${key.padEnd(16)} "${FIELD_LABELS[key]}"`);
+    }
+  }
 }
 
 console.log(problems

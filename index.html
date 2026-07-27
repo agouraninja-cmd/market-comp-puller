@@ -1030,6 +1030,45 @@
           </div>
         </div>
 
+        <!-- Operating-expense benchmark — the owner's own expense ratio vs what
+             this market typically spends for the asset class. Gross income is
+             private finance: browser + portfolio only, stripped from shares.
+             Signed-in only; built by renderOpexCard(). -->
+        <div id="opexCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Operating Expense Check</h2>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label class="rd-lab" for="opexGross">Gross annual income ($/yr)</label>
+              <input id="opexGross" type="text" inputmode="numeric" placeholder="e.g. 1,085,000"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rd-tile">
+              <div class="rd-lab">Your expense ratio</div>
+              <div id="opexRatio" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="opexRatioSub" class="text-xs text-[#8A93A0] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Typical for this market</div>
+              <div id="opexBand" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="opexBandSub" class="text-xs text-[#8A93A0] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Your operating expenses</div>
+              <div id="opexDollars" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="opexDollarsSub" class="text-xs text-[#8A93A0] mt-1"></div>
+            </div>
+          </div>
+          <div class="rd-tile-hi mt-4">
+            <div class="rd-lab">Expense Benchmark<span id="opexVerdict"></span></div>
+            <p id="opexRead" class="text-sm text-[#374253] mt-1"></p>
+          </div>
+          <p class="text-xs text-[#8A93A0] mt-4">Automated benchmark from this search, not an audit of your books. Your income figures stay in your browser.</p>
+        </div>
+
         <!-- Debt & refi — DSCR / LTV / debt yield + refi headroom, computed on the
              browser-held NOI and loan terms. Loan terms never reach the server
              except the owner's own portfolio; shares strip them. Signed-in only;
@@ -2420,6 +2459,7 @@
     if (!meta.assumptions || typeof meta.assumptions !== "object") meta.assumptions = {};
     const a = meta.assumptions;
     if (!a.debt || typeof a.debt !== "object") a.debt = { loanAmount: null, ratePct: null, amortYears: 30 };
+    if (!a.opex || typeof a.opex !== "object") a.opex = { grossIncome: null };
     if (!(a.holdYears >= 1)) {
       const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
       const capLo = capR ? numericValue(capR.low) : NaN;

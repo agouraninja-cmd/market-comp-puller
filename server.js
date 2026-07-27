@@ -4034,7 +4034,14 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && req.url === "/admin") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    // Third noindex layer alongside the page's own meta tag and the
+    // robots.txt Disallow — belt-and-suspenders against a crawler that
+    // ignores one of the other two (same pattern as /market-preview/).
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
     return res.end(renderAdminHTML());
   }
 

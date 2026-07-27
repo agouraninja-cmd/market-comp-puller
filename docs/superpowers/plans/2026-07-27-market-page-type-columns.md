@@ -59,9 +59,16 @@ Create `check-snapshot-fields.js` in the scratchpad
 (`C:\Users\JACOBA~1\AppData\Local\Temp\claude\C--Users-JacobAdler-OneDrive---Adler-Realty-Documents-Market-Comp-puller-web-app\02228ef5-60df-4f93-9053-3e5803826905\scratchpad`)
 with exactly this content:
 
+Note the `path.resolve` below. `require("./market-snapshot")` would resolve
+relative to *this script's own directory*, not the working directory, so a
+script living in the scratchpad cannot find the module no matter what `cwd` it
+is run from. Resolving against `cwd` is what lets the check live outside the
+repo. (This bit an executor once already.)
+
 ```js
 // Requires the REAL module — market-snapshot.js has no side effects.
-const { distillMarketSnapshot } = require("./market-snapshot");
+const path = require("path");
+const { distillMarketSnapshot } = require(path.resolve("market-snapshot"));
 
 const check = (label, cond) => {
   console.log((cond ? "PASS " : "FAIL ") + label);

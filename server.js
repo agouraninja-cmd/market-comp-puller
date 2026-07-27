@@ -120,6 +120,18 @@ const SEARCH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 // (cache hits are free and don't count). Override via env for more headroom.
 const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(process.env.DAILY_SEARCH_CAP) : 150;
 
+// Rough per-search API cost, used ONLY for the /admin spend estimate — nothing
+// here reads a real invoice, so treat the tiles as a sanity check, not
+// accounting. A market (Explorer) search costs more because it always runs the
+// full 8-use web_search budget: the Explorer path never passes a corpus, so it
+// can't take the corpus-assisted discount a report search can. Both are
+// env-overridable as real Anthropic invoices come in.
+const COST_REPORT_SEARCH = Number(process.env.COST_REPORT_SEARCH) > 0 ? Number(process.env.COST_REPORT_SEARCH) : 0.6;
+const COST_MARKET_SEARCH = Number(process.env.COST_MARKET_SEARCH) > 0 ? Number(process.env.COST_MARKET_SEARCH) : 0.75;
+// A corpus-assisted report search drops max_uses 8→3 (see searchBudgetFor), and
+// web_search is what costs money, so it lands near 3/8 of a full search.
+const CORPUS_HIT_COST_FACTOR = 3 / 8;
+
 // ---------------------------------------------------------------------------
 // Lead storage — Supabase REST when configured, local file otherwise
 // ---------------------------------------------------------------------------
@@ -2826,6 +2838,16 @@ function aggregateStats(rows) {
   // the corpus-first-retrieval commit onward, so this reads low/empty at first.
   const billedReport = searches.filter((r) => !r.cached && (r.source || "") !== "explore");
   const corpusHits = billedReport.filter((r) => (r.source || "") === "corpus").length;
+  // Estimated API spend. Report searches blend two prices because a corpus hit
+  // runs a much smaller web_search budget, so this average genuinely falls as
+  // corpus coverage grows — it is not just COST_REPORT_SEARCH restated. Market
+  // (Explorer) searches never take that discount, so theirs stays flat.
+  const billedMarket = searches.filter((r) => !r.cached && (r.source || "") === "explore").length;
+  const fullPriceReports = billedReport.length - corpusHits;
+  const reportSpend = fullPriceReports * COST_REPORT_SEARCH +
+    corpusHits * COST_REPORT_SEARCH * CORPUS_HIT_COST_FACTOR;
+  const marketSpend = billedMarket * COST_MARKET_SEARCH;
+  const round2 = (n) => Math.round(n * 100) / 100;
   return {
     totals: {
       searches: searches.length,
@@ -2847,6 +2869,17 @@ function aggregateStats(rows) {
       // Persistence failures since the last restart. A 0% hit rate means
       // something very different depending on whether this is clean.
       health: { ...CORPUS_HEALTH },
+    },
+    // Estimates from COST_REPORT_SEARCH / COST_MARKET_SEARCH, not billed amounts.
+    spend: {
+      reportSearches: billedReport.length,
+      marketSearches: billedMarket,
+      avgReport: round2(billedReport.length ? reportSpend / billedReport.length : COST_REPORT_SEARCH),
+      avgMarket: round2(COST_MARKET_SEARCH),
+      reportTotal: round2(reportSpend),
+      marketTotal: round2(marketSpend),
+      total: round2(reportSpend + marketSpend),
+      listPriceReport: round2(COST_REPORT_SEARCH),
     },
     eventCount: rows.length,
     capped: rows.length >= 10000,
@@ -2899,6 +2932,10 @@ function rows(a){return a.length?a.map(function(x){return "<tr><td>"+esc(x.label
 function render(d){
   var t=d.totals, hit=t.searches?Math.round(t.cached/t.searches*100):0;
   var c=d.corpus||{hits:0,billedReport:0,pct:0,health:{}};
+  // null only on a stale /api/stats response from before the cost tiles existed.
+  // Render an em-dash rather than $0.00, which would read as "searches are free".
+  var sp=d.spend||null;
+  var money=function(n){return "$"+Number(n||0).toFixed(2);};
   var max=Math.max(1,Math.max.apply(null,d.daily.map(function(x){return x.total;})));
   var bars=d.daily.map(function(x){var bh=Math.round(x.billed/max*120),ch=Math.round(x.cached/max*120);
     return "<div class=col title='"+x.date+": "+x.billed+" billed, "+x.cached+" cached'><div class=c style='height:"+ch+"px'></div><div class=b style='height:"+bh+"px'></div></div>";}).join("");
@@ -2928,6 +2965,12 @@ function render(d){
     "<div class=tile><div class=k>Billed</div><div class=v>"+t.billed+"</div></div>"+
     "<div class=tile><div class=k>Cache hit rate</div><div class=v>"+hit+"%</div></div>"+
     "<div class=tile><div class=k>Corpus hit rate</div><div class=v>"+c.pct+"%</div><div class=muted style='margin-top:2px'>"+c.hits+" of "+c.billedReport+" billed</div></div>"+
+    "<div class=tile><div class=k>Avg comp search</div><div class=v>"+(sp?money(sp.avgReport):"&mdash;")+"</div><div class=muted style='margin-top:2px'>"+
+      (sp ? sp.reportSearches+" billed · "+money(sp.reportTotal)+" est"+
+            (sp.avgReport < sp.listPriceReport ? " · corpus saving" : "")
+          : "no cost data")+"</div></div>"+
+    "<div class=tile><div class=k>Avg market search</div><div class=v>"+(sp?money(sp.avgMarket):"&mdash;")+"</div><div class=muted style='margin-top:2px'>"+
+      (sp ? sp.marketSearches+" billed · "+money(sp.marketTotal)+" est" : "no cost data")+"</div></div>"+
     "<div class=tile><div class=k>Leads</div><div class=v>"+t.leads+"</div></div>"+
     "<div class=tile><div class=k>Conversion</div><div class=v>"+d.conversionPct+"%</div></div>"+
     "<div class=tile><div class=k>Shares</div><div class=v>"+t.shares+"</div></div>"+
@@ -2937,7 +2980,14 @@ function render(d){
     "<div class=card><h2>Searches by property type</h2><table>"+rows(d.byType)+"</table></div>"+
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
-    "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>";
+    "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
+    (!sp ? "" :
+    "<div class=card><h2>About the cost tiles</h2><div class=muted>Estimates, not billed amounts &mdash; no invoice is read. "+
+    "A comp (report) search is assumed "+money(sp.listPriceReport)+"; a corpus-assisted one runs a much smaller web-search budget, so the "+
+    "average falls below that as corpus coverage grows. A market (Explorer) search is assumed "+money(sp.avgMarket)+" and never takes that "+
+    "discount, because the Explorer path always runs the full budget. Cache hits are free and excluded from both. "+
+    "Tune with the COST_REPORT_SEARCH and COST_MARKET_SEARCH env vars once real Anthropic invoices land. "+
+    "Estimated total to date: "+money(sp.total)+".</div></div>");
   document.getElementById("gate").style.display="none";
   document.getElementById("dash").style.display="block";
 }

@@ -220,8 +220,12 @@ check("case and padding do not matter",
 "$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe" /tmp/check-cachekey.js
 ```
 
-Expected: the three "legacy key unchanged" lines PASS (current code already
-ignores details) and every line from "details change the key" onward FAILs.
+Expected: exactly two FAILs — "details change the key" and "different unit
+counts differ". Everything else PASSes, which is correct rather than
+suspicious: the old code ignores `subjectDetails` entirely, so every variant
+collapses to the same legacy key, and the stability / order / case assertions
+are comparing that one constant against itself. Only the two assertions that
+demand the key actually *move* can fail before the fix.
 
 - [ ] **Step 3: Implement in `cacheKeyFor`**
 
@@ -253,7 +257,7 @@ function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSi
 "$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe" /tmp/check-cachekey.js
 ```
 
-Expected: nine `PASS` lines, exit code 0.
+Expected: eight `PASS` lines (the script has eight assertions), exit code 0.
 
 - [ ] **Step 5: Wire the handler**
 
@@ -342,8 +346,18 @@ Change the signature at server.js:1687 to end with `subjectDetails = {}`:
 async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}) {
 ```
 
-Find the `buildPrompt(` call inside `getComps` and append `, subjectDetails`
-as its final argument.
+`getComps` does not call `buildPrompt` directly. It calls
+`callAnthropicOnce(...)` **twice** — the initial attempt and the JSON-parse
+retry — and `callAnthropicOnce` is what builds the prompt. So the parameter has
+to be threaded through that intermediate function:
+
+- add `subjectDetails` to the end of `callAnthropicOnce`'s signature,
+- append `subjectDetails` to its `buildPrompt(...)` call,
+- append `subjectDetails` to **both** `callAnthropicOnce(...)` calls inside
+  `getComps`.
+
+Missing the retry call would silently drop the details whenever the first
+response fails to parse.
 
 - [ ] **Step 5: Pass it at the call site**
 

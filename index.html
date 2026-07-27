@@ -2026,8 +2026,12 @@
   // those types the same sale comps can be expressed in the unit the market
   // actually quotes.
   const ALT_BASIS = {
+    // `leads: true` means this basis heads the hero whenever it can be
+    // computed, even if a $/SF range is also available. Land is quoted per
+    // acre, so showing "108,900 SF x ..." to someone who typed 2.5 acres put
+    // the answer in a unit the market never uses.
     Multifamily: { compKey: "price_per_unit", subjKey: "units",     noun: "unit", askFor: "unit count", label: "Price per unit cross-check" },
-    Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", askFor: "acreage",    label: "Price per acre cross-check" },
+    Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", askFor: "acreage",    label: "Price per acre cross-check", leads: true },
   };
 
   // Shared by the cross-check line and the headline fallback so the two can
@@ -2187,7 +2191,14 @@
     // become the headline itself.
     const altRange = altBasisRange(meta, s, saleComps);
 
-    if (sizeR && ppsfs.length >= 2) {
+    // Which sales basis heads the hero. Land leads per-acre whenever acreage is
+    // known; every other type leads on $/SF and falls back to the alternate
+    // basis only when no $/SF range exists. Whichever leads, the other is shown
+    // as a cross-check below, so no view is lost either way.
+    const sfUsable = !!(sizeR && ppsfs.length >= 2);
+    const leadWithAlt = !!altRange && (altRange.spec.leads || !sfUsable);
+
+    if (sfUsable && !leadWithAlt) {
       // Outlier-resistant $/SF band (see robustPpsfRange) instead of raw min/max.
       const rr = robustPpsfRange(ppsfs);
       const midSize = (sizeR.min + sizeR.max) / 2;
@@ -2279,6 +2290,17 @@
         text: `${fmtTotal(rr.low * qty)} – ${fmtTotal(rr.high * qty)} — what ${per.length} recent sale comps say `
           + `buyers pay per ${spec.noun}, applied to your ${qty.toLocaleString()} ${spec.noun}${plural}. This is the headline range above.`,
       }];
+      // Mirror of the cross-check on the $/SF path: when a per-square-foot
+      // range is also computable, show it rather than dropping the view
+      // entirely just because it didn't lead.
+      if (sfUsable) {
+        const rrSf = robustPpsfRange(ppsfs);
+        entries.push({
+          label: "Price per square foot cross-check",
+          text: `${fmtTotal(rrSf.low * sizeR.min)} – ${fmtTotal(rrSf.high * sizeR.max)} — the same comps on a `
+            + `per-square-foot basis across ${ppsfs.length} sale comps.`,
+        });
+      }
       const incEntry = incomeApproachEntry(rr.low * qty, rr.high * qty);
       if (incEntry) entries.push(incEntry);
       entries.push(costApproachEntry);

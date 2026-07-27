@@ -1127,6 +1127,23 @@ function maybePublishMarketSnapshot(type, address, data) {
 const corpusSeen = new Set();   // dedupe keys seen this process (file-seeded)
 let corpusSeenSeeded = false;
 
+// Does this "address" name a statistic rather than a property? In thin markets
+// the model sometimes pads the comp list with rows like "Pittsburgh Metro
+// Multifamily - Market Median Benchmark".
+//
+// Deliberately keyed on aggregate VOCABULARY, not on address shape: plenty of
+// genuine small multifamily and retail comps are listed without a street
+// number ("Highland Park Triplex, Pittsburgh, PA 15206", "Swissvale Triplex
+// (near Edgewood Town Center)"), so requiring one would discard real data.
+// Street names survive too — "123 Market St" has no aggregate word, while
+// "Market Median" does.
+const AGGREGATE_ADDRESS_RE =
+  /\b(benchmark|median|average|avg|composite|index|market (report|data|summary|stats?|statistics)|year[\s-]end (summary|report))\b/i;
+
+function isAggregateAddress(address) {
+  return AGGREGATE_ADDRESS_RE.test(String(address || ""));
+}
+
 function corpusKeyOf(c) {
   const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
   return [norm(c.address), norm(c.date || c.deal_date), norm(c.price_or_rate)].join("|");
@@ -1149,6 +1166,13 @@ async function harvestComps(type, searchAddress, payload) {
       if (!c || !String(c.address || "").trim()) continue;
       // A comp with no price at all is not data worth keeping.
       if (!String(c.price_or_rate || "").trim() && !String(c.price_per_sqft || "").trim()) continue;
+      // Backstop for the prompt's individual-property rule: a market median or
+      // research benchmark formatted as a comp would otherwise sit in the
+      // permanent corpus looking like a real transaction.
+      if (isAggregateAddress(c.address)) {
+        console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+        continue;
+      }
       const key = corpusKeyOf(c);
       if (corpusSeen.has(key)) continue;
       corpusSeen.add(key);
@@ -1413,6 +1437,10 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Today's date is ${todayStr}. Comps MUST be dated ${cutoffStr} or later (the last ${months === 1 ? "1 month" : months + " months"}). If you cannot find at least 3 comps inside that window, you may include older comps to reach 3, but you MUST state in "summary" that some comps fall outside the requested ${months}-month window.`,
     txFocus === "sales"  ? `Include ONLY sale transactions — do NOT include lease comps.` :
     txFocus === "leases" ? `Include ONLY lease transactions or active lease listings — do NOT include sale comps.` : "",
+    // Thin markets tempt the model into padding the list with market medians
+    // dressed up as comps. Those look authoritative, carry no property behind
+    // them, and would land in the permanent corpus as fake transactions.
+    `EVERY entry in "comps" must be ONE individual property at its own address that actually sold or is actively listed. Never enter a market median, submarket or metro average, research-report benchmark, index, or any other market-level statistic as a comp — market-level figures belong in "summary", "value_drivers", and "market_cap_rate_range" instead. A property whose address is partly withheld is still fine (e.g. "Highland Park Triplex, Pittsburgh, PA 15206"); a row named for a statistic is not. If you cannot find ${maxComps} genuine individual properties, return the smaller number you did find and say so in "summary" — a short honest list is worth more than a padded one.`,
     !subjectSizeSqft
       ? `Also determine the TARGET property's building size in square feet from public records, assessor data, or listing pages for the target address. This is the BUILDING square footage, not the lot or land size.`
       : "",

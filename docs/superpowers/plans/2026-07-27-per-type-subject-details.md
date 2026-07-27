@@ -27,6 +27,13 @@ spirit using the tools this project actually has:
   logic.
 - Live billed searches only in Task 7, which states its own cost.
 
+**Never change production code to make a check work.** If a source-extraction
+check cannot see a binding, fix the check's scoping — do not change a `const`
+to a `var` in `server.js`, do not add an export, do not restructure a function
+so it is easier to extract. This happened once during Task 1 and was reverted.
+The checks exist to observe the shipped code, so the shipped code does not bend
+to them.
+
 **Node is a portable copy.** Every `node` invocation below uses:
 `"$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe"`
 
@@ -62,8 +69,12 @@ const mapSrc = src.match(/const TYPE_COMP_FIELDS = \{[\s\S]*?\n\};/);
 const fnSrc = src.match(/function sanitizeSubjectDetails[\s\S]*?\n\}/);
 if (!mapSrc) throw new Error("TYPE_COMP_FIELDS not found");
 if (!fnSrc) throw new Error("sanitizeSubjectDetails not found");
-eval(mapSrc[0]);
-eval(fnSrc[0]);
+// new Function gives the extracted source its own scope and hands the bindings
+// back. Plain eval() would scope `const`/`let` to the eval itself, leaving them
+// invisible here — do NOT "fix" that by changing the declaration in server.js.
+const { sanitizeSubjectDetails } = new Function(
+  mapSrc[0] + "\n" + fnSrc[0] + "\nreturn { sanitizeSubjectDetails };"
+)();
 
 const eq = (label, got, want) => {
   const g = JSON.stringify(got), w = JSON.stringify(want);
@@ -164,7 +175,12 @@ const crypto = require("crypto");
 const src = fs.readFileSync("server.js", "utf8");
 const fnSrc = src.match(/function cacheKeyFor\([\s\S]*?\n\}/);
 if (!fnSrc) throw new Error("cacheKeyFor not found");
-eval(fnSrc[0]);
+// Same scoping rule as Task 1: extract into its own Function scope and return
+// the binding. `crypto` is passed in because the extracted source closes over
+// server.js's module-level require.
+const cacheKeyFor = new Function("crypto",
+  fnSrc[0] + "\nreturn cacheKeyFor;"
+)(crypto);
 
 const base = {
   address: "1 Main St, Boise, ID", type: "Multifamily", note: "",

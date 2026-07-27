@@ -1,0 +1,159 @@
+---
+name: add-comp-field
+description: Use when adding, renaming, or removing a per-type field in CompNinja — a new column in the comp table, a new spec the model should report, a new subject-property input on the search form, or a type-specific field like clear_height/units/lot_acres. Also use when a field "isn't displaying", "is missing from the CSV export", or comes back empty on every comp.
+---
+
+# Add a Per-Type Field
+
+## Overview
+
+Per-type fields are declared in **one map per side** and fan out from there.
+The maps are the contract; miss one and the field is silently absent — the
+model returns data nobody renders, or a column renders forever-empty cells.
+
+| Where | What it declares |
+|---|---|
+| `TYPE_COMP_FIELDS` (server.js:1340) | field keys + the prompt sentence. **Source of truth.** |
+| `TYPE_COLUMNS` (index.html:1386) | comp-table columns, per type |
+| `TYPE_SUBJECT_FIELDS` (index.html:1444) | subject-property form inputs, per type |
+| `ALT_BASIS` (index.html:2031) | optional: a per-unit valuation cross-check |
+
+Everything else derives: table render, sorting, CSV export, PNG snapshot, and
+mobile cards all read the active `COLUMNS` array, so they need no edits.
+
+**Load-bearing constraint:** `TYPE_SUBJECT_FIELDS` keys must be a **subset** of
+that type's `TYPE_COMP_FIELDS[type].fields`. `sanitizeSubjectDetails`
+(server.js:1375) whitelists incoming subject details against exactly that list,
+so a subject input whose key isn't a declared comp field is silently discarded
+before it reaches the model.
+
+## The Recipe
+
+### 1. Declare it (server.js — restart required)
+
+Add the key to the right type in **`TYPE_COMP_FIELDS`** (server.js:1340) and
+extend that type's `instruction` string. Tell the model what the field means,
+give an example value, and keep the escape hatch: *"If it genuinely can't be
+found, use an empty string — do not guess."*
+
+Everything downstream on the server is automatic: the comp JSON shape
+(server.js:1415), the prompt sentence (server.js:1481), the corpus-reuse line
+(`typeSpecsOf`, server.js:1430), the harvest row (`harvestComps`,
+server.js:1168 via `ALL_TYPE_COMP_FIELDS`), and the corpus CSV export
+(server.js:3860).
+
+**Enum fields:** if the field has fixed allowed values, normalize server-side
+onto the enum the way `source_type` does (unknown → safest value), so the
+front-end can trust it.
+
+### 2. Run the Supabase migration BEFORE deploying
+
+`harvestComps` writes one flat `comp_corpus` row per comp using
+`ALL_TYPE_COMP_FIELDS`, so the table needs a column per field. PostgREST
+**400s on an unknown column**, and harvesting is fire-and-forget — so a missing
+column doesn't break searches, it just silently diverts every harvested comp to
+the ephemeral file fallback, which the host wipes on redeploy. You lose data
+without an error anyone sees.
+
+The DDL lives in a comment above `harvestComps` (server.js:1098). Add the
+column there and run it:
+
+```sql
+alter table public.comp_corpus add column if not exists my_field text;
+```
+
+Also add the field to the `&select=` list in `corpusRowsForMarket`
+(server.js:694), or reused corpus comps come back without it.
+
+### 3. Show it (index.html — no restart, served from disk per request)
+
+**Comp column** — add to the right type in `TYPE_COLUMNS` (index.html:1386):
+
+```js
+{ key: "my_field", label: "My Field", numeric: true, after: "size_sqft" }
+```
+
+`after` names the column it sits behind. Convention: specs follow **Size**,
+per-unit/per-acre pricing follows **$/SF** so price metrics stay together.
+Add `wide: true` for long values that need a full-width row on mobile cards.
+`columnsForType()` (index.html:1422) groups by `after` so fields sharing an
+anchor keep their declared order.
+
+**Subject input** (optional) — add to `TYPE_SUBJECT_FIELDS` (index.html:1444):
+
+```js
+{ key: "my_field", label: "My Field", type: "number", placeholder: "e.g. 32" }
+```
+
+`type` is `number`, `text`, or `select` (with an `options` array whose first
+entry is `""`). Remember the subset rule above.
+
+**Valuation cross-check** (rare) — only if the field is a denominator the
+market actually quotes, like units or acres. Add to `ALT_BASIS`
+(index.html:2031); `altBasisEntry` (index.html:2036) renders it as an entry in
+the hero's `renderApproaches` list.
+
+### 4. Sample report
+
+`SAMPLE_REPORT` (index.html:4169) is hard-coded Industrial demo data. If you
+add an Industrial comp field, add it there too or the demo shows empty cells.
+
+## Gotchas
+
+- **The search cache serves old-shape reports for up to 7 days.** The cache key
+  (`cacheKeyFor`, server.js:807) covers address + type + note + window + size +
+  maxComps + txFocus + verified-comp signature + subject details — but NOT the
+  prompt text, so cached hits lack a newly added field. Shared reports
+  (`/r/<id>`, opaque blobs, no expiry) lack it forever. **Renderers must
+  tolerate `undefined`** — every read uses `(x.details || {})` or
+  `numericValue()`, which returns `NaN` and fails the `> 0` guards. Don't break
+  that. To test, use a never-searched address.
+- **Does the model actually know this?** Some fields simply aren't published
+  often enough to be worth a column. A `lot_size` field for Residential was
+  tried and dropped: **0/16 fill across two addresses**, even with an explicit
+  "check the assessor record" instruction, because the search budget (6-8 calls
+  total) doesn't stretch to a per-comp assessor lookup. Office `floor_plate`
+  only reached 4/8 until the prompt was told it may derive it from the floor
+  count. **Measure fill rate on a real search before trusting a new field**; a
+  permanently blank column reads as broken, not thorough.
+- **Verified broker comps** are offered to the model as one text line each
+  (`verifiedBlock`, server.js:1420) carrying only the base fields. If brokers
+  should supply the new field, extend that line AND the broker
+  comp-submission form/endpoint — otherwise verified comps depend on the
+  model's own search for it.
+- **Two hard-coded lists in the mobile card** (index.html:4713-4716): `core`
+  decides which EMPTY fields still render (optional fields can stay out), and
+  `wide` forces a full-width row — driven by the column's `wide` flag, so set
+  that in `TYPE_COLUMNS` rather than adding another key here.
+- **Tailwind is vendored.** New utility classes need `tailwind.css`
+  regenerated; a PostToolUse hook does this automatically on index.html edits.
+  Reusing existing label/input classes needs nothing.
+- **Another Claude session may share this checkout.** Stage explicit paths, and
+  read the whole diff before committing — see [[concurrent-sessions-one-checkout]].
+
+## Verify
+
+0. **Run the map consistency check first** — free, instant, no server:
+
+   ```bash
+   "$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe" .claude/skills/add-comp-field/check-field-maps.js
+   ```
+
+   It extracts the four real maps and cross-checks them, catching the failures
+   that are otherwise silent: a subject input the server will strip, a comp
+   field with no column, an `ALT_BASIS` pointing at a field the type doesn't
+   collect, and a column anchored `after` a column that doesn't exist. Exits
+   non-zero on any problem.
+
+1. **Free, next:** reload and check `columnsForType("<Type>")` in the browser
+   console returns the new key in the right position, and that a *different*
+   type does NOT include it.
+2. If you added a subject input, check `renderSubjectFields("<Type>")` then
+   `readSubjectDetails()` round-trips the value.
+3. **Then pay once:** run a search for the matching type with a never-searched
+   address (cache-miss, ~$0.60). Confirm the column renders with data, sorts,
+   and appears in the CSV export.
+4. Check the fill rate across the returned comps. Empty on most of them means
+   the field isn't reliably published — reconsider before shipping.
+5. Confirm the corpus row carries it: `GET /api/comp-corpus` with `ADMIN_KEY`,
+   or query Supabase directly.

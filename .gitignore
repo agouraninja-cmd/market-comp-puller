@@ -7,7 +7,9 @@ server.err.log
 *.log
 
 # Local Claude Code settings
-.claude/
+.claude/*
+# ...except skills, which are project knowledge rather than local config
+!.claude/skills/
 
 # Captured leads and broker comp submissions (contact info) — never commit
 leads.jsonl
@@ -25,3 +27,4 @@ comp-corpus.jsonl
 
 # Owner's local planning spreadsheets — not app code
 CompNinja*.xlsx
+

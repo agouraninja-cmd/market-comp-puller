@@ -2231,15 +2231,35 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     `<p class="disc" style="margin-top:6px">This quarter: ${quarterBits}. Trend medians use closed-deal dates from our growing comp corpus; automated estimates, not an appraisal.</p>` +
     `</div>`;
 
-  const compRows = (p.comps || []).map((c) => {
+  // Columns are derived, not hardcoded: this type's TYPE_COMP_FIELDS specs slot
+  // in after Size (SF), matching the report table's ordering convention.
+  // A spec column that is empty on EVERY comp is dropped, which is what lets
+  // the pre-#5 seed markets render exactly as they always have instead of
+  // sprouting blank columns until they are backfilled.
+  const marketComps = p.comps || [];
+  const specCols = ((TYPE_COMP_FIELDS[p.type] || { fields: [] }).fields)
+    .filter((key) => marketComps.some((c) => String(c[key] || "").trim()))
+    .map((key) => ({ key, label: FIELD_LABELS[key] || key }));
+  const compCols = [
+    { key: "address", label: "Address" },
+    { key: "date", label: "Date" },
+    { key: "transaction", label: "Type" },
+    { key: "size_sqft", label: "Size (SF)" },
+    ...specCols,
+    { key: "price_or_rate", label: "Price / Rate" },
+    { key: "price_per_sqft", label: "$/SF" },
+  ];
+  const compRows = marketComps.map((c) => {
     const badge = c.source_type ? `<span class="badge">${escHtml(c.source_type.replace("_", " "))}</span>` : "";
-    return `<tr><td>${escHtml(c.address)} ${badge}</td><td>${escHtml(c.date)}</td><td>${escHtml(c.transaction)}</td>` +
-      `<td>${escHtml(c.size_sqft)}</td><td>${escHtml(c.price_or_rate)}</td><td>${escHtml(c.price_per_sqft)}</td></tr>`;
+    return "<tr>" + compCols.map((col) => (col.key === "address"
+      ? `<td>${escHtml(c.address)} ${badge}</td>`
+      : `<td>${escHtml(c[col.key] || "")}</td>`)).join("") + "</tr>";
   }).join("");
   const compsTable = compRows
     ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
-      `<div class="scroll"><table><thead><tr><th>Address</th><th>Date</th><th>Type</th><th>Size (SF)</th><th>Price / Rate</th><th>$/SF</th></tr></thead>` +
-      `<tbody>${compRows}</tbody></table></div></div>`
+      `<div class="scroll"><table><thead><tr>` +
+      compCols.map((col) => `<th>${escHtml(col.label)}</th>`).join("") +
+      `</tr></thead><tbody>${compRows}</tbody></table></div></div>`
     : "";
 
   // Quiet contributor credit — the public half of the broker loop.

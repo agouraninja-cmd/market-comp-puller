@@ -2237,9 +2237,16 @@ function renderMarketPageHTML(slug, p, opts = {}) {
   // the pre-#5 seed markets render exactly as they always have instead of
   // sprouting blank columns until they are backfilled.
   const marketComps = p.comps || [];
-  const specCols = ((TYPE_COMP_FIELDS[p.type] || { fields: [] }).fields)
+  const typeCols = ((TYPE_COMP_FIELDS[p.type] || { fields: [] }).fields)
     .filter((key) => marketComps.some((c) => String(c[key] || "").trim()))
     .map((key) => ({ key, label: FIELD_LABELS[key] || key }));
+  // Same split as the report table (TYPE_COLUMNS' `after` anchors): physical
+  // specs sit behind Size, while per-unit / per-acre pricing sits with the
+  // other price columns. Lumping them all behind Size would separate $/Acre
+  // from $/SF, which reads wrong for the types that price that way.
+  const isPricing = (c) => c.key.startsWith("price_per_");
+  const specCols = typeCols.filter((c) => !isPricing(c));
+  const priceCols = typeCols.filter(isPricing);
   const compCols = [
     { key: "address", label: "Address" },
     { key: "date", label: "Date" },
@@ -2248,6 +2255,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     ...specCols,
     { key: "price_or_rate", label: "Price / Rate" },
     { key: "price_per_sqft", label: "$/SF" },
+    ...priceCols,
   ];
   const compRows = marketComps.map((c) => {
     const badge = c.source_type ? `<span class="badge">${escHtml(c.source_type.replace("_", " "))}</span>` : "";

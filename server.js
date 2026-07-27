@@ -2248,6 +2248,331 @@ function renderMarketDirectoryHTML() {
 
 
 // ---------------------------------------------------------------------------
+// How It Works — the standalone proof page. The landing page sells; this page
+// explains. It holds the four blocks that used to live below the fold on the
+// home page (stat strip, sample report exhibit, the three-step method, FAQ),
+// reached from the header nav and the footer.
+//
+// Server-rendered and SELF-CONTAINED like the market pages: its own inline
+// <style>, so it does NOT depend on the purged tailwind.css and never breaks
+// when a utility class is missing from that build. The CSS below is the
+// Research Desk system copied from index.html's rd-* block, so the page reads
+// as the same site rather than the older market-page skin.
+// ---------------------------------------------------------------------------
+const HOW_CSS = `
+*{box-sizing:border-box}
+body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
+.wrap{max-width:1024px;margin:0 auto;padding:0 16px}
+/* Header — mirrors index.html's bar so navigating here feels continuous. */
+.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+/* Wraps on narrow screens: the nav drops to its own row rather than squeezing
+   each link into a two-line column (which overflowed the viewport at 375px). */
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
+.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
+.wordmark b{color:#B91C1C;font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
+.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
+.hdr nav a.on{color:#1A2433;font-weight:500}
+/* Type + section furniture */
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
+.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
+h1.h{font-size:38px;line-height:1.12;margin:12px 0 0;max-width:20ch}
+h2.h{font-size:27px;margin:8px 0 0}
+h3{font-size:15px;font-weight:600;color:#1A2433;margin:0 0 6px}
+.lead{color:#4C5665;font-size:16.5px;max-width:58ch;margin:16px 0 0}
+.sub{color:#4C5665;font-size:14px;max-width:60ch;margin:4px 0 20px}
+section{padding:48px 0}
+.band{background:#F5F4EF;box-shadow:0 0 0 100vmax #F5F4EF;clip-path:inset(0 -100vmax)}
+.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600;margin-bottom:2px}
+/* Stat strip */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid #E4E2DA;border-bottom:1px solid #E4E2DA}
+.stat{padding:18px}
+.stat:nth-child(1),.stat:nth-child(3){border-right:1px solid #E4E2DA}
+.stat .n{font-size:22px;font-weight:600;color:#1A2433;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+/* Sample-report exhibit */
+.exhibit{border:1px solid #D8D4C9;background:#fff;border-radius:6px;overflow:hidden}
+.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between}
+.exrow{display:flex;flex-direction:column}
+.exside{padding:24px;border-bottom:1px solid #ECEAE3}
+.exmain{padding:24px;flex:1;overflow-x:auto}
+.big{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:32px;margin-top:2px;font-variant-numeric:tabular-nums}
+.psf{font-size:13px;color:#5A6473;margin-bottom:16px}
+.drv{font-size:13px;color:#374253;padding:7px 0;border-top:1px solid #F0EFE9;display:flex;gap:8px}
+.drv b{color:#B91C1C;font-weight:700}
+table.comps{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+table.comps th{text-align:left;color:#8A93A0;font-weight:600;padding:7px 8px 7px 0;border-bottom:1px solid #D8D4C9;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
+table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid #F0EFE9;white-space:nowrap}
+.badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
+.badge.v{color:#06603A;background:#E3F2EA}
+.badge.p{color:#46536A;background:#EAEEF4}
+.badge.li{color:#7A5B12;background:#F7EFDC}
+.legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:#4C5665;align-items:center}
+.legend span.i{display:flex;align-items:center;gap:8px}
+/* Method steps */
+.steps{border:1px solid #D8D4C9;border-radius:6px;overflow:hidden;background:#fff;display:grid;grid-template-columns:1fr;margin-top:20px}
+.step{padding:22px 24px;border-bottom:1px solid #ECEAE3}
+.step:last-child{border-bottom:0}
+.num{font-family:Georgia,serif;font-size:13px;color:#B91C1C;margin-bottom:8px}
+.step p{font-size:13.5px;color:#5A6473;margin:0}
+/* FAQ accordions — chevron marker, matching the home page's disclosure style */
+details.q{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:16px 20px;margin-bottom:12px}
+details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:#1A2433}
+details.q summary::-webkit-details-marker{display:none}
+details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
+details.q[open] summary::after{transform:rotate(180deg)}
+details.q p{font-size:14px;color:#5A6473;margin:8px 0 0;max-width:80ch}
+/* Closing CTA */
+.cta{border:1px solid #D8D4C9;background:#fff;border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px}
+.cta p{color:#4C5665;font-size:14px;margin:8px auto 20px;max-width:52ch}
+.btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
+.btn:hover{background:#991B1B;color:#fff}
+/* Footer — the navy ink footer from the home page */
+footer{background:#1A2433;color:#B8C0CC;font-size:13px}
+footer .wrap{padding:40px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:32px}
+footer .wordmark{color:#fff}
+footer p{color:#8F99A8;margin:12px 0 0;max-width:68ch;line-height:1.6}
+footer a{color:#D5DAE2;text-decoration:underline;text-decoration-color:#46536A}
+footer a:hover{color:#fff}
+footer ul{list-style:none;margin:12px 0 0;padding:0}
+footer li{margin-bottom:8px}
+footer li a{text-decoration:none;color:#B8C0CC}
+@media (min-width:640px){
+  .hdr nav{gap:24px}
+  .stats{grid-template-columns:repeat(4,1fr)}
+  .stat{padding:20px}
+  .stat:nth-child(3){border-right:1px solid #E4E2DA}
+  .steps{grid-template-columns:repeat(3,1fr)}
+  .step{border-bottom:0;border-right:1px solid #ECEAE3}
+  .step:last-child{border-right:0}
+  h1.h{font-size:42px}
+  footer .wrap{flex-direction:row}
+  footer .right{text-align:right;flex-shrink:0}
+}
+@media (min-width:1024px){
+  .exrow{flex-direction:row}
+  .exside{width:38%;border-bottom:0;border-right:1px solid #ECEAE3}
+}
+`;
+
+// One Q/A array feeds both the visible FAQ block and the FAQPage JSON-LD, so
+// the two can never drift (Google flags mismatched FAQ markup). This is the
+// canonical copy — it moved off index.html when the FAQ moved to this page.
+const HOW_FAQ = [
+  ["What is a comp in commercial real estate?",
+   "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command."],
+  ["How much does a comp report cost?",
+   "Nothing. Reports are free and there is no subscription. We only ask for your contact details when you export a report, so we can follow up about your property and market."],
+  ["Where does the data come from?",
+   "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
+  ["Can I find out what my building is worth?",
+   "Yes. Enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and every report opens with an estimated value range based on recent comparable sales. Add NOI for an income-approach cross-check. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free."],
+  ["What property types are covered?",
+   "Industrial, office, retail, multifamily, land, and residential. Each type reports the specifics its buyers price on: clear height and dock doors for industrial, building class for office, center type and anchor tenant for retail, unit count and price per unit for multifamily, acreage and zoning for land, and bedroom and bathroom counts for residential."],
+  ["How accurate are the reports?",
+   "Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one."],
+];
+
+const HOW_LOGO =
+  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
+  `<rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>` +
+  `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
+
+function renderHowItWorksHTML() {
+  const title = "How CompNinja Works";
+  const canonical = `${SITE_URL}/how-it-works`;
+  const description =
+    "How a CompNinja report is built: live searches of public records and listings, a source-confidence badge on every comp, " +
+    "and a value range for your building. Plus answers to the most common questions.";
+
+  const stats = [
+    ["Free", "Every report"],
+    ["3&ndash;6", "Cited comps per report"],
+    ["~40s", "Search to report"],
+    ["100%", "Sources disclosed"],
+  ].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+
+  // Illustrative sample, clearly captioned as such — the same exhibit that
+  // used to sit on the home page. Figures are representative, not a live pull.
+  const sampleComps = [
+    ["9020 Center Ave", "May 26", "21,400", "$238", `<span class="badge v">Verified &middot; via Ridgeline CRE</span>`],
+    ["11215 4th St", "Mar 26", "18,750", "$226", `<span class="badge p">Public record</span>`],
+    ["8933 Utica Ave", "Feb 26", "24,100", "$219", `<span class="badge li">Listing</span>`],
+    ["10722 Arrow Route", "Dec 25", "19,900", "$214", `<span class="badge p">Public record</span>`],
+    ["12190 6th St", "Nov 25", "26,300", "$208", `<span class="badge li">Listing</span>`],
+  ].map((r) => `<tr>${r.map((c, i) => `<td>${i === 4 ? c : escHtml(c)}</td>`).join("")}</tr>`).join("");
+
+  const steps = [
+    ["I.", "Search live",
+     "Public records, listings, and news are searched at request time — not read from a stale database."],
+    ["II.", "Cite everything",
+     "Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up."],
+    ["III.", "Value the subject",
+     "Building size comes from public records; the range comes from sale comps. Your price and NOI stay in your browser."],
+  ].map(([n, h, p]) =>
+    `<div class="step"><div class="num">${n}</div><h3>${escHtml(h)}</h3><p>${escHtml(p)}</p></div>`).join("");
+
+  const faqBlock = HOW_FAQ.map(([q, a]) =>
+    `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        name: title,
+        description,
+        url: canonical,
+        isPartOf: { "@type": "WebSite", name: "CompNinja", url: `${SITE_URL}/` },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: title, item: canonical },
+          ],
+        },
+      },
+      {
+        "@type": "FAQPage",
+        mainEntity: HOW_FAQ.map(([q, a]) => ({
+          "@type": "Question",
+          name: q,
+          acceptedAnswer: { "@type": "Answer", text: a },
+        })),
+      },
+    ],
+  });
+
+  const body = `
+<header class="hdr">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="CompNinja home">${HOW_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    <nav>
+      <a href="/markets">Markets</a>
+      <a href="/#for-brokers">For Brokers</a>
+      <a href="/how-it-works" class="on" aria-current="page">How it works</a>
+      <a href="/">Run a report</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section style="padding-bottom:32px">
+      <div class="kicker">How it works</div>
+      <h1 class="h">A report you can hand to someone who will argue with it.</h1>
+      <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
+        subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
+    </section>
+    <div class="stats">${stats}</div>
+  </div>
+
+  <div class="wrap">
+    <section>
+      <div class="kicker">The Report</div>
+      <h2 class="h">One page that answers, then proves.</h2>
+      <p class="sub">A value range for the subject, what's driving prices in the market, and the comp table behind
+        both — with a confidence badge on every source.</p>
+      <div class="exhibit">
+        <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
+        <div class="exrow">
+          <div class="exside">
+            <div class="lab">Estimated value</div>
+            <div class="big">$4.6M&ndash;$5.3M</div>
+            <div class="psf">$212&ndash;$245 / SF &middot; 21,600 SF (public record)</div>
+            <div class="lab" style="margin-bottom:4px">What's driving prices</div>
+            <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
+            <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium — scarce supply</div>
+            <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9–6.4%</div>
+          </div>
+          <div class="exmain">
+            <table class="comps">
+              <thead><tr><th>Address</th><th>Sold</th><th>SF</th><th>$/SF</th><th>Source</th></tr></thead>
+              <tbody>${sampleComps}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
+        <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
+        <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
+        <span style="color:#8A93A0">Badges under-claim, never over-claim.</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="band"><div class="wrap">
+    <section>
+      <div class="kicker">Method</div>
+      <h2 class="h">How a report comes together.</h2>
+      <div class="steps">${steps}</div>
+    </section>
+  </div></div>
+
+  <div class="wrap">
+    <section id="faq">
+      <div class="kicker">Questions</div>
+      <h2 class="h" style="margin-bottom:20px">FAQ</h2>
+      ${faqBlock}
+    </section>
+
+    <div class="cta">
+      <h2 class="h" style="font-size:22px">See it on your own building.</h2>
+      <p>Enter an address and property type — the report takes about a minute and costs nothing.</p>
+      <a class="btn" href="/">Run a free report &rarr;</a>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <div class="brand"><svg viewBox="0 0 30 30" aria-hidden="true"><rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/><polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg><span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
+      <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage — we
+        connect you with local brokers for opinions of value. Comparables derive from publicly available data;
+        verify independently before underwriting.</p>
+      <p>&copy; 2026 CompNinja</p>
+    </div>
+    <div class="right">
+      <a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a>
+      <ul>
+        <li><a href="/markets">Markets</a></li>
+        <li><a href="/how-it-works">How it works</a></li>
+        <li><a href="/how-it-works#faq">FAQ</a></li>
+        <li><a href="/">Run a report</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>`;
+
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
+    `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
+    `<title>${escHtml(title)} | CompNinja</title>\n` +
+    `<meta name="description" content="${escHtml(description)}"/>\n` +
+    `<meta name="robots" content="index, follow"/>\n<link rel="canonical" href="${canonical}"/>\n` +
+    `<meta name="theme-color" content="#FBFBF9"/>\n` +
+    `<meta property="og:type" content="website"/>\n<meta property="og:site_name" content="CompNinja"/>\n` +
+    `<meta property="og:title" content="${escHtml(title)}"/>\n` +
+    `<meta property="og:description" content="${escHtml(description)}"/>\n` +
+    `<meta property="og:url" content="${canonical}"/>\n` +
+    `<meta property="og:image" content="${SITE_URL}/og-image.png"/>\n` +
+    `<meta name="twitter:card" content="summary_large_image"/>\n` +
+    `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
+    `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
+    `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    `<script type="application/ld+json">${jsonLd}</script>\n` +
+    `<style>${HOW_CSS}</style>\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
+}
+
+
+// ---------------------------------------------------------------------------
 // Analytics — a PII-free event log so the owner can see volume, popular
 // markets, and conversion. Writes are fire-and-forget; the /admin view
 // aggregates on read. No name/email/street address is ever logged.
@@ -3601,6 +3926,13 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify(list));
   }
 
+  // --- How It Works — the standalone proof/FAQ page (header + footer nav).
+  // Static content, so it caches for an hour like the market pages. ---
+  if (req.method === "GET" && req.url.split("#")[0] === "/how-it-works") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+    return res.end(renderHowItWorksHTML());
+  }
+
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && req.url === "/markets") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
@@ -3697,6 +4029,7 @@ const server = http.createServer((req, res) => {
       `<?xml version="1.0" encoding="UTF-8"?>\n` +
       `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +
       (marketUrls ? marketUrls + "\n" : "") +
       (brokerUrls ? brokerUrls + "\n" : "") +

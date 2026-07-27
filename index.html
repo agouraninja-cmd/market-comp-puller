@@ -36,44 +36,8 @@
     "provider": { "@type": "Organization", "name": "CompNinja" }
   }
   </script>
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "What is a comp in commercial real estate?",
-        "acceptedAnswer": { "@type": "Answer", "text": "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command." }
-      },
-      {
-        "@type": "Question",
-        "name": "How much does a comp report cost?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Nothing. Reports are free and there is no subscription. We only ask for your contact details when you export a report, so we can follow up about your property and market." }
-      },
-      {
-        "@type": "Question",
-        "name": "Where does the data come from?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it." }
-      },
-      {
-        "@type": "Question",
-        "name": "Can I find out what my building is worth?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and every report opens with an estimated value range based on recent comparable sales. Add NOI for an income-approach cross-check. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free." }
-      },
-      {
-        "@type": "Question",
-        "name": "What property types are covered?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Industrial, office, retail, multifamily, land, and residential. Industrial reports also include building specs such as clear height and dock doors." }
-      },
-      {
-        "@type": "Question",
-        "name": "How accurate are the reports?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one." }
-      }
-    ]
-  }
-  </script>
+  <!-- The FAQPage structured data lives on /how-it-works, alongside the visible
+       FAQ copy it describes (Google flags markup whose answers aren't on the page). -->
   <!-- Favicon: CompNinja cut-card mark (navy comp card, red diagonal slice).
        Real files, not data: URIs — Google only shows a favicon it can crawl. -->
   <link rel="icon" href="/favicon.ico" sizes="48x48" />
@@ -236,16 +200,17 @@
     @keyframes spreadSweep { to { transform: scaleX(1); } }
     @keyframes markerPop { to { transform: translate(-50%, -50%) scaleY(1); } }
 
-    /* Disclosure accordions (FAQ + the form's "Compare your property"): replace
-       the native marker with a chevron that turns when opened. */
-    #faq summary, #compForm details summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-    #faq summary::-webkit-details-marker, #compForm details summary::-webkit-details-marker { display: none; }
-    #faq summary::after, #compForm details summary::after {
+    /* Disclosure accordion (the form's "Compare your property"): replace the
+       native marker with a chevron that turns when opened. The FAQ used the
+       same rule before it moved to /how-it-works, which carries its own copy. */
+    #compForm details summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    #compForm details summary::-webkit-details-marker { display: none; }
+    #compForm details summary::after {
       content: ""; width: 1rem; height: 1rem; flex-shrink: 0;
       background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
       transition: transform .25s ease;
     }
-    #faq details[open] summary::after, #compForm details[open] summary::after { transform: rotate(180deg); }
+    #compForm details[open] summary::after { transform: rotate(180deg); }
 
     /* Soft cross-fade when the example address in the placeholder rotates. */
     #address::placeholder { transition: color .3s ease; }
@@ -353,33 +318,21 @@
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
     @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
-    /* Stat strip */
-    .rd-stat .n { font-size: 22px; font-weight: 600; color: #1A2433; font-variant-numeric: tabular-nums; }
-    .rd-stat .l { font-size: 11.5px; color: #8A93A0; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
-    /* Exhibit (sample report) */
+    /* Card frame — shared by the live map and comps cards. (The sample-report
+       exhibit that also used it now lives on /how-it-works, which is
+       server-rendered with its own copy of these rules.) */
     .rd-exhibit { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; overflow: hidden; }
-    .rd-cap { padding: 12px 20px; border-bottom: 1px solid #ECEAE3; font-size: 11.5px; color: #8A93A0; letter-spacing: 0.06em; text-transform: uppercase; }
-    .rd-comps { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-    .rd-comps th { text-align: left; color: #8A93A0; font-weight: 600; padding: 7px 8px 7px 0; border-bottom: 1px solid #D8D4C9; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; }
-    .rd-comps td { padding: 9px 8px 9px 0; border-bottom: 1px solid #F0EFE9; }
     /* Own line-height so the chip box stays compact even inside a roomier
        parent line (the badge legend uses leading-6 to keep wrapped rows apart). */
     .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
     .rd-badge.v { color: #06603A; background: #E3F2EA; }
     .rd-badge.p { color: #46536A; background: #EAEEF4; }
     .rd-badge.li { color: #7A5B12; background: #F7EFDC; }
-    .rd-drv { font-size: 13px; color: #374253; padding: 7px 0; border-top: 1px solid #F0EFE9; display: flex; gap: 8px; }
-    .rd-drv b { color: #B91C1C; font-weight: 700; }
     /* Full-bleed alt band — the background spans the whole viewport while the
        content stays in the centered column (the mockup's #F5F4EF section grounds). */
     .rd-band { background: #F5F4EF; box-shadow: 0 0 0 100vmax #F5F4EF; clip-path: inset(0 -100vmax); }
-    /* Method steps + broker cards */
-    .rd-steps { border: 1px solid #D8D4C9; border-radius: 6px; overflow: hidden; background: #fff; }
-    .rd-step { padding: 22px 24px; border-right: 1px solid #ECEAE3; }
-    .rd-step:last-child { border-right: 0; }
-    .rd-num { font-family: Georgia, serif; font-size: 13px; color: #B91C1C; margin-bottom: 8px; }
+    /* Broker cards */
     .rd-bcard { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; padding: 24px; }
-    @media (max-width: 639.98px) { .rd-step { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-step:last-child { border-bottom: 0; } }
 
     /* ------------- Research Desk report tokens (live report restyle) ------------- */
     /* Neutral value tile: paper alt tone + hairline — replaces the slate-50 bubbles. */
@@ -621,7 +574,7 @@
       <nav class="flex items-center gap-6 text-[13.5px] text-[#5A6473]">
         <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
         <button type="button" data-scroll-to="for-brokers" class="hover:text-[#1A2433]">For Brokers</button>
-        <button type="button" data-scroll-to="method" class="hover:text-[#1A2433] hidden sm:inline">Methodology</button>
+        <a href="/how-it-works" class="hover:text-[#1A2433] hidden sm:inline">How it works</a>
         <button id="myDeskLink" type="button" class="hidden hover:text-[#1A2433] font-medium">My Desk</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
@@ -1323,64 +1276,12 @@
     <!-- Home info — fills out the landing view; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
 
-      <!-- Stat strip: true claims only -->
-      <div class="mt-12 reveal border-y rd-hairline grid grid-cols-2 sm:grid-cols-4">
-        <div class="rd-stat p-4 sm:p-5 border-r rd-hairline"><div class="n">Free</div><div class="l">Every report</div></div>
-        <div class="rd-stat p-4 sm:p-5 sm:border-r rd-hairline"><div class="n">3–6</div><div class="l">Cited comps per report</div></div>
-        <div class="rd-stat p-4 sm:p-5 border-r rd-hairline"><div class="n">~40s</div><div class="l">Search to report</div></div>
-        <div class="rd-stat p-4 sm:p-5"><div class="n">100%</div><div class="l">Sources disclosed</div></div>
+      <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
+           report exhibit, the three-step method, and the FAQ. -->
+      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <p class="text-sm text-[#4C5665]">Free reports, 3–6 cited comps each, every source disclosed.</p>
+        <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works →</a>
       </div>
-
-      <!-- The Report — sample exhibit -->
-      <section class="mt-10 py-12 rd-band reveal">
-        <div class="rd-kicker">The Report</div>
-        <h2 class="rd-h text-[27px] mt-2">One page that answers, then proves.</h2>
-        <p class="text-sm text-[#4C5665] mt-1 mb-5 max-w-[60ch]">A value range for the subject, what's driving prices in the market, and the comp table behind both — with a confidence badge on every source.</p>
-        <div class="rd-exhibit">
-          <div class="rd-cap flex justify-between"><span>Sample report · Industrial · Rancho Cucamonga, CA</span><span class="hidden sm:inline">Exported Jul 2026</span></div>
-          <div class="flex flex-col lg:flex-row">
-            <div class="p-6 lg:border-r border-b lg:border-b-0 border-[#ECEAE3] lg:w-[38%]">
-              <div class="rd-lab">Estimated value</div>
-              <div class="rd-h text-[32px] mt-0.5" style="font-variant-numeric:tabular-nums">$4.6M–$5.3M</div>
-              <div class="text-[13px] text-[#5A6473] mb-4">$212–$245 / SF · 21,600 SF (public record)</div>
-              <div class="rd-lab mb-1">What's driving prices</div>
-              <div class="rd-drv"><b>▲</b> Inland Empire vacancy tightening near the I-15 corridor</div>
-              <div class="rd-drv"><b>▲</b> Sub-25K SF buildings trade at a premium — scarce supply</div>
-              <div class="rd-drv"><b>–</b> Rate environment holding cap rates near 5.9–6.4%</div>
-            </div>
-            <div class="p-6 flex-1 overflow-x-auto">
-              <table class="rd-comps">
-                <thead><tr><th>Address</th><th>Sold</th><th>SF</th><th>$/SF</th><th>Source</th></tr></thead>
-                <tbody>
-                  <tr><td>9020 Center Ave</td><td>May 26</td><td>21,400</td><td>$238</td><td><span class="rd-badge v">Verified · via Ridgeline CRE</span></td></tr>
-                  <tr><td>11215 4th St</td><td>Mar 26</td><td>18,750</td><td>$226</td><td><span class="rd-badge p">Public record</span></td></tr>
-                  <tr><td>8933 Utica Ave</td><td>Feb 26</td><td>24,100</td><td>$219</td><td><span class="rd-badge li">Listing</span></td></tr>
-                  <tr><td>10722 Arrow Route</td><td>Dec 25</td><td>19,900</td><td>$214</td><td><span class="rd-badge p">Public record</span></td></tr>
-                  <tr><td>12190 6th St</td><td>Nov 25</td><td>26,300</td><td>$208</td><td><span class="rd-badge li">Listing</span></td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        <div class="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-[13px] text-[#4C5665]">
-          <span class="flex items-center gap-2"><span class="rd-badge v">Verified</span> confirmed by a local broker</span>
-          <span class="flex items-center gap-2"><span class="rd-badge p">Public record</span> county recorder / assessor</span>
-          <span class="flex items-center gap-2"><span class="rd-badge li">Listing</span> active or closed listing</span>
-          <span class="text-[#8A93A0]">Badges under-claim, never over-claim.</span>
-        </div>
-      </section>
-
-      <!-- Method -->
-      <!-- two anchors: "how-it-works" is the footer link target (pre-existing), "method" is the header nav target -->
-      <section id="how-it-works" class="py-12 reveal"><span id="method"></span>
-        <div class="rd-kicker">Method</div>
-        <h2 class="rd-h text-[27px] mt-2 mb-5">How a report comes together.</h2>
-        <div class="rd-steps grid grid-cols-1 sm:grid-cols-3">
-          <div class="rd-step"><div class="rd-num">I.</div><h3 class="font-semibold text-[15px] text-[#1A2433] mb-1.5">Search live</h3><p class="text-[13.5px] text-[#5A6473]">Public records, listings, and news are searched at request time — not read from a stale database.</p></div>
-          <div class="rd-step"><div class="rd-num">II.</div><h3 class="font-semibold text-[15px] text-[#1A2433] mb-1.5">Cite everything</h3><p class="text-[13.5px] text-[#5A6473]">Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up.</p></div>
-          <div class="rd-step"><div class="rd-num">III.</div><h3 class="font-semibold text-[15px] text-[#1A2433] mb-1.5">Value the subject</h3><p class="text-[13.5px] text-[#5A6473]">Building size comes from public records; the range comes from sale comps. Your price and NOI stay in your browser.</p></div>
-        </div>
-      </section>
 
       <!-- For Brokers -->
       <section id="for-brokers" class="py-12 rd-band reveal">
@@ -1428,37 +1329,6 @@
         </div>
       </section>
 
-      <!-- FAQ (visible copy matches the FAQPage structured data in the head) -->
-      <section id="faq" class="pt-12 reveal">
-        <div class="rd-kicker">Questions</div>
-        <h2 class="rd-h text-[27px] mt-2 mb-5">FAQ</h2>
-        <div class="space-y-3">
-          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
-            <summary class="cursor-pointer select-none font-semibold text-slate-900">What is a comp in commercial real estate?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command.</p>
-          </details>
-          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
-            <summary class="cursor-pointer select-none font-semibold text-slate-900">How much does a comp report cost?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Nothing. Reports are free and there is no subscription. We only ask for your contact details when you export a report, so we can follow up about your property and market.</p>
-          </details>
-          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
-            <summary class="cursor-pointer select-none font-semibold text-slate-900">Where does the data come from?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it.</p>
-          </details>
-          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
-            <summary class="cursor-pointer select-none font-semibold text-slate-900">Can I find out what my building is worth?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Yes. Enter your address and property type. We pull the building's square footage from public records automatically (you can override it), and every report opens with an estimated value range based on recent comparable sales. Add NOI for an income-approach cross-check. It's an automated estimate, not an appraisal. For a real opinion of value we'll connect you with a licensed local broker, free.</p>
-          </details>
-          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
-            <summary class="cursor-pointer select-none font-semibold text-slate-900">What property types are covered?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Industrial, office, retail, multifamily, land, and residential. Industrial reports also include building specs such as clear height and dock doors.</p>
-          </details>
-          <details class="bg-white rounded-md border border-[#D8D4C9] px-5 py-4">
-            <summary class="cursor-pointer select-none font-semibold text-slate-900">How accurate are the reports?</summary>
-            <p class="text-sm text-slate-500 leading-relaxed mt-2 max-w-4xl">Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one.</p>
-          </details>
-        </div>
-      </section>
     </div>
 
   </div>
@@ -1482,8 +1352,8 @@
           <a href="mailto:agouraninja@gmail.com" class="text-[#D5DAE2] hover:text-white underline decoration-[#46536A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">agouraninja@gmail.com</a>
           <ul class="mt-3 space-y-2">
             <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
-            <li><button type="button" data-scroll-to="how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</button></li>
-            <li><button type="button" data-scroll-to="faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</button></li>
+            <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
+            <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
             <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
           </ul>
         </div>
@@ -4353,6 +4223,18 @@
       });
     }, { threshold: 0.1, rootMargin: "0px 0px -40px 0px" });
     revealEls.forEach((el) => io.observe(el));
+    // A cross-page deep link (e.g. /#for-brokers from /how-it-works) lands with
+    // the target already scrolled into view. Reveal it outright: the browser's
+    // fragment scroll is not ordered against the observer's first delivery, so
+    // the section could otherwise sit at opacity 0 until the visitor scrolls.
+    // Guarded to plain id hashes — #reset=<token> is not a valid selector.
+    if (/^#[A-Za-z][\w-]*$/.test(location.hash)) {
+      const target = document.querySelector(location.hash);
+      if (target && target.classList.contains("reveal")) {
+        target.classList.add("revealed");
+        io.unobserve(target);
+      }
+    }
   } else {
     revealEls.forEach((el) => el.classList.add("revealed"));
   }

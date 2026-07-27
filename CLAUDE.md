@@ -194,6 +194,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   raw-data layer that broker verification and future retrieval features build
   on; the DDL lives in a comment above `harvestComps` in server.js.
   `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`).
+- `GET /how-it-works` — the standalone proof/FAQ page, reached from the header
+  nav (the old "Methodology" item) and the footer. Holds the four blocks that
+  used to sit below the fold on the home page: the stat strip, the sample-report
+  exhibit, the three-step Method, and the FAQ. **Server-rendered and
+  self-contained** like the market pages (`HOW_CSS` — the Research Desk `rd-*`
+  system re-expressed as plain class names — so it does NOT depend on the purged
+  `tailwind.css`). Two things live here and nowhere else: `HOW_FAQ`, the single
+  Q/A array feeding both the visible accordions and the **FAQPage JSON-LD** (it
+  moved off `index.html`'s `<head>` with the copy it describes), and the sample
+  exhibit's illustrative figures. The home page keeps only a one-line pointer
+  strip linking here. Listed in `sitemap.xml`.
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
   (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do

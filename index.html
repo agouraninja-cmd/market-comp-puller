@@ -2709,6 +2709,96 @@
   });
 
   // ----------------------------------------------------------------------------
+  // Operating-expense benchmark — the owner's own expense ratio (gross income
+  // held in the browser, never sent to the server) against the model's
+  // market_opex_range. A benchmark, never advice: no colors, no "should".
+  // Missing range (cached/legacy payloads) degrades to a ratio-only card.
+  // ----------------------------------------------------------------------------
+  function renderOpexCard(parsed, meta, resetAssumptions) {
+    const card = document.getElementById("opexCard");
+    const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
+    if (!noi || !currentUser) { card.classList.add("hidden"); return; }
+    const a = ensureAssumptions(meta, parsed);
+    const inGross = document.getElementById("opexGross");
+    if (resetAssumptions || !inGross.value) {
+      inGross.value = a.opex.grossIncome > 0 ? Math.round(a.opex.grossIncome).toLocaleString() : "";
+    }
+    const gross = a.opex.grossIncome > 0 ? a.opex.grossIncome : null;
+
+    const r = parsed && parsed.market_opex_range ? parsed.market_opex_range : null;
+    const bandLo = r ? numericValue(r.low) : NaN;
+    const bandHi = r ? numericValue(r.high) : NaN;
+    const bandOk = bandLo > 0 && bandHi >= bandLo && bandHi < 100;
+    const pc = (v) => String(Math.round(v * 10) / 10);
+    const bandStr = bandOk ? pc(bandLo) + "-" + pc(bandHi) + "%" : null;
+
+    const set = (id, txt, sub) => {
+      document.getElementById(id).textContent = txt;
+      document.getElementById(id + "Sub").textContent = sub || "";
+    };
+    const fmtT = (v) => "$" + Math.round(v).toLocaleString();
+    const typeWord = String(meta.type || "").toLowerCase();
+    const verdictEl = document.getElementById("opexVerdict");
+    const readEl = document.getElementById("opexRead");
+
+    set("opexBand", bandStr || "—",
+      bandOk ? (r && r.note ? String(r.note) : "of gross income") : "not in this report");
+
+    if (!gross) {
+      set("opexRatio", "—", "operating expenses ÷ gross income");
+      set("opexDollars", "—", "gross income − NOI");
+      verdictEl.textContent = "";
+      readEl.textContent = "Enter your gross annual income to compare against what this market typically spends.";
+      card.classList.remove("hidden");
+      return;
+    }
+
+    const expenses = gross - noi;
+    const ratioPct = (expenses / gross) * 100;
+    if (!(expenses > 0) || !(ratioPct > 0 && ratioPct < 100)) {
+      set("opexRatio", "—", "operating expenses ÷ gross income");
+      set("opexDollars", "—", "gross income − NOI");
+      verdictEl.textContent = "";
+      readEl.textContent = "Gross income should be larger than NOI — worth a check on the two figures.";
+      card.classList.remove("hidden");
+      return;
+    }
+
+    set("opexRatio", pc(ratioPct) + "%", "operating expenses ÷ gross income");
+    set("opexDollars", fmtT(expenses), "gross income − NOI");
+
+    if (!bandOk) {
+      verdictEl.textContent = "";
+      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "% of gross income. This report has no market benchmark to compare against — a fresh search will include one.";
+    } else if (ratioPct > bandHi) {
+      const gap = expenses - (bandHi / 100) * gross;
+      verdictEl.textContent = " · Above typical range";
+      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "%; this market typically runs " + bandStr + " for " + typeWord + ". That gap is about " + fmtT(gap) + " a year on your gross income.";
+    } else if (ratioPct < bandLo) {
+      verdictEl.textContent = " · Below typical range";
+      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "%, below the " + bandStr + " typical here — often the case where leases pass most operating costs to tenants.";
+    } else {
+      verdictEl.textContent = " · Within typical range";
+      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "%, inside the " + bandStr + " this market typically runs for " + typeWord + ".";
+    }
+    card.classList.remove("hidden");
+  }
+
+  // Gross-income edits: clamp into assumptions and re-render the cluster.
+  let opexEditTimer = null;
+  document.getElementById("opexGross").addEventListener("input", () => {
+    if (!currentParsed || !currentMeta) return;
+    clearTimeout(opexEditTimer);
+    opexEditTimer = setTimeout(() => {
+      const a = ensureAssumptions(currentMeta, currentParsed);
+      const gross = numericValue(document.getElementById("opexGross").value);
+      a.opex.grossIncome = gross > 0 ? Math.min(gross, 2e9) : null;
+      persistAssumptions();
+      renderAnalysisCluster(currentParsed, currentMeta, false);
+    }, 250);
+  });
+
+  // ----------------------------------------------------------------------------
   // Sensitivity matrix — DCF value across exit cap (rows) × NOI growth (cols),
   // every cell through the same dcfValue() the card uses. Center = current
   // assumptions; cells tint by whether they beat selling today.
@@ -2942,6 +3032,7 @@
   // in place of the debt + sensitivity cards (the DCF stays open to all).
   function renderAnalysisCluster(parsed, meta, resetAssumptions) {
     renderDcfCard(parsed, meta, resetAssumptions);
+    renderOpexCard(parsed, meta, resetAssumptions);
     renderDebtCard(parsed, meta, resetAssumptions);
     renderSensCard(parsed, meta);
     renderRentRollCard(parsed, meta, resetAssumptions);

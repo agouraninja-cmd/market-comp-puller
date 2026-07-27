@@ -1389,7 +1389,7 @@ const ALL_TYPE_COMP_FIELDS = [...new Set(
   Object.values(TYPE_COMP_FIELDS).flatMap((t) => t.fields)
 )];
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps) {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, subjectDetails) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -1430,6 +1430,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   const typeSpecsOf = (c) => (typeSpec ? typeSpec.fields : [])
     .map((f) => (c[f] ? ` | ${f.replace(/_/g, " ")} ${c[f]}` : "")).join("");
 
+  // What the owner told us about their own building. Given to the model so it
+  // matches on the attributes that actually drive comparability, not just
+  // address and size.
+  const detailEntries = Object.entries(subjectDetails || {});
+  const subjectDetailBlock = detailEntries.length
+    ? `SUBJECT DETAILS provided by the owner: ${detailEntries.map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(", ")}. Prefer comps that match these attributes where the market offers them, and note in "summary" when the closest available comps differ materially from them.`
+    : "";
+
   // Comps we already pulled for this market in earlier searches. Offered so the
   // model reuses them instead of paying to re-search the web for the same deals.
   const corpusBlock = (corpusComps && corpusComps.length) ? [
@@ -1468,6 +1476,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       ? `Also determine the TARGET property's building size in square feet from public records, assessor data, or listing pages for the target address. This is the BUILDING square footage, not the lot or land size.`
       : "",
     typeGuidance[type] || "",
+    subjectDetailBlock,
     typeSpec
       ? `For EACH comp, also report ${["one", "two", "three"][typeSpec.fields.length - 1]} ${type.toLowerCase()} specific${typeSpec.fields.length > 1 ? "s" : ""}: ${typeSpec.instruction}. Search listing pages, brokerage flyers, and property records for these. If one genuinely can't be found, use an empty string "" — do not guess.`
       : "",
@@ -1646,7 +1655,7 @@ async function findBrokersForMarket(market) {
 // ---------------------------------------------------------------------------
 const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails) {
   const body = {
     model: MODEL,
     // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
@@ -1660,7 +1669,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // the comp searches themselves. When we already hold recent comps for this
     // market (corpus-strong), the budget drops hard — that reuse is the saving.
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchBudgetFor(corpus, subjectSizeSqft) }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps) }],
+    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails) }],
   };
 
   const controller = new AbortController();
@@ -1707,7 +1716,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   return attachVerifiedAttribution(parsed, verifiedComps);
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }) {
+async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
   }
@@ -1717,12 +1726,12 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
   // never leak the raw JSON.parse error text to the client — it's meaningless
   // to a visitor and reads like a broken site rather than a one-off hiccup.
   try {
-    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus);
+    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
       try {
-        return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus);
+        return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails);
       } catch (err2) {
         if (err2 instanceof SyntaxError) {
           console.warn("Comp JSON failed to parse on retry too; giving up.", err2.message);
@@ -2936,7 +2945,7 @@ const server = http.createServer((req, res) => {
           console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
         }
 
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus);
+        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus, detailsOk);
         await storeCachedSearch(cacheKey, result);
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined });
         maybePublishMarketSnapshot(typeOk, addressOk, result);

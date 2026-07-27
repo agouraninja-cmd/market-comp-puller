@@ -2889,42 +2889,112 @@ function aggregateStats(rows) {
 // Self-contained admin dashboard (own inline CSS/JS). Public shell, but shows
 // nothing until a valid ADMIN_KEY is entered; the key is sent as a header to
 // /api/stats (kept out of the URL) and remembered in sessionStorage.
+//
+// Styled with the same Research Desk palette/type as the landing page and
+// /how-it-works (off-white ground, cream hairlines, Georgia headings, the one
+// red accent) rather than the old slate/blue dashboard skin. The CSS is
+// duplicated rather than shared with HOW_CSS on purpose: these are different
+// components (tiles, chart, gate) that merely share tokens, and each page
+// staying self-contained is what keeps them independent of tailwind.css.
 function renderAdminHTML() {
   return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CompNinja Analytics</title><meta name="robots" content="noindex, nofollow"/>
+<meta name="theme-color" content="#FBFBF9"/>
+<link rel="icon" href="/favicon.ico" sizes="48x48"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a;background:#f8fafc}
-.bar{background:#0f172a;color:#fff;padding:14px 20px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
-.bar b{color:#f87171}
-.wrap{max-width:900px;margin:0 auto;padding:26px 20px 60px}
-.gate{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:22px;max-width:420px;margin:40px auto;text-align:center}
-.gate input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;margin:12px 0;font-size:14px}
-.gate button,.btn{background:#dc2626;color:#fff;border:0;border-radius:8px;padding:10px 20px;font-weight:600;cursor:pointer}
-.err{color:#b91c1c;font-size:13px;margin-top:8px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:18px 0}
-.tile{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:15px}
-.tile .k{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;font-weight:600}
-.tile .v{font-size:26px;font-weight:700;margin-top:3px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin:16px 0}
-.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#334155;margin:0 0 14px}
+*{box-sizing:border-box}
+/* Flex column so the ink footer sits at the bottom even on the short key gate. */
+body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#F5F4EF;border-radius:3px;padding:1px 5px}
+.wrap{max-width:1024px;margin:0 auto;padding:0 16px}
+/* Header — same bar as the landing page, so /admin reads as the same site. */
+.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
+.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
+.wordmark b{color:#B91C1C;font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
+.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
+main{flex:1;padding:36px 0 64px}
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
+.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
+h1.h{font-size:32px;line-height:1.15;margin:10px 0 0}
+.sub{color:#4C5665;font-size:14px;max-width:62ch;margin:8px 0 0}
+/* Key gate */
+.gate{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:26px;max-width:420px;margin:48px auto;text-align:center}
+.gate .lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
+.gate input{width:100%;padding:10px 12px;border:1px solid #D8D4C9;border-radius:4px;margin:12px 0;font-size:14px;
+  font-family:inherit;color:#1A2433;background:#FBFBF9}
+.gate input:focus{outline:none;border-color:#B91C1C}
+.gate button,.btn{background:#B91C1C;color:#fff;border:0;border-radius:4px;padding:10px 22px;font-weight:600;
+  font-size:14px;font-family:inherit;cursor:pointer}
+.gate button:hover,.btn:hover{background:#991B1B}
+.err{color:#B91C1C;font-size:13px;margin-top:8px}
+/* Tile strip — hairline grid on white, like the landing page's stat strip.
+   The 1px gaps show the container's cream background, so a partly-filled last
+   row would render as a grey block. render() emits exactly 9 tiles, hence the
+   fixed 1-or-3 column counts (both divide 9) instead of auto-fit: add or drop
+   a tile and this needs a column count that divides the new total. */
+.tiles{display:grid;grid-template-columns:1fr;gap:1px;background:#E4E2DA;
+  border:1px solid #E4E2DA;border-radius:6px;overflow:hidden;margin:22px 0}
+@media (min-width:560px){.tiles{grid-template-columns:repeat(3,1fr)}}
+.tile{background:#fff;padding:16px 18px}
+.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600}
+.tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:27px;line-height:1.2;margin-top:4px;
+  color:#1A2433;font-variant-numeric:tabular-nums}
+.card{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:20px 22px;margin:16px 0}
+.card h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600;margin:0 0 14px}
+.card p{margin:0 0 8px;font-size:14px;color:#374253}
 .chart{display:flex;align-items:flex-end;gap:3px;height:130px}
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
-.chart .b{background:#0f172a;border-radius:2px 2px 0 0}.chart .c{background:#cbd5e1}
-.xax{display:flex;gap:3px;margin-top:6px;font-size:10px;color:#94a3b8}.xax div{flex:1;text-align:center;overflow:hidden;white-space:nowrap}
-table{width:100%;border-collapse:collapse;font-size:14px}td{padding:7px 4px;border-top:1px solid #f1f5f9}td:last-child{text-align:right;font-weight:600}
-.leg{font-size:12px;color:#64748b;margin-top:8px}.leg span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 12px;vertical-align:middle}
-.muted{color:#94a3b8;font-size:12px}
+.chart .b{background:#1A2433;border-radius:2px 2px 0 0}.chart .c{background:#D8D4C9}
+.xax{display:flex;gap:3px;margin-top:6px;font-size:10px;color:#8A93A0}.xax div{flex:1;text-align:center;overflow:hidden;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+td{padding:9px 8px 9px 0;border-top:1px solid #F0EFE9;color:#374253}
+td:last-child{text-align:right;font-weight:600;padding-right:0}
+.leg{font-size:12.5px;color:#5A6473;margin-top:10px}
+.leg span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 12px;vertical-align:middle}
+.muted{color:#8A93A0;font-size:12.5px}
+/* Footer — the navy ink footer from the home page, trimmed for a private page. */
+footer{background:#1A2433;color:#B8C0CC;font-size:13px}
+footer .wrap{padding:28px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+footer .wordmark{color:#fff}
+footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </style></head><body>
-<div class="bar">Comp<b>Ninja</b> · Analytics</div>
+<header class="hdr">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="CompNinja home">${HOW_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    <nav>
+      <a href="/markets">Markets</a>
+      <a href="/how-it-works">How it works</a>
+      <a href="/">Run a report</a>
+    </nav>
+  </div>
+</header>
+<main>
 <div class="wrap">
-<div id="gate" class="gate"><div style="font-weight:600">Enter admin key</div>
+<div class="kicker">Internal</div>
+<h1 class="h">Analytics</h1>
+<p class="sub">Searches, corpus coverage, estimated spend, and lead conversion. Events are PII-free &mdash;
+  city and state only, never a street address.</p>
+<div id="gate" class="gate"><span class="lab">Enter admin key</span>
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">View analytics</button><div id="err" class="err"></div></div>
 <div id="dash" style="display:none"></div>
 <div id="subs" style="display:none"></div>
 </div>
+</main>
+<footer><div class="wrap">
+  <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
+  <span>Internal dashboard &middot; <a href="/">Back to the app</a></span>
+</div></footer>
 <script>
 var KEYK="cn_admin_key";
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -2945,8 +3015,9 @@ function render(d){
   // written — the failure this catches froze the corpus for weeks unnoticed.
   var h=c.health||{}, broken=(h.writeFallbacks||0)+(h.readFailures||0);
   var alarm = broken ? (
-    "<div class=card style='border:1px solid #b91c1c;background:#fef2f2'>"+
-    "<h2 style='color:#b91c1c;margin-bottom:8px'>Comp corpus is not persisting</h2>"+
+    "<div class=card style='border:1px solid #B91C1C;background:#FCF3F2'>"+
+    "<h2 style='color:#B91C1C;margin-bottom:8px;font-family:Georgia,serif;font-weight:500;"+
+    "font-size:19px;text-transform:none;letter-spacing:normal'>Comp corpus is not persisting</h2>"+
     (h.schemaMismatch
       ? "<p><b>This looks like a missing column.</b> The <code>alter table</code> for a new per-comp "+
         "field was probably never run &mdash; the DDL is in the comment above <code>harvestComps()</code> "+
@@ -2976,7 +3047,7 @@ function render(d){
     "<div class=tile><div class=k>Shares</div><div class=v>"+t.shares+"</div></div>"+
     "</div>"+
     "<div class=card><h2>Searches per day (last 30 days)</h2><div class=chart>"+bars+"</div><div class=xax>"+xax+"</div>"+
-    "<div class=leg><span style='background:#0f172a'></span>Billed<span style='background:#cbd5e1'></span>Cache hit</div></div>"+
+    "<div class=leg><span style='background:#1A2433'></span>Billed<span style='background:#D8D4C9'></span>Cache hit</div></div>"+
     "<div class=card><h2>Searches by property type</h2><table>"+rows(d.byType)+"</table></div>"+
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
@@ -3000,7 +3071,7 @@ function subRow(x){
   var notes=x.notes?"<div class=muted>"+esc(String(x.notes).slice(0,160))+"</div>":"";
   return "<tr><td style='text-align:left'><div style='font-weight:600'>"+comp+"</div><div class=muted>"+who+"</div>"+notes+"</td>"+
     "<td style='white-space:nowrap'><button class='btn ap' data-id='"+Number(x.id)+"'>Approve</button> "+
-    "<button class='btn rj' data-id='"+Number(x.id)+"' style='background:#64748b'>Reject</button></td></tr>";
+    "<button class='btn rj' data-id='"+Number(x.id)+"' style='background:#5A6473'>Reject</button></td></tr>";
 }
 function renderSubs(d,key){
   var el=document.getElementById("subs"), inner;

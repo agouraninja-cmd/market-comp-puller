@@ -78,8 +78,12 @@ for (const [type, spec] of Object.entries(ALT_BASIS)) {
 // Without this the same field can be labelled differently in the two tables.
 console.log("\nFIELD_LABELS vs TYPE_COLUMNS");
 const clientLabels = {};
+const clientAfter = {};
 for (const cols of Object.values(TYPE_COLUMNS)) {
-  for (const col of cols) clientLabels[col.key] = col.label;
+  for (const col of cols) {
+    clientLabels[col.key] = col.label;
+    clientAfter[col.key] = col.after;
+  }
 }
 for (const spec of Object.values(TYPE_COMP_FIELDS)) {
   for (const key of spec.fields) {
@@ -91,6 +95,20 @@ for (const spec of Object.values(TYPE_COMP_FIELDS)) {
       fail(`label drift for "${key}": FIELD_LABELS "${FIELD_LABELS[key]}" vs TYPE_COLUMNS "${clientLabels[key]}"`);
     } else {
       console.log(`  ok    ${key.padEnd(16)} "${FIELD_LABELS[key]}"`);
+    }
+    // The market page groups columns by a `price_per_` name prefix; the report
+    // table groups them by an explicit `after` anchor. Two mechanisms for one
+    // decision, so assert they agree — otherwise a field like `sales_per_sf`
+    // anchored after $/SF would sit behind Size on the market page and the
+    // label check above would still pass green.
+    if (key in clientAfter) {
+      const pageGroupsWithPrice = key.startsWith("price_per_");
+      const appGroupsWithPrice = clientAfter[key] === "price_per_sqft";
+      if (pageGroupsWithPrice !== appGroupsWithPrice) {
+        fail(`column-group drift for "${key}": market page would put it ` +
+          `${pageGroupsWithPrice ? "with the price columns" : "behind Size"}, ` +
+          `TYPE_COLUMNS anchors it after "${clientAfter[key]}"`);
+      }
     }
   }
 }

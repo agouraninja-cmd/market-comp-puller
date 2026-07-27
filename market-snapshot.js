@@ -35,7 +35,18 @@ function slugify(type, city, state) {
 
 // Keys a market page never shows, and which would bloat every stored payload.
 // `notes` is the long one; the rest are app-only concerns.
-const COMP_DROP_KEYS = new Set(["notes", "source_url", "lat", "lng", "verified"]);
+// Note `cap_rate`, `tenancy` and `year_built` are deliberately NOT dropped:
+// nothing renders them today either, but they are short, per-comp, and the
+// obvious next columns, so storing them makes surfacing them a render-only
+// change rather than another regeneration.
+// `verified_by`/`verified_by_slug` go too: attachVerifiedAttribution writes the
+// contributing broker's firm name and profile slug onto comps before a snapshot
+// is distilled, and no market page renders either. Keeping them would persist
+// dead attribution into market-seed.json — a committed file — and fossilise a
+// profile slug that the broker may later un-publish.
+const COMP_DROP_KEYS = new Set([
+  "notes", "source_url", "lat", "lng", "verified", "verified_by", "verified_by_slug",
+]);
 
 // Deliberately a DENYLIST, not an allowlist. The per-type comp fields live in
 // TYPE_COMP_FIELDS in server.js, and server.js already requires this file — so

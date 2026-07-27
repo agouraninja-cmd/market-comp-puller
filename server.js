@@ -1852,7 +1852,12 @@ h1{font-size:30px;line-height:1.2;margin:8px 0 6px}
 .card h2{font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:#334155;margin:0 0 12px}
 .card h3{font-size:15px;margin:14px 0 4px}
 .card p{margin:0 0 10px}.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0}
-table{width:100%;border-collapse:collapse;font-size:14px}
+/* min-width is what makes the .scroll wrapper actually work: a width:100%
+   table always shrinks to its container, so overflow-x had nothing to overflow.
+   Invisible at 6 columns; a multifamily page renders 8 and would otherwise
+   crush to ~40px per column on a phone. */
+table{width:100%;min-width:640px;border-collapse:collapse;font-size:14px}
+td:first-child,th:first-child{min-width:180px}
 th{background:#1e293b;color:#f1f5f9;text-align:left;padding:9px 10px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
 td{padding:9px 10px;border-top:1px solid #f1f5f9;vertical-align:top}
 .scroll{overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;margin:18px 0}

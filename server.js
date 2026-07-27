@@ -692,7 +692,8 @@ async function corpusRowsForMarket(market, property_type, limit) {
     try {
       dbRows = await sbRequest("GET",
         `comp_corpus?market=eq.${encodeURIComponent(market)}&property_type=eq.${encodeURIComponent(property_type)}` +
-        `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,source_url,source_type&order=ts.desc&limit=${limit}`) || [];
+        `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
+        `${ALL_TYPE_COMP_FIELDS.join(",")},source_url,source_type&order=ts.desc&limit=${limit}`) || [];
     } catch (e) { console.error("corpus feed read failed:", e.message); }
   }
   const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
@@ -1093,12 +1094,35 @@ function maybePublishMarketSnapshot(type, address, data) {
 //     dedupe_key text not null unique,
 //     property_type text not null, market text not null, address text not null,
 //     transaction text, deal_date text, size_sqft text, price_or_rate text,
-//     price_per_sqft text, cap_rate text, clear_height text, dock_doors text,
+//     price_per_sqft text, cap_rate text,
+//     -- per-type specs (TYPE_COMP_FIELDS); each row carries every column,
+//     -- and the ones its type doesn't use stay empty
+//     clear_height text, dock_doors text,
+//     building_class text, floor_plate text,
+//     center_type text, anchor_tenant text,
+//     units text, price_per_unit text,
+//     lot_acres text, price_per_acre text, zoning text,
+//     beds_baths text,
 //     tenancy text, year_built text,
 //     notes text, source_url text, source_type text, lat text, lng text,
 //     verified boolean default false
 //   );
 //   alter table public.comp_corpus enable row level security;
+//
+// Existing table (added 2026-07-27) — run BEFORE deploying, or every corpus
+// insert 400s on the unknown columns and harvesting silently falls back to
+// the ephemeral file:
+//   alter table public.comp_corpus
+//     add column if not exists building_class text,
+//     add column if not exists floor_plate text,
+//     add column if not exists center_type text,
+//     add column if not exists anchor_tenant text,
+//     add column if not exists units text,
+//     add column if not exists price_per_unit text,
+//     add column if not exists lot_acres text,
+//     add column if not exists price_per_acre text,
+//     add column if not exists zoning text,
+//     add column if not exists beds_baths text;
 // ---------------------------------------------------------------------------
 const corpusSeen = new Set();   // dedupe keys seen this process (file-seeded)
 let corpusSeenSeeded = false;
@@ -1140,8 +1164,10 @@ async function harvestComps(type, searchAddress, payload) {
         price_or_rate: String(c.price_or_rate || ""),
         price_per_sqft: String(c.price_per_sqft || ""),
         cap_rate: String(c.cap_rate || ""),
-        clear_height: String(c.clear_height || ""),
-        dock_doors: String(c.dock_doors || ""),
+        // Per-type specs (TYPE_COMP_FIELDS). One flat row per comp regardless
+        // of type, so every key is always present — the columns a given type
+        // doesn't use just stay empty.
+        ...Object.fromEntries(ALL_TYPE_COMP_FIELDS.map((f) => [f, String(c[f] || "")])),
         tenancy: String(c.tenancy || ""),
         year_built: String(c.year_built || ""),
         notes: String(c.notes || ""),
@@ -1271,6 +1297,51 @@ async function fetchVerifiedComps(type, txFocus) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Per-type comp fields. Each property type reports the two or three specs its
+// buyers actually price on, beyond the shared address/date/size/price set.
+// `fields` are added to the comp JSON shape and harvested into comp_corpus;
+// `instruction` tells the model what each one means. The front-end mirrors
+// this in TYPE_COLUMNS / columnsForType() (index.html) — a field added here
+// with no matching column there is fetched, stored, and never displayed.
+// ---------------------------------------------------------------------------
+const TYPE_COMP_FIELDS = {
+  Industrial: {
+    fields: ["clear_height", "dock_doors"],
+    instruction: `"clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level")`,
+  },
+  Office: {
+    fields: ["building_class", "floor_plate"],
+    instruction: `"building_class" = the building class, exactly one of "Class A", "Class B", or "Class C", and "floor_plate" = the typical floor size, formatted like "18,000 SF". Sources state a floor plate far less often than a floor count, so when no floor plate is stated but the number of stories is known, divide the building size by the story count and report that. Leave it empty only when neither is available`,
+  },
+  Retail: {
+    fields: ["center_type", "anchor_tenant"],
+    instruction: `"center_type" = the retail format (e.g. "Neighborhood center", "Strip center", "Power center", "Single-tenant NNN", "Urban storefront"), and "anchor_tenant" = the anchor or largest tenant by name (e.g. "Kroger"). Use "Unanchored" whenever the format itself implies no anchor (strip centers and unanchored inline retail usually have none) or the sources show a multi-tenant center with no anchor; leave it empty only when you cannot tell either way`,
+  },
+  Multifamily: {
+    fields: ["units", "price_per_unit"],
+    instruction: `"units" = the number of apartment units as a plain number (e.g. "48"), and "price_per_unit" = the sale price divided by that unit count, formatted like "$185,000". Price per unit is the primary multifamily metric, so compute it yourself whenever you have both a sale price and a unit count. Leave "price_per_unit" empty for lease comps`,
+  },
+  Land: {
+    fields: ["lot_acres", "price_per_acre", "zoning"],
+    instruction: `"lot_acres" = the parcel size in acres as a plain number (e.g. "2.4"), "price_per_acre" = the price divided by that acreage, formatted like "$410,000" (compute it whenever you have both), and "zoning" = the zoning code plus a two-or-three-word plain-English gloss, e.g. "M-1 light industrial" or "C2 general commercial". Keep it under 30 characters — it is a table cell, not a sentence, so put entitlement status, rezoning history, and planned use in "notes" instead`,
+  },
+  // lot_size was tried here and dropped (2026-07-27): 0/16 fill across two
+  // test addresses even with an explicit assessor-record nudge — the model's
+  // search budget (6-8 calls total) doesn't stretch to a per-comp assessor
+  // lookup for a list this size, and general listing search rarely surfaces it.
+  Residential: {
+    fields: ["beds_baths"],
+    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba"`,
+  },
+};
+
+// Every per-type field key, for the storage layers that keep one flat row per
+// comp regardless of type.
+const ALL_TYPE_COMP_FIELDS = [...new Set(
+  Object.values(TYPE_COMP_FIELDS).flatMap((t) => t.fields)
+)];
+
 function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps) {
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
@@ -1281,8 +1352,6 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     Residential: "Focus on single-family homes, townhomes, and condos. Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
 
-  const isIndustrial = type === "Industrial";
-
   // Anchor the lookback window to real dates — the model doesn't know "today",
   // so "last N months" alone drifts toward stale comps.
   const now = new Date();
@@ -1291,12 +1360,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   const cutoffStr = cutoff.toLocaleString("en-US", { month: "long", year: "numeric" });
 
   // Comp JSON shape: every building type carries tenancy + year-built (tenant
-  // quality moves pricing); Industrial adds two physical-spec fields; Land has
-  // no building, so it carries neither.
+  // quality moves pricing); each type adds the two or three specs its buyers
+  // price on (TYPE_COMP_FIELDS); Land has no building, so it carries neither
+  // tenancy nor year built.
   const isLand = type === "Land";
-  const industrialFields = isIndustrial ? `"clear_height": "", "dock_doors": "", ` : ``;
+  const typeSpec = TYPE_COMP_FIELDS[type];
+  const typeFields = typeSpec ? typeSpec.fields.map((f) => `"${f}": "", `).join("") : ``;
   const buildingFields = isLand ? `` : `"tenancy": "", "year_built": "", `;
-  const compShape = `{ "address": "", "date": "", "transaction": "", "size_sqft": "", ${industrialFields}"price_or_rate": "", "price_per_sqft": "", "cap_rate": "", ${buildingFields}"notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`;
+  const compShape = `{ "address": "", "date": "", "transaction": "", "size_sqft": "", ${typeFields}"price_or_rate": "", "price_per_sqft": "", "cap_rate": "", ${buildingFields}"notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`;
 
   // Trusted internal comps get their own prompt section when any exist.
   const verifiedBlock = (verifiedComps && verifiedComps.length) ? [
@@ -1307,13 +1378,18 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Include each verified internal comp in the "comps" array IF it is genuinely comparable to the target property (reasonably near the target address and inside the date window). Set "verified": true on those and copy their details faithfully; compute "price_per_sqft" from the given size and price where possible, and estimate "lat"/"lng" from the address. When a verified comp and a web result describe the same transaction, keep only the verified one. Verified comps count toward the comp total. Set "verified": false on every comp found via web search. Never include a verified comp that is clearly in a different city or market than the target.`,
   ].join("\n") : "";
 
+  // Type-specific specs already stored on a corpus row. Passed through so a
+  // reused comp keeps them, instead of coming back with those columns empty.
+  const typeSpecsOf = (c) => (typeSpec ? typeSpec.fields : [])
+    .map((f) => (c[f] ? ` | ${f.replace(/_/g, " ")} ${c[f]}` : "")).join("");
+
   // Comps we already pulled for this market in earlier searches. Offered so the
   // model reuses them instead of paying to re-search the web for the same deals.
   const corpusBlock = (corpusComps && corpusComps.length) ? [
     ``,
     `KNOWN RECENT COMPS: our own prior research already surfaced the following ${corpusComps.length === 1 ? "transaction" : "transactions"} in this market. They are already sourced — reuse them rather than re-searching for the same deals.`,
     ...corpusComps.map((c, i) =>
-      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${c.source_url ? " | " + c.source_url : ""}`),
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
     `Include each one that is genuinely comparable to the target and inside the date window, copying its details faithfully (keep its source_url, and set "source_type" to match where it came from). Use web search only to (a) confirm the target's building size, (b) fill gaps if fewer than ${maxComps} of these are comparable, or (c) surface more recent transactions. When one of these and a fresh web result describe the same deal, keep only one. Set "verified": false on these unless they also appear in the verified list above. Never include one that is clearly in a different city or submarket than the target.`,
   ].join("\n") : "";
 
@@ -1341,8 +1417,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       ? `Also determine the TARGET property's building size in square feet from public records, assessor data, or listing pages for the target address. This is the BUILDING square footage, not the lot or land size.`
       : "",
     typeGuidance[type] || "",
-    isIndustrial
-      ? `For EACH industrial comp, also report two building specs: "clear_height" = the interior clear/ceiling height (e.g. "32 ft"), and "dock_doors" = the number and type of loading doors (e.g. "6 dock-high, 2 grade-level"). Search listing pages, brokerage flyers, and property records for these. If a spec genuinely can't be found, use an empty string "" — do not guess.`
+    typeSpec
+      ? `For EACH comp, also report ${["one", "two", "three"][typeSpec.fields.length - 1]} ${type.toLowerCase()} specific${typeSpec.fields.length > 1 ? "s" : ""}: ${typeSpec.instruction}. Search listing pages, brokerage flyers, and property records for these. If one genuinely can't be found, use an empty string "" — do not guess.`
       : "",
     !isLand
       ? `For EACH comp, also report "tenancy" = who occupies the building and the lease structure, naming the tenant when it is a single-tenant property (e.g. "Single-tenant NNN - Starbucks", "Multi-tenant, 85% occupied", "Owner-user", "Vacant"). Tenant quality moves pricing, so name national or credit tenants specifically when a source shows one. Also report "year_built" = the year the building was constructed as a 4-digit year (e.g. "1998"). If either genuinely can't be found, use an empty string "" — do not guess.`
@@ -3363,8 +3439,9 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url.split("?")[0] === "/api/comp-corpus") {
     return sendCsvDownload(req, res, "comp_corpus", COMP_CORPUS_FILE,
       ["ts", "property_type", "market", "address", "transaction", "deal_date",
-       "size_sqft", "price_or_rate", "price_per_sqft", "cap_rate", "clear_height",
-       "dock_doors", "tenancy", "year_built", "notes", "source_url", "source_type",
+       "size_sqft", "price_or_rate", "price_per_sqft", "cap_rate",
+       ...ALL_TYPE_COMP_FIELDS,
+       "tenancy", "year_built", "notes", "source_url", "source_type",
        "verified"], "comp-corpus.csv");
   }
 

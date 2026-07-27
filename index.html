@@ -1507,11 +1507,39 @@
     { key: "source_url",     label: "Source",         numeric: false, isLink: true },
   ];
 
-  // Industrial reports get two extra physical-spec columns, shown right after Size.
-  const INDUSTRIAL_COLUMNS = [
-    { key: "clear_height", label: "Clear Height", numeric: true },
-    { key: "dock_doors",   label: "Dock Doors",   numeric: true },
-  ];
+  // Per-type columns, mirroring TYPE_COMP_FIELDS in server.js — a field the
+  // prompt asks for with no column here is fetched, stored, and never shown.
+  // `after` names the column each one sits behind: specs follow Size, and
+  // per-unit / per-acre pricing follows $/SF so the price metrics stay together.
+  // `wide` gives a field its own full-width row on the mobile card.
+  const TYPE_COLUMNS = {
+    Industrial: [
+      { key: "clear_height",   label: "Clear Height",   numeric: true,  after: "size_sqft" },
+      { key: "dock_doors",     label: "Dock Doors",     numeric: true,  after: "size_sqft", wide: true },
+    ],
+    Office: [
+      { key: "building_class", label: "Class",          numeric: false, after: "size_sqft" },
+      { key: "floor_plate",    label: "Floor Plate",    numeric: true,  after: "size_sqft" },
+    ],
+    Retail: [
+      { key: "center_type",    label: "Center Type",    numeric: false, after: "size_sqft" },
+      { key: "anchor_tenant",  label: "Anchor",         numeric: false, after: "size_sqft" },
+    ],
+    Multifamily: [
+      { key: "units",          label: "Units",          numeric: true,  after: "size_sqft" },
+      { key: "price_per_unit", label: "$/Unit",         numeric: true,  after: "price_per_sqft" },
+    ],
+    Land: [
+      { key: "lot_acres",      label: "Acres",          numeric: true,  after: "size_sqft" },
+      { key: "zoning",         label: "Zoning",         numeric: false, after: "size_sqft", wide: true },
+      { key: "price_per_acre", label: "$/Acre",         numeric: true,  after: "price_per_sqft" },
+    ],
+    // lot_size dropped (2026-07-27) — see the matching note in server.js
+    // TYPE_COMP_FIELDS.Residential: the model couldn't fill it reliably.
+    Residential: [
+      { key: "beds_baths",     label: "Beds / Baths",   numeric: false, after: "size_sqft" },
+    ],
+  };
 
   // Every building type (i.e. everything except Land) carries tenancy +
   // year-built columns after Cap Rate — tenant quality moves pricing.
@@ -1526,10 +1554,15 @@
       const capIdx = cols.findIndex((c) => c.key === "cap_rate");
       cols.splice(capIdx + 1, 0, ...BUILDING_COLUMNS);
     }
-    if (type === "Industrial") {
-      const sizeIdx = cols.findIndex((c) => c.key === "size_sqft");
-      cols.splice(sizeIdx + 1, 0, ...INDUSTRIAL_COLUMNS);
-    }
+    // Splice each type's columns in behind their anchor. Grouped by anchor so
+    // fields sharing one keep their declared order (inserting them one at a
+    // time behind the same anchor would reverse them).
+    const extras = TYPE_COLUMNS[type] || [];
+    [...new Set(extras.map((c) => c.after))].forEach((anchorKey) => {
+      const group = extras.filter((c) => c.after === anchorKey);
+      const idx = cols.findIndex((c) => c.key === anchorKey);
+      if (idx !== -1) cols.splice(idx + 1, 0, ...group);
+    });
     return cols;
   }
 
@@ -4632,8 +4665,8 @@
         const core = ["date", "transaction", "size_sqft", "price_or_rate", "price_per_sqft"].includes(col.key);
         if (empty && !core) return;          // omit optional empties for compactness
         // Long values get a full-width row so they don't wrap awkwardly.
-        const wide = col.key === "notes" || col.isLink ||
-          col.key === "price_or_rate" || col.key === "dock_doors" || col.key === "tenancy";
+        const wide = col.key === "notes" || col.isLink || col.wide ||
+          col.key === "price_or_rate" || col.key === "tenancy";
         // Label stacked over value — side-by-side rows collide at phone widths.
         const row = document.createElement("div");
         row.className = wide ? "col-span-2" : "";

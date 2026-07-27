@@ -252,13 +252,26 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
 
 2. **Property-type-aware reporting is split across both files.** `buildPrompt` in
    `server.js` switches guidance per type (Industrial/Office/Retail/Multifamily/
-   Land). **Industrial** additionally requests two extra per-comp fields
-   (`clear_height`, `dock_doors`) and uses a wider JSON comp shape. The front-end
-   mirrors this: `columnsForType()` in `index.html` inserts the matching
-   **Clear Height** / **Dock Doors** columns only for Industrial reports, and the
-   active `COLUMNS` array is rebuilt per search in `renderResults()`. **Any new
-   type-specific field must be changed in both places** — the prompt's comp shape
-   and the front-end column set — or it won't display/export.
+   Land/Residential). **Every type also requests its own extra per-comp fields**,
+   declared once in the `TYPE_COMP_FIELDS` map above `buildPrompt` (field keys +
+   the prompt sentence describing them), which widens that type's JSON comp
+   shape: Industrial `clear_height`/`dock_doors`, Office `building_class`/
+   `floor_plate`, Retail `center_type`/`anchor_tenant`, Multifamily `units`/
+   `price_per_unit`, Land `lot_acres`/`price_per_acre`/`zoning`, Residential
+   `beds_baths` (a paired `lot_size` field was tried and dropped — the model's
+   search budget doesn't stretch to a per-comp assessor lookup, so it came back
+   empty on every test comp; see the note above `TYPE_COMP_FIELDS.Residential`).
+   The front-end mirrors it in the `TYPE_COLUMNS` map
+   feeding `columnsForType()` in `index.html`, where each column's `after` key
+   names the column it sits behind (specs follow **Size**, per-unit/per-acre
+   pricing follows **$/SF**); the active `COLUMNS` array is rebuilt per search in
+   `renderResults()`. **Any new type-specific field must be changed in both
+   places** — `TYPE_COMP_FIELDS` and `TYPE_COLUMNS` — or it won't display/export.
+   A third place matters for durability: `harvestComps()` writes one flat corpus
+   row per comp using `ALL_TYPE_COMP_FIELDS`, so the Supabase `comp_corpus` table
+   needs a column per field. **Run the ALTER TABLE in the DDL comment before
+   deploying a new field** — PostgREST 400s on an unknown column, which makes
+   harvesting fall back to the ephemeral file and quietly lose data.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

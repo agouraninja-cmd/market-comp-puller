@@ -2606,14 +2606,47 @@ function renderHowItWorksHTML() {
 // markets, and conversion. Writes are fire-and-forget; the /admin view
 // aggregates on read. No name/email/street address is ever logged.
 // ---------------------------------------------------------------------------
+// Best-effort "City, ST" from a freeform address. Aggregate market interest
+// only — never the street address.
+//
+// This key is load-bearing, not just a label: harvestComps() files each comp
+// under marketOf(comp.address) while corpus-first retrieval looks rows up under
+// marketOf(subject.address), and corpusRowsForMarket() matches it with an exact
+// (case-sensitive) eq. Any drift between the write and the read silently costs
+// corpus hits, so the parse is canonicalized here — title-cased city, uppercase
+// state — rather than left to whatever the source string happened to look like.
+//
+// Two things break the naive "last two comma segments" read, both common in
+// model-supplied comp addresses:
+//   - Parentheticals carry their own commas. "Ontario, CA (Orden acquisition,
+//     257,000 SF industrial/office)" makes "257,000 SF industrial/office)" the
+//     final segment, whose first two-letter run is "SF" — square feet silently
+//     read as a state code.
+//   - Trailing descriptors push the state out of the final segment entirely,
+//     as in "Ontario, CA - Airport Area Submarket Warehouse".
+// So: drop parentheticals, then walk backwards for the first segment that
+// STARTS with a real US state code, and take the segment before it as the city.
 function marketOf(address) {
-  // Best-effort "City, ST" from a freeform address (last two comma segments,
-  // zip stripped). Aggregate market interest only — never the street address.
-  const parts = String(address || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (parts.length < 2) return String(address || "").trim().slice(0, 60);
-  const state = (parts[parts.length - 1].match(/[A-Za-z]{2}/) || [""])[0].toUpperCase();
-  const city = parts[parts.length - 2];
-  return state ? `${city}, ${state}` : city;
+  const cleaned = String(address || "")
+    .replace(/\([^)]*\)/g, " ")                       // and the commas inside them
+    .replace(/,\s*(?:USA|U\.S\.A\.|United States)\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const parts = cleaned.split(",").map((s) => s.trim()).filter(Boolean);
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const st = (parts[i].match(/^([A-Za-z]{2})\b/) || [])[1];
+    if (!st || !US_STATES.has(st.toUpperCase())) continue;
+    // "Ontario/San Bernardino County" -> "Ontario": one city per key, so a
+    // dual-named submarket doesn't fragment into its own bucket.
+    const city = parts[i - 1].split("/")[0].trim();
+    if (!city) continue;
+    return `${city.toLowerCase().replace(/(^|[\s.'\-])[a-z]/g, (ch) => ch.toUpperCase())}, ${st.toUpperCase()}`;
+  }
+  // No recognizable state: fall back to the trailing segment rather than the
+  // whole string, which keeps the leading street number out of the key. (A
+  // comma-less input has no trailing segment to fall back to and still returns
+  // as-is — same as the previous behavior.)
+  return (parts[parts.length - 1] || "").slice(0, 60);
 }
 
 function logEvent(kind, dims) {

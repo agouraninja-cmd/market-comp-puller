@@ -33,6 +33,24 @@ function slugify(type, city, state) {
   return `${type}-${city}-${state}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+// Keys a market page never shows, and which would bloat every stored payload.
+// `notes` is the long one; the rest are app-only concerns.
+const COMP_DROP_KEYS = new Set(["notes", "source_url", "lat", "lng", "verified"]);
+
+// Deliberately a DENYLIST, not an allowlist. The per-type comp fields live in
+// TYPE_COMP_FIELDS in server.js, and server.js already requires this file — so
+// importing that list here would be circular, and gen-market-seed.js would need
+// it too. Keeping everything except the bulky keys means a future comp field
+// needs no change here at all.
+function trimComp(c) {
+  const out = {};
+  for (const k of Object.keys(c || {})) {
+    if (COMP_DROP_KEYS.has(k)) continue;
+    out[k] = c[k] == null ? "" : String(c[k]);
+  }
+  return out;
+}
+
 // Distill a comps response into a market-page snapshot. Returns
 // { snapshot, pricedSaleCount }; snapshot is null when there are ZERO priced
 // sale comps (the $/SF tiles would be unrenderable). The ≥MIN_PRICED_SALE_COMPS
@@ -71,15 +89,7 @@ function distillMarketSnapshot(t, data) {
       max: Math.round(ppsfVals[ppsfVals.length - 1]),
     },
     date_range: dateRange,
-    comps: comps.slice(0, 8).map((c) => ({
-      address: c.address || "",
-      date: c.date || "",
-      transaction: c.transaction || "",
-      size_sqft: c.size_sqft || "",
-      price_or_rate: c.price_or_rate || "",
-      price_per_sqft: c.price_per_sqft || "",
-      source_type: c.source_type || "",
-    })),
+    comps: comps.slice(0, 8).map(trimComp),
   };
   return { snapshot, pricedSaleCount: ppsfVals.length };
 }

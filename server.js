@@ -683,6 +683,49 @@ async function markWatchlistSeen(userId) {
   s.watchlist.forEach((x) => { if (x.user_id === userId) x.last_seen_at = now; });
   await saveAccountStore();
 }
+// ---------------------------------------------------------------------------
+// Corpus health. The corpus is written and read by fire-and-forget calls that
+// swallow their errors so a DB hiccup can never break a search — correct, but
+// it made a real outage invisible: ten per-comp columns were missing (the
+// ALTER TABLE was never run), so every insert 400'd into the ephemeral file
+// and every read came back empty. The corpus sat frozen at 65 rows for weeks
+// while the UI reported "+8 comps" on each search and the /admin corpus hit
+// rate sat at 0% with no explanation.
+//
+// Console lines alone did not help — one was already being logged on every
+// failure and nobody tails Render's logs. So failures accumulate here and
+// render as a banner on /admin, which is where the owner actually looks.
+// Counters are in-memory and reset on restart; this is a smoke alarm, not
+// accounting.
+// ---------------------------------------------------------------------------
+const CORPUS_HEALTH = {
+  writeFallbacks: 0,    // insert failed -> ephemeral file (rows die on redeploy)
+  readFailures: 0,      // read failed  -> corpus-first retrieval sees nothing
+  schemaMismatch: false, // the failure looks like a missing column
+  lastError: null,
+  lastErrorAt: null,
+};
+// PostgREST reports an unknown column as a 4xx naming the column or the schema
+// cache (PGRST204). That is the one failure mode with a specific, actionable
+// fix, so it gets called out by name instead of hiding in a generic message.
+function noteCorpusFailure(kind, err) {
+  const msg = String((err && err.message) || err || "");
+  if (kind === "write") CORPUS_HEALTH.writeFallbacks += 1;
+  else CORPUS_HEALTH.readFailures += 1;
+  CORPUS_HEALTH.lastError = msg.slice(0, 300);
+  CORPUS_HEALTH.lastErrorAt = new Date().toISOString();
+  if (/column|schema cache|PGRST2\d\d/i.test(msg)) {
+    CORPUS_HEALTH.schemaMismatch = true;
+    console.error(
+      `comp_corpus ${kind} failed on what looks like a MISSING COLUMN. The ALTER TABLE ` +
+      `for a new per-comp field was probably never run — see the DDL comment above ` +
+      `harvestComps(). Until it is, harvested comps land in an ephemeral file and ` +
+      `corpus-first retrieval returns nothing. Detail: ${msg.slice(0, 200)}`);
+  } else {
+    console.error(`comp_corpus ${kind} failed: ${msg.slice(0, 200)}`);
+  }
+}
+
 function corpusNum(v) { const n = Number(String(v || "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; }
 // Corpus rows for one watched market: DB rows (when configured) + any rows
 // that fell back to the file, newest first.
@@ -694,7 +737,7 @@ async function corpusRowsForMarket(market, property_type, limit) {
         `comp_corpus?market=eq.${encodeURIComponent(market)}&property_type=eq.${encodeURIComponent(property_type)}` +
         `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
         `${ALL_TYPE_COMP_FIELDS.join(",")},source_url,source_type&order=ts.desc&limit=${limit}`) || [];
-    } catch (e) { console.error("corpus feed read failed:", e.message); }
+    } catch (e) { noteCorpusFailure("read", e); }
   }
   const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
     .filter((r) => r && r.market === market && r.property_type === property_type);
@@ -1224,13 +1267,18 @@ async function harvestComps(type, searchAddress, payload) {
         if (!r.ok) throw new Error(`Supabase insert failed (${r.status}): ${(await r.text()).slice(0, 300)}`);
         stored = true;
       } catch (err) {
-        console.error("Comp corpus DB insert failed — falling back to file:", err.message);
+        noteCorpusFailure("write", err);
       }
     }
     if (!stored) {
       await fs.promises.appendFile(COMP_CORPUS_FILE, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
     }
-    console.log(`🗃  Comp corpus +${rows.length} (${type} — ${marketOf(searchAddress)})`);
+    // Say WHERE the rows landed. This line used to read the same whether the
+    // batch reached Postgres or fell into the ephemeral file, which is how a
+    // frozen corpus looked healthy for weeks.
+    console.log(stored
+      ? `🗃  Comp corpus +${rows.length} (${type} — ${marketOf(searchAddress)})`
+      : `🗃  Comp corpus +${rows.length} (${type} — ${marketOf(searchAddress)}) — EPHEMERAL FILE, not the database; these rows are lost on the next redeploy`);
   } catch (err) {
     console.error("Comp corpus harvest failed:", err.message);
   }
@@ -2743,6 +2791,9 @@ function aggregateStats(rows) {
       hits: corpusHits,
       billedReport: billedReport.length,
       pct: billedReport.length ? Math.round((corpusHits / billedReport.length) * 1000) / 10 : 0,
+      // Persistence failures since the last restart. A 0% hit rate means
+      // something very different depending on whether this is clean.
+      health: { ...CORPUS_HEALTH },
     },
     eventCount: rows.length,
     capped: rows.length >= 10000,
@@ -2794,12 +2845,31 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return
 function rows(a){return a.length?a.map(function(x){return "<tr><td>"+esc(x.label)+"</td><td>"+x.count+"</td></tr>";}).join(""):"<tr><td class=muted colspan=2>No data yet</td></tr>";}
 function render(d){
   var t=d.totals, hit=t.searches?Math.round(t.cached/t.searches*100):0;
-  var c=d.corpus||{hits:0,billedReport:0,pct:0};
+  var c=d.corpus||{hits:0,billedReport:0,pct:0,health:{}};
   var max=Math.max(1,Math.max.apply(null,d.daily.map(function(x){return x.total;})));
   var bars=d.daily.map(function(x){var bh=Math.round(x.billed/max*120),ch=Math.round(x.cached/max*120);
     return "<div class=col title='"+x.date+": "+x.billed+" billed, "+x.cached+" cached'><div class=c style='height:"+ch+"px'></div><div class=b style='height:"+bh+"px'></div></div>";}).join("");
   var xax=d.daily.map(function(x,i){return "<div>"+((i%5===0)?x.date.slice(5):"")+"</div>";}).join("");
+  // Corpus persistence alarm. Sits above the tiles because a 0% corpus hit
+  // rate is meaningless until you know whether the corpus is even being
+  // written — the failure this catches froze the corpus for weeks unnoticed.
+  var h=c.health||{}, broken=(h.writeFallbacks||0)+(h.readFailures||0);
+  var alarm = broken ? (
+    "<div class=card style='border:1px solid #b91c1c;background:#fef2f2'>"+
+    "<h2 style='color:#b91c1c;margin-bottom:8px'>Comp corpus is not persisting</h2>"+
+    (h.schemaMismatch
+      ? "<p><b>This looks like a missing column.</b> The <code>alter table</code> for a new per-comp "+
+        "field was probably never run &mdash; the DDL is in the comment above <code>harvestComps()</code> "+
+        "in server.js. Until it runs, harvested comps land in an ephemeral file and corpus-first "+
+        "retrieval returns nothing, so the hit rate below is pinned at 0%.</p>"
+      : "<p>Supabase writes or reads for <code>comp_corpus</code> are failing, so harvested comps "+
+        "are going to an ephemeral file that is wiped on every redeploy.</p>")+
+    "<p class=muted>"+esc(h.writeFallbacks||0)+" write fallback(s), "+esc(h.readFailures||0)+
+    " read failure(s) since the last restart"+(h.lastErrorAt?" &middot; last at "+esc(h.lastErrorAt):"")+".</p>"+
+    (h.lastError?"<p class=muted style='word-break:break-word'>"+esc(h.lastError)+"</p>":"")+
+    "</div>") : "";
   document.getElementById("dash").innerHTML=
+    alarm+
     "<div class=tiles>"+
     "<div class=tile><div class=k>Searches</div><div class=v>"+t.searches+"</div></div>"+
     "<div class=tile><div class=k>Billed</div><div class=v>"+t.billed+"</div></div>"+

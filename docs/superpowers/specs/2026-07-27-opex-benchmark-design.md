@@ -151,10 +151,13 @@ bad. Below-range copy is as neutral as above-range copy.
 Card footer, matching sibling cards: "Automated benchmark from this search,
 not an audit of your books. Your income figures stay in your browser."
 
-Empty state (signed in, NOI present, no gross entered): tiles read `—` and
-the band reads "Enter your gross annual income to compare against what this
-market typically spends." — the same shape as the debt card's "enter loan
-terms".
+Empty state (signed in, NOI present, no gross entered): the two
+gross-dependent tiles read `—`, while the "Typical for this market" tile
+still shows the band whenever the report carries one — it is public market
+data, independent of the user's input, and showing it is the invitation to
+enter a gross. The benchmark band reads "Enter your gross annual income to
+compare against what this market typically spends." — the same shape as the
+debt card's "enter loan terms".
 
 ## 6. Prompt change (server.js)
 

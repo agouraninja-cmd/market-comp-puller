@@ -1657,6 +1657,9 @@
           priceMin: priceR ? priceR.min : null,
           priceMax: priceR ? priceR.max : null,
           noi: noiVal > 0 ? noiVal : null,
+          // Read from the DOM, not merged from the old object — this rebuild
+          // replaces subject wholesale, so anything not re-read is lost.
+          details: readSubjectDetails(),
         };
         renderOwnerHero(currentParsed, currentMeta);
         renderAnalysisCluster(currentParsed, currentMeta, false);
@@ -1665,6 +1668,12 @@
         if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveReport(currentMeta, currentParsed);
       }, 300);
     });
+  });
+
+  // Delegated: #subjectTypeFields children are replaced whenever the property
+  // type changes, so per-element listeners would go stale.
+  document.getElementById("subjectTypeFields").addEventListener("input", () => {
+    document.getElementById("targetSize").dispatchEvent(new Event("input"));
   });
 
   // ----------------------------------------------------------------------------
@@ -5366,6 +5375,7 @@
         body: JSON.stringify({
           address, type, note, months, txFocus,
           subjectSizeSqft: sizeR ? Math.round((sizeR.min + sizeR.max) / 2) : undefined,
+          subjectDetails: readSubjectDetails(),
         }),
       });
 
@@ -5394,6 +5404,7 @@
           priceMin: priceR ? priceR.min : null,
           priceMax: priceR ? priceR.max : null,
           noi: noiVal > 0 ? noiVal : null,
+          details: readSubjectDetails(),
         },
       });
     } catch (err) {

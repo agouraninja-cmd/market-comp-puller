@@ -1502,7 +1502,11 @@
       wrap.appendChild(cell);
     });
     document.getElementById("targetSizeLabel").textContent = SIZE_LABELS[type] || "Building size (SF)";
-    document.getElementById("noiWrap").classList.toggle("hidden", type === "Land");
+    // Clear as well as hide: a value typed under another type would otherwise
+    // still be read on submit and produce an income approach for raw land.
+    const hideNoi = type === "Land";
+    if (hideNoi) document.getElementById("noi").value = "";
+    document.getElementById("noiWrap").classList.toggle("hidden", hideNoi);
   }
 
   // Read the visible detail inputs into a flat object, dropping blanks so an
@@ -1514,6 +1518,23 @@
       if (v) out[el.dataset.subjectKey] = v;
     });
     return out;
+  }
+
+  // Assigning #propertyType.value does NOT fire "change", so every
+  // programmatic type change must call this or the detail inputs keep the
+  // previous type's fields. The localStorage restore is the sharp edge: it
+  // runs long after the initial paint.
+  function syncSubjectFieldsToType() {
+    renderSubjectFields(document.getElementById("propertyType").value);
+  }
+
+  // Put saved detail values back into the freshly-rendered inputs. Call it
+  // AFTER syncSubjectFieldsToType(), since that replaces the elements.
+  function writeSubjectDetails(details) {
+    Object.entries(details || {}).forEach(([k, v]) => {
+      const el = document.getElementById("subj_" + k);
+      if (el) el.value = v;
+    });
   }
 
   // Active columns for the current report; rebuilt per search in renderResults().
@@ -1590,7 +1611,7 @@
     applyRecommendedLookback();
     renderSubjectFields(propertyTypeSel.value);
   });
-  renderSubjectFields(propertyTypeSel.value);   // initial paint (type may be restored from localStorage)
+  syncSubjectFieldsToType();   // initial paint; the localStorage restore re-syncs later
   // Seed the default type's recommendation on first load, unless a report is
   // already being restored into the form.
   if (!currentMeta) applyRecommendedLookback();
@@ -1752,6 +1773,8 @@
         if (meta.address) document.getElementById("address").value = meta.address;
         if (meta.type) document.getElementById("propertyType").value = meta.type;
         const s = meta.subject || {};
+        syncSubjectFieldsToType();
+        writeSubjectDetails(s.details);
         if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
         if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
         if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
@@ -2192,7 +2215,9 @@
           text: `${fmtTotal(incLo)} – ${fmtTotal(incHi)} — your net operating income valued at the market's `
             + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
         });
-      } else {
+      } else if (meta.type !== "Land") {
+        // Land has no income to report — the NOI field is hidden for this
+        // type, so pitching it here would point at a control the user can't see.
         entries.push({
           label: "Income approach",
           text: "not run — enter your NOI under 'Your property details' and the building gets valued on its income too.",
@@ -3484,6 +3509,7 @@
       btn.addEventListener("click", () => {
         document.getElementById("address").value = s.address;
         document.getElementById("propertyType").value = s.type;
+        syncSubjectFieldsToType();
         document.getElementById("marketNote").value = s.note || "";
         if (s.months) setLookbackControls(s.months);
         if (s.txFocus) document.getElementById("txFocus").value = s.txFocus;
@@ -3493,6 +3519,7 @@
           document.getElementById("targetPrice").value = s.subject.priceMin || "";
           document.getElementById("targetPriceMax").value = s.subject.priceMax && s.subject.priceMax !== s.subject.priceMin ? s.subject.priceMax : "";
           document.getElementById("noi").value = s.subject.noi || "";
+          writeSubjectDetails(s.subject.details);
         }
         document.getElementById("compForm").requestSubmit();
       });
@@ -4105,6 +4132,7 @@
     const typeSel = document.getElementById("propertyType");
     if (lastType && [...typeSel.options].some((o) => o.value === lastType)) {
       typeSel.value = lastType;
+      syncSubjectFieldsToType();
     }
   } catch (_) { /* private mode etc. — a nicety, not a requirement */ }
 
@@ -4221,6 +4249,7 @@
       if (!q) return;
       const typeWord = TYPE_WORDS.find((t) => q.toLowerCase().includes(t));
       if (typeWord) document.getElementById("propertyType").value = cap(typeWord);
+      syncSubjectFieldsToType();
       const addr = document.getElementById("address");
       // The type belongs in the dropdown, not the address text.
       addr.value = q.replace(new RegExp(typeWord || "$^", "i"), "").replace(/\s{2,}/g, " ").trim() || q;
@@ -5372,6 +5401,7 @@
     const sizeR = targetRange("targetSize", "targetSizeMax");
     const priceR = targetRange("targetPrice", "targetPriceMax");
     const noiVal = numericValue(document.getElementById("noi").value);
+    const subjectDetails = readSubjectDetails();
     if (!address) return;
     if (!months) {
       showStatus("Enter a custom lookback window between 1 and 120 months.", "error");
@@ -5419,7 +5449,7 @@
         body: JSON.stringify({
           address, type, note, months, txFocus,
           subjectSizeSqft: sizeR ? Math.round((sizeR.min + sizeR.max) / 2) : undefined,
-          subjectDetails: readSubjectDetails(),
+          subjectDetails,
         }),
       });
 
@@ -5448,7 +5478,7 @@
           priceMin: priceR ? priceR.min : null,
           priceMax: priceR ? priceR.max : null,
           noi: noiVal > 0 ? noiVal : null,
-          details: readSubjectDetails(),
+          details: subjectDetails,
         },
       });
     } catch (err) {

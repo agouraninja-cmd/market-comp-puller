@@ -1999,6 +1999,36 @@
   // records), with an optional NOI / market-cap-rate cross-check.
   // All arithmetic is client-side; the model only supplies market figures.
   // ----------------------------------------------------------------------------
+  // Multifamily trades on price per unit and land on price per acre. When the
+  // owner supplied the count, express the same sale comps in the unit the
+  // market actually quotes. Returns null unless there is both a subject
+  // quantity and enough comps carrying the metric — one data point is not a
+  // median. Formats money locally so it does not depend on renderOwnerHero's
+  // internals.
+  const ALT_BASIS = {
+    Multifamily: { compKey: "price_per_unit", subjKey: "units",     noun: "unit", label: "Price per unit cross-check" },
+    Land:        { compKey: "price_per_acre", subjKey: "lot_acres", noun: "acre", label: "Price per acre cross-check" },
+  };
+
+  function altBasisEntry(meta, subject, saleComps) {
+    const spec = ALT_BASIS[meta.type];
+    if (!spec) return null;
+    const qty = numericValue((subject.details || {})[spec.subjKey]);
+    if (!(qty > 0)) return null;
+    const per = saleComps
+      .map((x) => numericValue(x.comp[spec.compKey]))
+      .filter((v) => v > 0)
+      .sort((a, b) => a - b);
+    if (per.length < 3) return null;
+    const median = per[Math.floor(per.length / 2)];
+    const money = (v) => "$" + Math.round(v).toLocaleString();
+    return {
+      label: spec.label,
+      text: `${money(qty * median)} — ${qty.toLocaleString()} ${spec.noun}${qty === 1 ? "" : "s"} at the `
+        + `${money(median)} median price per ${spec.noun} across ${per.length} sale comps.`,
+    };
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     const card = document.getElementById("ownerHero");
@@ -2009,12 +2039,22 @@
     // which also serves street-number-less real addresses ("One Wilshire Blvd").
     const hasStreetNumber = /^\s*\d+\s/.test(String(meta.address || ""));
     const s = meta.subject || {};
-    const hasUserSubject = [s.sizeMin, s.sizeMax, s.priceMin, s.priceMax, s.noi].some((v) => v > 0);
+    const hasUserSubject = [s.sizeMin, s.sizeMax, s.priceMin, s.priceMax, s.noi].some((v) => v > 0)
+      || numericValue((s.details || {}).lot_acres) > 0;
     if (!hasStreetNumber && !hasUserSubject) { card.classList.add("hidden"); return; }
 
     // The user's own size always wins; otherwise fall back to the size the
     // model looked up from public records / listings for this address.
     let sizeR = subjectRangeFromMeta("size");
+    // Land is quoted in acres; convert so the existing $/SF path still works.
+    // SF stays the canonical unit internally — acres is an input concept only.
+    if (!sizeR && meta.type === "Land") {
+      const acres = numericValue((s.details || {}).lot_acres);
+      if (acres > 0) {
+        const sf = Math.round(acres * 43560);
+        sizeR = { min: sf, max: sf };
+      }
+    }
     let sizeSource = null;   // null = user-entered
     if (!sizeR && parsed) {
       const found = numericValue(parsed.subject_size_sqft);
@@ -2133,6 +2173,10 @@
         text: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)} — what ${ppsfs.length} recent `
           + `sale comps say buyers pay per square foot, applied to your building's size. This is the headline range above.`,
       }];
+      // Sits right after the sales-comparison line because it is the same
+      // comps expressed in a different unit, not a separate approach.
+      const altEntry = altBasisEntry(meta, s, saleComps);
+      if (altEntry) entries.push(altEntry);
       if (noi && capOk) {
         const incLo = noi / (capHi / 100);
         const incHi = noi / (capLo / 100);

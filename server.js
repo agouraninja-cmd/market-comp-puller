@@ -804,14 +804,22 @@ function tryConsumeDailySearch() {
 // ---------------------------------------------------------------------------
 const searchCacheMem = new Map();
 
-function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps }) {
+function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, subjectDetails }) {
   const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
   const verifiedSig = (verifiedComps || [])
     .map((c) => `${c.address}|${c.deal_date}|${c.price_or_rate}`)
     .sort()
     .join(";");
+  // Two different buildings can share an address, type, and size — a 48-unit
+  // and a 6-unit would otherwise collide and be served each other's comps.
+  const detailsSig = Object.entries(subjectDetails || {})
+    .map(([k, v]) => `${k}=${norm(v)}`)
+    .sort()
+    .join(",");
   const raw = [norm(address), type, norm(note), months, maxComps, txFocus, subjectSizeSqft || "", verifiedSig].join("::");
-  return crypto.createHash("sha256").update(raw).digest("hex");
+  // Appended only when present, so every existing cache entry keeps its key
+  // instead of the whole 7-day cache invalidating on deploy.
+  return crypto.createHash("sha256").update(detailsSig ? `${raw}::${detailsSig}` : raw).digest("hex");
 }
 
 async function loadSearchCacheFile() {
@@ -2874,7 +2882,7 @@ const server = http.createServer((req, res) => {
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails } = JSON.parse(body || "{}");
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
@@ -2893,6 +2901,7 @@ const server = http.createServer((req, res) => {
         const addressOk = String(address).trim();
         const typeOk = String(type);
         const noteOk = note ? String(note).trim() : "";
+        const detailsOk = sanitizeSubjectDetails(typeOk, subjectDetails);
 
         // Verified comps are fetched once, both for the model and as part of
         // the cache key — approving a new broker comp naturally invalidates
@@ -2901,6 +2910,7 @@ const server = http.createServer((req, res) => {
         const cacheKey = cacheKeyFor({
           address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
           maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
+          subjectDetails: detailsOk,
         });
 
         const cached = await getCachedSearch(cacheKey);

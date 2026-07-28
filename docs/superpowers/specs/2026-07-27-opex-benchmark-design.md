@@ -109,8 +109,10 @@ The card also translates the gap into dollars — pure arithmetic, no judgment:
 at the market's typical band, expenses on *the user's own gross* would be
 `low x gross` to `high x gross`, against their actual `expenses`.
 
-The gap sentence uses the nearer edge of the band: above-range compares to
-`high x gross`, below-range compares to `low x gross`.
+Only the above-range state carries a dollar gap, computed against the band's
+high edge (`expenses - high x gross`). Below-range stays qualitative — a
+dollar figure there would read as money left on the table, which is the
+advice framing this card avoids.
 
 ## 4. Card layout
 

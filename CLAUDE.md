@@ -375,8 +375,9 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    denominator; the market band `market_opex_range` itself is market data and
    stays): private finances, stripped from shares. The DCF's
    four assumptions (hold/growth/discount/exit cap) are opinions, not
-   finances, and stay in shares. The one deliberate exception for both NOI
-   and debt is the signed-in **portfolio**: a saved report's `meta.subject`
+   finances, and stay in shares. The one deliberate exception for all of
+   these private figures (NOI, debt, rent roll, gross income) is the
+   signed-in **portfolio**: a saved report's `meta.subject`
    and `meta.assumptions` are stored in the owner's own authenticated
    `portfolio_items` row so the analysis re-renders cross-device — any future
    share-from-portfolio feature must strip them the way `/api/share` does. Subject inputs

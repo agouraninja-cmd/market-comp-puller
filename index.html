@@ -2769,7 +2769,7 @@
 
     if (!bandOk) {
       verdictEl.textContent = "";
-      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "% of gross income. This report has no market benchmark to compare against — a fresh search will include one.";
+      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "% of gross income. This report has no market benchmark to compare against — a future search will include one.";
     } else if (ratioPct > bandHi) {
       const gap = expenses - (bandHi / 100) * gross;
       verdictEl.textContent = " · Above typical range";

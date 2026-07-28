@@ -1022,8 +1022,8 @@
         <div id="analysisLockCard" class="hidden rd-bcard print-shadow-none no-print">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Debt, Sensitivity &amp; Rent-Roll Analysis</h2>
-              <p class="text-sm text-[#5A6473] mt-1">DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk for this building — free with an account.</p>
+              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Expense, Debt &amp; Risk Analysis</h2>
+              <p class="text-sm text-[#5A6473] mt-1">How your expense ratio compares to this market, plus DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk — free with an account.</p>
             </div>
             <button id="analysisLockBtn" type="button"
               class="btn-live text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Create a free account</button>
@@ -3041,7 +3041,7 @@
     document.getElementById("analysisEmpty").classList.toggle("hidden", hasNoi);
   }
   document.getElementById("analysisLockBtn").addEventListener("click", () =>
-    openAcctModal("signup", "Create a free account to unlock the debt, sensitivity, and rent-roll analysis for this report."));
+    openAcctModal("signup", "Create a free account to unlock the expense benchmark, debt, sensitivity, and rent-roll analysis for this report."));
 
   // Assumption edits recompute in place — client-side math only, no billing.
   // Debounced lightly so typing "12" doesn't render at "1". Inputs are

@@ -1293,6 +1293,52 @@
                Built by renderBadgeLegend(). -->
           <p id="badgeLegend" class="hidden text-xs leading-6 text-[#8A93A0] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
           <p class="hidden sm:block text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9] no-print">Click a column header to sort.</p>
+          <!-- Add-your-own-comp form: client-only, never sent to the server. Hidden
+               entirely for shared viewers (curationControlsAllowed() gate). -->
+          <div id="addCompWrap" class="no-print no-capture px-6 py-3 border-t border-[#F0EFE9]">
+            <button id="addCompBtn" type="button" class="text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">+ Add your own comp</button>
+            <div id="addCompForm" class="hidden mt-3">
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div class="col-span-2 sm:col-span-1">
+                  <label class="rd-lab" for="acAddress">Address</label>
+                  <input id="acAddress" type="text" placeholder="e.g. 4818 W Amelia Earhart Dr, Boise, ID" class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
+                <div>
+                  <label class="rd-lab" for="acTransaction">Sale or lease</label>
+                  <select id="acTransaction" class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none">
+                    <option>Sale</option>
+                    <option>Lease</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="rd-lab" for="acDate">Date</label>
+                  <input id="acDate" type="text" placeholder="e.g. Mar 2026" class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
+                <div>
+                  <label class="rd-lab" for="acSize">Size (SF)</label>
+                  <input id="acSize" type="text" inputmode="numeric" placeholder="e.g. 42,000" class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
+                <div>
+                  <label class="rd-lab" for="acPrice">Price / rate</label>
+                  <input id="acPrice" type="text" placeholder="e.g. $4,100,000 or $9.50/SF/yr" class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
+                <div>
+                  <label class="rd-lab" for="acPpsf">$/SF (optional)</label>
+                  <input id="acPpsf" type="text" inputmode="decimal" placeholder="derived if blank" class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
+                <div class="col-span-2 sm:col-span-3">
+                  <label class="rd-lab" for="acNotes">Notes (optional)</label>
+                  <input id="acNotes" type="text" maxlength="200" class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
+              </div>
+              <p id="acError" class="hidden text-xs text-[#B91C1C] mt-2"></p>
+              <div class="flex items-center gap-3 mt-3">
+                <button id="acSubmit" type="button" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Add to report</button>
+                <button id="acCancel" type="button" class="text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">Cancel</button>
+                <span class="text-xs text-[#8A93A0]">Stays in your report only — never sent anywhere.</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         </div><!-- /tabReport -->
@@ -2478,10 +2524,12 @@
     cur.excluded = cur.excluded.filter((k) => typeof k === "string");
     if (!Array.isArray(cur.added)) cur.added = [];
     // Re-stamp provenance on every entry: a hand-edited or legacy payload must
-    // never smuggle a comp that claims Verified / Public record.
-    cur.added = cur.added.filter((c) => c && typeof c === "object").map((c) => ({
-      ...c, source_type: "user", user_added: true, verified: false,
-    }));
+    // never smuggle a comp that claims Verified / Public record. Stamped IN
+    // PLACE (not spread into new objects) so object identity survives repeated
+    // calls — the map's geocode pass writes lat/lng onto these same objects as
+    // they sit in currentComps, and a fresh copy here would orphan that write.
+    cur.added = cur.added.filter((c) => c && typeof c === "object");
+    cur.added.forEach((c) => { c.source_type = "user"; c.user_added = true; c.verified = false; });
     if (cur.read && typeof cur.read === "object") {
       const dir = String(cur.read.direction || "").toLowerCase();
       cur.read = {
@@ -4730,12 +4778,15 @@
     });
     // Curation actions column — not a COLUMNS entry, so exports (which map
     // over COLUMNS) never see it. Shared viewers get no edit controls at all.
-    if (curationControlsAllowed()) {
+    const allowCuration = curationControlsAllowed();
+    if (allowCuration) {
       const th = document.createElement("th");
       th.className = "no-print no-capture";
       th.setAttribute("aria-label", "Curation actions");
       head.appendChild(th);
     }
+    const addCompWrap = document.getElementById("addCompWrap");
+    if (addCompWrap) addCompWrap.classList.toggle("hidden", !allowCuration);
   }
 
   // Sale/Lease filter state — reset per report in renderResults().
@@ -4940,6 +4991,63 @@
     });
     return btn;
   }
+
+  // Add-your-own-comp form. Client-only by design: the comp goes into
+  // meta.curation.added (never data.comps, never any request) — see the spec.
+  (function wireAddComp() {
+    const btn = document.getElementById("addCompBtn");
+    const form = document.getElementById("addCompForm");
+    const err = document.getElementById("acError");
+    if (!btn) return;
+    const showErr = (msg) => { err.textContent = msg; err.classList.remove("hidden"); };
+    btn.addEventListener("click", () => {
+      form.classList.toggle("hidden");
+      err.classList.add("hidden");
+    });
+    document.getElementById("acCancel").addEventListener("click", () => {
+      form.classList.add("hidden");
+      err.classList.add("hidden");
+    });
+    document.getElementById("acSubmit").addEventListener("click", () => {
+      if (!currentParsed || !currentMeta) return;
+      err.classList.add("hidden");
+      const v = (id) => String(document.getElementById(id).value || "").trim();
+      const address = v("acAddress"), date = v("acDate"), price = v("acPrice");
+      if (!address || !date || !price) return showErr("Address, date, and price are required.");
+      const sizeNum = numericValue(v("acSize"));
+      const priceNum = numericValue(price);
+      let ppsf = v("acPpsf");
+      // Derive $/SF for sales when both figures parse and the result lands in
+      // a sane per-SF band (guards against a per-SF figure typed as the price).
+      if (!ppsf && v("acTransaction") !== "Lease" && priceNum > 0 && sizeNum > 0) {
+        const derived = priceNum / sizeNum;
+        if (derived >= 1 && derived <= 100000) ppsf = "$" + (Math.round(derived * 100) / 100).toLocaleString();
+      }
+      const comp = {
+        address,
+        transaction: v("acTransaction") === "Lease" ? "Lease" : "Sale",
+        date,
+        size_sqft: sizeNum > 0 ? Math.round(sizeNum).toLocaleString() : "",
+        price_or_rate: price,
+        price_per_sqft: ppsf,
+        notes: v("acNotes").slice(0, 200),
+        source_type: "user", user_added: true, verified: false,
+      };
+      const key = compKeyOf(comp);
+      if (currentComps.some((c) => compKeyOf(c) === key)) {
+        return showErr("This comp is already in the report.");
+      }
+      const cur = ensureCuration(currentMeta);
+      cur.added.push(comp);
+      currentComps = currentComps.concat([comp]);
+      comp._num = currentComps.length;
+      ["acAddress", "acDate", "acSize", "acPrice", "acPpsf", "acNotes"].forEach((id) => {
+        document.getElementById(id).value = "";
+      });
+      form.classList.add("hidden");
+      applyCuration();
+    });
+  })();
 
   function renderTableBody(animateIn = true) {
     renderCards(animateIn);

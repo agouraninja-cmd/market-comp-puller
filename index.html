@@ -3280,6 +3280,12 @@
       card.classList.add("hidden");
       return;
     }
+    // When the card is on screen ONLY for the read controls (no model content,
+    // nothing recorded), keep it out of print/PNG — the controls are no-print,
+    // so exporting would otherwise show a bare heading.
+    const printable = Boolean(trend || drivers.length || pdNote || hasUserRead);
+    card.classList.toggle("no-print", !printable);
+    card.classList.toggle("no-capture", !printable);
 
     trendEl.textContent = trend;
     trendEl.classList.toggle("hidden", !trend);
@@ -3779,7 +3785,7 @@
       // spread bar below is what reflects the user's comp set.
       { label: "Avg $/SF", value: parsed.avg_price_per_sqft || "" },
       { label: "Comps Found",
-        value: counts.excluded > 0 ? `${counts.included} (of ${counts.total} found)`
+        value: counts.excluded > 0 ? `${counts.included} (of ${counts.total} in report)`
           : currentComps.length ? String(currentComps.length) : "",
         animate: { target: counts.included, format: (n) => String(Math.round(n)) } },
       { label: "Median Size", value: isFinite(median) ? Math.round(median).toLocaleString() + " SF" : "",

@@ -365,14 +365,23 @@
     /* position needs !important: Leaflet writes an inline position:relative
        onto its container at init. */
     #compMap.map-fullscreen { position: fixed !important; inset: 0; z-index: 1300; height: 100vh !important; height: 100dvh !important; width: 100vw; }
-    /* The card's entrance animation leaves a transform on #mapCard, and any
-       transformed ancestor becomes the containing block for fixed children —
-       pinning the "fullscreen" map to the card instead of the viewport. Clear
-       it while hosting the fullscreen map. CRITICAL: #reportArea > * has a
-       base opacity of 0 (the entrance animation's fill is what makes cards
-       visible), so killing the animation MUST come with opacity:1 — without
-       it the fullscreen map is an invisible click-blocking overlay. */
-    #mapCard.map-fullscreen-host { transform: none !important; opacity: 1 !important; animation: none !important; }
+    /* The entrance animations leave a transform on #mapCard AND on #tabReport
+       (the tab wrapper is the #reportArea > * child that carries fadeIn), and
+       any transformed ancestor becomes the containing block for fixed
+       children — pinning the "fullscreen" map to the card instead of the
+       viewport. Worse, a fill:forwards animation of transform keeps the
+       element a containing block FOREVER: after it finishes the computed
+       transform is an identity matrix, not "none". Clear both while hosting
+       the fullscreen map. CRITICAL: #reportArea > * has a base opacity of 0
+       (the entrance animation's fill is what makes cards visible), so killing
+       the animation MUST come with opacity:1 — without it the fullscreen map
+       is an invisible click-blocking overlay. */
+    #mapCard.map-fullscreen-host, #tabReport.map-fullscreen-host { transform: none !important; opacity: 1 !important; animation: none !important; }
+    /* Retire a report child's entrance animation once it has played out —
+       otherwise its filled transform keeps it a fixed-position containing
+       block permanently (see above), and re-showing the tab would restart
+       the fade. Opacity 1 replaces the fill; must outrank #reportArea > *. */
+    #reportArea > .entrance-done { opacity: 1; animation: none; }
     body.map-locked { overflow: hidden; }
   </style>
 </head>
@@ -3559,6 +3568,14 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && exitMapFullscreen) exitMapFullscreen();
   });
+  // The #reportArea > * entrance animation is fill:forwards, and a filled
+  // transform animation keeps that child a containing block for
+  // position:fixed forever — which pins the fullscreen map to the report
+  // column instead of the viewport. Retire each child's animation once it
+  // has finished (.entrance-done sets animation:none + opacity:1).
+  document.getElementById("reportArea").addEventListener("animationend", (e) => {
+    if (e.target.parentElement === document.getElementById("reportArea")) e.target.classList.add("entrance-done");
+  });
 
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
@@ -3636,7 +3653,10 @@
     const setMapFullscreen = (on) => {
       const el = document.getElementById("compMap");
       el.classList.toggle("map-fullscreen", on);
+      // Both animated ancestors must be neutralized while fullscreen —
+      // #tabReport's filled entrance transform pins fixed children otherwise.
       document.getElementById("mapCard").classList.toggle("map-fullscreen-host", on);
+      document.getElementById("tabReport").classList.toggle("map-fullscreen-host", on);
       document.body.classList.toggle("map-locked", on);
       if (fsBtn) {
         fsBtn.innerHTML = on ? FS_EXIT : FS_ENTER;

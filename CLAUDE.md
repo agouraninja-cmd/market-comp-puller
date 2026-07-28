@@ -375,7 +375,17 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    denominator; the market band `market_opex_range` itself is market data and
    stays): private finances, stripped from shares. The DCF's
    four assumptions (hold/growth/discount/exit cap) are opinions, not
-   finances, and stay in shares. The one deliberate exception for all of
+   finances, and stay in shares.
+   **Report curation** (`meta.curation` — excluded comp keys, user-added
+   comps, the owner's price-discovery read) is the same class of opinion:
+   it persists in saved reports/portfolio and stays in shares. Added comps
+   live ONLY in `meta.curation.added`, never in `data.comps`, so no server
+   path (share, portfolio, harvest) ever ingests a user-authored comp into
+   the corpus. The valuation math reads `includedComps()`; the table shows
+   excluded rows greyed as an audit trail. The "Avg $/SF" stat tile and the
+   market comparison read the MODEL's market-level figure and deliberately
+   do not change with curation.
+   The one deliberate exception for all of
    these private figures (NOI, debt, rent roll, gross income) is the
    signed-in **portfolio**: a saved report's `meta.subject`
    and `meta.assumptions` are stored in the owner's own authenticated

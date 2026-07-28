@@ -2221,6 +2221,14 @@
       .map((c) => ({ comp: c, v: numericValue(c.price_per_sqft) }))
       .filter((x) => x.v > 0);
     const ppsfs = saleComps.map((x) => x.v);
+    // Pre-exclusion sale-comp count (same filter, but over ALL comps rather
+    // than includedComps()) — the trust line and fallback copy below need
+    // both counts to explain a curated shortfall rather than silently
+    // dropping comps.
+    const allSaleComps = currentComps
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => numericValue(c.price_per_sqft))
+      .filter((v) => v > 0);
 
     const fmtTotal = (v) => "$" + Math.round(v).toLocaleString();
     const lowEl = document.getElementById("ownerLow");
@@ -2352,8 +2360,15 @@
       if (pubN) srcBits.push(`${pubN} from public records`);
       if (verN) srcBits.push(`${verN} broker-verified`);
       const userN = saleComps.filter((x) => compTier(x.comp) === "user").length;
-      if (userN) srcBits.push(userN + " added by you");
-      trustEl.textContent = `Based on ${ppsfs.length} sale comps`
+      const whoCurated = meta.shared ? "by the report owner" : "by you";
+      if (userN) srcBits.push(`${userN} added ${whoCurated}`);
+      // Curated reports lead with "N of M" plus the excluded count, so the
+      // headline number doesn't silently drop comps without explanation.
+      const excludedSaleN = allSaleComps.length - ppsfs.length;
+      const countPhrase = excludedSaleN > 0
+        ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps — ${excludedSaleN} excluded ${whoCurated}`
+        : `Based on ${ppsfs.length} sale comps`;
+      trustEl.textContent = countPhrase
         + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`;
       trustEl.classList.remove("hidden");
 
@@ -2451,11 +2466,20 @@
       const altCompN = altSpec
         ? saleComps.filter((x) => numericValue(x.comp[altSpec.compKey]) > 0).length
         : 0;
+      // A curated shortfall (size was known and there were enough raw sale
+      // comps, but exclusions dropped the usable count below 2) gets its own
+      // guidance rather than the generic "not enough came back" copy, since
+      // the fix here is to restore a comp, not to wait for a fresh search.
+      const curatedShortfall = !!sizeR && allSaleComps.length >= 2 && ppsfs.length < 2;
       basisEl.textContent = altCompN >= 3
         ? `Enter your ${altSpec.askFor} under 'Your property details' — ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
-        : !sizeR
-          ? "We couldn't find this building's square footage. Enter it under 'Your property details' and the estimate updates instantly."
-          : "Not enough sale comps returned to compute a numeric range";
+        : curatedShortfall
+          ? (meta.shared
+            ? "Not enough included sale comps to compute a range — the report owner excluded some comps."
+            : "Not enough included sale comps to compute a range — restore an excluded comp or add your own.")
+          : !sizeR
+            ? "We couldn't find this building's square footage. Enter it under 'Your property details' and the estimate updates instantly."
+            : "Not enough sale comps returned to compute a numeric range";
     }
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.
@@ -5473,8 +5497,15 @@
     const rows = includedComps().map((comp) =>
       [...COLUMNS.map((c) => esc(comp[c.key])), esc((SOURCE_TIERS[compTier(comp)] || {}).label || "")].join(","));
     // Title row so an exported file records what was searched and when.
+    // Curation is called out too — an exported file travels on its own, so
+    // it always says "report owner" rather than "you".
+    const cc = curationCounts();
+    const curationBits = [];
+    if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps excluded by report owner`);
+    if (cc.added > 0) curationBits.push(`${cc.added} comp${cc.added === 1 ? "" : "s"} added by report owner`);
     const title = currentMeta
-      ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`)
+      ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
+          + curationBits.map((b) => ` | ${b}`).join(""))
       : "";
     const csv = [...(title ? [title] : []), header, ...rows].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -5526,6 +5557,7 @@
       const s = currentMeta.subject || {};
       const capR = currentParsed && currentParsed.market_cap_rate_range;
       const sell = sellTodayEstimate(currentParsed, currentMeta);
+      const cc = curationCounts();
       const vRows = [
         ["Property", currentMeta.address],
         ["Type", currentMeta.type],
@@ -5543,6 +5575,12 @@
         ...(capR ? [["Market cap-rate range", `${capR.low}–${capR.high}`]] : []),
         ...(currentMeta.curation && currentMeta.curation.read && (currentMeta.curation.read.direction || currentMeta.curation.read.note)
           ? [["Owner's price-discovery read", [currentMeta.curation.read.direction, currentMeta.curation.read.note].filter(Boolean).join(" — ")]] : []),
+        ...(cc.excluded > 0 || cc.added > 0 ? [[
+          "Comps used",
+          `${cc.included} of ${cc.total}` +
+          (cc.excluded ? ` — ${cc.excluded} excluded by report owner` : "") +
+          (cc.added ? ` — ${cc.added} added by report owner` : ""),
+        ]] : []),
         ...(s.noi > 0 ? [["NOI (yours)", s.noi]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
         [],

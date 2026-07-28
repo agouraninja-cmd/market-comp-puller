@@ -2677,6 +2677,10 @@
       // address+type lookup below could otherwise touch an unrelated local
       // record the viewer happens to have saved.
       if (currentMeta.shared) return;
+      // Same rule for the sample: it's a playground, and the address+type
+      // lookup could otherwise overwrite a real saved record at the sample's
+      // address if the user ever genuinely searched it.
+      if (currentMeta.sample) return;
       try {
         const list = loadSavedReports();
         const hit = list.find((r) => r.meta.address === currentMeta.address && r.meta.type === currentMeta.type);

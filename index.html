@@ -4843,7 +4843,8 @@
     return comp.verified === true || String(comp.verified).toLowerCase() === "true";
   }
 
-  // The comp's report-wide number (assigned in renderResults) as a roundel.
+  // The comp's report-wide number (assigned in renderResults, or by the
+  // add-comp form (max+1, so removals never cause reuse)) as a roundel.
   function compNumBadge(comp) {
     if (!comp._num) return null;
     const n = document.createElement("span");
@@ -5039,8 +5040,13 @@
       }
       const cur = ensureCuration(currentMeta);
       cur.added.push(comp);
+      // max+1, not currentComps.length: a prior Remove can shrink the array,
+      // and length would then reissue a number still held by another comp —
+      // duplicate roundels, and the map's compMarkersByNum[n] lookup would
+      // relocate the wrong marker.
+      const maxNum = currentComps.reduce((m, x) => Math.max(m, x._num || 0), 0);
       currentComps = currentComps.concat([comp]);
-      comp._num = currentComps.length;
+      comp._num = maxNum + 1;
       ["acAddress", "acDate", "acSize", "acPrice", "acPpsf", "acNotes"].forEach((id) => {
         document.getElementById(id).value = "";
       });

@@ -1847,54 +1847,124 @@ function marketTitle(p) { return `${p.type} Property Values in ${p.city}, ${p.st
 function marketUrl(slug) { return `${SITE_URL}/market/${slug}`; }
 function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
 
+// Brand mark, shared by every server-rendered page (market pages, /markets,
+// /broker, /how-it-works, /admin). Declared HERE, above MARKET_BAR: that
+// constant is built at module load, so a logo defined further down the file
+// would still be in its temporal dead zone and crash the process at startup.
+const CN_LOGO =
+  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
+  `<rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>` +
+  `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
+// Same mark inverted for the ink footer.
+const CN_LOGO_LIGHT =
+  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
+  `<rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>` +
+  `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
+
+// Research Desk system — the same palette and type as the landing page and
+// /how-it-works, so a visitor arriving from search lands on something that
+// looks like the app they are being sent to. Self-contained by design: no
+// dependency on the purged tailwind.css.
 const MARKET_CSS = `
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a;background:#f8fafc;line-height:1.6}
-a{color:#b91c1c;text-decoration:none}a:hover{text-decoration:underline}
-.bar{background:#0f172a;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
-.bar .brand{font-weight:700;letter-spacing:.03em;text-transform:uppercase;font-size:19px;color:#fff}
-.bar .brand b{color:#f87171;font-weight:700}
-.bar nav a{color:#e2e8f0;font-size:14px;margin-left:18px}
-.wrap{max-width:880px;margin:0 auto;padding:32px 20px 60px}
-h1{font-size:30px;line-height:1.2;margin:8px 0 6px}
-.sub{color:#64748b;font-size:14px;margin:0 0 24px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:22px 0}
-.tile{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px}
-.tile .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:600}
-.tile .v{font-size:24px;font-weight:700;margin-top:4px}
-.tile .n{font-size:12px;color:#64748b;margin-top:2px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:22px;margin:18px 0}
-.card h2{font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:#334155;margin:0 0 12px}
-.card h3{font-size:15px;margin:14px 0 4px}
-.card p{margin:0 0 10px}.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0}
+*{box-sizing:border-box}
+/* Flex column so the ink footer sits at the bottom of a short page. */
+body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
+.wrap{max-width:1024px;margin:0 auto;padding:0 16px;width:100%}
+main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
+/* Header — mirrors index.html's bar so arriving from search feels continuous. */
+.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
+.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
+.wordmark b{color:#B91C1C;font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
+.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
+/* Type */
+h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;line-height:1.15;
+  letter-spacing:-.005em;color:#1A2433;margin:10px 0 6px}
+.sub{color:#5A6473;font-size:14px;margin:0 0 22px;max-width:70ch}
+.sub a{color:#5A6473;text-decoration:underline;text-decoration-color:#D8D4C9}
+.sub a:hover{color:#1A2433}
+/* Tiles — bordered cards rather than the landing page's hairline mesh: pages
+   render 2-4 of these depending on the data, so a fixed column count that
+   divides evenly (which the mesh needs to avoid a half-empty row) is out. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
+.tile{background:#fff;border:1px solid #E4E2DA;border-radius:6px;padding:16px 18px}
+.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600}
+.tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
+  color:#1A2433;font-variant-numeric:tabular-nums}
+.tile .n{font-size:12.5px;color:#8A93A0;margin-top:2px}
+/* Cards. Headings stay serif at reading size rather than the uppercase
+   micro-label used elsewhere — these are sentence-length ("What's driving
+   Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
+.card{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:22px;margin:18px 0}
+.card h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;
+  margin:0 0 12px;letter-spacing:normal;text-transform:none}
+.card h3{font-size:14.5px;font-weight:600;color:#1A2433;margin:16px 0 4px}
+.card p{margin:0 0 10px;color:#374253;font-size:14.5px}
+.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:#374253;font-size:14.5px}
 /* min-width is what makes the .scroll wrapper actually work: a width:100%
    table always shrinks to its container, so overflow-x had nothing to overflow.
    Invisible at 6 columns; a multifamily page renders 8 and would otherwise
    crush to ~40px per column on a phone. */
-table{width:100%;min-width:640px;border-collapse:collapse;font-size:14px}
+table{width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 td:first-child,th:first-child{min-width:180px}
-th{background:#1e293b;color:#f1f5f9;text-align:left;padding:9px 10px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
-td{padding:9px 10px;border-top:1px solid #f1f5f9;vertical-align:top}
-.scroll{overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;margin:18px 0}
-.badge{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:9999px;background:#f1f5f9;color:#475569}
-.cta{background:linear-gradient(135deg,#0f172a,#7f1d1d);color:#fff;border-radius:16px;padding:28px;margin:26px 0;text-align:center}
-.cta h2{color:#fff;font-size:22px;margin:0 0 8px;text-transform:none;letter-spacing:0}
-.cta p{color:#e2e8f0;margin:0 0 18px}
-.btn{display:inline-block;background:#fff;color:#7f1d1d;font-weight:700;padding:12px 26px;border-radius:10px}
-.btn:hover{background:#fef2f2;text-decoration:none}
+th{background:#F5F4EF;color:#8A93A0;text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #D8D4C9}
+td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
+.scroll{overflow-x:auto;border:1px solid #E4E2DA;border-radius:6px;margin:18px 0;background:#fff}
+/* Source badges use the report's own colour language: green Verified, amber
+   Listing, neutral for public record / news / estimate. */
+.badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;
+  white-space:nowrap;line-height:1.4;color:#46536A;background:#EAEEF4}
+.badge.v{color:#06603A;background:#E3F2EA}
+.badge.li{color:#7A5B12;background:#F7EFDC}
+/* CTA — the calm bordered block from the landing page, not the old gradient. */
+.cta{border:1px solid #D8D4C9;background:#fff;border-radius:6px;padding:28px;margin:26px 0;text-align:center}
+.cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:#1A2433;
+  margin:0 0 8px;letter-spacing:normal;text-transform:none}
+.cta p{color:#4C5665;font-size:14px;margin:8px auto 20px;max-width:52ch}
+.cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:#5A6473;text-decoration:underline;text-decoration-color:#D8D4C9}
+.cta .alt:hover{color:#1A2433}
+.btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
+.btn:hover{background:#991B1B;color:#fff}
 .related{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.related a{background:#fff;border:1px solid #e2e8f0;border-radius:9999px;padding:6px 14px;font-size:13px;color:#334155}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:20px}
-.mcard{display:block;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;color:inherit}
-.mcard:hover{border-color:#cbd5e1;text-decoration:none}
-.mcard .t{font-weight:700;font-size:16px;color:#0f172a}.mcard .s{color:#64748b;font-size:13px;margin-top:6px}
-.disc{color:#94a3b8;font-size:12px;margin-top:26px}
-footer{border-top:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:13px;text-align:center;padding:22px}
+.related a{background:#fff;border:1px solid #D8D4C9;border-radius:4px;padding:6px 14px;font-size:13px;color:#374253}
+.related a:hover{border-color:#8A93A0;color:#1A2433}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
+.mcard{display:block;background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:18px 20px;color:inherit}
+.mcard:hover{border-color:#8A93A0}
+.mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
+.mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
+.disc{color:#8A93A0;font-size:12.5px;margin-top:26px}
+/* Footer — the navy ink footer from the home page. */
+footer{background:#1A2433;color:#B8C0CC;font-size:13px}
+footer .wrap{padding:36px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
+footer .wordmark{color:#fff}
+footer p{color:#8F99A8;margin:12px 0 0;max-width:68ch;line-height:1.6}
+footer a{color:#D5DAE2;text-decoration:underline;text-decoration-color:#46536A}
+footer a:hover{color:#fff}
+footer ul{list-style:none;margin:12px 0 0;padding:0}
+footer li{margin-bottom:8px}
+footer li a{text-decoration:none;color:#B8C0CC}
+@media (min-width:640px){
+  .hdr nav{gap:24px}
+  h1{font-size:34px}
+  footer .wrap{flex-direction:row}
+  footer .right{text-align:right;flex-shrink:0}
+}
 `;
 
 const MARKET_BAR =
-  `<div class="bar"><a class="brand" href="/">Comp<b>Ninja</b></a>` +
+  `<header class="hdr"><div class="wrap">` +
+  `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `<nav><a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
-  `<a href="/">Get a valuation</a></nav></div>`;
+  `<a href="/">Run a report</a></nav>` +
+  `</div></header>`;
 
 // ---------------------------------------------------------------------------
 // Public broker credit — which firms have approved comps in each market, so
@@ -2039,7 +2109,7 @@ function renderBrokerProfileHTML(profile, subs) {
     `<div class="cta"><h2>Work with ${escHtml(headline)}</h2>` +
     `<p>CompNinja connects property owners with the brokers who know their market. Introductions go through our team.</p>` +
     `<a class="btn" href="${introHref}">Request an introduction</a>` +
-    `<p style="margin:14px 0 0"><a href="/" style="color:#fecaca">Or run a free valuation of your building &rarr;</a></p></div>` +
+    `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of your building &rarr;</a></p></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage; introductions are made by our team. Stats update as new reports run.</p>`;
 
   return marketShell({
@@ -2136,8 +2206,16 @@ function marketIntelRows(market, propertyType) {
 }
 
 const MARKET_FOOTER =
-  `<footer>CompNinja &middot; <a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a> &middot; ` +
-  `Automated market estimates, not an appraisal. <a href="/">Run a live valuation &rarr;</a></footer>`;
+  `<footer><div class="wrap">` +
+  `<div><div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>` +
+  `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage — we ` +
+  `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
+  `verify independently before underwriting.</p>` +
+  `<p>&copy; 2026 CompNinja</p></div>` +
+  `<div class="right"><a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a>` +
+  `<ul><li><a href="/markets">Markets</a></li><li><a href="/how-it-works">How it works</a></li>` +
+  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li></ul></div>` +
+  `</div></footer>`;
 
 function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
@@ -2206,12 +2284,12 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     const pts = buckets.map((b, i) => `${Math.round(x(i))},${Math.round(y(b.medianPsf))}`).join(" ");
     trendSvg =
       `<svg viewBox="0 0 ${w} ${hgt + 30}" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Median price per square foot by half-year">` +
-      `<polyline fill="none" stroke="#0f172a" stroke-width="2" points="${pts}"/>` +
+      `<polyline fill="none" stroke="#1A2433" stroke-width="2" points="${pts}"/>` +
       buckets.map((b, i) => {
         const cx = Math.round(x(i)), cy = Math.round(y(b.medianPsf));
-        return `<circle cx="${cx}" cy="${cy}" r="4" fill="${i === buckets.length - 1 ? "#b91c1c" : "#0f172a"}"/>` +
-          `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">${usd0(b.medianPsf)}</text>` +
-          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#64748b">${escHtml(b.label)} &middot; ${b.count}</text>`;
+        return `<circle cx="${cx}" cy="${cy}" r="4" fill="${i === buckets.length - 1 ? "#B91C1C" : "#1A2433"}"/>` +
+          `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="#1A2433">${usd0(b.medianPsf)}</text>` +
+          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#8A93A0">${escHtml(b.label)} &middot; ${b.count}</text>`;
       }).join("") +
       `</svg>`;
   }
@@ -2277,7 +2355,11 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     ...priceCols,
   ];
   const compRows = marketComps.map((c) => {
-    const badge = c.source_type ? `<span class="badge">${escHtml(c.source_type.replace("_", " "))}</span>` : "";
+    // Same badge tiers the report table uses; anything else stays neutral, so
+    // provenance can be under-claimed but never over-claimed.
+    const tier = { verified: " v", listing: " li" }[String(c.source_type || "").toLowerCase()] || "";
+    const badge = c.source_type
+      ? `<span class="badge${tier}">${escHtml(c.source_type.replace("_", " "))}</span>` : "";
     return "<tr>" + compCols.map((col) => (col.key === "address"
       ? `<td>${escHtml(c.address)} ${badge}</td>`
       : `<td>${escHtml(c[col.key] || "")}</td>`)).join("") + "</tr>";
@@ -2555,11 +2637,6 @@ const HOW_FAQ = [
    "Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one."],
 ];
 
-const HOW_LOGO =
-  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
-  `<rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>` +
-  `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
-
 function renderHowItWorksHTML() {
   const title = "How CompNinja Works";
   const canonical = `${SITE_URL}/how-it-works`;
@@ -2628,7 +2705,7 @@ function renderHowItWorksHTML() {
   const body = `
 <header class="hdr">
   <div class="wrap">
-    <a class="brand" href="/" aria-label="CompNinja home">${HOW_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
       <a href="/markets">Markets</a>
       <a href="/#for-brokers">For Brokers</a>
@@ -2710,7 +2787,7 @@ function renderHowItWorksHTML() {
 <footer>
   <div class="wrap">
     <div>
-      <div class="brand"><svg viewBox="0 0 30 30" aria-hidden="true"><rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/><polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg><span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
+      <div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
       <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage — we
         connect you with local brokers for opinions of value. Comparables derive from publicly available data;
         verify independently before underwriting.</p>
@@ -2972,7 +3049,7 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
-    <a class="brand" href="/" aria-label="CompNinja home">${HOW_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
       <a href="/markets">Markets</a>
       <a href="/how-it-works">How it works</a>

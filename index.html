@@ -1207,6 +1207,25 @@
             <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">Price Discovery<span id="priceDiscoveryDir"></span></div>
             <p id="priceDiscoveryNote" class="text-sm text-[#374253]"></p>
           </div>
+          <!-- The user's own price-discovery read — an opinion recorded next to
+               the automated one, never replacing it. Prints and shares. -->
+          <div id="userRead" class="hidden mt-3 pt-3 border-t border-[#F0EFE9]">
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1"><span id="userReadLabel">Your read</span><span id="userReadDir"></span></div>
+            <p id="userReadNote" class="text-sm text-[#374253]"></p>
+          </div>
+          <div id="userReadControls" class="no-print no-capture hidden mt-3 pt-3 border-t border-[#F0EFE9]">
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-2">Your read of this market</div>
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="inline-flex rounded border border-[#D8D4C9] overflow-hidden" role="group" aria-label="Your price-discovery read">
+                <button type="button" data-read-dir="expanding" class="px-3 py-1.5 text-xs font-medium">Expanding</button>
+                <button type="button" data-read-dir="flat" class="px-3 py-1.5 text-xs font-medium border-l border-[#D8D4C9]">Flat</button>
+                <button type="button" data-read-dir="contracting" class="px-3 py-1.5 text-xs font-medium border-l border-[#D8D4C9]">Contracting</button>
+              </div>
+              <input id="userReadNoteInput" type="text" maxlength="140" placeholder="optional note, e.g. two competing listings just cut asking"
+                class="flex-1 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-xs text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <p class="text-xs text-[#8A93A0] mt-2">Click a direction again to clear it. Recorded next to the automated read — your call, clearly labeled.</p>
+          </div>
         </div>
 
         <!-- Comp map (shown when the comps carry coordinates) -->
@@ -3208,7 +3227,7 @@
   // "What's driving prices here" — the market trend and the concrete factors
   // the model found behind current pricing. Hidden whenever the report has
   // neither (legacy saved reports, thin data).
-  function renderValueDrivers(parsed) {
+  function renderValueDrivers(parsed, meta) {
     const card = document.getElementById("driversCard");
     const trendEl = document.getElementById("marketTrend");
     const listEl = document.getElementById("driversList");
@@ -3225,7 +3244,18 @@
     const pdNote = String(pd.note || "").trim();
     const pdDir = String(pd.direction || "").trim().toLowerCase();
 
-    if (!trend && !drivers.length && !pdNote) { card.classList.add("hidden"); return; }
+    // The user's own read — an opinion beside the automated one.
+    const cur = meta && meta.curation ? meta.curation : null;
+    const read = cur && cur.read ? cur.read : null;
+    const hasUserRead = !!(read && (read.direction || read.note));
+
+    // The card hides only when there's nothing at all to show: no model
+    // content, no recorded user read, AND no controls to record one (e.g. a
+    // shared viewer looking at a report the owner never annotated).
+    if (!trend && !drivers.length && !pdNote && !hasUserRead && !curationControlsAllowed()) {
+      card.classList.add("hidden");
+      return;
+    }
 
     trendEl.textContent = trend;
     trendEl.classList.toggle("hidden", !trend);
@@ -3242,6 +3272,31 @@
       pdBlock.classList.remove("hidden");
     } else {
       pdBlock.classList.add("hidden");
+    }
+
+    const urBlock = document.getElementById("userRead");
+    const urControls = document.getElementById("userReadControls");
+    document.getElementById("userReadLabel").textContent = meta && meta.shared ? "Owner's read" : "Your read";
+    if (hasUserRead) {
+      const dirWord = ["expanding", "flat", "contracting"].includes(read.direction)
+        ? read.direction.charAt(0).toUpperCase() + read.direction.slice(1) : "";
+      document.getElementById("userReadDir").textContent = dirWord ? " · " + dirWord : "";
+      document.getElementById("userReadNote").textContent = read.note || "";
+      urBlock.classList.remove("hidden");
+    } else {
+      urBlock.classList.add("hidden");
+    }
+    urControls.classList.toggle("hidden", !curationControlsAllowed());
+    if (curationControlsAllowed()) {
+      const active = read ? read.direction : null;
+      urControls.querySelectorAll("[data-read-dir]").forEach((b) => {
+        const on = b.dataset.readDir === active;
+        b.className = (b.dataset.readDir === "expanding" ? "" : "border-l border-[#D8D4C9] ") +
+          "px-3 py-1.5 text-xs font-medium transition-colors " +
+          (on ? "bg-[#1A2433] text-white" : "text-[#5A6473] hover:text-[#1A2433]");
+      });
+      const noteInput = document.getElementById("userReadNoteInput");
+      if (document.activeElement !== noteInput) noteInput.value = read && read.note ? read.note : "";
     }
 
     card.classList.remove("hidden");
@@ -3812,7 +3867,7 @@
     renderOwnerHero(parsed, meta);
     renderAnalysisCluster(parsed, meta, true);
     setReportTab("report");   // every fresh render lands on the familiar report
-    renderValueDrivers(parsed);
+    renderValueDrivers(parsed, meta);
     renderComparison(parsed);
     renderMarketChart();
     renderTableHead();
@@ -5070,6 +5125,38 @@
     });
   })();
 
+  // The user's price-discovery read: chips + note. Writing it re-renders only
+  // the drivers card (comp math is untouched) but still persists + invalidates
+  // the share memo via the same paths as comp curation.
+  (function wireUserRead() {
+    const controls = document.getElementById("userReadControls");
+    if (!controls) return;
+    const commit = (mutate) => {
+      if (!currentParsed || !currentMeta) return;
+      const cur = ensureCuration(currentMeta);
+      const prev = cur.read || { direction: null, note: "" };
+      cur.read = mutate(prev);
+      if (cur.read && !cur.read.direction && !cur.read.note) cur.read = null;
+      lastPublished = { parsed: null, url: "" };
+      renderValueDrivers(currentParsed, currentMeta);
+      persistAssumptions();
+    };
+    controls.querySelectorAll("[data-read-dir]").forEach((b) => {
+      b.addEventListener("click", () => commit((prev) => ({
+        direction: prev.direction === b.dataset.readDir ? null : b.dataset.readDir,
+        note: prev.note || "",
+      })));
+    });
+    let readNoteTimer = null;
+    document.getElementById("userReadNoteInput").addEventListener("input", () => {
+      clearTimeout(readNoteTimer);
+      readNoteTimer = setTimeout(() => commit((prev) => ({
+        direction: prev.direction || null,
+        note: String(document.getElementById("userReadNoteInput").value || "").slice(0, 140),
+      })), 400);
+    });
+  })();
+
   function renderTableBody(animateIn = true) {
     renderCards(animateIn);
     renderBadgeLegend();
@@ -5450,6 +5537,8 @@
         ...(sell && sell.value > 0 && (!lastValuation || Math.round(sell.value) !== Math.round(lastValuation.likely))
           ? [["Sell today (est.)", Math.round(sell.value)], ["Sell-today basis", sell.source]] : []),
         ...(capR ? [["Market cap-rate range", `${capR.low}–${capR.high}`]] : []),
+        ...(currentMeta.curation && currentMeta.curation.read && (currentMeta.curation.read.direction || currentMeta.curation.read.note)
+          ? [["Owner's price-discovery read", [currentMeta.curation.read.direction, currentMeta.curation.read.note].filter(Boolean).join(" — ")]] : []),
         ...(s.noi > 0 ? [["NOI (yours)", s.noi]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
         [],

@@ -748,7 +748,7 @@ async function corpusRowsForMarket(market, property_type, limit) {
       dbRows = await sbRequest("GET",
         `comp_corpus?market=eq.${encodeURIComponent(market)}&property_type=eq.${encodeURIComponent(property_type)}` +
         `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
-        `${ALL_TYPE_COMP_FIELDS.join(",")},source_url,source_type&order=ts.desc&limit=${limit}`) || [];
+        `${ALL_TYPE_COMP_FIELDS.join(",")},source_url,source_type,verified&order=ts.desc&limit=${limit}`) || [];
     } catch (e) { noteCorpusFailure("read", e); }
   }
   const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
@@ -3978,6 +3978,70 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, {});
       } catch (_) {
         return sendJson(res, 200, {}); // soft failure — the client falls back
+      }
+    })();
+    return;
+  }
+
+  // --- Corpus comps offer: pure DB read powering the in-report "From
+  // CompNinja's records" section (see docs/superpowers/specs/2026-07-28-
+  // corpus-offer-design.md). Same provenance bar as corpus-first retrieval —
+  // never estimate/news, must be priced, no aggregate addresses. Zero
+  // Anthropic cost, no DAILY_SEARCH_CAP interaction. Failure-safe: any
+  // internal error still answers 200 with an empty list so a report page
+  // never breaks over this. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-comps") {
+    const params = new URL(req.url, "http://localhost").searchParams;
+    const address = (params.get("address") || "").trim().slice(0, 300);
+    const typeIn = String(params.get("type") || "");
+    const typeOk = Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
+    if (!address || !typeOk) {
+      return sendJson(res, 400, { error: "address and a valid property type are required." });
+    }
+    if (rateLimited("corpusoffer:" + clientIp(req), 30)) {
+      return sendJson(res, 429, { error: "Too many requests." });
+    }
+    (async () => {
+      try {
+        const market = marketOf(address);
+        const rows = await corpusRowsForMarket(market, typeOk, 100);
+        const seen = new Set();
+        const comps = [];
+        for (const r of rows) {
+          const st = String(r.source_type || "").toLowerCase();
+          // Provenance must be known and good — same tier corpus-first
+          // retrieval trusts; estimate/news (and anything unrecognized)
+          // don't get offered back to a visitor as "CompNinja's records".
+          if (!["verified", "public_record", "listing"].includes(st)) continue;
+          if (!(corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft))) continue;
+          if (isAggregateAddress(r.address)) continue;
+          const key = corpusKeyOf(r);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const comp = {
+            address: r.address,
+            transaction: r.transaction || "",
+            date: r.deal_date || "",
+            size_sqft: r.size_sqft || "",
+            price_or_rate: r.price_or_rate || "",
+            price_per_sqft: r.price_per_sqft || "",
+            cap_rate: r.cap_rate || "",
+          };
+          for (const f of ALL_TYPE_COMP_FIELDS) {
+            if (r[f]) comp[f] = r[f];
+          }
+          comp.source_type = st;
+          comp.verified = r.verified === true || r.verified === "true";
+          comps.push(comp);
+          if (comps.length >= 20) break;
+        }
+        if (comps.length) {
+          logEvent("corpus_offer", { prop_type: typeOk, market, cached: false, source: String(comps.length) });
+        }
+        return sendJson(res, 200, { market, comps });
+      } catch (e) {
+        console.error("corpus-comps error:", e.message);
+        return sendJson(res, 200, { market: "", comps: [] });
       }
     })();
     return;

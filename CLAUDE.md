@@ -171,6 +171,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   for the map's first paint; the front-end re-places every pin from real
   geocoding (this proxy, then browser-direct Nominatim as fallback, results
   cached in localStorage under `geoCache.v1`). Rate-limited per IP.
+- `GET /api/corpus-comps?address=&type=` — the in-report "From CompNinja's
+  records" offer: provenance-good corpus rows for the subject's market+type
+  (never estimate/news, priced, deduped, max 20), served from the same
+  `corpusRowsForMarket` read corpus-first retrieval uses. Pure DB read — no
+  Anthropic call, no cap interaction. Rate-limited per IP. Logs a PII-free
+  `corpus_offer` analytics event when rows are returned. Failure-safe: any
+  error returns an empty list, never an error page.
 - `GET /api/leads` — downloads captured leads as CSV; requires `ADMIN_KEY`.
 - `POST /api/comp-submission` — stores a broker-submitted comp (broker contact +
   comp details, `status: "pending"`) in the Supabase `comp_submissions` table

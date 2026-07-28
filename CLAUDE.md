@@ -375,7 +375,12 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    denominator; the market band `market_opex_range` itself is market data and
    stays): private finances, stripped from shares. The DCF's
    four assumptions (hold/growth/discount/exit cap) are opinions, not
-   finances, and stay in shares.
+   finances, and stay in shares. The one deliberate exception for all of
+   these private figures (NOI, debt, rent roll, gross income) is the
+   signed-in **portfolio**: a saved report's `meta.subject`
+   and `meta.assumptions` are stored in the owner's own authenticated
+   `portfolio_items` row so the analysis re-renders cross-device — any future
+   share-from-portfolio feature must strip them the way `/api/share` does.
    **Report curation** (`meta.curation` — excluded comp keys, user-added
    comps, the owner's price-discovery read) is the same class of opinion:
    it persists in saved reports/portfolio and stays in shares. Added comps
@@ -384,13 +389,7 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    the corpus. The valuation math reads `includedComps()`; the table shows
    excluded rows greyed as an audit trail. The "Avg $/SF" stat tile and the
    market comparison read the MODEL's market-level figure and deliberately
-   do not change with curation.
-   The one deliberate exception for all of
-   these private figures (NOI, debt, rent roll, gross income) is the
-   signed-in **portfolio**: a saved report's `meta.subject`
-   and `meta.assumptions` are stored in the owner's own authenticated
-   `portfolio_items` row so the analysis re-renders cross-device — any future
-   share-from-portfolio feature must strip them the way `/api/share` does. Subject inputs
+   do not change with curation. Subject inputs
    persist in each report's `meta` (saved reports re-render without the
    form), and editing size/price/NOI after a report re-renders the
    hero/comparison/chart in place — no new billed search.

@@ -2366,7 +2366,7 @@
       // headline number doesn't silently drop comps without explanation.
       const excludedSaleN = allSaleComps.length - ppsfs.length;
       const countPhrase = excludedSaleN > 0
-        ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps — ${excludedSaleN} excluded ${whoCurated}`
+        ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps (${excludedSaleN} excluded ${whoCurated})`
         : `Based on ${ppsfs.length} sale comps`;
       trustEl.textContent = countPhrase
         + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`;
@@ -5501,7 +5501,7 @@
     // it always says "report owner" rather than "you".
     const cc = curationCounts();
     const curationBits = [];
-    if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps excluded by report owner`);
+    if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps — ${cc.excluded} excluded by report owner`);
     if (cc.added > 0) curationBits.push(`${cc.added} comp${cc.added === 1 ? "" : "s"} added by report owner`);
     const title = currentMeta
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`

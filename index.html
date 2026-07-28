@@ -349,7 +349,7 @@
     .rd-badge.n { color: #5A6473; background: #F0EFE9; }
     .rd-badge.e { color: #9A3412; background: #F8E9DC; }
     .rd-badge.u { background:#F4F3EE; color:#5A6473; border:1px solid #D8D4C9; }
-    tr.comp-excluded td > div, .card-excluded { opacity:.45; }
+    tr.comp-excluded td > div, .card-excluded > :not(.cur-head), .card-excluded .cur-head > :not(.cur-ctrl) { opacity:.45; }
     /* Live comps table header — the landing exhibit's editorial th at the live
        table's own geometry (padding/alignment stay in the JS-built classes).
        No background here so the sortable hover rule can win. */
@@ -4730,7 +4730,7 @@
     });
     // Curation actions column — not a COLUMNS entry, so exports (which map
     // over COLUMNS) never see it. Shared viewers get no edit controls at all.
-    if (!(currentMeta && currentMeta.shared)) {
+    if (curationControlsAllowed()) {
       const th = document.createElement("th");
       th.className = "no-print no-capture";
       th.setAttribute("aria-label", "Curation actions");
@@ -4920,7 +4920,7 @@
       btn.className = "text-xs font-medium text-[#8A93A0] hover:text-[#1A2433]";
     } else if (isExcluded(comp)) {
       btn.textContent = "Restore";
-      btn.className = "text-xs font-semibold text-[#B91C1C] hover:underline";
+      btn.className = "text-xs font-semibold text-[#B91C1C] hover:text-[#991B1B]";
     } else {
       btn.textContent = "Exclude";
       btn.className = "text-xs font-medium text-[#8A93A0] hover:text-[#1A2433]";
@@ -5060,7 +5060,7 @@
       // Card header mirrors the table's address cell: roundel + two-line address,
       // plus (when allowed) the exclude/restore/remove control docked right.
       const head = document.createElement("div");
-      head.className = "flex items-start justify-between";
+      head.className = "flex items-start justify-between cur-head";
       const headLeft = document.createElement("div");
       headLeft.className = "flex items-start min-w-0";
       const num = compNumBadge(comp);
@@ -5088,7 +5088,7 @@
       head.appendChild(headLeft);
       if (showCuration) {
         const ctrlWrap = document.createElement("div");
-        ctrlWrap.className = "no-print no-capture shrink-0 ml-1.5 mt-0.5";
+        ctrlWrap.className = "no-print no-capture cur-ctrl shrink-0 ml-1.5 mt-0.5";
         ctrlWrap.appendChild(buildCurationControl(comp));
         head.appendChild(ctrlWrap);
       }

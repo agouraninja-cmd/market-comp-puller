@@ -5190,6 +5190,22 @@
             if (d.loanAmount > 0) aRows.push(["Refi headroom", Math.round(maxLoan - d.loanAmount)]);
           }
         }
+        // Operating-expense benchmark — same math and band validation as
+        // renderOpexCard; the sheet mirrors the card, never extends it.
+        const gx = a.opex && a.opex.grossIncome > 0 ? a.opex.grossIncome : null;
+        if (gx && gx > s.noi) {
+          aRows.push([], ["Operating expenses"],
+            ["Gross annual income", Math.round(gx)],
+            ["Operating expenses", Math.round(gx - s.noi)],
+            ["Expense ratio", (Math.round(((gx - s.noi) / gx) * 1000) / 10) + "%"]);
+          const ox = currentParsed && currentParsed.market_opex_range;
+          const oLo = ox ? numericValue(ox.low) : NaN;
+          const oHi = ox ? numericValue(ox.high) : NaN;
+          if (oLo > 0 && oHi >= oLo && oHi < 100) {
+            aRows.push(["Market typical range", `${ox.low}–${ox.high}`]);
+            if (ox.note) aRows.push(["Range assumes", String(ox.note)]);
+          }
+        }
       }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aRows), "Assumptions");
 

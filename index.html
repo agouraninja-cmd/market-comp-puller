@@ -5141,13 +5141,17 @@
       renderValueDrivers(currentParsed, currentMeta);
       persistAssumptions();
     };
-    controls.querySelectorAll("[data-read-dir]").forEach((b) => {
-      b.addEventListener("click", () => commit((prev) => ({
-        direction: prev.direction === b.dataset.readDir ? null : b.dataset.readDir,
-        note: prev.note || "",
-      })));
-    });
     let readNoteTimer = null;
+    controls.querySelectorAll("[data-read-dir]").forEach((b) => {
+      b.addEventListener("click", () => {
+        clearTimeout(readNoteTimer);
+        const liveNote = String(document.getElementById("userReadNoteInput").value || "").slice(0, 140);
+        commit((prev) => ({
+          direction: prev.direction === b.dataset.readDir ? null : b.dataset.readDir,
+          note: liveNote,
+        }));
+      });
+    });
     document.getElementById("userReadNoteInput").addEventListener("input", () => {
       clearTimeout(readNoteTimer);
       readNoteTimer = setTimeout(() => commit((prev) => ({

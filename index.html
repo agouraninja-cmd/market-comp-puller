@@ -2562,11 +2562,15 @@
     return { total: currentComps.length, excluded, added, included: currentComps.length - excluded };
   }
 
-  // Re-render everything the comp set feeds. Called on every exclude/restore/
-  // remove/add. Persistence and share-memo invalidation are wired in a later
-  // commit; this is the pure render loop.
+  // Re-render everything the comp set feeds, invalidate the share memo (a
+  // curated report is a different document), and persist the change. Called
+  // on every exclude/restore/remove/add.
   function applyCuration() {
     if (!currentParsed || !currentMeta) return;
+    // A curated report is a different document: force the next Share to
+    // publish fresh rather than reuse the pre-curation URL (the memo keys on
+    // object identity, which in-place curation edits don't change).
+    lastPublished = { parsed: null, url: "" };
     renderOwnerHero(currentParsed, currentMeta);
     renderAnalysisCluster(currentParsed, currentMeta, false);
     renderMarketChart();
@@ -2576,6 +2580,7 @@
     updateCompCount();
     updateCurationNote();
     renderMap(currentParsed, currentMeta);
+    persistAssumptions();
   }
 
   // One object (meta.assumptions) owns every analysis input, so the DCF card,
@@ -2619,16 +2624,22 @@
   // Debounced write-through: assumptions live in meta, so edits update the
   // saved localStorage entry in place and — when this report was opened from
   // a portfolio item — quietly PATCH that item too. No snapshot, no billing.
+  // Persists the user's opinions: assumptions AND curation.
   let assumptionsSaveTimer = null;
   function persistAssumptions() {
     clearTimeout(assumptionsSaveTimer);
     assumptionsSaveTimer = setTimeout(() => {
       if (!currentMeta) return;
+      // Shared viewers persist nothing: their edits are ephemeral, and the
+      // address+type lookup below could otherwise touch an unrelated local
+      // record the viewer happens to have saved.
+      if (currentMeta.shared) return;
       try {
         const list = loadSavedReports();
         const hit = list.find((r) => r.meta.address === currentMeta.address && r.meta.type === currentMeta.type);
         if (hit) {
           hit.meta.assumptions = currentMeta.assumptions;
+          hit.meta.curation = currentMeta.curation || null;
           localStorage.setItem(SAVED_KEY, JSON.stringify(list));
         }
       } catch (_) { /* private mode etc. */ }
@@ -2637,6 +2648,7 @@
           address: currentMeta.address, type: currentMeta.type, note: currentMeta.note || "",
           months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
           assumptions: currentMeta.assumptions || null,
+          curation: currentMeta.curation || null,
         };
         acctApi("POST", "/api/portfolio", {
           id: currentMeta.portfolioId, payload: { meta, data: currentParsed }, snapshot: null,
@@ -4070,6 +4082,7 @@
         address: currentMeta.address, type: currentMeta.type, note: currentMeta.note || "",
         months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
         assumptions: currentMeta.assumptions || null,
+        curation: currentMeta.curation || null,
       };
       await acctApi("POST", "/api/portfolio", {
         payload: { meta, data: currentParsed },
@@ -4120,7 +4133,9 @@
     // Replay the stored inputs through the real form so every rule (validation,
     // cache, caps, type-specific columns) applies; saveReport's guarded hook
     // writes the result + snapshot back onto this portfolio item when the
-    // matching report lands.
+    // matching report lands. This is a fresh re-search, so — same as
+    // assumptions — any prior curation (exclusions/additions/read) is
+    // intentionally discarded rather than carried onto the new report.
     const meta = item.payload.meta;
     document.getElementById("address").value = meta.address || "";
     const typeSel = document.getElementById("propertyType");
@@ -4420,7 +4435,7 @@
         .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
       list.unshift({
         ts: Date.now(),
-        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null, assumptions: meta.assumptions || null },
+        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null, assumptions: meta.assumptions || null, curation: meta.curation || null },
         data,
       });
       while (list.length > 10) list.pop();

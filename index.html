@@ -348,6 +348,8 @@
        nearly typographic) + estimate (caution sienna, distinct from .li gold). */
     .rd-badge.n { color: #5A6473; background: #F0EFE9; }
     .rd-badge.e { color: #9A3412; background: #F8E9DC; }
+    .rd-badge.u { background:#F4F3EE; color:#5A6473; border:1px solid #D8D4C9; }
+    tr.comp-excluded td > div, .card-excluded { opacity:.45; }
     /* Live comps table header — the landing exhibit's editorial th at the live
        table's own geometry (padding/alignment stay in the JS-built classes).
        No background here so the sortable hover rule can win. */
@@ -2145,7 +2147,7 @@
     // Sale comps only — lease $/SF/yr is a different unit and would skew the
     // range. Comp objects are kept alongside their $/SF so the trust line can
     // count provenance tiers.
-    const saleComps = currentComps
+    const saleComps = includedComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
       .map((c) => ({ comp: c, v: numericValue(c.price_per_sqft) }))
       .filter((x) => x.v > 0);
@@ -2280,6 +2282,8 @@
       const srcBits = [];
       if (pubN) srcBits.push(`${pubN} from public records`);
       if (verN) srcBits.push(`${verN} broker-verified`);
+      const userN = saleComps.filter((x) => compTier(x.comp) === "user").length;
+      if (userN) srcBits.push(userN + " added by you");
       trustEl.textContent = `Based on ${ppsfs.length} sale comps`
         + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`;
       trustEl.classList.remove("hidden");
@@ -2413,7 +2417,7 @@
       const found = numericValue(parsed.subject_size_sqft);
       if (found > 0) sizeR = { min: found, max: found };
     }
-    const ppsfs = currentComps
+    const ppsfs = includedComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
       .map((c) => numericValue(c.price_per_sqft))
       .filter((v) => v > 0);
@@ -2447,6 +2451,63 @@
       (npvAt(mid) > 0 ? lo = mid : hi = mid);
     }
     return ((lo + hi) / 2) * 100;
+  }
+
+  // ----------------------------------------------------------------------------
+  // Report curation — the user's own comp-set edits (exclusions, added comps,
+  // their price-discovery read). An opinion like the DCF assumptions: persists
+  // in saved reports/portfolio and rides into shares; added comps live ONLY in
+  // meta.curation.added (never data.comps), so nothing server-side ever
+  // harvests them. Exclusion identity is a content key mirroring the server's
+  // corpusKeyOf (address|date|price) so it survives sorting and re-renders.
+  // ----------------------------------------------------------------------------
+  function compKeyOf(c) {
+    const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+    return [norm(c.address), norm(c.date || c.deal_date), norm(c.price_or_rate)].join("|");
+  }
+
+  function ensureCuration(meta) {
+    if (!meta) return null;
+    if (!meta.curation || typeof meta.curation !== "object") meta.curation = {};
+    const cur = meta.curation;
+    if (!Array.isArray(cur.excluded)) cur.excluded = [];
+    cur.excluded = cur.excluded.filter((k) => typeof k === "string");
+    if (!Array.isArray(cur.added)) cur.added = [];
+    // Re-stamp provenance on every entry: a hand-edited or legacy payload must
+    // never smuggle a comp that claims Verified / Public record.
+    cur.added = cur.added.filter((c) => c && typeof c === "object").map((c) => ({
+      ...c, source_type: "user", user_added: true, verified: false,
+    }));
+    if (cur.read && typeof cur.read === "object") {
+      const dir = String(cur.read.direction || "").toLowerCase();
+      cur.read = {
+        direction: ["expanding", "flat", "contracting"].includes(dir) ? dir : null,
+        note: String(cur.read.note || "").slice(0, 140),
+      };
+      if (!cur.read.direction && !cur.read.note) cur.read = null;
+    } else {
+      cur.read = null;
+    }
+    return cur;
+  }
+
+  function isExcluded(c) {
+    if (!currentMeta || !currentMeta.curation) return false;
+    return currentMeta.curation.excluded.includes(compKeyOf(c));
+  }
+
+  // The single accessor every piece of valuation math reads. The table and
+  // mobile cards deliberately do NOT use it — excluded rows stay visible,
+  // greyed, as the audit trail.
+  function includedComps() {
+    return currentComps.filter((c) => !isExcluded(c));
+  }
+
+  function curationCounts() {
+    const cur = currentMeta && currentMeta.curation;
+    const excluded = cur ? currentComps.filter((c) => isExcluded(c)).length : 0;
+    const added = cur ? cur.added.length : 0;
+    return { total: currentComps.length, excluded, added, included: currentComps.length - excluded };
   }
 
   // One object (meta.assumptions) owns every analysis input, so the DCF card,
@@ -3136,7 +3197,7 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
     // Sale comps only — same rule as the value estimate.
-    const pts = currentComps
+    const pts = includedComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
       .map((c) => ({ v: numericValue(c.price_per_sqft), address: c.address || "" }))
       .filter((p) => p.v > 0)
@@ -3313,7 +3374,7 @@
 
     if (mapInstance) { mapInstance.remove(); mapInstance = null; }
 
-    const pts = (currentComps || [])
+    const pts = (includedComps() || [])
       .map((c) => ({ lat: parseFloat(c.lat), lng: parseFloat(c.lng), c }))
       .filter((p) => isFinite(p.lat) && isFinite(p.lng));
     const sLat = parseFloat(parsed.subject_lat);
@@ -3330,7 +3391,7 @@
           let found = false;
           const subj = await geocodeAddress(meta.address);
           if (subj) { parsed.subject_lat = String(subj.lat); parsed.subject_lng = String(subj.lng); found = true; }
-          for (const c of currentComps || []) {
+          for (const c of includedComps() || []) {
             if (!c.address) continue;
             const ll = await geocodeAddress(c.address);
             if (ll) { c.lat = String(ll.lat); c.lng = String(ll.lng); found = true; }
@@ -3481,7 +3542,7 @@
     // only the fast first paint. Runs after render so the map never waits.
     (async () => {
       const jobs = [geocodeAddress(meta.address).then((ll) => ({ subject: true, ll }))];
-      (currentComps || []).forEach((c) => {
+      (includedComps() || []).forEach((c) => {
         if (c.address) jobs.push(geocodeAddress(c.address).then((ll) => ({ c, ll })));
       });
       const results = await Promise.all(jobs);
@@ -3536,12 +3597,12 @@
 
   function renderStatTiles(parsed, meta) {
     const wrap = document.getElementById("statTiles");
-    const sizes = currentComps
+    const sizes = includedComps()
       .map((c) => numericValue(c.size_sqft))
       .filter(isFinite)
       .sort((a, b) => a - b);
     // Sale-comp $/SF spread — powers the little range bar under the Avg tile.
-    const ppsf = currentComps
+    const ppsf = includedComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
       .map((c) => numericValue(c.price_per_sqft))
       .filter((v) => isFinite(v) && v > 0)
@@ -3553,10 +3614,15 @@
     const median = sizes.length === 0 ? NaN
       : sizes.length % 2 ? sizes[Math.floor(mid)]
       : (sizes[mid - 1] + sizes[mid]) / 2;
+    const counts = curationCounts();
     const tiles = [
+      // Market-level model figure — deliberately NOT curated; the comp-set
+      // spread bar below is what reflects the user's comp set.
       { label: "Avg $/SF", value: parsed.avg_price_per_sqft || "" },
-      { label: "Comps Found", value: currentComps.length ? String(currentComps.length) : "",
-        animate: { target: currentComps.length, format: (n) => String(Math.round(n)) } },
+      { label: "Comps Found",
+        value: counts.excluded > 0 ? `${counts.included} (of ${counts.total} found)`
+          : currentComps.length ? String(currentComps.length) : "",
+        animate: { target: counts.included, format: (n) => String(Math.round(n)) } },
       { label: "Median Size", value: isFinite(median) ? Math.round(median).toLocaleString() + " SF" : "",
         animate: { target: median, format: (n) => Math.round(n).toLocaleString() + " SF" } },
       { label: "Lookback", value: meta.months ? (meta.months === 1 ? "1 month" : meta.months + " months") : "" },
@@ -3601,7 +3667,11 @@
     if (!parsed || !Array.isArray(parsed.comps)) {
       throw new Error("Parsed response is missing a 'comps' array.");
     }
-    currentComps = parsed.comps;
+    const cur = ensureCuration(meta);
+    SOURCE_TIERS.user.label = meta.shared ? "Owner-added" : "Added by you";
+    // Added comps join the working list but ride ONLY in meta.curation.added —
+    // parsed.comps is what saves/shares as data, and it never contains them.
+    currentComps = cur && cur.added.length ? parsed.comps.concat(cur.added) : parsed.comps;
     // Number the comps once, in arrival order. The number is the comp's
     // identity for the whole report — it survives sorting and filtering, and
     // the map pin carries the same digit.
@@ -4719,6 +4789,7 @@
     listing:       { label: "Listing",       cls: "li", legend: "from a listing page or brokerage flyer" },
     news:          { label: "News",          cls: "n",  legend: "from a news article or press release" },
     estimate:      { label: "Estimate",      cls: "e",  legend: "not tied to a single source; verify before relying on it" },
+    user:          { label: "Added by you",  cls: "u",  legend: "entered manually; not from CompNinja's sources" },
   };
   function compTier(comp) {
     if (isVerifiedComp(comp)) return "verified";
@@ -5079,7 +5150,7 @@
     // The provenance tier is a derived column (Verified outranks source_type),
     // so it's appended here rather than living in COLUMNS.
     const header = [...COLUMNS.map((c) => esc(c.label)), esc("Source confidence")].join(",");
-    const rows = currentComps.map((comp) =>
+    const rows = includedComps().map((comp) =>
       [...COLUMNS.map((c) => esc(comp[c.key])), esc((SOURCE_TIERS[compTier(comp)] || {}).label || "")].join(","));
     // Title row so an exported file records what was searched and when.
     const title = currentMeta
@@ -5125,7 +5196,7 @@
 
       const compsAoa = [
         [...COLUMNS.map((c) => c.label), "Source confidence"],
-        ...currentComps.map((comp) => [
+        ...includedComps().map((comp) => [
           ...COLUMNS.map((c) => String(comp[c.key] ?? "")),
           (SOURCE_TIERS[compTier(comp)] || {}).label || "",
         ]),
@@ -5251,7 +5322,7 @@
       // otherwise taint the canvas and break the whole export.
       const canvas = await html2canvas(node, {
         scale: 2, backgroundColor: "#FBFBF9", useCORS: true,
-        ignoreElements: (el) => el.id === "mapCard" || el.id === "copySummaryBtn" || el.id === "bovCtaWrap",
+        ignoreElements: (el) => el.id === "mapCard" || el.id === "copySummaryBtn" || el.id === "bovCtaWrap" || (el.classList && el.classList.contains("no-capture")),
       });
       const a = document.createElement("a");
       a.download = "market-comp-report.png";

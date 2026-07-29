@@ -1,4 +1,5 @@
 [
+  { "date": "2026-07-29", "type": "feature", "title": "Street View photos in map popups", "details": "Clicking a map pin shows a street-level photo of the building above the popup text, served through a key-holding proxy. Dark until the Google key is configured; popups stay text-only on any failure." },
   { "date": "2026-07-29", "type": "feature", "title": "Development Hub", "details": "New /dev page: changelog timeline of every shipped fix and improvement, plus an editable Future Ideas list. Admin-key gated, like /admin." },
   { "date": "2026-07-28", "type": "feature", "title": "In-report corpus comp offers", "details": "Reports now offer provenance-good comps from CompNinja's own records for the subject's market and type, with one-click add." },
   { "date": "2026-07-28", "type": "feature", "title": "Report curation", "details": "Exclude or restore comps, add your own, and record a price-discovery read. Curation persists with the report, annotates exports, and never leaks user-authored comps into the corpus." },

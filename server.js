@@ -1226,6 +1226,8 @@ async function harvestComps(type, searchAddress, payload) {
     // be stored indistinguishable from USD and poison retrieval/market pages.
     // Non-US markets are rare enough that skipping beats an ALTER TABLE (the
     // missing-column class of outage — see CLAUDE.md corpus health).
+    // Missing currency = pre-feature cached payload that never saw
+    // normalizeCurrency(); treat as USD so old cached reports still harvest.
     const cur = String((payload && payload.currency) || "USD").toUpperCase();
     if (cur !== "USD") {
       console.log(`🗃  Comp corpus skipped (non-USD report: ${cur} — ${marketOf(searchAddress)})`);

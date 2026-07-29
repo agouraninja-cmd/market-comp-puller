@@ -284,7 +284,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   existed, so the lifetime figure reads far lower than current behavior — judge
   the ratio going forward, not the headline. A hit requires ≥4 recent priced
   comps in that exact market **and** property type, so it only fires on repeat
-  searches in the same market. `analytics_events` is queryable directly in
+  searches in the same market. Non-USD searches can never become corpus-covered
+  (harvest skips them), so heavy international use slightly deflates the tile.
+  `analytics_events` is queryable directly in
   Supabase when the dashboard is unavailable: `source = 'corpus'` marks a hit.
 - **Accounts + My Desk** (added 2026-07-19; spec/plan in `docs/superpowers/`):
   email+password accounts with a server-synced property **portfolio**
@@ -428,6 +430,24 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    list (min 3 comps carrying the metric). Land is quoted in acres but the
    valuation path is $/SF, so `renderOwnerHero` converts acres × 43,560 when no
    SF is given.
+
+5. **Currency (non-US searches).** The model quotes a foreign target's prices
+   in the LOCAL currency and returns top-level `currency` (ISO code) +
+   `usd_rate` (value of 1 unit in USD, bounded to (0, 10) — anything larger
+   is treated as an inverted rate and dropped), normalized by
+   `normalizeCurrency()` in server.js. The front-end never converts the
+   math — `formatUsd()` and `displayMoney()` convert at the formatting layer
+   when the report-header "Show in USD" switch is on, and `displayMoney`
+   REFUSES ambiguous strings (ranges, European grouping, shorthand like
+   "1.2M", negative heads) rather than risk a wrong number — refused values
+   render raw. `harvestComps()` skips non-USD reports entirely (corpus rows
+   have no currency column, so foreign prices would masquerade as USD —
+   skipping beats an ALTER TABLE for a rare case). Note `marketOf()` yields
+   just "Canada" for Canadian addresses (it parses "City, ST"); harmless
+   while non-USD reports skip the corpus, but fix it before ever harvesting
+   them. International searches also run close to `SEARCH_TIMEOUT_MS`
+   (100s) — the first Canadian test search timed out and succeeded on
+   retry.
 
 ## Deployment
 

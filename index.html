@@ -1232,17 +1232,19 @@
             <p id="userReadNote" class="text-sm text-[#374253]"></p>
           </div>
           <div id="userReadControls" class="no-print no-capture hidden mt-3 pt-3 border-t border-[#F0EFE9]">
-            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-2">Your read of this market</div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">Your read of this market</div>
+            <p class="text-xs text-[#8A93A0] mb-2">The read above is automated. Agree or disagree &mdash; record your own call here. It's saved with this report and appears next to the automated read on prints, exports, and shared links (labeled &ldquo;Owner's read&rdquo;).</p>
             <div class="flex flex-wrap items-center gap-2">
               <div class="inline-flex rounded border border-[#D8D4C9] overflow-hidden" role="group" aria-label="Your price-discovery read">
                 <button type="button" data-read-dir="expanding" class="px-3 py-1.5 text-xs font-medium">Expanding</button>
                 <button type="button" data-read-dir="flat" class="px-3 py-1.5 text-xs font-medium border-l border-[#D8D4C9]">Flat</button>
                 <button type="button" data-read-dir="contracting" class="px-3 py-1.5 text-xs font-medium border-l border-[#D8D4C9]">Contracting</button>
               </div>
-              <input id="userReadNoteInput" type="text" maxlength="140" placeholder="optional note, e.g. two competing listings just cut asking"
+              <input id="userReadNoteInput" type="text" maxlength="140" placeholder="Note (optional)" aria-label="Note (optional)"
                 class="flex-1 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-xs text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+              <span id="userReadSavedFlash" class="text-xs text-[#8A93A0]" aria-live="polite"></span>
             </div>
-            <p class="text-xs text-[#8A93A0] mt-2">Click a direction again to clear it. Recorded next to the automated read — your call, clearly labeled.</p>
+            <p class="text-xs text-[#8A93A0] mt-2">Click a direction again to clear it.</p>
           </div>
         </div>
 
@@ -1923,6 +1925,7 @@
     } catch (_) { /* if config fails, treat as open */ }
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
+    streetviewEnabled = Boolean(cfg.streetview);
 
     if (!cfg.authRequired) return;            // no password configured
 
@@ -3656,12 +3659,19 @@
   // then move to geocoded positions as lookups resolve.
   // ----------------------------------------------------------------------------
   let mapInstance = null;
+  let streetviewEnabled = false; // set from /api/config in initGate()
   let mapGeneration = 0;   // stale async geocodes must not touch a newer map
   // Set by each renderMap; Esc exits fullscreen from anywhere. One listener,
   // added once — renderMap runs per search and must not stack handlers.
   let exitMapFullscreen = null;
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && exitMapFullscreen) exitMapFullscreen();
+    if (e.key !== "Escape" || !exitMapFullscreen) return;
+    // Mark the event consumed when fullscreen actually exits, so the
+    // Escape-goes-home listener doesn't also fire on the same keypress.
+    if (document.getElementById("compMap").classList.contains("map-fullscreen")) {
+      exitMapFullscreen();
+      e.preventDefault();
+    }
   });
   // The #reportArea > * entrance animation is fill:forwards, and a filled
   // transform animation keeps that child a containing block for
@@ -3805,15 +3815,28 @@
     // markers to geocoded spots, or creates ones the model gave no coords for.
     let subjMarker = null;
     const compMarkersByNum = {};
+    // Street View photo (only when the server holds a key). Popup content is
+    // a FUNCTION so Leaflet builds it at open time from the marker's CURRENT
+    // position — refinePins() moves pins after first paint, and the photo
+    // must show the geocoded spot, not the model's block-level guess. The
+    // img's onerror removes it, so a 404 (no key, no imagery, rate limit)
+    // collapses back to today's text-only popup. Coordinates come from
+    // getLatLng() — numbers, nothing user-authored.
+    const svPhoto = (marker) => {
+      if (!streetviewEnabled) return "";
+      const ll = marker.getLatLng();
+      return '<img src="/api/streetview?lat=' + ll.lat.toFixed(6) + '&lng=' + ll.lng.toFixed(6) +
+        '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt="" onerror="this.remove()">';
+    };
     const addSubjMarker = (lat, lng) => {
       const subjIcon = L.divIcon({
         className: "",
         html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
-      return L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 })
-        .addTo(mapInstance)
-        .bindPopup(`<strong>Your property:</strong> ${escMap(meta.address)}`);
+      const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
+      m.bindPopup(() => svPhoto(m) + `<strong>Your property:</strong> ${escMap(meta.address)}`);
+      return m;
     };
     const addCompMarker = (c, lat, lng) => {
       // Each pin carries the comp's report-wide number, matching its table row.
@@ -3824,9 +3847,9 @@
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
       const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
-      return L.marker([lat, lng], { icon: dotIcon })
-        .addTo(mapInstance)
-        .bindPopup(`<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`);
+      const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
+      m.bindPopup(() => svPhoto(m) + `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`);
+      return m;
     };
 
     const bounds = [];
@@ -4851,6 +4874,37 @@
   // Same modal action the in-page broker CTA uses.
   document.getElementById("footerSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
 
+  // ----------------------------------------------------------------------------
+  // Escape closes the report and returns to the home view. The report itself
+  // is safe — fresh searches were already saved to the "Saved reports" chips
+  // at render time, so nothing is lost by leaving.
+  // ----------------------------------------------------------------------------
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const results = document.getElementById("results");
+    if (results.classList.contains("hidden")) return;   // already on the home view
+    // Overlays own Escape: the fullscreen map and any open modal handle (or
+    // deliberately ignore) it themselves — don't also navigate underneath them.
+    // The map listener runs first and preventDefaults when it exits fullscreen.
+    if (e.defaultPrevented) return;
+    if (document.getElementById("compMap").classList.contains("map-fullscreen")) return;
+    if (["leadModal", "acctModal", "compModal", "confirmModal"]
+        .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
+    // A focused form control keeps Escape for itself — just drop focus.
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
+    results.classList.add("hidden");
+    document.getElementById("homeInfo").classList.remove("hidden");
+    // Samples and shared reports aren't saved to this browser, so no note.
+    if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
+      showStatus("Report closed — reopen it any time from <strong>Saved reports</strong> below, at no cost.", "info");
+    } else {
+      hideStatus();
+    }
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  });
+
   // Market Explorer: matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed
   // search, ~30-60s) or handed to the valuation form pre-filled. The list
@@ -5420,6 +5474,16 @@
       lastPublished = { parsed: null, url: "" };
       renderValueDrivers(currentParsed, currentMeta);
       persistAssumptions();
+      flashReadSaved();
+    };
+    // Mirrors the portfolio button's "Saved ✓" text-swap micro-confirmation.
+    let readSavedTimer = null;
+    const flashReadSaved = () => {
+      const el = document.getElementById("userReadSavedFlash");
+      if (!el) return;
+      el.textContent = "Saved ✓";
+      clearTimeout(readSavedTimer);
+      readSavedTimer = setTimeout(() => { el.textContent = ""; }, 2000);
     };
     let readNoteTimer = null;
     controls.querySelectorAll("[data-read-dir]").forEach((b) => {

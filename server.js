@@ -1222,6 +1222,15 @@ async function seedCorpusSeen() {
 
 async function harvestComps(type, searchAddress, payload) {
   try {
+    // Corpus rows have no currency column, so a foreign report's prices would
+    // be stored indistinguishable from USD and poison retrieval/market pages.
+    // Non-US markets are rare enough that skipping beats an ALTER TABLE (the
+    // missing-column class of outage — see CLAUDE.md corpus health).
+    const cur = String((payload && payload.currency) || "USD").toUpperCase();
+    if (cur !== "USD") {
+      console.log(`🗃  Comp corpus skipped (non-USD report: ${cur} — ${marketOf(searchAddress)})`);
+      return;
+    }
     await seedCorpusSeen();
     const comps = payload && Array.isArray(payload.comps) ? payload.comps : [];
     const rows = [];

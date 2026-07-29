@@ -3275,9 +3275,9 @@
     document.getElementById("rrOcc").textContent = st.occupancy != null ? Math.round(st.occupancy * 100) + "%" : "—";
     document.getElementById("rrOccSub").textContent = st.occupancy == null ? "enter the building SF above"
       : st.occupancy > 1 ? "leased SF exceeds the entered building SF" : `${st.totSf.toLocaleString()} SF leased`;
-    document.getElementById("rrRent").textContent = st.totRent ? "$" + Math.round(st.totRent).toLocaleString() : "—";
+    document.getElementById("rrRent").textContent = st.totRent ? formatUsd(Math.round(st.totRent), { maximumFractionDigits: 0 }) : "—";
     document.getElementById("rrRentSub").textContent = s.noi > 0
-      ? `base rent before expenses & vacancy — your NOI is $${Math.round(s.noi).toLocaleString()}` : "";
+      ? `base rent before expenses & vacancy — your NOI is ${formatUsd(Math.round(s.noi), { maximumFractionDigits: 0 })}` : "";
     document.getElementById("rrBasis").textContent = `${st.leases.length} lease${st.leases.length === 1 ? "" : "s"}`;
     const wrap = document.getElementById("rrScheduleWrap");
     wrap.innerHTML = "";
@@ -5370,7 +5370,9 @@
       // a sane per-SF band (guards against a per-SF figure typed as the price).
       if (!ppsf && v("acTransaction") !== "Lease" && priceNum > 0 && sizeNum > 0) {
         const derived = priceNum / sizeNum;
-        if (derived >= 1 && derived <= 100000) ppsf = "$" + (Math.round(derived * 100) / 100).toLocaleString();
+        // "$" only when the report is USD — on a foreign report the user's
+        // entries are local currency, and a baked-in "$" would be a false label.
+        if (derived >= 1 && derived <= 100000) ppsf = (reportCurrency.code === "USD" ? "$" : "") + (Math.round(derived * 100) / 100).toLocaleString();
       }
       const comp = {
         address,

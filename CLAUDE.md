@@ -323,7 +323,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   server.js and does). **The standing devlog rule: every time you ship a
   fix, improvement, or feature to this project, append an entry to
   `devlog.json` in the same commit** — shape `{ "date": "YYYY-MM-DD", "type":
-  "fix"|"improvement"|"feature", "title": "...", "details": "optional" }`;
+  "fix"|"improvement"|"feature", "title": "...", "details": "optional",
+  "commit": "optional short hash (renders as a GitHub link on /dev)" }`;
   file order doesn't matter (the page groups/sorts by date); routine
   docs-only or refactor commits don't need entries, anything a changelog
   reader would care about does. Future ideas are whole-list replaced via

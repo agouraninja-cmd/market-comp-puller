@@ -3218,8 +3218,17 @@ try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
 //     id text primary key,
 //     text text not null,
 //     status text not null default 'open',
+//     priority text,
+//     notes text,
+//     done_at timestamptz,
 //     created_at timestamptz not null default now()
 //   );
+// Tables created before priority/notes/done_at existed need (run before
+// deploying — PostgREST 400s on unknown columns, the comp-corpus lesson):
+//   alter table dev_ideas
+//     add column if not exists priority text,
+//     add column if not exists notes text,
+//     add column if not exists done_at timestamptz;
 // ---------------------------------------------------------------------------
 async function readDevIdeas() {
   let fileIdeas = [];
@@ -3231,21 +3240,29 @@ async function readDevIdeas() {
   }
   if (!DB_CONFIGURED) return fileIdeas;
   try {
-    const rows = await sbRequest("GET", "dev_ideas?select=id,text,status,created_at&order=created_at.asc");
+    const rows = await sbRequest("GET", "dev_ideas?select=id,text,status,priority,notes,done_at,created_at&order=created_at.asc");
     return Array.isArray(rows) ? rows : [];
   } catch (err) {
     console.error("dev_ideas DB read failed — returning file ideas:", err.message);
     return fileIdeas;
   }
 }
-// Whole-list replace, like the other admin-managed lists. A DB failure falls
-// back to the file so a save is never lost outright (though the file is
-// ephemeral on most hosts — the DDL above is the durable path).
+// Whole-list replace, like the other admin-managed lists. Upsert first, prune
+// second — the previous DELETE-all-then-POST could leave the table empty when
+// the POST half failed. Ids are server-validated UUIDs (the PUT normalizer
+// regenerates anything else), so they are safe inside the not.in.() filter.
+// A DB failure falls back to the file so a save is never lost outright
+// (though the file is ephemeral on most hosts — the DDL above is the durable
+// path).
 async function writeDevIdeas(ideas) {
   if (DB_CONFIGURED) {
     try {
-      await sbRequest("DELETE", "dev_ideas?id=not.is.null");
-      if (ideas.length) await sbRequest("POST", "dev_ideas", ideas);
+      if (ideas.length) {
+        await sbRequest("POST", "dev_ideas?on_conflict=id", ideas, { Prefer: "resolution=merge-duplicates" });
+        await sbRequest("DELETE", `dev_ideas?id=not.in.(${ideas.map((i) => i.id).join(",")})`);
+      } else {
+        await sbRequest("DELETE", "dev_ideas?id=not.is.null");
+      }
       return "db";
     } catch (err) {
       console.error("dev_ideas DB write failed — falling back to file:", err.message);
@@ -3309,14 +3326,40 @@ h1.h{font-size:32px;line-height:1.15;margin:10px 0 0}
 .badge.feature{background:#1A2433;color:#fff}
 .badge.improvement{background:#F5F4EF;color:#1A2433;border:1px solid #D8D4C9}
 .badge.fix{background:#fff;color:#B91C1C;border:1px solid #E8B4B4}
-.idea{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid #F0EFE9;font-size:14px}
-.idea:first-of-type{border-top:none}
-.idea input[type=checkbox]{width:15px;height:15px;accent-color:#B91C1C;flex:none;cursor:pointer}
-.idea .t{flex:1;min-width:0;overflow-wrap:anywhere;color:#374253}
+.idea{display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-top:1px solid #F0EFE9;font-size:14px}
+.bucket-h+.idea{border-top:none}
+.idea input[type=checkbox]{width:15px;height:15px;accent-color:#B91C1C;flex:none;cursor:pointer;margin-top:3px}
+.idea .tx{flex:1;min-width:0}
+.idea .t{overflow-wrap:anywhere;color:#374253}
+.idea .n{color:#8A93A0;font-size:12.5px;margin-top:1px;overflow-wrap:anywhere}
+.idea .n-edit{display:block;width:100%;margin-top:4px;padding:6px 9px;border:1px solid #D8D4C9;border-radius:4px;
+  font-family:inherit;font-size:12.5px;color:#1A2433;background:#FBFBF9}
+.idea .n-edit:focus{outline:none;border-color:#B91C1C}
 .idea.done .t{color:#8A93A0;text-decoration:line-through}
 .idea .d{color:#8A93A0;font-size:12px;white-space:nowrap}
-.idea .rm{background:none;border:0;color:#8A93A0;font-size:12.5px;cursor:pointer;font-family:inherit;padding:2px 4px}
-.idea .rm:hover{color:#B91C1C;text-decoration:underline}
+.idea .rm,.idea .nt{background:none;border:0;color:#8A93A0;font-size:12.5px;cursor:pointer;font-family:inherit;padding:2px 4px}
+.idea .rm:hover{color:#B91C1C;text-decoration:underline}.idea .nt:hover{color:#1A2433;text-decoration:underline}
+.idea .pr{flex:none;background:#F5F4EF;border:1px solid #D8D4C9;border-radius:3px;color:#5A6473;font-size:10px;
+  font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;cursor:pointer;font-family:inherit;margin-top:2px}
+.idea .pr.now{background:#fff;border-color:#E8B4B4;color:#B91C1C}
+.idea .pr.later{color:#8A93A0}
+.bucket-h{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600;margin:16px 0 2px}
+.bucket-h:first-child{margin-top:0}
+#ideas.busy{opacity:.55;pointer-events:none}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.chip{background:#fff;border:1px solid #D8D4C9;border-radius:999px;padding:4px 12px;font-size:12px;color:#5A6473;
+  cursor:pointer;font-family:inherit}
+.chip:hover{color:#1A2433}
+.chip.on{border-color:#B91C1C;color:#B91C1C;font-weight:600}
+.logsearch{width:100%;padding:8px 12px;border:1px solid #D8D4C9;border-radius:4px;font-size:13px;
+  font-family:inherit;color:#1A2433;background:#FBFBF9;margin:0 0 6px}
+.logsearch:focus{outline:none;border-color:#B91C1C}
+.logmeta{color:#8A93A0;font-size:12.5px;margin:0 0 12px}
+.cmt{font-size:11.5px;font-weight:400;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;margin-left:6px}
+details.month{border-top:1px solid #F0EFE9;margin-top:14px;padding-top:10px}
+summary.month-sum{cursor:pointer;font-family:Georgia,'Times New Roman',serif;font-size:16px;color:#1A2433;padding:2px 0}
+summary.month-sum:hover{color:#B91C1C}
+details.month .day:first-of-type{border-top:none;margin-top:4px}
 .add{display:flex;gap:10px;margin-top:14px}
 .add input{flex:1;min-width:0;padding:9px 12px;border:1px solid #D8D4C9;border-radius:4px;font-size:14px;
   font-family:inherit;color:#1A2433;background:#FBFBF9}
@@ -3340,17 +3383,25 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 <div class="wrap">
 <div class="kicker">Internal</div>
 <h1 class="h">Development Hub</h1>
-<p class="sub">Every shipped fix and improvement, by date &mdash; plus the ideas queue for what might come next.</p>
+<p class="sub">The ideas queue for what might come next &mdash; plus every shipped fix and improvement, by date.</p>
 <div id="gate" class="gate"><span class="lab">Enter admin key</span>
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">Open the hub</button><div id="err" class="err"></div></div>
 <div id="hub" style="display:none">
   <div class="card"><h2>Future ideas</h2>
+    <div id="ideas-err" class="err" style="display:none"></div>
+    <div id="idea-nudge" class="muted" style="display:none">Shipped &#10003; &mdash; remember to add the matching devlog entry.</div>
     <div id="ideas"></div>
     <div class="add"><input id="idea-in" placeholder="e.g. Email a weekly market digest to watchlist users" maxlength="500"/>
     <button class="btn" id="idea-add">Add idea</button></div>
   </div>
-  <div class="card"><h2>Changelog</h2><div id="log"></div></div>
+  <div class="card"><h2>Changelog</h2>
+    <div id="log-meta" class="logmeta"></div>
+    <div class="chips" id="log-chips"></div>
+    <input id="log-q" class="logsearch" type="search" placeholder="Filter entries&hellip;" autocomplete="off"/>
+    <div id="log-err" class="err" style="display:none"></div>
+    <div id="log"></div>
+  </div>
 </div>
 </div>
 </main>
@@ -3359,72 +3410,226 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
   <span>Internal page &middot; <a href="/admin">Analytics</a> &middot; <a href="/">Back to the app</a></span>
 </div></footer>
 <script>
-var KEYK="cn_admin_key",KEY="",IDEAS=[];
+var KEYK="cn_admin_key",KEY="",IDEAS=[],IDEAS_OK=false,SAVING=false;
+var LOG=[],LOG_TYPE="all",LOG_Q="";
+var COMMIT_URL="https://github.com/agouraninja-cmd/market-comp-puller/commit/";
+var PRIORITIES=["now","next","later"],PR_LABEL={now:"Now",next:"Next",later:"Later"};
 var MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function fmtDate(ymd){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(ymd||""));
   if(!m)return esc(ymd);return MONTHS[Number(m[2])-1]+" "+Number(m[3])+", "+m[1];}
-function renderLog(entries){
+function fmtMonth(ym){var m=/^([0-9]{4})-([0-9]{2})/.exec(String(ym||""));
+  if(!m)return esc(ym);return MONTHS[Number(m[2])-1]+" "+m[1];}
+function normType(t){return ["fix","improvement","feature"].indexOf(t)>=0?t:"improvement";}
+
+// ---- Changelog: meta line, type chips, text filter, collapsible months ----
+function renderLogMeta(){
+  var el=document.getElementById("log-meta");
+  if(!LOG.length){el.textContent="";return;}
+  var dates=LOG.map(function(e){return String(e.date||"");}).filter(Boolean).sort();
+  var newest=dates[dates.length-1],oldest=dates[0];
+  var days=Math.floor((Date.now()-new Date(newest+"T12:00:00").getTime())/864e5);
+  var ago=days<=0?"today":days===1?"yesterday":days+" days ago";
+  el.textContent="Last shipped "+ago+" · "+LOG.length+(LOG.length===1?" entry":" entries")+" since "+fmtMonth(oldest);
+}
+function renderChips(){
+  var counts={all:LOG.length,feature:0,improvement:0,fix:0};
+  LOG.forEach(function(e){counts[normType(e.type)]++;});
+  var el=document.getElementById("log-chips");el.innerHTML="";
+  [["all","All"],["feature","Features"],["improvement","Improvements"],["fix","Fixes"]].forEach(function(p){
+    var b=document.createElement("button");b.type="button";
+    b.className="chip"+(LOG_TYPE===p[0]?" on":"");
+    b.textContent=p[1]+" ("+counts[p[0]]+")";
+    b.addEventListener("click",function(){LOG_TYPE=p[0];renderChips();renderLog();});
+    el.appendChild(b);
+  });
+}
+function entryHTML(e){
+  var t=normType(e.type);
+  var cm=e.commit&&/^[0-9a-f]{7,40}$/i.test(String(e.commit))?String(e.commit):"";
+  return '<div class="entry"><span class="badge '+t+'">'+t+'</span><div><div class="entry-title">'+esc(e.title)+
+    (cm?'<a class="cmt" href="'+COMMIT_URL+cm+'" target="_blank" rel="noopener">'+cm.slice(0,7)+'</a>':"")+'</div>'+
+    (e.details?'<div class="entry-details">'+esc(e.details)+'</div>':"")+'</div></div>';
+}
+function renderLog(){
+  var q=LOG_Q.toLowerCase();
+  var entries=LOG.filter(function(e){
+    if(LOG_TYPE!=="all"&&normType(e.type)!==LOG_TYPE)return false;
+    if(q&&(String(e.title||"")+" "+String(e.details||"")).toLowerCase().indexOf(q)<0)return false;
+    return true;
+  });
   var by={},dates=[];
   entries.forEach(function(e){if(!by[e.date]){by[e.date]=[];dates.push(e.date);}by[e.date].push(e);});
   dates.sort();dates.reverse();
-  document.getElementById("log").innerHTML=dates.length?dates.map(function(d){
-    return '<div class="day"><div class="day-date">'+fmtDate(d)+'</div>'+by[d].map(function(e){
-      var t=["fix","improvement","feature"].indexOf(e.type)>=0?e.type:"improvement";
-      return '<div class="entry"><span class="badge '+t+'">'+t+'</span><div><div class="entry-title">'+esc(e.title)+'</div>'+
-        (e.details?'<div class="entry-details">'+esc(e.details)+'</div>':"")+'</div></div>';
-    }).join("")+'</div>';
-  }).join(""):'<div class="muted">No entries yet.</div>';
+  var months=[],byMonth={};
+  dates.forEach(function(d){var m=String(d).slice(0,7);if(!byMonth[m]){byMonth[m]=[];months.push(m);}byMonth[m].push(d);});
+  var filtering=LOG_TYPE!=="all"||!!q;
+  document.getElementById("log").innerHTML=months.length?months.map(function(m,mi){
+    var body=byMonth[m].map(function(d){
+      return '<div class="day"><div class="day-date">'+fmtDate(d)+'</div>'+by[d].map(entryHTML).join("")+'</div>';
+    }).join("");
+    var n=byMonth[m].reduce(function(s,d){return s+by[d].length;},0);
+    // Newest month stays expanded; older months collapse — except while
+    // filtering, when hiding matches inside a closed month would be confusing.
+    if(mi===0||filtering)return body;
+    return '<details class="month"><summary class="month-sum">'+fmtMonth(m)+
+      ' <span class="muted">&middot; '+n+(n===1?" entry":" entries")+'</span></summary>'+body+'</details>';
+  }).join(""):'<div class="muted">'+(LOG.length?"Nothing matches this filter.":"No entries yet.")+'</div>';
+}
+function renderLogUI(){renderLogMeta();renderChips();renderLog();}
+document.getElementById("log-q").addEventListener("input",function(e){LOG_Q=e.target.value.trim();renderLog();});
+
+// ---- Ideas: priority buckets, notes, shipped history ----
+// Every mutation goes through saveIdeas (whole-list PUT). IDEAS_OK guards the
+// silent-wipe failure mode: if the ideas GET didn't succeed, editing stays
+// disabled so an empty snapshot can never be PUT back over the real list.
+function withProps(x,p){
+  var o={id:x.id,text:x.text,status:x.status,priority:x.priority,notes:x.notes,done_at:x.done_at,created_at:x.created_at};
+  for(var k in p)o[k]=p[k];
+  return o;
+}
+function mutateIdea(id,fn){
+  saveIdeas(IDEAS.map(function(x){return x.id===id?fn(x):x;}));
+}
+var nudgeTimer=null;
+function showNudge(){
+  var n=document.getElementById("idea-nudge");n.style.display="block";
+  clearTimeout(nudgeTimer);nudgeTimer=setTimeout(function(){n.style.display="none";},8000);
+}
+function ideasErr(msg){
+  var e=document.getElementById("ideas-err");
+  e.textContent=msg||"";e.style.display=msg?"block":"none";
+}
+function setBusy(b){
+  SAVING=b;
+  document.getElementById("ideas").className=b?"busy":"";
+  document.getElementById("idea-add").disabled=b||!IDEAS_OK;
+  document.getElementById("idea-in").disabled=b||!IDEAS_OK;
+}
+function ideaRow(idea){
+  var done=idea.status==="done";
+  var row=document.createElement("div");
+  row.className="idea"+(done?" done":"");
+  var when=done&&idea.done_at?idea.done_at:idea.created_at;
+  var pr=PRIORITIES.indexOf(idea.priority)>=0?idea.priority:"next";
+  row.innerHTML='<input type="checkbox"'+(done?" checked":"")+' title="'+(done?"Reopen":"Mark shipped")+'"/>'+
+    '<div class="tx"><span class="t">'+esc(idea.text)+'</span>'+
+    (idea.notes?'<div class="n">'+esc(idea.notes)+'</div>':"")+'</div>'+
+    (done?"":'<button class="pr '+pr+'" title="Cycle priority">'+PR_LABEL[pr]+'</button>')+
+    '<span class="d">'+(when?esc(new Date(when).toLocaleDateString()):"")+'</span>'+
+    '<button class="nt">Notes</button>'+
+    '<button class="rm">Delete</button>';
+  row.querySelector("input").addEventListener("change",function(){
+    if(done){mutateIdea(idea.id,function(x){return withProps(x,{status:"open",done_at:null});});}
+    else{mutateIdea(idea.id,function(x){return withProps(x,{status:"done"});});showNudge();}
+  });
+  var prBtn=row.querySelector(".pr");
+  if(prBtn)prBtn.addEventListener("click",function(){
+    mutateIdea(idea.id,function(x){
+      return withProps(x,{priority:PRIORITIES[(PRIORITIES.indexOf(pr)+1)%PRIORITIES.length]});
+    });
+  });
+  row.querySelector(".nt").addEventListener("click",function(){
+    if(row.querySelector(".n-edit"))return;
+    var inp=document.createElement("input");
+    inp.className="n-edit";inp.maxLength=500;inp.value=idea.notes||"";inp.placeholder="Add a note…";
+    var nEl=row.querySelector(".n");if(nEl)nEl.style.display="none";
+    row.querySelector(".tx").appendChild(inp);
+    inp.focus();
+    var closed=false;
+    function commit(save){
+      if(closed)return;closed=true;
+      var v=inp.value.trim();
+      if(save&&v!==(idea.notes||"")){mutateIdea(idea.id,function(x){return withProps(x,{notes:v||null});});}
+      else{renderIdeas();}
+    }
+    inp.addEventListener("keydown",function(e){
+      if(e.key==="Enter")commit(true);
+      else if(e.key==="Escape")commit(false);
+    });
+    inp.addEventListener("blur",function(){commit(true);});
+  });
+  row.querySelector(".rm").addEventListener("click",function(){
+    if(!window.confirm("Delete this idea? This can't be undone."))return;
+    saveIdeas(IDEAS.filter(function(x){return x.id!==idea.id;}));
+  });
+  return row;
 }
 function renderIdeas(){
-  var el=document.getElementById("ideas");
-  el.innerHTML=IDEAS.length?"":'<div class="muted">No ideas yet &mdash; add the first one below.</div>';
-  IDEAS.forEach(function(idea,i){
-    var row=document.createElement("div");
-    row.className="idea"+(idea.status==="done"?" done":"");
-    row.innerHTML='<input type="checkbox"'+(idea.status==="done"?" checked":"")+'/>'+
-      '<span class="t">'+esc(idea.text)+'</span>'+
-      '<span class="d">'+(idea.created_at?esc(new Date(idea.created_at).toLocaleDateString()):"")+'</span>'+
-      '<button class="rm">Delete</button>';
-    row.querySelector("input").addEventListener("change",function(){
-      saveIdeas(IDEAS.map(function(x,j){return j===i?{id:x.id,text:x.text,created_at:x.created_at,status:x.status==="done"?"open":"done"}:x;}));
-    });
-    row.querySelector(".rm").addEventListener("click",function(){
-      saveIdeas(IDEAS.filter(function(_,j){return j!==i;}));
-    });
-    el.appendChild(row);
+  var el=document.getElementById("ideas");el.innerHTML="";
+  if(!IDEAS.length){el.innerHTML='<div class="muted">No ideas yet &mdash; add the first one below.</div>';return;}
+  var open={now:[],next:[],later:[]},shipped=[];
+  IDEAS.forEach(function(x){
+    if(x.status==="done")shipped.push(x);
+    else open[PRIORITIES.indexOf(x.priority)>=0?x.priority:"next"].push(x);
   });
+  shipped.sort(function(a,b){return String(b.done_at||"").localeCompare(String(a.done_at||""));});
+  PRIORITIES.forEach(function(p){
+    if(!open[p].length)return;
+    var h=document.createElement("div");h.className="bucket-h";h.textContent=PR_LABEL[p];
+    el.appendChild(h);
+    open[p].forEach(function(x){el.appendChild(ideaRow(x));});
+  });
+  if(shipped.length){
+    var h=document.createElement("div");h.className="bucket-h";h.textContent="Shipped";
+    el.appendChild(h);
+    shipped.forEach(function(x){el.appendChild(ideaRow(x));});
+  }
 }
 function saveIdeas(next){
+  if(!IDEAS_OK||SAVING)return;
+  setBusy(true);ideasErr("");
   fetch("/api/dev-ideas",{method:"PUT",headers:{"x-admin-key":KEY,"content-type":"application/json"},
     body:JSON.stringify({ideas:next})})
   .then(function(r){return r.json().then(function(d){if(!r.ok){throw new Error(d.error||"Error "+r.status);}return d;});})
-  .then(function(d){IDEAS=d.ideas;renderIdeas();})
-  .catch(function(e){alert(e.message);});
+  .then(function(d){IDEAS=d.ideas;})
+  .catch(function(e){ideasErr("Save failed: "+e.message+" Nothing was changed.");})
+  .then(function(){setBusy(false);renderIdeas();});
 }
 document.getElementById("idea-add").addEventListener("click",addIdea);
 document.getElementById("idea-in").addEventListener("keydown",function(e){if(e.key==="Enter")addIdea();});
 function addIdea(){
+  if(!IDEAS_OK||SAVING)return;
   var v=document.getElementById("idea-in").value.trim();
   if(!v)return;
   document.getElementById("idea-in").value="";
   saveIdeas(IDEAS.concat([{text:v,status:"open"}]));
 }
+
+// ---- Load: the two cards fail independently. A dead ideas endpoint shows an
+// inline error with editing disabled (never "No ideas yet"), and the
+// changelog still renders — and vice versa. Only a bad key re-shows the gate.
+function gateErr(msg){
+  document.getElementById("err").textContent=msg;
+  document.getElementById("gate").style.display="block";
+  document.getElementById("hub").style.display="none";
+}
 function load(key){
-  fetch("/api/devlog",{headers:{"x-admin-key":key}}).then(function(r){
-    if(r.status===401){throw new Error("Incorrect key.");}
-    if(r.status===404){throw new Error("The hub is disabled — set ADMIN_KEY on the server.");}
-    if(!r.ok){throw new Error("Error "+r.status);}
-    return r.json();
-  }).then(function(d){
+  Promise.all([
+    fetch("/api/devlog",{headers:{"x-admin-key":key}}).catch(function(){return null;}),
+    fetch("/api/dev-ideas",{headers:{"x-admin-key":key}}).catch(function(){return null;}),
+  ]).then(function(rs){
+    var rl=rs[0],ri=rs[1];
+    if((rl&&rl.status===401)||(ri&&ri.status===401))return gateErr("Incorrect key.");
+    if((rl&&rl.status===404)||(ri&&ri.status===404))return gateErr("The hub is disabled — set ADMIN_KEY on the server.");
+    if(!rl&&!ri)return gateErr("Network error — is the server reachable?");
     KEY=key;try{sessionStorage.setItem(KEYK,key);}catch(e){}
-    renderLog(d.entries||[]);
     document.getElementById("gate").style.display="none";
     document.getElementById("hub").style.display="block";
-    return fetch("/api/dev-ideas",{headers:{"x-admin-key":key}}).then(function(r){return r.json();})
-      .then(function(d){IDEAS=d.ideas||[];renderIdeas();});
-  }).catch(function(e){document.getElementById("err").textContent=e.message;
-    document.getElementById("gate").style.display="block";document.getElementById("hub").style.display="none";});
+    var logFail=function(){
+      var e=document.getElementById("log-err");
+      e.textContent="Couldn't load the changelog. Reload to retry.";e.style.display="block";
+    };
+    if(rl&&rl.ok){rl.json().then(function(d){LOG=d.entries||[];renderLogUI();}).catch(logFail);}
+    else logFail();
+    var ideasFail=function(){
+      IDEAS_OK=false;setBusy(false);
+      ideasErr("Couldn't load the ideas list — editing is disabled so a stale view can't overwrite it. Reload to retry.");
+    };
+    if(ri&&ri.ok){
+      ri.json().then(function(d){IDEAS=d.ideas||[];IDEAS_OK=true;setBusy(false);renderIdeas();}).catch(ideasFail);
+    }else ideasFail();
+  });
 }
 document.getElementById("go").addEventListener("click",function(){load(document.getElementById("k").value.trim());});
 document.getElementById("k").addEventListener("keydown",function(e){if(e.key==="Enter")load(e.target.value.trim());});
@@ -4778,8 +4983,10 @@ const server = http.createServer((req, res) => {
   // Same gate as /api/stats: 404 with ADMIN_KEY unset, 401 on a bad key. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/devlog") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = req.headers["x-admin-key"] || new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    // Header-only on the dev endpoints: the page always sends the header, and
+    // a ?key= form would leak the admin key into URLs and access logs. (The
+    // CSV downloads keep ?key= — browser download links can't set headers.)
+    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     let entries = [];
     try {
       const parsed = JSON.parse(fs.readFileSync(DEVLOG_FILE, "utf8")); // per-request: devlog edits need no restart
@@ -4791,8 +4998,7 @@ const server = http.createServer((req, res) => {
   }
   if ((req.method === "GET" || req.method === "PUT") && req.url.split("?")[0] === "/api/dev-ideas") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = req.headers["x-admin-key"] || new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     if (req.method === "GET") {
       readDevIdeas()
         .then((ideas) => sendJson(res, 200, { ideas }))
@@ -4811,10 +5017,20 @@ const server = http.createServer((req, res) => {
           const text = String((raw && raw.text) || "").trim();
           if (!text) return sendJson(res, 400, { error: "Every idea needs text." });
           if (text.length > 500) return sendJson(res, 400, { error: "Idea text is too long (max 500 characters)." });
+          const notes = String((raw && raw.notes) || "").trim();
+          if (notes.length > 500) return sendJson(res, 400, { error: "Idea notes are too long (max 500 characters)." });
+          const done = !!raw && raw.status === "done";
           clean.push({
-            id: raw && typeof raw.id === "string" && raw.id ? raw.id : crypto.randomUUID(),
+            // Ids stricter than before (UUID shape only): they now ride inside
+            // writeDevIdeas' not.in.() filter, so free-form ids are regenerated.
+            id: raw && typeof raw.id === "string" && /^[0-9a-fA-F-]{36}$/.test(raw.id) ? raw.id : crypto.randomUUID(),
             text,
-            status: raw && raw.status === "done" ? "done" : "open",
+            status: done ? "done" : "open",
+            priority: raw && ["now", "next", "later"].includes(raw.priority) ? raw.priority : "next",
+            notes: notes || null,
+            // Stamped when an idea first flips to done, kept on later saves,
+            // cleared when it reopens — feeds the dated Shipped section.
+            done_at: done ? (raw && typeof raw.done_at === "string" && raw.done_at ? raw.done_at : new Date().toISOString()) : null,
             created_at: raw && typeof raw.created_at === "string" && raw.created_at ? raw.created_at : new Date().toISOString(),
           });
         }

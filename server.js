@@ -1655,15 +1655,20 @@ function normalizeSourceTypes(parsed) {
 // currency/usd_rate drive the front-end's convert-to-USD toggle. Coerce to a
 // safe pair: unknown/blank currency reads as USD (the pre-feature behavior),
 // and a rate that isn't a positive finite number becomes null so the toggle
-// simply doesn't render. Rates are sanity-bounded: no real currency trades
-// at 1 unit = $10,000, and a zero/negative rate is garbage.
+// simply doesn't render. Rates are sanity-bounded at 10: the strongest real
+// currency is ~$3.3/unit, and anything larger is almost certainly an inverted
+// rate (units-per-USD, e.g. MXN "18.7" or JPY "155") rather than a genuinely
+// strong currency. This is a deliberate asymmetry: a bad rate keeps the
+// currency label but drops the toggle (prices really are in that currency;
+// relabeling them USD would be worse). usd_rate is left as a JS number (the
+// front-end multiplies by it), unlike every other field, which stays a string.
 function normalizeCurrency(parsed) {
   if (!parsed || typeof parsed !== "object") return parsed;
   const code = String(parsed.currency || "").trim().toUpperCase();
   parsed.currency = /^[A-Z]{3}$/.test(code) ? code : "USD";
   const rate = Number(parsed.usd_rate);
   parsed.usd_rate =
-    parsed.currency !== "USD" && Number.isFinite(rate) && rate > 0 && rate < 10000
+    parsed.currency !== "USD" && Number.isFinite(rate) && rate > 0 && rate < 10
       ? rate
       : null;
   return parsed;

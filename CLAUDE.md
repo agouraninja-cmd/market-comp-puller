@@ -303,6 +303,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+- `GET /dev`, `GET /api/devlog`, `GET|PUT /api/dev-ideas` — the **Development
+  Hub**: an internal changelog + future-ideas page, gated by the same
+  `ADMIN_KEY` (and sessionStorage key) as `/admin`, with the same triple-noindex
+  treatment. The changelog is the repo-committed **`devlog.json`**, read from
+  disk per request (edits need no restart; the `/dev` page itself lives in
+  server.js and does). **The standing devlog rule: every time you ship a
+  fix, improvement, or feature to this project, append an entry to
+  `devlog.json` in the same commit** — shape `{ "date": "YYYY-MM-DD", "type":
+  "fix"|"improvement"|"feature", "title": "...", "details": "optional" }`;
+  file order doesn't matter (the page groups/sorts by date); routine
+  docs-only or refactor commits don't need entries, anything a changelog
+  reader would care about does. Future ideas are whole-list replaced via
+  `PUT /api/dev-ideas` into the Supabase `dev_ideas` table (DDL in the
+  comment above `readDevIdeas` in server.js — **run it before deploying**),
+  git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
+  it done on `/dev` and add the devlog entry.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.

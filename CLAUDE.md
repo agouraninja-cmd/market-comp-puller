@@ -113,7 +113,9 @@ dependency. `.env` is git-ignored — never commit it.
   street-level photo of the building via `GET /api/streetview` (a proxy so
   the key never reaches the browser; Google's free metadata check runs
   first so no-imagery spots cost nothing). Unset = the route 404s and
-  popups are text-only. Key setup + quota-cap steps live in
+  popups fall back to a keyless stitched-Esri-tile aerial close-up
+  (`aerialThumb` in index.html), so hovering a pin always shows a photo.
+  Key setup + quota-cap steps live in
   `docs/superpowers/specs/2026-07-28-streetview-photos-design.md`.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
@@ -181,8 +183,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   popups (popup content is built at open time from the pin's final geocoded
   position). Metadata-checks first (free, cached in-memory), then streams
   the image with a 30-day cache header. No key / no imagery / any error →
-  bare 404, which the popup img's `onerror` turns into today's text-only
-  popup. Rate-limited per IP.
+  bare 404, which the popup img's `onerror` removes (the client only asks
+  when the config flag is on; flag off = keyless aerial fallback instead).
+  Rate-limited per IP.
 - `GET /api/corpus-comps?address=&type=` — the in-report "From CompNinja's
   records" offer: provenance-good corpus rows for the subject's market+type
   (never estimate/news, priced, deduped, max 20), served from the same

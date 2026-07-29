@@ -3383,13 +3383,20 @@ h1.h{font-size:32px;line-height:1.15;margin:10px 0 0}
 .bucket-h{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600;margin:16px 0 2px}
 .bucket-h:first-child{margin-top:0}
 #ideas.busy{opacity:.55;pointer-events:none}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
-.chip{background:#fff;border:1px solid #D8D4C9;border-radius:999px;padding:4px 12px;font-size:12px;color:#5A6473;
-  cursor:pointer;font-family:inherit}
-.chip:hover{color:#1A2433}
-.chip.on{border-color:#B91C1C;color:#B91C1C;font-weight:600}
-.logsearch{width:100%;padding:8px 12px;border:1px solid #D8D4C9;border-radius:4px;font-size:13px;
-  font-family:inherit;color:#1A2433;background:#FBFBF9;margin:0 0 6px}
+/* Changelog toolbar: a segmented control (one recessed track, the active
+   segment raised as a white card) plus an inline search. Reads as a single
+   control instead of four loose pills. */
+.logbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px}
+.seg{display:inline-flex;flex-wrap:wrap;background:#F5F4EF;border:1px solid #D8D4C9;border-radius:6px;padding:2px;gap:2px}
+.seg button{background:none;border:0;border-radius:4px;padding:5px 11px;font-family:inherit;font-size:12.5px;
+  color:#5A6473;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.seg button:hover{color:#1A2433}
+.seg button .n{font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums}
+.seg button.on{background:#fff;color:#1A2433;font-weight:600;box-shadow:0 1px 2px rgb(26 36 51/.09)}
+.seg button.on .n{color:#B91C1C}
+.logsearch{flex:1;min-width:168px;max-width:280px;padding:7px 11px;border:1px solid #D8D4C9;border-radius:6px;
+  font-size:13px;font-family:inherit;color:#1A2433;background:#FBFBF9}
+.logsearch::placeholder{color:#9AA2AE}
 .logsearch:focus{outline:none;border-color:#B91C1C}
 .logmeta{color:#8A93A0;font-size:12.5px;margin:0 0 12px}
 .cmt{font-size:11.5px;font-weight:400;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;margin-left:6px}
@@ -3434,8 +3441,10 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
   </div>
   <div class="card"><h2>Changelog</h2>
     <div id="log-meta" class="logmeta"></div>
-    <div class="chips" id="log-chips"></div>
-    <input id="log-q" class="logsearch" type="search" placeholder="Filter entries&hellip;" autocomplete="off"/>
+    <div class="logbar">
+      <div class="seg" id="log-chips" role="group" aria-label="Filter by entry type"></div>
+      <input id="log-q" class="logsearch" type="search" placeholder="Search the changelog&hellip;" autocomplete="off" aria-label="Search the changelog"/>
+    </div>
     <div id="log-err" class="err" style="display:none"></div>
     <div id="log"></div>
   </div>
@@ -3474,9 +3483,12 @@ function renderChips(){
   LOG.forEach(function(e){counts[normType(e.type)]++;});
   var el=document.getElementById("log-chips");el.innerHTML="";
   [["all","All"],["feature","Features"],["improvement","Improvements"],["fix","Fixes"]].forEach(function(p){
+    var on=LOG_TYPE===p[0];
     var b=document.createElement("button");b.type="button";
-    b.className="chip"+(LOG_TYPE===p[0]?" on":"");
-    b.textContent=p[1]+" ("+counts[p[0]]+")";
+    b.className=on?"on":"";
+    b.setAttribute("aria-pressed",on?"true":"false");
+    // Count as its own muted element — a quieter read than "Features (23)".
+    b.innerHTML=esc(p[1])+'<span class="n">'+counts[p[0]]+'</span>';
     b.addEventListener("click",function(){LOG_TYPE=p[0];renderChips();renderLog();});
     el.appendChild(b);
   });

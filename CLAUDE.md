@@ -115,6 +115,11 @@ dependency. `.env` is git-ignored — never commit it.
   first so no-imagery spots cost nothing). Unset = the route 404s and
   popups fall back to a keyless stitched-Esri-tile aerial close-up
   (`aerialThumb` in index.html), so hovering a pin always shows a photo.
+  Either photo centers on the pin's OSM building footprint when one exists
+  (`snapMarkersToBuildings` — one batched browser-direct Overpass query per
+  report after pins settle, cached in localStorage `bldgCache.v1`, every
+  failure falls back to the pin position) because geocoded points sit on
+  the street centerline, not the building.
   Key setup + quota-cap steps live in
   `docs/superpowers/specs/2026-07-28-streetview-photos-design.md`.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults

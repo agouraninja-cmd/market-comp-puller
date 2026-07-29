@@ -3654,6 +3654,76 @@
   }
 
   // ----------------------------------------------------------------------------
+  // Building snap — the popup photo should frame the PROPERTY, but geocoders
+  // return points on the street centerline in front of it, so a photo
+  // centered on the pin is a photo of the street. One batched Overpass
+  // (OpenStreetMap) query finds the building footprint nearest each pin; the
+  // photo centers there and its dot lands on the roof. The PIN stays at the
+  // geocoded point (it matches the address and the saved coords). Results
+  // cache in localStorage; every failure path — Overpass down, no footprint
+  // mapped, timeout — leaves the photo centered on the pin as before.
+  // ----------------------------------------------------------------------------
+  const BLDG_CACHE_KEY = "bldgCache.v1";
+  let bldgCache = (() => { try { return JSON.parse(localStorage.getItem(BLDG_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
+  function bldgCacheStore(key, val) {
+    bldgCache[key] = val;
+    try {
+      const keys = Object.keys(bldgCache);
+      if (keys.length > 300) keys.slice(0, keys.length - 300).forEach((k) => delete bldgCache[k]);
+      localStorage.setItem(BLDG_CACHE_KEY, JSON.stringify(bldgCache));
+    } catch (_) { /* private mode — the cache is a nicety */ }
+  }
+  const bldgKey = (ll) => ll.lat.toFixed(4) + "," + ll.lng.toFixed(4);   // ~11 m buckets
+
+  async function snapMarkersToBuildings(markers) {
+    const pending = markers.filter((m) => !(bldgKey(m.getLatLng()) in bldgCache));
+    if (pending.length) {
+      const parts = pending.map((m) => {
+        const ll = m.getLatLng();
+        return `way(around:90,${ll.lat.toFixed(6)},${ll.lng.toFixed(6)})["building"];`;
+      }).join("");
+      try {
+        const r = await fetch("https://overpass-api.de/api/interpreter", {
+          method: "POST",
+          body: "data=" + encodeURIComponent(`[out:json][timeout:10];(${parts});out bb;`),
+          signal: AbortSignal.timeout(12000),
+        });
+        const j = await r.json();
+        // `out bb;` carries bounds only — the bbox midpoint stands in for the
+        // centroid, which is all the photo needs to frame the building.
+        const ways = (j.elements || []).filter((e) => e.bounds)
+          .map((e) => ({ bounds: e.bounds, center: { lat: (e.bounds.minlat + e.bounds.maxlat) / 2, lon: (e.bounds.minlon + e.bounds.maxlon) / 2 } }));
+        pending.forEach((m) => {
+          const ll = m.getLatLng();
+          let best = null, bestScore = 0;
+          for (const w of ways) {
+            const dLat = (w.center.lat - ll.lat) * 111320;
+            const dLng = (w.center.lon - ll.lng) * 111320 * Math.cos(ll.lat * Math.PI / 180);
+            const dist = Math.hypot(dLat, dLng);
+            if (dist > 120) continue;
+            // Prefer a big footprint near the pin — the main building, not a
+            // guard shack or the neighbor's shed. Area is distance-discounted
+            // so a far-off giant doesn't beat the building right at the pin.
+            const aLat = (w.bounds.maxlat - w.bounds.minlat) * 111320;
+            const aLng = (w.bounds.maxlon - w.bounds.minlon) * 111320 * Math.cos(ll.lat * Math.PI / 180);
+            const score = Math.max(aLat * aLng, 100) / (dist + 25);
+            if (score > bestScore) { bestScore = score; best = w; }
+          }
+          bldgCacheStore(bldgKey(ll), best ? { lat: best.center.lat, lng: best.center.lon } : 0);
+        });
+      } catch (_) { /* Overpass down/slow — photos keep centering on the pin */ }
+    }
+    markers.forEach((m) => {
+      const hit = bldgCache[bldgKey(m.getLatLng())];
+      if (hit && isFinite(hit.lat)) {
+        m._bldgLL = L.latLng(hit.lat, hit.lng);
+        // A popup opened before the snap landed re-renders onto the building.
+        if (m.isPopupOpen && m.isPopupOpen()) m.getPopup().update();
+      }
+    });
+  }
+
+  // ----------------------------------------------------------------------------
   // Comp map — plots the subject (red pin) and comps (numbered dots) on OSM
   // tiles. Pins paint immediately from the model's approximate coordinates,
   // then move to geocoded positions as lookups resolve.
@@ -3867,7 +3937,9 @@
       return 18;
     };
     const svPhoto = (marker, zoom) => {
-      const ll = marker.getLatLng();
+      // Snapped building centroid when Overpass found one — the photo (and
+      // Street View's camera target) aims at the property, not the street.
+      const ll = marker._bldgLL || marker.getLatLng();
       if (!streetviewEnabled) return aerialThumb(ll, 260, 156, zoom || 17);
       return '<img src="/api/streetview?lat=' + ll.lat.toFixed(6) + '&lng=' + ll.lng.toFixed(6) +
         '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt="" onerror="this.remove()">';
@@ -3970,6 +4042,9 @@
       });
       const results = await Promise.all(jobs);
       if (gen !== mapGeneration || !mapInstance) return;   // a newer report took over
+      // Pins are now final — find each one's building for the popup photo.
+      // Fire-and-forget: the map never waits on Overpass.
+      const allMarkers = () => [subjMarker, ...Object.values(compMarkersByNum)].filter(Boolean);
       let moved = false;
       results.forEach((r) => {
         if (!r.ll) return;
@@ -3987,6 +4062,7 @@
           r.c.lng = String(r.ll.lng);
         }
       });
+      snapMarkersToBuildings(allMarkers());
       if (!moved) return;
       const refined = [];
       if (subjMarker) refined.push(subjMarker.getLatLng());

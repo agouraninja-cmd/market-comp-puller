@@ -1573,6 +1573,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `{`,
     `  "summary": "3-4 sentence plain-English takeaway about the local market, understandable to a non-professional",`,
     `  "avg_price_per_sqft": "string or null",`,
+    `  "currency": "",`,
+    `  "usd_rate": "",`,
     `  "subject_lat": "",`,
     `  "subject_lng": "",`,
     `  "market_cap_rate_range": { "low": "", "high": "" },`,
@@ -1589,6 +1591,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `}`,
     ``,
     `Rules: "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `"currency" = the ISO 4217 code of the currency ALL prices in this report are quoted in. For a target property in the United States use "USD". For a target property in any other country, quote EVERY price figure (each comp's "price_or_rate" and "price_per_sqft", plus "avg_price_per_sqft") in that country's local currency, set "currency" to its code (e.g. "CAD", "MXN", "GBP"), and set "usd_rate" to the current value of 1 unit of that currency in US dollars as a plain number string (e.g. "0.73" for CAD), using the exchange rate your web search finds. When currency is "USD", set "usd_rate" to "". Never mix currencies within one report.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
@@ -1646,6 +1649,23 @@ function normalizeSourceTypes(parsed) {
         : /news|article|press|announc/.test(raw) ? "news"
         : "estimate");
   }
+  return parsed;
+}
+
+// currency/usd_rate drive the front-end's convert-to-USD toggle. Coerce to a
+// safe pair: unknown/blank currency reads as USD (the pre-feature behavior),
+// and a rate that isn't a positive finite number becomes null so the toggle
+// simply doesn't render. Rates are sanity-bounded: no real currency trades
+// at 1 unit = $10,000, and a zero/negative rate is garbage.
+function normalizeCurrency(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const code = String(parsed.currency || "").trim().toUpperCase();
+  parsed.currency = /^[A-Z]{3}$/.test(code) ? code : "USD";
+  const rate = Number(parsed.usd_rate);
+  parsed.usd_rate =
+    parsed.currency !== "USD" && Number.isFinite(rate) && rate > 0 && rate < 10000
+      ? rate
+      : null;
   return parsed;
 }
 
@@ -1794,7 +1814,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
-  const parsed = normalizeSourceTypes(parseCompJson(text));
+  const parsed = normalizeCurrency(normalizeSourceTypes(parseCompJson(text)));
   return attachVerifiedAttribution(parsed, verifiedComps);
 }
 

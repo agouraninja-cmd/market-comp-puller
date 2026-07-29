@@ -918,7 +918,7 @@
                   <input id="usdToggle" type="checkbox" class="mr-1.5">
                   <span>Show in USD</span>
                 </label>
-                <span id="currencyNote" class="text-xs text-[#8A93A0]"></span>
+                <span id="currencyNote" aria-live="polite" class="text-xs text-[#8A93A0]"></span>
               </div>
             </div>
           </div>
@@ -1827,6 +1827,10 @@
       : { maximumFractionDigits: 0 }) + tail;
   }
 
+  // FX rates come back at whatever precision the model found; 4 significant
+  // digits is standard display precision. Conversion math keeps full precision.
+  function fmtRate(r) { return Number(Number(r).toPrecision(4)); }
+
   // Count a numeric readout up from zero to its final value (ease-out, ~700ms).
   function animateValue(el, target, format, prefix = "") {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1885,8 +1889,9 @@
     });
   });
 
-  // Toggling re-renders every money surface. Mirrors the subject-edit
-  // re-render path above; renderTableBody(false) also re-renders the cards.
+  // Toggling re-renders every money surface: the subject-edit re-render path
+  // above, plus the tiles and table (money surfaces the subject doesn't
+  // touch). renderTableBody(false) also re-renders the cards.
   document.getElementById("usdToggle").addEventListener("change", (e) => {
     showUsd = e.target.checked;
     if (!currentParsed || !currentMeta) return;
@@ -3967,7 +3972,7 @@
     if (!foreign) return;
     document.getElementById("usdToggle").checked = showUsd;
     document.getElementById("currencyNote").textContent = showUsd
-      ? `Converted at 1 ${reportCurrency.code} = $${reportCurrency.rate} USD, rate as of report date`
+      ? `Converted at 1 ${reportCurrency.code} = $${fmtRate(reportCurrency.rate)} USD, rate as of report date`
       : `Prices in ${reportCurrency.code} (local currency)`;
   }
 
@@ -5742,7 +5747,7 @@
     const curationBits = [];
     if (reportCurrency.code !== "USD") {
       curationBits.push(showUsd && reportCurrency.rate
-        ? `Prices converted to USD where unambiguous, at 1 ${reportCurrency.code} = $${reportCurrency.rate}`
+        ? `Prices converted to USD where unambiguous, at 1 ${reportCurrency.code} = $${fmtRate(reportCurrency.rate)}`
         : `Prices in ${reportCurrency.code}`);
     }
     if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps — ${cc.excluded} excluded by report owner`);
@@ -5819,7 +5824,7 @@
         ...(reportCurrency.code !== "USD" ? [[
           "Currency",
           showUsd && reportCurrency.rate
-            ? `Converted to USD where unambiguous, at 1 ${reportCurrency.code} = $${reportCurrency.rate}`
+            ? `Converted to USD where unambiguous, at 1 ${reportCurrency.code} = $${fmtRate(reportCurrency.rate)}`
             : `${reportCurrency.code} (local currency)`,
         ]] : []),
         [],

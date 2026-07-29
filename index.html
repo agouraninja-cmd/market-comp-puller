@@ -3660,6 +3660,10 @@
   // ----------------------------------------------------------------------------
   let mapInstance = null;
   let streetviewEnabled = false; // set from /api/config in initGate()
+  // Pins preview on hover only where there's a real pointer. Touch devices
+  // have no hover state (and emulate mouseover on tap), so they keep
+  // Leaflet's default tap-to-open and nothing changes for them.
+  const CAN_HOVER = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   let mapGeneration = 0;   // stale async geocodes must not touch a newer map
   // Set by each renderMap; Esc exits fullscreen from anywhere. One listener,
   // added once — renderMap runs per search and must not stack handlers.
@@ -3828,6 +3832,47 @@
       return '<img src="/api/streetview?lat=' + ll.lat.toFixed(6) + '&lng=' + ll.lng.toFixed(6) +
         '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt="" onerror="this.remove()">';
     };
+    // Hover preview: pause on a pin and its popup opens (photo included);
+    // move away and it closes. The short open delay stops a mouse merely
+    // crossing the map from flashing popups on every pin it passes, and
+    // moving ONTO the popup cancels the close so the photo can be looked at.
+    // A click still pins the popup open until it's dismissed — otherwise
+    // clicking a pin then moving the mouse away would yank it shut.
+    // autoPan is off on hover devices: the map lurching under an idle cursor
+    // reads as a glitch, and it's the calmer behavior.
+    const wireHoverPreview = (m) => {
+      if (!CAN_HOVER) return;
+      let openT = null, closeT = null, pinned = false;
+      const scheduleClose = () => {
+        clearTimeout(closeT);
+        if (pinned) return;
+        closeT = setTimeout(() => m.closePopup(), 320);
+      };
+      m.on("mouseover", () => {
+        clearTimeout(closeT);
+        clearTimeout(openT);
+        openT = setTimeout(() => m.openPopup(), 120);
+      });
+      m.on("mouseout", () => {
+        clearTimeout(openT);
+        scheduleClose();
+      });
+      // Leaflet's own click handler TOGGLES the popup, so on a hover device
+      // clicking a pin whose popup hover already opened would CLOSE it — the
+      // opposite of "click to keep it open". Drop that handler (registered by
+      // bindPopup, hence the private ref) and pin explicitly instead.
+      if (m._openPopup) m.off("click", m._openPopup, m);
+      m.on("click", () => { pinned = true; m.openPopup(); });
+      m.on("popupclose", () => { pinned = false; });
+      // Keep it open while the cursor is on the popup itself. Plain assignment
+      // (not addEventListener) so repeated opens can't stack listeners.
+      m.on("popupopen", (e) => {
+        const el = e.popup.getElement();
+        if (!el) return;
+        el.onmouseenter = () => clearTimeout(closeT);
+        el.onmouseleave = scheduleClose;
+      });
+    };
     const addSubjMarker = (lat, lng) => {
       const subjIcon = L.divIcon({
         className: "",
@@ -3835,7 +3880,9 @@
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m) + `<strong>Your property:</strong> ${escMap(meta.address)}`);
+      m.bindPopup(() => svPhoto(m) + `<strong>Your property:</strong> ${escMap(meta.address)}`,
+        { autoPan: !CAN_HOVER });
+      wireHoverPreview(m);
       return m;
     };
     const addCompMarker = (c, lat, lng) => {
@@ -3848,7 +3895,9 @@
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
       const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m) + `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`);
+      m.bindPopup(() => svPhoto(m) + `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`,
+        { autoPan: !CAN_HOVER });
+      wireHoverPreview(m);
       return m;
     };
 

@@ -109,6 +109,12 @@ dependency. `.env` is git-ignored — never commit it.
   same Resend notifier). An in-memory counter reset at UTC midnight and on
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
+- `GOOGLE_MAPS_API_KEY` — optional. When set, map pin popups show a
+  street-level photo of the building via `GET /api/streetview` (a proxy so
+  the key never reaches the browser; Google's free metadata check runs
+  first so no-imagery spots cost nothing). Unset = the route 404s and
+  popups are text-only. Key setup + quota-cap steps live in
+  `docs/superpowers/specs/2026-07-28-streetview-photos-design.md`.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
@@ -171,6 +177,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   for the map's first paint; the front-end re-places every pin from real
   geocoding (this proxy, then browser-direct Nominatim as fallback, results
   cached in localStorage under `geoCache.v1`). Rate-limited per IP.
+- `GET /api/streetview?lat=&lng=` — Street View photo proxy for the map pin
+  popups (popup content is built at open time from the pin's final geocoded
+  position). Metadata-checks first (free, cached in-memory), then streams
+  the image with a 30-day cache header. No key / no imagery / any error →
+  bare 404, which the popup img's `onerror` turns into today's text-only
+  popup. Rate-limited per IP.
 - `GET /api/corpus-comps?address=&type=` — the in-report "From CompNinja's
   records" offer: provenance-good corpus rows for the subject's market+type
   (never estimate/news, priced, deduped, max 20), served from the same

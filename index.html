@@ -3566,7 +3566,13 @@
   // added once — renderMap runs per search and must not stack handlers.
   let exitMapFullscreen = null;
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && exitMapFullscreen) exitMapFullscreen();
+    if (e.key !== "Escape" || !exitMapFullscreen) return;
+    // Mark the event consumed when fullscreen actually exits, so the
+    // Escape-goes-home listener doesn't also fire on the same keypress.
+    if (document.getElementById("compMap").classList.contains("map-fullscreen")) {
+      exitMapFullscreen();
+      e.preventDefault();
+    }
   });
   // The #reportArea > * entrance animation is fill:forwards, and a filled
   // transform animation keeps that child a containing block for
@@ -4731,6 +4737,37 @@
   });
   // Same modal action the in-page broker CTA uses.
   document.getElementById("footerSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
+
+  // ----------------------------------------------------------------------------
+  // Escape closes the report and returns to the home view. The report itself
+  // is safe — fresh searches were already saved to the "Saved reports" chips
+  // at render time, so nothing is lost by leaving.
+  // ----------------------------------------------------------------------------
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const results = document.getElementById("results");
+    if (results.classList.contains("hidden")) return;   // already on the home view
+    // Overlays own Escape: the fullscreen map and any open modal handle (or
+    // deliberately ignore) it themselves — don't also navigate underneath them.
+    // The map listener runs first and preventDefaults when it exits fullscreen.
+    if (e.defaultPrevented) return;
+    if (document.getElementById("compMap").classList.contains("map-fullscreen")) return;
+    if (["leadModal", "acctModal", "compModal", "confirmModal"]
+        .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
+    // A focused form control keeps Escape for itself — just drop focus.
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
+    results.classList.add("hidden");
+    document.getElementById("homeInfo").classList.remove("hidden");
+    // Samples and shared reports aren't saved to this browser, so no note.
+    if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
+      showStatus("Report closed — reopen it any time from <strong>Saved reports</strong> below, at no cost.", "info");
+    } else {
+      hideStatus();
+    }
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  });
 
   // Market Explorer: matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed

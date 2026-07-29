@@ -5738,7 +5738,7 @@
   // Numeric cells for the valuation sheet, converted to match the on-screen
   // toggle state. USD reports pass through untouched.
   function xlsxMoney(n) {
-    if (!isFinite(n)) return n;
+    if (!Number.isFinite(n)) return n;
     return showUsd && reportCurrency.rate && reportCurrency.code !== "USD"
       ? Math.round(n * reportCurrency.rate * 100) / 100
       : n;

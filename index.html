@@ -1790,22 +1790,33 @@
   const MONEY_KEYS = new Set(["price_or_rate", "price_per_sqft", "price_per_unit", "price_per_acre"]);
 
   // Convert one of the model's raw price strings for display. Local mode (or
-  // a USD report) returns the string untouched. USD mode parses the leading
-  // number, converts it, and keeps any trailing unit text ("/SF/yr NNN").
-  // Anything that doesn't parse cleanly renders as-is — never a wrong number.
+  // a USD report) returns the string untouched. USD mode parses the number,
+  // converts it, and keeps any trailing unit text ("/SF/yr NNN"). Anything
+  // ambiguous is REFUSED (returned raw, still labeled local currency by the
+  // toggle note) — a raw local price is honest; a half-converted or
+  // misparsed one is a lie. Refusals: a second number in the tail (ranges,
+  // parentheticals, space/dot-grouped European figures the regex split), a
+  // negative or accounting-paren head (the sign would be dropped),
+  // letter shorthand suffixes ("1.2M", "850K" — suffix semantics are the
+  // model's, not ours), and non-US comma grouping ("12,50", lakh style)
+  // where comma-stripping would misread the value.
   function displayMoney(raw) {
     if (reportCurrency.code === "USD" || !showUsd || !reportCurrency.rate) return raw;
     const s = String(raw ?? "");
     const m = s.match(/-?[\d][\d,]*(\.\d+)?/);
     if (!m) return s;
+    const head = s.slice(0, m.index);
     const tail = s.slice(m.index + m[0].length);
-    // "1.2M" / "850K" style shorthand: converting just the mantissa would be
-    // off by orders of magnitude — leave the raw string alone.
-    if (/^\s*(m\b|million|k\b|thousand|b\b|billion)/i.test(tail)) return s;
+    if (/\d/.test(tail) || /[-(]/.test(head)) return s;
+    if (/^\s*(mm?\b|million|k\b|thousand|b\b|billion)/i.test(tail)) return s;
+    const intPart = m[0].replace(/^-/, "").split(".")[0];
+    if (intPart.includes(",") && !/^\d{1,3}(,\d{3})+$/.test(intPart)) return s;
     const n = parseFloat(m[0].replace(/,/g, ""));
     if (!isFinite(n)) return s;
     const usd = n * reportCurrency.rate;
-    return "$" + usd.toLocaleString(undefined, { maximumFractionDigits: usd < 100 ? 2 : 0 }) + tail;
+    return "$" + usd.toLocaleString(undefined, usd < 100
+      ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+      : { maximumFractionDigits: 0 }) + tail;
   }
 
   // Count a numeric readout up from zero to its final value (ease-out, ~700ms).

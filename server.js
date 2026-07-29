@@ -93,6 +93,14 @@ function allMarketPages() {
 // that endpoint is disabled entirely.
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
 
+// Optional Google Maps key powering the Street View photos in map pin
+// popups (served through GET /api/streetview so the key never reaches the
+// browser). Unset = the route 404s and popups are text-only, as before.
+const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
+// lat,lng -> boolean "imagery exists" from the free metadata endpoint, so
+// repeat popup opens never re-ask Google. In-memory, capped, process-lifetime.
+const STREETVIEW_META_CACHE = new Map();
+
 // Optional email ping on every new lead / broker comp submission, sent via
 // Resend's REST API (free tier, plain fetch — no dependency). Note: without a
 // verified domain Resend only delivers to the address that owns the Resend
@@ -4213,6 +4221,65 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Street View photo proxy. Powers the click-to-load building photo in
+  // map pin popups (docs/superpowers/specs/2026-07-28-streetview-photos-
+  // design.md). Key stays server-side; the FREE metadata endpoint is asked
+  // first (cached) so a spot with no imagery never bills an image request.
+  // Dark when GOOGLE_MAPS_API_KEY is unset. Every failure path is a bare
+  // 404 — the popup <img>'s onerror removes it and the popup stays text-only. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/streetview") {
+    const params = new URL(req.url, "http://localhost").searchParams;
+    const lat = Number(params.get("lat"));
+    const lng = Number(params.get("lng"));
+    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      return sendJson(res, 400, { error: "lat and lng are required." });
+    }
+    if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
+    // A report has <= ~9 pins; 60/window is generous for a human reader.
+    if (rateLimited("streetview:" + clientIp(req), 60)) {
+      return sendJson(res, 429, { error: "Too many photo requests. Please wait a few minutes." });
+    }
+    (async () => {
+      try {
+        const loc = lat.toFixed(5) + "," + lng.toFixed(5);
+        let hasImagery = STREETVIEW_META_CACHE.get(loc);
+        if (hasImagery === undefined) {
+          const mr = await fetch(
+            "https://maps.googleapis.com/maps/api/streetview/metadata?location=" + loc +
+              "&source=outdoor&key=" + GOOGLE_MAPS_API_KEY,
+            { signal: AbortSignal.timeout(6000) }
+          );
+          const mj = await mr.json();
+          hasImagery = Boolean(mj && mj.status === "OK");
+          if (STREETVIEW_META_CACHE.size >= 500) {
+            STREETVIEW_META_CACHE.delete(STREETVIEW_META_CACHE.keys().next().value);
+          }
+          STREETVIEW_META_CACHE.set(loc, hasImagery);
+        }
+        if (!hasImagery) { res.writeHead(404); return res.end(); }
+        // No `heading` param: Google then aims the camera at the given point
+        // from the nearest pano — the "look at the building" behavior.
+        const ir = await fetch(
+          "https://maps.googleapis.com/maps/api/streetview?size=600x360&location=" + loc +
+            "&source=outdoor&fov=80&key=" + GOOGLE_MAPS_API_KEY,
+          { signal: AbortSignal.timeout(8000) }
+        );
+        if (!ir.ok) { res.writeHead(404); return res.end(); }
+        const buf = Buffer.from(await ir.arrayBuffer());
+        res.writeHead(200, {
+          "Content-Type": ir.headers.get("content-type") || "image/jpeg",
+          "Content-Length": buf.length,
+          "Cache-Control": "public, max-age=2592000",
+        });
+        return res.end(buf);
+      } catch (_) {
+        res.writeHead(404);
+        return res.end();
+      }
+    })();
+    return;
+  }
+
   // --- Corpus comps offer: pure DB read powering the in-report "From
   // CompNinja's records" section (see docs/superpowers/specs/2026-07-28-
   // corpus-offer-design.md). Same provenance bar as corpus-first retrieval —
@@ -4485,7 +4552,7 @@ const server = http.createServer((req, res) => {
 
   // --- Tells the front-end whether a password is required ---
   if (req.method === "GET" && req.url === "/api/config") {
-    return sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE });
+    return sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) });
   }
 
   // --- Validate a password (so the UI can confirm before searching) ---

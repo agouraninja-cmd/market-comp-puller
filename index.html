@@ -1668,6 +1668,11 @@
   // Active columns for the current report; rebuilt per search in renderResults().
   let COLUMNS = BASE_COLUMNS.slice();
 
+  // Currency of the current report. Non-USD reports carry a model-supplied
+  // rate (value of 1 local unit in USD); showUsd is the "Show in USD" toggle.
+  // Valuation MATH always stays in local currency — only formatting converts.
+  let reportCurrency = { code: "USD", rate: null };
+  let showUsd = false;
   let currentComps = [];
   let lastValuation = null;          // {low, likely, high, median_psf} from the last hero render
   let pendingPortfolioRefresh = null; // {id, address, type} of a portfolio item awaiting a fresh billed report
@@ -1757,8 +1762,26 @@
     const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
     return m ? parseFloat(m[0]) : NaN;
   }
+  // Named for its original life as a plain USD formatter; now the single
+  // formatting choke point for every client-computed money figure. All call
+  // sites pass numbers in the report's local currency.
   function formatUsd(n, opts) {
-    return "$" + n.toLocaleString(undefined, opts || { maximumFractionDigits: 2 });
+    const o = opts || { maximumFractionDigits: 2 };
+    if (reportCurrency.code === "USD") return "$" + n.toLocaleString(undefined, o);
+    if (showUsd && reportCurrency.rate) {
+      return "$" + (n * reportCurrency.rate).toLocaleString(undefined, o);
+    }
+    try {
+      return n.toLocaleString(undefined, {
+        style: "currency",
+        currency: reportCurrency.code,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: o.maximumFractionDigits == null ? 2 : o.maximumFractionDigits,
+      });
+    } catch (_) {
+      // Intl throws on a code it doesn't know — fall back to "CAD 1,234".
+      return reportCurrency.code + " " + n.toLocaleString(undefined, o);
+    }
   }
 
   // Count a numeric readout up from zero to its final value (ease-out, ~700ms).
@@ -3877,6 +3900,9 @@
     if (tiles.length) armWhenVisible(wrap, "in-view");
   }
 
+  // TEMP stub — replaced by the real currency bar in the next task.
+  function renderCurrencyBar() {}
+
   function renderResults(parsed, meta) {
     if (!parsed || !Array.isArray(parsed.comps)) {
       throw new Error("Parsed response is missing a 'comps' array.");
@@ -3936,6 +3962,14 @@
       ? "Selected the " + compsN + " most comparable from ~" + reviewedN.toLocaleString() + " recent transactions reviewed"
       : "";
     reviewedNote.classList.toggle("hidden", !showReviewed);
+
+    // Currency context must be set before anything renders money.
+    reportCurrency = {
+      code: String(parsed.currency || "USD").toUpperCase(),
+      rate: Number(parsed.usd_rate) > 0 ? Number(parsed.usd_rate) : null,
+    };
+    if (reportCurrency.code === "USD") showUsd = false;
+    renderCurrencyBar();
 
     renderStatTiles(parsed, meta);
 

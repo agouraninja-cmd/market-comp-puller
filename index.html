@@ -911,6 +911,15 @@
               <!-- Chip spacing uses margins, not flex gap — html2canvas (PNG
                    export) doesn't render flex gap and would fuse the chips. -->
               <div id="reportMeta" class="flex flex-wrap mt-1"></div>
+              <!-- Non-USD reports only: the convert-to-USD switch. The note
+                   prints/exports (it discloses the rate); the control doesn't. -->
+              <div id="currencyBar" class="hidden mt-2 flex flex-wrap items-center text-sm">
+                <label class="no-print no-capture inline-flex items-center cursor-pointer mr-3 font-medium text-[#1A2433]">
+                  <input id="usdToggle" type="checkbox" class="mr-1.5">
+                  <span>Show in USD</span>
+                </label>
+                <span id="currencyNote" class="text-xs text-[#8A93A0]"></span>
+              </div>
             </div>
           </div>
         </div>
@@ -1792,14 +1801,13 @@
   // Convert one of the model's raw price strings for display. Local mode (or
   // a USD report) returns the string untouched. USD mode parses the number,
   // converts it, and keeps any trailing unit text ("/SF/yr NNN"). Anything
-  // ambiguous is REFUSED (returned raw, still labeled local currency by the
-  // toggle note) — a raw local price is honest; a half-converted or
-  // misparsed one is a lie. Refusals: a second number in the tail (ranges,
-  // parentheticals, space/dot-grouped European figures the regex split), a
-  // negative or accounting-paren head (the sign would be dropped),
-  // letter shorthand suffixes ("1.2M", "850K" — suffix semantics are the
-  // model's, not ours), and non-US comma grouping ("12,50", lakh style)
-  // where comma-stripping would misread the value.
+  // ambiguous is REFUSED (returned raw) — a raw local price is honest; a
+  // half-converted or misparsed one is a lie. Refusals: a second number in
+  // the tail (ranges, parentheticals, space/dot-grouped European figures
+  // the regex split), a negative or accounting-paren head (the sign would
+  // be dropped), letter shorthand suffixes ("1.2M", "850K" — suffix
+  // semantics are the model's, not ours), and non-US comma grouping
+  // ("12,50", lakh style) where comma-stripping would misread the value.
   function displayMoney(raw) {
     if (reportCurrency.code === "USD" || !showUsd || !reportCurrency.rate) return raw;
     const s = String(raw ?? "");
@@ -1875,6 +1883,20 @@
         if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveReport(currentMeta, currentParsed);
       }, 300);
     });
+  });
+
+  // Toggling re-renders every money surface. Mirrors the subject-edit
+  // re-render path above; renderTableBody(false) also re-renders the cards.
+  document.getElementById("usdToggle").addEventListener("change", (e) => {
+    showUsd = e.target.checked;
+    if (!currentParsed || !currentMeta) return;
+    renderCurrencyBar();
+    renderStatTiles(currentParsed, currentMeta);
+    renderOwnerHero(currentParsed, currentMeta);
+    renderAnalysisCluster(currentParsed, currentMeta, false);
+    renderComparison(currentParsed);
+    renderMarketChart();
+    renderTableBody(false);
   });
 
   // Delegated: #subjectTypeFields children are replaced whenever the property
@@ -3935,8 +3957,19 @@
     if (tiles.length) armWhenVisible(wrap, "in-view");
   }
 
-  // TEMP stub — replaced by the real currency bar in the next task.
-  function renderCurrencyBar() {}
+  // Show the USD switch only when the report is non-USD AND has a usable
+  // rate; otherwise prices stay labeled in their local currency and nothing
+  // masquerades as dollars.
+  function renderCurrencyBar() {
+    const bar = document.getElementById("currencyBar");
+    const foreign = reportCurrency.code !== "USD" && reportCurrency.rate;
+    bar.classList.toggle("hidden", !foreign);
+    if (!foreign) return;
+    document.getElementById("usdToggle").checked = showUsd;
+    document.getElementById("currencyNote").textContent = showUsd
+      ? `Converted at 1 ${reportCurrency.code} = $${reportCurrency.rate} USD, rate as of report date`
+      : `Prices in ${reportCurrency.code} (local currency)`;
+  }
 
   function renderResults(parsed, meta) {
     if (!parsed || !Array.isArray(parsed.comps)) {
@@ -4003,6 +4036,8 @@
       code: String(parsed.currency || "USD").trim().toUpperCase(),
       rate: Number(parsed.usd_rate) > 0 ? Number(parsed.usd_rate) : null,
     };
+    // Deliberately sticky across consecutive non-USD reports ("I think in
+    // dollars" is a preference); only a USD report resets it.
     if (reportCurrency.code === "USD") showUsd = false;
     renderCurrencyBar();
 
@@ -5707,7 +5742,7 @@
     const curationBits = [];
     if (reportCurrency.code !== "USD") {
       curationBits.push(showUsd && reportCurrency.rate
-        ? `Prices converted to USD at 1 ${reportCurrency.code} = $${reportCurrency.rate}`
+        ? `Prices converted to USD where unambiguous, at 1 ${reportCurrency.code} = $${reportCurrency.rate}`
         : `Prices in ${reportCurrency.code}`);
     }
     if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps — ${cc.excluded} excluded by report owner`);
@@ -5784,7 +5819,7 @@
         ...(reportCurrency.code !== "USD" ? [[
           "Currency",
           showUsd && reportCurrency.rate
-            ? `Converted to USD at 1 ${reportCurrency.code} = $${reportCurrency.rate}`
+            ? `Converted to USD where unambiguous, at 1 ${reportCurrency.code} = $${reportCurrency.rate}`
             : `${reportCurrency.code} (local currency)`,
         ]] : []),
         [],

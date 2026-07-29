@@ -3339,6 +3339,7 @@ h1.h{font-size:32px;line-height:1.15;margin:10px 0 0}
 .idea .d{color:#8A93A0;font-size:12px;white-space:nowrap}
 .idea .rm,.idea .nt{background:none;border:0;color:#8A93A0;font-size:12.5px;cursor:pointer;font-family:inherit;padding:2px 4px}
 .idea .rm:hover{color:#B91C1C;text-decoration:underline}.idea .nt:hover{color:#1A2433;text-decoration:underline}
+.idea .rm.armed{color:#B91C1C;font-weight:600;text-decoration:underline}
 .idea .pr{flex:none;background:#F5F4EF;border:1px solid #D8D4C9;border-radius:3px;color:#5A6473;font-size:10px;
   font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;cursor:pointer;font-family:inherit;margin-top:2px}
 .idea .pr.now{background:#fff;border-color:#E8B4B4;color:#B91C1C}
@@ -3549,9 +3550,20 @@ function ideaRow(idea){
     });
     inp.addEventListener("blur",function(){commit(true);});
   });
-  row.querySelector(".rm").addEventListener("click",function(){
-    if(!window.confirm("Delete this idea? This can't be undone."))return;
-    saveIdeas(IDEAS.filter(function(x){return x.id!==idea.id;}));
+  // Two-step inline confirm — window.confirm() is suppressed (returns false
+  // with no dialog) in some embedded browsers, which made Delete a silent
+  // no-op. First click arms the button, second click deletes, 4s to revert.
+  var rmBtn=row.querySelector(".rm"),rmTimer=null;
+  rmBtn.addEventListener("click",function(){
+    if(rmBtn.dataset.armed){
+      clearTimeout(rmTimer);
+      saveIdeas(IDEAS.filter(function(x){return x.id!==idea.id;}));
+      return;
+    }
+    rmBtn.dataset.armed="1";rmBtn.textContent="Confirm?";rmBtn.className="rm armed";
+    rmTimer=setTimeout(function(){
+      delete rmBtn.dataset.armed;rmBtn.textContent="Delete";rmBtn.className="rm";
+    },4000);
   });
   return row;
 }

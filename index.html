@@ -1223,17 +1223,19 @@
             <p id="userReadNote" class="text-sm text-[#374253]"></p>
           </div>
           <div id="userReadControls" class="no-print no-capture hidden mt-3 pt-3 border-t border-[#F0EFE9]">
-            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-2">Your read of this market</div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">Your read of this market</div>
+            <p class="text-xs text-[#8A93A0] mb-2">The read above is automated. Agree or disagree &mdash; record your own call here. It's saved with this report and appears next to the automated read on prints, exports, and shared links (labeled &ldquo;Owner's read&rdquo;).</p>
             <div class="flex flex-wrap items-center gap-2">
               <div class="inline-flex rounded border border-[#D8D4C9] overflow-hidden" role="group" aria-label="Your price-discovery read">
                 <button type="button" data-read-dir="expanding" class="px-3 py-1.5 text-xs font-medium">Expanding</button>
                 <button type="button" data-read-dir="flat" class="px-3 py-1.5 text-xs font-medium border-l border-[#D8D4C9]">Flat</button>
                 <button type="button" data-read-dir="contracting" class="px-3 py-1.5 text-xs font-medium border-l border-[#D8D4C9]">Contracting</button>
               </div>
-              <input id="userReadNoteInput" type="text" maxlength="140" placeholder="optional note, e.g. two competing listings just cut asking"
+              <input id="userReadNoteInput" type="text" maxlength="140" placeholder="Note (optional)" aria-label="Note (optional)"
                 class="flex-1 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-xs text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+              <span id="userReadSavedFlash" class="text-xs text-[#8A93A0]" aria-live="polite"></span>
             </div>
-            <p class="text-xs text-[#8A93A0] mt-2">Click a direction again to clear it. Recorded next to the automated read — your call, clearly labeled.</p>
+            <p class="text-xs text-[#8A93A0] mt-2">Click a direction again to clear it.</p>
           </div>
         </div>
 
@@ -5336,6 +5338,16 @@
       lastPublished = { parsed: null, url: "" };
       renderValueDrivers(currentParsed, currentMeta);
       persistAssumptions();
+      flashReadSaved();
+    };
+    // Mirrors the portfolio button's "Saved ✓" text-swap micro-confirmation.
+    let readSavedTimer = null;
+    const flashReadSaved = () => {
+      const el = document.getElementById("userReadSavedFlash");
+      if (!el) return;
+      el.textContent = "Saved ✓";
+      clearTimeout(readSavedTimer);
+      readSavedTimer = setTimeout(() => { el.textContent = ""; }, 2000);
     };
     let readNoteTimer = null;
     controls.querySelectorAll("[data-read-dir]").forEach((b) => {

@@ -3854,9 +3854,21 @@
     // geocoded spot, not the model's block-level guess. The Street View img's
     // onerror removes it (404 = no key / no imagery / rate limit). Coordinates
     // come from getLatLng() — numbers, nothing user-authored.
-    const svPhoto = (marker) => {
+    // Zoom the aerial to fit the BUILDING. Geocodes land on the street
+    // frontage, so a fixed tight zoom framed mostly asphalt for big
+    // industrial boxes — a street view when the point was to see the
+    // property. Bigger footprint, wider frame; unknown size defaults to the
+    // middle zoom, which favors property context over pavement.
+    const aerialZoomFor = (sizeSqft) => {
+      const n = parseFloat(String(sizeSqft == null ? "" : sizeSqft).replace(/[^0-9.]/g, ""));
+      if (!isFinite(n) || n <= 0) return 17;
+      if (n >= 300000) return 16;
+      if (n >= 40000) return 17;
+      return 18;
+    };
+    const svPhoto = (marker, zoom) => {
       const ll = marker.getLatLng();
-      if (!streetviewEnabled) return aerialThumb(ll);
+      if (!streetviewEnabled) return aerialThumb(ll, 260, 156, zoom || 17);
       return '<img src="/api/streetview?lat=' + ll.lat.toFixed(6) + '&lng=' + ll.lng.toFixed(6) +
         '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt="" onerror="this.remove()">';
     };
@@ -3908,7 +3920,8 @@
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m) + `<strong>Your property:</strong> ${escMap(meta.address)}`,
+      m.bindPopup(() => svPhoto(m, aerialZoomFor(meta.subject && meta.subject.sizeMin)) +
+        `<strong>Your property:</strong> ${escMap(meta.address)}`,
         { autoPan: !CAN_HOVER });
       wireHoverPreview(m);
       return m;
@@ -3923,7 +3936,8 @@
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
       const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m) + `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`,
+      m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft)) +
+        `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`,
         { autoPan: !CAN_HOVER });
       wireHoverPreview(m);
       return m;

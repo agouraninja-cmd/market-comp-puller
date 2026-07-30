@@ -5129,9 +5129,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Static: serve index.html for "/", "/index.html", or a /r/<id> share link.
-  // The SPA reads the id off the path and fetches the report from /api/shared. ---
-  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(req.url))) {
+  // --- Static: serve index.html for "/", "/index.html", a /r/<id> share link,
+  // or /desk (the SPA's My Desk view — the client reads the path and shows the
+  // desk instead of the home stack). ---
+  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html" || req.url === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(req.url))) {
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
       if (err) {
         res.writeHead(500);
@@ -5139,7 +5140,13 @@ const server = http.createServer((req, res) => {
       }
       // no-store: the whole front-end is this one file, so a stale cached copy
       // means users silently miss every update. It's small; always fetch fresh.
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      // /desk is a personal workspace — noindex it (header only; the shared
+      // index.html meta robots tag stays index,follow for "/").
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        ...(req.url === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
+      });
       // Canonical/og/JSON-LD URLs in index.html are written against the default
       // origin; rewrite them when SITE_URL is overridden (custom domain).
       res.end(SITE_URL === DEFAULT_SITE_URL ? data : data.toString("utf8").split(DEFAULT_SITE_URL).join(SITE_URL));
@@ -5396,7 +5403,7 @@ const server = http.createServer((req, res) => {
   // page) so crawlers discover and index the whole landing-page set ---
   if (req.method === "GET" && req.url === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
-    return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /dev\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
+    return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /desk\nDisallow: /dev\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
   }
   if (req.method === "GET" && req.url === "/sitemap.xml") {
     const merged = allMarketPages();

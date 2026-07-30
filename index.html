@@ -586,7 +586,7 @@
         <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
         <button type="button" data-scroll-to="for-brokers" class="hover:text-[#1A2433]">For Brokers</button>
         <a href="/how-it-works" class="hover:text-[#1A2433] hidden sm:inline">How it works</a>
-        <button id="myDeskLink" type="button" class="hidden hover:text-[#1A2433] font-medium">My Desk</button>
+        <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -613,7 +613,7 @@
   <div class="max-w-5xl mx-auto px-4 pb-8">
 
     <!-- Search form — one bordered unit -->
-    <div class="relative z-10 mt-4 no-print enter enter-2">
+    <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
       <form id="compForm" class="rd-form">
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[2.2fr_1fr]">
           <div class="rd-cell">
@@ -712,25 +712,38 @@
       <div class="text-[12.5px] text-[#8A8577] mt-3">Free · No account required · An automated estimate, not an appraisal</div>
     </div>
 
-    <!-- Recent searches (stored locally in this browser only) -->
-    <div id="recentWrap" class="hidden mt-3 flex flex-wrap items-center gap-2 no-print">
-      <span class="rd-lab">Re-run:</span>
-      <div id="recentChips" class="flex flex-wrap gap-2"></div>
-    </div>
-
-    <!-- Saved reports (full report data stored locally; reopening is free) -->
-    <div id="savedWrap" class="hidden mt-2 flex flex-wrap items-center gap-2 no-print">
-      <span class="rd-lab">Saved reports:</span>
-      <div id="savedChips" class="flex flex-wrap gap-2"></div>
-      <button id="clearSavedBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
-    </div>
-
-    <!-- My Desk — the signed-in home: portfolio, watchlist, updates feed -->
-    <section id="myDesk" class="hidden mt-10 no-print">
+    <!-- My Desk view — its own /desk page (mutually exclusive with the home
+         stack). Works signed out: the chip rows below are localStorage-driven;
+         the account-backed #myDesk section shows only when signed in. -->
+    <section id="deskView" class="hidden mt-8 no-print">
       <div class="flex items-center justify-between border-b rd-hairline pb-2">
         <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">My Desk</h2>
         <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
       </div>
+      <p class="text-sm text-[#5A6473] mt-3">Your recent searches, saved reports, and tracked properties.</p>
+
+      <!-- Recent searches (stored locally in this browser only) -->
+      <div id="recentWrap" class="hidden mt-6 flex flex-wrap items-center gap-2">
+        <span class="rd-lab">Re-run:</span>
+        <div id="recentChips" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- Saved reports (full report data stored locally; reopening is free) -->
+      <div id="savedWrap" class="hidden mt-3 flex flex-wrap items-center gap-2">
+        <span class="rd-lab">Saved reports:</span>
+        <div id="savedChips" class="flex flex-wrap gap-2"></div>
+        <button id="clearSavedBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
+      </div>
+
+      <!-- Signed-out prompt for the account-backed areas -->
+      <div id="deskSignIn" class="hidden mt-8 border border-[#D8D4C9] rounded-lg bg-white p-4">
+        <p class="text-sm text-[#4C5665]">Sign in to track a portfolio of properties and watch markets for new comps — free.</p>
+        <button id="deskSignInBtn" type="button"
+          class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
+      </div>
+
+      <!-- My Desk — the signed-in areas: portfolio, watchlist, updates feed -->
+      <section id="myDesk" class="hidden mt-4">
       <div class="mt-4">
         <div class="flex items-center gap-2">
           <span class="rd-lab">Portfolio</span>
@@ -772,6 +785,7 @@
         </div>
         <p class="text-xs text-[#8A93A0] mt-1.5">Your public profile shows your name, firm, and contribution stats — never your email or phone.</p>
       </div>
+      </section>
     </section>
 
     <!-- Status / Error -->
@@ -4474,6 +4488,7 @@
       btn.textContent = `${s.address} · ${s.type}`;
       btn.title = "Run this search again";
       btn.addEventListener("click", () => {
+        leaveDesk();
         document.getElementById("address").value = s.address;
         document.getElementById("propertyType").value = s.type;
         syncSubjectFieldsToType();
@@ -4520,7 +4535,8 @@
     const on = Boolean(currentUser);
     document.getElementById("signInLink").classList.toggle("hidden", on);
     document.getElementById("acctMenuWrap").classList.toggle("hidden", !on);
-    document.getElementById("myDeskLink").classList.toggle("hidden", !on);
+    // Sign-in/out while on /desk swaps the prompt card and desk content live.
+    document.getElementById("deskSignIn").classList.toggle("hidden", on);
     if (on) {
       const label = (currentUser.name || currentUser.email).trim();
       document.getElementById("acctMenuBtn").textContent = label.slice(0, 1).toUpperCase();
@@ -4659,6 +4675,9 @@
       currentUser = r.ok ? await r.json() : null;
     } catch (_) { currentUser = null; }
     refreshAccountUI();
+    // A direct /desk load is an explicit visit, so it marks the feed seen —
+    // same as clicking the header link.
+    if (currentUser && location.pathname === "/desk") renderWatchFeed({ markSeen: true });
     const m = location.hash.match(/^#reset=([A-Za-z0-9_-]{20,})$/);
     if (m) { resetToken = m[1]; openAcctModal("reset"); }
   })();
@@ -4717,6 +4736,7 @@
   const fmtDeskUsd = (v) => "$" + Math.round(v).toLocaleString();
 
   async function openPortfolioItem(id) {
+    leaveDesk();
     try {
       const item = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id));
       hideLoadingCard();
@@ -4733,6 +4753,7 @@
     // matching report lands. This is a fresh re-search, so — same as
     // assumptions — any prior curation (exclusions/additions/read) is
     // intentionally discarded rather than carried onto the new report.
+    leaveDesk();
     const meta = item.payload.meta;
     document.getElementById("address").value = meta.address || "";
     const typeSel = document.getElementById("propertyType");
@@ -4809,11 +4830,51 @@
     renderBrokerDesk();
   }
 
-  document.getElementById("myDeskLink").addEventListener("click", () => {
+  // ----------------------------------------------------------------------------
+  // /desk — My Desk lives on its own URL. The desk view and the home stack
+  // (hero/form/results/homeInfo) are mutually exclusive; within the home stack,
+  // results-vs-homeInfo stays renderResults'/Escape's job. popstate reads only
+  // location.pathname (entries created by full page loads carry null state),
+  // and going Back never resurrects a closed report — saved chips cover that.
+  // ----------------------------------------------------------------------------
+  function showDeskView() {
+    document.getElementById("hero").classList.add("hidden");
+    document.getElementById("searchSection").classList.add("hidden");
+    document.getElementById("results").classList.add("hidden");
+    document.getElementById("homeInfo").classList.add("hidden");
+    hideStatus();
+    hideLoadingCard();
+    document.getElementById("deskView").classList.remove("hidden");
+    renderRecentChips();
+    renderSavedChips();
+    document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
     renderMyDesk();
-    renderWatchFeed({ markSeen: true });
-    smoothScrollTo(document.getElementById("myDesk"));
+  }
+  function showHomeView() {
+    document.getElementById("deskView").classList.add("hidden");
+    document.getElementById("hero").classList.remove("hidden");
+    document.getElementById("searchSection").classList.remove("hidden");
+    document.getElementById("homeInfo").classList.remove("hidden");
+  }
+  const onDesk = () => !document.getElementById("deskView").classList.contains("hidden");
+  function enterDesk({ markSeen } = {}) {
+    if (location.pathname !== "/desk") history.pushState({}, "", "/desk");
+    showDeskView();
+    if (markSeen) renderWatchFeed({ markSeen: true });
+    window.scrollTo({ top: 0 });
+  }
+  function leaveDesk() {
+    if (!onDesk()) return;
+    if (location.pathname === "/desk") history.pushState({}, "", "/");
+    showHomeView();
+  }
+  window.addEventListener("popstate", () => {
+    if (location.pathname === "/desk") showDeskView();
+    else showHomeView();
   });
+
+  document.getElementById("myDeskLink").addEventListener("click", () => enterDesk({ markSeen: true }));
+  document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
 
   // ----------------------------------------------------------------------------
   // Watchlist + updates feed. Opening My Desk marks the feed seen, so each
@@ -5077,6 +5138,7 @@
       btn.textContent = `${r.meta.address} · ${new Date(r.ts).toLocaleDateString()}`;
       btn.title = "Reopen this report (no new search, no cost)";
       btn.addEventListener("click", () => {
+        leaveDesk();
         hideLoadingCard();
         showStatus(
           `Reopened a saved report generated ${new Date(r.ts).toLocaleDateString()}. Run a new search for fresh data.`,
@@ -5094,6 +5156,10 @@
   });
 
   renderSavedChips();
+
+  // Direct load / hard refresh on /desk. Runs after `let currentUser` executes;
+  // renderMyDesk early-returns until the auth bootstrap fills the portfolio in.
+  if (location.pathname === "/desk") showDeskView();
 
   // Restore the last-searched property type (saved on each submit) so repeat
   // visitors don't reselect their asset class every session.
@@ -5187,6 +5253,7 @@
   }
   document.querySelectorAll("[data-scroll-to]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      leaveDesk();
       document.getElementById("homeInfo").classList.remove("hidden");
       smoothScrollTo(document.getElementById(btn.dataset.scrollTo));
     });
@@ -5217,7 +5284,7 @@
     document.getElementById("homeInfo").classList.remove("hidden");
     // Samples and shared reports aren't saved to this browser, so no note.
     if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
-      showStatus("Report closed — reopen it any time from <strong>Saved reports</strong> below, at no cost.", "info");
+      showStatus("Report closed — reopen it any time from <strong>My Desk</strong>, at no cost.", "info");
     } else {
       hideStatus();
     }

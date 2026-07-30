@@ -1799,6 +1799,21 @@
     }
     return NaN;
   }
+  // True when this sale comp's building is a wholly different size class than
+  // the subject (more than 2x off in either direction). Such comps stay in
+  // the table and the range - compWeight just halves them per further
+  // doubling - and the size cell wears a ‡ so the down-weighting is visible.
+  function offSizeClass(comp) {
+    if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return false;
+    const r = subjectRangeFromMeta("size");
+    let subj = r ? (r.min + r.max) / 2 : 0;
+    if (!subj && currentParsed) {
+      const f = numericValue(currentParsed.subject_size_sqft);
+      if (f > 0) subj = f;
+    }
+    const csf = numericValue(comp.size_sqft);
+    return subj > 0 && csf > 0 && Math.abs(Math.log2(csf / subj)) > 1;
+  }
   // Named for its original life as a plain USD formatter; now the single
   // formatting choke point for every client-computed money figure. All call
   // sites pass numbers in the report's local currency.
@@ -2217,7 +2232,7 @@
       deltaVal.textContent = "In range";
       deltaPct.textContent = "market avg falls inside your range";
       verdict.textContent =
-        `The comparable average (${formatUsd(marketPpsf)} per SF) falls within your property's range of ${formatUsd(ppsfLo)}–${formatUsd(ppsfHi)} per SF. Your property is priced in line with the market.`;
+        `The market's average $/SF for this area (${formatUsd(marketPpsf)} per SF) falls within your property's range of ${formatUsd(ppsfLo)}–${formatUsd(ppsfHi)} per SF. Your property is priced in line with the market.`;
       card.classList.remove("hidden");
       return;
     }
@@ -2234,8 +2249,8 @@
     deltaPct.textContent = Math.abs(pct).toFixed(1) + "% " + (above ? "above" : "below") + " market average" + (isRange ? " (midpoint)" : "");
 
     verdict.textContent = above
-      ? `Your property is priced approximately ${Math.abs(pct).toFixed(1)}% above the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF). Confirm that quality, location, or income supports the premium.`
-      : `Your property is priced approximately ${Math.abs(pct).toFixed(1)}% below the comparable average (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF), which may indicate value, subject to condition and income.`;
+      ? `Your property is priced approximately ${Math.abs(pct).toFixed(1)}% above the market's average $/SF for this area (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF). Confirm that quality, location, or income supports the premium.`
+      : `Your property is priced approximately ${Math.abs(pct).toFixed(1)}% below the market's average $/SF for this area (${basisLabel} vs. ${formatUsd(marketPpsf)} per SF), which may indicate value, subject to condition and income.`;
 
     card.classList.remove("hidden");
   }
@@ -2439,6 +2454,22 @@
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend.`
         : ".");
+    // Honest-uncertainty notes. Name the comps of a wholly different size
+    // class (down-weighted, never hidden), and say plainly when only 2-3
+    // comps back the range - below 4 there is no outlier trim, so the band
+    // is the raw spread and deserves rougher treatment.
+    const offSizeN = subjSFMid > 0
+      ? saleComps.filter((x) => {
+          const csf = numericValue(x.comp.size_sqft);
+          return csf > 0 && Math.abs(Math.log2(csf / subjSFMid)) > 1;
+        }).length
+      : 0;
+    const sizeNote = offSizeN > 0
+      ? ` ${offSizeN} comp${offSizeN === 1 ? " is" : "s are"} a different size class and count${offSizeN === 1 ? "s" : ""} less (‡ in the table).`
+      : "";
+    const smallNNote = (n) => n < 4
+      ? ` Only ${n} sale comps back this range, so it shows the full observed spread - treat it as a rough guide.`
+      : "";
     // Pre-exclusion sale-comp count (same filter, but over ALL comps rather
     // than includedComps()) — the trust line and fallback copy below need
     // both counts to explain a curated shortfall rather than silently
@@ -2587,7 +2618,8 @@
         ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps (${excludedSaleN} excluded ${whoCurated})`
         : `Based on ${ppsfs.length} sale comps`;
       trustEl.textContent = countPhrase
-        + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote;
+        + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote
+        + sizeNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
 
       const entries = [{
@@ -2628,7 +2660,7 @@
         ? `the middle range of ${per.length} sale comps`
         : `price per ${spec.noun} from ${per.length} sale comps`);
       trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
-        + `Building size wasn't needed for this estimate.` + weighNote;
+        + `Building size wasn't needed for this estimate.` + weighNote + smallNNote(per.length);
       trustEl.classList.remove("hidden");
       const entries = [{
         label: "Sales comparison approach",
@@ -3626,7 +3658,12 @@
       .sort((a, b) => a.v - b.v);
     if (pts.length < 2) { card.classList.add("hidden"); return; }
 
-    const avg = pts.reduce((s, p) => s + p.v, 0) / pts.length;
+    // Median, not mean — the hero's Likely value is a median, and showing a
+    // different statistic here labeled prominently made the two disagree on
+    // the same comps, which reads as an error.
+    const med = pts.length % 2
+      ? pts[(pts.length - 1) / 2].v
+      : (pts[pts.length / 2 - 1].v + pts[pts.length / 2].v) / 2;
 
     // Subject $/SF (single value or band) — same math as renderComparison.
     const sizeR = subjectRangeFromMeta("size");
@@ -3668,11 +3705,11 @@
       svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="#B91C1C" fill-opacity="0.12"/>`;
     }
 
-    // Average line + label, anchor flipped near the edges so it stays inside.
-    const ax = x(avg);
+    // Median line + label, anchor flipped near the edges so it stays inside.
+    const ax = x(med);
     const aAnchor = ax < EDGE + 40 ? "start" : ax > W - EDGE - 40 ? "end" : "middle";
     svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="#1A2433" stroke-width="2"/>`;
-    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">Avg ${formatUsd(avg, { maximumFractionDigits: 0 })}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">Median ${formatUsd(med, { maximumFractionDigits: 0 })}</text>`;
 
     // Comp dots with vertical jitter when they crowd each other.
     const offsets = [0, -11, 11, -22];
@@ -4354,8 +4391,8 @@
   // only renders when its stat exists; the whole row hides if none do.
   // A low→high range bar with the comp average marked, tucked under the Avg
   // $/SF tile so the headline number carries its spread at a glance.
-  function buildSpreadBar({ lo, hi, avg }) {
-    const pct = hi > lo ? Math.max(2, Math.min(98, ((avg - lo) / (hi - lo)) * 100)) : 50;
+  function buildSpreadBar({ lo, hi, mark }) {
+    const pct = hi > lo ? Math.max(2, Math.min(98, ((mark - lo) / (hi - lo)) * 100)) : 50;
     const el = document.createElement("div");
     el.className = "mt-3";
     el.innerHTML =
@@ -4381,7 +4418,10 @@
       .filter((v) => isFinite(v) && v > 0)
       .sort((a, b) => a - b);
     const spread = ppsf.length >= 2
-      ? { lo: ppsf[0], hi: ppsf[ppsf.length - 1], avg: ppsf.reduce((s, v) => s + v, 0) / ppsf.length }
+      // Marker at the comp-set MEDIAN — same statistic family as the hero and
+      // the chart, so the three never quote different centers for one comp set.
+      ? { lo: ppsf[0], hi: ppsf[ppsf.length - 1],
+          mark: ppsf.length % 2 ? ppsf[(ppsf.length - 1) / 2] : (ppsf[ppsf.length / 2 - 1] + ppsf[ppsf.length / 2]) / 2 }
       : null;
     const mid = sizes.length / 2;
     const median = sizes.length === 0 ? NaN
@@ -4390,8 +4430,10 @@
     const counts = curationCounts();
     const tiles = [
       // Market-level model figure — deliberately NOT curated; the comp-set
-      // spread bar below is what reflects the user's comp set.
-      { label: "Avg $/SF", value: displayMoney(parsed.avg_price_per_sqft) || "" },
+      // spread bar below is what reflects the user's comp set. Labeled
+      // "Market" so it can't be read as the average of the table's comps
+      // (the hero's median is the comp-set statistic).
+      { label: "Market Avg $/SF", value: displayMoney(parsed.avg_price_per_sqft) || "" },
       { label: "Comps Found",
         value: counts.excluded > 0 ? `${counts.included} (of ${counts.total} in report)`
           : currentComps.length ? String(currentComps.length) : "",
@@ -4425,8 +4467,8 @@
         sub.textContent = qual[2];
         tile.appendChild(sub);
       }
-      // The Avg $/SF tile gets the arrival spotlight and its spread bar.
-      if (t.label === "Avg $/SF") {
+      // The Market Avg $/SF tile gets the arrival spotlight and its spread bar.
+      if (t.label === "Market Avg $/SF") {
         tile.classList.add("tile-spotlight");
         if (spread) tile.appendChild(buildSpreadBar(spread));
       }
@@ -6236,6 +6278,15 @@
             sup.className = "text-[#8A93A0]";
             cell.appendChild(sup);
           }
+          // Different size class than the subject — down-weighted in the
+          // valuation, disclosed here (the trust line names the count).
+          if (col.key === "size_sqft" && val && offSizeClass(comp)) {
+            td.title = "Different size class than your building — counts less in the valuation";
+            const sup = document.createElement("sup");
+            sup.textContent = "‡";
+            sup.className = "text-[#8A93A0]";
+            cell.appendChild(sup);
+          }
         }
         td.appendChild(cell);
         tr.appendChild(td);
@@ -6349,6 +6400,14 @@
             dd.title = "Recomputed from sale price ÷ building size";
             const sup = document.createElement("sup");
             sup.textContent = "†";
+            sup.className = "text-[#8A93A0]";
+            dd.appendChild(sup);
+          }
+          // Same size-class disclosure as the desktop table.
+          if (col.key === "size_sqft" && !empty && offSizeClass(comp)) {
+            dd.title = "Different size class than your building — counts less in the valuation";
+            const sup = document.createElement("sup");
+            sup.textContent = "‡";
             sup.className = "text-[#8A93A0]";
             dd.appendChild(sup);
           }

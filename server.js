@@ -4727,9 +4727,15 @@ const server = http.createServer((req, res) => {
         if (!hasImagery) { res.writeHead(404); return res.end(); }
         // No `heading` param: Google then aims the camera at the given point
         // from the nearest pano — the "look at the building" behavior.
+        // fov=100 + a slight upward pitch: in dense downtowns the pano sits
+        // right against tall buildings, and the old fov=80 straight-on shot
+        // came back as a slice of wall or one storefront window (Boston
+        // Financial District report). The wider, slightly raised frame
+        // shows a recognizable building there while barely changing the
+        // suburban/industrial shots taken from across a parking lot.
         const ir = await fetch(
           "https://maps.googleapis.com/maps/api/streetview?size=600x360&location=" + loc +
-            "&source=outdoor&fov=80&key=" + GOOGLE_MAPS_API_KEY,
+            "&source=outdoor&fov=100&pitch=6&key=" + GOOGLE_MAPS_API_KEY,
           { signal: AbortSignal.timeout(8000) }
         );
         if (!ir.ok) { res.writeHead(404); return res.end(); }

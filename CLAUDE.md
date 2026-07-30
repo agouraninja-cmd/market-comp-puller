@@ -118,14 +118,21 @@ dependency. `.env` is git-ignored — never commit it.
   popups use the keyless stitched-Esri-tile aerial close-up (`aerialThumb`
   in index.html) — which is also what a Street View 404 swaps in via the
   img's onerror.
-  **A pin only gets a photo at all when its OSM building footprint exists**
-  (`snapMarkersToBuildings` — one batched browser-direct Overpass query per
-  report after pins settle, two public endpoints tried in order, cached in
-  localStorage `bldgCache.v1`): the footprint is the one signal proving the
-  photo shows the property. Geocoded points sit on the street centerline,
-  so every unsnapped aiming strategy (raw point, Google address geocode)
-  produced photos of roads/trees on rural reports — owner's rule is "the
-  actual property or nothing," so no footprint = text-only popup.
+  **A pin only gets a photo at all when its OSM building footprint exists
+  AND its address starts with a street number** (`snapMarkersToBuildings` —
+  one batched browser-direct Overpass query per report after pins settle,
+  two public endpoints tried in order, cached in localStorage
+  `bldgCache.v1`): the footprint is the one signal proving the photo shows
+  the property. Geocoded points sit on the street centerline, so every
+  unsnapped aiming strategy (raw point, Google address geocode) produced
+  photos of roads/trees on rural reports — owner's rule is "the actual
+  property or nothing," so no footprint = text-only popup. The street-
+  number gate exists because submarket-estimate comps ("Financial District
+  (general submarket estimate)") geocode to a district point and several
+  snapped onto the SAME building — one Boston report showed one white
+  column three times. It is deliberately NOT the shape-lenient
+  `isAggregateAddress()` in server.js, which protects corpus DATA where
+  numberless comps are still valid rows.
   Spend guardrails: Google Maps API quotas are NO LONGER user-adjustable
   (the spec's 500/day quota-cap step is obsolete) — the backstops are the
   "CompNinja Street View cap" $5/month budget alert on the billing account

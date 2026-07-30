@@ -4069,18 +4069,41 @@
     // Re-place every pin from real geocoding; the model's coordinates were
     // only the fast first paint. Runs after render so the map never waits.
     (async () => {
+      // Comps scraped from listing pages sometimes come back street-only or
+      // without a state ("4521 Maple Ave") — geocoders then silently guess a
+      // state (Census resolved a state-less "Springfield" to MA; Nominatim
+      // put a bare "4521 Maple Ave" in Maryland). When a comp address lacks
+      // a ", ST" token, anchor the query with the subject's own city/state
+      // tail: the model's comps are near the subject by definition.
+      const ST_RE = /,\s*[A-Z]{2}(?=[\s,]|$)/;
+      const subjTail = (meta.address || "").includes(",") ? meta.address.slice(meta.address.indexOf(",")) : "";
+      const compQuery = (a) => (ST_RE.test(a) || !subjTail) ? a : a.trim().replace(/,+$/, "") + subjTail;
       const jobs = [geocodeAddress(meta.address).then((ll) => ({ subject: true, ll }))];
       (includedComps() || []).forEach((c) => {
-        if (c.address) jobs.push(geocodeAddress(c.address).then((ll) => ({ c, ll })));
+        if (c.address) jobs.push(geocodeAddress(compQuery(String(c.address))).then((ll) => ({ c, ll })));
       });
       const results = await Promise.all(jobs);
       if (gen !== mapGeneration || !mapInstance) return;   // a newer report took over
+      // Sanity gate: a comp geocode far from the subject is a wrong-state
+      // mismatch, not a comp — keep the model's approximate pin (right town,
+      // block-level) instead of teleporting it across the country and
+      // zooming the map out to two states.
+      const subjLL = (results[0] && results[0].ll) ||
+        (isFinite(parseFloat(parsed.subject_lat)) && isFinite(parseFloat(parsed.subject_lng))
+          ? { lat: parseFloat(parsed.subject_lat), lng: parseFloat(parsed.subject_lng) } : null);
+      const MAX_COMP_MILES = 300;   // generous even for rural wide-radius reports
+      const milesBetween = (a, b) => {
+        const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+        return 3959 * 2 * Math.asin(Math.sqrt(h));
+      };
       // Pins are now final — find each one's building for the popup photo.
       // Fire-and-forget: the map never waits on Overpass.
       const allMarkers = () => [subjMarker, ...Object.values(compMarkersByNum)].filter(Boolean);
       let moved = false;
       results.forEach((r) => {
         if (!r.ll) return;
+        if (!r.subject && subjLL && milesBetween(subjLL, r.ll) > MAX_COMP_MILES) return;
         moved = true;
         if (r.subject) {
           if (subjMarker) subjMarker.setLatLng([r.ll.lat, r.ll.lng]);

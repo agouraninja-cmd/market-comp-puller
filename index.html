@@ -3952,14 +3952,20 @@
     const svPhoto = (marker, zoom, address) => {
       // Aerial: snapped building centroid when Overpass found one, so the
       // crop frames the property, not the street.
-      const ll = marker._bldgLL || marker.getLatLng();
+      const snapped = marker._bldgLL;
+      const ll = snapped || marker.getLatLng();
       if (!streetviewEnabled) return aerialThumb(ll, 260, 156, zoom || 17);
-      // Street View: aim by ADDRESS when we have one — Google geocodes it
-      // rooftop-accurate and points the camera at the building's front,
-      // which beats coordinate aiming for houses (their OSM footprints are
-      // often missing, leaving only the street-centerline point). The
-      // aerial-fallback data attrs stay coordinate-based either way.
-      const target = address
+      // Street View aiming, best target first:
+      //   1. Snapped building centroid — camera points at the structure
+      //      itself (verified: frames the warehouse, not the road).
+      //   2. Address, when no footprint is mapped — Google's geocode is
+      //      rooftop-accurate for most HOUSES (whose OSM footprints are the
+      //      ones usually missing). For unmapped commercial parcels Google
+      //      sometimes interpolates along the street, so the address is the
+      //      fallback, not the default.
+      //   3. Raw pin coordinates.
+      // The aerial-fallback data attrs stay coordinate-based either way.
+      const target = (!snapped && address)
         ? "address=" + encodeURIComponent(String(address).slice(0, 200))
         : "lat=" + ll.lat.toFixed(6) + "&lng=" + ll.lng.toFixed(6);
       return '<img src="/api/streetview?' + target +

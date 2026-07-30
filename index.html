@@ -3992,19 +3992,20 @@
       // Hover previews never pan the map (a map lurching under a resting
       // cursor reads as a glitch, and panning can push the pin out from
       // under the cursor — closing the popup it just opened). But a CLICK is
-      // deliberate: pan just enough that the whole popup — photo included —
-      // is inside the map, instead of clipping at the top edge. The photo
-      // slot has fixed dimensions, so offsetHeight is right immediately,
-      // before any image finishes loading.
+      // deliberate: glide the map so the pin and its whole popup — photo
+      // included — sit centered in view. One smooth, predictable transition
+      // on every click, never a popup clipped at the map's edge. The popup
+      // extends upward from the pin, so the map centers on the ensemble's
+      // midpoint, not the pin itself. The photo slot has fixed dimensions,
+      // so offsetHeight is right immediately, before any image loads.
       m.on("click", () => {
         pinned = true;
         m.openPopup();
         const el = m.getPopup() && m.getPopup().getElement();
         if (el && mapInstance) {
-          mapInstance.panInside(m.getLatLng(), {
-            paddingTopLeft: [el.offsetWidth / 2 + 12, el.offsetHeight + 24],
-            paddingBottomRight: [el.offsetWidth / 2 + 12, 12],
-          });
+          const pt = mapInstance.latLngToContainerPoint(m.getLatLng());
+          const target = mapInstance.containerPointToLatLng([pt.x, pt.y - el.offsetHeight / 2]);
+          mapInstance.panTo(target, { animate: true, duration: 0.45, easeLinearity: 0.25 });
         }
       });
       m.on("popupclose", () => { pinned = false; });

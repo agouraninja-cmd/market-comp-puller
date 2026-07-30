@@ -3723,6 +3723,46 @@
     });
   }
 
+  // Aerial close-up for a pin popup: free Esri World Imagery tiles stitched
+  // into a crop centered on the property (a crop smaller than one 256px tile
+  // touches at most 4 tiles). No key, no billing — the popup photo whenever
+  // Street View is off, and the stand-in when Street View has no imagery for
+  // a spot. A red dot marks the exact point; tiles that fail to load simply
+  // hide. (First shipped 2026-07-13 as 427ff44, retired for the basemap
+  // toggle, revived once hover previews made popup photos the point.)
+  // Module-scoped (no closure deps) so the inline onerror fallback below can
+  // reach it.
+  function aerialThumb(ll, w = 260, h = 156, z = 18) {
+    const scale = 256 * Math.pow(2, z);
+    const x = ((ll.lng + 180) / 360) * scale;
+    const latRad = (ll.lat * Math.PI) / 180;
+    const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale;
+    const ox = x - w / 2, oy = y - h / 2;   // crop origin in global pixels
+    let imgs = "";
+    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + h - 1) / 256); ty++) {
+      for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + w - 1) / 256); tx++) {
+        imgs += `<img src="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}" ` +
+          `style="position:absolute;left:${Math.round(tx * 256 - ox)}px;top:${Math.round(ty * 256 - oy)}px;width:256px;height:256px;max-width:none" ` +
+          `alt="" onerror="this.style.display='none'">`;
+      }
+    }
+    return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:#e2e8f0">` +
+      imgs +
+      `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
+      `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
+      `</div>`;
+  }
+  // Called from the Street View img's inline onerror: a 404 (no imagery for
+  // this spot / rate limit) swaps the img for the keyless aerial instead of
+  // leaving the popup photo-less. Coordinates ride on the img's data
+  // attributes — numbers we wrote ourselves, nothing user-authored.
+  function aerialFallbackFor(img) {
+    const lat = parseFloat(img.dataset.lat), lng = parseFloat(img.dataset.lng);
+    const z = parseInt(img.dataset.zoom, 10);
+    if (!isFinite(lat) || !isFinite(lng)) return "";
+    return aerialThumb({ lat, lng }, 260, 156, isFinite(z) ? z : 17);
+  }
+
   // ----------------------------------------------------------------------------
   // Comp map — plots the subject (red pin) and comps (numbered dots) on OSM
   // tiles. Pins paint immediately from the model's approximate coordinates,
@@ -3889,41 +3929,6 @@
     // markers to geocoded spots, or creates ones the model gave no coords for.
     let subjMarker = null;
     const compMarkersByNum = {};
-    // Aerial close-up for a pin popup: free Esri World Imagery tiles stitched
-    // into a crop centered on the property's geocoded point (a crop smaller
-    // than one 256px tile touches at most 4 tiles). No key, no billing — this
-    // is the popup photo whenever Street View is off. A red dot marks the
-    // exact point; tiles that fail to load simply hide. (First shipped
-    // 2026-07-13 as 427ff44, retired for the basemap toggle, revived as the
-    // keyless fallback once hover previews made popup photos the point.)
-    const aerialThumb = (ll, w = 260, h = 156, z = 18) => {
-      const scale = 256 * Math.pow(2, z);
-      const x = ((ll.lng + 180) / 360) * scale;
-      const latRad = (ll.lat * Math.PI) / 180;
-      const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale;
-      const ox = x - w / 2, oy = y - h / 2;   // crop origin in global pixels
-      let imgs = "";
-      for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + h - 1) / 256); ty++) {
-        for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + w - 1) / 256); tx++) {
-          imgs += `<img src="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}" ` +
-            `style="position:absolute;left:${Math.round(tx * 256 - ox)}px;top:${Math.round(ty * 256 - oy)}px;width:256px;height:256px;max-width:none" ` +
-            `alt="" onerror="this.style.display='none'">`;
-        }
-      }
-      return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:#e2e8f0">` +
-        imgs +
-        `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
-        `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
-        `</div>`;
-    };
-    // Popup photo. Street View (server-proxied, needs the Google key) when
-    // enabled; the keyless aerial close-up otherwise, so a hover always shows
-    // a picture of the property. Popup content is a FUNCTION so Leaflet
-    // builds it at open time from the marker's CURRENT position —
-    // refinePins() moves pins after first paint, and the photo must show the
-    // geocoded spot, not the model's block-level guess. The Street View img's
-    // onerror removes it (404 = no key / no imagery / rate limit). Coordinates
-    // come from getLatLng() — numbers, nothing user-authored.
     // Zoom the aerial to fit the BUILDING. Geocodes land on the street
     // frontage, so a fixed tight zoom framed mostly asphalt for big
     // industrial boxes — a street view when the point was to see the
@@ -3936,13 +3941,23 @@
       if (n >= 40000) return 17;
       return 18;
     };
+    // Popup photo. Street View (server-proxied, needs the Google key) when
+    // enabled; the keyless aerial close-up otherwise — and when Street View
+    // 404s (no imagery for this spot / rate limit), its onerror swaps in the
+    // aerial rather than leaving the popup photo-less, so a hover always
+    // shows a picture of the property. Popup content is a FUNCTION so
+    // Leaflet builds it at open time from the marker's CURRENT position —
+    // refinePins() moves pins after first paint. Coordinates come from
+    // getLatLng() / the snapped centroid — numbers, nothing user-authored.
     const svPhoto = (marker, zoom) => {
       // Snapped building centroid when Overpass found one — the photo (and
       // Street View's camera target) aims at the property, not the street.
       const ll = marker._bldgLL || marker.getLatLng();
       if (!streetviewEnabled) return aerialThumb(ll, 260, 156, zoom || 17);
       return '<img src="/api/streetview?lat=' + ll.lat.toFixed(6) + '&lng=' + ll.lng.toFixed(6) +
-        '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt="" onerror="this.remove()">';
+        '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt=""' +
+        ' data-lat="' + ll.lat.toFixed(6) + '" data-lng="' + ll.lng.toFixed(6) + '" data-zoom="' + (zoom || 17) + '"' +
+        ' onerror="this.outerHTML = aerialFallbackFor(this)">';
     };
     // Hover preview: pause on a pin and its popup opens (photo included);
     // move away and it closes. The short open delay stops a mouse merely

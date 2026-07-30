@@ -109,19 +109,25 @@ dependency. `.env` is git-ignored — never commit it.
   same Resend notifier). An in-memory counter reset at UTC midnight and on
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
-- `GOOGLE_MAPS_API_KEY` — optional. When set, map pin popups show a
-  street-level photo of the building via `GET /api/streetview` (a proxy so
-  the key never reaches the browser; Google's free metadata check runs
-  first so no-imagery spots cost nothing). Unset = the route 404s and
-  popups fall back to a keyless stitched-Esri-tile aerial close-up
-  (`aerialThumb` in index.html), so hovering a pin always shows a photo.
+- `GOOGLE_MAPS_API_KEY` — optional; SET on Render since 2026-07-29 (key
+  "CompNinja Street View" in the owner's Google Cloud project `compninja`,
+  restricted to the Street View Static API only). When set, map pin popups
+  show a street-level photo of the building via `GET /api/streetview` (a
+  proxy so the key never reaches the browser; Google's free metadata check
+  runs first so no-imagery spots cost nothing). Unset = the route 404s and
+  popups use the keyless stitched-Esri-tile aerial close-up (`aerialThumb`
+  in index.html) — which is also what a Street View 404 swaps in via the
+  img's onerror, so hovering a pin always shows a photo.
   Either photo centers on the pin's OSM building footprint when one exists
   (`snapMarkersToBuildings` — one batched browser-direct Overpass query per
   report after pins settle, cached in localStorage `bldgCache.v1`, every
   failure falls back to the pin position) because geocoded points sit on
   the street centerline, not the building.
-  Key setup + quota-cap steps live in
-  `docs/superpowers/specs/2026-07-28-streetview-photos-design.md`.
+  Spend guardrails: Google Maps API quotas are NO LONGER user-adjustable
+  (the spec's 500/day quota-cap step is obsolete) — the backstops are the
+  "CompNinja Street View cap" $5/month budget alert on the billing account
+  (emails the owner at 50/90/100%), the route's per-IP rate limit, and the
+  10k-photos/month free tier (a fully-hovered report uses ~6).
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so

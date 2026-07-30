@@ -1787,6 +1787,22 @@
     const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
     return m ? parseFloat(m[0]) : NaN;
   }
+  // A sale comp's $/SF for the valuation math. Fresh reports arrive with the
+  // server's reconciled figure, but saved/shared reports from before that
+  // change never re-touch the server — derive price ÷ size at read time so
+  // their unpriced comps stop silently dropping out of the range. Read-only:
+  // never mutates the comp (parsed.comps is what saves and shares). The sane
+  // per-SF band guards against numericValue's shorthand hazard ("$1.2M" → 1.2).
+  function salePsfOf(c) {
+    const v = numericValue(c.price_per_sqft);
+    if (v > 0) return v;
+    const p = numericValue(c.price_or_rate), s = numericValue(c.size_sqft);
+    if (p > 0 && s > 0) {
+      const d = p / s;
+      if (d >= 1 && d <= 100000) return d;
+    }
+    return NaN;
+  }
   // Named for its original life as a plain USD formatter; now the single
   // formatting choke point for every client-computed money figure. All call
   // sites pass numbers in the report's local currency.
@@ -2338,7 +2354,7 @@
     // count provenance tiers.
     const saleComps = includedComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => ({ comp: c, v: numericValue(c.price_per_sqft) }))
+      .map((c) => ({ comp: c, v: salePsfOf(c) }))
       .filter((x) => x.v > 0);
     const ppsfs = saleComps.map((x) => x.v);
     // Pre-exclusion sale-comp count (same filter, but over ALL comps rather
@@ -2347,7 +2363,7 @@
     // dropping comps.
     const allSaleComps = currentComps
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => numericValue(c.price_per_sqft))
+      .map((c) => salePsfOf(c))
       .filter((v) => v > 0);
 
     const fmtTotal = (v) => formatUsd(Math.round(v), { maximumFractionDigits: 0 });
@@ -2632,7 +2648,7 @@
     }
     const ppsfs = includedComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => numericValue(c.price_per_sqft))
+      .map((c) => salePsfOf(c))
       .filter((v) => v > 0);
     if (sizeR && ppsfs.length >= 2) {
       const rr = robustPpsfRange(ppsfs);
@@ -5977,6 +5993,15 @@
             const b = outsideWindowBadge(val);
             if (b) cell.appendChild(b);
           }
+          // Server recomputed this $/SF from the comp's own price ÷ size —
+          // disclose the substitution without shouting about it.
+          if (col.key === "price_per_sqft" && comp.psf_reconciled && val) {
+            td.title = "Recomputed from sale price ÷ building size";
+            const sup = document.createElement("sup");
+            sup.textContent = "†";
+            sup.className = "text-[#8A93A0]";
+            cell.appendChild(sup);
+          }
         }
         td.appendChild(cell);
         tr.appendChild(td);
@@ -6085,6 +6110,14 @@
           dd.appendChild(transactionPill(val));
         } else {
           dd.textContent = empty ? "-" : val;
+          // Same recomputed-$/SF disclosure as the desktop table.
+          if (col.key === "price_per_sqft" && comp.psf_reconciled && !empty) {
+            dd.title = "Recomputed from sale price ÷ building size";
+            const sup = document.createElement("sup");
+            sup.textContent = "†";
+            sup.className = "text-[#8A93A0]";
+            dd.appendChild(sup);
+          }
         }
         row.appendChild(dt);
         row.appendChild(dd);

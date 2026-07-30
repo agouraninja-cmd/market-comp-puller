@@ -1578,6 +1578,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       ? `Also determine the TARGET property's building size in square feet from public records, assessor data, or listing pages for the target address. This is the BUILDING square footage, not the lot or land size.`
       : "",
     typeGuidance[type] || "",
+    // Size class moves $/SF (economies of scale) — steer comp selection
+    // toward the subject's size band so the valuation range isn't set by
+    // buildings of a wholly different scale.
+    `SIZE FIT: Prefer comps between roughly half and twice the target building's size${
+      subjectSizeSqft
+        ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
+        : ` (once you determine the target's size)`
+    } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
     subjectDetailBlock,
     typeSpec
       ? `For EACH comp, also report ${["one", "two", "three"][typeSpec.fields.length - 1]} ${type.toLowerCase()} specific${typeSpec.fields.length > 1 ? "s" : ""}: ${typeSpec.instruction}. Search listing pages, brokerage flyers, and property records for these. If one genuinely can't be found, use an empty string "" — do not guess.`
@@ -1589,6 +1597,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     corpusBlock,
     ``,
     `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
+    `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,
     ``,
     `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
@@ -1706,6 +1715,87 @@ function normalizeCurrency(parsed) {
     parsed.currency !== "USD" && Number.isFinite(rate) && rate > 0 && rate < 10
       ? rate
       : null;
+  return parsed;
+}
+
+// ---------------------------------------------------------------------------
+// $/SF reconciliation — the model's per-comp price_per_sqft feeds the
+// valuation math directly, so verify it against the comp's own stated
+// price ÷ size instead of taking it on faith. Fill it when missing, replace
+// it when it disagrees with the comp's own figures by more than 10%
+// (rounding never trips that; rate-vs-price and order-of-magnitude slips
+// blow far past it). All three parsers are strict whole-string matchers on
+// the displayMoney philosophy: a value that could mean two things (a range,
+// a per-unit rate, a parenthetical) is refused, and refusal always means
+// "leave the comp untouched" — never a guessed number.
+// ---------------------------------------------------------------------------
+const GROUPED_INT = /^\d{1,3}(,\d{3})+$/; // "6,400,000" yes; "12,50" no
+
+function moneyNumberFrom(numStr, suffix) {
+  const intPart = numStr.split(".")[0];
+  if (intPart.includes(",") && !GROUPED_INT.test(intPart)) return null;
+  const n = Number(numStr.replace(/,/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const mult = { k: 1e3, thousand: 1e3, m: 1e6, mm: 1e6, million: 1e6, b: 1e9, billion: 1e9 }[
+    (suffix || "").toLowerCase()
+  ] || 1;
+  return n * mult;
+}
+
+// Total sale price: "$6,400,000", "$1.2M", "1.2 million", "850K". Refuses
+// ranges (em-dash ranges are already hyphens via stripEmDashes), per-SF
+// rates, parentheticals, negatives — anything beyond one plain figure.
+function parseSalePrice(s) {
+  const m = /^\s*~?\s*(?:US)?\$?\s*([\d,]+(?:\.\d+)?)\s*(mm?|million|k|thousand|b|billion)?\s*\.?\s*$/i
+    .exec(String(s || ""));
+  return m ? moneyNumberFrom(m[1], m[2]) : null;
+}
+
+// Building size: "48,000", "48,000 SF", "48000 sq ft".
+function parseSizeSqft(s) {
+  const m = /^\s*~?\s*([\d,]+(?:\.\d+)?)\s*(?:sf|sq\.?\s?ft\.?|square\s+feet)?\s*$/i
+    .exec(String(s || ""));
+  return m ? moneyNumberFrom(m[1], "") : null;
+}
+
+// Stated $/SF: "$115", "115.50", "$115/SF". Unparseable reads as missing,
+// which is safe — a fill only happens when price AND size parsed cleanly.
+function parsePsf(s) {
+  const m = /^\s*~?\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(?:\/\s?sf)?\s*$/i.exec(String(s || ""));
+  return m ? moneyNumberFrom(m[1], "") : null;
+}
+
+function reconcilePricePerSqft(parsed) {
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  // "$" only for USD reports — a foreign report's prices are local currency,
+  // and a baked-in "$" would be a false label (must run after normalizeCurrency).
+  // Legacy cached payloads may lack the currency field entirely; blank reads
+  // as USD, matching normalizeCurrency's own convention.
+  const prefix = (parsed.currency || "USD") === "USD" ? "$" : "";
+  const fmtPsf = (v) => {
+    const r = v >= 10 ? Math.round(v) : Math.round(v * 100) / 100;
+    return prefix + r.toLocaleString("en-US");
+  };
+  for (const c of parsed.comps) {
+    try {
+      if (!c || typeof c !== "object") continue;
+      // Same sale test as the front-end hero: blank transaction counts as sale.
+      if (String(c.transaction || "").toLowerCase().startsWith("lease")) continue;
+      const price = parseSalePrice(c.price_or_rate);
+      const size = parseSizeSqft(c.size_sqft);
+      if (price === null || size === null) continue;
+      const derived = price / size;
+      // Same sane per-SF band the front-end uses for user-added comps.
+      if (derived < 1 || derived > 100000) continue;
+      const stated = parsePsf(c.price_per_sqft);
+      if (stated === null || Math.abs(stated - derived) / derived > 0.10) {
+        c.price_per_sqft = fmtPsf(derived);
+        c.psf_reconciled = true; // front-end discloses the recompute
+      }
+    } catch (err) {
+      // Never let a malformed comp break the report — leave it untouched.
+    }
+  }
   return parsed;
 }
 
@@ -1854,7 +1944,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
-  const parsed = normalizeCurrency(normalizeSourceTypes(parseCompJson(text)));
+  const parsed = reconcilePricePerSqft(normalizeCurrency(normalizeSourceTypes(parseCompJson(text))));
   return attachVerifiedAttribution(parsed, verifiedComps);
 }
 
@@ -3959,6 +4049,9 @@ const server = http.createServer((req, res) => {
 
         const cached = await getCachedSearch(cacheKey);
         if (cached) {
+          // Legacy cache entries predate $/SF reconciliation — correct them at
+          // read time (idempotent, so re-hitting the in-memory object is fine).
+          reconcilePricePerSqft(cached);
           console.log(`Cache hit (no Anthropic call): ${addressOk} — ${typeOk}`);
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true });
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
@@ -4053,6 +4146,7 @@ const server = http.createServer((req, res) => {
               maxComps: 8, txFocus: "both", subjectSizeSqft: null, verifiedComps,
             });
             let result = await getCachedSearch(cacheKey);
+            if (result) reconcilePricePerSqft(result); // legacy cache entries
             const cached = Boolean(result);
             if (!result) {
               if (!tryConsumeDailySearch()) {

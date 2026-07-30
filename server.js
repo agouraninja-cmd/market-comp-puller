@@ -2412,14 +2412,16 @@ function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
 // constant is built at module load, so a logo defined further down the file
 // would still be in its temporal dead zone and crash the process at startup.
 const CN_LOGO =
-  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
-  `<rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>` +
-  `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
+  `<svg viewBox="0 0 60 60" aria-hidden="true">` +
+  `<polygon points="21,33 39,25 39,52 21,52" fill="#1A2433"/>` +
+  `<polygon points="26,8 44,8 44,21 26,29" fill="#1A2433"/>` +
+  `<polygon points="17,34.5 43,23 43,26 17,37.5" fill="#B91C1C"/></svg>`;
 // Same mark inverted for the ink footer.
 const CN_LOGO_LIGHT =
-  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
-  `<rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>` +
-  `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
+  `<svg viewBox="0 0 60 60" aria-hidden="true">` +
+  `<polygon points="21,33 39,25 39,52 21,52" fill="#FFFFFF"/>` +
+  `<polygon points="26,8 44,8 44,21 26,29" fill="#FFFFFF"/>` +
+  `<polygon points="17,34.5 43,23 43,26 17,37.5" fill="#B91C1C"/></svg>`;
 
 // Research Desk system — the same palette and type as the landing page and
 // /how-it-works, so a visitor arriving from search lands on something that

@@ -3984,11 +3984,32 @@
       // keeps real-but-numberless comps IN the corpus, where they're valid
       // data; a photo needs location precision the corpus doesn't.
       if (!/^\s*\d+\s+\S/.test(String(address || ""))) return "";
-      if (!streetviewEnabled) return aerialThumb(snapped, 260, 156, zoom || 17);
+      // Size the photo to the map: on a phone the map is ~341px wide and a
+      // 260px photo made the whole popup wider than the map — the left edge
+      // clipped and no pan can fix a popup that simply doesn't fit. Content
+      // builds at open time, so the map's CURRENT width is known here.
+      const w = Math.min(260, Math.max(180, (mapInstance ? mapInstance.getSize().x : 400) - 110));
+      const h = Math.round(w * 0.6);
+      if (!streetviewEnabled) return aerialThumb(snapped, w, h, zoom || 17);
       return '<img src="/api/streetview?lat=' + snapped.lat.toFixed(6) + '&lng=' + snapped.lng.toFixed(6) +
-        '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt=""' +
+        '" width="' + w + '" height="' + h + '" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt=""' +
         ' data-lat="' + snapped.lat.toFixed(6) + '" data-lng="' + snapped.lng.toFixed(6) + '" data-zoom="' + (zoom || 17) + '"' +
         ' onerror="this.outerHTML = aerialFallbackFor(this)">';
+    };
+    // Popups must never be wider than the map (a too-wide popup clips and
+    // even autoPan can't help). Leaflet's maxWidth governs the text; the
+    // photo is sized separately above. Applied at open time because the map
+    // has no reliable width at bind time (renderMap runs before the 120ms
+    // invalidateSize). update() re-lays out without re-firing popupopen.
+    const fitPopupToMap = (m) => {
+      m.on("popupopen", (e) => {
+        if (!mapInstance) return;
+        const w = Math.min(300, Math.max(200, mapInstance.getSize().x - 60));
+        if (e.popup.options.maxWidth !== w) {
+          e.popup.options.maxWidth = w;
+          e.popup.update();
+        }
+      });
     };
     // Hover preview: pause on a pin and its popup opens (photo included);
     // move away and it closes. The short open delay stops a mouse merely
@@ -4091,6 +4112,7 @@
       m.bindPopup(() => svPhoto(m, aerialZoomFor(meta.subject && meta.subject.sizeMin), meta.address) +
         `<strong>Your property:</strong> ${escMap(meta.address)}`,
         { autoPan: !CAN_HOVER });
+      fitPopupToMap(m);
       wireHoverPreview(m);
       return m;
     };
@@ -4118,6 +4140,7 @@
       m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft), c.address) +
         `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}` + popupBadge(),
         { autoPan: !CAN_HOVER });
+      fitPopupToMap(m);
       wireHoverPreview(m);
       return m;
     };

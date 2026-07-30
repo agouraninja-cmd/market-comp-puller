@@ -3989,7 +3989,24 @@
       // opposite of "click to keep it open". Drop that handler (registered by
       // bindPopup, hence the private ref) and pin explicitly instead.
       if (m._openPopup) m.off("click", m._openPopup, m);
-      m.on("click", () => { pinned = true; m.openPopup(); });
+      // Hover previews never pan the map (a map lurching under a resting
+      // cursor reads as a glitch, and panning can push the pin out from
+      // under the cursor — closing the popup it just opened). But a CLICK is
+      // deliberate: pan just enough that the whole popup — photo included —
+      // is inside the map, instead of clipping at the top edge. The photo
+      // slot has fixed dimensions, so offsetHeight is right immediately,
+      // before any image finishes loading.
+      m.on("click", () => {
+        pinned = true;
+        m.openPopup();
+        const el = m.getPopup() && m.getPopup().getElement();
+        if (el && mapInstance) {
+          mapInstance.panInside(m.getLatLng(), {
+            paddingTopLeft: [el.offsetWidth / 2 + 12, el.offsetHeight + 24],
+            paddingBottomRight: [el.offsetWidth / 2 + 12, 12],
+          });
+        }
+      });
       m.on("popupclose", () => { pinned = false; });
       // Keep it open while the cursor is on the popup itself. Plain assignment
       // (not addEventListener) so repeated opens can't stack listeners.

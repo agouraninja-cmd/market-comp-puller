@@ -138,6 +138,63 @@ dependency. `.env` is git-ignored — never commit it.
   "CompNinja Street View cap" $5/month budget alert on the billing account
   (emails the owner at 50/90/100%), the route's per-IP rate limit, and the
   10k-photos/month free tier (a fully-hovered report uses ~6).
+- `STREAM_ANTHROPIC` — optional `on`/`off`, **default ON**. Streams the
+  Anthropic call (`stream: true` + a hand-rolled SSE reader, `sseFrames` in
+  server.js) instead of awaiting one JSON body. The parsed report is identical
+  either way — the streaming branch rebuilds the text by concatenating
+  `text_delta`s per block index and joining with `"\n"`, deliberately matching
+  the non-streaming `content.filter(type==="text").map(.text).join("\n")` so
+  `parseCompJson` sees the same input. Set it to `off` only to rule streaming
+  out while debugging. **Careful if you touch the timeout**: with `stream:true`
+  `fetch` resolves at the HEADERS, so `clearTimeout` must stay wrapped around
+  the whole read loop or `SEARCH_TIMEOUT_MS` silently stops guarding anything.
+  There is also a `STREAM_IDLE_MS` (30s) per-chunk watchdog, which only becomes
+  possible once the response is streamed.
+- **Live search progress** (no env var — always on for the browser). `POST
+  /api/comps` takes an optional `stream: true` in the body; when set, and only
+  once the slow leg is actually about to run, the response switches to
+  `text/event-stream` (`openSse` in server.js) emitting `progress` events then
+  a final `result` (or `error`) event. **Everything fast or failed stays plain
+  JSON with a real status code** — the password gate, both rate limiters,
+  validation, and a 43ms cache hit — so the client chooses how to read the body
+  from the response's `content-type`, *never* from the fact that it asked to
+  stream. `gen-market-seed.js` simply omits the flag and is unaffected.
+  Progress phases: `corpus` (coverage, before the call), `start`, `search`
+  (n + the model's real query text), `results` (count), `writing`, `drafting`
+  (chars, ~1/s), `retry`. Front-end: `readProgressStream` +`applyProgress` in
+  index.html, driving the existing loading card. Three fallback layers, all
+  load-bearing — the old wall-clock simulation still starts on submit and is
+  cancelled by the first real event; a non-SSE content-type falls back to
+  `res.json()`; and an 8-second silence watchdog restarts the simulation,
+  which is what saves the card if Render's edge buffers the stream despite
+  `x-accel-buffering: no`.
+  **What the measurement showed** (worth knowing before optimizing anything
+  here): the web searches finish in the first ~5 seconds; the model then spends
+  **40-70 seconds writing the report**. Wall clock is roughly
+  `4s x searches + output_tokens / 78`. Cutting *searches* therefore buys far
+  less than it looks like it should — a corpus-strong 2-search run still took
+  74s because it still had to write 4,700 tokens. The untested lever that
+  follows from this is reducing OUTPUT size (per-comp `notes` verbosity),
+  which trades prose length rather than comp count.
+- `PARALLEL_SEARCH` — optional `on`/`off`, **default OFF**. When on, a report
+  search that would run a 6+ search budget is split into two CONCURRENT
+  Anthropic calls (`LANE_GUIDANCE` in server.js): a `primary` lane that starts
+  from brokerage/listing sources and owns every market-level figure and all
+  narrative, plus a `records` lane that starts from news/press/public records,
+  returns comps + the subject-size lookup only, and is folded in by
+  `mergeLaneReports` (address-normalized dedupe, interleaved so the slice to
+  `maxComps` can't drop one lane's provenance wholesale, currency-mismatch
+  guard). The records lane is additive and never retried — if it fails the
+  report still renders from the primary lane.
+  **Why it is off**: measured 2026-07-30 against a same-address control
+  (Indianapolis Industrial), the split ran 81.7s → 47.0s (42% faster) but
+  returned 3 comps instead of 4; on a dense market (Dallas) it returned a
+  healthy 8 comps with a better provenance mix but saved almost no time,
+  because wall clock is the SLOWER lane. A single deep call steers its later
+  searches at the gaps it knows it still has; two shallow lanes rediscover
+  the same easy comps. Re-measure on real traffic before flipping it on.
+  Each search logs `Anthropic call [lane]: Ns · N search(es) · N out / N in
+  tokens`, which is how any of this gets re-measured.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so

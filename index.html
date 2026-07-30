@@ -807,7 +807,10 @@
     <div id="loadingCard" class="hidden mt-6 no-print" role="status" aria-live="polite">
       <div class="bg-white rounded-md border border-[#D8D4C9] p-8 flex flex-col items-center text-center fade-in">
         <p id="loadingHeadline" class="text-base font-semibold text-slate-900">Searching recent listings…</p>
-        <p class="text-sm text-slate-400 mt-1">This usually takes 20–40 seconds.</p>
+        <!-- Detail line: carries the specific, fast-changing fact (the actual
+             search query, the result count) while the headline stays calm.
+             Model-written text goes in here via textContent, never innerHTML. -->
+        <p id="loadingDetail" class="text-sm text-slate-400 mt-1 max-w-xs truncate" style="white-space:nowrap">This usually takes 20-60 seconds.</p>
         <div class="w-full max-w-xs mt-5 relative">
           <!-- The brand ninja jogs along the bar's leading edge while the search runs. -->
           <div id="loadingNinja" class="loading-ninja" aria-hidden="true">
@@ -2105,39 +2108,103 @@
 
   // Cross-fade the stage headline instead of snapping the text.
   function swapHeadline(headline, text) {
+    if (headline.textContent === text) return;   // events repeat; don't re-fade the same words
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      headline.textContent = text;
+      return;
+    }
     headline.style.opacity = "0";
     setTimeout(() => { headline.textContent = text; headline.style.opacity = "1"; }, 220);
   }
 
+  function setLoadingDetail(text) {
+    const el = document.getElementById("loadingDetail");
+    if (el) el.textContent = text || "";
+  }
+
   function showLoadingCard(address, type) {
+    const headline = document.getElementById("loadingHeadline");
+    headline.style.opacity = "1";
+    headline.textContent = loadingSteps(address, type)[0].text;
+    setLoadingDetail("This usually takes 20-60 seconds.");
+    document.getElementById("loadingCard").classList.remove("hidden");
+    setLoadingProgress(0);
+    requestAnimationFrame(() => setLoadingProgress(8));
+    startEasing();
+    startFakeProgress(address, type);   // cancelled by the first REAL progress event
+  }
+
+  // The bar always eases toward a target rather than jumping to it, so motion
+  // stays continuous between events. Reused by both the real and fake paths.
+  let loadingTarget = 8;
+  function startEasing() {
+    clearInterval(loadingProgressTimer);
+    loadingProgressTimer = setInterval(() => {
+      if (loadingProgress < loadingTarget) {
+        setLoadingProgress(Math.min(loadingTarget, loadingProgress + (loadingTarget - loadingProgress) * 0.18 + 0.15));
+      }
+    }, 350);
+  }
+  // Monotonic by contract — a bar that slides backwards reads as a crash.
+  function aimLoadingBar(pct) { loadingTarget = Math.max(loadingTarget, Math.min(99, pct)); }
+
+  // The original wall-clock simulation, kept as the fallback for: a server that
+  // doesn't stream, a browser without ReadableStream, and (the one that actually
+  // bites in production) a proxy that buffers the whole SSE response.
+  function startFakeProgress(address, type) {
     const headline = document.getElementById("loadingHeadline");
     const steps = loadingSteps(address, type);
     const started = Date.now();
     let shown = 0;
-    headline.style.opacity = "1";
-    headline.textContent = steps[0].text;
-    document.getElementById("loadingCard").classList.remove("hidden");
-
-    // Install-style fill: jump off the line, then creep toward ~90%, slowing as it
-    // climbs so it never falsely reaches 100% before the data actually arrives.
-    setLoadingProgress(0);
-    requestAnimationFrame(() => setLoadingProgress(8));
-    clearInterval(loadingProgressTimer);
-    loadingProgressTimer = setInterval(() => {
-      const next = loadingProgress + (90 - loadingProgress) * 0.06;
-      if (next >= 89.5) { setLoadingProgress(89.5); clearInterval(loadingProgressTimer); loadingProgressTimer = null; }
-      else setLoadingProgress(next);
-    }, 350);
-
-    // Advance the stage messages on their schedule, holding on the last one.
     clearInterval(loadingMsgTimer);
     loadingMsgTimer = setInterval(() => {
       const elapsed = Date.now() - started;
       let next = shown;
       while (next + 1 < steps.length && steps[next + 1].at <= elapsed) next++;
       if (next !== shown) { shown = next; swapHeadline(headline, steps[shown].text); }
+      aimLoadingBar(Math.min(89.5, 8 + (elapsed / 60000) * 82));
       if (shown === steps.length - 1) { clearInterval(loadingMsgTimer); loadingMsgTimer = null; }
     }, 400);
+  }
+  function stopFakeProgress() { clearInterval(loadingMsgTimer); loadingMsgTimer = null; }
+
+  // Real, server-driven progress. Measured shape of a search: the web searches
+  // finish in the first few seconds, then the model spends 40-70s WRITING the
+  // report — which is why the old fixed timer froze on "almost there" for most
+  // of the wait. The bar is driven off characters actually streamed.
+  const DRAFT_CHARS_FULL = 12000;   // a 12-comp report runs ~12k chars of JSON
+  function applyProgress(evt, ctx) {
+    const headline = document.getElementById("loadingHeadline");
+    if (!evt || !evt.phase) return;
+    if (evt.phase === "corpus") {
+      swapHeadline(headline, `Using ${evt.coverage} comps CompNinja already has for ${evt.market}…`);
+      setLoadingDetail("This one should be quick.");
+      aimLoadingBar(18);
+    } else if (evt.phase === "search") {
+      if (ctx.lastPhase !== "search") swapHeadline(headline, "Searching the web…");
+      // Model-written text: textContent only, never innerHTML.
+      setLoadingDetail(String(evt.query || "").replace(/\s+/g, " ").trim().slice(0, 70) || `search ${evt.n}`);
+      aimLoadingBar(Math.min(45, 20 + evt.n * 5));
+    } else if (evt.phase === "results") {
+      if (evt.count) setLoadingDetail(`${evt.count} results to review`);
+      aimLoadingBar(48);
+    } else if (evt.phase === "writing") {
+      swapHeadline(headline, "Writing your report…");
+      // The result count is stale the moment writing starts, and this phase runs
+      // 40-70s — by far the longest — so it must not sit on old text.
+      setLoadingDetail("Comparing size, age, and location");
+      aimLoadingBar(55);
+    } else if (evt.phase === "drafting") {
+      if (evt.writing && ctx.lastPhase !== "writing" && ctx.lastPhase !== "drafting") {
+        swapHeadline(headline, "Writing your report…");
+        setLoadingDetail("Comparing size, age, and location");
+      }
+      aimLoadingBar(50 + Math.min(45, (evt.chars / DRAFT_CHARS_FULL) * 45));
+    } else if (evt.phase === "retry") {
+      swapHeadline(headline, "The results came back oddly, rechecking…");
+      setLoadingDetail("");
+    }
+    if (evt.phase !== "drafting" || evt.writing) ctx.lastPhase = evt.phase;
   }
 
   // Snap to a satisfying 100% finish, then resolve so the results can render.
@@ -2147,6 +2214,7 @@
     const headline = document.getElementById("loadingHeadline");
     headline.style.opacity = "1";      // in case a cross-fade was mid-flight
     headline.textContent = "Report ready!";
+    setLoadingDetail("");
     setLoadingProgress(100);
     return new Promise((resolve) => setTimeout(resolve, 550));
   }
@@ -2154,7 +2222,50 @@
   function hideLoadingCard() {
     clearInterval(loadingMsgTimer); loadingMsgTimer = null;
     clearInterval(loadingProgressTimer); loadingProgressTimer = null;
+    loadingTarget = 8;
+    setLoadingDetail("");
     document.getElementById("loadingCard").classList.add("hidden");
+  }
+
+  // Read an SSE body. Returns the final report, or throws with the same
+  // {error} message shape the plain-JSON path produces, so the caller's
+  // existing error card handles both identically.
+  async function readProgressStream(res, ctx) {
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let result = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let sep;
+      while ((sep = buf.indexOf("\n\n")) !== -1) {
+        const frame = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        let event = "message", data = "";
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        if (!data) continue;
+        let payload;
+        try { payload = JSON.parse(data); } catch (_) { continue; }
+        if (event === "progress") {
+          if (!ctx.sawProgress) { ctx.sawProgress = true; stopFakeProgress(); }
+          ctx.lastAt = Date.now();
+          applyProgress(payload, ctx);
+        } else if (event === "result") {
+          result = payload;
+        } else if (event === "error") {
+          throw new Error(payload.error || "The search failed.");
+        }
+      }
+    }
+    // A stream that ends with neither result nor error means the connection
+    // dropped; without this the loading card would sit there forever.
+    if (!result) throw new Error("The connection dropped before the report finished. Please try again.");
+    return result;
   }
 
   // ----------------------------------------------------------------------------
@@ -7182,6 +7293,11 @@
           address, type, note, months, txFocus,
           subjectSizeSqft: sizeR ? Math.round((sizeR.min + sizeR.max) / 2) : undefined,
           subjectDetails,
+          // Ask for live progress. The server still answers plain JSON for
+          // everything fast or failed (cache hits, auth, rate limits), so we
+          // decide how to READ the body from its content-type below, never
+          // from the fact that we asked.
+          stream: true,
         }),
       });
 
@@ -7197,7 +7313,24 @@
         throw new Error(detail || `Request failed (${res.status}).`);
       }
 
-      const parsed = await res.json();
+      const ct = res.headers.get("content-type") || "";
+      let parsed;
+      if (ct.includes("text/event-stream") && res.body && res.body.getReader) {
+        const ctx = { sawProgress: false, lastPhase: null, lastAt: Date.now() };
+        // If a proxy buffers the whole stream (Render's edge can), no event ever
+        // arrives and the card would sit dead. Put the wall-clock simulation
+        // back after 8s of silence; real events still take over if they show up.
+        const watchdog = setInterval(() => {
+          if (!ctx.sawProgress && Date.now() - ctx.lastAt > 8000) {
+            clearInterval(watchdog);
+            startFakeProgress(address, type);
+          }
+        }, 1000);
+        try { parsed = await readProgressStream(res, ctx); }
+        finally { clearInterval(watchdog); }
+      } else {
+        parsed = await res.json();
+      }
       await completeLoadingCard();   // fill the bar to 100% for a satisfying finish
       hideLoadingCard();
       renderResults(parsed, {

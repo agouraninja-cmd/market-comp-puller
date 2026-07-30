@@ -831,6 +831,36 @@ function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
   return subjectSizeSqft ? 2 : 3;                               // conservative floor, not 0/1
 }
 
+// Two-lane parallel search — OFF by default. Measured on 2026-07-30 against a
+// same-address control (3600 S High School Rd, Indianapolis, Industrial):
+//
+//   single lane   81.7s   9 searches   4 comps
+//   two lanes     47.0s   10 searches  3 comps     (42% faster, one comp fewer)
+//
+// and on a dense market (2100 N Stemmons Fwy, Dallas): 67.9s, 8 comps, a good
+// provenance mix (the records lane found 5 of the 8, including the only
+// public_record) but almost no time saved, because wall clock is the SLOWER
+// lane and the records lane ran long.
+//
+// So the speedup is real but not free and not reliable: a single deep call
+// steers its later searches at the gaps it knows it still has, while two
+// shallow lanes both rediscover the easy comps. Left switchable so the
+// trade can be re-measured on real traffic rather than two test addresses.
+const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SEARCH || ""));
+
+// Even with the flag on, only split when the budget is deep enough for halving
+// to save wall clock. A corpus-strong search already runs on 2-3 searches, and
+// each lane carries its own copy of the base prompt, so splitting a shallow
+// budget costs tokens and buys no time.
+const SPLIT_MIN_BUDGET = 6;
+
+// Per-lane comp ask. Half the total plus a cushion, so overlap between the two
+// lanes (or a thin lane) still leaves enough unique comps to fill the report,
+// while keeping each lane's closing JSON burst well short of a full-size one.
+function laneCompsFor(maxComps) {
+  return Math.min(maxComps, Math.ceil(maxComps / 2) + 2);
+}
+
 // ---------------------------------------------------------------------------
 // Daily search cap — a simple in-memory counter, reset at UTC midnight. It
 // resets on redeploy/spin-down too, which is fine for this threat model:
@@ -1497,7 +1527,40 @@ const FIELD_LABELS = {
   beds_baths: "Beds / Baths",
 };
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, subjectDetails) {
+// ---------------------------------------------------------------------------
+// Search lanes. A single call spends its whole search budget serially, and the
+// model re-reads every prior search result each round, so BOTH latency and
+// input tokens grow quadratically with the round count: one measured 8-round
+// report took 67s and 154k input tokens to produce 3k of output. Splitting the
+// budget across two CONCURRENT calls halves the serial depth, which roughly
+// halves both (2 x 4 rounds accumulates ~76k input tokens, not 154k).
+//
+// The two lanes get disjoint source territory so they don't re-search the same
+// pages — a split by SOURCE rather than by geography or transaction type, which
+// also widens the provenance mix (the records lane is where public_record and
+// news badges come from, the primary lane where listings do).
+//
+// "solo" is the original single-call prompt, still used when the budget is too
+// small to be worth splitting (see splitLanes).
+// The lanes are a STARTING BIAS, not a fence. An earlier version forbade each
+// lane from touching the other's sources and told it not to pad the list; on a
+// same-address A/B that cut comp yield from 4 to 1, because assessor and deed
+// records are largely not web-searchable (sale prices aren't in indexed parcel
+// pages), so the records lane returned nothing while the listing lane, barred
+// from news, lost the largest comp in the market. Priority ordering plus an
+// explicit "widen rather than come back short" restores the yield; the merge
+// dedupes whatever overlap that costs.
+const LANE_GUIDANCE = {
+  primary: `SEARCH ANGLE - START WITH BROKERAGE AND LISTING SOURCES: a second analyst is working this same property from public records and news in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with brokerage and listing sources: LoopNet, Crexi, CommercialSearch, Brevitas, auction platforms, and brokerage sites and deal announcements (CBRE, JLL, Cushman and Wakefield, Colliers, Marcus and Millichap, Lee and Associates, Kidder Mathews, NAI, and local and regional firms). This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
+  records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
+};
+
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, subjectDetails, lane = "solo") {
+  // The records lane contributes comps (and the subject size, which lives in
+  // assessor data) only — the primary lane owns every market-level figure and
+  // all of the narrative, so the report has one coherent voice and one set of
+  // market numbers rather than two that have to be reconciled.
+  const compsOnly = lane === "records";
   const typeGuidance = {
     Industrial:  "Focus on warehouse/distribution/flex space. Report price/SF for sales and NNN $/SF/yr for leases.",
     Office:      "Focus on office buildings/suites. Report price/SF for sales and full-service or NNN $/SF/yr for leases, building class (A/B/C) in notes.",
@@ -1506,6 +1569,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     Land:        "Focus on comparable land sales. Report price per acre and price/SF of land, zoning and entitlement notes.",
     Residential: "Focus on single-family homes, townhomes, and condos. Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
+
+  // The subject-size lookup belongs to whichever lane searches assessor data:
+  // the records lane on a split, the single call otherwise. Asking the primary
+  // lane for it too would spend a second search re-finding the same number, and
+  // listing sites are the weaker source for building SF anyway.
+  const wantsSize = !subjectSizeSqft && lane !== "primary";
 
   // Anchor the lookback window to real dates — the model doesn't know "today",
   // so "last N months" alone drifts toward stale comps.
@@ -1587,7 +1656,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // ever looked up. Sequenced FIRST, with the places a size actually lives.
     // The neighbor guard matters: adjacent parcels' sizes surface readily in
     // search results, and a wrong "found" size is worse than an honest "".
-    !subjectSizeSqft
+    wantsSize
       ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size.`
       : "",
     typeGuidance[type] || "",
@@ -1609,27 +1678,33 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     verifiedBlock,
     corpusBlock,
     ``,
-    `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
+    LANE_GUIDANCE[lane] || "",
+    compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,
     ``,
     `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
     `{`,
-    `  "summary": "3-4 sentence plain-English takeaway about the local market, understandable to a non-professional",`,
-    `  "avg_price_per_sqft": "string or null",`,
+    // Currency rides in BOTH lanes: a foreign-property records lane must quote
+    // its comps in the same local currency, and normalizeCurrency needs the
+    // code to avoid silently treating those prices as USD on merge.
+    ...(compsOnly ? [] : [`  "summary": "3-4 sentence plain-English takeaway about the local market, understandable to a non-professional",`]),
+    ...(compsOnly ? [] : [`  "avg_price_per_sqft": "string or null",`]),
     `  "currency": "",`,
     `  "usd_rate": "",`,
-    `  "subject_lat": "",`,
-    `  "subject_lng": "",`,
-    `  "market_cap_rate_range": { "low": "", "high": "" },`,
-    ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
-    `  "value_drivers": ["", ""],`,
-    `  "market_trend": "",`,
-    `  "annual_price_trend_pct": "",`,
-    `  "search_radius": "",`,
-    `  "transactions_reviewed": "",`,
-    `  "price_discovery": { "direction": "", "note": "" },`,
-    ...(!subjectSizeSqft ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
+    ...(compsOnly ? [] : [
+      `  "subject_lat": "",`,
+      `  "subject_lng": "",`,
+      `  "market_cap_rate_range": { "low": "", "high": "" },`,
+      ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
+      `  "value_drivers": ["", ""],`,
+      `  "market_trend": "",`,
+      `  "annual_price_trend_pct": "",`,
+      `  "search_radius": "",`,
+      `  "transactions_reviewed": "",`,
+      `  "price_discovery": { "direction": "", "note": "" },`,
+    ]),
+    ...(wantsSize ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -1638,13 +1713,15 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     `"currency" = the ISO 4217 code of the currency ALL prices in this report are quoted in. For a target property in the United States use "USD". For a target property in any other country, quote EVERY price figure (each comp's "price_or_rate" and "price_per_sqft", any type-specific price fields like "price_per_unit" and "price_per_acre", plus "avg_price_per_sqft") in that country's local currency, set "currency" to its code (e.g. "CAD", "MXN", "GBP"), and set "usd_rate" to the current value of 1 unit of that currency in US dollars as a plain number string (e.g. "0.73" for CAD), using the exchange rate your web search finds. When currency is "USD", set "usd_rate" to "". Never mix currencies within one report.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
+    ...(compsOnly ? [] : [
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
     `"value_drivers" = 2 to 4 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
     `"search_radius" = a short phrase (a few words) naming the geographic scope you actually used to gather these comps and whether you widened it, e.g. "Immediate submarket, ~3 miles" or "Widened to ~20 miles, limited local activity". Keep it under about 10 words. Use "" if not applicable.`,
     `"transactions_reviewed" = your rough estimate, as a plain number, of how many recent ${type} transactions you came across in this market and window before narrowing to the most comparable ones above. An approximation is expected (e.g. 34) - it conveys how much market activity you weighed. It must be greater than the number of comps you returned. Use "" if you cannot reasonably estimate it; never invent a large number to look thorough.`,
     `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 plain sentences on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
-    ...(!subjectSizeSqft ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
+    ]),
+    ...(wantsSize ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
   ].join("\n");
 }
 
@@ -1913,8 +1990,55 @@ async function findBrokersForMarket(market) {
 // Call the Anthropic Messages API with web search enabled
 // ---------------------------------------------------------------------------
 const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
+// No chunk at all for this long means a wedged upstream. Streaming is what
+// makes an idle timeout possible in the first place (the non-streaming call
+// has nothing to measure between "sent" and "done"), so take it.
+const STREAM_IDLE_MS = 30_000;
+// Escape hatch. Streaming changes nothing the caller sees — same parsed report,
+// same timing log — so this exists only to rule it out if something odd shows up.
+const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails) {
+// ---------------------------------------------------------------------------
+// Minimal SSE frame reader. Anthropic sends `event: <name>\ndata: <json>\n\n`;
+// the data JSON repeats the event name in its own `type`, so we switch on that
+// and ignore the event line. Yields one parsed object per frame.
+// ---------------------------------------------------------------------------
+async function* sseFrames(body, onIdleTimeout) {
+  const reader = body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    // One watchdog per read, always cleared — an uncleared timer per chunk would
+    // pile up thousands of pending timeouts over a long stream.
+    let idleTimer;
+    const idle = new Promise((_, rej) => { idleTimer = setTimeout(() => rej(new Error("__idle__")), STREAM_IDLE_MS); });
+    let chunk;
+    try {
+      chunk = await Promise.race([reader.read(), idle]);
+    } catch (e) {
+      if (e && e.message === "__idle__") { try { await reader.cancel(); } catch (_) {} onIdleTimeout(); }
+      throw e;
+    } finally {
+      clearTimeout(idleTimer);
+    }
+    if (chunk.done) break;
+    buf += dec.decode(chunk.value, { stream: true });
+    let sep;
+    while ((sep = buf.indexOf("\n\n")) !== -1) {
+      const frame = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      // SSE allows a frame's data to span several `data:` lines; comments start with ':'.
+      const data = frame.split("\n")
+        .filter((l) => l.startsWith("data:"))
+        .map((l) => l.slice(5).trim())
+        .join("");
+      if (!data) continue;
+      try { yield JSON.parse(data); } catch (_) { /* a partial/garbled frame is not fatal */ }
+    }
+  }
+}
+
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
   const body = {
     model: MODEL,
     // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
@@ -1929,12 +2053,21 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // The subject-size lookup gets two extra searches so it doesn't crowd out
     // the comp searches themselves. When we already hold recent comps for this
     // market (corpus-strong), the budget drops hard — that reuse is the saving.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchBudgetFor(corpus, subjectSizeSqft, maxComps) }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails) }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses }],
+    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails, lane) }],
   };
 
+  if (STREAM_ANTHROPIC) body.stream = true;
+  const say = typeof onProgress === "function" ? onProgress : () => {};
+
+  const startedAt = Date.now();
   const controller = new AbortController();
+  // NOTE: with stream:true, fetch() resolves at the HEADERS — so this timer must
+  // NOT be cleared right after the await, or the whole read loop would run
+  // unguarded and a wedged upstream would hang forever. It is cleared in the
+  // finally that wraps the reading, further down.
   const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  const timedOut = () => new Error("The search took too long and was stopped. Please try again.");
   let r;
   try {
     r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1948,28 +2081,121 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
       signal: controller.signal,
     });
   } catch (err) {
-    if (err && err.name === "AbortError") {
-      throw new Error("The search took too long and was stopped. Please try again.");
-    }
-    throw err;
-  } finally {
     clearTimeout(timer);
+    if (err && err.name === "AbortError") throw timedOut();
+    throw err;
   }
 
   if (!r.ok) {
+    clearTimeout(timer);
     let detail = "";
     try { detail = (await r.json())?.error?.message || ""; } catch (_) {}
     throw new Error(`Anthropic API error (${r.status}). ${detail}`.trim());
   }
 
-  const data = await r.json();
+  let text = "";
+  let searches = 0;
+  let usage = {};
+  let stopReason = "";
 
-  // Web search responses contain multiple block types — keep ONLY text blocks.
-  const text = (data.content || [])
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
+  if (!STREAM_ANTHROPIC) {
+    clearTimeout(timer);
+    const data = await r.json();
+    searches = (data.content || []).filter((b) => b.type === "server_tool_use").length;
+    usage = data.usage || {};
+    stopReason = data.stop_reason;
+    // Web search responses contain multiple block types — keep ONLY text blocks.
+    text = (data.content || [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
+  } else {
+    // Rebuild exactly what the non-streaming branch above produces: the text
+    // blocks, in index order, joined with "\n" and trimmed. Anything else and
+    // parseCompJson starts seeing different input.
+    const blocks = new Map();       // index -> { type, text, json }
+    let wroteWriting = false;
+    let lastDraft = 0;
+    let textChars = 0;
+    try {
+      for await (const ev of sseFrames(r.body, () => controller.abort())) {
+        if (ev.type === "error") {
+          throw new Error(`Anthropic stream error: ${(ev.error && ev.error.message) || "unknown"}`);
+        }
+        if (ev.type === "message_start") {
+          usage = (ev.message && ev.message.usage) || {};
+          say({ phase: "start" });
+        } else if (ev.type === "content_block_start") {
+          const cb = ev.content_block || {};
+          blocks.set(ev.index, { type: cb.type, text: "", json: "" });
+          if (cb.type === "web_search_tool_result") {
+            say({ phase: "results", n: searches, count: Array.isArray(cb.content) ? cb.content.length : null });
+          }
+        } else if (ev.type === "content_block_delta") {
+          const b = blocks.get(ev.index);
+          const d = ev.delta || {};
+          if (!b) continue;
+          // citations_delta also arrives on text blocks and carries no .text —
+          // never let it fall through into the text branch.
+          if (d.type === "text_delta" && typeof d.text === "string") {
+            b.text += d.text;
+            textChars += d.text.length;
+            // Writing the report is the LONG stretch — measured, searches finish
+            // in ~5s and the JSON burst then runs 60-70s. It must be detected as
+            // it STARTS, not at content_block_stop (which is after the report is
+            // already written and useless as progress). Match the opening brace
+            // ANYWHERE in the block, not at its start: the model prefaces the
+            // JSON with narration, which is exactly why parseCompJson has to
+            // slice to the first "{" too.
+            if (!wroteWriting && b.text.includes("{")) {
+              wroteWriting = true;
+              say({ phase: "writing" });
+            }
+            // Throttled heartbeat through the burst so the bar creeps instead of
+            // sitting dead for a minute. Output runs ~78 tokens/sec (~4 chars a
+            // token), which is what lets the client turn chars into a fraction.
+            if (Date.now() - lastDraft > 900) {
+              lastDraft = Date.now();
+              say({ phase: "drafting", chars: textChars, writing: wroteWriting });
+            }
+          } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") b.json += d.partial_json;
+        } else if (ev.type === "content_block_stop") {
+          const b = blocks.get(ev.index);
+          if (b && b.type === "server_tool_use") {
+            searches += 1;
+            let query = "";
+            // The query only exists once the block is complete — content_block_start
+            // carries input:{}. A truncated stream would throw here, and a raw
+            // SyntaxError would make solo() think the REPORT failed to parse and
+            // silently re-bill an entire search. Swallow it.
+            try { query = String((JSON.parse(b.json || "{}") || {}).query || ""); } catch (_) {}
+            say({ phase: "search", n: searches, query });
+          }
+        } else if (ev.type === "message_delta") {
+          stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
+          if (ev.usage) usage = { ...usage, ...ev.usage };
+        }
+      }
+    } catch (err) {
+      if ((err && err.name === "AbortError") || (err && err.message === "__idle__")) throw timedOut();
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+    text = [...blocks.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, b]) => b)
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+  }
+
+  // Timing/usage line. Generation time scales with output_tokens, search time
+  // with the number of web_search round-trips — logging both is what tells you
+  // which half of a slow report to attack.
+  console.log(`Anthropic call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · stop=${stopReason}`);
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
@@ -1977,22 +2203,113 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   return attachVerifiedAttribution(parsed, verifiedComps);
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}) {
+// Fold the records lane's comps into the primary lane's report. The primary
+// object IS the report — every market-level figure and all narrative stay
+// exactly as that lane wrote them — so this only ever touches "comps" and the
+// subject size the records lane was asked to look up.
+function mergeLaneReports(primary, records, maxComps) {
+  if (!records || !Array.isArray(records.comps) || !records.comps.length) return primary;
+
+  // A foreign-property report quotes local currency. If the lanes somehow
+  // disagree, the records prices cannot be trusted as the same unit — drop
+  // them rather than merge two currencies into one table.
+  if (String(records.currency || "USD") !== String(primary.currency || "USD")) {
+    console.warn(`Lane merge: currency mismatch (${primary.currency} vs ${records.currency}) — records comps dropped.`);
+    return primary;
+  }
+
+  const key = (c) => String((c && c.address) || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const seen = new Set((primary.comps || []).map(key).filter(Boolean));
+  const fresh = records.comps.filter((c) => {
+    const k = key(c);
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  // Interleave rather than append. The comp list gets sliced to maxComps, and
+  // appending would let a listing-heavy primary lane crowd out every public
+  // record — the provenance mix is the point of splitting by source.
+  const a = primary.comps || [];
+  const merged = [];
+  for (let i = 0; i < Math.max(a.length, fresh.length); i++) {
+    if (i < a.length) merged.push(a[i]);
+    if (i < fresh.length) merged.push(fresh[i]);
+  }
+  // The user picked the comp count, so honour it — the two lanes are asked for
+  // a cushion each precisely so this slice has something to choose from.
+  primary.comps = merged.slice(0, maxComps);
+
+  // The records lane owns the subject-size lookup (assessor data is where SF
+  // lives), so its answer is the only one — but never overwrite a real size
+  // with a blank if the lane came back empty.
+  if (records.subject_size_sqft && !primary.subject_size_sqft) {
+    primary.subject_size_sqft = records.subject_size_sqft;
+    primary.subject_size_source = records.subject_size_source || "";
+  }
+
+  console.log(`Lane merge: ${a.length} listing-lane + ${fresh.length} records-lane comp(s), ${records.comps.length - fresh.length} duplicate(s) dropped, ${primary.comps.length} kept.`);
+  return primary;
+}
+
+async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
   }
-  // The model occasionally wraps the JSON in stray text, or truncates it on a
-  // long busy report; one silent retry resolves most of those instead of
-  // surfacing a parse error to the user. If the retry ALSO fails to parse,
-  // never leak the raw JSON.parse error text to the client — it's meaningless
-  // to a visitor and reads like a broken site rather than a one-off hiccup.
+
+  // Two-lane parallel search (see LANE_GUIDANCE). Same total web searches as a
+  // single call, but half the serial depth — and because context grows
+  // quadratically with round count, materially fewer input tokens too.
+  const budget = searchBudgetFor(corpus, subjectSizeSqft, maxComps);
+  if (PARALLEL_SEARCH && budget >= SPLIT_MIN_BUDGET) {
+    const perLane = Math.ceil(budget / 2);
+    const laneComps = laneCompsFor(maxComps);
+    console.log(`Two-lane search: ${perLane} search(es) x 2 lanes, ${laneComps} comps asked per lane.`);
+
+    // Verified and corpus comps go to the primary lane only: it owns the
+    // report, and offering the same known deals to both lanes would just buy
+    // duplicates the merge has to throw away.
+    // Progress rides the PRIMARY lane only. Two concurrent streams would
+    // interleave and double-count the search numbers the bar advances on.
+    const primaryCall = solo((attempt) => callAnthropicOnce(address, type, note, months, laneComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "primary", perLane, progressFor(onProgress, attempt)), onProgress);
+    const recordsCall = callAnthropicOnce(address, type, note, months, laneComps, txFocus, [], subjectSizeSqft, { comps: [] }, subjectDetails, "records", perLane)
+      .catch((err) => {
+        // The records lane is additive. Losing it costs comps and provenance
+        // mix, never the report — no retry, since retrying serially here would
+        // spend the very wall clock the split exists to save.
+        console.warn("Records lane failed; continuing with listing lane only.", err.message);
+        return null;
+      });
+
+    const [primary, records] = await Promise.all([primaryCall, recordsCall]);
+    return mergeLaneReports(primary, records, maxComps);
+  }
+
+  return solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt)), onProgress);
+}
+
+// Stamps every progress event with which attempt produced it, so the client can
+// tell a fresh search from solo()'s silent retry and hold the bar instead of
+// snapping it backwards.
+function progressFor(onProgress, attempt) {
+  if (typeof onProgress !== "function") return null;
+  return (evt) => onProgress({ ...evt, attempt });
+}
+
+// The model occasionally wraps the JSON in stray text, or truncates it on a
+// long busy report; one silent retry resolves most of those instead of
+// surfacing a parse error to the user. If the retry ALSO fails to parse,
+// never leak the raw JSON.parse error text to the client — it's meaningless
+// to a visitor and reads like a broken site rather than a one-off hiccup.
+async function solo(call, onProgress = null) {
   try {
-    return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails);
+    return await call(1);
   } catch (err) {
     if (err instanceof SyntaxError) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
+      if (typeof onProgress === "function") onProgress({ phase: "retry", attempt: 2 });
       try {
-        return await callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails);
+        return await call(2);
       } catch (err2) {
         if (err2 instanceof SyntaxError) {
           console.warn("Comp JSON failed to parse on retry too; giving up.", err2.message);
@@ -2011,6 +2328,46 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
 function sendJson(res, status, obj) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(obj));
+}
+
+// ---------------------------------------------------------------------------
+// Server-Sent Events for the search progress bar. Opened only once we know we
+// are about to do the slow thing, so every fast/failure path above it keeps
+// answering plain JSON with a real status code.
+// ---------------------------------------------------------------------------
+function openSse(res) {
+  let closed = false;
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    "connection": "keep-alive",
+    // Render (and nginx generally) will otherwise buffer the whole response and
+    // deliver it in one burst at the end, which looks exactly like no streaming.
+    "x-accel-buffering": "no",
+  });
+  // Flush the headers immediately, and pad past any proxy buffer threshold.
+  res.write(":" + " ".repeat(2048) + "\n\n");
+
+  const send = (event, data) => {
+    if (closed) return;
+    // JSON.stringify escapes newlines, so any payload is always one data: line.
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) { closed = true; }
+  };
+  // The final JSON burst is a long quiet stretch, and solo()'s retry can be
+  // silent for a whole minute; intermediaries drop idle connections well before
+  // that.
+  const beat = setInterval(() => send("ping", {}), 15_000);
+  const stop = () => { clearInterval(beat); };
+
+  // If the visitor navigates away we stop writing, but deliberately do NOT
+  // abort the upstream Anthropic call — it is already paid for, so let it land
+  // in the cache and the corpus.
+  res.on("close", () => { closed = true; stop(); });
+
+  return {
+    send,
+    finish(event, data) { send(event, data); stop(); if (!closed) { closed = true; res.end(); } },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -4104,6 +4461,8 @@ const server = http.createServer((req, res) => {
       if (body.length > 1e5) req.destroy(); // guard against huge payloads
     });
     req.on("end", async () => {
+      let sse = null;
+      let wantsStream = false;
       try {
         // Password gate (only enforced when APP_PASSWORD is set).
         if (APP_PASSWORD && !passwordMatches(req.headers["x-app-password"])) {
@@ -4114,7 +4473,11 @@ const server = http.createServer((req, res) => {
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream } = JSON.parse(body || "{}");
+        // Opt in via the body, not Accept: the body is already parsed, and
+        // gen-market-seed.js (the other /api/comps caller) simply never sends
+        // the flag, so it keeps getting one plain JSON body.
+        wantsStream = stream === true;
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
@@ -4176,15 +4539,33 @@ const server = http.createServer((req, res) => {
           console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
         }
 
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus, detailsOk);
+        // Everything above this line answers in plain JSON — the password gate,
+        // the rate limiters, validation, and (the fast path that matters) a
+        // 43ms cache hit. Only the genuinely slow leg streams. The client picks
+        // how to read the response off its content-type, never off what it asked
+        // for, so all of those keep working untouched.
+        if (wantsStream) {
+          sse = openSse(res);
+          if (corpusIsStrong(corpus)) {
+            sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market: marketOf(addressOk) });
+          }
+        }
+
+        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus, detailsOk,
+          sse ? (evt) => sse.send("progress", evt) : null);
         await storeCachedSearch(cacheKey, result);
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined });
         maybePublishMarketSnapshot(typeOk, addressOk, result);
         harvestComps(typeOk, addressOk, result);
+        if (sse) return sse.finish("result", result);
         return sendJson(res, 200, result);
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         const msg = err && err.message ? err.message : "Unknown server error.";
+        // Once the SSE headers are out there is no status code left to send —
+        // deliver the SAME {error} shape as the JSON path so the client's
+        // existing catch/retry card handles it with no new error UI.
+        if (sse) return sse.finish("error", { error: msg });
         return sendJson(res, 502, { error: msg });
       }
     });

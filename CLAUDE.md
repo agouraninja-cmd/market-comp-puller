@@ -173,9 +173,20 @@ dependency. `.env` is git-ignored — never commit it.
   **40-70 seconds writing the report**. Wall clock is roughly
   `4s x searches + output_tokens / 78`. Cutting *searches* therefore buys far
   less than it looks like it should — a corpus-strong 2-search run still took
-  74s because it still had to write 4,700 tokens. The untested lever that
-  follows from this is reducing OUTPUT size (per-comp `notes` verbosity),
-  which trades prose length rather than comp count.
+  74s because it still had to write 4,700 tokens. **The lever is OUTPUT size.**
+  Measured composition of a report: the `comps` array is 69-76% of it, and
+  within that `notes` was by far the largest field (18-28% of the whole
+  report, up to 466 chars on one comp), followed by `source_url` (~8-11%,
+  not cuttable — it is the proof). Top-level, `summary` is 7-15% and
+  `value_drivers` 6-12%, both still uncut if more is ever needed.
+  `notes` is now capped in the prompt at two short sentences with the two
+  real sources of bloat banned by name — the model narrating its own search
+  ("Included as the nearest comparable found; details require CoStar") and
+  restating fields that have their own columns. Result: average note
+  139 → 104 chars, longest 188 → 115, report 13% shorter, price caveats
+  preserved and promoted. Keep `max_tokens` generous — the cap is a quality
+  instruction, and a low `max_tokens` would truncate the JSON mid-array
+  instead.
 - `PARALLEL_SEARCH` — optional `on`/`off`, **default OFF**. When on, a report
   search that would run a 6+ search budget is split into two CONCURRENT
   Anthropic calls (`LANE_GUIDANCE` in server.js): a `primary` lane that starts

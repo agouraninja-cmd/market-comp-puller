@@ -1710,7 +1710,18 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `  ]`,
     `}`,
     ``,
-    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Keep notes concise. Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    // "notes" was the single largest field in the output — measured at 18-28%
+    // of a report, up to 316 characters per comp — and the report is slow
+    // because of how long it takes to WRITE, not to search (see the streaming
+    // note in CLAUDE.md). Almost all of that length was padding of two kinds:
+    // the model narrating its own search ("Included as the closest listing
+    // found; full details require CoStar"), and restating fields that already
+    // have their own columns. Cutting both costs the reader nothing. The
+    // price caveat is explicitly protected, because that one carries the
+    // report's honesty about what a number actually represents.
+    `"notes" = at most TWO short sentences, under about 200 characters. This is a table cell, not a paragraph. Include, in this order of priority: (a) any caveat that changes what the price MEANS - asking price rather than a closed sale, price not disclosed, portfolio or partial-interest sale, related-party transfer, distressed or auction sale; (b) the one or two facts that make this property comparable or not - tenant and lease structure, condition or build quality, distance or relation to the target. Then stop.`,
+    `Do NOT put in "notes": anything already carried by another field (size, date, price, $/SF, cap rate, clear height, tenancy, year built, zoning) - never restate them; the name of the brokerage or website you found it on (that is what "source_url" and "source_type" are for); or ANY commentary about your own search process. Sentences like "Included as the nearest comparable found", "full transaction details require CoStar or broker access", or "no other listings were available" describe your research, not the property, and must never appear. If a price is not public, the whole caveat is "Price not disclosed."`,
     `"currency" = the ISO 4217 code of the currency ALL prices in this report are quoted in. For a target property in the United States use "USD". For a target property in any other country, quote EVERY price figure (each comp's "price_or_rate" and "price_per_sqft", any type-specific price fields like "price_per_unit" and "price_per_acre", plus "avg_price_per_sqft") in that country's local currency, set "currency" to its code (e.g. "CAD", "MXN", "GBP"), and set "usd_rate" to the current value of 1 unit of that currency in US dollars as a plain number string (e.g. "0.73" for CAD), using the exchange rate your web search finds. When currency is "USD", set "usd_rate" to "". Never mix currencies within one report.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
     ...(compsOnly ? [] : [
@@ -2043,10 +2054,12 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     model: MODEL,
     // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
     // text plus the final JSON. The per-comp schema has grown (clear_height/
-    // dock_doors, tenancy, year_built, a 3-4 sentence summary), so 3200 could
+    // dock_doors, tenancy, year_built, per-comp notes), so 3200 could
     // get cut off mid-array on a busy 8-comp Industrial report. Billing is by
     // actual tokens generated, not this cap, so raising it costs nothing on
-    // the (much more common) shorter reports.
+    // the (much more common) shorter reports — and leaving it high is what
+    // keeps the notes cap a QUALITY instruction rather than a hard truncation
+    // that could sever the JSON mid-array.
     // A 10-12 comp report is a third longer than the 8-comp JSON this was
     // sized for — give it headroom so the closing brace never gets cut off.
     max_tokens: maxComps > 8 ? 10000 : 8000,

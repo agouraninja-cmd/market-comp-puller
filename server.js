@@ -2000,7 +2000,18 @@ async function findBrokersForMarket(market) {
 // ---------------------------------------------------------------------------
 // Call the Anthropic Messages API with web search enabled
 // ---------------------------------------------------------------------------
-const SEARCH_TIMEOUT_MS = 100_000; // a hung upstream call fails cleanly instead of spinning forever
+// Ceiling on a single Anthropic call. Raised 100s -> 150s on 2026-07-30: real
+// searches were hitting the old ceiling and showing visitors "The search took
+// too long", which reads as a broken site rather than a slow one. Writing the
+// report alone is 40-70s (see the streaming note in CLAUDE.md), so 100s left
+// almost no margin for a busy market.
+// This is safe to raise ONLY because STREAM_IDLE_MS below fails a wedged
+// upstream in 30s regardless — so the full 150s can now elapse only while the
+// model is genuinely still producing output, never on a hang. The SSE
+// heartbeat (openSse) keeps the browser connection alive across it.
+// Note the ceiling is per CALL, and solo() retries once on a parse failure, so
+// the true worst case a visitor can wait is about double this.
+const SEARCH_TIMEOUT_MS = 150_000;
 // No chunk at all for this long means a wedged upstream. Streaming is what
 // makes an idle timeout possible in the first place (the non-streaming call
 // has nothing to measure between "sent" and "done"), so take it.

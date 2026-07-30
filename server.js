@@ -137,11 +137,13 @@ const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(proce
 // full 8-use web_search budget: the Explorer path never passes a corpus, so it
 // can't take the corpus-assisted discount a report search can. Both are
 // env-overridable as real Anthropic invoices come in.
-const COST_REPORT_SEARCH = Number(process.env.COST_REPORT_SEARCH) > 0 ? Number(process.env.COST_REPORT_SEARCH) : 0.6;
+// 0.75 is an ESTIMATE for the 12-comp default (measured $0.60 at 8 comps,
+// scaled by the 8→10 search-budget rise) — recalibrate from a real invoice.
+const COST_REPORT_SEARCH = Number(process.env.COST_REPORT_SEARCH) > 0 ? Number(process.env.COST_REPORT_SEARCH) : 0.75;
 const COST_MARKET_SEARCH = Number(process.env.COST_MARKET_SEARCH) > 0 ? Number(process.env.COST_MARKET_SEARCH) : 0.75;
-// A corpus-assisted report search drops max_uses 8→3 (see searchBudgetFor), and
-// web_search is what costs money, so it lands near 3/8 of a full search.
-const CORPUS_HIT_COST_FACTOR = 3 / 8;
+// A corpus-assisted report search drops max_uses 10→3 (see searchBudgetFor), and
+// web_search is what costs money, so it lands near 3/10 of a full search.
+const CORPUS_HIT_COST_FACTOR = 3 / 10;
 
 // ---------------------------------------------------------------------------
 // Lead storage — Supabase REST when configured, local file otherwise
@@ -817,11 +819,15 @@ function corpusIsStrong(corpus) {
   return Boolean(corpus && corpus.fresh && corpus.coverage >= 4);
 }
 
-// How many web searches to allow. Corpus-strong requests drop from today's 6-8
-// to a small floor (a subject-size lookup still needs ~2 searches when the size
-// is unknown). This is the actual cost lever.
-function searchBudgetFor(corpus, subjectSizeSqft) {
-  if (!corpusIsStrong(corpus)) return subjectSizeSqft ? 6 : 8;  // unchanged fallback
+// How many web searches to allow. Corpus-strong requests drop to a small floor
+// (a subject-size lookup still needs ~2 searches when the size is unknown).
+// This is the actual cost lever. A 10-12 comp ask gets two extra searches over
+// the old 6/8 — one search page usually yields several comps, so the budget
+// grows slower than the comp count. The corpus floor stays put: known comps
+// are handed to the model, so a bigger ask needs no extra fresh searches.
+function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
+  const big = maxComps > 8;
+  if (!corpusIsStrong(corpus)) return subjectSizeSqft ? (big ? 8 : 6) : (big ? 10 : 8);
   return subjectSizeSqft ? 2 : 3;                               // conservative floor, not 0/1
 }
 
@@ -1574,8 +1580,15 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // dressed up as comps. Those look authoritative, carry no property behind
     // them, and would land in the permanent corpus as fake transactions.
     `EVERY entry in "comps" must be ONE individual property at its own address that actually sold or is actively listed. Never enter a market median, submarket or metro average, research-report benchmark, index, or any other market-level statistic as a comp — market-level figures belong in "summary", "value_drivers", and "market_cap_rate_range" instead. A property whose address is partly withheld is still fine (e.g. "Highland Park Triplex, Pittsburgh, PA 15206"); a row named for a statistic is not. If you cannot find ${maxComps} genuine individual properties, return the smaller number you did find and say so in "summary" — a short honest list is worth more than a padded one.`,
+    // The value hero multiplies this number straight into the valuation, so
+    // the lookup must not be an afterthought: on corpus-assisted searches the
+    // budget is only 3 (searchBudgetFor) and an unordered "also determine..."
+    // let comp-hunting consume every search before the subject address was
+    // ever looked up. Sequenced FIRST, with the places a size actually lives.
+    // The neighbor guard matters: adjacent parcels' sizes surface readily in
+    // search results, and a wrong "found" size is worse than an honest "".
     !subjectSizeSqft
-      ? `Also determine the TARGET property's building size in square feet from public records, assessor data, or listing pages for the target address. This is the BUILDING square footage, not the lot or land size.`
+      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size.`
       : "",
     typeGuidance[type] || "",
     // Size class moves $/SF (economies of scale) — steer comp selection
@@ -1910,11 +1923,13 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // get cut off mid-array on a busy 8-comp Industrial report. Billing is by
     // actual tokens generated, not this cap, so raising it costs nothing on
     // the (much more common) shorter reports.
-    max_tokens: 8000,
+    // A 10-12 comp report is a third longer than the 8-comp JSON this was
+    // sized for — give it headroom so the closing brace never gets cut off.
+    max_tokens: maxComps > 8 ? 10000 : 8000,
     // The subject-size lookup gets two extra searches so it doesn't crowd out
     // the comp searches themselves. When we already hold recent comps for this
     // market (corpus-strong), the budget drops hard — that reuse is the saving.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchBudgetFor(corpus, subjectSizeSqft) }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchBudgetFor(corpus, subjectSizeSqft, maxComps) }],
     messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails) }],
   };
 
@@ -4111,7 +4126,12 @@ const server = http.createServer((req, res) => {
         // Validated/clamped so arbitrary client values can't reshape the prompt.
         const monthsNum = Math.round(Number(months));
         const monthsOk = Number.isFinite(monthsNum) ? Math.min(120, Math.max(1, monthsNum)) : 24;
-        const maxCompsOk = [4, 6, 8].includes(Number(maxComps)) ? Number(maxComps) : 8;
+        // Default 12 (was 8): more comps = steadier percentiles in the value
+        // hero. The anti-padding prompt rule keeps thin markets honest — the
+        // model returns fewer rather than inventing. Explorer/seed searches
+        // stay pinned at 8 (see /api/explore-market + gen-market-seed.js,
+        // which must stay in lockstep with each other, not with this default).
+        const maxCompsOk = [4, 6, 8, 10, 12].includes(Number(maxComps)) ? Number(maxComps) : 12;
         const txFocusOk = ["both", "sales", "leases"].includes(String(txFocus)) ? String(txFocus) : "both";
         const sizeNum = Math.round(Number(subjectSizeSqft));
         const sizeOk = Number.isFinite(sizeNum) && sizeNum > 0 ? Math.min(20_000_000, sizeNum) : null;

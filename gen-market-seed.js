@@ -67,9 +67,12 @@ const { MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot } = require("./mar
 
 async function buildOne(t) {
   // NOTE: this body must stay in lockstep with /api/explore-market's internal
-  // pipeline (same address format/note/months/txFocus and default maxComps) —
-  // they share the search cache, and a mismatch would silently double-bill.
-  const body = { address: `${t.city}, ${t.state}`, type: t.type, note: "", months: 24, txFocus: "both" };
+  // pipeline (same address format/note/months/txFocus and maxComps) — they
+  // share the search cache, and a mismatch would silently double-bill.
+  // maxComps is pinned to 8 explicitly: report searches now default to 12,
+  // but Explorer keys its cache entries at 8, and market pages don't need
+  // the bigger (pricier) ask.
+  const body = { address: `${t.city}, ${t.state}`, type: t.type, note: "", months: 24, maxComps: 8, txFocus: "both" };
   const r = await fetch(`${BASE}/api/comps`, {
     method: "POST",
     headers: { "content-type": "application/json" },

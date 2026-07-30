@@ -159,10 +159,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`server.js`** — zero-dependency Node HTTP server. Routes:
 - `POST /api/comps` — the core endpoint. Enforces the password gate (if set),
   builds the prompt, calls Anthropic with the `web_search` tool enabled, and
-  returns parsed JSON. Body takes optional `subjectSizeSqft`; when absent the
-  prompt also asks the model to look up the building's size (returned as
-  `subject_size_sqft` + `subject_size_source`) and `max_uses` rises 6 → 8 to
-  budget the lookup. Body also takes optional `subjectDetails` — the per-type
+  returns parsed JSON. Body takes optional `maxComps` (allowed 4/6/8/10/12,
+  default 12 — the Explorer/seed pipeline stays pinned at 8) and optional
+  `subjectSizeSqft`; when absent the prompt also asks the model to look up
+  the building's size (returned as `subject_size_sqft` +
+  `subject_size_source`) and `max_uses` rises 8 → 10 to budget the lookup
+  (6 → 8 for a ≤8-comp ask). Body also takes optional `subjectDetails` — the per-type
   facts about the user's own building (see flow 4), whitelisted by
   `sanitizeSubjectDetails` against that type's `TYPE_COMP_FIELDS` keys and
   shown to the model so comp selection matches the subject. Every response carries `market_cap_rate_range`,
@@ -278,7 +280,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   analytics tag so the two can't disagree — is `coverage >= 4 && fresh`, where
   fresh means the newest harvest for that market is under 45 days old. When
   strong, the model is handed those comps and `searchBudgetFor()` cuts
-  `max_uses` from 8→3 (or 6→2 when the subject size was supplied) — a
+  `max_uses` to a floor of 3 (or 2 when the subject size was supplied), vs
+  10/8 for a full-budget 12-comp search — a
   deliberate floor rather than 0/1 — and the search is tagged
   `source: "corpus"` in `analytics_events`. Failure is always safe: any error
   returns zero coverage, i.e. today's normal full search.

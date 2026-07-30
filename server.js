@@ -1670,6 +1670,19 @@ function normalizeSourceTypes(parsed) {
         : /list|broker|flyer|loopnet|crexi|costar/.test(raw) ? "listing"
         : /news|article|press|announc/.test(raw) ? "news"
         : "estimate");
+    // ENFORCEMENT, not just prompting: the prompt already forbids market-
+    // level rows as comps, but in thin markets the model pads anyway (a
+    // Boston report shipped "Financial District (general submarket
+    // estimate)" rows claiming listing provenance). A comp whose address
+    // has no leading street number, or that names a statistic, cannot be
+    // one verifiable transaction — force its badge to "estimate" so the
+    // report can never present a submarket guess as a sourced deal. Same
+    // under-claim principle as above; the Verified badge (broker-matched,
+    // separate flag) is unaffected.
+    if (c.source_type !== "estimate" &&
+        (!/^\s*\d+\s+\S/.test(String(c.address || "")) || isAggregateAddress(c.address))) {
+      c.source_type = "estimate";
+    }
   }
   return parsed;
 }

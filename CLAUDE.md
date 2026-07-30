@@ -168,7 +168,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   shown to the model so comp selection matches the subject. Every response carries `market_cap_rate_range`,
   `value_drivers`, `market_trend`, and a per-comp `source_type` that the
   server normalizes onto its enum (unknown → `estimate`, so badges can
-  under-claim provenance but never over-claim). **Cached**: identical requests
+  under-claim provenance but never over-claim). Normalization also ENFORCES
+  the prompt's individual-property rule: a comp whose address lacks a
+  leading street number, or that names a statistic
+  (`isAggregateAddress`), is forced to `estimate` no matter what the model
+  claimed — thin markets make the model pad with submarket rows despite
+  the prompt telling it not to, and prompt rules are requests while
+  normalization is a guarantee. **Cached**: identical requests
   within a 7-day TTL are served from the `search_cache` layer (Supabase table
   `search_cache`, keyed by a SHA-256 of address+type+note+window+size+a
   signature of the offered verified comps — so approving a broker comp busts

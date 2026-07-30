@@ -3998,17 +3998,34 @@
       // extends upward from the pin, so the map centers on the ensemble's
       // midpoint, not the pin itself. The photo slot has fixed dimensions,
       // so offsetHeight is right immediately, before any image loads.
+      // Slide a clipped popup down inside the map (used on hover, undone on
+      // click). Leaflet anchors popups by `bottom`, so margin-TOP is inert —
+      // shrinking the stylesheet's 20px margin-BOTTOM (negative if needed) is
+      // what moves the box down. Margin, not transform — Leaflet owns the
+      // transform.
+      const unclampPopup = (el) => {
+        el.style.marginBottom = "";
+        const tip = el.querySelector(".leaflet-popup-tip-container");
+        if (tip) tip.style.display = "";
+      };
       m.on("click", () => {
         pinned = true;
         m.openPopup();
         const el = m.getPopup() && m.getPopup().getElement();
         if (el && mapInstance) {
+          // The glide guarantees room above the pin, so undo any hover-time
+          // clamp first — its margin would throw off the centering math.
+          unclampPopup(el);
           const pt = mapInstance.latLngToContainerPoint(m.getLatLng());
           const target = mapInstance.containerPointToLatLng([pt.x, pt.y - el.offsetHeight / 2]);
           mapInstance.panTo(target, { animate: true, duration: 0.45, easeLinearity: 0.25 });
         }
       });
-      m.on("popupclose", () => { pinned = false; });
+      m.on("popupclose", (e) => {
+        pinned = false;
+        const el = e.popup.getElement();
+        if (el) unclampPopup(el);   // popup DOM is reused — never carry a clamp over
+      });
       // Keep it open while the cursor is on the popup itself. Plain assignment
       // (not addEventListener) so repeated opens can't stack listeners.
       m.on("popupopen", (e) => {
@@ -4016,6 +4033,21 @@
         if (!el) return;
         el.onmouseenter = () => clearTimeout(closeT);
         el.onmouseleave = scheduleClose;
+        // Hover never pans the map, so a pin near the top of the normal-
+        // height map opened its popup with the photo clipped by the map's
+        // edge. Slide the popup down just enough to fit instead — over the
+        // pin if it must — and drop the tip while it's detached (a floating
+        // pointer to nothing is worse than none). Clicking un-clamps and
+        // glides the map properly.
+        unclampPopup(el);
+        const mapRect = mapInstance.getContainer().getBoundingClientRect();
+        const clipped = Math.ceil(mapRect.top + 8 - el.getBoundingClientRect().top);
+        if (clipped > 0) {
+          const base = parseFloat(getComputedStyle(el).marginBottom) || 20;
+          el.style.marginBottom = (base - clipped) + "px";
+          const tip = el.querySelector(".leaflet-popup-tip-container");
+          if (tip) tip.style.display = "none";
+        }
       });
     };
     const addSubjMarker = (lat, lng) => {

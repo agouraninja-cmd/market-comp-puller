@@ -3683,12 +3683,23 @@
         return `way(around:90,${ll.lat.toFixed(6)},${ll.lng.toFixed(6)})["building"];`;
       }).join("");
       try {
-        const r = await fetch("https://overpass-api.de/api/interpreter", {
-          method: "POST",
-          body: "data=" + encodeURIComponent(`[out:json][timeout:10];(${parts});out bb;`),
-          signal: AbortSignal.timeout(12000),
-        });
-        const j = await r.json();
+        // Two public Overpass instances, tried in order — the main one 504s
+        // under load, and with photos now gated on footprints an outage
+        // would mean a photo-less report instead of a wrong-photo one.
+        let j = null;
+        for (const endpoint of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) {
+          try {
+            const r = await fetch(endpoint, {
+              method: "POST",
+              body: "data=" + encodeURIComponent(`[out:json][timeout:10];(${parts});out bb;`),
+              signal: AbortSignal.timeout(12000),
+            });
+            if (!r.ok) continue;
+            j = await r.json();
+            break;
+          } catch (_) { /* try the next mirror */ }
+        }
+        if (!j) throw new Error("all Overpass endpoints failed");
         // `out bb;` carries bounds only — the bbox midpoint stands in for the
         // centroid, which is all the photo needs to frame the building.
         const ways = (j.elements || []).filter((e) => e.bounds)
@@ -3949,28 +3960,23 @@
     // Leaflet builds it at open time from the marker's CURRENT position —
     // refinePins() moves pins after first paint. Coordinates come from
     // getLatLng() / the snapped centroid — numbers, nothing user-authored.
-    const svPhoto = (marker, zoom, address) => {
-      // Aerial: snapped building centroid when Overpass found one, so the
-      // crop frames the property, not the street.
+    const svPhoto = (marker, zoom) => {
+      // Photo ONLY when OSM maps the building. The footprint is the one
+      // signal that guarantees the picture shows the PROPERTY: with it, the
+      // aerial centers on the structure and Street View's camera aims at
+      // it. Without it, every guess degrades — the aerial centers on the
+      // street point (a photo of a dirt road), Street View shoots whatever
+      // faces the pavement (trees), and address-aiming showed the road on
+      // unmapped parcels. Owner's rule after a rural McCall report served
+      // all three failures at once: show the actual property or show
+      // nothing. Footprint coverage is strong exactly where photos work
+      // (cities/suburbs) and thin exactly where they embarrassed us.
       const snapped = marker._bldgLL;
-      const ll = snapped || marker.getLatLng();
-      if (!streetviewEnabled) return aerialThumb(ll, 260, 156, zoom || 17);
-      // Street View aiming, best target first:
-      //   1. Snapped building centroid — camera points at the structure
-      //      itself (verified: frames the warehouse, not the road).
-      //   2. Address, when no footprint is mapped — Google's geocode is
-      //      rooftop-accurate for most HOUSES (whose OSM footprints are the
-      //      ones usually missing). For unmapped commercial parcels Google
-      //      sometimes interpolates along the street, so the address is the
-      //      fallback, not the default.
-      //   3. Raw pin coordinates.
-      // The aerial-fallback data attrs stay coordinate-based either way.
-      const target = (!snapped && address)
-        ? "address=" + encodeURIComponent(String(address).slice(0, 200))
-        : "lat=" + ll.lat.toFixed(6) + "&lng=" + ll.lng.toFixed(6);
-      return '<img src="/api/streetview?' + target +
+      if (!snapped) return "";
+      if (!streetviewEnabled) return aerialThumb(snapped, 260, 156, zoom || 17);
+      return '<img src="/api/streetview?lat=' + snapped.lat.toFixed(6) + '&lng=' + snapped.lng.toFixed(6) +
         '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt=""' +
-        ' data-lat="' + ll.lat.toFixed(6) + '" data-lng="' + ll.lng.toFixed(6) + '" data-zoom="' + (zoom || 17) + '"' +
+        ' data-lat="' + snapped.lat.toFixed(6) + '" data-lng="' + snapped.lng.toFixed(6) + '" data-zoom="' + (zoom || 17) + '"' +
         ' onerror="this.outerHTML = aerialFallbackFor(this)">';
     };
     // Hover preview: pause on a pin and its popup opens (photo included);
@@ -4071,7 +4077,7 @@
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m, aerialZoomFor(meta.subject && meta.subject.sizeMin), meta.address) +
+      m.bindPopup(() => svPhoto(m, aerialZoomFor(meta.subject && meta.subject.sizeMin)) +
         `<strong>Your property:</strong> ${escMap(meta.address)}`,
         { autoPan: !CAN_HOVER });
       wireHoverPreview(m);
@@ -4087,7 +4093,7 @@
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
       const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft), c.address) +
+      m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft)) +
         `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`,
         { autoPan: !CAN_HOVER });
       wireHoverPreview(m);

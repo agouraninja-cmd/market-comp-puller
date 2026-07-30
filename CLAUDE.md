@@ -117,12 +117,15 @@ dependency. `.env` is git-ignored — never commit it.
   runs first so no-imagery spots cost nothing). Unset = the route 404s and
   popups use the keyless stitched-Esri-tile aerial close-up (`aerialThumb`
   in index.html) — which is also what a Street View 404 swaps in via the
-  img's onerror, so hovering a pin always shows a photo.
-  Either photo centers on the pin's OSM building footprint when one exists
+  img's onerror.
+  **A pin only gets a photo at all when its OSM building footprint exists**
   (`snapMarkersToBuildings` — one batched browser-direct Overpass query per
-  report after pins settle, cached in localStorage `bldgCache.v1`, every
-  failure falls back to the pin position) because geocoded points sit on
-  the street centerline, not the building.
+  report after pins settle, two public endpoints tried in order, cached in
+  localStorage `bldgCache.v1`): the footprint is the one signal proving the
+  photo shows the property. Geocoded points sit on the street centerline,
+  so every unsnapped aiming strategy (raw point, Google address geocode)
+  produced photos of roads/trees on rural reports — owner's rule is "the
+  actual property or nothing," so no footprint = text-only popup.
   Spend guardrails: Google Maps API quotas are NO LONGER user-adjustable
   (the spec's 500/day quota-cap step is obsolete) — the backstops are the
   "CompNinja Street View cap" $5/month budget alert on the billing account
@@ -190,16 +193,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   for the map's first paint; the front-end re-places every pin from real
   geocoding (this proxy, then browser-direct Nominatim as fallback, results
   cached in localStorage under `geoCache.v1`). Rate-limited per IP.
-- `GET /api/streetview?address=` (or `?lat=&lng=`) — Street View photo proxy
-  for the map pin popups. The client sends the pin's ADDRESS when it has
-  one: Google geocodes it rooftop-accurate and aims the camera at the
-  building's front, which beats coordinate aiming for houses (missing OSM
-  footprints leave only the street-centerline point); coordinates are the
-  fallback. Metadata-checks first (free, cached in-memory), then streams
-  the image with a 30-day cache header. No key / no imagery / any error →
-  bare 404, which the popup img's `onerror` swaps for the keyless aerial
-  (the client only asks when the config flag is on; flag off = aerial
-  directly). Listing-site photos (Zillow/Redfin/Realtor.com) are OFF the
+- `GET /api/streetview?lat=&lng=` (an `?address=` form exists but the
+  client no longer sends it — address aiming showed the road on unmapped
+  parcels) — Street View photo proxy for the map pin popups. The client
+  only asks for pins with a snapped OSM building footprint, aiming the
+  camera at the footprint centroid. Metadata-checks first (free, cached
+  in-memory), then streams the image with a 30-day cache header. No key /
+  no imagery / any error → bare 404, which the popup img's `onerror` swaps
+  for the keyless aerial (flag off = aerial directly, same footprint-only
+  gate). Listing-site photos (Zillow/Redfin/Realtor.com) are OFF the
   table — copyrighted, scraping-banned, and litigated; Street View + Esri
   aerials are the licensed sources. Rate-limited per IP.
 - `GET /api/corpus-comps?address=&type=` — the in-report "From CompNinja's

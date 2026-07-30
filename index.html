@@ -3949,12 +3949,20 @@
     // Leaflet builds it at open time from the marker's CURRENT position —
     // refinePins() moves pins after first paint. Coordinates come from
     // getLatLng() / the snapped centroid — numbers, nothing user-authored.
-    const svPhoto = (marker, zoom) => {
-      // Snapped building centroid when Overpass found one — the photo (and
-      // Street View's camera target) aims at the property, not the street.
+    const svPhoto = (marker, zoom, address) => {
+      // Aerial: snapped building centroid when Overpass found one, so the
+      // crop frames the property, not the street.
       const ll = marker._bldgLL || marker.getLatLng();
       if (!streetviewEnabled) return aerialThumb(ll, 260, 156, zoom || 17);
-      return '<img src="/api/streetview?lat=' + ll.lat.toFixed(6) + '&lng=' + ll.lng.toFixed(6) +
+      // Street View: aim by ADDRESS when we have one — Google geocodes it
+      // rooftop-accurate and points the camera at the building's front,
+      // which beats coordinate aiming for houses (their OSM footprints are
+      // often missing, leaving only the street-centerline point). The
+      // aerial-fallback data attrs stay coordinate-based either way.
+      const target = address
+        ? "address=" + encodeURIComponent(String(address).slice(0, 200))
+        : "lat=" + ll.lat.toFixed(6) + "&lng=" + ll.lng.toFixed(6);
+      return '<img src="/api/streetview?' + target +
         '" width="260" height="156" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt=""' +
         ' data-lat="' + ll.lat.toFixed(6) + '" data-lng="' + ll.lng.toFixed(6) + '" data-zoom="' + (zoom || 17) + '"' +
         ' onerror="this.outerHTML = aerialFallbackFor(this)">';
@@ -4057,7 +4065,7 @@
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m, aerialZoomFor(meta.subject && meta.subject.sizeMin)) +
+      m.bindPopup(() => svPhoto(m, aerialZoomFor(meta.subject && meta.subject.sizeMin), meta.address) +
         `<strong>Your property:</strong> ${escMap(meta.address)}`,
         { autoPan: !CAN_HOVER });
       wireHoverPreview(m);
@@ -4073,7 +4081,7 @@
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
       const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft)) +
+      m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft), c.address) +
         `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`,
         { autoPan: !CAN_HOVER });
       wireHoverPreview(m);

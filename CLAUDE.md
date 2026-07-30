@@ -190,13 +190,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   for the map's first paint; the front-end re-places every pin from real
   geocoding (this proxy, then browser-direct Nominatim as fallback, results
   cached in localStorage under `geoCache.v1`). Rate-limited per IP.
-- `GET /api/streetview?lat=&lng=` — Street View photo proxy for the map pin
-  popups (popup content is built at open time from the pin's final geocoded
-  position). Metadata-checks first (free, cached in-memory), then streams
+- `GET /api/streetview?address=` (or `?lat=&lng=`) — Street View photo proxy
+  for the map pin popups. The client sends the pin's ADDRESS when it has
+  one: Google geocodes it rooftop-accurate and aims the camera at the
+  building's front, which beats coordinate aiming for houses (missing OSM
+  footprints leave only the street-centerline point); coordinates are the
+  fallback. Metadata-checks first (free, cached in-memory), then streams
   the image with a 30-day cache header. No key / no imagery / any error →
-  bare 404, which the popup img's `onerror` removes (the client only asks
-  when the config flag is on; flag off = keyless aerial fallback instead).
-  Rate-limited per IP.
+  bare 404, which the popup img's `onerror` swaps for the keyless aerial
+  (the client only asks when the config flag is on; flag off = aerial
+  directly). Listing-site photos (Zillow/Redfin/Realtor.com) are OFF the
+  table — copyrighted, scraping-banned, and litigated; Street View + Esri
+  aerials are the licensed sources. Rate-limited per IP.
 - `GET /api/corpus-comps?address=&type=` — the in-report "From CompNinja's
   records" offer: provenance-good corpus rows for the subject's market+type
   (never estimate/news, priced, deduped, max 20), served from the same

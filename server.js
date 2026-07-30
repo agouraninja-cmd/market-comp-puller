@@ -4690,10 +4690,17 @@ const server = http.createServer((req, res) => {
   // 404 — the popup <img>'s onerror removes it and the popup stays text-only. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/streetview") {
     const params = new URL(req.url, "http://localhost").searchParams;
-    const lat = Number(params.get("lat"));
-    const lng = Number(params.get("lng"));
-    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-      return sendJson(res, 400, { error: "lat and lng are required." });
+    // Prefer an address: Google geocodes it rooftop-accurate and aims the
+    // camera at the building's front — noticeably better for houses, whose
+    // OSM footprints are often missing so the coordinate path could only aim
+    // at the street centerline. Coordinates remain the fallback.
+    const address = String(params.get("address") || "").trim().slice(0, 200);
+    // Number(null) is 0, so missing params must not masquerade as 0,0.
+    const lat = params.get("lat") === null ? NaN : Number(params.get("lat"));
+    const lng = params.get("lng") === null ? NaN : Number(params.get("lng"));
+    const hasCoords = isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    if (!address && !hasCoords) {
+      return sendJson(res, 400, { error: "address or lat and lng are required." });
     }
     if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
     // A report has <= ~9 pins; 60/window is generous for a human reader.
@@ -4702,7 +4709,7 @@ const server = http.createServer((req, res) => {
     }
     (async () => {
       try {
-        const loc = lat.toFixed(5) + "," + lng.toFixed(5);
+        const loc = address ? encodeURIComponent(address) : lat.toFixed(5) + "," + lng.toFixed(5);
         let hasImagery = STREETVIEW_META_CACHE.get(loc);
         if (hasImagery === undefined) {
           const mr = await fetch(

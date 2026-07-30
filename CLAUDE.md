@@ -301,6 +301,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   moved off `index.html`'s `<head>` with the copy it describes), and the sample
   exhibit's illustrative figures. The home page keeps only a one-line pointer
   strip linking here. Listed in `sitemap.xml`.
+- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
+  **"Brokers"**. Holds the contribute-for-credit pitch, the owner-introduction
+  offer, and what the Verified badge means — content that used to be a
+  `#for-brokers` section on the landing page reachable only by a scroll-to
+  button, with no URL of its own. Unlike `/how-it-works` it carries no CSS of
+  its own: it renders through `marketShell()`, so `MARKET_CSS` / `MARKET_BAR` /
+  `MARKET_FOOTER` style it and it likewise does NOT depend on `tailwind.css`.
+  Listed in `sitemap.xml`. Its "Submit a comp" CTA links to **`/#submit-comp`**,
+  a deep link `index.html` handles by opening the existing comp-submission
+  modal and then clearing the hash — deliberately one form, not a second copy
+  of it on this page. Do not confuse this with `GET /broker/<slug>`, the
+  per-contributor public profile.
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
   (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do

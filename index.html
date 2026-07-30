@@ -219,6 +219,12 @@
     /* Smooth reveal when the subject-property section is expanded. */
     details[open] > div { animation: fadeIn .3s ease-out; }
 
+    /* Search-history "show all" toggle. The chevron rule above is scoped to
+       #compForm, so style this summary as a quiet link and drop the native
+       disclosure marker (which renders differently per browser). */
+    #historyMore > summary { list-style: none; cursor: pointer; }
+    #historyMore > summary::-webkit-details-marker { display: none; }
+
     /* Motion — micro-interactions that keep the UI feeling responsive and alive. */
     .btn-live { transition: transform .15s ease, background-color .15s ease, box-shadow .15s ease; }
     .btn-live:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -4px rgb(15 23 42 / .35); }
@@ -720,19 +726,25 @@
         <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">My Desk</h2>
         <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
       </div>
-      <p class="text-sm text-[#5A6473] mt-3">Your recent searches, saved reports, and tracked properties.</p>
+      <p class="text-sm text-[#5A6473] mt-3">Your recent searches and tracked properties.</p>
 
-      <!-- Recent searches (stored locally in this browser only) -->
-      <div id="recentWrap" class="hidden mt-6 flex flex-wrap items-center gap-2">
-        <span class="rd-lab">Re-run:</span>
-        <div id="recentChips" class="flex flex-wrap gap-2"></div>
-      </div>
-
-      <!-- Saved reports (full report data stored locally; reopening is free) -->
-      <div id="savedWrap" class="hidden mt-3 flex flex-wrap items-center gap-2">
-        <span class="rd-lab">Saved reports:</span>
-        <div id="savedChips" class="flex flex-wrap gap-2"></div>
-        <button id="clearSavedBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
+      <!-- Search history — one row per property, stored in this browser only.
+           The newest few keep their full report (Open is free); older rows keep
+           only their inputs (Re-run is a fresh billed search). The filter input
+           is static markup on purpose: a search completing re-renders the rows
+           three times over, and regenerating the input would eat what the user
+           is typing. -->
+      <div id="historyWrap" class="hidden mt-6">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <span class="rd-lab">Recent searches</span>
+          <div class="flex items-center gap-3">
+            <span id="historyCount" class="text-xs text-[#8A93A0]"></span>
+            <input id="historyFilter" type="search" autocomplete="off" placeholder="Filter by address or type"
+              class="hidden w-52 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button id="clearHistoryBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
+          </div>
+        </div>
+        <div id="historyRows" class="mt-2"></div>
       </div>
 
       <!-- Signed-out prompt for the account-backed areas -->
@@ -1916,7 +1928,7 @@
         renderAnalysisCluster(currentParsed, currentMeta, false);
         renderComparison(currentParsed);
         renderMarketChart();
-        if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveReport(currentMeta, currentParsed);
+        if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveHistory(currentMeta, currentParsed);
       }, 300);
     });
   });
@@ -2834,12 +2846,16 @@
       // address if the user ever genuinely searched it.
       if (currentMeta.sample) return;
       try {
-        const list = loadSavedReports();
+        // Deliberately no re-render and no ts bump: editing an assumption is
+        // not a new search and must not reorder the history. Matching a row
+        // whose report has aged out is fine — the opinion still persists in
+        // meta and rides along if the search is ever re-run.
+        const list = loadHistory();
         const hit = list.find((r) => r.meta.address === currentMeta.address && r.meta.type === currentMeta.type);
         if (hit) {
           hit.meta.assumptions = currentMeta.assumptions;
           hit.meta.curation = currentMeta.curation || null;
-          localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+          writeHistory(list);
         }
       } catch (_) { /* private mode etc. */ }
       if (currentUser && currentMeta.portfolioId && currentParsed) {
@@ -4252,7 +4268,7 @@
       Object.values(compMarkersByNum).forEach((m) => refined.push(m.getLatLng()));
       mapInstance.fitBounds(refined, { padding: [35, 35], maxZoom: 14 });
       // Corrected coordinates ride along in the saved copy of the report.
-      if (!meta.sample && !meta.fromHistory && !meta.shared) saveReport(meta, parsed);
+      if (!meta.sample && !meta.fromHistory && !meta.shared) saveHistory(meta, parsed);
     })();
   }
 
@@ -4445,8 +4461,7 @@
     renderTableBody();
     updateCurationNote();
     if (!meta.sample && !meta.fromHistory && !meta.shared) {
-      saveRecentSearch(meta);
-      saveReport(meta, parsed);
+      saveHistory(meta, parsed);
     }
     // Sharing publishes a real valuation; the sample is illustrative, so hide
     // the share link for it.
@@ -4471,61 +4486,293 @@
   }
 
   // ----------------------------------------------------------------------------
-  // Recent searches — the last 5 successful searches, stored in this browser
-  // only (localStorage), shown as one-click chips under the form.
+  // Search history — one row per property (address + type), stored in this
+  // browser only. Replaces the old recentSearches/savedReports pair, which were
+  // two recordings of the same event: both were written on every search and
+  // both deduped on the same address+type key, so a row could only ever differ
+  // between the two lists by which cap or quota eviction had reached it first.
+  //
+  // Rows are uniform; only the payload is optional. The newest PAYLOAD_MAX rows
+  // keep their full report (Open re-renders it for free); older rows keep just
+  // the inputs (Re-run is a fresh billed search). A meta-only row is ~200 bytes
+  // against tens of KB for a report, so history now reaches back much further
+  // than the old 5/10 caps did at no extra storage cost.
   // ----------------------------------------------------------------------------
-  const RECENT_KEY = "recentSearches";
+  const HISTORY_KEY = "propertyHistory.v1";
+  const HISTORY_MAX = 25;   // rows kept at all
+  const PAYLOAD_MAX = 10;   // newest N rows that keep their full report
 
-  function loadRecentSearches() {
-    try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
-    catch (_) { return []; }
-  }
-
-  function saveRecentSearch(meta) {
+  function loadHistory() {
     try {
-      const list = loadRecentSearches()
-        .filter((s) => !(s.address === meta.address && s.type === meta.type));
-      list.unshift({ address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null });
-      localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)));
-    } catch (_) { /* private mode etc. — recents are a nicety, not a requirement */ }
-    renderRecentChips();
+      const list = JSON.parse(localStorage.getItem(HISTORY_KEY));
+      // A malformed row would crash every caller that reads r.meta.address.
+      return Array.isArray(list)
+        ? list.filter((r) => r && r.meta && typeof r.meta.address === "string")
+        : [];
+    } catch (_) { return []; }
   }
 
-  function renderRecentChips() {
-    const wrap = document.getElementById("recentWrap");
-    const chips = document.getElementById("recentChips");
-    const list = loadRecentSearches();
-    chips.innerHTML = "";
-    wrap.classList.toggle("hidden", list.length === 0);
-    list.forEach((s) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn-live text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 hover:text-slate-900 border border-slate-300 rounded-full px-3 py-1";
-      btn.textContent = `${s.address} · ${s.type}`;
-      btn.title = "Run this search again";
-      btn.addEventListener("click", () => {
-        leaveDesk();
-        document.getElementById("address").value = s.address;
-        document.getElementById("propertyType").value = s.type;
-        syncSubjectFieldsToType();
-        document.getElementById("marketNote").value = s.note || "";
-        if (s.months) setLookbackControls(s.months);
-        if (s.txFocus) document.getElementById("txFocus").value = s.txFocus;
-        if (s.subject) {
-          document.getElementById("targetSize").value = s.subject.sizeMin || "";
-          document.getElementById("targetSizeMax").value = s.subject.sizeMax && s.subject.sizeMax !== s.subject.sizeMin ? s.subject.sizeMax : "";
-          document.getElementById("targetPrice").value = s.subject.priceMin || "";
-          document.getElementById("targetPriceMax").value = s.subject.priceMax && s.subject.priceMax !== s.subject.priceMin ? s.subject.priceMax : "";
-          document.getElementById("noi").value = s.subject.noi || "";
-          writeSubjectDetails(s.subject.details);
-        }
-        document.getElementById("compForm").requestSubmit();
+  // Rows whose report is still on hand — the only ones that can be reopened
+  // free, and the only ones worth importing into a new account's portfolio.
+  const historyWithReports = () => loadHistory().filter((r) => r.data);
+
+  // Cap the row count, then strip payloads past the newest PAYLOAD_MAX so
+  // storage pressure stays where the old 10-saved-report cap put it.
+  function trimHistory(list) {
+    list.length = Math.min(list.length, HISTORY_MAX);
+    for (let i = PAYLOAD_MAX; i < list.length; i++) list[i].data = null;
+    return list;
+  }
+
+  // Write, shedding weight until it fits. The old saveReport retried once and
+  // gave up; here each retry drops the OLDEST surviving payload first (cheap to
+  // lose — that row stays re-runnable) and only starts dropping whole rows once
+  // no payloads are left. Returns false only if even one bare row won't fit.
+  function writeHistory(list) {
+    for (let guard = 0; guard <= HISTORY_MAX + PAYLOAD_MAX; guard++) {
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+        return true;
+      } catch (_) {
+        const oldestPayload = list.map((r) => Boolean(r.data)).lastIndexOf(true);
+        if (oldestPayload >= 0) list[oldestPayload].data = null;
+        else if (list.length > 1) list.pop();
+        else return false;
+      }
+    }
+    return false;
+  }
+
+  function saveHistory(meta, data) {
+    try {
+      const list = loadHistory()
+        .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
+      list.unshift({
+        ts: Date.now(),
+        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null, assumptions: meta.assumptions || null, curation: meta.curation || null },
+        data,
       });
-      chips.appendChild(btn);
+      writeHistory(trimHistory(list));
+    } catch (_) { /* private mode etc. — history is a nicety */ }
+    // A pending "Refresh valuation" also updates the portfolio item — but only
+    // when THIS report matches the item that requested the refresh (address +
+    // type), so an unrelated save (subject-input edit, a different search) can
+    // never overwrite the portfolio item with the wrong report. Deliberately
+    // outside the try above: it must still fire when localStorage is
+    // unavailable. Deferred a tick so renderOwnerHero (called during the same
+    // render pass) has already computed lastValuation.
+    if (currentUser && pendingPortfolioRefresh &&
+        pendingPortfolioRefresh.address === meta.address &&
+        pendingPortfolioRefresh.type === meta.type) {
+      const refreshId = pendingPortfolioRefresh.id;
+      pendingPortfolioRefresh = null;
+      setTimeout(() => {
+        acctApi("POST", "/api/portfolio", {
+          id: refreshId, payload: { meta, data }, snapshot: lastValuation,
+        }).then(() => { if (typeof renderMyDesk === "function") renderMyDesk(); }).catch(() => {});
+      }, 0);
+    }
+    renderHistory();
+  }
+
+  // One-time fold of the two old keys into the merged store. Saved reports lead
+  // (they carry ts + data and are already newest-first); recent searches with
+  // no saved counterpart follow as meta-only rows — they never stored a
+  // timestamp, so they sort last and render without a date. The old keys are
+  // removed only after the new one is safely written, so a quota failure part
+  // way through can't lose anything.
+  function dropLegacyHistoryKeys() {
+    try {
+      localStorage.removeItem("savedReports");
+      localStorage.removeItem("recentSearches");
+    } catch (_) {}
+  }
+
+  (function migrateHistory() {
+    try {
+      // Presence of HISTORY_KEY is the only gate, so this is idempotent. If the
+      // old keys are still here alongside it, a previous removal failed — drop
+      // the strays rather than merging them in a second time.
+      if (localStorage.getItem(HISTORY_KEY) !== null) { dropLegacyHistoryKeys(); return; }
+      let saved = [], recent = [];
+      try { saved = JSON.parse(localStorage.getItem("savedReports")) || []; } catch (_) {}
+      try { recent = JSON.parse(localStorage.getItem("recentSearches")) || []; } catch (_) {}
+      if (!Array.isArray(saved)) saved = [];
+      if (!Array.isArray(recent)) recent = [];
+      if (!saved.length && !recent.length) return;
+      const list = saved.filter((r) => r && r.meta && r.meta.address);
+      recent.forEach((s) => {
+        if (!s || !s.address) return;
+        if (list.some((r) => r.meta.address === s.address && r.meta.type === s.type)) return;
+        list.push({
+          ts: null,
+          meta: { address: s.address, type: s.type, note: s.note || "", months: s.months, txFocus: s.txFocus, subject: s.subject || null, assumptions: null, curation: null },
+          data: null,
+        });
+      });
+      if (writeHistory(trimHistory(list))) {
+        localStorage.removeItem("savedReports");
+        localStorage.removeItem("recentSearches");
+      }
+    } catch (_) { /* best effort — the old keys stay put on any failure */ }
+  })();
+
+  const FILTER_AT = 8;     // rows before the filter box earns its place
+  const COLLAPSE_AT = 8;   // rows shown before the rest collapse behind "show more"
+  let historyExpanded = false;   // survives a re-render; reset on clear
+
+  function historyMatches(list, q) {
+    const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return list;
+    return list.filter((r) => {
+      const hay = `${r.meta.address} ${r.meta.type}`.toLowerCase();
+      return tokens.every((t) => hay.includes(t));
     });
   }
 
-  renderRecentChips();
+  function openHistoryReport(r) {
+    leaveDesk();
+    hideLoadingCard();
+    const when = r.ts ? ` generated ${histDate(r.ts)}` : "";
+    showStatus(`Reopened a saved report${when}. Run a new search for fresh data.`, "info");
+    renderResults(r.data, { ...r.meta, fromHistory: true, generatedAt: r.ts || Date.now() });
+  }
+
+  function rerunHistory(m) {
+    leaveDesk();
+    document.getElementById("address").value = m.address;
+    document.getElementById("propertyType").value = m.type;
+    syncSubjectFieldsToType();
+    document.getElementById("marketNote").value = m.note || "";
+    if (m.months) setLookbackControls(m.months);
+    if (m.txFocus) document.getElementById("txFocus").value = m.txFocus;
+    if (m.subject) {
+      document.getElementById("targetSize").value = m.subject.sizeMin || "";
+      document.getElementById("targetSizeMax").value = m.subject.sizeMax && m.subject.sizeMax !== m.subject.sizeMin ? m.subject.sizeMax : "";
+      document.getElementById("targetPrice").value = m.subject.priceMin || "";
+      document.getElementById("targetPriceMax").value = m.subject.priceMax && m.subject.priceMax !== m.subject.priceMin ? m.subject.priceMax : "";
+      document.getElementById("noi").value = m.subject.noi || "";
+      writeSubjectDetails(m.subject.details);
+    }
+    document.getElementById("compForm").requestSubmit();
+  }
+
+  // Deliberately mirrors the portfolio card's row idiom (clickable address,
+  // muted sub-line, small underlined text actions) — that grid sits right below
+  // this list on the same page, and two different idioms for "a property you
+  // saved" would read as two unrelated features.
+  const histDate = (ts) => (ts ? new Date(ts).toLocaleDateString() : "");
+
+  function historyRow(r) {
+    const row = document.createElement("div");
+    row.className = "flex items-baseline justify-between gap-3 py-2";
+    const left = document.createElement("div");
+    left.className = "min-w-0 flex-1";
+    // Only a row that still holds its report is clickable; once it has aged out
+    // of the payload window the address is plain text and Re-run is the only
+    // way back to it.
+    const addr = document.createElement(r.data ? "button" : "div");
+    addr.className = r.data
+      ? "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C] truncate"
+      : "text-sm font-medium text-[#1A2433] truncate";
+    addr.textContent = r.meta.address;
+    if (r.data) {
+      addr.type = "button";
+      addr.title = "Reopen this report (no new search, no cost)";
+      addr.addEventListener("click", () => openHistoryReport(r));
+    }
+    const sub = document.createElement("div");
+    sub.className = "text-xs text-[#8A93A0]";
+    sub.textContent = [r.meta.type, histDate(r.ts)].filter(Boolean).join(" · ");
+    left.append(addr, sub);
+
+    const actions = document.createElement("div");
+    actions.className = "flex items-center gap-3 text-xs shrink-0";
+    const action = (text, title, fn) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "text-[#5A6473] hover:text-[#1A2433] underline decoration-slate-300";
+      b.textContent = text;
+      b.title = title;
+      b.addEventListener("click", fn);
+      return b;
+    };
+    if (r.data) actions.appendChild(action("Open", "Reopen this report (no new search, no cost)", () => openHistoryReport(r)));
+    actions.appendChild(action("Re-run", "Run this search again", () => rerunHistory(r.meta)));
+    row.append(left, actions);
+    return row;
+  }
+
+  // Only #historyRows is rebuilt — #historyFilter is static markup, because one
+  // completing search calls saveHistory three times over (renderResults, the
+  // geocode refinement, subject-input edits) and regenerating the input would
+  // eat whatever the user was typing.
+  function renderHistory() {
+    const wrap = document.getElementById("historyWrap");
+    const rows = document.getElementById("historyRows");
+    const filterEl = document.getElementById("historyFilter");
+    const list = loadHistory();
+    wrap.classList.toggle("hidden", list.length === 0);
+    filterEl.classList.toggle("hidden", list.length <= FILTER_AT);
+    if (list.length <= FILTER_AT) filterEl.value = "";
+    const q = filterEl.value || "";
+    const shown = historyMatches(list, q);
+    document.getElementById("historyCount").textContent = q.trim()
+      ? `${shown.length} of ${list.length}`
+      : `${list.length} propert${list.length === 1 ? "y" : "ies"}`;
+    rows.innerHTML = "";
+    if (!shown.length) {
+      const p = document.createElement("p");
+      p.className = "text-sm text-[#5A6473] py-2";
+      p.textContent = "No matches.";
+      rows.appendChild(p);
+      return;
+    }
+    // A filtered view shows every match flat; unfiltered, the tail collapses so
+    // a long history doesn't take over the page.
+    const collapse = !q.trim() && shown.length > COLLAPSE_AT;
+    const head = document.createElement("div");
+    head.className = "divide-y divide-[#F0EFE9]";
+    (collapse ? shown.slice(0, COLLAPSE_AT) : shown).forEach((r) => head.appendChild(historyRow(r)));
+    rows.appendChild(head);
+    if (!collapse) return;
+    const more = document.createElement("details");
+    more.id = "historyMore";
+    more.open = historyExpanded;   // a re-render must not collapse it again
+    more.addEventListener("toggle", () => { historyExpanded = more.open; });
+    const summary = document.createElement("summary");
+    summary.className = "py-2 text-xs font-medium text-[#5A6473] hover:text-[#1A2433]";
+    summary.textContent = `Show ${shown.length - COLLAPSE_AT} more`;
+    const rest = document.createElement("div");
+    rest.className = "divide-y divide-[#F0EFE9]";
+    shown.slice(COLLAPSE_AT).forEach((r) => rest.appendChild(historyRow(r)));
+    more.append(summary, rest);
+    rows.appendChild(more);
+  }
+
+  document.getElementById("historyFilter").addEventListener("input", renderHistory);
+
+  // Two-step confirm: clearing now discards the whole history, saved reports
+  // included, so a stray click shouldn't be able to do it.
+  let clearHistoryTimer = null;
+  document.getElementById("clearHistoryBtn").addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    if (!clearHistoryTimer) {
+      btn.textContent = "Confirm?";
+      clearHistoryTimer = setTimeout(() => { clearHistoryTimer = null; btn.textContent = "clear"; }, 4000);
+      return;
+    }
+    clearTimeout(clearHistoryTimer);
+    clearHistoryTimer = null;
+    btn.textContent = "clear";
+    try { localStorage.removeItem(HISTORY_KEY); } catch (_) {}
+    dropLegacyHistoryKeys();
+    historyExpanded = false;
+    document.getElementById("historyFilter").value = "";
+    renderHistory();
+  });
+
+  renderHistory();
 
   // ----------------------------------------------------------------------------
   // Account state — cookie-backed session; the browser sends cn_session
@@ -4653,7 +4900,8 @@
       // (so a cancelled nudge can't fire a surprise save after a later sign-in).
       const firePendingSave = pendingPortfolioSave;
       pendingPortfolioSave = false;
-      const saved = loadSavedReports();
+      // Only rows that still hold their report can be imported.
+      const saved = historyWithReports();
       if (isUp && saved.length) {
         document.getElementById("acctImportCount").textContent = String(saved.length);
         document.getElementById("acctForm").classList.add("hidden");
@@ -4733,7 +4981,7 @@
   document.getElementById("acctImportYes").addEventListener("click", async () => {
     const btn = document.getElementById("acctImportYes");
     btn.disabled = true; btn.textContent = "Importing…";
-    for (const r of loadSavedReports()) {
+    for (const r of historyWithReports()) {
       try {
         await acctApi("POST", "/api/portfolio", { payload: { meta: r.meta, data: r.data }, snapshot: null });
       } catch (_) { /* duplicates/failures — keep going */ }
@@ -4764,7 +5012,7 @@
 
   function refreshPortfolioItem(item) {
     // Replay the stored inputs through the real form so every rule (validation,
-    // cache, caps, type-specific columns) applies; saveReport's guarded hook
+    // cache, caps, type-specific columns) applies; saveHistory's guarded hook
     // writes the result + snapshot back onto this portfolio item when the
     // matching report lands. This is a fresh re-search, so — same as
     // assumptions — any prior curation (exclusions/additions/read) is
@@ -4861,8 +5109,7 @@
     hideStatus();
     hideLoadingCard();
     document.getElementById("deskView").classList.remove("hidden");
-    renderRecentChips();
-    renderSavedChips();
+    renderHistory();
     document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
     renderMyDesk();
   }
@@ -5091,87 +5338,6 @@
       toggle.disabled = false;
     }
   });
-
-  // ----------------------------------------------------------------------------
-  // Saved reports — the full data of the last 10 real reports, stored in this
-  // browser (localStorage). Reopening one is instant and costs nothing.
-  // ----------------------------------------------------------------------------
-  const SAVED_KEY = "savedReports";
-
-  function loadSavedReports() {
-    try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; }
-    catch (_) { return []; }
-  }
-
-  function saveReport(meta, data) {
-    try {
-      const list = loadSavedReports()
-        .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
-      list.unshift({
-        ts: Date.now(),
-        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null, assumptions: meta.assumptions || null, curation: meta.curation || null },
-        data,
-      });
-      while (list.length > 10) list.pop();
-      try {
-        localStorage.setItem(SAVED_KEY, JSON.stringify(list));
-      } catch (_) {
-        // Storage full — drop the oldest and try once more.
-        list.pop();
-        localStorage.setItem(SAVED_KEY, JSON.stringify(list));
-      }
-    } catch (_) { /* private mode etc. — saved reports are a nicety */ }
-    // A pending "Refresh valuation" also updates the portfolio item — but only
-    // when THIS report matches the item that requested the refresh (address +
-    // type), so an unrelated saveReport (subject-input edit, a different
-    // search) can never overwrite the portfolio item with the wrong report.
-    // Deferred a tick so renderOwnerHero (called during the same render pass)
-    // has already computed lastValuation.
-    if (currentUser && pendingPortfolioRefresh &&
-        pendingPortfolioRefresh.address === meta.address &&
-        pendingPortfolioRefresh.type === meta.type) {
-      const refreshId = pendingPortfolioRefresh.id;
-      pendingPortfolioRefresh = null;
-      setTimeout(() => {
-        acctApi("POST", "/api/portfolio", {
-          id: refreshId, payload: { meta, data }, snapshot: lastValuation,
-        }).then(() => { if (typeof renderMyDesk === "function") renderMyDesk(); }).catch(() => {});
-      }, 0);
-    }
-    renderSavedChips();
-  }
-
-  function renderSavedChips() {
-    const wrap = document.getElementById("savedWrap");
-    const chips = document.getElementById("savedChips");
-    const list = loadSavedReports();
-    chips.innerHTML = "";
-    wrap.classList.toggle("hidden", list.length === 0);
-    list.forEach((r) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn-live text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-full px-3 py-1";
-      btn.textContent = `${r.meta.address} · ${new Date(r.ts).toLocaleDateString()}`;
-      btn.title = "Reopen this report (no new search, no cost)";
-      btn.addEventListener("click", () => {
-        leaveDesk();
-        hideLoadingCard();
-        showStatus(
-          `Reopened a saved report generated ${new Date(r.ts).toLocaleDateString()}. Run a new search for fresh data.`,
-          "info"
-        );
-        renderResults(r.data, { ...r.meta, fromHistory: true, generatedAt: r.ts });
-      });
-      chips.appendChild(btn);
-    });
-  }
-
-  document.getElementById("clearSavedBtn").addEventListener("click", () => {
-    localStorage.removeItem(SAVED_KEY);
-    renderSavedChips();
-  });
-
-  renderSavedChips();
 
   // Direct load / hard refresh on /desk. Runs after `let currentUser` executes;
   // renderMyDesk early-returns until the auth bootstrap fills the portfolio in.

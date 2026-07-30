@@ -4103,9 +4103,20 @@
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
       const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
+      // The popup carries the comp's source-confidence badge (same tinted
+      // tiers as the table) — the map is where untrustworthy comps get
+      // noticed, so confidence must be visible right there. Built at open
+      // time like the rest of the content, so a tier the server demotes or
+      // a verified match always shows current. Static tier labels — no
+      // user-authored text lands in this span.
+      const popupBadge = () => {
+        const tier = compTier(c);
+        return tier ? '<br><span class="rd-badge ' + SOURCE_TIERS[tier].cls + '" style="margin-top:4px">' +
+          SOURCE_TIERS[tier].label + "</span>" : "";
+      };
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
       m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft), c.address) +
-        `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}`,
+        `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}` + popupBadge(),
         { autoPan: !CAN_HOVER });
       wireHoverPreview(m);
       return m;
@@ -5557,6 +5568,14 @@
     const tiers = Object.keys(SOURCE_TIERS).filter((t) => present.has(t));
     legend.innerHTML = "";
     legend.classList.toggle("hidden", tiers.length === 0);
+    // Name the scale: the badges ARE a confidence rating, and the tier
+    // order is the ranking — say so instead of leaving it to inference.
+    if (tiers.length) {
+      const lead = document.createElement("span");
+      lead.className = "mr-3 font-medium text-[#374253]";
+      lead.textContent = "Source confidence, strongest first:";
+      legend.appendChild(lead);
+    }
     tiers.forEach((tier) => {
       const t = SOURCE_TIERS[tier];
       const chip = document.createElement("span");

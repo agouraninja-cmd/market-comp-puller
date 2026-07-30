@@ -590,7 +590,7 @@
       </a>
       <nav class="flex items-center gap-6 text-[13.5px] text-[#5A6473]">
         <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
-        <button type="button" data-scroll-to="for-brokers" class="hover:text-[#1A2433]">For Brokers</button>
+        <a href="/brokers" class="hover:text-[#1A2433]">Brokers</a>
         <a href="/how-it-works" class="hover:text-[#1A2433] hidden sm:inline">How it works</a>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
@@ -1449,25 +1449,8 @@
         <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works →</a>
       </div>
 
-      <!-- For Brokers -->
-      <section id="for-brokers" class="py-12 rd-band reveal">
-        <div class="rd-kicker">For Brokers</div>
-        <h2 class="rd-h text-[27px] mt-2 mb-5">The comps get better because brokers make them better.</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div class="rd-bcard">
-            <div class="rd-lab">Contribute</div>
-            <h3 class="rd-h text-[19px] mt-1.5 mb-2">Submit a comp, get the credit.</h3>
-            <p class="text-sm text-[#4C5665] mb-4">Approved comps appear with a green Verified badge and your firm's name on every report that uses them — visible proof you know your market.</p>
-            <button id="brokerCtaBtn" type="button" class="btn-live text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">Submit a comp →</button>
-          </div>
-          <div class="rd-bcard">
-            <div class="rd-lab">Connect</div>
-            <h3 class="rd-h text-[19px] mt-1.5 mb-2">Meet owners already asking about value.</h3>
-            <p class="text-sm text-[#4C5665] mb-4">Owners requesting a Broker Opinion of Value are matched with brokers active in that market. No cold lists — people mid-decision.</p>
-            <a href="mailto:agouraninja@gmail.com?subject=Broker%20introduction%20—%20CompNinja" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">Get introduced →</a>
-          </div>
-        </div>
-      </section>
+      <!-- The For Brokers section moved to its own page, /brokers (built by
+           renderBrokersPageHTML in server.js). Header/footer link there. -->
 
       <!-- Markets -->
       <section class="py-12 reveal">
@@ -1518,6 +1501,7 @@
           <a href="mailto:agouraninja@gmail.com" class="text-[#D5DAE2] hover:text-white underline decoration-[#46536A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">agouraninja@gmail.com</a>
           <ul class="mt-3 space-y-2">
             <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
+            <li><a href="/brokers" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Brokers</a></li>
             <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
             <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
             <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
@@ -2262,17 +2246,83 @@
   // literal min and max. With 4+ comps we instead take the interquartile band
   // (25th–75th percentile) around the median, so outliers can't dominate the
   // headline; with fewer comps there's nothing to trust as an outlier, so we
-  // show the full observed spread. Linear-interpolation percentiles (R-7).
+  // show the full observed spread.
+  // Accepts plain numbers (each weighs 1) or {v, w} items: the percentiles are
+  // weighted, so a stale, off-size, or weakly-sourced comp pulls the band less
+  // than a fresh well-documented one (see compWeight). Each item sits at the
+  // center of its weight span on the cumulative scale, with linear
+  // interpolation between neighbors — equal weights reproduce the familiar
+  // evenly-spaced percentile positions.
   function robustPpsfRange(vals) {
-    const s = [...vals].sort((a, b) => a - b);
-    const n = s.length;
-    const pct = (p) => {
-      const r = (p / 100) * (n - 1);
-      const lo = Math.floor(r), hi = Math.ceil(r);
-      return lo === hi ? s[lo] : s[lo] + (r - lo) * (s[hi] - s[lo]);
+    const items = vals
+      .map((x) => (typeof x === "number" ? { v: x, w: 1 } : x))
+      .sort((a, b) => a.v - b.v);
+    const n = items.length;
+    const total = items.reduce((sum, x) => sum + x.w, 0);
+    let cum = 0;
+    const pos = items.map((x) => { const p = (cum + x.w / 2) / total; cum += x.w; return p; });
+    const q = (p) => {
+      if (p <= pos[0]) return items[0].v;
+      if (p >= pos[n - 1]) return items[n - 1].v;
+      let i = 0;
+      while (pos[i + 1] < p) i++;
+      const t = (p - pos[i]) / (pos[i + 1] - pos[i]);
+      return items[i].v + t * (items[i + 1].v - items[i].v);
     };
-    if (n >= 4) return { low: pct(25), mid: pct(50), high: pct(75), trimmed: true };
-    return { low: s[0], mid: pct(50), high: s[n - 1], trimmed: false };
+    if (n >= 4) return { low: q(0.25), mid: q(0.5), high: q(0.75), trimmed: true };
+    return { low: items[0].v, mid: q(0.5), high: items[n - 1].v, trimmed: false };
+  }
+
+  // --------------------------------------------------------------------------
+  // Comp weighting + time adjustment. Applied ONLY inside the valuation math —
+  // the table, chart, and stat tiles always show each comp's raw reported
+  // figures, so the audit trail never moves. Three quiet factors, multiplied:
+  //   recency      2-year half-life on the comp's age at the report date
+  //   size match   free pass within 0.5×–2× of the subject, halving per
+  //                further doubling (a 5k SF building shouldn't be priced by
+  //                a 100k SF warehouse — big buildings trade at lower $/SF)
+  //   source       Verified/public-record full weight, down to half for
+  //                model estimates (mirrors the badge tiers)
+  // Floored at 0.15 so no comp silently vanishes from a range it visibly
+  // sits in. Missing data (no date, no size, legacy pre-badge reports) is
+  // neutral, never a penalty.
+  // --------------------------------------------------------------------------
+  const TIER_WEIGHT = { verified: 1, user: 1, public_record: 1, listing: 0.85, news: 0.7, estimate: 0.5 };
+
+  function compAgeYears(c, meta) {
+    const d = Date.parse(c.date);           // same parse outsideWindowBadge uses
+    if (isNaN(d)) return null;
+    const asOf = meta && meta.generatedAt ? new Date(meta.generatedAt).getTime() : Date.now();
+    const yrs = (asOf - d) / (365.25 * 24 * 3600 * 1000);
+    return yrs > 0 ? Math.min(yrs, 5) : 0;
+  }
+
+  function compWeight(c, meta, subjSF) {
+    let w = 1;
+    const age = compAgeYears(c, meta);
+    if (age !== null) w *= Math.pow(0.5, age / 2);
+    const compSF = numericValue(c.size_sqft);
+    if (subjSF > 0 && compSF > 0) {
+      const octaves = Math.abs(Math.log2(compSF / subjSF));
+      if (octaves > 1) w *= Math.pow(0.5, octaves - 1);
+    }
+    const tier = compTier(c);
+    if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
+    return Math.max(0.15, w);
+  }
+
+  // Index an older comp's price to the report date using the model's
+  // market-level annual trend (server-bounded to ±30%/yr, null when the
+  // model's searches showed no clear trend). Compounded over the comp's age,
+  // capped at 3 years so an out-of-window straggler is never extrapolated
+  // into fiction. Anchored to meta.generatedAt, not the wall clock, so a
+  // saved report's numbers don't drift as it ages.
+  function trendFactor(c, meta, parsed) {
+    const pct = parsed ? Number(parsed.annual_price_trend_pct) : NaN;
+    if (!Number.isFinite(pct) || pct === 0 || Math.abs(pct) > 30) return 1;
+    const age = compAgeYears(c, meta);
+    if (!age) return 1;
+    return Math.pow(1 + pct / 100, Math.min(age, 3));
   }
 
   // Value hero — the headline of every report. Sales-comparison range from the
@@ -2299,20 +2349,27 @@
   // ~20% while sitting directly beneath it.
   // Returns null unless the owner supplied the quantity AND enough comps carry
   // the metric; one data point is not a range.
-  function altBasisRange(meta, subject, saleComps) {
+  function altBasisRange(meta, subject, saleComps, parsed) {
     const spec = ALT_BASIS[meta.type];
     if (!spec) return null;
     const qty = numericValue((subject.details || {})[spec.subjKey]);
     if (!(qty > 0)) return null;
-    const per = saleComps
-      .map((x) => numericValue(x.comp[spec.compKey]))
-      .filter((v) => v > 0);
-    if (per.length < 3) return null;
-    return { spec, qty, per, rr: robustPpsfRange(per) };
+    const carriers = saleComps
+      .map((x) => ({ comp: x.comp, v: numericValue(x.comp[spec.compKey]) }))
+      .filter((x) => x.v > 0);
+    if (carriers.length < 3) return null;
+    const per = carriers.map((x) => x.v);
+    // Same weighting/indexing as the $/SF headline (size neutral here — this
+    // basis exists precisely because SF often isn't known for these types).
+    const items = carriers.map((x) => ({
+      v: x.v * trendFactor(x.comp, meta, parsed),
+      w: compWeight(x.comp, meta, 0),
+    }));
+    return { spec, qty, per, rr: robustPpsfRange(items) };
   }
 
-  function altBasisEntry(meta, subject, saleComps) {
-    const a = altBasisRange(meta, subject, saleComps);
+  function altBasisEntry(meta, subject, saleComps, parsed) {
+    const a = altBasisRange(meta, subject, saleComps, parsed);
     if (!a) return null;
     const money = (v) => formatUsd(Math.round(v), { maximumFractionDigits: 0 });
     const plural = a.qty === 1 ? "" : "s";
@@ -2369,6 +2426,19 @@
       .map((c) => ({ comp: c, v: salePsfOf(c) }))
       .filter((x) => x.v > 0);
     const ppsfs = saleComps.map((x) => x.v);
+    // The weighted, trend-indexed view the range math actually uses (see
+    // compWeight/trendFactor). ppsfs stays the raw view for counts and copy.
+    const subjSFMid = sizeR ? (sizeR.min + sizeR.max) / 2 : 0;
+    const wItems = saleComps.map((x) => ({
+      v: x.v * trendFactor(x.comp, meta, parsed),
+      w: compWeight(x.comp, meta, subjSFMid),
+    }));
+    // One quiet sentence disclosing the math, shared by both sales bases.
+    const trendPct = parsed ? parsed.annual_price_trend_pct : null;
+    const weighNote = " Recent, similar-size, well-sourced comps count more"
+      + (Number.isFinite(trendPct)
+        ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend.`
+        : ".");
     // Pre-exclusion sale-comp count (same filter, but over ALL comps rather
     // than includedComps()) — the trust line and fallback copy below need
     // both counts to explain a curated shortfall rather than silently
@@ -2455,7 +2525,7 @@
     // that way and the owner told us the count. Computed up front because it
     // can either supplement the $/SF headline or, when no $/SF range exists,
     // become the headline itself.
-    const altRange = altBasisRange(meta, s, saleComps);
+    const altRange = altBasisRange(meta, s, saleComps, parsed);
 
     // Which sales basis heads the hero. Land leads per-acre whenever acreage is
     // known; every other type leads on $/SF and falls back to the alternate
@@ -2466,7 +2536,7 @@
 
     if (sfUsable && !leadWithAlt) {
       // Outlier-resistant $/SF band (see robustPpsfRange) instead of raw min/max.
-      const rr = robustPpsfRange(ppsfs);
+      const rr = robustPpsfRange(wItems);
       const midSize = (sizeR.min + sizeR.max) / 2;
       const sizeLabel = sizeR.min === sizeR.max
         ? `${sizeR.min.toLocaleString()} SF`
@@ -2517,7 +2587,7 @@
         ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps (${excludedSaleN} excluded ${whoCurated})`
         : `Based on ${ppsfs.length} sale comps`;
       trustEl.textContent = countPhrase
-        + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`;
+        + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote;
       trustEl.classList.remove("hidden");
 
       const entries = [{
@@ -2527,7 +2597,7 @@
       }];
       // Sits right after the sales-comparison line because it is the same
       // comps expressed in a different unit, not a separate approach.
-      const altEntry = altBasisEntry(meta, s, saleComps);
+      const altEntry = altBasisEntry(meta, s, saleComps, parsed);
       if (altEntry) entries.push(altEntry);
       const incEntry = incomeApproachEntry(rr.low * sizeR.min, rr.high * sizeR.max);
       if (incEntry) entries.push(incEntry);
@@ -2558,7 +2628,7 @@
         ? `the middle range of ${per.length} sale comps`
         : `price per ${spec.noun} from ${per.length} sale comps`);
       trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
-        + `Building size wasn't needed for this estimate.`;
+        + `Building size wasn't needed for this estimate.` + weighNote;
       trustEl.classList.remove("hidden");
       const entries = [{
         label: "Sales comparison approach",
@@ -2569,7 +2639,7 @@
       // range is also computable, show it rather than dropping the view
       // entirely just because it didn't lead.
       if (sfUsable) {
-        const rrSf = robustPpsfRange(ppsfs);
+        const rrSf = robustPpsfRange(wItems);
         entries.push({
           label: "Price per square foot cross-check",
           text: `${fmtTotal(rrSf.low * sizeR.min)} – ${fmtTotal(rrSf.high * sizeR.max)} — the same comps on a `
@@ -2658,13 +2728,18 @@
       const found = numericValue(parsed.subject_size_sqft);
       if (found > 0) sizeR = { min: found, max: found };
     }
-    const ppsfs = includedComps()
+    // Same weighting/indexing as the hero, so this can never disagree with it.
+    const saleItems = includedComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => salePsfOf(c))
-      .filter((v) => v > 0);
-    if (sizeR && ppsfs.length >= 2) {
-      const rr = robustPpsfRange(ppsfs);
-      return { value: rr.mid * (sizeR.min + sizeR.max) / 2, source: "comp-based likely value" };
+      .map((c) => ({ comp: c, v: salePsfOf(c) }))
+      .filter((x) => x.v > 0);
+    if (sizeR && saleItems.length >= 2) {
+      const subjSFMid = (sizeR.min + sizeR.max) / 2;
+      const rr = robustPpsfRange(saleItems.map((x) => ({
+        v: x.v * trendFactor(x.comp, meta, parsed),
+        w: compWeight(x.comp, meta, subjSFMid),
+      })));
+      return { value: rr.mid * subjSFMid, source: "comp-based likely value" };
     }
     const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
     const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
@@ -5425,23 +5500,16 @@
   });
 
   // ----------------------------------------------------------------------------
-  // Footer links. The marketing sections (#homeInfo) hide once a report
-  // renders, so section links reveal them again before scrolling.
+  // Footer links.
   // ----------------------------------------------------------------------------
   function smoothScrollTo(el) {
     if (!el) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   }
-  document.querySelectorAll("[data-scroll-to]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      leaveDesk();
-      document.getElementById("homeInfo").classList.remove("hidden");
-      smoothScrollTo(document.getElementById(btn.dataset.scrollTo));
-    });
-  });
-  // Same modal action the in-page broker CTA uses.
-  document.getElementById("footerSubmitComp").addEventListener("click", () => document.getElementById("brokerCtaBtn").click());
+  // Straight to the submission modal — the same one /brokers links to via
+  // /#submit-comp. openCompModal is a hoisted declaration further down.
+  document.getElementById("footerSubmitComp").addEventListener("click", openCompModal);
 
   // ----------------------------------------------------------------------------
   // Escape closes the report and returns to the home view. The report itself
@@ -5639,9 +5707,9 @@
       });
     }, { threshold: 0.1, rootMargin: "0px 0px -40px 0px" });
     revealEls.forEach((el) => io.observe(el));
-    // A cross-page deep link (e.g. /#for-brokers from /how-it-works) lands with
-    // the target already scrolled into view. Reveal it outright: the browser's
-    // fragment scroll is not ordered against the observer's first delivery, so
+    // A deep link to a marketing section lands with the target already scrolled
+    // into view. Reveal it outright: the browser's fragment scroll is not
+    // ordered against the observer's first delivery, so
     // the section could otherwise sit at opacity 0 until the visitor scrolls.
     // Guarded to plain id hashes — #reset=<token> is not a valid selector.
     if (/^#[A-Za-z][\w-]*$/.test(location.hash)) {
@@ -6916,7 +6984,12 @@
   }
   function closeCompModal() { compModal.classList.add("hidden"); }
 
-  document.getElementById("brokerCtaBtn").addEventListener("click", openCompModal);
+  // /brokers sends "Submit a comp" here. Open the form on arrival and clean the
+  // hash, so a later refresh doesn't reopen a modal the visitor already closed.
+  if (location.hash === "#submit-comp") {
+    openCompModal();
+    history.replaceState({}, "", location.pathname + location.search);
+  }
   document.getElementById("compCancel").addEventListener("click", closeCompModal);
   document.getElementById("compDoneBtn").addEventListener("click", closeCompModal);
   document.getElementById("compAnotherBtn").addEventListener("click", () => {

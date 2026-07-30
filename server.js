@@ -1612,6 +1612,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
     `  "value_drivers": ["", ""],`,
     `  "market_trend": "",`,
+    `  "annual_price_trend_pct": "",`,
     `  "search_radius": "",`,
     `  "transactions_reviewed": "",`,
     `  "price_discovery": { "direction": "", "note": "" },`,
@@ -1626,7 +1627,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
-    `"value_drivers" = 2 to 4 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess.`,
+    `"value_drivers" = 2 to 4 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
     `"search_radius" = a short phrase (a few words) naming the geographic scope you actually used to gather these comps and whether you widened it, e.g. "Immediate submarket, ~3 miles" or "Widened to ~20 miles, limited local activity". Keep it under about 10 words. Use "" if not applicable.`,
     `"transactions_reviewed" = your rough estimate, as a plain number, of how many recent ${type} transactions you came across in this market and window before narrowing to the most comparable ones above. An approximation is expected (e.g. 34) - it conveys how much market activity you weighed. It must be greater than the number of comps you returned. Use "" if you cannot reasonably estimate it; never invent a large number to look thorough.`,
     `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 plain sentences on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
@@ -1715,6 +1716,19 @@ function normalizeCurrency(parsed) {
     parsed.currency !== "USD" && Number.isFinite(rate) && rate > 0 && rate < 10
       ? rate
       : null;
+  return parsed;
+}
+
+// annual_price_trend_pct powers the front-end's time adjustment of older
+// comps, so a bad value multiplies straight into the valuation. Coerce to a
+// plain number and refuse anything outside +/-30%/yr (almost certainly a
+// monthly figure, a whole-window change, or noise) — null simply disables
+// the adjustment. Zero also maps to null: no trend means no indexing.
+function normalizeTrendPct(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const v = Number(String(parsed.annual_price_trend_pct ?? "").replace(/%/g, "").trim());
+  parsed.annual_price_trend_pct =
+    Number.isFinite(v) && v !== 0 && Math.abs(v) <= 30 ? v : null;
   return parsed;
 }
 
@@ -1944,7 +1958,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
-  const parsed = reconcilePricePerSqft(normalizeCurrency(normalizeSourceTypes(parseCompJson(text))));
+  const parsed = reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(parseCompJson(text)))));
   return attachVerifiedAttribution(parsed, verifiedComps);
 }
 
@@ -2112,7 +2126,8 @@ footer li a{text-decoration:none;color:#B8C0CC}
 const MARKET_BAR =
   `<header class="hdr"><div class="wrap">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
-  `<nav><a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
+  `<nav><a href="/markets">Markets</a><a href="/brokers">Brokers</a>` +
+  `<a href="/how-it-works">How it works</a>` +
   `<a href="/">Run a report</a></nav>` +
   `</div></header>`;
 
@@ -2363,7 +2378,8 @@ const MARKET_FOOTER =
   `verify independently before underwriting.</p>` +
   `<p>&copy; 2026 CompNinja</p></div>` +
   `<div class="right"><a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a>` +
-  `<ul><li><a href="/markets">Markets</a></li><li><a href="/how-it-works">How it works</a></li>` +
+  `<ul><li><a href="/markets">Markets</a></li><li><a href="/brokers">Brokers</a></li>` +
+  `<li><a href="/how-it-works">How it works</a></li>` +
   `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li></ul></div>` +
   `</div></footer>`;
 
@@ -2787,6 +2803,72 @@ const HOW_FAQ = [
    "Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one."],
 ];
 
+// ---------------------------------------------------------------------------
+// /brokers — the broker side of the product on its own indexable URL. This
+// content used to be a two-card section low on the landing page reachable only
+// by a scroll-to button ("For Brokers"); it moved here so it has a title, a
+// canonical URL, and room to grow into a real contributor hub.
+// Rendered through marketShell (MARKET_CSS/BAR/FOOTER) like /markets and
+// /broker/<slug>, so it does NOT depend on the purged tailwind.css.
+// The "Submit a comp" CTA points at /#submit-comp: the submission form is the
+// modal that lives in index.html, and one form beats two copies of it.
+// ---------------------------------------------------------------------------
+function renderBrokersPageHTML() {
+  const title = "For Commercial Real Estate Brokers | CompNinja";
+  const canonical = `${SITE_URL}/brokers`;
+  const description =
+    "Submit a comp to CompNinja and it carries your firm's name on every report that uses it. " +
+    "Contributing brokers also get introduced to owners asking what their building is worth.";
+  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent("Broker introduction — CompNinja")}`;
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: "Brokers",
+    description,
+    url: canonical,
+    isPartOf: { "@type": "WebSite", name: "CompNinja", url: `${SITE_URL}/` },
+    breadcrumb: {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+        { "@type": "ListItem", position: 2, name: "Brokers", item: canonical },
+      ],
+    },
+  });
+
+  const body =
+    `<h1>The comps get better because brokers make them better.</h1>` +
+    `<p class="sub">CompNinja reports are built from public records, listings, and live search. ` +
+    `The comps brokers confirm are the ones buyers and owners trust most &mdash; so those carry ` +
+    `the contributor's name wherever they appear.</p>` +
+    `<div class="grid">` +
+    `<div class="card"><h2>Submit a comp, get the credit.</h2>` +
+    `<p>Approved comps appear with a green Verified badge and your firm's name on every report ` +
+    `that uses them &mdash; visible proof you know your market.</p>` +
+    `<p style="margin:0"><a href="/#submit-comp">Submit a comp &rarr;</a></p></div>` +
+    `<div class="card"><h2>Meet owners already asking about value.</h2>` +
+    `<p>Owners requesting a Broker Opinion of Value are matched with brokers active in that ` +
+    `market. No cold lists &mdash; people mid-decision.</p>` +
+    `<p style="margin:0"><a href="${introHref}">Get introduced &rarr;</a></p></div>` +
+    `</div>` +
+    `<div class="card"><h2>What &quot;Verified&quot; means</h2>` +
+    `<p>A submitted comp is hand-reviewed by our team before it joins the comp layer &mdash; ` +
+    `Verified is the highest provenance tier in a CompNinja report, above public record, ` +
+    `listing, news, and estimate. Once approved, the comp is offered to every matching search ` +
+    `in that market and property type, badged <strong>Verified &middot; via your firm</strong>.</p>` +
+    `<p style="margin:0">Contributors with a public profile get a page of their own listing their ` +
+    `verified comps, the markets they cover, and how often their comps have been cited.</p></div>` +
+    `<div class="cta"><h2>Have a comp we should know about?</h2>` +
+    `<p>Takes about a minute. Address, date, price, and size &mdash; we handle the review.</p>` +
+    `<a class="btn" href="/#submit-comp">Submit a comp</a>` +
+    `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p></div>` +
+    `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
+    `broker contact details are never passed on without asking first.</p>`;
+
+  return marketShell({ title, description, canonical, body, jsonLd });
+}
+
 function renderHowItWorksHTML() {
   const title = "How CompNinja Works";
   const canonical = `${SITE_URL}/how-it-works`;
@@ -2858,7 +2940,7 @@ function renderHowItWorksHTML() {
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
       <a href="/markets">Markets</a>
-      <a href="/#for-brokers">For Brokers</a>
+      <a href="/brokers">Brokers</a>
       <a href="/how-it-works" class="on" aria-current="page">How it works</a>
       <a href="/">Run a report</a>
     </nav>
@@ -2947,6 +3029,7 @@ function renderHowItWorksHTML() {
       <a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a>
       <ul>
         <li><a href="/markets">Markets</a></li>
+        <li><a href="/brokers">Brokers</a></li>
         <li><a href="/how-it-works">How it works</a></li>
         <li><a href="/how-it-works#faq">FAQ</a></li>
         <li><a href="/">Run a report</a></li>
@@ -5302,6 +5385,14 @@ const server = http.createServer((req, res) => {
     return res.end(renderHowItWorksHTML());
   }
 
+  // --- Brokers — the contributor-facing page (header + footer nav). Static
+  // content, same hour-long cache as /how-it-works. Sits above the
+  // /broker/<slug> profile matcher below so the two stay adjacent. ---
+  if (req.method === "GET" && req.url.split("#")[0] === "/brokers") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+    return res.end(renderBrokersPageHTML());
+  }
+
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && req.url === "/markets") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
@@ -5514,6 +5605,7 @@ const server = http.createServer((req, res) => {
       `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +
       (marketUrls ? marketUrls + "\n" : "") +
       (brokerUrls ? brokerUrls + "\n" : "") +

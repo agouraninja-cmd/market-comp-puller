@@ -343,7 +343,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "commit": "optional short hash (renders as a GitHub link on /dev)" }`;
   file order doesn't matter (the page groups/sorts by date); routine
   docs-only or refactor commits don't need entries, anything a changelog
-  reader would care about does. Future ideas are whole-list replaced via
+  reader would care about does. Entries are **click-to-edit** on `/dev`:
+  edits and per-entry notes live in a Supabase `devlog_overrides` overlay
+  (DDL in the comment above `readDevlogOverrides` in server.js — run it
+  before deploying) keyed by the file entry's original date+title and merged
+  at read time, so devlog.json itself is never rewritten at runtime and
+  stays the source of truth. Renaming an entry's date or title in the FILE
+  orphans its override — re-edit on /dev if that happens. Future ideas are whole-list replaced via
   `PUT /api/dev-ideas` into the Supabase `dev_ideas` table (DDL in the
   comment above `readDevIdeas` in server.js — **run it before deploying**),
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark

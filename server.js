@@ -23,6 +23,9 @@ const ENT = require("./entitlements");
 // Comp gating — which comps leave the server, and the anonymized basis rows
 // that keep a free report's valuation as accurate as a Pro one. Also pure.
 const GATE = require("./comp-gate");
+// Stripe over plain fetch — signature verification and the Stripe->our-row
+// mapping are pure and tested; see stripe.js.
+const STRIPE = require("./stripe");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -58,6 +61,22 @@ const LEAD_CAPTURE = process.env.LEAD_CAPTURE
 // export cap, no lookback limit (see computeEntitlements' `enabled` branch).
 // Everything Pro ships dark behind this until the whole flow is proven.
 const PRO_ENABLED = String(process.env.PRO_ENABLED || "").toLowerCase() === "on";
+
+// Stripe. Keys live only in the environment — never in the repo, never in a
+// response, never in the browser. The price IDs are not secret (they identify
+// a product, they do not authorize anything), but they are configured rather
+// than hard-coded so test mode and live mode are one env change apart.
+const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").trim();
+const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+const STRIPE_PRICES = {
+  monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
+  annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
+  singleReport: (process.env.STRIPE_PRICE_SINGLE_REPORT || "").trim(),
+};
+const STRIPE_CONFIGURED = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICES.monthly);
+// The founding-member offer closes at 50. See foundingSlotsLeft() for why the
+// count is of subscriptions ever created rather than currently active.
+const FOUNDING_MEMBER_LIMIT = Number(process.env.FOUNDING_MEMBER_LIMIT || 50);
 
 // Durable lead storage — a Supabase (hosted Postgres) project, written to via
 // its REST API with plain fetch, so the app stays dependency-free. When these
@@ -891,6 +910,193 @@ async function getEntitlements(user, reportId) {
   return ENT.computeEntitlements({
     user, subscription, purchase, usage, reportId, now, enabled: true,
   });
+}
+
+// --- Stripe writes -----------------------------------------------------------
+
+// Upsert on user_id: the table's primary key is the user, so a second checkout
+// by the same person UPDATES their row instead of creating a rival one that
+// could out-rank it.
+async function upsertSubscription(row) {
+  if (!DB_CONFIGURED || !row || !row.user_id) return false;
+  await sbRequest("POST", "subscriptions?on_conflict=user_id", [row],
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+  invalidateSubCache(row.user_id);
+  return true;
+}
+
+// Find the user a Stripe customer belongs to. Checkout stamps our user id into
+// the session metadata, but subscription.* events arrive with only a customer
+// id, so the mapping has to be recoverable from the DB too.
+async function userIdForStripeCustomer(customerId) {
+  if (!customerId || !DB_CONFIGURED) return null;
+  try {
+    const subs = await sbRequest("GET",
+      `subscriptions?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=user_id&limit=1`);
+    if (subs && subs[0]) return subs[0].user_id;
+    const users = await sbRequest("GET",
+      `users?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=id&limit=1`);
+    return (users && users[0]) ? users[0].id : null;
+  } catch (e) {
+    console.error("Stripe customer -> user lookup failed:", e.message);
+    return null;
+  }
+}
+
+async function setUserStripeCustomer(userId, customerId) {
+  if (!userId || !customerId || !DB_CONFIGURED) return;
+  try {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`,
+      { stripe_customer_id: customerId }, { prefer: "return=minimal" });
+  } catch (e) { console.error("Could not store stripe_customer_id:", e.message); }
+}
+
+/**
+ * Founding-member seats left.
+ *
+ * Counts subscriptions EVER created on the founding price, not currently
+ * active ones: "the first 50 people" should mean exactly that, and a founder
+ * who cancels does not quietly reopen a seat for someone else at a price we
+ * stopped offering. Returns null when it cannot be determined — callers treat
+ * that as "closed", because overselling a lifetime price is unwindable while
+ * a wrongly-closed offer is a support email.
+ */
+async function foundingSlotsLeft() {
+  if (!DB_CONFIGURED) return null;
+  try {
+    const rows = await sbRequest("GET",
+      "subscriptions?plan=eq.pro_annual_founding&select=user_id");
+    return Math.max(0, FOUNDING_MEMBER_LIMIT - ((rows && rows.length) || 0));
+  } catch (e) {
+    console.error("Founding-member count failed:", e.message);
+    return null;
+  }
+}
+
+// Idempotency. Stripe retries on any non-2xx and on timeouts, and a sleeping
+// Render instance guarantees some of those. Insert-first: the unique primary
+// key makes a duplicate delivery a conflict, which is our signal to skip.
+async function claimStripeEvent(evt) {
+  if (!DB_CONFIGURED) return true;   // no store: process, best effort
+  try {
+    await sbRequest("POST", "stripe_events", [{ id: evt.id, type: evt.type }],
+      { prefer: "return=minimal" });
+    return true;
+  } catch (e) {
+    if (/duplicate key|23505|already exists/i.test(String(e.message))) {
+      console.log(`Stripe event ${evt.id} already processed — skipping.`);
+      return false;
+    }
+    // A real DB failure: process it rather than dropping a payment event on
+    // the floor. Replaying our handlers is safe (every write is an upsert).
+    console.error("stripe_events claim failed, processing anyway:", e.message);
+    return true;
+  }
+}
+
+/**
+ * Apply one Stripe event to our subscription state.
+ *
+ * Every branch is an UPSERT keyed on user_id, so replaying an event is a
+ * no-op rather than a second subscription — which is what makes the whole
+ * handler safe to run twice when Stripe retries.
+ *
+ * Ordering is not guaranteed: `customer.subscription.created` can arrive
+ * before `checkout.session.completed`, or after. Both paths therefore resolve
+ * the user the same way and write the same row, so whichever lands first wins
+ * and the second is a harmless rewrite.
+ */
+async function handleStripeEvent(evt) {
+  const obj = evt && evt.data && evt.data.object;
+  if (!obj) return;
+
+  switch (evt.type) {
+    case "checkout.session.completed": {
+      // The one event that reliably carries our user id.
+      const userId = (obj.metadata && obj.metadata.user_id) || obj.client_reference_id;
+      if (obj.customer && userId) await setUserStripeCustomer(userId, obj.customer);
+      if (obj.mode !== "subscription" || !obj.subscription) return;
+      const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${obj.subscription}`);
+      const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
+      if (!row) return console.error(`Checkout ${obj.id} completed for a price we don't sell — ignored.`);
+      await upsertSubscription(row);
+      console.log(`✅ Subscription active: ${row.plan} for user ${userId}`);
+      if (row.plan === "pro_annual_founding") {
+        const left = await foundingSlotsLeft();
+        // The checkout-time check can be beaten by a simultaneous buyer. We
+        // honour the sale (refunding a lifetime price is worse) but say so.
+        if (left !== null && left < 0) {
+          console.error(`⚠ Founding-member cap EXCEEDED by ${-left}. Honour the price and close the offer.`);
+        } else {
+          console.log(`🏅 Founding members: ${FOUNDING_MEMBER_LIMIT - (left || 0)}/${FOUNDING_MEMBER_LIMIT}`);
+        }
+      }
+      return;
+    }
+
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+    case "customer.subscription.deleted": {
+      const userId = (obj.metadata && obj.metadata.user_id)
+        || await userIdForStripeCustomer(typeof obj.customer === "string" ? obj.customer : obj.customer && obj.customer.id);
+      if (!userId) return console.error(`Subscription ${obj.id} has no user we recognize — ignored.`);
+      // A deletion is terminal regardless of what the object still says.
+      const source = evt.type === "customer.subscription.deleted"
+        ? { ...obj, status: "canceled" } : obj;
+      const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
+      if (!row) return;
+      await upsertSubscription(row);
+      console.log(`Subscription ${evt.type.split(".").pop()}: ${row.plan} -> ${row.status} (user ${userId})`);
+      return;
+    }
+
+    case "invoice.payment_succeeded": {
+      // A renewal. The subscription object carries the NEW period end, so read
+      // it rather than trusting the invoice.
+      const subId = obj.subscription || (obj.parent && obj.parent.subscription_details
+        && obj.parent.subscription_details.subscription);
+      if (!subId) return;
+      const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${subId}`);
+      const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
+      if (!userId) return;
+      const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
+      if (row) {
+        await upsertSubscription(row);
+        console.log(`💳 Payment succeeded — ${row.plan} renewed to ${row.current_period_end} (user ${userId})`);
+      }
+      return;
+    }
+
+    case "invoice.payment_failed": {
+      const subId = obj.subscription || (obj.parent && obj.parent.subscription_details
+        && obj.parent.subscription_details.subscription);
+      if (!subId) return;
+      const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${subId}`);
+      const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
+      if (!userId) return;
+      const existing = await findSubscription(userId);
+      const row = STRIPE.subscriptionRowFrom({ ...sub, status: "past_due" }, STRIPE_PRICES,
+        { userId, graceDays: ENT.GRACE_DAYS });
+      if (!row) return;
+      // Don't restart the clock. A second failed attempt inside the window
+      // must not buy another 7 days of access.
+      if (existing && existing.status === "grace" && existing.grace_until) {
+        row.grace_until = existing.grace_until;
+      }
+      await upsertSubscription(row);
+      console.log(`⚠ Payment failed — grace until ${row.grace_until} (user ${userId})`);
+      // Owner-facing only (sendEmail, not sendOutboundEmail): dunning mail to
+      // the customer is Stripe's job and it does it better.
+      sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a subscription payment failed",
+        `A Pro payment failed for user ${userId} (${row.plan}).\n` +
+        `Access continues until ${row.grace_until}, then downgrades to free.\n` +
+        `Stripe will retry automatically.`);
+      return;
+    }
+
+    default:
+      return;   // subscribed to six events; anything else is noise
+  }
 }
 
 // Request-shaped convenience: resolve the session, then the entitlements.
@@ -5908,6 +6114,126 @@ const server = http.createServer((req, res) => {
   }
 
   // --- Tells the front-end whether a password is required ---
+  // --- Stripe: create a Checkout Session ---
+  // Subscribing requires an account (a subscription has to attach to a user).
+  // The $39 single-report path is deliberately different — see phase 8.
+  if (req.method === "POST" && req.url === "/api/checkout") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!PRO_ENABLED || !STRIPE_CONFIGURED) {
+          return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
+        }
+        if (rateLimited("checkout:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+        }
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const { plan } = JSON.parse(body || "{}");
+        const wantsFounding = plan === "pro_annual_founding";
+        let priceId = wantsFounding ? STRIPE_PRICES.annualFounding : STRIPE_PRICES.monthly;
+        if (!priceId) return sendJson(res, 503, { error: "That plan isn't configured." });
+
+        // Seat check at checkout CREATION. There is a small race here — two
+        // people can pass the check within the same second and both reach 51 —
+        // so the webhook re-checks and logs loudly. Deliberate: a hard
+        // reservation would need a lock, and honouring one extra founder is a
+        // cheaper failure than a checkout that dies mid-payment.
+        if (wantsFounding) {
+          const left = await foundingSlotsLeft();
+          if (left === null || left <= 0) {
+            return sendJson(res, 409, {
+              error: "The founding-member offer has closed.",
+              code: "founding_closed",
+              fallbackPlan: "pro_monthly",
+            });
+          }
+        }
+
+        const existing = await findSubscription(user.id);
+        const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "checkout/sessions", {
+          mode: "subscription",
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: `${SITE_URL}/desk?checkout=success`,
+          cancel_url: `${SITE_URL}/desk?checkout=cancelled`,
+          client_reference_id: user.id,
+          // Both: metadata rides on the session, and subscription_data's copy
+          // lands on the subscription itself so later lifecycle events can be
+          // traced back to a user without a DB round trip.
+          metadata: { user_id: user.id },
+          subscription_data: { metadata: { user_id: user.id } },
+          ...(existing && existing.stripe_customer_id
+            ? { customer: existing.stripe_customer_id }
+            : { customer_email: user.email }),
+        });
+        return sendJson(res, 200, { url: session.url, id: session.id });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Checkout session failed:", err.message);
+        return sendJson(res, 502, { error: "Could not start checkout. Please try again." });
+      }
+    });
+    return;
+  }
+
+  // --- Stripe: Customer Portal (cancel, payment method, invoices) ---
+  if (req.method === "POST" && req.url === "/api/billing-portal") {
+    req.on("data", () => {});
+    req.on("end", async () => {
+      try {
+        if (!PRO_ENABLED || !STRIPE_CONFIGURED) {
+          return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
+        }
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const sub = await findSubscription(user.id);
+        const customer = sub && sub.stripe_customer_id;
+        if (!customer) return sendJson(res, 400, { error: "No billing account found for you yet." });
+        const portal = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "billing_portal/sessions", {
+          customer,
+          return_url: `${SITE_URL}/desk`,
+        });
+        return sendJson(res, 200, { url: portal.url });
+      } catch (err) {
+        console.error("Billing portal failed:", err.message);
+        return sendJson(res, 502, { error: "Could not open the billing portal." });
+      }
+    });
+    return;
+  }
+
+  // --- Stripe: webhook ---
+  // The RAW body is the signed payload. It must NOT be parsed before
+  // verification: re-serializing changes byte order and the HMAC stops
+  // matching, which is the classic way this check gets silently disabled.
+  if (req.method === "POST" && req.url === "/api/stripe/webhook") {
+    let raw = "";
+    req.on("data", (c) => { raw += c; if (raw.length > 1e6) req.destroy(); });
+    req.on("end", async () => {
+      const verdict = STRIPE.verifyWebhookSignature(raw, req.headers["stripe-signature"], STRIPE_WEBHOOK_SECRET);
+      if (!verdict.ok) {
+        console.error("Rejected Stripe webhook:", verdict.reason);
+        return sendJson(res, 400, { error: "Invalid signature." });
+      }
+      let evt;
+      try { evt = JSON.parse(raw); } catch (_) { return sendJson(res, 400, { error: "Bad payload." }); }
+
+      // Acknowledge FIRST, then work. Stripe times out at 20 seconds and a
+      // cold Render instance can eat most of that; a slow handler would earn
+      // an endless retry storm for work we already did.
+      sendJson(res, 200, { received: true });
+
+      try {
+        if (!(await claimStripeEvent(evt))) return;   // duplicate delivery
+        await handleStripeEvent(evt);
+      } catch (err) {
+        console.error(`Stripe webhook ${evt && evt.type} failed:`, err.message);
+      }
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/config") {
     // Entitlements ride along so the UI can show locked states without a
     // second round trip. This is presentation only — every limit it describes

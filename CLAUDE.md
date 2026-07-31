@@ -25,8 +25,15 @@ agouraninja@gmail.com. The owner is not a licensed broker: site copy must say
 we "connect you with a local broker", never that we are one, and every
 valuation is labeled an automated estimate, never an appraisal.
 
-There is no build step, no test suite, no linter, and **no npm dependencies** — it
-runs on plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
+There is no build step, no linter, and **no npm dependencies** — it runs on
+plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
+
+There is one small test suite: `npm test` (`node --test`, no dependencies)
+covers **`entitlements.js`** only — the Pro tier's decision table. It needs no
+database and no running server, and it finishes in under a tenth of a second,
+so there is no excuse for not running it after touching entitlement rules.
+Nothing else in the repo is tested; do not assume a green suite means the app
+works.
 
 The one build-*ish* artifact is **`tailwind.css`**: a vendored, pre-generated
 Tailwind build (checked in, served by `server.js`) that replaced the Play CDN.
@@ -210,6 +217,16 @@ dependency. `.env` is git-ignored — never commit it.
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
   moving to a custom domain is a single env change — no HTML edits.
+- `PRO_ENABLED` — optional `on`/`off`, **default OFF**. Master switch for the
+  paid Pro tier. Off means the app behaves exactly as it did before the tier
+  existed: no comp gating, no export cap, no lookback limit
+  (`computeEntitlements`' `enabled: false` branch returns
+  `maxComps: "all"` / `exportsRemaining: "unlimited"` and skips every billing
+  read, so the flag costs nothing on the hot path). **Do not turn this on
+  before running the Pro DDL** in the comment block above `findSubscription`
+  in server.js — and note the billing tables have **no file fallback** by
+  design, so `PRO_ENABLED=on` without Supabase configured resolves every
+  visitor to the free tier and logs a `⛔` line at startup.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 `MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
@@ -457,6 +474,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   comment above `readDevIdeas` in server.js — **run it before deploying**),
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
   it done on `/dev` and add the devlog entry.
+- **Pro tier** (added 2026-07-31, in progress — see the build spec in the
+  session that started it). Paid plan gating free reports to **4 comps**, a
+  **12-month** lookback ceiling, and **3 exports/month** (1 for anonymous
+  visitors), against Pro's unlimited everything plus report branding.
+  **`entitlements.js`** holds the rules and is deliberately **pure** — no I/O,
+  no clock reads (the caller passes `now`), no requires — which is what makes
+  `npm test` able to exercise the whole decision table with no database.
+  server.js owns the reads (`findSubscription`, `findReportPurchase`,
+  `getExportUsage`, `findBrandingProfile`) and exposes the **only** sanctioned
+  entry points: `getEntitlements(user, reportId)` and the request-shaped
+  `entitlementsFor(req, reportId)`. **Never test a plan or subscription status
+  anywhere else** — scattered plan checks are how a paywall grows holes.
+  Everything **fails closed**: an unknown Stripe status, an unparseable
+  period end, or a failed DB read resolves to the free tier, never to Pro.
+  Two deliberate softenings of that, both tested: a **24h renewal slack** past
+  `current_period_end` (Stripe renews at the boundary and the webhook lands
+  seconds later — without slack a paying subscriber flickers to free), and a
+  60s subscription cache that serves its last known answer if a DB read
+  fails. Gating is **not wired into any route yet** (that is phase 2); this
+  phase is the rule + the schema only.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.

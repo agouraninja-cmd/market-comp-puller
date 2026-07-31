@@ -16,6 +16,10 @@ const crypto = require("crypto");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
 const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot } = require("./market-snapshot");
+// Pro-tier entitlement rules. Pure and dependency-free so `npm test` can
+// exercise the whole decision table without a database — see the Pro section
+// below for the reads that feed it.
+const ENT = require("./entitlements");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -45,6 +49,12 @@ const APP_PASSWORD = process.env.APP_PASSWORD || "";
 const LEAD_CAPTURE = process.env.LEAD_CAPTURE
   ? process.env.LEAD_CAPTURE.toLowerCase() !== "off"
   : !APP_PASSWORD;
+
+// Pro tier master switch. OFF unless PRO_ENABLED=on, and off means the app
+// behaves exactly as it did before the tier existed — no comp gating, no
+// export cap, no lookback limit (see computeEntitlements' `enabled` branch).
+// Everything Pro ships dark behind this until the whole flow is proven.
+const PRO_ENABLED = String(process.env.PRO_ENABLED || "").toLowerCase() === "on";
 
 // Durable lead storage — a Supabase (hosted Postgres) project, written to via
 // its REST API with plain fetch, so the app stays dependency-free. When these
@@ -707,6 +717,190 @@ async function markWatchlistSeen(userId) {
   const s = await accountStore();
   s.watchlist.forEach((x) => { if (x.user_id === userId) x.last_seen_at = now; });
   await saveAccountStore();
+}
+
+// ---------------------------------------------------------------------------
+// Pro tier — subscriptions, single-report purchases, branding, export tallies.
+//
+// The RULES live in entitlements.js (pure, tested). This section owns the
+// READS that feed them, and getEntitlements() is the only sanctioned way to
+// ask what a visitor may do. Do not test a plan or a subscription status
+// anywhere else — one function is the whole point.
+//
+// DELIBERATELY NO FILE FALLBACK. Every other store here degrades to a local
+// JSON file when Supabase is unconfigured, which is right for leads and
+// caches and wrong for money: Render's filesystem is ephemeral, so a
+// subscription written to disk vanishes on the next deploy and a paying
+// customer silently becomes a free user. Billing reads return "no
+// subscription" without a database, and PRO_ENABLED without DB_CONFIGURED
+// warns loudly at startup.
+//
+// DDL (run in the Supabase SQL editor BEFORE deploying with PRO_ENABLED=on):
+//
+//   alter table users add column if not exists stripe_customer_id text;
+//   create unique index if not exists users_stripe_customer_id_idx
+//     on users (stripe_customer_id) where stripe_customer_id is not null;
+//
+//   create table subscriptions (
+//     user_id uuid primary key references users(id) on delete cascade,
+//     stripe_subscription_id text unique,
+//     stripe_customer_id text,
+//     plan text not null,                  -- pro_monthly | pro_annual_founding
+//     status text not null,                -- active | past_due | grace | cancelled
+//     current_period_end timestamptz,
+//     cancel_at_period_end boolean not null default false,
+//     grace_until timestamptz,             -- set when a payment fails (7 days)
+//     created_at timestamptz not null default now(),
+//     updated_at timestamptz not null default now()
+//   );
+//   -- One subscription per user by primary key: a second checkout by the same
+//   -- person must UPDATE, never insert a rival row that could out-rank it.
+//
+//   create table branding_profiles (
+//     user_id uuid primary key references users(id) on delete cascade,
+//     logo_url text, firm_name text, preparer_name text,
+//     phone text, email text, license_number text, disclaimer text,
+//     updated_at timestamptz not null default now()
+//   );
+//
+//   create table report_purchases (
+//     id uuid primary key default gen_random_uuid(),
+//     user_id uuid not null references users(id) on delete cascade,
+//     report_id text not null,
+//     stripe_payment_intent_id text unique,
+//     comp_snapshot jsonb not null,        -- the comps AS SOLD, frozen
+//     purchased_at timestamptz not null default now(),
+//     unique (user_id, report_id)
+//   );
+//   create index on report_purchases (user_id, report_id);
+//
+//   create table export_usage (
+//     user_id uuid not null references users(id) on delete cascade,
+//     period text not null,                -- 'YYYY-MM', UTC
+//     count integer not null default 0,
+//     primary key (user_id, period)
+//   );
+//
+//   -- Stripe retries webhooks; this is what makes handlers idempotent.
+//   create table stripe_events (
+//     id text primary key,                 -- Stripe's event id (evt_...)
+//     type text,
+//     received_at timestamptz not null default now()
+//   );
+//
+// After running it, confirm nothing is missing:
+//   select t from unnest(array['subscriptions','branding_profiles',
+//     'report_purchases','export_usage','stripe_events']) as t
+//   where not exists (select 1 from information_schema.tables
+//                     where table_name = t);
+// Zero rows means the schema is complete.
+// ---------------------------------------------------------------------------
+
+// Subscription reads sit in the hot path of every report, so they are cached
+// briefly. The TTL is short because a fresh Stripe webhook must take effect
+// quickly — a subscriber who just paid should not wait minutes for access.
+const SUB_CACHE_TTL_MS = 60 * 1000;
+const subCache = new Map(); // user_id -> { at, sub }
+
+function cacheSub(userId, sub) {
+  subCache.set(userId, { at: Date.now(), sub });
+  if (subCache.size > 5000) subCache.clear(); // crude cap; repopulates on demand
+  return sub;
+}
+// Called by the Stripe webhook after any subscription write, so the next
+// request sees the new state instead of waiting out the TTL.
+function invalidateSubCache(userId) {
+  if (userId) subCache.delete(userId);
+}
+
+async function findSubscription(userId) {
+  if (!userId || !DB_CONFIGURED) return null;
+  const hit = subCache.get(userId);
+  if (hit && Date.now() - hit.at < SUB_CACHE_TTL_MS) return hit.sub;
+  try {
+    const rows = await sbRequest("GET",
+      `subscriptions?user_id=eq.${encodeURIComponent(userId)}&limit=1`);
+    return cacheSub(userId, (rows && rows[0]) || null);
+  } catch (e) {
+    // A DB hiccup must not silently downgrade a paying customer, but it must
+    // not mint free Pro either. Serve the last known answer if we have one
+    // (even expired), otherwise fail closed to the free tier — and say so in
+    // the log, because a burst of these means billing reads are broken.
+    console.error("Subscription lookup failed (falling back):", e.message);
+    return hit ? hit.sub : null;
+  }
+}
+
+async function findReportPurchase(userId, reportId) {
+  if (!userId || !reportId || !DB_CONFIGURED) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `report_purchases?user_id=eq.${encodeURIComponent(userId)}` +
+      `&report_id=eq.${encodeURIComponent(reportId)}&limit=1`);
+    return (rows && rows[0]) || null;
+  } catch (e) {
+    console.error("Report purchase lookup failed:", e.message);
+    return null;
+  }
+}
+
+async function getExportUsage(userId, period) {
+  if (!userId || !DB_CONFIGURED) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `export_usage?user_id=eq.${encodeURIComponent(userId)}` +
+      `&period=eq.${encodeURIComponent(period)}&limit=1`);
+    return (rows && rows[0]) || null;
+  } catch (e) {
+    console.error("Export usage lookup failed:", e.message);
+    return null;
+  }
+}
+
+async function findBrandingProfile(userId) {
+  if (!userId || !DB_CONFIGURED) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `branding_profiles?user_id=eq.${encodeURIComponent(userId)}&limit=1`);
+    return (rows && rows[0]) || null;
+  } catch (e) {
+    console.error("Branding profile lookup failed:", e.message);
+    return null;
+  }
+}
+
+/**
+ * What may this user do? The single entitlement entry point.
+ *
+ * @param {object?} user      a row from getSessionUser(), or null (anonymous)
+ * @param {string?} reportId  the report in question, for single-report unlocks
+ */
+async function getEntitlements(user, reportId) {
+  // Skip every DB round trip when the tier is switched off — the flag must
+  // cost nothing on the hot path while Pro ships dark.
+  if (!PRO_ENABLED) return ENT.computeEntitlements({ user, enabled: false });
+  const now = Date.now();
+  const [subscription, purchase, usage] = await Promise.all([
+    findSubscription(user && user.id),
+    findReportPurchase(user && user.id, reportId),
+    getExportUsage(user && user.id, ENT.usagePeriod(now)),
+  ]);
+  return ENT.computeEntitlements({
+    user, subscription, purchase, usage, reportId, now, enabled: true,
+  });
+}
+
+// Request-shaped convenience: resolve the session, then the entitlements.
+// Never throws — an entitlement failure degrades to the free tier rather than
+// 500ing a report that would otherwise render.
+async function entitlementsFor(req, reportId) {
+  try {
+    const user = await getSessionUser(req);
+    return await getEntitlements(user, reportId);
+  } catch (e) {
+    console.error("Entitlement resolution failed (defaulting to free):", e.message);
+    return ENT.computeEntitlements({ user: null, now: Date.now(), enabled: PRO_ENABLED });
+  }
 }
 // ---------------------------------------------------------------------------
 // Corpus health. The corpus is written and read by fire-and-forget calls that
@@ -6099,4 +6293,15 @@ server.listen(PORT, () => {
     : "📈 Analytics logging on; the /admin dashboard needs ADMIN_KEY set to view it.");
   console.log(`🗄  Search cache: ${DB_CONFIGURED ? "Supabase" : path.basename(SEARCH_CACHE_FILE) + " (EPHEMERAL on most hosts)"}, ${SEARCH_CACHE_TTL_MS / 3600000}h TTL.`);
   console.log(`💵 Daily search cap: ${DAILY_SEARCH_CAP} billed searches/day (set DAILY_SEARCH_CAP to change).`);
+  if (PRO_ENABLED) {
+    console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
+      `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);
+    if (!DB_CONFIGURED) {
+      console.error("⛔ PRO_ENABLED is on but Supabase is NOT configured. Billing tables have no " +
+        "file fallback (a subscription on an ephemeral disk is a lost customer), so EVERY visitor " +
+        "resolves to the free tier. Set SUPABASE_URL + SUPABASE_SERVICE_KEY and run the Pro DDL.");
+    }
+  } else {
+    console.log("⭐ Pro tier disabled (set PRO_ENABLED=on once the Pro DDL has been run).");
+  }
 });

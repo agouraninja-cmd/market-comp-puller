@@ -2092,7 +2092,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   const typeSpec = TYPE_COMP_FIELDS[type];
   const typeFields = typeSpec ? typeSpec.fields.map((f) => `"${f}": "", `).join("") : ``;
   const buildingFields = isLand ? `` : `"tenancy": "", "year_built": "", `;
-  const compShape = `{ "address": "", "date": "", "transaction": "", "size_sqft": "", ${typeFields}"price_or_rate": "", "price_per_sqft": "", "cap_rate": "", ${buildingFields}"notes": "", "source_url": "", "source_type": "", "lat": "", "lng": "", "verified": false }`;
+  const compShape = `{ "address": "", "date": "", "transaction": "", "size_sqft": "", ${typeFields}"price_or_rate": "", "price_per_sqft": "", "cap_rate": "", ${buildingFields}"notes": "", "source_url": "", "source_type": "", "verified": false }`;
 
   // Trusted internal comps get their own prompt section when any exist.
   const verifiedBlock = (verifiedComps && verifiedComps.length) ? [
@@ -2100,7 +2100,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `VERIFIED INTERNAL COMPS: the following ${verifiedComps.length === 1 ? "comp was" : "comps were"} submitted by local brokers and reviewed by our team. Treat the details as accurate.`,
     ...verifiedComps.map((c, i) =>
       `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.cap_rate ? " | cap rate " + c.cap_rate : ""}${c.notes ? " | " + c.notes : ""}`),
-    `Include each verified internal comp in the "comps" array IF it is genuinely comparable to the target property (reasonably near the target address and inside the date window). Set "verified": true on those and copy their details faithfully; compute "price_per_sqft" from the given size and price where possible, and estimate "lat"/"lng" from the address. When a verified comp and a web result describe the same transaction, keep only the verified one. Verified comps count toward the comp total. Set "verified": false on every comp found via web search. Never include a verified comp that is clearly in a different city or market than the target.`,
+    `Include each verified internal comp in the "comps" array IF it is genuinely comparable to the target property (reasonably near the target address and inside the date window). Set "verified": true on those and copy their details faithfully; compute "price_per_sqft" from the given size and price where possible. When a verified comp and a web result describe the same transaction, keep only the verified one. Verified comps count toward the comp total. Set "verified": false on every comp found via web search. Never include a verified comp that is clearly in a different city or market than the target.`,
   ].join("\n") : "";
 
   // Type-specific specs already stored on a corpus row. Passed through so a
@@ -2189,7 +2189,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // Currency rides in BOTH lanes: a foreign-property records lane must quote
     // its comps in the same local currency, and normalizeCurrency needs the
     // code to avoid silently treating those prices as USD on merge.
-    ...(compsOnly ? [] : [`  "summary": "3-4 sentence plain-English takeaway about the local market, understandable to a non-professional",`]),
+    ...(compsOnly ? [] : [`  "summary": "2-3 sentence plain-English takeaway about the local market, understandable to a non-professional - lead with the single thing an owner most needs to know",`]),
     ...(compsOnly ? [] : [`  "avg_price_per_sqft": "string or null",`]),
     `  "currency": "",`,
     `  "usd_rate": "",`,
@@ -2211,7 +2211,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `  ]`,
     `}`,
     ``,
-    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "lat"/"lng" = the approximate decimal latitude and longitude of the comp property (e.g. "32.7767", "-96.7970") estimated from its address — these are for plotting on a map, so a street-level approximation is fine; use "" only if you cannot place the address at all. "subject_lat"/"subject_lng" = the same for the TARGET property address. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     // "notes" was the single largest field in the output — measured at 18-28%
     // of a report, up to 316 characters per comp — and the report is slow
     // because of how long it takes to WRITE, not to search (see the streaming
@@ -2228,7 +2228,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ...(compsOnly ? [] : [
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
-    `"value_drivers" = 2 to 4 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
+    `"value_drivers" = 2 to 3 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
     `"search_radius" = a short phrase (a few words) naming the geographic scope you actually used to gather these comps and whether you widened it, e.g. "Immediate submarket, ~3 miles" or "Widened to ~20 miles, limited local activity". Keep it under about 10 words. Use "" if not applicable.`,
     `"transactions_reviewed" = your rough estimate, as a plain number, of how many recent ${type} transactions you came across in this market and window before narrowing to the most comparable ones above. An approximation is expected (e.g. 34) - it conveys how much market activity you weighed. It must be greater than the number of comps you returned. Use "" if you cannot reasonably estimate it; never invent a large number to look thorough.`,
     `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 plain sentences on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
@@ -2561,6 +2561,68 @@ async function* sseFrames(body, onIdleTimeout) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Incremental comp extractor for live progress. Watches the streamed report
+// text for the "comps" array and emits each comp object the moment its closing
+// brace arrives — that is what lets the loading card list comps while the
+// model is still writing the rest of the report. Purely additive: the
+// authoritative report is still parseCompJson over the full joined text, so a
+// bug here can only cost a progress line, never the report.
+// Single pass — each character is scanned exactly once (pos never moves back);
+// the only lookback is an 8-char overlap so the `"comps"` key can arrive split
+// across two deltas. String/escape aware, so braces inside "notes" text or
+// escaped quotes never confuse the depth count. A comp element that fails
+// JSON.parse is skipped silently.
+// ---------------------------------------------------------------------------
+function makeCompExtractor(onComp) {
+  let buf = "", pos = 0, mode = "seek", keyAt = -1;
+  let depth = 0, inString = false, escaped = false, elemStart = -1, n = 0;
+  return {
+    push(deltaText) {
+      if (mode === "done" || typeof deltaText !== "string" || !deltaText) return;
+      if (mode === "seek") {
+        const searchFrom = Math.max(0, buf.length - 8);
+        buf += deltaText;
+        if (keyAt === -1) {
+          keyAt = buf.indexOf('"comps"', searchFrom);
+          if (keyAt === -1) return;
+        }
+        // Only ':' and whitespace sit between the key and its array in valid
+        // JSON, so the first '[' after the key is the array opener.
+        const br = buf.indexOf("[", keyAt + 7);
+        if (br === -1) return;
+        mode = "array";
+        pos = br + 1;
+      } else {
+        buf += deltaText;
+      }
+      for (; pos < buf.length; pos++) {
+        const ch = buf[pos];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (ch === "\\") escaped = true;
+          else if (ch === '"') inString = false;
+        } else if (ch === '"') {
+          inString = true;
+        } else if (ch === "{") {
+          if (depth === 0) elemStart = pos;
+          depth++;
+        } else if (ch === "}") {
+          if (depth > 0) depth--;
+          if (depth === 0 && elemStart !== -1) {
+            try { onComp(JSON.parse(buf.slice(elemStart, pos + 1)), ++n); } catch (_) {}
+            elemStart = -1;
+          }
+        } else if (ch === "]" && depth === 0) {
+          mode = "done";
+          buf = "";
+          return;
+        }
+      }
+    },
+  };
+}
+
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
   const body = {
     model: MODEL,
@@ -2600,6 +2662,17 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (STREAM_ANTHROPIC) body.stream = true;
   const say = typeof onProgress === "function" ? onProgress : () => {};
+
+  // Live comp lines for the loading card. Only calls that report progress get
+  // one (the records lane never does), and any throw disables it for the rest
+  // of the call — the report itself never depends on the extractor.
+  let compExtractor = (typeof onProgress === "function" && lane !== "records")
+    ? makeCompExtractor((c, n) => say({
+        phase: "comp", n,
+        address: String((c && c.address) || ""),
+        price: String((c && (c.price_or_rate || c.price_per_sqft)) || ""),
+      }))
+    : null;
 
   const startedAt = Date.now();
   const controller = new AbortController();
@@ -2682,6 +2755,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
           if (d.type === "text_delta" && typeof d.text === "string") {
             b.text += d.text;
             textChars += d.text.length;
+            if (compExtractor) {
+              try { compExtractor.push(d.text); } catch (_) { compExtractor = null; }
+            }
             // Writing the report is the LONG stretch — measured, searches finish
             // in ~5s and the JSON burst then runs 60-70s. It must be detected as
             // it STARTS, not at content_block_stop (which is after the report is
@@ -5165,6 +5241,25 @@ const server = http.createServer((req, res) => {
           return GATE.gateReport(rep, ent, { asOfMs: Date.now(), subjectSqft });
         };
 
+        // The gate's principle applied to live progress: a limited visitor
+        // never receives more identified comps than the report itself will
+        // show them. Streamed "comp" events past the entitlement become
+        // anonymous { locked: true } markers — the card can still count them
+        // ("+N more found"), it just never learns their addresses. Note the
+        // first N streamed are not necessarily the N the gate later picks
+        // (it selects sales-first/best-first); the invariant that matters is
+        // the QUANTITY of identified comp intelligence, and that holds.
+        const maxIdentified = (internal || ent.maxComps === "all") ? Infinity : Number(ent.maxComps);
+        let compAttempt = 0, identifiedSent = 0;
+        const guardComp = (evt) => {
+          if (!evt || evt.phase !== "comp") return evt;
+          if (evt.attempt !== compAttempt) { compAttempt = evt.attempt; identifiedSent = 0; }
+          identifiedSent++;
+          return identifiedSent <= maxIdentified
+            ? evt
+            : { phase: "comp", n: evt.n, locked: true, attempt: evt.attempt };
+        };
+
         const cached = await getCachedSearch(cacheKey);
         if (cached) {
           // Legacy cache entries predate $/SF reconciliation — correct them at
@@ -5225,7 +5320,7 @@ const server = http.createServer((req, res) => {
         }
 
         const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus, detailsOk,
-          sse ? (evt) => sse.send("progress", evt) : null);
+          sse ? (evt) => sse.send("progress", guardComp(evt)) : null);
         await storeCachedSearch(cacheKey, result);
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan });
         maybePublishMarketSnapshot(typeOk, addressOk, result);

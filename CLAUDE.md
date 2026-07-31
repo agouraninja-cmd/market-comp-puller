@@ -168,8 +168,15 @@ dependency. `.env` is git-ignored — never commit it.
   stream. `gen-market-seed.js` simply omits the flag and is unaffected.
   Progress phases: `corpus` (coverage, before the call), `start`, `search`
   (n + the model's real query text), `results` (count), `writing`, `drafting`
-  (chars, ~1/s), `retry`. Front-end: `readProgressStream` +`applyProgress` in
-  index.html, driving the existing loading card. Three fallback layers, all
+  (chars, ~1/s), `comp` (one per finished comp as the model writes the array —
+  `makeCompExtractor` in server.js scans the streamed text incrementally, and
+  the handler's `guardComp` closure anonymizes events past the visitor's
+  `maxComps` entitlement to `{ locked: true }` so gated comp identities never
+  reach a free browser, even transiently), `retry`. Front-end:
+  `readProgressStream` +`applyProgress` in
+  index.html, driving the existing loading card; `comp` events render as
+  plain text lines via `addLoadingCompLine` (5 most recent + a "+N more"
+  lock line). Three fallback layers, all
   load-bearing — the old wall-clock simulation still starts on submit and is
   cancelled by the first real event; a non-SSE content-type falls back to
   `res.json()`; and an 8-second silence watchdog restarts the simulation,
@@ -318,8 +325,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   fetches the report from `/api/shared`. (server.js allow-lists this path
   alongside `/` and `/index.html`.)
 - `GET /api/geocode?address=` — CORS pass-through to the free US Census
-  geocoder. The model's per-comp `lat`/`lng` are block-level guesses used only
-  for the map's first paint; the front-end re-places every pin from real
+  geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
+  longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
+  report-writing burst; only `subject_lat`/`subject_lng` remain, for the
+  map's first paint and the wrong-state sanity gate). Old cached reports
+  still carry comp coords and render unchanged. The front-end places every
+  pin from
   geocoding (this proxy, then browser-direct Nominatim as fallback, results
   cached in localStorage under `geoCache.v1`). Rate-limited per IP.
 - `GET /api/streetview?lat=&lng=` (an `?address=` form exists but the

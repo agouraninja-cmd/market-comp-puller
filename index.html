@@ -939,6 +939,10 @@
             <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
+        <!-- Comps stream in here as the model writes them (applyProgress phase
+             "comp"). aria-hidden keeps the polite live region above from
+             narrating every line; model text goes in via textContent only. -->
+        <div id="loadingComps" class="hidden w-full max-w-xs mt-4 text-left" aria-hidden="true"></div>
       </div>
       <!-- Purely visual (the live region above announces progress): gray placeholders
            in the same card shells the finished report renders into. -->
@@ -2249,11 +2253,49 @@
     if (el) el.textContent = text || "";
   }
 
+  // Live comp lines while the model writes the report. Calm by design: plain
+  // text rows on the existing card, capped at the most recent 5 identified
+  // comps, plus one trailing "+N more" line for comps past the visitor's plan
+  // (the server sends those as { locked: true } with no address).
+  let loadingCompsSeen = 0;   // identified comps received, including scrolled-off ones
+  function resetLoadingComps() {
+    loadingCompsSeen = 0;
+    const box = document.getElementById("loadingComps");
+    if (box) { box.innerHTML = ""; box.classList.add("hidden"); }
+  }
+  function addLoadingCompLine(evt) {
+    const box = document.getElementById("loadingComps");
+    if (!box) return;
+    if (evt.locked) {
+      let lock = box.querySelector("[data-locked]");
+      if (!lock) {
+        lock = document.createElement("p");
+        lock.dataset.locked = "1";
+        lock.className = "text-sm text-slate-500 mt-1 truncate";
+        box.appendChild(lock);
+      }
+      lock.textContent = `+ ${Math.max(1, Number(evt.n) - loadingCompsSeen)} more found · unlock with Pro`;
+    } else {
+      if (!evt.address) return;
+      loadingCompsSeen++;
+      const line = document.createElement("p");
+      line.dataset.comp = "1";
+      line.className = "text-sm text-slate-400 mt-1 truncate";
+      // Model-written text: textContent only, never innerHTML.
+      line.textContent = `${evt.n}. ${evt.address}${evt.price ? " · " + evt.price : ""}`;
+      box.insertBefore(line, box.querySelector("[data-locked]"));  // identified rows stay above the lock line
+      const rows = box.querySelectorAll("[data-comp]");
+      if (rows.length > 5) rows[0].remove();
+    }
+    box.classList.remove("hidden");
+  }
+
   function showLoadingCard(address, type) {
     const headline = document.getElementById("loadingHeadline");
     headline.style.opacity = "1";
     headline.textContent = loadingSteps(address, type)[0].text;
     setLoadingDetail("This usually takes 20-60 seconds.");
+    resetLoadingComps();
     document.getElementById("loadingCard").classList.remove("hidden");
     setLoadingProgress(0);
     requestAnimationFrame(() => setLoadingProgress(8));
@@ -2299,7 +2341,7 @@
   // finish in the first few seconds, then the model spends 40-70s WRITING the
   // report — which is why the old fixed timer froze on "almost there" for most
   // of the wait. The bar is driven off characters actually streamed.
-  const DRAFT_CHARS_FULL = 12000;   // a 12-comp report runs ~12k chars of JSON
+  const DRAFT_CHARS_FULL = 11000;   // a 12-comp report runs ~11k chars of JSON (per-comp lat/lng dropped, summary capped)
   function applyProgress(evt, ctx) {
     const headline = document.getElementById("loadingHeadline");
     if (!evt || !evt.phase) return;
@@ -2327,11 +2369,16 @@
         setLoadingDetail("Comparing size, age, and location");
       }
       aimLoadingBar(50 + Math.min(45, (evt.chars / DRAFT_CHARS_FULL) * 45));
+    } else if (evt.phase === "comp") {
+      addLoadingCompLine(evt);
     } else if (evt.phase === "retry") {
       swapHeadline(headline, "The results came back oddly, rechecking…");
       setLoadingDetail("");
+      resetLoadingComps();   // attempt 2 finds its own comps
     }
-    if (evt.phase !== "drafting" || evt.writing) ctx.lastPhase = evt.phase;
+    // "comp" events interleave with "drafting" — neither may claim lastPhase,
+    // or the drafting branch would re-swap the headline every second.
+    if ((evt.phase !== "drafting" || evt.writing) && evt.phase !== "comp") ctx.lastPhase = evt.phase;
   }
 
   // Snap to a satisfying 100% finish, then resolve so the results can render.
@@ -2351,6 +2398,7 @@
     clearInterval(loadingProgressTimer); loadingProgressTimer = null;
     loadingTarget = 8;
     setLoadingDetail("");
+    resetLoadingComps();
     document.getElementById("loadingCard").classList.add("hidden");
   }
 

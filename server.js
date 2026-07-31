@@ -2086,7 +2086,23 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // the comp searches themselves. When we already hold recent comps for this
     // market (corpus-strong), the budget drops hard — that reuse is the saving.
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses }],
-    messages: [{ role: "user", content: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails, lane) }],
+    // The web_search loop re-runs model inference on EVERY round — one per
+    // search plus the final report — and each round re-reads this whole prompt
+    // at full input price. Measured at ~3,300 tokens, an 8-search report paid
+    // for it nine times over. cache_control makes rounds 2..N read it at ~0.1x.
+    // It works because caching is a PREFIX match and the prompt is byte-
+    // identical across a request's rounds: only the search results appended
+    // AFTER it grow. Sonnet's minimum cacheable prefix is 1,024 tokens and this
+    // prompt is ~3x that, so it always qualifies — but a future prompt trim
+    // that took it under 1,024 would silently stop caching, with no error.
+    messages: [{
+      role: "user",
+      content: [{
+        type: "text",
+        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails, lane),
+        cache_control: { type: "ephemeral" },
+      }],
+    }],
   };
 
   if (STREAM_ANTHROPIC) body.stream = true;
@@ -2227,7 +2243,11 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // Timing/usage line. Generation time scales with output_tokens, search time
   // with the number of web_search round-trips — logging both is what tells you
   // which half of a slow report to attack.
-  console.log(`Anthropic call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · stop=${stopReason}`);
+  // cache read/write is how you tell prompt caching is actually working: read
+  // should land near (rounds - 1) x the prompt size. A run that logs 0 read AND
+  // 0 write is a silent miss — the usual cause is the prompt slipping under the
+  // 1,024-token cacheable minimum, which raises no error.
+  console.log(`Anthropic call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_input_tokens || 0} read / ${usage.cache_creation_input_tokens || 0} write · stop=${stopReason}`);
 
   if (!text) throw new Error("The model returned no text content to parse.");
 

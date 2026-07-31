@@ -463,7 +463,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "commit": "optional short hash (renders as a GitHub link on /dev)" }`;
   file order doesn't matter (the page groups/sorts by date); routine
   docs-only or refactor commits don't need entries, anything a changelog
-  reader would care about does. Entries are **click-to-edit** on `/dev`:
+  reader would care about does. **Entries are for changes that reach the
+  LIVE SITE** (owner's rule, 2026-07-31) — local developer tooling gets none
+  no matter how useful it is: Claude Code hooks and skills under the
+  git-ignored `.claude/`, helper scripts, dev-only config. `/dev` answers
+  "what changed about CompNinja", not "what changed in the workspace". An
+  entry for the dev-ideas hook was written and then removed for exactly this
+  reason; document that class of work in CLAUDE.md instead.
+  Entries are **click-to-edit** on `/dev`:
   edits and per-entry notes live in a Supabase `devlog_overrides` overlay
   (DDL in the comment above `readDevlogOverrides` in server.js — run it
   before deploying) keyed by the file entry's original date+title and merged

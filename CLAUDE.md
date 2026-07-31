@@ -473,9 +473,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `PUT /api/dev-ideas` into the Supabase `dev_ideas` table (DDL in the
   comment above `readDevIdeas` in server.js — **run it before deploying**),
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
-  it done on `/dev` and add the devlog entry. **The ideas list is for the
-  owner, not for tooling** — it is a human notepad, so do not wire anything
-  automated into reading or writing it.
+  it done on `/dev` and add the devlog entry.
 - **Pro tier** (added 2026-07-31, in progress — see the build spec in the
   session that started it). Paid plan gating free reports to **4 comps**, a
   **12-month** lookback ceiling, and **3 exports/month** (1 for anonymous

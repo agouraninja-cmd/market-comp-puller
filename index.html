@@ -649,6 +649,7 @@
               <option>Land</option>
               <option>Residential</option>
             </select>
+            <div id="typeAutoNote" class="text-xs text-[#8A93A0] mt-1"></div>
           </div>
         </div>
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
@@ -3974,6 +3975,165 @@
     return found;
   }
 
+  // Two public Overpass instances, tried in order — the main one 504s under
+  // load. Shared by the building-footprint snap below and the type detector.
+  const OVERPASS_ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+
+  async function overpassQuery(body) {
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      try {
+        const r = await fetch(endpoint, {
+          method: "POST",
+          body: "data=" + encodeURIComponent(body),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!r.ok) continue;
+        return await r.json();
+      } catch (_) { /* try the next mirror */ }
+    }
+    return null;
+  }
+
+  // ----------------------------------------------------------------------------
+  // Smart property-type default — fills the type in for someone who forgot to
+  // change it, and never overrides a type the visitor picked themselves.
+  //
+  // OpenStreetMap tags the building at the geocoded address; a SPECIFIC tag
+  // (building=warehouse, apartments, house…) maps onto one of our six types.
+  // Deliberately narrow: building=yes/commercial/residential are ambiguous and
+  // decide nothing, and a MISSING footprint never implies Land — only positive
+  // evidence moves the control, because OSM coverage gaps are commonest in
+  // exactly the rural markets where a wrong guess would hurt most.
+  //
+  // Four guards, each load-bearing:
+  //   1. The visitor touched the dropdown -> never guess again this session.
+  //      Only a real "change" event counts, and programmatic sets don't fire
+  //      one (see syncSubjectFieldsToType), so a report restored out of
+  //      localStorage leaves its remembered type eligible — that IS the case
+  //      this exists to catch: a new address searched under the last one's type.
+  //   2. Any subject detail already entered -> stop. renderSubjectFields()
+  //      wipes those inputs on a type switch, and losing typed data costs far
+  //      more than a stale default.
+  //   3. The address must start with a street number. A bare "Dallas, TX"
+  //      geocodes to a district point and would read some random downtown
+  //      tower — the same trap the map photos gate on.
+  //   4. The change is announced with one-click undo. An automatic edit the
+  //      visitor can't see is the version of this feature worth refusing.
+  // ----------------------------------------------------------------------------
+  const OSM_BUILDING_TYPES = {
+    warehouse: "Industrial", industrial: "Industrial", factory: "Industrial",
+    manufacture: "Industrial", hangar: "Industrial",
+    office: "Office",
+    retail: "Retail", supermarket: "Retail", shop: "Retail", kiosk: "Retail",
+    apartments: "Multifamily", dormitory: "Multifamily",
+    house: "Residential", detached: "Residential", semidetached_house: "Residential",
+    terrace: "Residential", bungalow: "Residential",
+  };
+
+  function osmTypeFor(tags) {
+    if (!tags) return null;
+    const b = String(tags.building || "").toLowerCase();
+    if (OSM_BUILDING_TYPES[b]) return { type: OSM_BUILDING_TYPES[b], label: b.replace(/_/g, " ") };
+    // A shop/office tag is unambiguous even when the building tag isn't.
+    if (tags.shop && (b === "yes" || b === "commercial")) return { type: "Retail", label: "shop" };
+    if (tags.office && (b === "yes" || b === "commercial")) return { type: "Office", label: "office" };
+    return null;   // yes / commercial / residential on their own decide nothing
+  }
+
+  const typeGuessCache = new Map();
+
+  async function detectPropertyType(address) {
+    const key = String(address || "").trim().toLowerCase();
+    if (typeGuessCache.has(key)) return typeGuessCache.get(key);
+    let guess = null;
+    try {
+      const pt = await geocodeAddress(address);
+      if (pt) {
+        const j = await overpassQuery(
+          `[out:json][timeout:10];way(around:120,${pt.lat.toFixed(6)},${pt.lng.toFixed(6)})["building"];out tags bb;`
+        );
+        // Same distance-discounted area score as snapMarkersToBuildings: the
+        // main building, not the guard shack or the neighbour's shed. The
+        // geocoded point sits on the street centerline, hence the 120 m reach.
+        const mPerLng = 111320 * Math.cos(pt.lat * Math.PI / 180);
+        let best = null, bestScore = 0;
+        for (const e of (j && j.elements) || []) {
+          if (!e.bounds) continue;
+          const cLat = (e.bounds.minlat + e.bounds.maxlat) / 2;
+          const cLng = (e.bounds.minlon + e.bounds.maxlon) / 2;
+          const dist = Math.hypot((cLat - pt.lat) * 111320, (cLng - pt.lng) * mPerLng);
+          if (dist > 120) continue;
+          const area = Math.max((e.bounds.maxlat - e.bounds.minlat) * 111320 * ((e.bounds.maxlon - e.bounds.minlon) * mPerLng), 100);
+          const score = area / (dist + 25);
+          if (score > bestScore) { bestScore = score; best = e; }
+        }
+        // Only the footprint we actually landed on gets a vote. Scoring just
+        // the DECIDABLE ones instead would let a tagged neighbour speak for an
+        // untagged subject — measured on a Midtown block, 40 of 41 footprints
+        // come back building=yes, so that borrowing would happen constantly.
+        guess = (best && osmTypeFor(best.tags)) || null;
+      }
+    } catch (_) { /* offline, Overpass down, geocode miss — no guess, no harm */ }
+    typeGuessCache.set(key, guess);
+    return guess;
+  }
+
+  let userChoseType = false;
+  const typeAutoNote = document.getElementById("typeAutoNote");
+  propertyTypeSel.addEventListener("change", () => {
+    userChoseType = true;             // their call from here on
+    typeAutoNote.textContent = "";
+  });
+
+  function applyDetectedType(next, label) {
+    const prevType = propertyTypeSel.value;
+    const prevMonths = selectedLookbackMonths();
+    propertyTypeSel.value = next;
+    // Mirror the manual-change path exactly: a type-appropriate lookback was
+    // just as wrong as the type it came from.
+    applyRecommendedLookback();
+    renderSubjectFields(next);        // safe — guarded on no details entered
+    const movedLookback = selectedLookbackMonths() !== prevMonths;
+
+    typeAutoNote.textContent = "";
+    const msg = document.createElement("span");
+    msg.textContent = "Set to " + next + (movedLookback ? " and its recommended lookback" : "") +
+      " — OpenStreetMap tags this building “" + label + "”. ";
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.textContent = "Undo";
+    undo.style.cssText = "text-decoration:underline;color:#B91C1C;background:none;border:0;padding:0;font:inherit;cursor:pointer";
+    undo.addEventListener("click", () => {
+      propertyTypeSel.value = prevType;
+      // selectedLookbackMonths() returns null for a half-typed custom window —
+      // restoring that would write "null" into the input.
+      if (prevMonths) setLookbackControls(prevMonths);
+      renderSubjectFields(prevType);
+      userChoseType = true;           // they've now decided — never guess again
+      typeAutoNote.textContent = "";
+    });
+    typeAutoNote.appendChild(msg);
+    typeAutoNote.appendChild(undo);
+  }
+
+  // "change" (not "input") — it fires on blur, the only honest "done typing"
+  // signal a free-text address field gives.
+  document.getElementById("address").addEventListener("change", async () => {
+    typeAutoNote.textContent = "";
+    if (userChoseType) return;
+    if (Object.keys(readSubjectDetails()).length) return;
+    const addr = document.getElementById("address").value.trim();
+    if (!/^\d/.test(addr)) return;
+    const guess = await detectPropertyType(addr);
+    // Re-check every guard: the await gave the visitor a second or two to pick
+    // a type, start typing details, edit the address, or fire the search.
+    if (!guess || !guess.type || userChoseType || searchInFlight) return;
+    if (Object.keys(readSubjectDetails()).length) return;
+    if (guess.type === propertyTypeSel.value) return;
+    if (document.getElementById("address").value.trim() !== addr) return;
+    applyDetectedType(guess.type, guess.label);
+  });
+
   // ----------------------------------------------------------------------------
   // Building snap — the popup photo should frame the PROPERTY, but geocoders
   // return points on the street centerline in front of it, so a photo
@@ -4004,22 +4164,9 @@
         return `way(around:90,${ll.lat.toFixed(6)},${ll.lng.toFixed(6)})["building"];`;
       }).join("");
       try {
-        // Two public Overpass instances, tried in order — the main one 504s
-        // under load, and with photos now gated on footprints an outage
-        // would mean a photo-less report instead of a wrong-photo one.
-        let j = null;
-        for (const endpoint of ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]) {
-          try {
-            const r = await fetch(endpoint, {
-              method: "POST",
-              body: "data=" + encodeURIComponent(`[out:json][timeout:10];(${parts});out bb;`),
-              signal: AbortSignal.timeout(12000),
-            });
-            if (!r.ok) continue;
-            j = await r.json();
-            break;
-          } catch (_) { /* try the next mirror */ }
-        }
+        // Mirrors are tried inside overpassQuery — with photos gated on
+        // footprints, an outage means a photo-less report, not a wrong-photo one.
+        const j = await overpassQuery(`[out:json][timeout:10];(${parts});out bb;`);
         if (!j) throw new Error("all Overpass endpoints failed");
         // `out bb;` carries bounds only — the bbox midpoint stands in for the
         // centroid, which is all the photo needs to frame the building.

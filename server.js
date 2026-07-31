@@ -4427,114 +4427,170 @@ function renderDevHubHTML() {
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <style>
+/* Editorial release-notes layout. Same CompNinja tokens as the rest of the
+   site; the discipline is in the restraint. Three rules hold it together and
+   are easy to erode one convenience at a time:
+     1. ONE type scale (--t1..--t6). No ad-hoc px sizes — the old page had
+        twelve, which is the single most reliable "generated" tell.
+     2. ONE radius (--r), on controls only. Content is never boxed: days are
+        separated by hairlines, not cards floating on a tint.
+     3. UPPERCASE is reserved for the page kicker and the wordmark. Every
+        other label reads in sentence case. Nine competing caps labels are
+        what made this look machine-assembled rather than designed. */
 *{box-sizing:border-box}
-body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
+:root{
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;
+  --red:#B91C1C;--paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --serif:Georgia,'Times New Roman',serif;
+  --r:4px;
+  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+  display:flex;flex-direction:column;font-size:var(--t4);
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
-.wrap{max-width:860px;margin:0 auto;padding:0 16px}
-.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+a{color:var(--red);text-decoration:none}a:hover{color:#991B1B}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
-.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
-.wordmark b{color:#B91C1C;font-weight:600}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
-main{flex:1;padding:36px 0 64px}
-.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
-.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
-h1.h{font-size:32px;line-height:1.15;margin:10px 0 0}
-.sub{color:#4C5665;font-size:14px;max-width:62ch;margin:8px 0 0}
-.gate{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:26px;max-width:420px;margin:48px auto;text-align:center}
-.gate .lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
-.gate input{width:100%;padding:10px 12px;border:1px solid #D8D4C9;border-radius:4px;margin:12px 0;font-size:14px;
-  font-family:inherit;color:#1A2433;background:#FBFBF9}
-.gate input:focus{outline:none;border-color:#B91C1C}
-.gate button,.btn{background:#B91C1C;color:#fff;border:0;border-radius:4px;padding:10px 22px;font-weight:600;
-  font-size:14px;font-family:inherit;cursor:pointer}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:var(--t5)}
+.hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+main{flex:1;padding:48px 0 80px}
+.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+h1.h{font-size:var(--t1);line-height:1.15;margin:10px 0 0}
+.sub{color:var(--ink-2);font-size:var(--t4);max-width:60ch;margin:10px 0 0}
+.gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:26px;max-width:400px;margin:56px auto;text-align:center}
+.gate .lab{display:block;font-size:var(--t5);color:var(--ink-3)}
+.gate input{width:100%;padding:10px 12px;border:1px solid var(--edge);border-radius:var(--r);margin:12px 0;
+  font-size:var(--t4);font-family:inherit;color:var(--ink);background:var(--paper)}
+.gate input:focus{outline:none;border-color:var(--red)}
+.gate button,.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:10px 22px;font-weight:600;
+  font-size:var(--t4);font-family:inherit;cursor:pointer}
 .gate button:hover,.btn:hover{background:#991B1B}
-.err{color:#B91C1C;font-size:13px;margin-top:8px}
-.card{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:20px 22px;margin:16px 0}
-.card h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600;margin:0 0 14px}
-.day{padding:6px 0 2px}
-.day+.day{border-top:1px solid #F0EFE9;margin-top:14px;padding-top:16px}
-.day-date{font-family:Georgia,'Times New Roman',serif;font-size:16px;color:#1A2433;margin:0 0 8px}
-.entry{display:flex;align-items:baseline;gap:12px;padding:6px 0}
-.entry-title{font-weight:600;font-size:14px;color:#1A2433}
-.entry-details{color:#4C5665;font-size:13px;margin-top:2px}
-.badge{display:inline-block;padding:3px 9px;border-radius:3px;font-size:10.5px;font-weight:600;letter-spacing:.08em;
-  text-transform:uppercase;white-space:nowrap;flex:none;min-width:96px;text-align:center}
-.badge.feature{background:#1A2433;color:#fff}
-.badge.improvement{background:#F5F4EF;color:#1A2433;border:1px solid #D8D4C9}
-.badge.fix{background:#fff;color:#B91C1C;border:1px solid #E8B4B4}
-.idea{display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-top:1px solid #F0EFE9;font-size:14px}
+.err{color:var(--red);font-size:var(--t5);margin-top:8px}
+
+/* Sections are typographic, not boxed: a serif heading and a rule. */
+#hub{margin-top:46px}
+.card{background:none;border:0;border-radius:0;padding:0;margin:0}
+.card+.card{margin-top:56px;border-top:1px solid var(--line);padding-top:38px}
+.card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);
+  text-transform:none;margin:0 0 20px}
+
+/* A day is one grid row: the date sits in the margin, its entries stack in
+   the text column. This is the whole look — it reads as a dated document
+   rather than a list of status pills. */
+.day{display:grid;grid-template-columns:104px minmax(0,1fr);column-gap:30px;padding:22px 0}
+.day+.day{border-top:1px solid var(--hair)}
+.day-date{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);color:var(--ink);
+  line-height:1.35;margin:0;padding-top:1px}
+.day-date .dd-y{display:block;font-size:var(--t5);color:var(--ink-3)}
+.entry{grid-column:2;display:block;padding:0}
+.entry+.entry{margin-top:22px}
+.entry-title{font-weight:600;font-size:var(--t3);line-height:1.45;color:var(--ink)}
+.entry-details{color:var(--ink-2);font-size:var(--t4);margin-top:5px;max-width:66ch}
+/* Type reads as a marked word, not a filled chip — the dot carries the
+   colour so the row stays text. */
+.badge{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;min-width:0;
+  border-radius:0;text-align:left;font-size:var(--t5);font-weight:500;letter-spacing:0;
+  text-transform:capitalize;color:var(--ink-2);white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-3);flex:none}
+.badge.feature::before{background:var(--red)}
+.badge.improvement::before{background:var(--ink)}
+.badge.fix::before{background:#C7CBD2}
+@media (max-width:640px){
+  .day{grid-template-columns:minmax(0,1fr);row-gap:12px;padding:20px 0}
+  .day-date{grid-column:1;grid-row:auto}
+  .day-date .dd-y{display:inline;font-size:inherit;color:var(--ink-3)}
+  .day-date .dd-y::before{content:", "}
+  .entry{grid-column:1}
+}
+/* Ideas mirror the changelog's rhythm: the bucket name sits in the same
+   104px margin column, so both halves of the page share one spine. */
+.idea{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid var(--hair);font-size:var(--t4)}
 .bucket-h+.idea{border-top:none}
-.idea input[type=checkbox]{width:15px;height:15px;accent-color:#B91C1C;flex:none;cursor:pointer;margin-top:3px}
+.idea input[type=checkbox]{width:15px;height:15px;accent-color:var(--red);flex:none;cursor:pointer;margin-top:4px}
 .idea .tx{flex:1;min-width:0}
-.idea .t{overflow-wrap:anywhere;color:#374253}
-.idea .n{color:#8A93A0;font-size:12.5px;margin-top:1px;overflow-wrap:anywhere}
-.idea .n-edit{display:block;width:100%;margin-top:4px;padding:6px 9px;border:1px solid #D8D4C9;border-radius:4px;
-  font-family:inherit;font-size:12.5px;color:#1A2433;background:#FBFBF9}
-.idea .n-edit:focus{outline:none;border-color:#B91C1C}
-.idea.done .t{color:#8A93A0;text-decoration:line-through}
-.idea .d{color:#8A93A0;font-size:12px;white-space:nowrap}
-.idea .rm,.idea .nt{background:none;border:0;color:#8A93A0;font-size:12.5px;cursor:pointer;font-family:inherit;padding:2px 4px}
-.idea .rm:hover{color:#B91C1C;text-decoration:underline}.idea .nt:hover{color:#1A2433;text-decoration:underline}
-.idea .rm.armed{color:#B91C1C;font-weight:600;text-decoration:underline}
-.idea .pr{flex:none;background:#F5F4EF;border:1px solid #D8D4C9;border-radius:3px;color:#5A6473;font-size:10px;
-  font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;cursor:pointer;font-family:inherit;margin-top:2px}
-.idea .pr.now{background:#fff;border-color:#E8B4B4;color:#B91C1C}
-.idea .pr.later{color:#8A93A0}
-.bucket-h{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600;margin:16px 0 2px}
+.idea .t{overflow-wrap:anywhere;color:var(--ink)}
+.idea .n{color:var(--ink-3);font-size:var(--t5);margin-top:2px;overflow-wrap:anywhere}
+.idea .n-edit{display:block;width:100%;margin-top:5px;padding:6px 9px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:var(--t5);color:var(--ink);background:var(--paper)}
+.idea .n-edit:focus{outline:none;border-color:var(--red)}
+.idea.done .t{color:var(--ink-3);text-decoration:line-through}
+.idea .d{color:var(--ink-3);font-size:var(--t5);white-space:nowrap}
+.idea .rm,.idea .nt{background:none;border:0;color:var(--ink-3);font-size:var(--t5);cursor:pointer;font-family:inherit;padding:2px 4px}
+.idea .rm:hover{color:var(--red);text-decoration:underline}.idea .nt:hover{color:var(--ink);text-decoration:underline}
+.idea .rm.armed{color:var(--red);font-weight:600;text-decoration:underline}
+.idea .pr{flex:none;background:none;border:1px solid var(--edge);border-radius:var(--r);color:var(--ink-2);
+  font-size:var(--t5);font-weight:500;letter-spacing:0;text-transform:none;padding:1px 9px;cursor:pointer;
+  font-family:inherit;margin-top:2px}
+.idea .pr:hover{border-color:var(--ink-3)}
+.idea .pr.now{border-color:#E8B4B4;color:var(--red)}
+.idea .pr.later{color:var(--ink-3)}
+.bucket-h{font-family:var(--serif);font-size:var(--t3);letter-spacing:0;text-transform:none;color:var(--ink);
+  font-weight:500;margin:26px 0 6px}
 .bucket-h:first-child{margin-top:0}
 #ideas.busy{opacity:.55;pointer-events:none}
 /* Changelog toolbar: a segmented control (one recessed track, the active
    segment raised as a white card) plus an inline search. Reads as a single
    control instead of four loose pills. */
-.logbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px}
-.seg{display:inline-flex;flex-wrap:wrap;background:#F5F4EF;border:1px solid #D8D4C9;border-radius:6px;padding:2px;gap:2px}
-.seg button{background:none;border:0;border-radius:4px;padding:5px 11px;font-family:inherit;font-size:12.5px;
-  color:#5A6473;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.seg button:hover{color:#1A2433}
-.seg button .n{font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums}
-.seg button.on{background:#fff;color:#1A2433;font-weight:600;box-shadow:0 1px 2px rgb(26 36 51/.09)}
-.seg button.on .n{color:#B91C1C}
-.logsearch{flex:1;min-width:168px;max-width:280px;padding:7px 11px;border:1px solid #D8D4C9;border-radius:6px;
-  font-size:13px;font-family:inherit;color:#1A2433;background:#FBFBF9}
-.logsearch::placeholder{color:#9AA2AE}
-.logsearch:focus{outline:none;border-color:#B91C1C}
-.logmeta{color:#8A93A0;font-size:12.5px;margin:0 0 12px}
-.cmt{font-size:11.5px;font-weight:400;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;margin-left:6px}
-.ebody{flex:1;min-width:0;border-radius:4px;padding:2px 8px;margin:-2px -8px;cursor:pointer}
-.ebody:hover{background:#F5F4EF}
+.logbar{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 6px}
+/* Filters read as a line of links, not a raised widget — the active one is
+   simply the one set in ink. */
+.seg{display:inline-flex;flex-wrap:wrap;background:none;border:0;border-radius:0;padding:0;gap:16px}
+.seg button{background:none;border:0;border-radius:0;padding:0 0 3px;font-family:inherit;font-size:var(--t5);
+  color:var(--ink-3);cursor:pointer;display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap;
+  border-bottom:1px solid transparent}
+.seg button:hover{color:var(--ink)}
+.seg button .n{font-size:var(--t6);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.seg button.on{background:none;color:var(--ink);font-weight:600;box-shadow:none;border-bottom-color:var(--red)}
+.seg button.on .n{color:var(--red)}
+.logsearch{flex:1;min-width:160px;max-width:240px;padding:5px 0;border:0;border-bottom:1px solid var(--edge);
+  border-radius:0;font-size:var(--t5);font-family:inherit;color:var(--ink);background:none}
+.logsearch::placeholder{color:var(--ink-3)}
+.logsearch:focus{outline:none;border-bottom-color:var(--red)}
+.logmeta{color:var(--ink-3);font-size:var(--t5);margin:0 0 18px}
+.cmt{font-size:var(--t5);font-weight:400;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;margin-left:8px}
+.ebody{min-width:0;border-radius:var(--r);padding:3px 9px;margin:-3px -9px;cursor:pointer}
+.ebody:hover{background:var(--wash)}
 .ebody.editing{cursor:default;background:none;padding:0;margin:0}
-.edited-tag{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#8A93A0;
-  border:1px solid #D8D4C9;border-radius:3px;padding:1px 5px;margin-left:8px;vertical-align:1px}
-.entry-note{color:#5F5E5A;font-size:12.5px;font-style:italic;margin-top:3px;overflow-wrap:anywhere}
-.entry-note::before{content:"Note — ";font-style:normal;font-weight:600;font-size:11px;color:#8A93A0}
-.ed{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid #D8D4C9;border-radius:6px;background:#FBFBF9}
-.ed label{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#8A93A0;font-weight:600}
-.ed input,.ed textarea{width:100%;padding:7px 10px;border:1px solid #D8D4C9;border-radius:4px;
-  font-family:inherit;font-size:13px;color:#1A2433;background:#fff;margin-top:-4px}
-.ed textarea{resize:vertical;min-height:48px}
-.ed input:focus,.ed textarea:focus{outline:none;border-color:#B91C1C}
+.edited-tag{font-size:var(--t5);font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink-3);
+  border:0;border-radius:0;padding:0;margin-left:8px;font-style:italic}
+.entry-note{color:#5F5E5A;font-size:var(--t5);margin-top:6px;overflow-wrap:anywhere;max-width:66ch;
+  border-left:2px solid var(--edge);padding-left:11px}
+.entry-note::before{content:"Note ";font-weight:600;color:var(--ink-3)}
+.ed{display:flex;flex-direction:column;gap:9px;padding:14px;border:1px solid var(--edge);border-radius:var(--r);background:#fff}
+.ed label{font-size:var(--t5);letter-spacing:0;text-transform:none;color:var(--ink-3);font-weight:500}
+.ed input,.ed textarea{width:100%;padding:7px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:var(--t5);color:var(--ink);background:var(--paper);margin-top:-5px}
+.ed textarea{resize:vertical;min-height:52px;line-height:1.6}
+.ed input:focus,.ed textarea:focus{outline:none;border-color:var(--red)}
 .ed .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px}
-.ed .btn.sm{padding:6px 16px;font-size:12.5px}
-.ed .lnk{background:none;border:0;color:#8A93A0;font-size:12.5px;cursor:pointer;font-family:inherit;padding:2px 0}
-.ed .lnk:hover{color:#B91C1C;text-decoration:underline}
+.ed .btn.sm{padding:6px 16px;font-size:var(--t5)}
+.ed .lnk{background:none;border:0;color:var(--ink-3);font-size:var(--t5);cursor:pointer;font-family:inherit;padding:2px 0}
+.ed .lnk:hover{color:var(--red);text-decoration:underline}
 .ed .spacer{flex:1}
-details.month{border-top:1px solid #F0EFE9;margin-top:14px;padding-top:10px}
-summary.month-sum{cursor:pointer;font-family:Georgia,'Times New Roman',serif;font-size:16px;color:#1A2433;padding:2px 0}
-summary.month-sum:hover{color:#B91C1C}
-details.month .day:first-of-type{border-top:none;margin-top:4px}
-.add{display:flex;gap:10px;margin-top:14px}
-.add input{flex:1;min-width:0;padding:9px 12px;border:1px solid #D8D4C9;border-radius:4px;font-size:14px;
-  font-family:inherit;color:#1A2433;background:#FBFBF9}
-.add input:focus{outline:none;border-color:#B91C1C}
-.muted{color:#8A93A0;font-size:12.5px}
-footer{background:#1A2433;color:#B8C0CC;font-size:13px}
-footer .wrap{padding:28px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+details.month{border-top:1px solid var(--line);margin-top:0;padding-top:0}
+summary.month-sum{cursor:pointer;font-family:var(--serif);font-size:var(--t3);color:var(--ink-2);padding:16px 0;
+  list-style:none;display:flex;align-items:baseline;gap:8px}
+summary.month-sum::-webkit-details-marker{display:none}
+/* Literal + / − glyphs: a CSS \\2212 escape would be read as an octal escape
+   by the template literal this stylesheet lives inside. */
+summary.month-sum::after{content:"+";color:var(--ink-3);font-family:inherit}
+details.month[open] summary.month-sum::after{content:"−"}
+summary.month-sum:hover{color:var(--red)}
+details.month .day:first-of-type{border-top:1px solid var(--hair);margin-top:0}
+.add{display:flex;gap:10px;margin-top:22px}
+.add input{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--edge);border-radius:var(--r);font-size:var(--t4);
+  font-family:inherit;color:var(--ink);background:var(--paper)}
+.add input:focus{outline:none;border-color:var(--red)}
+.muted{color:var(--ink-3);font-size:var(--t5)}
+footer{background:var(--ink);color:#B8C0CC;font-size:var(--t5)}
+footer .wrap{padding:28px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
 footer .wordmark{color:#fff}
 footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </style></head><body>
@@ -4586,10 +4642,14 @@ var COMMIT_URL="https://github.com/agouraninja-cmd/market-comp-puller/commit/";
 var PRIORITIES=["now","next","later"],PR_LABEL={now:"Now",next:"Next",later:"Later"};
 var MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
-function fmtDate(ymd){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(ymd||""));
-  if(!m)return esc(ymd);return MONTHS[Number(m[2])-1]+" "+Number(m[3])+", "+m[1];}
 function fmtMonth(ym){var m=/^([0-9]{4})-([0-9]{2})/.exec(String(ym||""));
   if(!m)return esc(ym);return MONTHS[Number(m[2])-1]+" "+m[1];}
+// The margin column sets the year on its own line under the month and day;
+// on narrow screens CSS re-joins them with a comma. Malformed dates fall
+// back to the flat escaped string.
+function fmtDateMargin(ymd){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(ymd||""));
+  if(!m)return esc(ymd);
+  return MONTHS[Number(m[2])-1]+" "+Number(m[3])+'<span class="dd-y">'+m[1]+"</span>";}
 function normType(t){return ["fix","improvement","feature"].indexOf(t)>=0?t:"improvement";}
 
 // ---- Changelog: meta line, type chips, text filter, collapsible months ----
@@ -4647,7 +4707,7 @@ function renderLog(){
   var filtering=LOG_TYPE!=="all"||!!q;
   document.getElementById("log").innerHTML=months.length?months.map(function(m,mi){
     var body=byMonth[m].map(function(d){
-      return '<div class="day"><div class="day-date">'+fmtDate(d)+'</div>'+by[d].map(entryHTML).join("")+'</div>';
+      return '<div class="day"><div class="day-date">'+fmtDateMargin(d)+'</div>'+by[d].map(entryHTML).join("")+'</div>';
     }).join("");
     var n=byMonth[m].reduce(function(s,d){return s+by[d].length;},0);
     // Newest month stays expanded; older months collapse — except while

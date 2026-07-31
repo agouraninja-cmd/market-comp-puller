@@ -4619,155 +4619,172 @@ function renderDevHubHTML() {
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <style>
 /* Editorial release-notes layout. Same CompNinja tokens as the rest of the
-   site; the discipline is in the restraint. Three rules hold it together and
-   are easy to erode one convenience at a time:
+   site; the discipline is in the restraint. Five rules hold it together and
+   each erodes one convenience at a time:
      1. ONE type scale (--t1..--t6). No ad-hoc px sizes — the old page had
         twelve, which is the single most reliable "generated" tell.
-     2. ONE radius (--r), on controls only. Content is never boxed: days are
+     2. ONE spacing scale (--s1..--s9). No ad-hoc px margins/padding/gaps.
+        This page shipped once with the type scale done and TWENTY-FIVE
+        spacing values, which is the same defect wearing a different hat.
+     3. ONE radius (--r), on controls only. Content is never boxed: days are
         separated by hairlines, not cards floating on a tint.
-     3. UPPERCASE is reserved for the page kicker and the wordmark. Every
+     4. UPPERCASE is reserved for the page kicker and the wordmark. Every
         other label reads in sentence case. Nine competing caps labels are
-        what made this look machine-assembled rather than designed. */
+        what made this look machine-assembled rather than designed.
+     5. RED means interaction, never content. Links, buttons, focus, errors,
+        the active filter. The changelog's own entries must not compete with
+        the page's controls for the same accent.
+   Colours are tokens only. The single exception below :root is plain #fff,
+   which is a primitive rather than a brand colour. Everything else that was
+   a loose hex — the fix dot, the note grey, both footer greys — is a token. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;
-  --red:#B91C1C;--paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
+  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --note:#5F5E5A;--foot-ink:#B8C0CC;--foot-link:#D5DAE2;
   --serif:Georgia,'Times New Roman',serif;
   --r:4px;
   --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+  /* The spine: a fixed measure, not rhythm. Deliberately NOT on the spacing
+     scale — the changelog's dates and the ideas list's bucket names share
+     this exact column, and it is the one thing aligning the two halves. */
+  --spine:104px;--spine-gap:30px;
 }
 body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
   display:flex;flex-direction:column;font-size:var(--t4);
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:var(--red);text-decoration:none}a:hover{color:#991B1B}
-.wrap{max-width:820px;margin:0 auto;padding:0 20px}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
+.wrap{max-width:820px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
-.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
-.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
+.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:var(--t5)}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s5);font-size:var(--t5)}
 .hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
-main{flex:1;padding:48px 0 80px}
+main{flex:1;padding:var(--s8) 0 var(--s9)}
 .kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
 .h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
-h1.h{font-size:var(--t1);line-height:1.15;margin:10px 0 0}
-.sub{color:var(--ink-2);font-size:var(--t4);max-width:60ch;margin:10px 0 0}
-.gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:26px;max-width:400px;margin:56px auto;text-align:center}
+h1.h{font-size:var(--t1);line-height:1.15;margin:var(--s4) 0 0}
+.sub{color:var(--ink-2);font-size:var(--t4);max-width:60ch;margin:var(--s4) 0 0}
+.gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
 .gate .lab{display:block;font-size:var(--t5);color:var(--ink-3)}
-.gate input{width:100%;padding:10px 12px;border:1px solid var(--edge);border-radius:var(--r);margin:12px 0;
+.gate input{width:100%;padding:var(--s4);border:1px solid var(--edge);border-radius:var(--r);margin:var(--s4) 0;
   font-size:var(--t4);font-family:inherit;color:var(--ink);background:var(--paper)}
 .gate input:focus{outline:none;border-color:var(--red)}
-.gate button,.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:10px 22px;font-weight:600;
+.gate button,.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s4) var(--s6);font-weight:600;
   font-size:var(--t4);font-family:inherit;cursor:pointer}
-.gate button:hover,.btn:hover{background:#991B1B}
-.err{color:var(--red);font-size:var(--t5);margin-top:8px}
+.gate button:hover,.btn:hover{background:var(--red-deep)}
+.err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
 
 /* Sections are typographic, not boxed: a serif heading and a rule. */
-#hub{margin-top:46px}
+#hub{margin-top:var(--s8)}
 .card{background:none;border:0;border-radius:0;padding:0;margin:0}
-.card+.card{margin-top:56px;border-top:1px solid var(--line);padding-top:38px}
+.card+.card{margin-top:var(--s8);border-top:1px solid var(--line);padding-top:var(--s7)}
 .card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);
-  text-transform:none;margin:0 0 20px}
+  text-transform:none;margin:0 0 var(--s6)}
 
 /* A day is one grid row: the date sits in the margin, its entries stack in
    the text column. This is the whole look — it reads as a dated document
    rather than a list of status pills. */
-.day{display:grid;grid-template-columns:104px minmax(0,1fr);column-gap:30px;padding:22px 0}
+.day{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
 .day+.day{border-top:1px solid var(--hair)}
 .day-date{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);color:var(--ink);
-  line-height:1.35;margin:0;padding-top:1px}
+  line-height:1.35;margin:0;padding-top:var(--s1)}
 .day-date .dd-y{display:block;font-size:var(--t5);color:var(--ink-3)}
 .entry{grid-column:2;display:block;padding:0}
-.entry+.entry{margin-top:22px}
+.entry+.entry{margin-top:var(--s6)}
 .entry-title{font-weight:600;font-size:var(--t3);line-height:1.45;color:var(--ink)}
-.entry-details{color:var(--ink-2);font-size:var(--t4);margin-top:5px;max-width:66ch}
-/* Type reads as a marked word, not a filled chip — the dot carries the
-   colour so the row stays text. */
-.badge{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;min-width:0;
+.entry-details{color:var(--ink-2);font-size:var(--t4);margin-top:var(--s2);max-width:66ch}
+/* Type reads as a marked word, not a filled chip. One shape in three weights
+   rather than three colours — red is reserved for interaction (rule 5), so
+   the changelog's own entries never compete with the page's controls. */
+.badge{display:inline-flex;align-items:center;gap:var(--s3);background:none;border:0;padding:0;min-width:0;
   border-radius:0;text-align:left;font-size:var(--t5);font-weight:500;letter-spacing:0;
   text-transform:capitalize;color:var(--ink-2);white-space:nowrap}
 .badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-3);flex:none}
-.badge.feature::before{background:var(--red)}
-.badge.improvement::before{background:var(--ink)}
-.badge.fix::before{background:#C7CBD2}
-@media (max-width:640px){
-  .day{grid-template-columns:minmax(0,1fr);row-gap:12px;padding:20px 0}
-  .day-date{grid-column:1;grid-row:auto}
-  .day-date .dd-y{display:inline;font-size:inherit;color:var(--ink-3)}
-  .day-date .dd-y::before{content:", "}
-  .entry{grid-column:1}
-}
-/* Ideas mirror the changelog's rhythm: the bucket name sits in the same
-   104px margin column, so both halves of the page share one spine. */
-.idea{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid var(--hair);font-size:var(--t4)}
-.bucket-h+.idea{border-top:none}
-.idea input[type=checkbox]{width:15px;height:15px;accent-color:var(--red);flex:none;cursor:pointer;margin-top:4px}
+.badge.feature::before{background:var(--ink)}                                    /* filled  */
+.badge.improvement::before{background:none;box-shadow:inset 0 0 0 1.5px var(--ink-3)}  /* ring */
+.badge.fix::before{background:var(--ink-4)}                                      /* pale    */
+/* Ideas share the changelog's spine: one .bucket per group, gridded on the
+   SAME --spine column, so "Now / Next / Later" sit exactly where the dates
+   do and the two halves of the page line up. Needs the wrapper emitted by
+   renderIdeas() — a flat sibling list cannot do this (auto-placement would
+   put the second heading beside the first bucket's rows). */
+.bucket{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
+.bucket+.bucket{border-top:1px solid var(--hair)}
+.bucket-h{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);letter-spacing:0;
+  text-transform:none;color:var(--ink);font-weight:500;margin:0;padding-top:var(--s1)}
+.bucket-body{grid-column:2;min-width:0}
+/* Rows stay flex INSIDE the text column: checkbox / text / priority / actions
+   is a row of controls, not a second grid. */
+.idea{display:flex;align-items:flex-start;gap:var(--s4);padding:var(--s4) 0;border-top:1px solid var(--hair);font-size:var(--t4)}
+.bucket-body>.idea:first-child{border-top:none;padding-top:0}
+.idea input[type=checkbox]{width:15px;height:15px;accent-color:var(--red);flex:none;cursor:pointer;margin-top:var(--s2)}
 .idea .tx{flex:1;min-width:0}
 .idea .t{overflow-wrap:anywhere;color:var(--ink)}
-.idea .n{color:var(--ink-3);font-size:var(--t5);margin-top:2px;overflow-wrap:anywhere}
-.idea .n-edit{display:block;width:100%;margin-top:5px;padding:6px 9px;border:1px solid var(--edge);border-radius:var(--r);
+.idea .n{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1);overflow-wrap:anywhere}
+.idea .n-edit{display:block;width:100%;margin-top:var(--s2);padding:var(--s3);border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:var(--t5);color:var(--ink);background:var(--paper)}
 .idea .n-edit:focus{outline:none;border-color:var(--red)}
 .idea.done .t{color:var(--ink-3);text-decoration:line-through}
 .idea .d{color:var(--ink-3);font-size:var(--t5);white-space:nowrap}
-.idea .rm,.idea .nt{background:none;border:0;color:var(--ink-3);font-size:var(--t5);cursor:pointer;font-family:inherit;padding:2px 4px}
+.idea .rm,.idea .nt{background:none;border:0;color:var(--ink-3);font-size:var(--t5);cursor:pointer;font-family:inherit;padding:var(--s1) var(--s2)}
 .idea .rm:hover{color:var(--red);text-decoration:underline}.idea .nt:hover{color:var(--ink);text-decoration:underline}
 .idea .rm.armed{color:var(--red);font-weight:600;text-decoration:underline}
 .idea .pr{flex:none;background:none;border:1px solid var(--edge);border-radius:var(--r);color:var(--ink-2);
-  font-size:var(--t5);font-weight:500;letter-spacing:0;text-transform:none;padding:1px 9px;cursor:pointer;
-  font-family:inherit;margin-top:2px}
+  font-size:var(--t5);font-weight:500;letter-spacing:0;text-transform:none;padding:var(--s1) var(--s3);cursor:pointer;
+  font-family:inherit;margin-top:var(--s1)}
 .idea .pr:hover{border-color:var(--ink-3)}
-.idea .pr.now{border-color:#E8B4B4;color:var(--red)}
+.idea .pr.now{border-color:var(--red-pale);color:var(--red)}
 .idea .pr.later{color:var(--ink-3)}
-.bucket-h{font-family:var(--serif);font-size:var(--t3);letter-spacing:0;text-transform:none;color:var(--ink);
-  font-weight:500;margin:26px 0 6px}
-.bucket-h:first-child{margin-top:0}
 #ideas.busy{opacity:.55;pointer-events:none}
-/* Changelog toolbar: a segmented control (one recessed track, the active
-   segment raised as a white card) plus an inline search. Reads as a single
-   control instead of four loose pills. */
-.logbar{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 6px}
 /* Filters read as a line of links, not a raised widget — the active one is
-   simply the one set in ink. */
-.seg{display:inline-flex;flex-wrap:wrap;background:none;border:0;border-radius:0;padding:0;gap:16px}
-.seg button{background:none;border:0;border-radius:0;padding:0 0 3px;font-family:inherit;font-size:var(--t5);
-  color:var(--ink-3);cursor:pointer;display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap;
+   simply the one set in ink, underlined. */
+.logbar{display:flex;align-items:baseline;gap:var(--s4);flex-wrap:wrap;margin:0 0 var(--s2)}
+.seg{display:inline-flex;flex-wrap:wrap;background:none;border:0;border-radius:0;padding:0;gap:var(--s5)}
+.seg button{background:none;border:0;border-radius:0;padding:0 0 var(--s1);font-family:inherit;font-size:var(--t5);
+  color:var(--ink-3);cursor:pointer;display:inline-flex;align-items:baseline;gap:var(--s2);white-space:nowrap;
   border-bottom:1px solid transparent}
 .seg button:hover{color:var(--ink)}
 .seg button .n{font-size:var(--t6);color:var(--ink-3);font-variant-numeric:tabular-nums}
 .seg button.on{background:none;color:var(--ink);font-weight:600;box-shadow:none;border-bottom-color:var(--red)}
 .seg button.on .n{color:var(--red)}
-.logsearch{flex:1;min-width:160px;max-width:240px;padding:5px 0;border:0;border-bottom:1px solid var(--edge);
+.logsearch{flex:1;min-width:160px;max-width:240px;padding:var(--s2) 0;border:0;border-bottom:1px solid var(--edge);
   border-radius:0;font-size:var(--t5);font-family:inherit;color:var(--ink);background:none}
 .logsearch::placeholder{color:var(--ink-3)}
 .logsearch:focus{outline:none;border-bottom-color:var(--red)}
-.logmeta{color:var(--ink-3);font-size:var(--t5);margin:0 0 18px}
-.cmt{font-size:var(--t5);font-weight:400;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;margin-left:8px}
+.logmeta{color:var(--ink-3);font-size:var(--t5);margin:0 0 var(--s5)}
+.cmt{font-size:var(--t5);font-weight:400;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;margin-left:var(--s3)}
+/* The negative margin must stay the exact inverse of the padding, or the
+   hover background sits off the text it belongs to. Kept literal for that
+   reason — this is a mirror, not rhythm. */
 .ebody{min-width:0;border-radius:var(--r);padding:3px 9px;margin:-3px -9px;cursor:pointer}
 .ebody:hover{background:var(--wash)}
 .ebody.editing{cursor:default;background:none;padding:0;margin:0}
 .edited-tag{font-size:var(--t5);font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink-3);
-  border:0;border-radius:0;padding:0;margin-left:8px;font-style:italic}
-.entry-note{color:#5F5E5A;font-size:var(--t5);margin-top:6px;overflow-wrap:anywhere;max-width:66ch;
-  border-left:2px solid var(--edge);padding-left:11px}
+  border:0;border-radius:0;padding:0;margin-left:var(--s3);font-style:italic}
+.entry-note{color:var(--note);font-size:var(--t5);margin-top:var(--s2);overflow-wrap:anywhere;max-width:66ch;
+  border-left:2px solid var(--edge);padding-left:var(--s4)}
 .entry-note::before{content:"Note ";font-weight:600;color:var(--ink-3)}
-.ed{display:flex;flex-direction:column;gap:9px;padding:14px;border:1px solid var(--edge);border-radius:var(--r);background:#fff}
+.ed{display:flex;flex-direction:column;gap:var(--s3);padding:var(--s5);border:1px solid var(--edge);border-radius:var(--r);background:#fff}
 .ed label{font-size:var(--t5);letter-spacing:0;text-transform:none;color:var(--ink-3);font-weight:500}
-.ed input,.ed textarea{width:100%;padding:7px 10px;border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:var(--t5);color:var(--ink);background:var(--paper);margin-top:-5px}
+.ed input,.ed textarea{width:100%;padding:var(--s3);border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:var(--t5);color:var(--ink);background:var(--paper);margin-top:calc(var(--s2) * -1)}
 .ed textarea{resize:vertical;min-height:52px;line-height:1.6}
 .ed input:focus,.ed textarea:focus{outline:none;border-color:var(--red)}
-.ed .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px}
-.ed .btn.sm{padding:6px 16px;font-size:var(--t5)}
-.ed .lnk{background:none;border:0;color:var(--ink-3);font-size:var(--t5);cursor:pointer;font-family:inherit;padding:2px 0}
+.ed .row{display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap;margin-top:var(--s1)}
+.ed .btn.sm{padding:var(--s3) var(--s5);font-size:var(--t5)}
+.ed .lnk{background:none;border:0;color:var(--ink-3);font-size:var(--t5);cursor:pointer;font-family:inherit;padding:var(--s1) 0}
 .ed .lnk:hover{color:var(--red);text-decoration:underline}
 .ed .spacer{flex:1}
 details.month{border-top:1px solid var(--line);margin-top:0;padding-top:0}
-summary.month-sum{cursor:pointer;font-family:var(--serif);font-size:var(--t3);color:var(--ink-2);padding:16px 0;
-  list-style:none;display:flex;align-items:baseline;gap:8px}
+summary.month-sum{cursor:pointer;font-family:var(--serif);font-size:var(--t3);color:var(--ink-2);padding:var(--s5) 0;
+  list-style:none;display:flex;align-items:baseline;gap:var(--s3)}
 summary.month-sum::-webkit-details-marker{display:none}
 /* Literal + / − glyphs: a CSS \\2212 escape would be read as an octal escape
    by the template literal this stylesheet lives inside. */
@@ -4775,15 +4792,26 @@ summary.month-sum::after{content:"+";color:var(--ink-3);font-family:inherit}
 details.month[open] summary.month-sum::after{content:"−"}
 summary.month-sum:hover{color:var(--red)}
 details.month .day:first-of-type{border-top:1px solid var(--hair);margin-top:0}
-.add{display:flex;gap:10px;margin-top:22px}
-.add input{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--edge);border-radius:var(--r);font-size:var(--t4);
+.add{display:flex;gap:var(--s4);margin-top:var(--s6)}
+.add input{flex:1;min-width:0;padding:var(--s3) var(--s4);border:1px solid var(--edge);border-radius:var(--r);font-size:var(--t4);
   font-family:inherit;color:var(--ink);background:var(--paper)}
 .add input:focus{outline:none;border-color:var(--red)}
 .muted{color:var(--ink-3);font-size:var(--t5)}
-footer{background:var(--ink);color:#B8C0CC;font-size:var(--t5)}
-footer .wrap{padding:28px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+/* LAST in the sheet on purpose. Both spined grids (.day, .bucket) are defined
+   above at the same specificity, so an earlier media block loses to whichever
+   rule is declared later — .bucket kept its two columns on a phone until this
+   moved down here. */
+@media (max-width:640px){
+  .day,.bucket{grid-template-columns:minmax(0,1fr);row-gap:var(--s4);padding:var(--s6) 0}
+  .day-date,.bucket-h{grid-column:1;grid-row:auto;padding-top:0}
+  .day-date .dd-y{display:inline;font-size:inherit;color:var(--ink-3)}
+  .day-date .dd-y::before{content:", "}
+  .entry,.bucket-body{grid-column:1}
+}
+footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
+footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
-footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
+footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
@@ -5084,17 +5112,20 @@ function renderIdeas(){
     else open[PRIORITIES.indexOf(x.priority)>=0?x.priority:"next"].push(x);
   });
   shipped.sort(function(a,b){return String(b.done_at||"").localeCompare(String(a.done_at||""));});
-  PRIORITIES.forEach(function(p){
-    if(!open[p].length)return;
-    var h=document.createElement("div");h.className="bucket-h";h.textContent=PR_LABEL[p];
-    el.appendChild(h);
-    open[p].forEach(function(x){el.appendChild(ideaRow(x));});
-  });
-  if(shipped.length){
-    var h=document.createElement("div");h.className="bucket-h";h.textContent="Shipped";
-    el.appendChild(h);
-    shipped.forEach(function(x){el.appendChild(ideaRow(x));});
+  // One .bucket per group so the heading can sit in the SAME 104px margin
+  // column the changelog's dates use. As a flat sibling list it could not:
+  // grid auto-placement would slot the second heading beside the first
+  // bucket's rows instead of starting a new row.
+  function bucket(label,items){
+    var b=document.createElement("div");b.className="bucket";
+    var h=document.createElement("div");h.className="bucket-h";h.textContent=label;
+    var body=document.createElement("div");body.className="bucket-body";
+    items.forEach(function(x){body.appendChild(ideaRow(x));});
+    b.appendChild(h);b.appendChild(body);
+    el.appendChild(b);
   }
+  PRIORITIES.forEach(function(p){ if(open[p].length) bucket(PR_LABEL[p],open[p]); });
+  if(shipped.length) bucket("Shipped",shipped);
 }
 function saveIdeas(next){
   if(!IDEAS_OK||SAVING)return;

@@ -15,8 +15,8 @@ Written 2026-07-31. Read this first when picking the Pro tier back up.
 | 4. Webhook destination + 6 events | ✅ Done |
 | 5. Supabase billing schema | ✅ Done, verified |
 | 6. Render env vars | ✅ Done (saved, **not yet deployed** — see below) |
-| **7. Front-end billing UI** | ❌ **NOT started — this is the next step** |
-| 8. End-to-end test with a test card | ❌ Not started |
+| 7. Front-end billing UI | ✅ Done 2026-07-31 (commit `6529931`) |
+| **8. End-to-end test with a test card** | ❌ **NOT started — this is the next step** |
 | 9. Flip `PRO_ENABLED=on` | ❌ Not until 7 and 8 pass |
 
 ---
@@ -129,26 +129,29 @@ a bug — it is the master switch working.
 
 ---
 
-## Next step: the front-end (phase 7)
+## Phase 7 — DONE (2026-07-31, commit `6529931`)
 
-`index.html` has **no billing UI at all** — grep for `api/checkout` returns
-nothing. What's needed:
+All six pieces shipped: the pricing modal (`#proModal` — every
+`.unlock-comps-btn` CTA and the account menu's "Upgrade to Pro" open it),
+checkout POST + redirect, "Manage billing" (Stripe portal) in the account
+menu for subscribers, the founding counter (new public
+`GET /api/founding-seats`, 60s server cache, display-only — checkout's 409
+stays the authority), `?checkout=success|cancelled` banners on `/desk`
+(success polls `/api/config` while the webhook lands), and the
+`founding_closed` 409 falls back to monthly in the modal.
 
-1. A pricing surface — Pro monthly vs founding annual vs single report
-2. An upgrade button that `POST`s to `/api/checkout` with
-   `{ plan: "pro_monthly" | "pro_annual_founding" }` and redirects to
-   `session.url`
-3. A "Manage billing" link that `POST`s to `/api/billing-portal` and redirects
-4. A founding-member counter ("N of 50 left") — needs a small read endpoint,
-   `foundingSlotsLeft()` is not currently exposed to the client
-5. Handling for the `?checkout=success` / `?checkout=cancelled` returns on
-   `/desk` (the URLs `server.js:6155` already sends people back to)
-6. The `founding_closed` 409 case — checkout returns
-   `{ code: "founding_closed", fallbackPlan: "pro_monthly" }` and the UI should
-   offer monthly rather than dead-ending
+Notes for whoever touches it next:
 
-Locked/limited states can read from `/api/config`, which already ships
-entitlements so the UI doesn't need a second round trip.
+- A signed-out plan click holds the plan (`pendingCheckoutPlan`), collects
+  sign-in via the account modal, and resumes to checkout — cancelled
+  sign-ins clear it (same pattern as `pendingPortfolioSave`).
+- Bug fixed along the way: the SPA allow-list matched `req.url` exactly, so
+  `/desk?checkout=success` — Stripe's own return URL — 404'd. It now matches
+  the path without the query string (`spaPath` in server.js).
+- Prices in the modal are display copy and must match Stripe if prices ever
+  change. The $39 single report shows as "coming soon" (phase 9 builds it).
+- Local verification config exists: `.claude/launch.json` → `dev-test-pro`
+  runs the server with `PRO_ENABLED=on` on port 3118 (untracked file).
 
 ---
 

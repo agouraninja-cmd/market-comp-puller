@@ -907,7 +907,15 @@ function tryConsumeDailySearch() {
 const searchCacheMem = new Map();
 
 function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, subjectDetails }) {
-  const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+  // Strips decorative punctuation ("St." vs "St", "City,IL" vs "City, IL")
+  // so near-identical typing of the same address still hits the cache.
+  const norm = (s) => String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/\s+/g, " ")
+    .trim();
   const verifiedSig = (verifiedComps || [])
     .map((c) => `${c.address}|${c.deal_date}|${c.price_or_rate}`)
     .sort()

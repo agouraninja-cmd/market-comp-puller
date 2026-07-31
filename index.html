@@ -6581,7 +6581,12 @@
     if (p.isPro) {
       return {
         title: p.plan === "pro_annual_founding" ? "Pro — founding member" : "Pro",
-        detail: "Every comparable, a 10-year lookback, unlimited exports, and report branding.",
+        // Same rule as the pricing tile: name only what ships. Unlimited
+        // exports and report branding are granted by entitlements.js but
+        // neither is BUILT, and promising them to someone who has just paid is
+        // worse than promising them to a prospect. Restore both here in the
+        // same change that builds the features.
+        detail: "Every comparable, and a lookback of up to 10 years.",
       };
     }
     if (p.status === "expired") {
@@ -6677,7 +6682,7 @@
       await refreshProConfig();
       if (proConfig && proConfig.isPro) {
         showCheckoutNotice("ok", "You're on Pro.",
-          "Every comparable, a 10-year lookback, unlimited exports, and report branding. Re-run a report to see the full list.");
+          "Every comparable, and a lookback of up to 10 years. Re-run a report to see the full list.");
         return;
       }
       await new Promise((r) => setTimeout(r, 2000));

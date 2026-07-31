@@ -4145,6 +4145,51 @@
     return null;   // yes / commercial / residential on their own decide nothing
   }
 
+  // ---- Proving a footprint is actually the searched address -----------------
+  // A geocoded point sits on the STREET CENTERLINE, so a 120 m search reaches
+  // both sides of the road. Shipped without this, 1500 W Bethany Home Rd in
+  // Phoenix read "Mandarin Super Buffet" — addr:housenumber 1501, i.e. the
+  // building opposite — and set the type to Retail. Proximity alone cannot
+  // tell the two sides of a street apart; the house number can.
+  // So a footprint must PROVE it is the searched address to get a vote. An
+  // untagged building is not evidence, which is the same "the actual property
+  // or nothing" rule the map photos already follow. It fires less often and
+  // every time it fires it is checkable.
+  function houseNumberOf(address) {
+    const m = /^\s*(\d+)/.exec(String(address || ""));
+    return m ? m[1] : null;
+  }
+  // OSM writes house numbers as "1500", "1500-1510", "1500A", "1500;1502".
+  function osmNumberMatches(tagNum, want) {
+    if (!tagNum || !want) return false;
+    return String(tagNum).split(/[;,]/).some((part) => {
+      const s = part.trim();
+      const range = /^(\d+)\s*[-–]\s*(\d+)$/.exec(s);
+      if (range) {
+        const a = Number(range[1]), b = Number(range[2]), w = Number(want);
+        return w >= Math.min(a, b) && w <= Math.max(a, b);
+      }
+      const lead = /^(\d+)/.exec(s);
+      return !!lead && lead[1] === want;
+    });
+  }
+  // Guards the case where a cross street within 120 m carries the same number.
+  // Compares only distinctive words — directionals and street-type suffixes
+  // differ too often between OSM ("West Bethany Home Road") and what people
+  // type ("W Bethany Home Rd") to be worth matching on. Absent or
+  // uninformative data returns true: this narrows a match, never invents one.
+  var STREET_STOPWORDS = new Set(["north","south","east","west","northeast","northwest",
+    "southeast","southwest","street","road","avenue","boulevard","drive","lane","way",
+    "court","place","parkway","highway","circle","terrace","trail","loop","suite","unit"]);
+  function streetLooksSame(osmStreet, address) {
+    if (!osmStreet) return true;
+    const toks = String(osmStreet).toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ")
+      .filter((t) => t.length >= 3 && !STREET_STOPWORDS.has(t));
+    if (!toks.length) return true;
+    const hay = String(address).toLowerCase();
+    return toks.some((t) => hay.indexOf(t) >= 0);
+  }
+
   const typeGuessCache = new Map();
 
   async function detectPropertyType(address) {
@@ -4152,30 +4197,33 @@
     if (typeGuessCache.has(key)) return typeGuessCache.get(key);
     let guess = null;
     try {
-      const pt = await geocodeAddress(address);
+      const want = houseNumberOf(address);
+      const pt = want ? await geocodeAddress(address) : null;
       if (pt) {
         const j = await overpassQuery(
           `[out:json][timeout:10];way(around:120,${pt.lat.toFixed(6)},${pt.lng.toFixed(6)})["building"];out tags bb;`
         );
-        // Same distance-discounted area score as snapMarkersToBuildings: the
-        // main building, not the guard shack or the neighbour's shed. The
-        // geocoded point sits on the street centerline, hence the 120 m reach.
+        // Address-matching is a FILTER, applied before scoring rather than as a
+        // check on the winner. Verifying the winner instead would let a large
+        // wrong-numbered neighbour beat the correctly-numbered building and
+        // then veto the whole lookup — exactly the Phoenix case, where the
+        // restaurant across the road outscored everything on its footprint.
         const mPerLng = 111320 * Math.cos(pt.lat * Math.PI / 180);
         let best = null, bestScore = 0;
         for (const e of (j && j.elements) || []) {
-          if (!e.bounds) continue;
+          if (!e.bounds || !e.tags) continue;
+          if (!osmNumberMatches(e.tags["addr:housenumber"], want)) continue;
+          if (!streetLooksSame(e.tags["addr:street"], address)) continue;
           const cLat = (e.bounds.minlat + e.bounds.maxlat) / 2;
           const cLng = (e.bounds.minlon + e.bounds.maxlon) / 2;
           const dist = Math.hypot((cLat - pt.lat) * 111320, (cLng - pt.lng) * mPerLng);
           if (dist > 120) continue;
+          // Among footprints that all carry the right address (a campus, or a
+          // building mapped as several parts), prefer the main mass.
           const area = Math.max((e.bounds.maxlat - e.bounds.minlat) * 111320 * ((e.bounds.maxlon - e.bounds.minlon) * mPerLng), 100);
           const score = area / (dist + 25);
           if (score > bestScore) { bestScore = score; best = e; }
         }
-        // Only the footprint we actually landed on gets a vote. Scoring just
-        // the DECIDABLE ones instead would let a tagged neighbour speak for an
-        // untagged subject — measured on a Midtown block, 40 of 41 footprints
-        // come back building=yes, so that borrowing would happen constantly.
         guess = (best && osmTypeFor(best.tags)) || null;
       }
     } catch (_) { /* offline, Overpass down, geocode miss — no guess, no harm */ }

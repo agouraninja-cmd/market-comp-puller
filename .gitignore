@@ -23,6 +23,9 @@ server.err.log
 leads.jsonl
 comp-submissions.jsonl
 
+# The team's internal contact book (names, phones, emails) — never commit
+contacts.json
+
 # Account store (emails + password hashes; * covers .tmp/.corrupt sidecars) — never commit
 account-store.json*
 

@@ -973,6 +973,18 @@ async function foundingSlotsLeft() {
   }
 }
 
+// The public "N of 50 left" counter reads through this 60s cache so a burst
+// of pricing-modal opens costs one Supabase read, not one each. Checkout
+// itself always calls foundingSlotsLeft() fresh — the cache is display-only.
+let foundingSeatsCache = { at: 0, left: null };
+async function foundingSlotsLeftCached() {
+  const now = Date.now();
+  if (now - foundingSeatsCache.at < 60 * 1000) return foundingSeatsCache.left;
+  const left = await foundingSlotsLeft();
+  foundingSeatsCache = { at: now, left };
+  return left;
+}
+
 // Idempotency. Stripe retries on any non-2xx and on timeouts, and a sleeping
 // Render instance guarantees some of those. Insert-first: the unique primary
 // key makes a duplicate delivery a conflict, which is our signal to skip.
@@ -6263,6 +6275,24 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Stripe: founding-seat counter for the pricing UI ---
+  // Public and harmless: it exposes one number, "how many of the 50 founding
+  // seats remain". `left: null` means unknown (billing off, or the count
+  // failed) — the client hides the counter and lets checkout's own 409 be
+  // the authority on whether the offer has closed.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/founding-seats") {
+    if (rateLimited("founding:" + clientIp(req), 30)) {
+      return sendJson(res, 429, { error: "Too many requests." });
+    }
+    if (!PRO_ENABLED || !STRIPE_CONFIGURED) {
+      return sendJson(res, 200, { left: null, limit: FOUNDING_MEMBER_LIMIT });
+    }
+    foundingSlotsLeftCached().then((left) =>
+      sendJson(res, 200, { left, limit: FOUNDING_MEMBER_LIMIT })
+    );
+    return;
+  }
+
   // --- Stripe: webhook ---
   // The RAW body is the signed payload. It must NOT be parsed before
   // verification: re-serializing changes byte order and the HMAC stops
@@ -6408,7 +6438,11 @@ const server = http.createServer((req, res) => {
   // --- Static: serve index.html for "/", "/index.html", a /r/<id> share link,
   // or /desk (the SPA's My Desk view — the client reads the path and shows the
   // desk instead of the home stack). ---
-  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html" || req.url === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(req.url))) {
+  // Matched on the path WITHOUT the query string: Stripe sends every finished
+  // checkout back to /desk?checkout=…, and an exact match on the raw URL
+  // would 404 the redirect that ends every purchase.
+  const spaPath = req.url.split("?")[0];
+  if (req.method === "GET" && (spaPath === "/" || spaPath === "/index.html" || spaPath === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(spaPath))) {
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
       if (err) {
         res.writeHead(500);
@@ -6421,7 +6455,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
-        ...(req.url === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
+        ...(spaPath === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
       });
       // Canonical/og/JSON-LD URLs in index.html are written against the default
       // origin; rewrite them when SITE_URL is overridden (custom domain).

@@ -458,6 +458,45 @@
     </div>
   </div>
 
+  <!-- Pro pricing modal — the checkout entrance (phase 7). Opened by every
+       .unlock-comps-btn CTA and the account menu's Upgrade item. Plan buttons
+       POST /api/checkout and redirect to Stripe; nothing here grants anything,
+       entitlements are decided server-side. Prices are display copy and must
+       match the Stripe prices configured in the environment. -->
+  <div id="proModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+      <h2 class="text-lg font-semibold text-slate-900">Upgrade to CompNinja Pro</h2>
+      <ul class="text-sm text-slate-600 mt-2 space-y-1">
+        <li>• Every comparable in every report — nothing withheld</li>
+        <li>• Lookback windows up to 10 years (free stops at 12 months)</li>
+        <li>• Unlimited CSV, image, and PDF exports</li>
+        <li>• Full access to CompNinja's verified comp records</li>
+      </ul>
+      <div class="mt-4 space-y-3">
+        <button id="proMonthlyBtn" type="button"
+          class="btn-live w-full text-left border border-slate-300 rounded-lg px-4 py-3 hover:bg-slate-50">
+          <span class="flex items-center justify-between gap-2">
+            <span class="font-semibold text-slate-900">Pro Monthly</span>
+            <span class="font-semibold text-slate-900">$49<span class="text-slate-400 font-normal text-sm">/month</span></span>
+          </span>
+          <span class="block text-xs text-slate-500 mt-1">Cancel anytime from your account menu.</span>
+        </button>
+        <button id="proFoundingBtn" type="button"
+          class="btn-live w-full text-left border border-slate-300 rounded-lg px-4 py-3 hover:bg-slate-50">
+          <span class="flex items-center justify-between gap-2">
+            <span class="font-semibold text-slate-900">Founding Member</span>
+            <span class="font-semibold text-slate-900">$990<span class="text-slate-400 font-normal text-sm">/year</span></span>
+          </span>
+          <span class="block text-xs text-slate-500 mt-1">First 50 members only — your price stays locked for as long as you subscribe.</span>
+          <span id="foundingSeats" class="hidden block text-xs font-semibold text-[#B91C1C] mt-1"></span>
+        </button>
+      </div>
+      <p id="proError" class="hidden text-sm text-red-600 mt-3"></p>
+      <button id="proCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-1 mt-3">Not now</button>
+      <p class="text-xs text-slate-400 mt-2">Secure checkout by Stripe. Just need one report? A $39 single-report unlock is coming soon.</p>
+    </div>
+  </div>
+
   <!-- Account: one modal, four modes (signin / signup / forgot / reset) -->
   <div id="acctModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
@@ -612,6 +651,9 @@
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
           <div id="acctMenu" class="hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
+            <!-- Billing entries — mutually exclusive, both hidden while PRO_ENABLED is off -->
+            <button id="upgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-red-50">Upgrade to Pro</button>
+            <button id="billingBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 hover:bg-slate-50">Manage billing…</button>
             <button id="signOutBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-slate-50">Sign out</button>
             <button id="deleteAcctBtn" type="button" class="block w-full text-left px-3 py-1.5 text-red-700 hover:bg-red-50">Delete account…</button>
           </div>
@@ -741,6 +783,10 @@
         <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
       </div>
       <p class="text-sm text-[#5A6473] mt-3">Your recent searches and tracked properties.</p>
+
+      <!-- Stripe sends checkout returns back to /desk?checkout=… — this is
+           where the outcome lands (see handleCheckoutReturn). -->
+      <div id="deskBilling" class="hidden mt-4 border border-[#D8D4C9] rounded-lg bg-white p-4 text-sm text-[#4C5665]"></div>
 
       <!-- Search history — one row per property, stored in this browser only.
            The newest few keep their full report (Open is free); older rows keep
@@ -1992,6 +2038,7 @@
     streetviewEnabled = Boolean(cfg.streetview);
     proConfig = cfg.pro || { enabled: false };
     applyLookbackGating();
+    updateProMenu();
 
     if (!cfg.authRequired) return;            // no password configured
 
@@ -5279,6 +5326,7 @@
   }
   function closeAcctModal() {
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
+    pendingCheckoutPlan = null;   // …nor a surprise checkout redirect
     document.getElementById("acctModal").classList.add("hidden");
   }
 
@@ -5325,13 +5373,18 @@
         email, password, name: document.getElementById("acctName").value.trim(),
       });
       refreshAccountUI();
-      // Capture the pending-save flag BEFORE closing: closeAcctModal clears it
+      refreshProConfig();   // entitlements are per-user — re-read them
+      // Capture the pending flags BEFORE closing: closeAcctModal clears them
       // (so a cancelled nudge can't fire a surprise save after a later sign-in).
       const firePendingSave = pendingPortfolioSave;
       pendingPortfolioSave = false;
-      // Only rows that still hold their report can be imported.
+      const firePendingCheckout = pendingCheckoutPlan;
+      pendingCheckoutPlan = null;
+      // Only rows that still hold their report can be imported. A pending
+      // checkout outranks the import offer — we're about to leave for Stripe,
+      // and a panel nobody sees again would strand the sign-up flow.
       const saved = historyWithReports();
-      if (isUp && saved.length) {
+      if (isUp && saved.length && !firePendingCheckout) {
         document.getElementById("acctImportCount").textContent = String(saved.length);
         document.getElementById("acctForm").classList.add("hidden");
         document.getElementById("acctImport").classList.remove("hidden");
@@ -5339,6 +5392,7 @@
         closeAcctModal();
       }
       if (firePendingSave) savePortfolioCurrent();
+      if (firePendingCheckout) startCheckout(firePendingCheckout);
     } catch (ex) {
       err.textContent = ex.message;
       err.classList.remove("hidden");
@@ -5352,6 +5406,7 @@
     currentUser = null;
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
+    refreshProConfig();   // a signed-out visitor is free-tier again
   });
   document.getElementById("deleteAcctBtn").addEventListener("click", async () => {
     if (!confirm("Delete your CompNinja account, portfolio, and watchlist? This can't be undone.")) return;
@@ -5359,6 +5414,7 @@
     currentUser = null;
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
+    refreshProConfig();
   });
 
   // Bootstrap: who am I? Then honor a /#reset=<token> link.
@@ -6139,6 +6195,9 @@
       const locked = months > ceiling;
       opt.disabled = locked;
       if (locked && !/Pro$/.test(opt.textContent)) opt.textContent += " · Pro";
+      // Un-badge on the way back: a checkout-success poll re-runs this with
+      // the Pro ceiling, and the freshly-unlocked options must shed the label.
+      if (!locked) opt.textContent = opt.textContent.replace(/ · Pro$/, "");
       if (locked && opt.selected) activeIsLocked = true;
     });
     // The old default was 24 months, which is now above the free ceiling —
@@ -6153,16 +6212,170 @@
     }
   }
 
-  // Placeholder for the checkout flow (phases 3-8). Wired now so the locked
-  // block is never a dead control during internal testing; replaced by the
-  // real Stripe Checkout call when billing lands.
-  function openUpgradePrompt() {
-    alert("Pro checkout isn't wired up yet — this button becomes Stripe Checkout in the next phase.");
+  // --------------------------------------------------------------------------
+  // Pro billing — the checkout entrance (phase 7). The modal is presentation;
+  // /api/checkout re-checks the plan, the founding cap, and the signed-in user
+  // server-side, so nothing here can grant or misprice anything.
+  // --------------------------------------------------------------------------
+  // Plan chosen while signed out — held across the sign-in modal, fired after
+  // a successful sign-in/up, cleared by closeAcctModal (a cancelled sign-in
+  // must not fire a surprise checkout later). Same pattern as
+  // pendingPortfolioSave.
+  let pendingCheckoutPlan = null;
+
+  // The two account-menu billing entries: Upgrade for free visitors, Manage
+  // billing for subscribers. Both stay hidden while PRO_ENABLED is off, which
+  // keeps this whole surface invisible until billing is switched on.
+  function updateProMenu() {
+    const up = document.getElementById("upgradeBtn");
+    const bill = document.getElementById("billingBtn");
+    if (!up || !bill) return;
+    up.classList.toggle("hidden", !(proConfig.enabled && !proConfig.isPro));
+    bill.classList.toggle("hidden", !(proConfig.enabled && proConfig.isPro));
   }
+
+  // Re-read entitlements after anything that can change them (sign-in/out,
+  // a completed checkout). fetch() sends the session cookie, so the answer
+  // is user-specific.
+  async function refreshProConfig() {
+    try {
+      const r = await fetch("/api/config", { cache: "no-store" });
+      const cfg = await r.json();
+      proConfig = cfg.pro || { enabled: false };
+    } catch (_) { return; }
+    applyLookbackGating();
+    updateProMenu();
+  }
+
+  function setProBusy(busy) {
+    ["proMonthlyBtn", "proFoundingBtn"].forEach((id) => {
+      document.getElementById(id).disabled = busy;
+    });
+  }
+
+  function openUpgradePrompt() {
+    document.getElementById("proError").classList.add("hidden");
+    setProBusy(false);
+    document.getElementById("proModal").classList.remove("hidden");
+    // Seats counter — display-only. null (unknown or billing off) hides the
+    // line; 0 hides the founding option; checkout's 409 stays the authority.
+    const line = document.getElementById("foundingSeats");
+    line.classList.add("hidden");
+    fetch("/api/founding-seats")
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => {
+        if (d.left === 0) {
+          document.getElementById("proFoundingBtn").classList.add("hidden");
+        } else if (typeof d.left === "number") {
+          document.getElementById("proFoundingBtn").classList.remove("hidden");
+          line.textContent = `${d.left} of ${d.limit || 50} founding seats left`;
+          line.classList.remove("hidden");
+        }
+      })
+      .catch(() => {});
+  }
+
+  async function startCheckout(plan) {
+    // A subscription has to attach to an account. Hold the plan, collect the
+    // sign-in, then resume from the acctForm success path.
+    if (!currentUser) {
+      pendingCheckoutPlan = plan;
+      document.getElementById("proModal").classList.add("hidden");
+      openAcctModal("signup", "Your subscription attaches to an account — create one free, or sign in, and we'll continue to checkout.");
+      return;
+    }
+    const err = document.getElementById("proError");
+    err.classList.add("hidden");
+    setProBusy(true);
+    try {
+      const r = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data.url) { location.href = data.url; return; }   // off to Stripe
+      if (r.status === 401) {
+        // Session expired mid-visit — same resume path as signed-out.
+        pendingCheckoutPlan = plan;
+        document.getElementById("proModal").classList.add("hidden");
+        openAcctModal("signin", "Please sign in again and we'll continue to checkout.");
+        return;
+      }
+      // Errors surface in the modal, which may be closed if we arrived here
+      // straight from a sign-in resume — reopen it so the message is seen.
+      document.getElementById("proModal").classList.remove("hidden");
+      if (r.status === 409 && data.code === "founding_closed") {
+        document.getElementById("proFoundingBtn").classList.add("hidden");
+        err.textContent = "The founding-member offer has closed — Pro Monthly is still available above.";
+      } else {
+        err.textContent = data.error || "Could not start checkout. Please try again.";
+      }
+      err.classList.remove("hidden");
+    } catch (_) {
+      document.getElementById("proModal").classList.remove("hidden");
+      err.textContent = "Couldn't reach the server. Please try again.";
+      err.classList.remove("hidden");
+    }
+    setProBusy(false);
+  }
+
+  async function openBillingPortal() {
+    document.getElementById("acctMenu").classList.add("hidden");
+    try {
+      const data = await acctApi("POST", "/api/billing-portal");
+      if (data.url) location.href = data.url;
+    } catch (ex) {
+      alert(ex.message || "Could not open the billing portal.");
+    }
+  }
+
+  document.getElementById("proMonthlyBtn").addEventListener("click", () => startCheckout("pro_monthly"));
+  document.getElementById("proFoundingBtn").addEventListener("click", () => startCheckout("pro_annual_founding"));
+  document.getElementById("proCancel").addEventListener("click", () =>
+    document.getElementById("proModal").classList.add("hidden"));
+  document.getElementById("upgradeBtn").addEventListener("click", () => {
+    document.getElementById("acctMenu").classList.add("hidden");
+    openUpgradePrompt();
+  });
+  document.getElementById("billingBtn").addEventListener("click", openBillingPortal);
+
   document.addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest(".unlock-comps-btn");
     if (btn) openUpgradePrompt();
   });
+
+  // Stripe sends the visitor back to /desk?checkout=success|cancelled
+  // (the server's success_url/cancel_url). The subscription itself is written
+  // by the webhook, which can land seconds after the redirect — longer when
+  // the host was asleep — so success polls the config until the entitlement
+  // shows up rather than promising it instantly.
+  (function handleCheckoutReturn() {
+    if (location.pathname !== "/desk") return;
+    const state = new URLSearchParams(location.search).get("checkout");
+    if (!state) return;
+    history.replaceState({}, "", "/desk");   // a refresh shouldn't replay the banner
+    const box = document.getElementById("deskBilling");
+    if (!box) return;
+    if (state === "cancelled") {
+      box.textContent = "Checkout was cancelled — you haven't been charged.";
+      box.classList.remove("hidden");
+      return;
+    }
+    if (state !== "success") return;
+    box.textContent = "Payment received — activating your subscription…";
+    box.classList.remove("hidden");
+    let tries = 0;
+    (async function poll() {
+      await refreshProConfig();
+      if (proConfig.isPro) {
+        box.textContent = "You're on CompNinja Pro — full comp lists, long lookbacks, unlimited exports. Manage billing anytime from your account menu.";
+        return;
+      }
+      if (++tries < 5) { setTimeout(poll, 3000); return; }
+      box.textContent = "Payment received. Your subscription is activating — it can take a minute or two; refresh this page to see it.";
+    })();
+  })();
 
   // The audit trail: what the user changed about the comp set. Deliberately
   // NOT no-print — it must travel in print/PNG so a curated report says so.

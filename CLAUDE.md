@@ -227,6 +227,21 @@ dependency. `.env` is git-ignored — never commit it.
   in server.js — and note the billing tables have **no file fallback** by
   design, so `PRO_ENABLED=on` without Supabase configured resolves every
   visitor to the free tier and logs a `⛔` line at startup.
+- `PRO_AUDIENCE` — optional comma-separated email allowlist narrowing **who**
+  `PRO_ENABLED` applies to. Unset (the launch setting) means everyone. Set, it
+  means only those *signed-in* accounts are gated and only they can reach
+  `/api/checkout` and `/api/billing-portal`; every other visitor, anonymous
+  included, takes `computeEntitlements`' `enabled: false` branch and sees the
+  pre-Pro app. It exists so the paid tier can be proven against the live
+  deployment without gating real traffic or exposing a test-mode checkout — the
+  Stripe test card numbers are public, so an open test window lets a stranger
+  take a genuine subscription row for free. Three rules: `PRO_ENABLED` is still
+  the master switch (`proEnabledFor()` is the AND of both); the **webhook is
+  deliberately not audience-scoped** (it has no user and must keep writing rows
+  or a test proves nothing); and **unsetting it is the launch** — left set, the
+  product is live but unbuyable and the deployment looks perfectly healthy,
+  which is why startup logs it loudly. Rules live in `entitlements.js`
+  (`parseAudience` / `inAudience`), so `npm test` covers them.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 `MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
@@ -269,8 +284,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   when non-empty so pre-existing cache entries keep their keys; in-memory Map +
   file fallback when Supabase is unconfigured). A cache hit does NOT call Anthropic and does NOT count against
   `DAILY_SEARCH_CAP`.
-- `GET /api/config` — tells the front-end whether a password is required and
-  whether lead capture is on (`{ authRequired, leadCapture }`).
+- `GET /api/config` — what the front-end needs before it can render:
+  `{ authRequired, leadCapture, streetview, pro }`. The `pro` block carries
+  this visitor's entitlements (`enabled`, `billing`, `isPro`, `plan`, `status`,
+  `maxComps`, `maxLookbackMonths`, `exportsRemaining`, `graceUntil`) so locked
+  states need no second round trip. **Presentation only** — every limit in it
+  is enforced server-side, so editing the response unlocks nothing but the
+  visitor's own greyed-out controls. `billing` is `PRO_ENABLED &&
+  STRIPE_CONFIGURED`: the UI needs both, since checkout 503s without Stripe
+  keys and a Buy button that can only fail is worse than no button.
+- `GET /api/pricing` — the founding-member counter for the pricing modal
+  (`{ billing, foundingLeft, foundingLimit }`), deliberately kept OUT of
+  `/api/config` because it costs a DB read and `/api/config` runs on every page
+  load. Memoized 60s, and refreshed by the webhook when a founding seat sells.
+  `foundingLeft: null` means unknown (DB down or unconfigured); checkout treats
+  unknown as closed, so the UI hides the founding tile rather than advertise an
+  offer that would 409.
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
@@ -522,11 +551,41 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   which are market figures, not comp data). `gen-market-seed.js` sends
   `x-admin-key` to bypass the gate and **throws if it gets a gated report
   back**, rather than silently seeding 4-comp market pages.
-  Still unbuilt (phases 3-9): Stripe, branding, export counting, the $39
-  unlock. `.unlock-comps-btn` currently fires a placeholder `alert()`.
+  **Billing (phases 3-7, done).** Stripe is spoken to over its REST API with
+  plain fetch (`stripe.js`) — still zero npm deps. Server: `POST /api/checkout`,
+  `POST /api/billing-portal`, `POST /api/stripe/webhook` (raw body, signature
+  verified, acknowledged before the work), `handleStripeEvent()` for all six
+  events with idempotent upserts, and `GET /api/pricing` (the founding counter,
+  memoized 60s). Checkout, the portal and pricing all go dark while
+  `PRO_ENABLED` is unset or the caller is outside `PRO_AUDIENCE`; **the webhook
+  does not** — it carries no `PRO_ENABLED` check at all, because its gate is
+  the Stripe signature and it must keep recording events regardless.
+  Front-end, all in `index.html`: **one** pricing modal (`#pricingModal`), and
+  every locked surface reaches it through the `.unlock-comps-btn` class →
+  `openUpgradePrompt()`. Do not add a second upgrade prompt — give a new locked
+  surface that class instead. `refreshBillingUI()` is the single owner of every
+  billing control's visibility, driven entirely by `/api/config`; because
+  entitlements are per-user, sign-in, sign-out, account deletion and the
+  checkout return all call `refreshProConfig()` to re-read it. Checkout returns
+  land on `/desk?checkout=success|cancelled` and the success banner **polls for
+  the webhook** rather than assuming Pro is live, because Stripe redirects
+  before the webhook arrives.
+  **The `.pricing-buy` `data-plan` values must stay in step with
+  `/api/checkout`**, which maps `pro_annual_founding` → the founding price and
+  **everything else** → monthly. That fallthrough is why there is no
+  single-report button: `plan: "single_report"` would quietly sell a $129/mo
+  subscription. Wire the server before adding one.
+  Still unbuilt: report branding, export counting, and the $39 single-report
+  unlock (phase 8-9 work). `exportsRemaining` rides on `/api/config` but nothing
+  tallies exports yet, so no UI reads it.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
-- `GET /` — serves `index.html`.
+- `GET /` — serves `index.html`. The same handler covers `/index.html`,
+  `/desk`, and `/r/<id>`, and matches on the **path only** (`req.url` split at
+  `?`). That matters: Stripe returns from checkout to `/desk?checkout=success`,
+  and an exact `req.url` match 404'd it — along with every campaign link to
+  `/?utm_source=…`. Every other route in server.js still tests `req.url`
+  directly, so keep the query string in mind when adding one.
 
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).

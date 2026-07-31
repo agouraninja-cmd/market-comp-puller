@@ -61,6 +61,19 @@ const LEAD_CAPTURE = process.env.LEAD_CAPTURE
 // export cap, no lookback limit (see computeEntitlements' `enabled` branch).
 // Everything Pro ships dark behind this until the whole flow is proven.
 const PRO_ENABLED = String(process.env.PRO_ENABLED || "").toLowerCase() === "on";
+// Optional comma-separated email allowlist narrowing WHO the switch above
+// applies to. Unset = everyone (the launch setting). Set = only those
+// signed-in accounts are gated and only they can reach checkout, so the paid
+// tier can be proven against the live deployment without changing what the
+// public sees. See the audience block in entitlements.js for why this exists.
+// The webhook is deliberately NOT audience-scoped — it has no user, and it
+// must keep writing subscription rows or the test proves nothing.
+const PRO_AUDIENCE = ENT.parseAudience(process.env.PRO_AUDIENCE);
+// The only place PRO_ENABLED should be read alongside a user. Everything that
+// asks "is Pro on for this person" goes through here.
+function proEnabledFor(user) {
+  return PRO_ENABLED && ENT.inAudience(user, PRO_AUDIENCE);
+}
 
 // Stripe. Keys live only in the environment — never in the repo, never in a
 // response, never in the browser. The price IDs are not secret (they identify
@@ -899,8 +912,10 @@ async function findBrandingProfile(userId) {
  */
 async function getEntitlements(user, reportId) {
   // Skip every DB round trip when the tier is switched off — the flag must
-  // cost nothing on the hot path while Pro ships dark.
-  if (!PRO_ENABLED) return ENT.computeEntitlements({ user, enabled: false });
+  // cost nothing on the hot path while Pro ships dark. A visitor outside
+  // PRO_AUDIENCE takes this same path, so during a test window the public
+  // costs no more than it did before the tier existed.
+  if (!proEnabledFor(user)) return ENT.computeEntitlements({ user, enabled: false });
   const now = Date.now();
   const [subscription, purchase, usage] = await Promise.all([
     findSubscription(user && user.id),
@@ -961,6 +976,10 @@ async function setUserStripeCustomer(userId, customerId) {
  * that as "closed", because overselling a lifetime price is unwindable while
  * a wrongly-closed offer is a support email.
  */
+// Memoized answer for GET /api/pricing only — never for the checkout seat
+// check, which must always read live. { at, left } | null.
+let foundingCountCache = null;
+
 async function foundingSlotsLeft() {
   if (!DB_CONFIGURED) return null;
   try {
@@ -1023,6 +1042,9 @@ async function handleStripeEvent(evt) {
       console.log(`✅ Subscription active: ${row.plan} for user ${userId}`);
       if (row.plan === "pro_annual_founding") {
         const left = await foundingSlotsLeft();
+        // A seat just went; refresh the memo rather than letting the pricing
+        // page advertise the old count for up to another minute.
+        foundingCountCache = { at: Date.now(), left };
         // The checkout-time check can be beaten by a simultaneous buyer. We
         // honour the sale (refunding a lifetime price is worse) but say so.
         if (left !== null && left < 0) {
@@ -1108,7 +1130,11 @@ async function entitlementsFor(req, reportId) {
     return await getEntitlements(user, reportId);
   } catch (e) {
     console.error("Entitlement resolution failed (defaulting to free):", e.message);
-    return ENT.computeEntitlements({ user: null, now: Date.now(), enabled: PRO_ENABLED });
+    // No user survived the failure, so proEnabledFor(null) is the honest input:
+    // with PRO_AUDIENCE unset this still gates to free (never hand out Pro on
+    // an error), and with an audience set it leaves the public ungated, which
+    // is the whole point of a test window.
+    return ENT.computeEntitlements({ user: null, now: Date.now(), enabled: proEnabledFor(null) });
   }
 }
 // ---------------------------------------------------------------------------
@@ -6190,6 +6216,13 @@ const server = http.createServer((req, res) => {
         }
         const user = await requireUser(req, res);
         if (!user) return;
+        // Audience is checked AFTER the user resolves — it is per-account, so
+        // there is nothing to test until we know who is asking. During a test
+        // window this is what stops a stranger buying Pro with a published
+        // test card.
+        if (!proEnabledFor(user)) {
+          return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
+        }
         const { plan } = JSON.parse(body || "{}");
         const wantsFounding = plan === "pro_annual_founding";
         let priceId = wantsFounding ? STRIPE_PRICES.annualFounding : STRIPE_PRICES.monthly;
@@ -6247,6 +6280,9 @@ const server = http.createServer((req, res) => {
         }
         const user = await requireUser(req, res);
         if (!user) return;
+        if (!proEnabledFor(user)) {
+          return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
+        }
         const sub = await findSubscription(user.id);
         const customer = sub && sub.stripe_customer_id;
         if (!customer) return sendJson(res, 400, { error: "No billing account found for you yet." });
@@ -6300,14 +6336,27 @@ const server = http.createServer((req, res) => {
     // is already enforced server-side, so a visitor editing this response in
     // dev tools unlocks nothing but their own disabled buttons.
     entitlementsFor(req).then((ent) => {
+      // Per-visitor, not global: computeEntitlements reports status "disabled"
+      // exactly when it was handed enabled:false, which is the case both when
+      // PRO_ENABLED is off and when this visitor sits outside PRO_AUDIENCE.
+      // Reading it back here keeps the UI in step with the routes without
+      // resolving the session user a second time.
+      const on = ent.status !== "disabled";
       sendJson(res, 200, {
         authRequired: Boolean(APP_PASSWORD),
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),
         pro: {
-          enabled: PRO_ENABLED,
+          enabled: on,
+          // Checkout and the portal both 503 unless Stripe is configured too,
+          // so the UI needs BOTH flags — `enabled` alone would render a Buy
+          // button that can only fail.
+          billing: on && STRIPE_CONFIGURED,
           isPro: ent.pro,
           plan: ent.plan,
+          // "none" = never subscribed; anything else means a Stripe customer
+          // exists, which is what decides whether "Manage billing" is offered.
+          status: ent.status,
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
@@ -6315,6 +6364,36 @@ const server = http.createServer((req, res) => {
         },
       });
     }).catch(() => sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) }));
+    return;
+  }
+
+  // --- Pricing, for the upgrade surface ---
+  // Deliberately NOT folded into /api/config: the founding count is a DB read
+  // and /api/config runs on every page load. This one is fetched lazily, the
+  // first time someone opens the pricing modal.
+  //
+  // `foundingLeft: null` means "unknown" — foundingSlotsLeft() returns null
+  // both when the DB is unconfigured and when the query fails, and checkout
+  // treats null as closed. The UI therefore hides the counter and the founding
+  // tile rather than advertising an offer that would 409 on click.
+  if (req.method === "GET" && req.url === "/api/pricing") {
+    if (rateLimited("pricing:" + clientIp(req), 60)) {
+      return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+    }
+    const closed = { billing: false, foundingLeft: null, foundingLimit: FOUNDING_MEMBER_LIMIT };
+    // Audience-scoped like checkout: outside it there is nothing on sale, so
+    // don't hand back a seat count that implies otherwise.
+    getSessionUser(req).then((user) => {
+      if (!proEnabledFor(user) || !STRIPE_CONFIGURED) return sendJson(res, 200, closed);
+      // 60s memo so a burst of modal opens can't turn into a burst of queries.
+      if (foundingCountCache && Date.now() - foundingCountCache.at < 60_000) {
+        return sendJson(res, 200, { billing: true, foundingLeft: foundingCountCache.left, foundingLimit: FOUNDING_MEMBER_LIMIT });
+      }
+      return foundingSlotsLeft().then((left) => {
+        foundingCountCache = { at: Date.now(), left };
+        sendJson(res, 200, { billing: true, foundingLeft: left, foundingLimit: FOUNDING_MEMBER_LIMIT });
+      });
+    }).catch(() => sendJson(res, 200, closed));
     return;
   }
 
@@ -6408,7 +6487,13 @@ const server = http.createServer((req, res) => {
   // --- Static: serve index.html for "/", "/index.html", a /r/<id> share link,
   // or /desk (the SPA's My Desk view — the client reads the path and shows the
   // desk instead of the home stack). ---
-  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html" || req.url === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(req.url))) {
+  //
+  // Matched on the PATH, not the raw url: Stripe Checkout returns to
+  // /desk?checkout=success|cancelled, and an exact-string match would 404 the
+  // page someone lands on straight after paying. Same fix covers a campaign
+  // link to /?utm_source=…, which used to 404 for the same reason.
+  const staticPath = req.url.split("?")[0];
+  if (req.method === "GET" && (staticPath === "/" || staticPath === "/index.html" || staticPath === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath))) {
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
       if (err) {
         res.writeHead(500);
@@ -6421,7 +6506,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
-        ...(req.url === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
+        ...(staticPath === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
       });
       // Canonical/og/JSON-LD URLs in index.html are written against the default
       // origin; rewrite them when SITE_URL is overridden (custom domain).
@@ -6748,6 +6833,13 @@ server.listen(PORT, () => {
   if (PRO_ENABLED) {
     console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
       `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);
+    // Loud on purpose: an audience left set is a launch that silently reaches
+    // nobody, and it looks exactly like a working deployment.
+    if (PRO_AUDIENCE.length) {
+      console.log(`🔬 PRO_AUDIENCE is set — Pro applies to ${PRO_AUDIENCE.length} account(s) only ` +
+        `(${PRO_AUDIENCE.join(", ")}). Everyone else sees the pre-Pro app and cannot reach checkout. ` +
+        `UNSET PRO_AUDIENCE to go live.`);
+    }
     if (!DB_CONFIGURED) {
       console.error("⛔ PRO_ENABLED is on but Supabase is NOT configured. Billing tables have no " +
         "file fallback (a subscription on an ephemeral disk is a lost customer), so EVERY visitor " +

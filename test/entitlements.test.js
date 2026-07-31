@@ -13,6 +13,8 @@ const assert = require("node:assert");
 const {
   computeEntitlements,
   subscriptionState,
+  parseAudience,
+  inAudience,
   compLimit,
   clampLookback,
   canExport,
@@ -273,4 +275,68 @@ test("usagePeriod is a UTC month key", () => {
   // 7pm on Dec 31 in New York is already January in UTC — the quota rolls on
   // the UTC boundary for everyone, which is the point.
   assert.equal(usagePeriod(Date.parse("2027-01-01T00:30:00Z")), "2027-01");
+});
+
+// --- PRO_AUDIENCE ----------------------------------------------------------
+// The test-window allowlist. Two failure modes matter and they pull in
+// opposite directions: an audience that accidentally matches everyone turns a
+// private test into a public launch, and one that accidentally matches nobody
+// turns a launch into an invisible product.
+
+test("parseAudience normalizes a comma-separated env var", () => {
+  assert.deepEqual(parseAudience("A@B.com, c@d.com"), ["a@b.com", "c@d.com"]);
+  assert.deepEqual(parseAudience("  spaced@x.com  "), ["spaced@x.com"]);
+  // Empty entries from a trailing or doubled comma must not become "" — an
+  // empty needle would match a user with no email.
+  assert.deepEqual(parseAudience("a@b.com,,c@d.com,"), ["a@b.com", "c@d.com"]);
+  assert.deepEqual(parseAudience(""), []);
+  assert.deepEqual(parseAudience("   "), []);
+  assert.deepEqual(parseAudience(undefined), []);
+  assert.deepEqual(parseAudience(null), []);
+});
+
+test("an empty audience means everyone — the launch setting", () => {
+  assert.equal(inAudience({ email: "anyone@example.com" }, []), true);
+  assert.equal(inAudience(null, []), true, "anonymous visitors included too");
+  // A caller that forgot to parse must not accidentally restrict access.
+  assert.equal(inAudience({ email: "anyone@example.com" }, undefined), true);
+  assert.equal(inAudience({ email: "anyone@example.com" }, "a@b.com"), true);
+});
+
+test("a non-empty audience admits only the listed accounts", () => {
+  const aud = parseAudience("owner@example.com");
+  assert.equal(inAudience({ email: "owner@example.com" }, aud), true);
+  assert.equal(inAudience({ email: "OWNER@Example.COM" }, aud), true, "case-insensitive");
+  assert.equal(inAudience({ email: " owner@example.com " }, aud), true, "whitespace-tolerant");
+  assert.equal(inAudience({ email: "someone@example.com" }, aud), false);
+});
+
+test("a restricted audience never admits a visitor without an email", () => {
+  const aud = parseAudience("owner@example.com");
+  assert.equal(inAudience(null, aud), false, "anonymous");
+  assert.equal(inAudience({}, aud), false, "signed in, no email field");
+  assert.equal(inAudience({ email: "" }, aud), false);
+  assert.equal(inAudience({ email: "   " }, aud), false);
+  assert.equal(inAudience({ email: null }, aud), false);
+  // Not a string — must not throw and must not match.
+  assert.equal(inAudience({ email: 42 }, aud), false);
+  assert.equal(inAudience({ email: ["owner@example.com"] }, aud), false);
+});
+
+test("audience decides which branch of computeEntitlements a visitor gets", () => {
+  // This mirrors server.js's proEnabledFor(): PRO_ENABLED && inAudience().
+  const aud = parseAudience("owner@example.com");
+  const owner = { id: "u1", email: "owner@example.com" };
+  const stranger = { id: "u2", email: "stranger@example.com" };
+  const enabledFor = (u) => true && inAudience(u, aud);
+
+  const gated = computeEntitlements({ user: owner, now: NOW, enabled: enabledFor(owner) });
+  assert.equal(gated.maxComps, FREE_MAX_COMPS, "the tester sees the real free tier");
+  assert.equal(gated.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
+
+  const untouched = computeEntitlements({ user: stranger, now: NOW, enabled: enabledFor(stranger) });
+  assert.equal(untouched.status, "disabled");
+  assert.equal(untouched.maxComps, "all", "the public keeps the pre-Pro app");
+  assert.equal(untouched.exportsRemaining, "unlimited");
+  assert.equal(untouched.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
 });

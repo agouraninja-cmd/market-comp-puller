@@ -52,6 +52,44 @@ const PRO_PLANS = ["pro_monthly", "pro_annual_founding"];
 // period; `grace` = payment failed, still inside the 7 days.
 const PRO_STATES = ["active", "cancelling", "grace"];
 
+// ---------------------------------------------------------------------------
+// Audience — who the PRO_ENABLED switch applies to.
+//
+// PRO_ENABLED is global with no per-user dimension, which makes proving the
+// paid tier against the real deployment an all-or-nothing act: it gates every
+// visitor's report AND puts a working checkout in front of them. In TEST mode
+// that is worse than it sounds, because the test card numbers are public — a
+// stranger can help themselves to a genuine active subscription row for free,
+// while a real customer's real card is declined.
+//
+// PRO_AUDIENCE narrows the switch to named accounts so the flow can be tested
+// at leisure on the live site while the public sees the pre-Pro app unchanged.
+// Unset (the launch setting) means everyone, i.e. exactly today's behavior.
+// ---------------------------------------------------------------------------
+function parseAudience(value) {
+  return String(value == null ? "" : value)
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Is this visitor inside the Pro audience?
+ *
+ * An empty audience is "unrestricted" — that is the DEFAULT, not a failure
+ * mode, and it is what makes an unset PRO_AUDIENCE behave as if this feature
+ * did not exist. Once a list is set the match is strict: an anonymous visitor,
+ * a user with no email, and a blank list entry all fail to match, so the only
+ * way to be inside the audience is to be signed in as a named address.
+ */
+function inAudience(user, audience) {
+  if (!Array.isArray(audience) || audience.length === 0) return true;
+  const email = user && typeof user.email === "string"
+    ? user.email.trim().toLowerCase()
+    : "";
+  return Boolean(email) && audience.includes(email);
+}
+
 function msOf(value) {
   if (value == null || value === "") return NaN;
   if (value instanceof Date) return value.getTime();
@@ -193,6 +231,8 @@ function usagePeriod(now) {
 module.exports = {
   computeEntitlements,
   subscriptionState,
+  parseAudience,
+  inAudience,
   compLimit,
   clampLookback,
   canExport,

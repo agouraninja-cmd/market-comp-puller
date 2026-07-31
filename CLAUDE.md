@@ -492,8 +492,38 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `current_period_end` (Stripe renews at the boundary and the webhook lands
   seconds later — without slack a paying subscriber flickers to free), and a
   60s subscription cache that serves its last known answer if a DB read
-  fails. Gating is **not wired into any route yet** (that is phase 2); this
-  phase is the rule + the schema only.
+  fails.
+  **Comp gating** lives in **`comp-gate.js`** (also pure, also tested).
+  `gateReport()` is applied at **serialization time only** — `/api/comps`
+  gates at all three exits (cache hit, SSE `result`, plain JSON) while the
+  cache, `harvestComps()`, and `maybePublishMarketSnapshot()` keep seeing
+  **whole** reports, so one cached search serves free and Pro alike and the
+  corpus never starves on free traffic. Selection is sales-before-leases
+  (the hero's range is sales-only, so a free list of leases wouldn't support
+  the number above it) then best-first by a weight that **mirrors
+  index.html's `compWeight()`** — a deliberate second copy that must stay in
+  sync; there is a `⚠` comment on both.
+  **`locked_basis`** is the load-bearing idea: one anonymized row per
+  withheld comp carrying `date`/`transaction`/`size_sqft`/`price_per_sqft`/
+  `source_type` (+`verified`, +`price_per_unit`/`price_per_acre`) and
+  **nothing identifying**. Client-side `valuationComps()` =
+  `includedComps()` + `lockedBasis()`, so the hero, the market comparison,
+  the chart median and the stat tiles all read the FULL set — a free
+  report's value range is identical to a Pro one (verified: the same report
+  gated and ungated both produce $6,206,732–$6,529,080 from 14 sale comps).
+  Basis rows must never reach the table, map, exports, or curation — they
+  have no identity to render.
+  Locked table rows are **redacted placeholders, not blurred real data**: a
+  CSS blur would leave the values in the DOM, and the whole point is that
+  the server never sent them.
+  Two side doors are closed to match: `/api/corpus-comps` and
+  `/api/watchlist/feed` return a `locked_count` instead of rows for free
+  users (the feed keeps its aggregates — `new_count`, `median_psf`, trend —
+  which are market figures, not comp data). `gen-market-seed.js` sends
+  `x-admin-key` to bypass the gate and **throws if it gets a gated report
+  back**, rather than silently seeding 4-comp market pages.
+  Still unbuilt (phases 3-9): Stripe, branding, export counting, the $39
+  unlock. `.unlock-comps-btn` currently fires a placeholder `alert()`.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`.

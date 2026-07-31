@@ -20,6 +20,9 @@ const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot } =
 // exercise the whole decision table without a database — see the Pro section
 // below for the reads that feed it.
 const ENT = require("./entitlements");
+// Comp gating — which comps leave the server, and the anonymized basis rows
+// that keep a free report's valuation as accurate as a Pro one. Also pure.
+const GATE = require("./comp-gate");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -4720,6 +4723,15 @@ const server = http.createServer((req, res) => {
           });
         }
         const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream } = JSON.parse(body || "{}");
+        // Entitlements are resolved BEFORE anything else reads the body's
+        // knobs: the lookback ceiling below depends on them, and every exit
+        // from here on serializes through gateReport().
+        const ent = await entitlementsFor(req);
+        // The seed generator and the Explorer are internal callers with no
+        // session; they must keep receiving whole reports or market pages
+        // would publish four comps. ADMIN_KEY is the existing internal
+        // credential (same one the leads/corpus CSV downloads use).
+        const internal = ADMIN_KEY && req.headers["x-admin-key"] === ADMIN_KEY;
         // Opt in via the body, not Accept: the body is already parsed, and
         // gen-market-seed.js (the other /api/comps caller) simply never sends
         // the flag, so it keeps getting one plain JSON body.
@@ -4733,8 +4745,11 @@ const server = http.createServer((req, res) => {
           });
         }
         // Validated/clamped so arbitrary client values can't reshape the prompt.
-        const monthsNum = Math.round(Number(months));
-        const monthsOk = Number.isFinite(monthsNum) ? Math.min(120, Math.max(1, monthsNum)) : 24;
+        // The ceiling is also the entitlement's: free tops out at 12 months,
+        // Pro gets the full 120. Clamped rather than rejected so an over-long
+        // ask still returns a report — and because the clamp feeds the cache
+        // key, a free 24-month ask and a free 12-month ask share one entry.
+        const monthsOk = ENT.clampLookback(months, internal ? null : ent);
         // Default 12 (was 8): more comps = steadier percentiles in the value
         // hero. The anti-padding prompt rule keeps thin markets honest — the
         // model returns fewer rather than inventing. Explorer/seed searches
@@ -4759,19 +4774,31 @@ const server = http.createServer((req, res) => {
           subjectDetails: detailsOk,
         });
 
+        // Gating happens at SERIALIZATION, never at generation: the cache, the
+        // corpus harvest, and the market-snapshot publisher all keep seeing
+        // whole reports, so one cached search serves free and Pro visitors
+        // alike and the corpus never starves on free traffic.
+        const gate = (rep) => {
+          if (internal) return rep;
+          const subjectSqft = sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0;
+          return GATE.gateReport(rep, ent, { asOfMs: Date.now(), subjectSqft });
+        };
+
         const cached = await getCachedSearch(cacheKey);
         if (cached) {
           // Legacy cache entries predate $/SF reconciliation — correct them at
           // read time (idempotent, so re-hitting the in-memory object is fine).
           reconcilePricePerSqft(cached);
           console.log(`Cache hit (no Anthropic call): ${addressOk} — ${typeOk}`);
-          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true });
+          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
-          return sendJson(res, 200, cached);
+          return sendJson(res, 200, gate(cached));
         }
 
-        if (!tryConsumeDailySearch()) {
+        // A paying subscriber must never be told the site is out of searches
+        // for the day — the cap is a scraper backstop, not a product limit.
+        if (!ent.pro && !internal && !tryConsumeDailySearch()) {
           return sendJson(res, 429, {
             error: "This site has reached its daily search limit. Please try again after midnight UTC.",
           });
@@ -4800,11 +4827,11 @@ const server = http.createServer((req, res) => {
         const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus, detailsOk,
           sse ? (evt) => sse.send("progress", evt) : null);
         await storeCachedSearch(cacheKey, result);
-        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined });
+        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan });
         maybePublishMarketSnapshot(typeOk, addressOk, result);
         harvestComps(typeOk, addressOk, result);
-        if (sse) return sse.finish("result", result);
-        return sendJson(res, 200, result);
+        if (sse) return sse.finish("result", gate(result));
+        return sendJson(res, 200, gate(result));
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         const msg = err && err.message ? err.message : "Unknown server error.";
@@ -5314,6 +5341,13 @@ const server = http.createServer((req, res) => {
       }
       const user = await requireUser(req, res);
       if (!user) return;
+      // The feed is an existing FREE feature, so it is capped rather than
+      // taken away: the market aggregates below (new_count, median_psf, the
+      // trend arrows) are market-level figures, not comp data, and they are
+      // most of why the feed is useful. Only the itemized rows are gated,
+      // the same rule the report itself follows.
+      const ent = await getEntitlements(user);
+      const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
       const items = await listWatchlist(user.id);
       const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
       let unseen = 0;
@@ -5344,7 +5378,10 @@ const server = http.createServer((req, res) => {
           id: w.id, market: w.market, property_type: w.property_type,
           median_psf, new_count: fresh.length,
           ...(median_trend ? { median_trend } : {}),
-          comps: fresh.map((r) => ({
+          // new_count above stays the TRUE number of new comps — the visitor
+          // is told what they are missing, they just don't receive it.
+          ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
+          comps: fresh.slice(0, feedRowCap).map((r) => ({
             ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
             price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
             cap_rate: r.cap_rate, source_url: r.source_url,
@@ -5646,6 +5683,15 @@ const server = http.createServer((req, res) => {
         if (comps.length) {
           logEvent("corpus_offer", { prop_type: typeOk, market, cached: false, source: String(comps.length) });
         }
+        // This panel offers comps to ADD to a report, so leaving it open would
+        // hand a free visitor exactly the rows the comp gate just withheld —
+        // addresses included, no login required. Free users get the COUNT
+        // instead: a locked number converts better than an absent panel, and
+        // it is the same conversion logic as the locked comp rows.
+        const ent = await entitlementsFor(req);
+        if (ent.maxComps !== "all") {
+          return sendJson(res, 200, { market, comps: [], locked_count: comps.length });
+        }
         return sendJson(res, 200, { market, comps });
       } catch (e) {
         console.error("corpus-comps error:", e.message);
@@ -5863,7 +5909,27 @@ const server = http.createServer((req, res) => {
 
   // --- Tells the front-end whether a password is required ---
   if (req.method === "GET" && req.url === "/api/config") {
-    return sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) });
+    // Entitlements ride along so the UI can show locked states without a
+    // second round trip. This is presentation only — every limit it describes
+    // is already enforced server-side, so a visitor editing this response in
+    // dev tools unlocks nothing but their own disabled buttons.
+    entitlementsFor(req).then((ent) => {
+      sendJson(res, 200, {
+        authRequired: Boolean(APP_PASSWORD),
+        leadCapture: LEAD_CAPTURE,
+        streetview: Boolean(GOOGLE_MAPS_API_KEY),
+        pro: {
+          enabled: PRO_ENABLED,
+          isPro: ent.pro,
+          plan: ent.plan,
+          maxComps: ent.maxComps,
+          maxLookbackMonths: ent.maxLookbackMonths,
+          exportsRemaining: ent.exportsRemaining,
+          graceUntil: ent.graceUntil,
+        },
+      });
+    }).catch(() => sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) }));
+    return;
   }
 
   // --- Validate a password (so the UI can confirm before searching) ---

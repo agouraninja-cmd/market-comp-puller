@@ -248,6 +248,19 @@
       padding-right: 2.4rem !important;
     }
     tbody tr { transition: background-color .15s ease; }
+    /* Locked comps (free tier). Placeholder bars, NOT obscured real data —
+       the server never sent the values, so there is nothing here to recover
+       from the DOM. The shimmer reads as "content withheld", not "loading":
+       it is slow and low-contrast, and it stops for reduced-motion users. */
+    .comp-locked { background: #FCFCFA; }
+    .lock-bar {
+      display: block; height: 9px; border-radius: 3px;
+      background: linear-gradient(90deg, #ECEAE3 0%, #F5F4EF 50%, #ECEAE3 100%);
+      background-size: 200% 100%;
+      animation: lockShimmer 3.2s ease-in-out infinite;
+    }
+    @keyframes lockShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) { .lock-bar { animation: none; } }
     .row-in { opacity: 0; animation: rowIn .35s ease-out forwards; }
     @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     /* Report cards cascade in one after another when results render. */
@@ -1970,6 +1983,8 @@
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
     streetviewEnabled = Boolean(cfg.streetview);
+    proConfig = cfg.pro || { enabled: false };
+    applyLookbackGating();
 
     if (!cfg.authRequired) return;            // no password configured
 
@@ -2547,7 +2562,7 @@
     // Sale comps only — lease $/SF/yr is a different unit and would skew the
     // range. Comp objects are kept alongside their $/SF so the trust line can
     // count provenance tiers.
-    const saleComps = includedComps()
+    const saleComps = valuationComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
       .map((c) => ({ comp: c, v: salePsfOf(c) }))
       .filter((x) => x.v > 0);
@@ -2872,7 +2887,7 @@
       if (found > 0) sizeR = { min: found, max: found };
     }
     // Same weighting/indexing as the hero, so this can never disagree with it.
-    const saleItems = includedComps()
+    const saleItems = valuationComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
       .map((c) => ({ comp: c, v: salePsfOf(c) }))
       .filter((x) => x.v > 0);
@@ -2977,6 +2992,34 @@
   // greyed, as the audit trail.
   function includedComps() {
     return currentComps.filter((c) => !isExcluded(c));
+  }
+
+  // --------------------------------------------------------------------------
+  // Locked comps (free tier). The server sends the 4 best comps in full plus a
+  // `locked_basis` array standing in for the rest: $/SF, size, date,
+  // transaction and provenance tier, with no address, price, URL or notes.
+  //
+  // They exist for ONE job — keeping a free report's value range identical to
+  // the same report seen by a Pro user. The itemized list is what's gated; the
+  // number is not, because an inaccurate free valuation would cost more in
+  // credibility than the tier earns in subscriptions.
+  //
+  // So they feed valuationComps() and NOTHING else. They must never reach the
+  // table, the chart, the map, the exports, or curation: they have no identity
+  // to show, and a basis row rendered as a comp would be a blank row.
+  // --------------------------------------------------------------------------
+  function lockedBasis() {
+    return (currentParsed && Array.isArray(currentParsed.locked_basis))
+      ? currentParsed.locked_basis : [];
+  }
+  function lockedCount() {
+    return Number(currentParsed && currentParsed.locked_count) || 0;
+  }
+  // The full comp set for MATH: what's shown (minus anything the user excluded)
+  // plus the anonymized remainder. Curation only applies to visible comps —
+  // you cannot exclude what you cannot see.
+  function valuationComps() {
+    return includedComps().concat(lockedBasis());
   }
 
   function curationCounts() {
@@ -3762,9 +3805,12 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
     // Sale comps only — same rule as the value estimate.
-    const pts = includedComps()
+    // Locked comps are plotted too — the median line below must be the same
+    // statistic as the hero's, and dropping them would make the two disagree
+    // on the same report. A basis row has no address, so its dot says so.
+    const pts = valuationComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => ({ v: numericValue(c.price_per_sqft), address: c.address || "" }))
+      .map((c) => ({ v: numericValue(c.price_per_sqft), address: c.address || "Locked comparable" }))
       .filter((p) => p.v > 0)
       .sort((a, b) => a.v - b.v);
     if (pts.length < 2) { card.classList.add("hidden"); return; }
@@ -4518,12 +4564,14 @@
 
   function renderStatTiles(parsed, meta) {
     const wrap = document.getElementById("statTiles");
-    const sizes = includedComps()
+    // Both tiles describe the MARKET, not the visible list, so they read the
+    // full comp set (locked rows included) exactly like the hero does.
+    const sizes = valuationComps()
       .map((c) => numericValue(c.size_sqft))
       .filter(isFinite)
       .sort((a, b) => a - b);
     // Sale-comp $/SF spread — powers the little range bar under the Avg tile.
-    const ppsf = includedComps()
+    const ppsf = valuationComps()
       .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
       .map((c) => numericValue(c.price_per_sqft))
       .filter((v) => isFinite(v) && v > 0)
@@ -5914,11 +5962,54 @@
   function updateCompCount() {
     const total = currentComps.length;
     const vis = visibleComps().length;
+    const locked = lockedCount();
+    // Say the true size of the comp set, not just what's on screen — the
+    // withheld count is the whole conversion argument, so hiding it would be
+    // both dishonest and pointless.
     document.getElementById("compCount").textContent =
       txFilter === "all"
-        ? total + (total === 1 ? " comp" : " comps")
+        ? (locked ? `${total} of ${total + locked} comps` : total + (total === 1 ? " comp" : " comps"))
         : `${vis} of ${total} comps`;
   }
+
+  // Lookback options past the free ceiling stay VISIBLE but disabled, wearing
+  // a "Pro" suffix — a locked option converts better than an absent one, and
+  // it explains why the list is shorter than it used to be. The server clamps
+  // regardless, so this is purely so the UI doesn't silently disagree with it.
+  function applyLookbackGating() {
+    const sel = document.getElementById("lookback");
+    if (!sel || !proConfig.enabled) return;
+    const ceiling = Number(proConfig.maxLookbackMonths) || 120;
+    let activeIsLocked = false;
+    Array.from(sel.options).forEach((opt) => {
+      const months = opt.value === "custom" ? Infinity : Number(opt.value);
+      const locked = months > ceiling;
+      opt.disabled = locked;
+      if (locked && !/Pro$/.test(opt.textContent)) opt.textContent += " · Pro";
+      if (locked && opt.selected) activeIsLocked = true;
+    });
+    // The old default was 24 months, which is now above the free ceiling —
+    // fall back to the longest window this visitor can actually run.
+    if (activeIsLocked) {
+      const best = Array.from(sel.options)
+        .filter((o) => !o.disabled && o.value !== "custom")
+        .map((o) => Number(o.value))
+        .sort((a, b) => b - a)[0];
+      if (best) sel.value = String(best);
+      sel.dispatchEvent(new Event("change"));
+    }
+  }
+
+  // Placeholder for the checkout flow (phases 3-8). Wired now so the locked
+  // block is never a dead control during internal testing; replaced by the
+  // real Stripe Checkout call when billing lands.
+  function openUpgradePrompt() {
+    alert("Pro checkout isn't wired up yet — this button becomes Stripe Checkout in the next phase.");
+  }
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest && e.target.closest(".unlock-comps-btn");
+    if (btn) openUpgradePrompt();
+  });
 
   // The audit trail: what the user changed about the comp set. Deliberately
   // NOT no-print — it must travel in print/PNG so a curated report says so.
@@ -6126,17 +6217,23 @@
   // for shared viewers and on the sample (the demo stays deterministic).
   // ----------------------------------------------------------------------------
   let corpusOfferRows = [];
+  // Free visitors get a count instead of rows — the server withholds the comps
+  // themselves, since this panel would otherwise hand back exactly what the
+  // comp gate just withheld.
+  let corpusOfferLocked = 0;
   function fetchCorpusOffer(meta) {
     corpusOfferRows = [];
+    corpusOfferLocked = 0;
     renderCorpusOffer();
     if (!meta || meta.shared || meta.sample || !meta.address || !meta.type) return;
     fetch(`/api/corpus-comps?address=${encodeURIComponent(meta.address)}&type=${encodeURIComponent(meta.type)}`)
       .then((r) => (r.ok ? r.json() : { comps: [] }))
       .then((d) => {
         corpusOfferRows = Array.isArray(d.comps) ? d.comps : [];
+        corpusOfferLocked = Number(d.locked_count) || 0;
         renderCorpusOffer();
       })
-      .catch(() => { corpusOfferRows = []; renderCorpusOffer(); });
+      .catch(() => { corpusOfferRows = []; corpusOfferLocked = 0; renderCorpusOffer(); });
   }
 
   function renderCorpusOffer() {
@@ -6147,6 +6244,19 @@
       ? corpusOfferRows.filter((r) => !currentComps.some((c) => compKeyOf(c) === compKeyOf(r)))
       : [];
     rowsEl.innerHTML = "";
+    // Locked: name the count and stop. No rows to render, nothing withheld
+    // in the DOM.
+    if (!usable.length && corpusOfferLocked > 0 && curationControlsAllowed()) {
+      wrap.classList.remove("hidden");
+      const p = document.createElement("div");
+      p.className = "text-sm text-[#4C5665]";
+      p.innerHTML =
+        `CompNinja holds <strong>${corpusOfferLocked}</strong> more verified comp` +
+        `${corpusOfferLocked === 1 ? "" : "s"} for this market. ` +
+        `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock with Pro</button>`;
+      rowsEl.appendChild(p);
+      return;
+    }
     if (!usable.length) { wrap.classList.add("hidden"); return; }
     usable.forEach((r) => {
       const row = document.createElement("div");
@@ -6410,9 +6520,55 @@
       }
       body.appendChild(tr);
     });
+    appendLockedRows(body, colCount);
     // Only a first render adds .badge-in in the first place; re-sorts have
     // nothing to arm.
     if (animateIn) armWhenVisible(document.getElementById("compsCard"), "in-view");
+  }
+
+  // --------------------------------------------------------------------------
+  // Locked comp rows. These are REDACTED PLACEHOLDERS, not hidden real data.
+  //
+  // A blurred real row would be theatre: CSS blur is cosmetic, so the address
+  // and price would still sit in the page source for anyone who opened dev
+  // tools. The server never sends them, so there is nothing here to un-blur —
+  // these bars are drawn from nothing but a count.
+  //
+  // Screen only. A printed or exported report shows what the user is entitled
+  // to and does not advertise at them.
+  // --------------------------------------------------------------------------
+  function appendLockedRows(body, colCount) {
+    const n = lockedCount();
+    // The Sale/Lease filter narrows the visible list; the locked block is
+    // about the whole report, so it stays out of a filtered view.
+    if (n <= 0 || txFilter !== "all") return;
+    const shown = Math.min(n, 3);   // enough to read as "there is more", not a wall
+    for (let i = 0; i < shown; i++) {
+      const tr = document.createElement("tr");
+      tr.className = "no-print no-capture comp-locked";
+      tr.setAttribute("aria-hidden", "true");
+      let cells = "";
+      for (let c = 0; c < colCount; c++) {
+        // Varied bar widths so the block reads as rows of data rather than a
+        // solid grey slab.
+        const w = [70, 45, 55, 38, 62, 48][(i * colCount + c) % 6];
+        cells += `<td class="px-4 py-3 align-top"><span class="lock-bar" style="width:${w}%"></span></td>`;
+      }
+      tr.innerHTML = cells;
+      body.appendChild(tr);
+    }
+    const tr = document.createElement("tr");
+    tr.className = "no-print no-capture";
+    tr.innerHTML =
+      `<td colspan="${colCount}" class="px-4 py-4 text-center">` +
+      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} available with Pro</div>` +
+      `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
+      `Your value range above already includes ${n === 1 ? "it" : "them"} — only the itemized list is limited.` +
+      `</div>` +
+      `<button type="button" class="unlock-comps-btn btn-live mt-3 inline-flex items-center justify-center gap-2 ` +
+      `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>` +
+      `</td>`;
+    body.appendChild(tr);
   }
 
   // Mobile rendering of the same comps: stacked cards instead of the wide
@@ -6530,6 +6686,30 @@
       card.appendChild(rows);
       list.appendChild(card);
     });
+    appendLockedCards(list);
+  }
+
+  // Phone equivalent of appendLockedRows — same redacted-placeholder rule.
+  function appendLockedCards(list) {
+    const n = lockedCount();
+    if (n <= 0 || txFilter !== "all") return;
+    for (let i = 0; i < 2; i++) {
+      const card = document.createElement("div");
+      card.className = "px-6 py-4 no-print no-capture comp-locked";
+      card.setAttribute("aria-hidden", "true");
+      card.innerHTML =
+        `<span class="lock-bar" style="width:62%"></span>` +
+        `<span class="lock-bar mt-2" style="width:40%"></span>`;
+      list.appendChild(card);
+    }
+    const cta = document.createElement("div");
+    cta.className = "px-6 py-4 text-center no-print no-capture";
+    cta.innerHTML =
+      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} available with Pro</div>` +
+      `<div class="text-xs text-[#8A93A0] mt-1">Your value range above already includes ${n === 1 ? "it" : "them"}.</div>` +
+      `<button type="button" class="unlock-comps-btn btn-live mt-3 inline-flex items-center justify-center ` +
+      `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>`;
+    list.appendChild(cta);
   }
 
   // ----------------------------------------------------------------------------
@@ -6876,6 +7056,10 @@
   // in localStorage, so a returning visitor is never asked twice.
   // ----------------------------------------------------------------------------
   let leadCaptureEnabled = false;   // set from /api/config in initGate()
+  // Pro entitlements as reported by /api/config. PRESENTATION ONLY — every
+  // limit described here is enforced server-side, so editing this object in
+  // the console unlocks nothing but the visitor's own greyed-out controls.
+  let proConfig = { enabled: false };
   let pendingExport = null;         // export action to run after the form submits
   let leadContext = "export";       // which ask the modal is making: "export" unlock or "bov" request
 

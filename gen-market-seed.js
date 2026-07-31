@@ -12,6 +12,9 @@ const fs = require("fs");
 const path = require("path");
 
 const BASE = process.env.GEN_BASE || "http://localhost:3000";
+// Only needed once PRO_ENABLED is on: the comp gate truncates anonymous
+// callers to the free tier, and this script needs whole reports.
+const ADMIN_KEY = (process.env.ADMIN_KEY || "").trim();
 
 // Curated, high-value CRE search targets: real markets owners look up. Keep
 // this list intentionally small — a few genuinely useful pages beat many thin
@@ -75,11 +78,23 @@ async function buildOne(t) {
   const body = { address: `${t.city}, ${t.state}`, type: t.type, note: "", months: 24, maxComps: 8, txFocus: "both" };
   const r = await fetch(`${BASE}/api/comps`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      // Internal caller: identifies this script past the Pro comp gate so it
+      // keeps receiving whole reports. Without it a market page would be
+      // built from the free tier's 4 comps and fail its own quality bar.
+      ...(ADMIN_KEY ? { "x-admin-key": ADMIN_KEY } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const data = await r.json();
+  if (Number(data.locked_count) > 0) {
+    throw new Error(
+      `Report came back gated (${data.comps.length} comps, ${data.locked_count} locked). ` +
+      `Set ADMIN_KEY in this script's environment to match the server's, or the seed ` +
+      `pages will be built from a free-tier report.`);
+  }
   const { snapshot, pricedSaleCount } = distillMarketSnapshot(t, data);
   if (!snapshot || pricedSaleCount < MIN_PRICED_SALE_COMPS) {
     console.log(`  SKIP ${t.type} ${t.city}, ${t.state} — only ${pricedSaleCount} priced sale comps`);

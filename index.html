@@ -4192,10 +4192,18 @@
 
   const typeGuessCache = new Map();
 
+  // Returns an OUTCOME, never a bare null. "It did nothing" has four very
+  // different causes and they are indistinguishable from the outside — that
+  // ambiguity is what hid the Phoenix across-the-street bug for a full test
+  // round, because a rate-limited Overpass looks exactly like honest silence.
+  //   failed           — no geocode, or Overpass down/rate-limited
+  //   no_address_match — lookup ran; nothing carried the searched house number
+  //   ambiguous        — right building, but building=yes/commercial tells us nothing
+  //   matched          — a type, carried on .type/.label
   async function detectPropertyType(address) {
     const key = String(address || "").trim().toLowerCase();
     if (typeGuessCache.has(key)) return typeGuessCache.get(key);
-    let guess = null;
+    let guess = { outcome: "failed" };
     try {
       const want = houseNumberOf(address);
       const pt = want ? await geocodeAddress(address) : null;
@@ -4224,7 +4232,12 @@
           const score = area / (dist + 25);
           if (score > bestScore) { bestScore = score; best = e; }
         }
-        guess = (best && osmTypeFor(best.tags)) || null;
+        if (!j) guess = { outcome: "failed" };
+        else if (!best) guess = { outcome: "no_address_match" };
+        else {
+          const t = osmTypeFor(best.tags);
+          guess = t ? { type: t.type, label: t.label, outcome: "matched" } : { outcome: "ambiguous" };
+        }
       }
     } catch (_) { /* offline, Overpass down, geocode miss — no guess, no harm */ }
     typeGuessCache.set(key, guess);
@@ -4269,6 +4282,21 @@
     typeAutoNote.appendChild(undo);
   }
 
+  // Fire-and-forget outcome ping. The server derives the market (city + state)
+  // and throws the address away — nothing identifying is stored, matching every
+  // other analytics event. Wrapped and .catch()ed twice over because a
+  // measurement must never be able to break the form it measures.
+  function logTypeAutofill(address, outcome, type) {
+    try {
+      fetch("/api/type-autofill", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: address, outcome: outcome, type: type || "" }),
+        keepalive: true,        // survives the visitor submitting the search immediately after
+      }).catch(function () {});
+    } catch (_) { /* no fetch, blocked, offline — the feature still works */ }
+  }
+
   // "change" (not "input") — it fires on blur, the only honest "done typing"
   // signal a free-text address field gives.
   document.getElementById("address").addEventListener("change", async () => {
@@ -4280,11 +4308,17 @@
     const guess = await detectPropertyType(addr);
     // Re-check every guard: the await gave the visitor a second or two to pick
     // a type, start typing details, edit the address, or fire the search.
-    if (!guess || !guess.type || userChoseType || searchInFlight) return;
+    // A race is NOT logged — nothing was decided, so counting it would dilute
+    // the very ratio the log exists to measure.
+    if (userChoseType || searchInFlight) return;
     if (Object.keys(readSubjectDetails()).length) return;
-    if (guess.type === propertyTypeSel.value) return;
     if (document.getElementById("address").value.trim() !== addr) return;
+    if (!guess || !guess.type) return logTypeAutofill(addr, (guess && guess.outcome) || "failed", "");
+    // Right answer, nothing to change. Distinct from a miss: the detector
+    // agreed with the visitor, which is a success the UI can't show.
+    if (guess.type === propertyTypeSel.value) return logTypeAutofill(addr, "agreed", guess.type);
     applyDetectedType(guess.type, guess.label);
+    logTypeAutofill(addr, "applied", guess.type);
   });
 
   // ----------------------------------------------------------------------------

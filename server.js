@@ -4027,6 +4027,23 @@ function aggregateStats(rows) {
     byType: countBy(searches, "prop_type"),
     topMarkets: countBy(searches, "market").slice(0, 12),
     leadsBySource: countBy(leads, "source"),
+    // Property-type autofill. `applied` is the only outcome the visitor ever
+    // sees; the rest explain the silence. Read `failed` as an infrastructure
+    // signal (Overpass down or rate-limiting us) rather than as OSM coverage —
+    // they are indistinguishable from the UI, which is why this exists.
+    typeAutofill: (() => {
+      const a = rows.filter((r) => r.kind === "type_autofill");
+      const n = (o) => a.filter((r) => (r.source || "") === o).length;
+      return {
+        attempts: a.length,
+        applied: n("applied"),
+        agreed: n("agreed"),
+        noAddressMatch: n("no_address_match"),
+        ambiguous: n("ambiguous"),
+        failed: n("failed"),
+        pct: a.length ? Math.round((n("applied") / a.length) * 1000) / 10 : 0,
+      };
+    })(),
     corpus: {
       hits: corpusHits,
       billedReport: billedReport.length,
@@ -4168,6 +4185,8 @@ function rows(a){return a.length?a.map(function(x){return "<tr><td>"+esc(x.label
 function render(d){
   var t=d.totals, hit=t.searches?Math.round(t.cached/t.searches*100):0;
   var c=d.corpus||{hits:0,billedReport:0,pct:0,health:{}};
+  // Absent on a stale /api/stats from before this tile existed.
+  var ta=d.typeAutofill||{attempts:0,applied:0,agreed:0,noAddressMatch:0,ambiguous:0,failed:0,pct:0};
   // null only on a stale /api/stats response from before the cost tiles existed.
   // Render an em-dash rather than $0.00, which would read as "searches are free".
   var sp=d.spend||null;
@@ -4202,6 +4221,12 @@ function render(d){
     "<div class=tile><div class=k>Billed</div><div class=v>"+t.billed+"</div></div>"+
     "<div class=tile><div class=k>Cache hit rate</div><div class=v>"+hit+"%</div></div>"+
     "<div class=tile><div class=k>Corpus hit rate</div><div class=v>"+c.pct+"%</div><div class=muted style='margin-top:2px'>"+c.hits+" of "+c.billedReport+" billed</div></div>"+
+    "<div class=tile title='applied = set the type. agreed = already correct. no match = OpenStreetMap has no building at that house number. ambiguous = building mapped but untyped. failed = Overpass down or rate-limiting us.'>"+
+      "<div class=k>Type autofill</div><div class=v>"+ta.pct+"%</div>"+
+      "<div class=muted style='margin-top:2px'>"+ta.applied+" applied of "+ta.attempts+"</div>"+
+      (ta.attempts?"<div class=muted style='margin-top:2px'>"+ta.agreed+" agreed &middot; "+ta.noAddressMatch+
+        " no match &middot; "+ta.ambiguous+" ambiguous &middot; "+ta.failed+" failed</div>":"")+
+    "</div>"+
     "<div class=tile><div class=k>Avg comp search</div><div class=v>"+(sp?money(sp.avgReport):"&mdash;")+"</div><div class=muted style='margin-top:2px'>"+
       (sp ? sp.reportSearches+" billed · "+money(sp.reportTotal)+" est"+
             (sp.avgReport < sp.listPriceReport ? " · corpus saving" : "")
@@ -6418,6 +6443,40 @@ const server = http.createServer((req, res) => {
   }
 
   // --- Publish a report under a short id so the visitor can share the link ---
+  // --- Property-type autofill: outcome ping -------------------------------
+  // The autofill is otherwise invisible: when it stays quiet you cannot tell
+  // whether OSM had no match, Overpass was down, or it agreed with the type
+  // already selected. This records which, so /admin can show whether the
+  // feature works in the field instead of just failing safe in silence.
+  //
+  // The client supplies only an address and an outcome. Everything stored is
+  // derived or whitelisted here — never trusted from the body — so a hostile
+  // caller can add rows but cannot choose what they say or write PII into the
+  // analytics table. The address is used to derive the market and discarded.
+  if (req.method === "POST" && req.url === "/api/type-autofill") {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 4e3) req.destroy();   // an address and two short words
+    });
+    req.on("end", () => {
+      // Always 204: this is telemetry, and a client must never learn anything
+      // from it or change behaviour on its result.
+      res.writeHead(204).end();
+      try {
+        if (rateLimited("tafill:" + clientIp(req), 60)) return;
+        const p = JSON.parse(body || "{}");
+        const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed"];
+        const outcome = OUTCOMES.indexOf(String(p.outcome || "")) >= 0 ? String(p.outcome) : null;
+        if (!outcome) return;
+        const TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];
+        const type = TYPES.indexOf(String(p.type || "")) >= 0 ? String(p.type) : "";
+        logEvent("type_autofill", { prop_type: type, market: marketOf(p.address), source: outcome });
+      } catch (_) { /* malformed ping — drop it, never surface it */ }
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/share") {
     let body = "";
     req.on("data", (c) => {

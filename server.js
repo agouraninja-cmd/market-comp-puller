@@ -1439,6 +1439,70 @@ async function storeCachedSearch(key, payload) {
 }
 
 // ---------------------------------------------------------------------------
+// Lookback derivation (cost saver). A shorter-lookback request is a subset of
+// a longer one: every comp a 12-month search could return is, by definition,
+// inside a cached 24-month report for the same address/type/knobs. So on a
+// cache miss, before paying for a fresh search, probe the preset ladder of
+// LONGER windows under the same key and filter that report's comps down to
+// the requested window. Undated comps are dropped — the parent search only
+// promised they fall inside ITS window, so keeping one would over-claim
+// recency, and this app's provenance rule is under-claim, never over.
+// Served only when the filtered set is still a real report: a floor on total
+// comps, plus at least 3 dated sales when the ask includes sales (the value
+// hero's range is sales-only, so a saleless subset would put a number on top
+// of nothing). Anything thinner falls through to the normal corpus/search
+// path unchanged. The derived report is deliberately NOT re-cached: after the
+// first probe the parent sits in the in-memory cache map, so a repeat costs
+// one Map lookup — and re-caching under the short key would hand the subset a
+// fresh 7-day TTL running past its parent's.
+// Known soft edge: the parent's narrative fields (summary, value_drivers) may
+// occasionally reference the longer window in prose. They are market-level
+// commentary, kept for the same reason curation doesn't move the Avg $/SF
+// tile; the comp table itself only ever shows in-window rows.
+// ---------------------------------------------------------------------------
+const LOOKBACK_LADDER = [12, 24, 36]; // the preset windows worth probing
+
+function windowedComps(comps, months) {
+  // Same year-fraction cutoff as retrieveCorpusComps — one definition of
+  // "inside the window" across the whole cost-saving layer.
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
+  const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
+  return (comps || []).filter((c) => {
+    // Report comps carry "date" (the model's comp shape); corpus rows use
+    // "deal_date". Accept either so this also works on any future caller.
+    const d = parseDealDate(c.date || c.deal_date);
+    return d != null && d >= cutoffFrac;
+  });
+}
+
+function deriveWindowedReport(parent, months, txFocus, maxComps) {
+  if (!parent || !Array.isArray(parent.comps)) return null;
+  const comps = windowedComps(parent.comps, months);
+  if (comps.length < Math.min(6, maxComps)) return null;
+  if (txFocus !== "leases" &&
+      comps.filter((c) => String(c.transaction || "").toLowerCase().startsWith("sale")).length < 3) {
+    return null;
+  }
+  // Shallow clone, never a mutation — the parent object is shared with the
+  // in-memory cache map and must keep its full comp list.
+  return { ...parent, comps };
+}
+
+async function findDerivableReport(keyParams, months, txFocus, maxComps) {
+  for (const w of LOOKBACK_LADDER) {
+    if (w <= months) continue;
+    const parent = await getCachedSearch(cacheKeyFor({ ...keyParams, months: w }));
+    if (!parent) continue;
+    // Same read-time fix the direct cache-hit path applies (idempotent).
+    reconcilePricePerSqft(parent);
+    const derived = deriveWindowedReport(parent, months, txFocus, maxComps);
+    if (derived) return { derived, parent, parentMonths: w };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Shared reports — a report the visitor chose to publish under a short id so
 // they can send the link to a partner, lender, or the property owner. Same
 // storage shape as the search cache (Supabase table `shared_reports` keyed by
@@ -5111,6 +5175,25 @@ const server = http.createServer((req, res) => {
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
           return sendJson(res, 200, gate(cached));
+        }
+
+        // Exact key missed — but a shorter lookback is a subset of a longer
+        // one, so a cached longer-window report for the same request can be
+        // filtered down to this window instead of paying for a fresh search
+        // (see findDerivableReport for the quality floors).
+        const dw = await findDerivableReport({
+          address: addressOk, type: typeOk, note: noteOk,
+          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
+          verifiedComps, subjectDetails: detailsOk,
+        }, monthsOk, txFocusOk, maxCompsOk);
+        if (dw) {
+          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no Anthropic call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
+          // Side effects mirror a direct cache hit, fed the PARENT payload —
+          // the harvester dedupes, and the fuller comp list is the better feed.
+          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
+          maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
+          harvestComps(typeOk, addressOk, dw.parent);
+          return sendJson(res, 200, gate(dw.derived));
         }
 
         // A paying subscriber must never be told the site is out of searches

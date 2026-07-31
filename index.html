@@ -1420,6 +1420,12 @@
               </div>
             </div>
           </div>
+          <!-- Locked-comp notice. Lives OUT here, not in the table: the comp
+               table scrolls horizontally (it can be 2000px+ wide) while its
+               viewport is only a few hundred px, so a full-width colspan cell
+               centres its text far off-screen to the right. The count is the
+               tier's main conversion driver — it has to be where the eye is. -->
+          <div id="lockedNotice" class="hidden no-print no-capture px-6 py-5 border-t border-[#F0EFE9] text-center"></div>
           <!-- Corpus offer — provenance-good comps CompNinja already holds for
                this market+type, one click from joining the curated set. Chrome,
                not report content: the comps that matter appear in the real
@@ -6427,6 +6433,9 @@
         : (txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.");
       tr.innerHTML = `<td colspan="${colCount}" class="px-4 py-6 text-center text-[#8A93A0]">${msg}</td>`;
       body.appendChild(tr);
+      // Still refresh it — a filter that empties the table must clear a stale
+      // notice, and excluding every visible comp must not hide the count.
+      renderLockedNotice();
       return;
     }
     comps.forEach((comp, idx) => {
@@ -6521,6 +6530,7 @@
       body.appendChild(tr);
     });
     appendLockedRows(body, colCount);
+    renderLockedNotice();
     // Only a first render adds .badge-in in the first place; re-sorts have
     // nothing to arm.
     if (animateIn) armWhenVisible(document.getElementById("compsCard"), "in-view");
@@ -6557,18 +6567,24 @@
       tr.innerHTML = cells;
       body.appendChild(tr);
     }
-    const tr = document.createElement("tr");
-    tr.className = "no-print no-capture";
-    tr.innerHTML =
-      `<td colspan="${colCount}" class="px-4 py-4 text-center">` +
+  }
+
+  // The count + CTA, rendered OUTSIDE the horizontally-scrolling table (see
+  // the #lockedNotice comment in the markup). Shared by the table and the
+  // phone card list, so both get one notice rather than two.
+  function renderLockedNotice() {
+    const el = document.getElementById("lockedNotice");
+    if (!el) return;
+    const n = lockedCount();
+    if (n <= 0 || txFilter !== "all") { el.classList.add("hidden"); el.innerHTML = ""; return; }
+    el.classList.remove("hidden");
+    el.innerHTML =
       `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} available with Pro</div>` +
       `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
       `Your value range above already includes ${n === 1 ? "it" : "them"} — only the itemized list is limited.` +
       `</div>` +
       `<button type="button" class="unlock-comps-btn btn-live mt-3 inline-flex items-center justify-center gap-2 ` +
-      `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>` +
-      `</td>`;
-    body.appendChild(tr);
+      `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>`;
   }
 
   // Mobile rendering of the same comps: stacked cards instead of the wide
@@ -6702,14 +6718,8 @@
         `<span class="lock-bar mt-2" style="width:40%"></span>`;
       list.appendChild(card);
     }
-    const cta = document.createElement("div");
-    cta.className = "px-6 py-4 text-center no-print no-capture";
-    cta.innerHTML =
-      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} available with Pro</div>` +
-      `<div class="text-xs text-[#8A93A0] mt-1">Your value range above already includes ${n === 1 ? "it" : "them"}.</div>` +
-      `<button type="button" class="unlock-comps-btn btn-live mt-3 inline-flex items-center justify-center ` +
-      `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>`;
-    list.appendChild(cta);
+    // No CTA here — #lockedNotice sits below both the table and this list and
+    // serves whichever one is on screen.
   }
 
   // ----------------------------------------------------------------------------

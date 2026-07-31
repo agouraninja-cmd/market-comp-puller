@@ -160,7 +160,13 @@ function subscriptionRowFrom(sub, priceMap, { userId, nowMs = Date.now(), graceD
     plan,
     status,
     current_period_end: periodEndIso(sub),
-    cancel_at_period_end: Boolean(sub.cancel_at_period_end),
+    // "Won't renew" arrives in two shapes. Older API versions set the
+    // cancel_at_period_end flag; newer ones (verified live 2026-07-31 on a
+    // portal cancel) leave that flag FALSE and instead set cancel_at to the
+    // scheduled end timestamp. Read both, or every portal cancellation looks
+    // like a still-renewing subscription and the cancelling state never
+    // engages.
+    cancel_at_period_end: Boolean(sub.cancel_at_period_end || sub.cancel_at),
     updated_at: new Date(nowMs).toISOString(),
   };
   // The 7-day window starts when the payment actually failed. Set only on the

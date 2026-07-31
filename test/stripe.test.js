@@ -174,6 +174,17 @@ test("cancel_at_period_end is carried through", () => {
   assert.equal(row.status, "active", "still active — entitlements decide when it lapses");
 });
 
+test("a newer-API portal cancel (cancel_at set, flag false) still reads as won't-renew", () => {
+  // Observed live 2026-07-31: the portal's cancel-at-period-end arrives as
+  // cancel_at_period_end: false plus cancel_at: <period end>. Missing this
+  // meant a cancelled subscriber looked active until the hard drop.
+  const row = subscriptionRowFrom(
+    stripeSub({ cancel_at_period_end: false, cancel_at: periodEnd, canceled_at: NOW / 1000 }),
+    PRICES, { nowMs: NOW });
+  assert.equal(row.cancel_at_period_end, true);
+  assert.equal(row.status, "active", "still active until the scheduled end");
+});
+
 test("period end is read from the item when the top level lacks it", () => {
   const sub = stripeSub({ current_period_end: undefined });
   sub.items.data[0].current_period_end = periodEnd;

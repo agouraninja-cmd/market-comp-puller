@@ -1503,6 +1503,126 @@ async function findDerivableReport(keyParams, months, txFocus, maxComps) {
 }
 
 // ---------------------------------------------------------------------------
+// Subject-size memo (cost saver). When the visitor leaves the SF field blank,
+// the search budget carries two extra web searches just to look the building's
+// size up (searchBudgetFor: 10 vs 8, and a corpus-strong floor of 3 vs 2). A
+// building's size doesn't change, so once ANY prior search has looked it up
+// the answer is reusable: hand it to the model up front and the budget drops,
+// exactly as if the visitor had typed it. The visitor's own entry always wins;
+// the memo only fills silence. Supabase table (run this DDL before deploying —
+// absent, every read/write degrades safely to the git-ignored file below):
+//
+//   create table subject_sizes (
+//     address_norm text primary key,
+//     size_sqft    bigint not null,
+//     source       text,
+//     updated_at   timestamptz not null default now()
+//   );
+//
+// Two deliberate rules. Model-ESTIMATED sizes are never remembered — a guess
+// that quietly becomes "known" for every future search of this address is how
+// a valuation drifts; only public_record / listing lookups persist, with the
+// source kept VERBATIM so the hero's "from public records" phrasing stays
+// truthful on reuse (index.html maps the source string exactly). And the memo
+// is applied OUTSIDE cacheKeyFor, so cache keys stay a pure function of the
+// request — a memo appearing later can never orphan existing cache entries.
+// ---------------------------------------------------------------------------
+const SUBJECT_SIZES_FILE = path.join(__dirname, "subject-sizes.json");
+const subjectSizesMem = new Map();
+
+// ⚠ Same normalization idea as the `norm` inside cacheKeyFor (one address,
+// many typings) — if that ever changes shape, change this with it. Kept
+// separate because this key must stay stable for the life of the TABLE, not
+// just the 7-day cache.
+function subjectSizeKey(address) {
+  return String(address || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function loadSubjectSizesFile() {
+  try {
+    return JSON.parse(await fs.promises.readFile(SUBJECT_SIZES_FILE, "utf8"));
+  } catch (_) {
+    return {};
+  }
+}
+
+async function findKnownSubjectSize(address) {
+  const key = subjectSizeKey(address);
+  if (!key) return null;
+  const mem = subjectSizesMem.get(key);
+  if (mem) return mem;
+  if (DB_CONFIGURED) {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/subject_sizes?address_norm=eq.${encodeURIComponent(key)}&select=size_sqft,source&limit=1`,
+        { headers: supabaseHeaders() }
+      );
+      if (r.ok) {
+        const row = (await r.json())[0];
+        const size = row && Math.round(Number(row.size_sqft));
+        if (size > 0) {
+          const hit = { size, source: String(row.source || "") };
+          subjectSizesMem.set(key, hit);
+          return hit;
+        }
+      }
+    } catch (err) {
+      console.error("Subject-size read failed (continuing without):", err.message);
+    }
+  }
+  const file = await loadSubjectSizesFile();
+  const row = file[key];
+  if (row && Math.round(Number(row.size)) > 0) {
+    const hit = { size: Math.round(Number(row.size)), source: String(row.source || "") };
+    subjectSizesMem.set(key, hit);
+    return hit;
+  }
+  return null;
+}
+
+// Fire-and-forget, like the harvester: a failed save must never break the
+// request that produced the report.
+function rememberSubjectSize(address, payload) {
+  (async () => {
+    const key = subjectSizeKey(address);
+    const size = Math.round(Number(String((payload && payload.subject_size_sqft) || "").replace(/[^0-9.]/g, "")));
+    if (!key || !Number.isFinite(size) || size <= 0 || size > 20_000_000) return;
+    const source = String((payload && payload.subject_size_source) || "").trim();
+    // An estimated size is an answer for THIS report, not a fact about the
+    // building — never let it masquerade as known on future searches.
+    if (source !== "public_record" && source !== "listing") return;
+    const row = { size, source };
+    subjectSizesMem.set(key, row);
+    if (DB_CONFIGURED) {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/subject_sizes?on_conflict=address_norm`, {
+          method: "POST",
+          headers: { ...supabaseHeaders(), prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ address_norm: key, size_sqft: size, source, updated_at: new Date().toISOString() }),
+        });
+        if (r.ok) return;
+        console.error(`Subject-size DB write failed (${r.status}) — falling back to file.`);
+      } catch (err) {
+        console.error("Subject-size DB write failed — falling back to file:", err.message);
+      }
+    }
+    try {
+      const file = await loadSubjectSizesFile();
+      file[key] = row;
+      await fs.promises.writeFile(SUBJECT_SIZES_FILE, JSON.stringify(file));
+    } catch (err) {
+      console.error("Subject-size file write failed:", err.message);
+    }
+  })().catch((err) => console.error("Subject-size save failed:", err.message));
+}
+
+// ---------------------------------------------------------------------------
 // Shared reports — a report the visitor chose to publish under a short id so
 // they can send the link to a partner, lender, or the property owner. Same
 // storage shape as the search cache (Supabase table `shared_reports` keyed by
@@ -5330,6 +5450,16 @@ const server = http.createServer((req, res) => {
           });
         }
 
+        // A blank SF field costs two extra searches for the size lookup — but
+        // if any previous search already looked this building up, reuse the
+        // answer and shrink the budget (see the subject-size memo). The
+        // visitor's own entry (sizeOk) always wins over the memo.
+        const knownSize = sizeOk ? null : await findKnownSubjectSize(addressOk);
+        if (knownSize) {
+          console.log(`Subject size remembered from a previous search: ${knownSize.size.toLocaleString("en-US")} SF — ${addressOk}`);
+        }
+        const searchSize = sizeOk || (knownSize ? knownSize.size : null);
+
         // Cache missed — see what we already hold for this market before paying
         // for a fresh web search. Corpus-strong markets reuse known comps and
         // run a much smaller search budget (see searchBudgetFor).
@@ -5350,8 +5480,20 @@ const server = http.createServer((req, res) => {
           }
         }
 
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, sizeOk, verifiedComps, corpus, detailsOk,
+        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
           sse ? (evt) => sse.send("progress", guardComp(evt)) : null);
+        // With the size supplied (memo hit), the prompt skips the lookup and
+        // the payload has no subject_size_sqft — carry the remembered size
+        // into the report so the client's hero math and size autofill still
+        // work for a visitor who typed nothing. Source is kept verbatim so
+        // the hero's provenance phrasing stays accurate.
+        if (knownSize && !result.subject_size_sqft) {
+          result.subject_size_sqft = String(knownSize.size);
+          if (knownSize.source) result.subject_size_source = knownSize.source;
+        }
+        // A fresh lookup (no memo, no typed size) is worth remembering for
+        // every future search of this address. Fire-and-forget.
+        if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
         await storeCachedSearch(cacheKey, result);
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan });
         maybePublishMarketSnapshot(typeOk, addressOk, result);

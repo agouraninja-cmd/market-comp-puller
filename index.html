@@ -5142,6 +5142,9 @@
 
     document.getElementById("results").classList.remove("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
+    // The pitch has already landed once there's a report to read — hide it
+    // so the report starts near the top instead of below a sales headline.
+    document.getElementById("hero").classList.add("hidden");
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
     // Glide down to the finished report.
@@ -5788,7 +5791,9 @@
   // ----------------------------------------------------------------------------
   // /desk — My Desk lives on its own URL. The desk view and the home stack
   // (hero/form/results/homeInfo) are mutually exclusive; within the home stack,
-  // results-vs-homeInfo stays renderResults'/Escape's job. popstate reads only
+  // hero-vs-results and results-vs-homeInfo stay renderResults'/Escape's job
+  // (hero hides once a report renders — no reason to keep selling the pitch
+  // above a report the visitor is already reading). popstate reads only
   // location.pathname (entries created by full page loads carry null state),
   // and going Back never resurrects a closed report — saved chips cover that.
   // ----------------------------------------------------------------------------
@@ -6148,6 +6153,7 @@
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
     results.classList.add("hidden");
     document.getElementById("homeInfo").classList.remove("hidden");
+    document.getElementById("hero").classList.remove("hidden");
     // Samples and shared reports aren't saved to this browser, so no note.
     if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
       showStatus("Report closed — reopen it any time from <strong>My Desk</strong>, at no cost.", "info");

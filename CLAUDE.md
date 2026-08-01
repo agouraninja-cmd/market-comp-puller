@@ -403,7 +403,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `parseDealDate()` puts the deal inside the requested lookback.
   `corpusIsStrong()` — the single threshold shared by the search budget and the
   analytics tag so the two can't disagree — is `coverage >= 4 && fresh`, where
-  fresh means the newest harvest for that market is under 45 days old. When
+  fresh means the newest harvest for that market is under 75 days old
+  (45 until 2026-07-31 — widened as a cost lever; see the comment above the
+  constant before touching it again). When
   strong, the model is handed those comps and `searchBudgetFor()` cuts
   `max_uses` to a floor of 3 (or 2 when the subject size was supplied), vs
   10/8 for a full-budget 12-comp search — a

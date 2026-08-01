@@ -1231,8 +1231,16 @@ async function retrieveCorpusComps(market, type, months, maxComps) {
 
     // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
     // freshest we hold for this market. Stale coverage → fall back to the web.
+    // 75 days (was 45 until 2026-07-31): the 2026-07-30 speed work flagged
+    // this gate as the top untested cost lever, and the exposure is narrow —
+    // the only deals a corpus-assisted search can miss are ones that surfaced
+    // during the staleness gap, the 2-3 fresh searches are aimed at exactly
+    // that gap, and `usable` below is window-filtered, so a market whose
+    // comps have aged out of the requested lookback stops qualifying no
+    // matter what this constant says. Judge it by the /admin corpus hit rate
+    // and spot-checks of corpus-tagged reports; it is one constant to revert.
     const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
-    const fresh = Boolean(newest && (now - newest) < 45 * 24 * 3600 * 1000);
+    const fresh = Boolean(newest && (now - newest) < 75 * 24 * 3600 * 1000);
 
     return { comps: usable.slice(0, maxComps * 2), coverage: usable.length, fresh };
   } catch (e) {

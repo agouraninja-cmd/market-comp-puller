@@ -15,10 +15,16 @@ picking the Pro tier back up.
 | 3. Customer portal configured | ✅ Done |
 | 4. Webhook destination + 6 events | ✅ Done |
 | 5. Supabase billing schema | ✅ Done, verified |
-| 6. Render env vars | ✅ Done (saved, **not yet deployed** — see below) |
-| 7. Front-end billing UI | ✅ Done, verified locally |
-| **8. End-to-end test with a test card** | ❌ **NOT started — this is the next step** |
-| 9. Flip `PRO_ENABLED=on` | ❌ Not until 8 passes |
+| 6. Render env vars | ✅ Done and deployed |
+| 7. Front-end billing UI | ✅ Done, deployed |
+| 8. End-to-end test — Stages A, B, C | ✅ **Passed 2026-07-31 in test mode** |
+| **8. Stage D — clean up the test data** | ❌ **NOT started — this is the next step** |
+| 9. Stage E — live mode + unset `PRO_AUDIENCE` | ❌ Not until D is done |
+
+**Live state right now:** `PRO_ENABLED=on` and `PRO_AUDIENCE=okb336@gmail.com`
+are set in Render, in **test mode**. The paid tier is live for that one account
+and invisible to everyone else. Verified repeatedly: an anonymous visitor gets
+`enabled:false`, `maxComps:"all"`.
 
 ---
 
@@ -110,9 +116,9 @@ alter table stripe_events enable row level security;
 ```
 `service_role` bypasses RLS, so no policies are needed.
 
-### Render — environment
-Five vars added, all with **"Save only"** — meaning they are stored but the
-running instance does **not** have them yet. The next deploy picks them up.
+### Render — environment (current, as of 2026-07-31 evening)
+
+All seven are set **and deployed**:
 
 ```
 STRIPE_SECRET_KEY                 (sk_test_...)
@@ -120,12 +126,25 @@ STRIPE_WEBHOOK_SECRET             (whsec_...)
 STRIPE_PRICE_PRO_MONTHLY
 STRIPE_PRICE_PRO_ANNUAL_FOUNDING
 STRIPE_PRICE_SINGLE_REPORT
+PRO_ENABLED = on                  ← test mode
+PRO_AUDIENCE = okb336@gmail.com   ← the allowlist; DELETING THIS IS THE LAUNCH
 ```
 
-**`PRO_ENABLED` is deliberately unset.** Not `off`, not `false` — absent. While
-unset, the app behaves exactly as it did before the tier existed: no comp
-gating, no export cap, no lookback limit (`server.js:63`). All the billing
-plumbing sits there dark.
+⚠ **Do not remove `PRO_AUDIENCE` until Stage D and Stage E are done.** While it
+is set, the paid tier exists only for that one signed-in account and every
+other visitor — including anonymous ones — takes the `enabled: false` branch
+and sees the pre-Pro app. Remove it and the tier goes live for everyone,
+against whatever Stripe keys are currently loaded (today: **test** keys, which
+decline real cards).
+
+A quick way to confirm the public is unaffected at any time:
+
+```bash
+curl -s https://market-comp-puller.onrender.com/api/config | python3 -m json.tool
+```
+
+Anonymous must show `"enabled": false` and `"maxComps": "all"`. If it shows
+`true` / `4`, the allowlist is gone and real visitors are being paywalled.
 
 ---
 
@@ -278,44 +297,109 @@ covered by `npm test` alongside the rest of the decision table.
 
 ---
 
-## Next step: testing (phase 8)
+## Phase 8 Stages A–C — PASSED 2026-07-31 (test mode)
 
-1. Deploy (any deploy — the env vars go live with it)
-2. Set `PRO_ENABLED=on` **in test mode only**, together with
-   `PRO_AUDIENCE=<your email>` — then sign in as that account. Confirm in a
-   private window that a signed-out visitor still sees the un-gated app before
-   going further
-3. Sign up / sign in on the live site
-4. Confirm the **Pricing** link appears in the header and the modal shows both
-   tiles with a live "N of 50 left" counter (if the founding tile is missing,
-   `/api/pricing` is returning `foundingLeft: null` — a DB problem, not a UI one)
-5. Buy Pro monthly with Stripe test card `4242 4242 4242 4242`, any future
-   expiry, any CVC
-6. **Watch the return to `/desk?checkout=success`** — it should say "Payment
-   received — activating…" and flip to "You're on Pro" within a few seconds.
-   If it sticks on "still activating", the webhook didn't land: check the
-   Stripe webhook log before assuming the UI is at fault
-7. Confirm a row lands in Supabase `subscriptions` with `status = active`
-8. Check the Stripe webhook log — deliveries should be 200 (a first failure
-   then retry is normal on a cold instance)
-9. Confirm the Pricing link is now gone and the plan card on My Desk reads
-   "Pro", with **Manage billing** in the account menu
-10. Test the portal: cancel → confirm `cancel_at_period_end = true`, that
-    access continues to period end, and that the plan card reads
-    "Pro — cancelling"
-11. Test a failed payment with card `4000 0000 0000 0341` → confirm
-    `status = grace`, `grace_until` ~7 days out, and that the card reads
-    "Pro — payment needs attention" with the right date
-12. Buy the founding annual → confirm the counter decrements (allow up to 60s;
-    `/api/pricing` memoizes, though the webhook refreshes the memo on a sale)
-13. Cancel out of Stripe Checkout once → confirm `/desk?checkout=cancelled`
-    says nothing was charged
-14. Delete the test-mode rows you created from Supabase `subscriptions` and
-    `stripe_events` — a test-mode `active` row still grants Pro in live mode
-15. Only after all of that: repeat the whole setup in **live mode** (new
-    products, new prices, new webhook destination, new secrets), flip
-    `PRO_ENABLED=on` there, and **unset `PRO_AUDIENCE`** — that last step is
-    the actual launch
+Every customer path was exercised against real Stripe and real Supabase:
+
+| Stage | Result |
+|---|---|
+| A — turn on privately (`PRO_ENABLED` + `PRO_AUDIENCE`) | ✅ public verified unaffected throughout |
+| B — subscribe to Pro monthly, `4242 4242 4242 4242` | ✅ row written, webhooks 200, UI flipped |
+| C1 — cancel via the customer portal | ✅ **after a bug fix — see below** |
+| C2 — grace period (row set by hand; see note) | ✅ "Pro — payment needs attention", access retained |
+| C3 — founding annual $990 | ✅ counter decremented 50 → 49 |
+| C4 — abandon checkout | ✅ grey "Nothing was charged", URL self-cleans |
+
+### The bug Stage C caught (fixed, `de91407`)
+
+Cancelling through the portal left the app showing an active, renewing plan.
+The webhook verified and wrote the row, but `cancel_at_period_end` stayed
+`false`: **newer Stripe API versions report a portal cancel as a `cancel_at`
+timestamp while the legacy flag stays false**, and `subscriptionRowFrom` only
+read the flag. Every cancellation would have looked like a renewing
+subscription and the subscriber would have hard-dropped to free at period end
+with no warning. The mapper now reads `sub.cancel_at_period_end || sub.cancel_at`.
+
+**This is why Stage C exists.** It only shows up against live Stripe traffic —
+no unit test would have caught it, because the fixture was written from the
+older shape.
+
+### Two notes for whoever repeats this
+
+- **A resend of an existing webhook event proves nothing.** `claimStripeEvent`
+  treats a repeated event id as a duplicate and skips it, by design. To
+  re-test a cancellation you must **resume the subscription and cancel again**,
+  which generates a new event id — or delete the row from `stripe_events` first.
+- **Direct Supabase edits take up to 60s to show.** `findSubscription` caches
+  for 60s and only invalidates when *the app* writes. Editing the table by hand
+  bypasses that. Wait a minute before concluding something is broken.
+- **C2 is simulated deliberately.** Forcing a real failed renewal needs Stripe
+  test clocks, which only work on subscriptions created on a clock from the
+  start. The webhook→row mapping is unit-tested; what was untested was the UI
+  reading a grace row, so the row was set by hand and the UI checked.
+
+### Prices confirmed by real charges (not by reading a dashboard)
+
+| Price | Confirmed |
+|---|---|
+| Pro monthly **$129.00** | ✅ succeeded charge, 2026-07-31 |
+| Founding annual **$990.00** | ✅ succeeded charge, 2026-07-31 |
+| Single report **$39** | owner-confirmed; no charge yet (nothing sells it) |
+
+---
+
+## NEXT STEP — Stage D: clean up the test data
+
+**Nothing is launched until this is done.** Test-mode rows still grant Pro in
+live mode, and a test-mode Stripe customer id will mis-map against live Stripe.
+
+**Two accounts have test subscription rows**, not one — a second Claude session
+was running phase 8 in parallel on 2026-07-31 and subscribed as
+`agouraninja@gmail.com`, the site's public contact address. That row is inert
+today only because that address sits outside `PRO_AUDIENCE`; the moment the
+allowlist is removed it would grant free Pro to the business account.
+
+```sql
+-- Deliberately unqualified: clears BOTH test accounts' rows.
+delete from subscriptions;
+delete from stripe_events;
+update users set stripe_customer_id = null where stripe_customer_id is not null;
+```
+
+That third statement is the one people miss. `userIdForStripeCustomer()` maps a
+Stripe customer back to a user through `users.stripe_customer_id`; a leftover
+**test-mode** customer id would mis-map against live-mode Stripe.
+
+Then verify:
+
+```sql
+select count(*) from subscriptions;   -- expect 0
+```
+
+And confirm `GET /api/pricing` (signed in as the allowlisted account) reports
+`"foundingLeft":50` — all founding seats restored.
+
+Also check **Stripe → Billing → Subscriptions, filter status = active**. Any
+still-active test subscription keeps firing renewal webhooks and would rewrite
+the rows you just deleted. As of 2026-07-31 both known test subscriptions were
+cancelled with "no future invoices", so this should come back empty.
+
+---
+
+## Then Stage E: going live
+
+1. In Stripe, switch **off** test mode and recreate from scratch: products, the
+   three prices, and a **new** webhook destination at the same
+   `/api/stripe/webhook` URL with the same six events.
+2. In Render, replace `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and all three
+   `STRIPE_PRICE_*` with the **live-mode** values.
+3. If any live amount differs from test, update **both** the price comments in
+   this file **and** the hard-coded `$129` / `$990` / "saves $558" in
+   `index.html` — nothing reconciles them against Stripe.
+4. **Delete `PRO_AUDIENCE`. That is the launch.** Left set, the product is live
+   but unbuyable, on a deployment that looks perfectly healthy.
+5. Redeploy. In a private window confirm the Pricing link now appears for a
+   signed-out visitor and reports are gated to 4 comps.
 
 ---
 
@@ -324,7 +408,10 @@ covered by `npm test` alongside the rest of the decision table.
 Paste this into a new chat:
 
 > Picking up the Pro billing work on market-comp-puller. Read
-> `PRO-BILLING-SETUP.md` in the project root. Stripe test mode, Supabase schema,
-> Render env vars, the server side and the front-end billing UI are all done.
-> Next is phase 8 — the end-to-end test with a Stripe test card, which needs a
-> deploy and `PRO_ENABLED=on` **in test mode only**.
+> `PRO-BILLING-SETUP.md` in the project root first. Phases 1-7 are done and
+> deployed, and phase 8 Stages A, B and C all passed in test mode on
+> 2026-07-31. Next is **Stage D — cleaning up the test data** (two accounts
+> have rows, not one), then Stage E, live mode. `PRO_ENABLED=on` and
+> `PRO_AUDIENCE=okb336@gmail.com` are currently set in Render in test mode —
+> leave both alone until Stage D is done. Pull before starting; another session
+> has been committing to this repo.

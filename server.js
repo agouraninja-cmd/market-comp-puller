@@ -3170,6 +3170,19 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .wordmark b{color:#B91C1C;font-weight:600}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
 .hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
+/* Explore dropdown — mirrors index.html's header menu, as a no-JS <details>
+   (a tiny script in MARKET_BAR adds close-on-outside-click). */
+.hdr nav details{position:relative}
+.hdr nav summary{list-style:none;cursor:pointer;color:#5A6473;white-space:nowrap;user-select:none}
+.hdr nav summary::-webkit-details-marker{display:none}
+.hdr nav summary:hover,.hdr nav details[open] summary{color:#1A2433}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:#8A93A0}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:#fff;
+  border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+  padding:4px 0;min-width:176px}
+.hdr nav .dd a{display:block;padding:8px 12px;color:#374253}
+.hdr nav .dd a:hover{background:#F8FAFC;color:#1A2433}
+.hdr nav .dd a.on{color:#1A2433;font-weight:500}
 /* Type */
 h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;line-height:1.15;
   letter-spacing:-.005em;color:#1A2433;margin:10px 0 6px}
@@ -3249,10 +3262,16 @@ footer li a{text-decoration:none;color:#B8C0CC}
 const MARKET_BAR =
   `<header class="hdr"><div class="wrap">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
-  `<nav><a href="/markets">Markets</a><a href="/brokers">Brokers</a>` +
-  `<a href="/how-it-works">How it works</a>` +
+  `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
+  `<div class="dd"><a href="/markets">Markets</a><a href="/brokers">Brokers</a>` +
+  `<a href="/how-it-works">How it works</a></div></details>` +
   `<a href="/">Run a report</a></nav>` +
-  `</div></header>`;
+  `</div></header>` +
+  // Close the dropdown when the visitor clicks anywhere else (scoped to the
+  // header nav so it can never touch other <details> on a page, e.g. FAQs).
+  `<script>document.addEventListener("click",function(e){` +
+  `document.querySelectorAll(".hdr nav details[open]").forEach(function(d){` +
+  `if(!d.contains(e.target))d.open=false;});});</script>`;
 
 // ---------------------------------------------------------------------------
 // Public broker credit — which firms have approved comps in each market, so
@@ -3825,6 +3844,20 @@ a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
 .hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
 .hdr nav a.on{color:#1A2433;font-weight:500}
+/* Explore dropdown — same pattern as MARKET_CSS; keep the two in step. The
+   FAQ accordions below are also <details>, which is why every rule (and the
+   close-on-outside-click script) is scoped to ".hdr nav". */
+.hdr nav details{position:relative}
+.hdr nav summary{list-style:none;cursor:pointer;color:#5A6473;white-space:nowrap;user-select:none}
+.hdr nav summary::-webkit-details-marker{display:none}
+.hdr nav summary:hover,.hdr nav details[open] summary{color:#1A2433}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:#8A93A0}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:#fff;
+  border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+  padding:4px 0;min-width:176px}
+.hdr nav .dd a{display:block;padding:8px 12px;color:#374253}
+.hdr nav .dd a:hover{background:#F8FAFC;color:#1A2433}
+.hdr nav .dd a.on{color:#1A2433;font-weight:500}
 /* Type + section furniture */
 .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
 .h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
@@ -4062,13 +4095,21 @@ function renderHowItWorksHTML() {
   <div class="wrap">
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
-      <a href="/markets">Markets</a>
-      <a href="/brokers">Brokers</a>
-      <a href="/how-it-works" class="on" aria-current="page">How it works</a>
+      <details>
+        <summary>Explore<span class="car">▾</span></summary>
+        <div class="dd">
+          <a href="/markets">Markets</a>
+          <a href="/brokers">Brokers</a>
+          <a href="/how-it-works" class="on" aria-current="page">How it works</a>
+        </div>
+      </details>
       <a href="/">Run a report</a>
     </nav>
   </div>
 </header>
+<script>document.addEventListener("click",function(e){
+  document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
+    if(!d.contains(e.target))d.open=false;});});</script>
 
 <main>
   <div class="wrap">

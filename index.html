@@ -671,13 +671,25 @@
         </svg>
         <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </a>
-      <nav class="flex items-center gap-6 text-[13.5px] text-[#5A6473]">
-        <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
-        <a href="/brokers" class="hover:text-[#1A2433]">Brokers</a>
-        <a href="/how-it-works" class="hover:text-[#1A2433] hidden sm:inline">How it works</a>
-        <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
-             unset there is nothing to sell and the link would dead-end. -->
-        <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
+      <nav class="flex items-center gap-4 sm:gap-6 text-[13.5px] text-[#5A6473]">
+        <!-- The browse links live behind one dropdown so the bar stays three
+             items on every screen; My Desk and Sign in are actions and stay
+             visible. Mirrored (as a no-JS <details>) on the server-rendered
+             market / brokers / how-it-works headers in server.js. -->
+        <div id="exploreMenuWrap" class="relative">
+          <button id="exploreMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
+            class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
+            <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div id="exploreMenu" class="hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Markets</a>
+            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Brokers</a>
+            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">How it works</a>
+            <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
+                 unset there is nothing to sell and the link would dead-end. -->
+            <button id="pricingLink" type="button" class="hidden block w-full text-left px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Pricing</button>
+          </div>
+        </div>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
@@ -5530,10 +5542,24 @@
   document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
   document.getElementById("acctMenuBtn").addEventListener("click", () =>
     document.getElementById("acctMenu").classList.toggle("hidden"));
+  document.getElementById("exploreMenuBtn").addEventListener("click", () => {
+    const menu = document.getElementById("exploreMenu");
+    menu.classList.toggle("hidden");
+    document.getElementById("exploreMenuBtn")
+      .setAttribute("aria-expanded", String(!menu.classList.contains("hidden")));
+  });
+  function closeExploreMenu() {
+    document.getElementById("exploreMenu").classList.add("hidden");
+    document.getElementById("exploreMenuBtn").setAttribute("aria-expanded", "false");
+  }
   document.addEventListener("click", (e) => {
     if (!document.getElementById("acctMenuWrap").contains(e.target)) {
       document.getElementById("acctMenu").classList.add("hidden");
     }
+    if (!document.getElementById("exploreMenuWrap").contains(e.target)) closeExploreMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeExploreMenu();
   });
 
   document.getElementById("acctForm").addEventListener("submit", async (e) => {
@@ -6704,7 +6730,13 @@
     const btn = e.target.closest && e.target.closest(".pricing-buy");
     if (btn) startCheckout(btn.dataset.plan, btn);
   });
-  document.getElementById("pricingLink").addEventListener("click", openPricingModal);
+  document.getElementById("pricingLink").addEventListener("click", () => {
+    // Lives inside the Explore dropdown — close it so it isn't left open
+    // behind the pricing modal.
+    document.getElementById("exploreMenu").classList.add("hidden");
+    document.getElementById("exploreMenuBtn").setAttribute("aria-expanded", "false");
+    openPricingModal();
+  });
   document.getElementById("menuUpgradeBtn").addEventListener("click", () => {
     document.getElementById("acctMenu").classList.add("hidden");
     openPricingModal();

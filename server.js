@@ -4227,12 +4227,37 @@ function marketOf(address) {
   return (parts[parts.length - 1] || "").slice(0, 60);
 }
 
+// An analytics market is "City, ST" or it is unknown — never free text.
+//
+// marketOf() ends with a fallback to the trailing comma-separated segment, and
+// an address typed WITHOUT a comma has no trailing segment, so the whole thing
+// comes back and lands in a column that is supposed to hold city + state. Found
+// in production 2026-07-31: a real search for "1394 North 28th st washougal"
+// was sitting in `market` verbatim. Every event kind that carries a market
+// (search, lead, portfolio_add/refresh, comp, comp_review, share,
+// type_autofill) reaches this one function, so guarding here covers all of
+// them at once.
+//
+// Deliberately NOT fixed inside marketOf(): that function is also the comp
+// corpus key — harvestComps() files rows under marketOf(comp.address) and
+// corpusRowsForMarket() looks them up with an exact, case-sensitive match — so
+// changing its fallback would silently re-key the corpus and pin the hit rate
+// at zero. See the note above marketOf() before touching it.
+//
+// Dropping an unparseable market loses nothing real: it was never a market,
+// and the event itself is still counted.
+const MARKET_SHAPE = /^[^,]+,\s[A-Z]{2}$/;
+function marketForLog(value) {
+  const s = String(value == null ? "" : value).trim();
+  return MARKET_SHAPE.test(s) ? s : "";
+}
+
 function logEvent(kind, dims) {
   const row = {
     ts: new Date().toISOString(),
     kind: String(kind),
     prop_type: (dims && dims.prop_type) || "",
-    market: (dims && dims.market) || "",
+    market: marketForLog(dims && dims.market),
     source: (dims && dims.source) || "",
     cached: Boolean(dims && dims.cached),
   };

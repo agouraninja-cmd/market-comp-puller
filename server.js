@@ -811,12 +811,21 @@ async function markWatchlistSeen(userId) {
 //   );
 //   create index on report_purchases (user_id, report_id);
 //
+//   -- One row per REPORT exported, not one per click. The primary key makes a
+//   -- second export of the same report in the same month a no-op, so wanting a
+//   -- report as both a CSV and a PDF costs one, not two. The tally is the row
+//   -- COUNT for (user_id, period) — there is no counter column to race on.
 //   create table export_usage (
 //     user_id uuid not null references users(id) on delete cascade,
 //     period text not null,                -- 'YYYY-MM', UTC
-//     count integer not null default 0,
-//     primary key (user_id, period)
+//     report_key text not null,            -- stable per report; see reportKeyOf()
+//     created_at timestamptz not null default now(),
+//     primary key (user_id, period, report_key)
 //   );
+//
+//   -- Upgrading an existing (user_id, period, count) table instead:
+//   --   drop table if exists export_usage;   -- nothing ever wrote to it
+//   -- then create it as above.
 //
 //   -- Stripe retries webhooks; this is what makes handlers idempotent.
 //   create table stripe_events (
@@ -881,16 +890,49 @@ async function findReportPurchase(userId, reportId) {
   }
 }
 
+// The tally is a row count, so computeEntitlements still receives the
+// { period, count } shape it has always taken — the storage changed, the rule
+// did not.
 async function getExportUsage(userId, period) {
   if (!userId || !DB_CONFIGURED) return null;
   try {
     const rows = await sbRequest("GET",
       `export_usage?user_id=eq.${encodeURIComponent(userId)}` +
-      `&period=eq.${encodeURIComponent(period)}&limit=1`);
-    return (rows && rows[0]) || null;
+      `&period=eq.${encodeURIComponent(period)}&select=report_key`);
+    const keys = (rows || []).map((r) => r.report_key);
+    // `count` is what computeEntitlements reads; `keys` lets /api/export tell a
+    // re-export of an already-counted report from a genuinely new one.
+    return { period, count: keys.length, keys };
   } catch (e) {
-    console.error("Export usage lookup failed:", e.message);
+    // Fail OPEN, unlike every other billing read. The rest of this file fails
+    // closed so a DB hiccup can never hand out Pro; here the same hiccup would
+    // WITHHOLD a deliverable someone is entitled to. Wrongly allowing an export
+    // costs nothing; wrongly blocking one costs a customer their report.
+    console.error("Export usage lookup failed (allowing the export):", e.message);
     return null;
+  }
+}
+
+// Stable identity for "the same report". Address + type + the report's own
+// timestamp: re-exporting the report on screen is free, while a fresh search of
+// the same building next month is a new report. Hashed so no address is stored
+// in a usage table.
+function reportKeyOf(raw) {
+  return sha256Hex(String(raw || "").trim().toLowerCase().replace(/\s+/g, " ")).slice(0, 32);
+}
+
+// Records one report-export. Idempotent by primary key, so the second format of
+// the same report is a conflict we deliberately swallow.
+async function recordExport(userId, period, reportKey) {
+  if (!userId || !DB_CONFIGURED || !reportKey) return false;
+  try {
+    await sbRequest("POST", "export_usage",
+      [{ user_id: userId, period, report_key: reportKey }],
+      { prefer: "resolution=ignore-duplicates,return=minimal" });
+    return true;
+  } catch (e) {
+    console.error("Export usage write failed (export still allowed):", e.message);
+    return false;
   }
 }
 
@@ -7288,6 +7330,75 @@ const server = http.createServer((req, res) => {
         sendJson(res, 200, { billing: true, foundingLeft: left, foundingLimit: FOUNDING_MEMBER_LIMIT });
       });
     }).catch(() => sendJson(res, 200, closed));
+    return;
+  }
+
+  // --- Claim one report-export against the monthly allowance ---
+  //
+  // This is a HONOUR-SYSTEM counter and should be read as one. Every export is
+  // produced in the browser — CSV built in JS, PNG by html2canvas, PDF by
+  // window.print — so the server never sees the file and cannot withhold it.
+  // All this route can do is answer "may I?" and record the answer. Someone
+  // with dev tools open walks straight past it, exactly as they can past the
+  // lead-capture gate. It is a conversion nudge, not a security boundary, and
+  // nothing of value is protected by it.
+  //
+  // Replies:
+  //   200 { allowed:true, remaining }   — go ahead
+  //   401 { code:"signin_required" }    — exporting needs an account
+  //   403 { code:"export_limit" }       — allowance spent this month
+  if (req.method === "POST" && req.url === "/api/export") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("export:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many exports. Please wait a moment." });
+        }
+        const { report } = JSON.parse(body || "{}");
+        const user = await getSessionUser(req);
+        const ent = await getEntitlements(user);
+
+        // Pro, a purchased report, or the whole tier switched off: no ceiling,
+        // so nothing to count and nothing to store.
+        if (ent.exportsRemaining === "unlimited") {
+          return sendJson(res, 200, { allowed: true, remaining: "unlimited" });
+        }
+        if (!user) {
+          return sendJson(res, 401, {
+            code: "signin_required",
+            error: "Create a free account to export reports.",
+          });
+        }
+
+        const now = Date.now();
+        const period = ENT.usagePeriod(now);
+        const key = reportKeyOf(report);
+        const usage = await getExportUsage(user.id, period);
+        // A failed read returns null and we let it through — see getExportUsage.
+        if (!usage) return sendJson(res, 200, { allowed: true, remaining: ent.exportsRemaining });
+
+        const cap = usage.count + Number(ent.exportsRemaining);
+        // Already exported THIS report this month: free, and no second row.
+        if (key && usage.keys.includes(key)) {
+          return sendJson(res, 200, { allowed: true, remaining: Math.max(0, cap - usage.count), repeat: true });
+        }
+        if (usage.count >= cap) {
+          return sendJson(res, 403, {
+            code: "export_limit",
+            error: `You've exported ${cap} reports this month. Pro removes the limit.`,
+            remaining: 0,
+          });
+        }
+        await recordExport(user.id, period, key);
+        return sendJson(res, 200, { allowed: true, remaining: Math.max(0, cap - usage.count - 1) });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        // Never let a bug here block an export.
+        console.error("Export claim failed (allowing the export):", err.message);
+        return sendJson(res, 200, { allowed: true, remaining: "unlimited" });
+      }
+    });
     return;
   }
 

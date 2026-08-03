@@ -76,12 +76,39 @@ test("free account: 4 comps and three exports a month", () => {
 });
 
 test("export tally counts down and floors at zero", () => {
-  assert.equal(ent({ user: USER, usage: { count: 1 } }).exportsRemaining, 2);
-  assert.equal(ent({ user: USER, usage: { count: 3 } }).exportsRemaining, 0);
+  // Written against the constant, not the number: the cap is a product dial
+  // (3 → 5 on 2026-08-03) and a test that hard-codes it fails for the wrong
+  // reason every time someone turns it.
+  const cap = FREE_EXPORTS_PER_MONTH;
+  assert.equal(ent({ user: USER, usage: { count: 1 } }).exportsRemaining, cap - 1);
+  assert.equal(ent({ user: USER, usage: { count: cap } }).exportsRemaining, 0);
   assert.equal(ent({ user: USER, usage: { count: 99 } }).exportsRemaining, 0);
   // A corrupt or negative tally must not mint extra exports.
-  assert.equal(ent({ user: USER, usage: { count: -5 } }).exportsRemaining, FREE_EXPORTS_PER_MONTH);
-  assert.equal(ent({ user: USER, usage: { count: "two" } }).exportsRemaining, FREE_EXPORTS_PER_MONTH);
+  assert.equal(ent({ user: USER, usage: { count: -5 } }).exportsRemaining, cap);
+  assert.equal(ent({ user: USER, usage: { count: "two" } }).exportsRemaining, cap);
+});
+
+test("exporting requires an account — anonymous gets zero, never one", () => {
+  // The ladder must only ever go up: anonymous 0 -> free 5 -> Pro unlimited.
+  // If an anonymous visitor could export MORE than a signed-in one, creating an
+  // account would be a downgrade and people would learn to stay signed out.
+  assert.equal(ANON_EXPORTS_PER_MONTH, 0);
+  assert.equal(ent({ user: null }).exportsRemaining, 0);
+  assert.equal(canExport(ent({ user: null })), false);
+  assert.ok(
+    ANON_EXPORTS_PER_MONTH < FREE_EXPORTS_PER_MONTH,
+    "an account must always be worth more than no account"
+  );
+  // A signed-in free user with an untouched allowance can still export.
+  assert.equal(canExport(ent({ user: USER })), true);
+});
+
+test("the tier being switched off restores unlimited exports for everyone", () => {
+  // PRO_ENABLED unset must look exactly like the app before the tier existed —
+  // including for anonymous visitors, who are otherwise capped at zero.
+  assert.equal(computeEntitlements({ user: null, enabled: false }).exportsRemaining, "unlimited");
+  assert.equal(computeEntitlements({ user: USER, enabled: false }).exportsRemaining, "unlimited");
+  assert.equal(canExport(computeEntitlements({ user: null, enabled: false })), true);
 });
 
 // --- active Pro ------------------------------------------------------------

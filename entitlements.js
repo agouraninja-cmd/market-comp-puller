@@ -25,11 +25,24 @@ const FREE_MAX_COMPS = 4;
 // historical default of 24 — pre-Pro reports were 24-month searches, so
 // existing free users will see a shorter window than they used to.
 const FREE_MAX_LOOKBACK_MONTHS = 12;
-const FREE_EXPORTS_PER_MONTH = 3;
-// Anonymous visitors get one export, then a nudge to make a free account.
-// Tracked per browser + IP, so this is a speed bump, not a wall — see the
-// note on export counting in server.js.
-const ANON_EXPORTS_PER_MONTH = 1;
+// Counted PER REPORT PER MONTH, not per click: CSV, image, PDF and Excel of
+// the same report together cost one. People think in reports ("I get five a
+// month"), and charging twice for wanting the same analysis in two formats
+// reads as a bug rather than a limit. server.js keys the tally on a report id
+// and inserts ignore-duplicates, so a re-export is free and idempotent.
+const FREE_EXPORTS_PER_MONTH = 5;
+// Zero, deliberately: exporting requires an account.
+//
+// The alternative — counting anonymous exports — cannot work here. Exports are
+// generated ENTIRELY in the browser (CSV in JS, PNG via html2canvas, PDF via
+// window.print), so the server only learns about one if the client reports it,
+// and `export_usage` is keyed on a real user id. Any anonymous tally would live
+// in localStorage and die with a private window.
+//
+// Leaving anonymous UNCOUNTED was worse than either: a signed-out visitor would
+// have had unlimited exports while a signed-in one got five, making an account
+// strictly worse to have. The ladder now only goes one way: 0 → 5 → unlimited.
+const ANON_EXPORTS_PER_MONTH = 0;
 // /api/comps already clamps `months` to 1..120; Pro simply gets the whole
 // range rather than an unlimited sentinel, so callers can compare numbers.
 const PRO_MAX_LOOKBACK_MONTHS = 120;

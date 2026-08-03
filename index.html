@@ -1590,40 +1590,35 @@
       </div>
     </div>
 
-  </div>
+    <!-- Home info — fills out the landing view; hidden once a report is shown -->
+    <div id="homeInfo" class="no-print">
 
-  <!-- Home info — fills out the landing view; hidden once a report is shown.
-       Sits OUTSIDE the max-w-5xl wrapper so the Market Explorer band can run
-       the full viewport width, like #hero and the footer. -->
-  <div id="homeInfo" class="no-print">
-
-    <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
-         report exhibit, the three-step method, and the FAQ. -->
-    <div class="max-w-5xl mx-auto px-4">
+      <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
+           report exhibit, the three-step method, and the FAQ. -->
       <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <p class="text-sm text-[#4C5665]">Free reports, 3–6 cited comps each, every source disclosed.</p>
         <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works →</a>
       </div>
-    </div>
 
-    <!-- The For Brokers section moved to its own page, /brokers (built by
-         renderBrokersPageHTML in server.js). Header/footer link there. -->
+      <!-- The For Brokers section moved to its own page, /brokers (built by
+           renderBrokersPageHTML in server.js). Header/footer link there. -->
 
-    <!-- Market Explorer — its own full-width band, deliberately distinct from
-         the comp searcher above: it builds standing market pages, not reports. -->
-    <section class="mt-14 border-y rd-hairline bg-white reveal">
-      <div class="max-w-5xl mx-auto px-4 py-14">
+      <!-- Market Explorer — inline in the content column (the full-width band
+           treatment was reverted), but still self-contained: it builds standing
+           market pages and never hands a query to the comp form above. -->
+      <section class="py-12 reveal">
         <div class="rd-kicker">Market Explorer</div>
         <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the page.</h2>
         <p class="text-sm text-[#4C5665] mb-1 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot (about a minute).</p>
         <p class="text-sm text-[#8A93A0] mb-5 max-w-[58ch]">Standing market pages, separate from the property valuation above.</p>
-        <div class="relative max-w-sm">
+        <div class="relative max-w-sm mb-5">
           <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
                  class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
           <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
         </div>
-      </div>
-    </section>
+      </section>
+
+    </div>
 
   </div>
 

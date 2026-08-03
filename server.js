@@ -3880,11 +3880,15 @@ a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
    each link into a two-line column (which overflowed the viewport at 375px). */
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
 .hleft{display:flex;align-items:center;gap:18px}
-/* Red back link, top left — also wired to the Escape key. Deliberately plain
-   (no border/pill): the owner rolled back a boxed version as too heavy. */
-.backbtn{display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
+/* Red back link, top-left corner of the page — also wired to the Escape key.
+   Deliberately plain (no border/pill): the owner rolled back a boxed version
+   as too heavy. Absolute against the page, not the centered column; below
+   ~1140px the corner collides with the column, so it drops back into the
+   header flow beside the logo. */
+.backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
 .backbtn:hover{color:#991B1B}
 .backbtn svg{width:15px;height:15px;flex-shrink:0}
+@media (max-width:1139px){.backbtn{position:static}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}

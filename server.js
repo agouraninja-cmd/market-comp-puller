@@ -4294,71 +4294,102 @@ function renderPrivacyPageHTML() {
   const title = "Privacy Policy | CompNinja";
   const canonical = `${SITE_URL}/privacy`;
   const description =
-    "What CompNinja collects, what never leaves your browser, which providers we use, and how to delete your data.";
+    "How CompNinja LLC collects, uses, and shares information, which data never leaves your browser, and how to request deletion.";
   const body =
     `<h1>Privacy Policy</h1>` +
-    `<p class="sub">Last updated: ${LEGAL_UPDATED}. CompNinja is operated by CompNinja LLC, an Idaho ` +
-    `limited liability company (file #6928558). Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
-
+    `<p class="sub">Effective date: ${LEGAL_UPDATED}</p>` +
     `<div class="legal">` +
-    `<h2>What we collect</h2>` +
+    `<p>This Privacy Policy describes how CompNinja LLC, an Idaho limited liability company ` +
+    `(file no. 6928558) (&quot;CompNinja,&quot; &quot;we,&quot; &quot;us&quot;), collects, uses, and ` +
+    `shares information in connection with compninja.co (the &quot;Service&quot;). By using the ` +
+    `Service, you agree to the practices described in this policy.</p>` +
+
+    `<h2>1. Information We Collect</h2>` +
+    `<p>We collect the following categories of information when you provide them:</p>` +
     `<ul>` +
     `<li><strong>Search inputs.</strong> The property address, property type, lookback window, and any ` +
-    `public building attributes you enter (size, units, clear height, and similar).</li>` +
-    `<li><strong>Lead and broker-opinion requests.</strong> Name, email, phone, company, and the property ` +
-    `you asked about.</li>` +
-    `<li><strong>Accounts.</strong> Your email address and a hashed password. Passwords are stored only as ` +
-    `scrypt hashes, never as plain text.</li>` +
-    `<li><strong>Saved work.</strong> Portfolio items and watchlists, including any private financial ` +
-    `inputs you enter (NOI, debt terms, rent roll, gross income).</li>` +
-    `<li><strong>Broker comp submissions.</strong> Broker contact details and the submitted comp.</li>` +
-    `<li><strong>Operational data.</strong> IP addresses for rate limiting, server logs, and analytics ` +
-    `events that carry no personal information: a property type, a city and state, and an outcome, ` +
-    `never names, emails, or street addresses.</li>` +
+    `building attributes you enter, such as size, unit count, or clear height.</li>` +
+    `<li><strong>Account information.</strong> Your email address and a password. Passwords are stored ` +
+    `only as salted scrypt hashes and are never stored in plain text.</li>` +
+    `<li><strong>Lead and broker-opinion requests.</strong> Your name, email address, phone number, ` +
+    `company, and the property your request concerns.</li>` +
+    `<li><strong>Saved work.</strong> Portfolio items and watchlist entries associated with your ` +
+    `account, including any financial inputs you choose to save (see Section 2).</li>` +
+    `<li><strong>Broker comp submissions.</strong> The submitting broker's contact details and the ` +
+    `submitted comparable-sale data.</li>` +
     `</ul>` +
+    `<p>We also collect limited information automatically: IP addresses, used for rate limiting and ` +
+    `abuse prevention; standard server logs; and aggregate analytics events. Analytics events are ` +
+    `limited to a property type, a city and state, and an outcome, and do not include names, email ` +
+    `addresses, or street addresses.</p>` +
 
-    `<h2>Your private financials stay in your browser</h2>` +
-    `<p>NOI, debt terms, rent rolls, and gross income never leave your browser except into your own ` +
-    `signed-in portfolio. They are never sent to the AI model, they are stripped on the server before a ` +
-    `shared report link is stored, and they are never shown to anyone else.</p>` +
+    `<h2>2. Information That Does Not Leave Your Browser</h2>` +
+    `<p>The financial inputs you may enter while analyzing a property, including net operating income, ` +
+    `debt terms, rent roll, and gross income, are processed entirely within your browser. They are not ` +
+    `transmitted to the AI model, they are removed on the server before any shared report link is ` +
+    `stored, and they are not visible to any other user. The sole exception is your own portfolio: ` +
+    `saving a report to a signed-in account stores these inputs in that account so your analysis can be ` +
+    `restored across devices.</p>` +
 
-    `<h2>How we use information</h2>` +
-    `<p>To generate your reports, to connect broker-opinion requesters with local brokers, to send ` +
-    `transactional email (confirmations, password resets, broker notifications), to process subscription ` +
-    `billing, and to operate, secure, and improve the service. We do not sell personal data, we run no ` +
-    `advertising trackers, and we use no third-party analytics cookies.</p>` +
+    `<h2>3. How We Use Information</h2>` +
+    `<p>We use the information described above to generate your reports; to connect broker-opinion ` +
+    `requesters with independent local brokers; to send transactional email such as confirmations, ` +
+    `password resets, and broker notifications; to process subscription billing; and to operate, ` +
+    `secure, and improve the Service.</p>` +
+    `<p>We do not sell personal information. The Service contains no advertising trackers and uses no ` +
+    `third-party analytics cookies.</p>` +
 
-    `<h2>Service providers</h2>` +
-    `<p>These providers process data on our behalf:</p>` +
+    `<h2>4. Service Providers</h2>` +
+    `<p>We share information with the following providers only as necessary to operate the Service:</p>` +
     `<ul>` +
-    `<li><strong>Anthropic</strong> (AI search): receives the address, property type, and public building ` +
-    `attributes only. Never your financials.</li>` +
-    `<li><strong>Supabase</strong> (database) and <strong>Render</strong> (hosting).</li>` +
-    `<li><strong>Stripe</strong> (payments): card details go directly to Stripe and never touch our servers.</li>` +
-    `<li><strong>Resend</strong> (email delivery).</li>` +
-    `<li><strong>Google</strong> (Street View imagery), <strong>Esri</strong>, <strong>OpenStreetMap</strong>, ` +
-    `and <strong>CARTO</strong> (map imagery and tiles).</li>` +
-    `<li><strong>US Census Bureau</strong> and <strong>Nominatim</strong> (address geocoding).</li>` +
-    `<li><strong>cdnjs</strong> (script delivery for exports).</li>` +
+    `<li><strong>Anthropic</strong> performs the AI-assisted comparable search. It receives the ` +
+    `property address, property type, and the building attributes you enter. It does not receive the ` +
+    `financial inputs described in Section 2.</li>` +
+    `<li><strong>Supabase</strong> provides database hosting, and <strong>Render</strong> provides ` +
+    `application hosting.</li>` +
+    `<li><strong>Stripe</strong> processes subscription payments. Card details are provided by you ` +
+    `directly to Stripe and are never transmitted to or stored on our servers.</li>` +
+    `<li><strong>Resend</strong> delivers transactional email.</li>` +
+    `<li><strong>Google</strong> (Street View imagery), <strong>Esri</strong>, ` +
+    `<strong>OpenStreetMap</strong>, and <strong>CARTO</strong> provide map imagery and tiles.</li>` +
+    `<li>The <strong>US Census Bureau</strong> and <strong>Nominatim</strong> provide address ` +
+    `geocoding.</li>` +
+    `<li><strong>cdnjs</strong> provides content delivery for the export feature.</li>` +
     `</ul>` +
 
-    `<h2>Cookies and local storage</h2>` +
-    `<p>One essential cookie (<code>cn_session</code>, httpOnly) keeps you signed in. Your browser's ` +
-    `local storage holds preferences, report history, and map caches on your own device.</p>` +
-    `<h2>Shared report links</h2>` +
-    `<p>Publishing a share link makes that report readable by anyone who has the link. Private financial ` +
-    `inputs are stripped before publishing. Share links do not expire.</p>` +
-    `<h2>Retention and deletion</h2>` +
-    `<p>You can delete your account in the app (My Desk, Delete account), which removes the account and ` +
-    `its saved data. To request deletion of lead or submission data, email ` +
+    `<h2>5. Cookies and Local Storage</h2>` +
+    `<p>The Service sets one essential cookie, <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `you signed in. Your browser's local storage holds preferences, report history, and map caches; ` +
+    `that data remains on your own device.</p>` +
+
+    `<h2>6. Shared Report Links</h2>` +
+    `<p>If you publish a share link, the associated report becomes readable by anyone who has the ` +
+    `link. The financial inputs described in Section 2 are removed before the shared copy is stored. ` +
+    `Share links do not expire.</p>` +
+
+    `<h2>7. Data Retention and Deletion</h2>` +
+    `<p>We retain information for as long as it is needed to provide the Service. You may delete your ` +
+    `account at any time from within the application (My Desk, Delete account); doing so removes the ` +
+    `account and its saved data. To request deletion of lead or submission data, contact us at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
-    `<h2>Security</h2>` +
-    `<p>HTTPS everywhere, hashed passwords, and an access-controlled database.</p>` +
-    `<h2>Children</h2>` +
-    `<p>The service is built for business use and is not directed to children under 13.</p>` +
-    `<h2>Changes and contact</h2>` +
-    `<p>We may update this policy; the date at the top changes when we do. ` +
-    `<a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
+
+    `<h2>8. Security</h2>` +
+    `<p>The Service is served exclusively over HTTPS. Passwords are stored as salted scrypt hashes, ` +
+    `and database access is restricted. No method of transmission or storage is completely secure, ` +
+    `and we cannot guarantee absolute security.</p>` +
+
+    `<h2>9. Children's Privacy</h2>` +
+    `<p>The Service is intended for business use and is not directed to children under 13. We do not ` +
+    `knowingly collect personal information from children under 13.</p>` +
+
+    `<h2>10. Changes to This Policy</h2>` +
+    `<p>We may update this policy from time to time. When we do, we will revise the effective date at ` +
+    `the top of this page. Your continued use of the Service after a change takes effect constitutes ` +
+    `acceptance of the updated policy.</p>` +
+
+    `<h2>11. Contact</h2>` +
+    `<p>Questions about this policy or about your data may be directed to CompNinja LLC at ` +
+    `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
     `</div>`;
 
   return marketShell({ title, description, canonical, body });

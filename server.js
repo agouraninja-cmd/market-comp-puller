@@ -3445,16 +3445,16 @@ function renderBrokerProfileHTML(profile, subs) {
       : `<span class="badge">${escHtml(m)}</span>`;
   }).join("");
 
-  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent(`Broker introduction — ${headline}`)}`;
+  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent(`Broker introduction: ${headline}`)}`;
   const body =
     `<h1>${escHtml(headline)}</h1>` +
-    `<p class="sub">Verified comp contributor${firm && display && display !== firm ? " · " + escHtml(display) : ""} — ` +
+    `<p class="sub">Verified comp contributor${firm && display && display !== firm ? " · " + escHtml(display) : ""}: ` +
     `every comp below the green badge was submitted by this contributor and hand-reviewed by CompNinja.</p>` +
     `<div class="tiles">${tiles}</div>` +
     (marketChips ? `<div class="card"><h2>Markets contributed to</h2><div class="related">${marketChips}</div></div>` : "") +
     `<div class="card"><h2>What &quot;Verified&quot; means</h2>` +
     `<p>Comps carrying a <strong>Verified · via ${escHtml(headline)}</strong> badge were submitted by this contributor ` +
-    `and reviewed by our team before joining the comp layer — the highest provenance tier in a CompNinja report.</p></div>` +
+    `and reviewed by our team before joining the comp layer, the highest provenance tier in a CompNinja report.</p></div>` +
     `<div class="cta"><h2>Work with ${escHtml(headline)}</h2>` +
     `<p>CompNinja connects property owners with the brokers who know their market. Introductions go through our team.</p>` +
     `<a class="btn" href="${introHref}">Request an introduction</a>` +
@@ -3557,7 +3557,7 @@ function marketIntelRows(market, propertyType) {
 const MARKET_FOOTER =
   `<footer><div class="wrap">` +
   `<div><div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>` +
-  `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage — we ` +
+  `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
   `<p>&copy; 2026 CompNinja</p></div>` +
@@ -3790,7 +3790,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
   // requested them — banner up top, robots noindex, no structured data.
   const previewBanner = opts.preview
     ? `<div class="card"><h2>Limited data preview</h2><p>We found only ${p.ppsf.count} priced sale comp${p.ppsf.count === 1 ? "" : "s"} ` +
-      `for this market — below our bar for a published page. The figures below are indicative only, and this page expires shortly. ` +
+      `for this market, below our bar for a published page. The figures below are indicative only, and this page expires shortly. ` +
       `For a specific property, <a href="/">run a free valuation</a> instead.</p></div>`
     : "";
 
@@ -3807,7 +3807,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     creditLine +
     faqCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
-    `<p>Get a free, instant estimate from recent comps — then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
+    `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>` +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
@@ -3831,10 +3831,10 @@ function renderMarketDirectoryHTML() {
   const title = "Commercial Real Estate Market Snapshots by City";
   const canonical = `${SITE_URL}/markets`;
   const description =
-    "Recent commercial real estate price-per-square-foot snapshots by city and property type — industrial, office, retail, and multifamily — with a free instant valuation tool.";
+    "Recent commercial real estate price-per-square-foot snapshots by city and property type (industrial, office, retail, and multifamily) with a free instant valuation tool.";
   const cards = slugs.map((s) => {
     const p = merged[s];
-    return `<a class="mcard" href="/market/${s}"><div class="t">${escHtml(p.type)} — ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
+    return `<a class="mcard" href="/market/${s}"><div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
       `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div></a>`;
   }).join("");
   const jsonLd = JSON.stringify({
@@ -3849,7 +3849,7 @@ function renderMarketDirectoryHTML() {
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
-    `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages — get an instant estimate for your exact building.</p>` +
+    `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
   return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd });
 }
@@ -4017,7 +4017,7 @@ function renderBrokersPageHTML() {
   const description =
     "Submit a comp to CompNinja and it carries your firm's name on every report that uses it. " +
     "Contributing brokers also get introduced to owners asking what their building is worth.";
-  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent("Broker introduction — CompNinja")}`;
+  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent("Broker introduction: CompNinja")}`;
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -4038,27 +4038,27 @@ function renderBrokersPageHTML() {
   const body =
     `<h1>The comps get better because brokers make them better.</h1>` +
     `<p class="sub">CompNinja reports are built from public records, listings, and live search. ` +
-    `The comps brokers confirm are the ones buyers and owners trust most &mdash; so those carry ` +
+    `The comps brokers confirm are the ones buyers and owners trust most, so those carry ` +
     `the contributor's name wherever they appear.</p>` +
     `<div class="grid">` +
     `<div class="card"><h2>Submit a comp, get the credit.</h2>` +
     `<p>Approved comps appear with a green Verified badge and your firm's name on every report ` +
-    `that uses them &mdash; visible proof you know your market.</p>` +
+    `that uses them: visible proof you know your market.</p>` +
     `<p style="margin:0"><a href="/#submit-comp">Submit a comp &rarr;</a></p></div>` +
     `<div class="card"><h2>Meet owners already asking about value.</h2>` +
     `<p>Owners requesting a Broker Opinion of Value are matched with brokers active in that ` +
-    `market. No cold lists &mdash; people mid-decision.</p>` +
+    `market. No cold lists, people mid-decision.</p>` +
     `<p style="margin:0"><a href="${introHref}">Get introduced &rarr;</a></p></div>` +
     `</div>` +
     `<div class="card"><h2>What &quot;Verified&quot; means</h2>` +
-    `<p>A submitted comp is hand-reviewed by our team before it joins the comp layer &mdash; ` +
+    `<p>A submitted comp is hand-reviewed by our team before it joins the comp layer: ` +
     `Verified is the highest provenance tier in a CompNinja report, above public record, ` +
     `listing, news, and estimate. Once approved, the comp is offered to every matching search ` +
     `in that market and property type, badged <strong>Verified &middot; via your firm</strong>.</p>` +
     `<p style="margin:0">Contributors with a public profile get a page of their own listing their ` +
     `verified comps, the markets they cover, and how often their comps have been cited.</p></div>` +
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
-    `<p>Takes about a minute. Address, date, price, and size &mdash; we handle the review.</p>` +
+    `<p>Takes about a minute. Address, date, price, and size; we handle the review.</p>` +
     `<a class="btn" href="/#submit-comp">Submit a comp</a>` +
     `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
@@ -4093,7 +4093,7 @@ function renderHowItWorksHTML() {
 
   const steps = [
     ["I.", "Search live",
-     "Public records, listings, and news are searched at request time — not read from a stale database."],
+     "Public records, listings, and news are searched at request time, not read from a stale database."],
     ["II.", "Cite everything",
      "Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up."],
     ["III.", "Value the subject",
@@ -4169,7 +4169,7 @@ function renderHowItWorksHTML() {
       <div class="kicker">The Report</div>
       <h2 class="h">One page that answers, then proves.</h2>
       <p class="sub">A value range for the subject, what's driving prices in the market, and the comp table behind
-        both — with a confidence badge on every source.</p>
+        both, with a confidence badge on every source.</p>
       <div class="exhibit">
         <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
         <div class="exrow">
@@ -4179,7 +4179,7 @@ function renderHowItWorksHTML() {
             <div class="psf">$212&ndash;$245 / SF &middot; 21,600 SF (public record)</div>
             <div class="lab" style="margin-bottom:4px">What's driving prices</div>
             <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
-            <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium — scarce supply</div>
+            <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
             <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9–6.4%</div>
           </div>
           <div class="exmain">
@@ -4216,7 +4216,7 @@ function renderHowItWorksHTML() {
 
     <div class="cta">
       <h2 class="h" style="font-size:22px">See it on your own building.</h2>
-      <p>Enter an address and property type — the report takes about a minute and costs nothing.</p>
+      <p>Enter an address and property type; the report takes about a minute and costs nothing.</p>
       <a class="btn" href="/">Run a free report &rarr;</a>
     </div>
   </div>
@@ -4226,7 +4226,7 @@ function renderHowItWorksHTML() {
   <div class="wrap">
     <div>
       <div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
-      <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage — we
+      <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
         connect you with local brokers for opinions of value. Comparables derive from publicly available data;
         verify independently before underwriting.</p>
       <p>&copy; 2026 CompNinja</p>
@@ -6096,7 +6096,7 @@ const server = http.createServer((req, res) => {
         const stateOk = String(parsed.state || "").trim().toUpperCase();
         const cityRaw = String(parsed.city || "").trim().replace(/\s+/g, " ");
         if (!typeOk) return sendJson(res, 400, { error: "Pick a property type: Industrial, Office, Retail, or Multifamily." });
-        if (!US_STATES.has(stateOk)) return sendJson(res, 400, { error: "That doesn't look like a US state — use the two-letter code, e.g. TX." });
+        if (!US_STATES.has(stateOk)) return sendJson(res, 400, { error: "That doesn't look like a US state; use the two-letter code, e.g. TX." });
         if (!/^[a-zA-Z][a-zA-Z .'\-]{1,39}$/.test(cityRaw)) return sendJson(res, 400, { error: "That doesn't look like a city name." });
         // Title-case so "los angeles" and "Los Angeles" land on one slug/page.
         const cityOk = cityRaw.toLowerCase().replace(/(^|[\s.'\-])[a-z]/g, (ch) => ch.toUpperCase());
@@ -6306,7 +6306,7 @@ const server = http.createServer((req, res) => {
         }
         const existing = await findUserByEmail(emailOk);
         if (isSignup) {
-          if (existing) return sendJson(res, 409, { error: "An account with this email already exists — sign in instead." });
+          if (existing) return sendJson(res, 409, { error: "An account with this email already exists; sign in instead." });
           const user = await createUser({
             email: emailOk,
             password_hash: await hashPassword(password),
@@ -6393,7 +6393,7 @@ const server = http.createServer((req, res) => {
             sendOutboundEmail(user.email, "Reset your CompNinja password",
               `Someone (hopefully you) asked to reset the password for this CompNinja account.\n\n` +
               `Reset it here (link works for 1 hour):\n${link}\n\n` +
-              `If this wasn't you, ignore this email — your password is unchanged.`);
+              `If this wasn't you, ignore this email; your password is unchanged.`);
           } else {
             console.log(`Password reset link for ${user.email} (outbound email not configured, not emailed): ${link}`);
           }
@@ -6422,7 +6422,7 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: "Password must be at least 8 characters." });
         }
         const userId = await consumePasswordReset(String(token || ""));
-        if (!userId) return sendJson(res, 400, { error: "That reset link is invalid or has expired — request a new one." });
+        if (!userId) return sendJson(res, 400, { error: "That reset link is invalid or has expired; request a new one." });
         await updateUserPassword(userId, await hashPassword(password));
         await deleteSessionsForUser(userId); // every device must sign in again
         return sendJson(res, 200, { ok: true });
@@ -6996,7 +6996,7 @@ const server = http.createServer((req, res) => {
             `Hi ${submission.broker_name},`,
             ``,
             `Thanks for submitting a comp:`,
-            `${submission.address}${submission.transaction ? " — " + submission.transaction : ""}, ${submission.price_or_rate}` +
+            `${submission.address}${submission.transaction ? ", " + submission.transaction : ""}, ${submission.price_or_rate}` +
               `${submission.deal_date ? ", closed " + submission.deal_date : ""}${submission.size_sqft ? ", " + submission.size_sqft + " SF" : ""}`,
             ``,
             `What happens next:`,
@@ -7098,9 +7098,9 @@ const server = http.createServer((req, res) => {
             [
               `Hi ${row.broker_name},`,
               ``,
-              `Good news — your comp was approved and is now part of CompNinja's`,
+              `Good news: your comp was approved and is now part of CompNinja's`,
               `verified layer:`,
-              `${row.address}${row.transaction ? " — " + row.transaction : ""}, ${row.price_or_rate}` +
+              `${row.address}${row.transaction ? ", " + row.transaction : ""}, ${row.price_or_rate}` +
                 `${row.deal_date ? ", closed " + row.deal_date : ""}`,
               ``,
               `It now appears in matching reports with a "Verified - via ${firm}"`,
@@ -7666,7 +7666,7 @@ const server = http.createServer((req, res) => {
     if (!entry || Date.now() - entry.ts > PREVIEW_TTL_MS) {
       previewPagesMem.delete(previewMatch[1]);
       res.writeHead(404, { "content-type": "text/plain" });
-      return res.end("Preview expired — explore the market again from the homepage.");
+      return res.end("Preview expired; explore the market again from the homepage.");
     }
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",

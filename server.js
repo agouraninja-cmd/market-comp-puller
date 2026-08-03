@@ -3875,32 +3875,10 @@ function renderMarketPageHTML(slug, p, opts = {}) {
       `${creditNames.map(escHtml).join(", ")}. Are you a broker in ${escHtml(p.city)}? <a href="/">Submit a comp</a>.</p>`
     : "";
 
-  // One Q/A array feeds both the visible FAQ block and the FAQPage JSON-LD,
-  // so the two can never drift (Google flags mismatched FAQ markup).
-  // Deliberately NO restating of figures shown elsewhere on the page (median,
-  // range, cap rates): the owner's rule is the FAQ answers questions the
-  // snapshot itself doesn't, instead of repeating its tiles in prose.
-  const typeLc = p.type.toLowerCase();
-  const faq = [
-    [`Where do these ${p.city} ${typeLc} comps come from?`,
-     `Each comp was found by a live web search across public listings, county property records, and brokerage ` +
-     `announcements, or contributed directly by a local broker. The badge next to each address shows which kind of ` +
-     `source backs it; a comp can under-claim its provenance, never over-claim it.`],
-    [`What does the Verified badge mean?`,
-     `A licensed local broker submitted that comp and we reviewed and approved it by hand before it entered our ` +
-     `verified layer. Verified comps credit the contributing broker or firm by name.`],
-    [`How current is this page?`,
-     `The "Updated" date under the headline is when this snapshot was last built from a live comp search. Every ` +
-     `valuation that runs on CompNinja feeds the comp pool behind these pages, so pages in active markets refresh often.`],
-    [`A recent sale is missing. Can it be added?`,
-     `Probably. We can only show what public sources disclose, so off-market and unpublicized deals won't appear ` +
-     `until someone tells us about them. Brokers can submit the comp for review, and owners can run a free ` +
-     `valuation, which searches live rather than reading this page.`],
-  ];
-  const faqCard =
-    `<div class="card"><h2>Frequently asked questions</h2>` +
-    faq.map(([q, a]) => `<h3>${escHtml(q)}</h3><p>${escHtml(a)}</p>`).join("") +
-    `</div>`;
+  // No FAQ on market pages (removed 2026-08-03 at the owner's request; the
+  // site-wide FAQ lives on /how-it-works, which the footer links to). If it
+  // ever comes back, the visible block and the FAQPage JSON-LD must be fed
+  // from ONE array — Google flags mismatched FAQ markup.
 
   const merged = allMarketPages();
   const others = Object.keys(merged).filter((s) => s !== slug).slice(0, 6);
@@ -3927,14 +3905,6 @@ function renderMarketPageHTML(slug, p, opts = {}) {
           ],
         },
       },
-      {
-        "@type": "FAQPage",
-        mainEntity: faq.map(([q, a]) => ({
-          "@type": "Question",
-          name: q,
-          acceptedAnswer: { "@type": "Answer", text: a },
-        })),
-      },
     ],
   });
 
@@ -3958,7 +3928,6 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     mapCard +
     compsTable +
     creditLine +
-    faqCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
     `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>` +

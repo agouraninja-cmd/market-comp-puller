@@ -3560,11 +3560,12 @@ const MARKET_FOOTER =
   `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
-  `<p>&copy; 2026 CompNinja</p></div>` +
+  `<p>&copy; 2026 CompNinja LLC</p></div>` +
   `<div class="right"><a href="mailto:info@compninja.co">info@compninja.co</a>` +
   `<ul><li><a href="/markets">Markets</a></li><li><a href="/brokers">Brokers</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
-  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li></ul></div>` +
+  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li>` +
+  `<li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul></div>` +
   `</div></footer>`;
 
 function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
@@ -4390,7 +4391,7 @@ function renderHowItWorksHTML() {
       <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
         connect you with local brokers for opinions of value. Comparables derive from publicly available data;
         verify independently before underwriting.</p>
-      <p>&copy; 2026 CompNinja</p>
+      <p>&copy; 2026 CompNinja LLC</p>
     </div>
     <div class="right">
       <a href="mailto:info@compninja.co">info@compninja.co</a>
@@ -4400,6 +4401,8 @@ function renderHowItWorksHTML() {
         <li><a href="/how-it-works">How it works</a></li>
         <li><a href="/how-it-works#faq">FAQ</a></li>
         <li><a href="/">Run a report</a></li>
+        <li><a href="/terms">Terms</a></li>
+        <li><a href="/privacy">Privacy</a></li>
       </ul>
     </div>
   </div>

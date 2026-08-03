@@ -3596,7 +3596,90 @@ const MARKET_FOOTER =
   `<li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul></div>` +
   `</div></footer>`;
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
+// Client script for the market pages' comp map. Mirrors index.html's geocoding
+// stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
+// misses cached in localStorage geoCache.v1 — same key shape, so the app and
+// these pages share a cache). Comps geocode sequentially, not in a burst, to
+// stay friendly to /api/geocode's per-IP rate limit. If not a single pin
+// resolves, the whole card hides rather than showing an empty map.
+const MARKET_MAP_JS = `(function(){
+  var data = JSON.parse(document.getElementById("mktMapData").textContent);
+  var CACHE_KEY = "geoCache.v1";
+  var cache = {}; try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) {}
+  function save(k, v) {
+    cache[k] = v;
+    try {
+      var ks = Object.keys(cache);
+      if (ks.length > 300) ks.slice(0, ks.length - 300).forEach(function (old) { delete cache[old]; });
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    } catch (e) {}
+  }
+  function jfetch(u) {
+    return Promise.race([
+      fetch(u).then(function (r) { return r.json(); }),
+      new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, 7000); }),
+    ]);
+  }
+  var nq = Promise.resolve();
+  function nominatim(a) {
+    var run = function () {
+      return jfetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent(a))
+        .then(function (j) {
+          return (Array.isArray(j) && j[0] && isFinite(parseFloat(j[0].lat)))
+            ? { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) } : null;
+        }).catch(function () { return null; });
+    };
+    var res = nq.then(run);
+    nq = res.then(function () { return new Promise(function (r) { setTimeout(r, 1100); }); });
+    return res;
+  }
+  function geocode(a) {
+    var k = String(a || "").trim().toLowerCase();
+    if (!k) return Promise.resolve(null);
+    if (k in cache) { var h = cache[k]; return Promise.resolve(h && isFinite(h.lat) ? h : null); }
+    return jfetch("/api/geocode?address=" + encodeURIComponent(a))
+      .then(function (j) { return (j && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null; })
+      .catch(function () { return null; })
+      .then(function (f) { return f || nominatim(a); })
+      .then(function (f) { save(k, f); return f; });
+  }
+  var map = null, pts = [];
+  function ensureMap(center) {
+    if (map) return map;
+    map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }).addTo(map);
+    return map;
+  }
+  function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
+  // ", USA" disambiguates the sanity point: bare "Ontario, CA" reads as the
+  // Canadian province to Nominatim (CA = Canada), which put the city point
+  // 1,900 miles out and gated every correct pin off the map.
+  geocode(data.city + ", USA").then(function (cityPt) {
+    var chain = Promise.resolve();
+    data.comps.forEach(function (c) {
+      chain = chain.then(function () {
+        return geocode(c.a).then(function (pt) {
+          if (!pt) return;
+          // ~100 mile sanity gate against geocoder mismatches (wrong state).
+          if (cityPt && (Math.abs(pt.lat - cityPt.lat) > 1.5 || Math.abs(pt.lng - cityPt.lng) > 1.5)) return;
+          var m = L.marker([pt.lat, pt.lng]).addTo(ensureMap([pt.lat, pt.lng]));
+          var lines = [c.a.split(",")[0], [c.d, c.t].filter(Boolean).join(" \\u00b7 "), c.pr].filter(Boolean);
+          m.bindPopup(lines.map(function (s) { return "<div>" + esc(s) + "</div>"; }).join(""));
+          pts.push([pt.lat, pt.lng]);
+          if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30] });
+        });
+      });
+    });
+    chain.then(function () {
+      if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
+    });
+  });
+})();`;
+
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head }) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
@@ -3614,6 +3697,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
+    (head || "") +
     `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${MARKET_BAR}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
@@ -3750,6 +3834,40 @@ function renderMarketPageHTML(slug, p, opts = {}) {
       `</tr></thead><tbody>${compRows}</tbody></table></div></div>`
     : "";
 
+  // Comp map — same idea as the report's map, pins placed ENTIRELY from real
+  // geocoding in the visitor's browser (Census proxy, then Nominatim), cached
+  // under the same localStorage geoCache.v1 the app uses so the two share
+  // hits. Only street-numbered addresses get pins: submarket/aggregate rows
+  // geocode to a district point, which reads as a wrong pin (same rule as the
+  // report's street-view gate). A rough city-distance gate drops geocoder
+  // mismatches that would land a pin in another state. The leading number
+  // must look like a street number, not a quantity: "72,031 SF Renovated
+  // Warehouse, Dallas County" starts with a digit but isn't an address (the
+  // comma inside the number and the unit word after it are the tells).
+  const mappable = marketComps.filter((c) => {
+    const a = String(c.address || "").trim();
+    return /^\d+\s+(?!(sf|sq|sqft|acres?|units?)\b)/i.test(a) && !isAggregateAddress(a);
+  });
+  const mapData = mappable.map((c) => {
+    const addr = String(c.address).trim();
+    return {
+      a: addr.includes(",") ? addr : `${addr}, ${p.city}, ${p.state}`,
+      d: String(c.date || ""), t: String(c.transaction || ""), pr: String(c.price_or_rate || ""),
+    };
+  });
+  const mapCard = mapData.length
+    ? `<div class="card" id="mktMapCard"><h2>Where these comps are</h2>` +
+      `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
+      `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
+      `Comps quoted at the submarket level aren't pinned.</p></div>` +
+      `<script id="mktMapData" type="application/json">${JSON.stringify({ city: `${p.city}, ${p.state}`, comps: mapData }).replace(/</g, "\\u003c")}</script>` +
+      `<script>${MARKET_MAP_JS}</script>`
+    : "";
+  const mapHead = mapData.length
+    ? `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
+      `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n`
+    : "";
+
   // Quiet contributor credit — the public half of the broker loop.
   const creditNames = (MARKET_CREDIT.byMarket[`${p.city}, ${p.state}`.toLowerCase()] || []).slice(0, 6);
   const creditLine = creditNames.length
@@ -3759,20 +3877,25 @@ function renderMarketPageHTML(slug, p, opts = {}) {
 
   // One Q/A array feeds both the visible FAQ block and the FAQPage JSON-LD,
   // so the two can never drift (Google flags mismatched FAQ markup).
+  // Deliberately NO restating of figures shown elsewhere on the page (median,
+  // range, cap rates): the owner's rule is the FAQ answers questions the
+  // snapshot itself doesn't, instead of repeating its tiles in prose.
   const typeLc = p.type.toLowerCase();
   const faq = [
-    [`What is the average price per square foot for ${typeLc} space in ${p.city}, ${p.state}?`,
-     `Recent sale comps put the median around ${usd0(p.ppsf.median)}/SF, with a typical range of ` +
-     `${rangeTxt}/SF across ${p.ppsf.count} recent sales${p.date_range ? " (" + p.date_range + ")" : ""}.`],
-    ...(p.cap_rate_low && p.cap_rate_high ? [[
-      `What cap rates are ${typeLc} properties trading at in ${p.city}?`,
-      `Recent market data suggests roughly ${p.cap_rate_low}–${p.cap_rate_high} for stabilized ${typeLc} deals in the ${p.city} area.`]] : []),
-    [`How are these numbers calculated?`,
-     `They are automated estimates built from recent comparable sales found in public listings, property records, ` +
-     `and brokerage announcements. They are not an appraisal or a broker opinion of value.`],
-    [`How do I find out what my ${p.city} ${typeLc} property is worth?`,
-     `Run a free valuation on CompNinja: enter the address and property type and you get an estimated value range ` +
-     `from recent comps in under a minute. For a real opinion of value, we connect you with a licensed local broker at no cost.`],
+    [`Where do these ${p.city} ${typeLc} comps come from?`,
+     `Each comp was found by a live web search across public listings, county property records, and brokerage ` +
+     `announcements, or contributed directly by a local broker. The badge next to each address shows which kind of ` +
+     `source backs it; a comp can under-claim its provenance, never over-claim it.`],
+    [`What does the Verified badge mean?`,
+     `A licensed local broker submitted that comp and we reviewed and approved it by hand before it entered our ` +
+     `verified layer. Verified comps credit the contributing broker or firm by name.`],
+    [`How current is this page?`,
+     `The "Updated" date under the headline is when this snapshot was last built from a live comp search. Every ` +
+     `valuation that runs on CompNinja feeds the comp pool behind these pages, so pages in active markets refresh often.`],
+    [`A recent sale is missing. Can it be added?`,
+     `Probably. We can only show what public sources disclose, so off-market and unpublicized deals won't appear ` +
+     `until someone tells us about them. Brokers can submit the comp for review, and owners can run a free ` +
+     `valuation, which searches live rather than reading this page.`],
   ];
   const faqCard =
     `<div class="card"><h2>Frequently asked questions</h2>` +
@@ -3832,6 +3955,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     intelCard +
+    mapCard +
     compsTable +
     creditLine +
     faqCard +
@@ -3846,6 +3970,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     description, canonical, body,
     jsonLd: opts.preview ? null : jsonLd,
     noindex: Boolean(opts.preview),
+    head: mapHead,
   });
 }
 

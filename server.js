@@ -3206,6 +3206,14 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
 .hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
+.hleft{display:flex;align-items:center;gap:18px}
+/* Red back link, top-left corner of the page — also wired to the Escape key.
+   Mirrors HOW_CSS's .backbtn; keep the two in step. Below ~1140px the corner
+   collides with the centered column, so it drops into the header row. */
+.backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
+.backbtn:hover{color:#991B1B}
+.backbtn svg{width:15px;height:15px;flex-shrink:0}
+@media (max-width:1139px){.backbtn{position:static}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
@@ -3303,17 +3311,34 @@ footer li a{text-decoration:none;color:#B8C0CC}
 
 const MARKET_BAR =
   `<header class="hdr"><div class="wrap">` +
+  `<div class="hleft">` +
+  `<a class="backbtn" id="barBack" href="/" aria-label="Go back">` +
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+  `<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>Back</a>` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
+  `</div>` +
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd"><a href="/markets">Markets</a><a href="/brokers">Brokers</a>` +
-  `<a href="/how-it-works">How it works</a></div></details>` +
-  `<a href="/">Run a report</a></nav>` +
+  `<a href="/how-it-works">How it works</a></div></details></nav>` +
   `</div></header>` +
   // Close the dropdown when the visitor clicks anywhere else (scoped to the
   // header nav so it can never touch other <details> on a page, e.g. FAQs).
   `<script>document.addEventListener("click",function(e){` +
   `document.querySelectorAll(".hdr nav details[open]").forEach(function(d){` +
-  `if(!d.contains(e.target))d.open=false;});});</script>`;
+  `if(!d.contains(e.target))d.open=false;});});` +
+  // Back button + Escape: previous CompNinja page when there is one, else the
+  // landing page. Same logic as /how-it-works — keep the two in step.
+  `(function(){` +
+  `function goBack(){` +
+  `try{if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}}catch(err){}` +
+  `location.href="/";}` +
+  `document.getElementById("barBack").addEventListener("click",function(e){e.preventDefault();goBack();});` +
+  `document.addEventListener("keydown",function(e){` +
+  `if(e.key!=="Escape")return;` +
+  `var dd=document.querySelector(".hdr nav details[open]");` +
+  `if(dd){dd.open=false;return;}` +
+  `goBack();});` +
+  `})();</script>`;
 
 // ---------------------------------------------------------------------------
 // Public broker credit — which firms have approved comps in each market, so

@@ -3297,6 +3297,15 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
 .mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 .disc{color:#8A93A0;font-size:12.5px;margin-top:26px}
+/* Legal pages (/terms, /privacy) — document style: flowing prose under serif
+   section headings, a readable measure, no cards or boxes. */
+.legal{max-width:72ch}
+.legal h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;color:#1A2433;
+  letter-spacing:normal;text-transform:none;margin:34px 0 10px}
+.legal p{margin:0 0 12px;color:#374253;font-size:14.5px}
+.legal ul{margin:0 0 12px;padding-left:22px}
+.legal li{margin:6px 0;color:#374253;font-size:14.5px}
+.legal code{font-size:13px;background:#F5F4EF;padding:1px 5px;border-radius:3px}
 /* Footer — the navy ink footer from the home page. */
 footer{background:#1A2433;color:#B8C0CC;font-size:13px}
 footer .wrap{padding:36px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
@@ -4214,13 +4223,14 @@ function renderTermsPageHTML() {
     `<h1>Terms of Service</h1>` +
     `<p class="sub">Last updated: ${LEGAL_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
-    `<div class="card"><h2>Who we are and what this is</h2>` +
+    `<div class="legal">` +
+    `<h2>Who we are and what this is</h2>` +
     `<p>CompNinja is operated by CompNinja LLC, an Idaho limited liability company (file #6928558). ` +
     `These terms are an agreement between you and CompNinja LLC. By using compninja.co you accept them.</p>` +
     `<p>The service produces automated commercial real estate comparable-sales reports and value estimates, ` +
-    `built from publicly available data and AI-assisted web search.</p></div>` +
+    `built from publicly available data and AI-assisted web search.</p>` +
 
-    `<div class="card"><h2>What the service is not</h2>` +
+    `<h2>What the service is not</h2>` +
     `<ul>` +
     `<li>Every valuation is an automated estimate. It is not an appraisal and no output of the service is one.</li>` +
     `<li>CompNinja is not a licensed real estate brokerage and does not provide broker opinions of value. ` +
@@ -4229,53 +4239,53 @@ function renderTermsPageHTML() {
     `<li>Estimates must not be relied on for lending, underwriting, or any transaction decision ` +
     `without independent verification. Comparable data comes from public sources and automated search; ` +
     `we do not guarantee its accuracy or completeness.</li>` +
-    `</ul></div>` +
+    `</ul>` +
 
-    `<div class="card"><h2>Accounts and acceptable use</h2>` +
+    `<h2>Accounts and acceptable use</h2>` +
     `<p>Accounts are free. Keep your credentials to yourself, give us accurate information, and use one ` +
     `account per person. We may suspend or terminate accounts that abuse the service.</p>` +
     `<p>You agree not to scrape, bulk-extract, or resell report data; not to circumvent rate limits, usage ` +
-    `caps, or access controls; and not to use the service for anything unlawful.</p></div>` +
+    `caps, or access controls; and not to use the service for anything unlawful.</p>` +
 
-    `<div class="card"><h2>Paid subscriptions</h2>` +
+    `<h2>Paid subscriptions</h2>` +
     `<p>Payment is processed by Stripe; CompNinja never sees or stores your card number. You can cancel at ` +
     `any time and your access continues through the end of the period you paid for. Payments are not ` +
     `refundable, in whole or in part.</p>` +
     `<p>Prices may change with advance notice; a change applies from your next billing period. ` +
     `Founding-member pricing stays at its original rate for as long as that subscription remains ` +
-    `continuously active.</p></div>` +
+    `continuously active.</p>` +
 
-    `<div class="card"><h2>Your submissions</h2>` +
+    `<h2>Your submissions</h2>` +
     `<p>If you submit a comp or other data, you confirm you have the right to share it. We may review, ` +
     `approve, display, and credit submissions (for example the Verified badge with your firm's name), and ` +
-    `we may decline or remove any submission at our discretion.</p></div>` +
+    `we may decline or remove any submission at our discretion.</p>` +
 
-    `<div class="card"><h2>The legal terms</h2>` +
-    `<h3>Intellectual property</h3>` +
+    `<h2>Intellectual property</h2>` +
     `<p>The site, branding, and report formats belong to CompNinja LLC. Reports you generate are yours to ` +
     `use for your own business purposes.</p>` +
-    `<h3>Third-party services</h3>` +
+    `<h2>Third-party services</h2>` +
     `<p>The service depends on third-party data and infrastructure providers. We are not responsible for ` +
     `their outages or errors.</p>` +
-    `<h3>Disclaimer of warranties</h3>` +
+    `<h2>Disclaimer of warranties</h2>` +
     `<p>The service is provided &quot;as is&quot; and &quot;as available&quot;, without warranties of any ` +
     `kind, to the maximum extent permitted by law.</p>` +
-    `<h3>Limitation of liability</h3>` +
+    `<h2>Limitation of liability</h2>` +
     `<p>To the maximum extent permitted by law, CompNinja LLC's total liability for any claim relating to ` +
     `the service is capped at the greater of the fees you paid us in the twelve months before the claim ` +
     `or $100. We are not liable for indirect, incidental, or consequential damages.</p>` +
-    `<h3>Termination</h3>` +
+    `<h2>Termination</h2>` +
     `<p>You can stop using the service or delete your account at any time; we can suspend or end access ` +
     `for breach of these terms. Sections that by their nature should survive (disclaimers, liability ` +
     `limits, intellectual property) survive.</p>` +
-    `<h3>Governing law and disputes</h3>` +
+    `<h2>Governing law and disputes</h2>` +
     `<p>These terms are governed by Idaho law. Any dispute belongs exclusively in the state or federal ` +
     `courts located in Ada County, Idaho, and both sides consent to that venue.</p>` +
-    `<h3>Changes to these terms</h3>` +
+    `<h2>Changes to these terms</h2>` +
     `<p>We may update these terms; the date at the top changes when we do. Continuing to use the service ` +
     `after a change means you accept it.</p>` +
-    `<h3>Contact</h3>` +
-    `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+    `<h2>Contact</h2>` +
+    `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
+    `</div>`;
 
   return marketShell({ title, description, canonical, body });
 }
@@ -4290,7 +4300,8 @@ function renderPrivacyPageHTML() {
     `<p class="sub">Last updated: ${LEGAL_UPDATED}. CompNinja is operated by CompNinja LLC, an Idaho ` +
     `limited liability company (file #6928558). Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
-    `<div class="card"><h2>What we collect</h2>` +
+    `<div class="legal">` +
+    `<h2>What we collect</h2>` +
     `<ul>` +
     `<li><strong>Search inputs.</strong> The property address, property type, lookback window, and any ` +
     `public building attributes you enter (size, units, clear height, and similar).</li>` +
@@ -4304,20 +4315,20 @@ function renderPrivacyPageHTML() {
     `<li><strong>Operational data.</strong> IP addresses for rate limiting, server logs, and analytics ` +
     `events that carry no personal information: a property type, a city and state, and an outcome, ` +
     `never names, emails, or street addresses.</li>` +
-    `</ul></div>` +
+    `</ul>` +
 
-    `<div class="card"><h2>Your private financials stay in your browser</h2>` +
+    `<h2>Your private financials stay in your browser</h2>` +
     `<p>NOI, debt terms, rent rolls, and gross income never leave your browser except into your own ` +
     `signed-in portfolio. They are never sent to the AI model, they are stripped on the server before a ` +
-    `shared report link is stored, and they are never shown to anyone else.</p></div>` +
+    `shared report link is stored, and they are never shown to anyone else.</p>` +
 
-    `<div class="card"><h2>How we use information</h2>` +
+    `<h2>How we use information</h2>` +
     `<p>To generate your reports, to connect broker-opinion requesters with local brokers, to send ` +
     `transactional email (confirmations, password resets, broker notifications), to process subscription ` +
     `billing, and to operate, secure, and improve the service. We do not sell personal data, we run no ` +
-    `advertising trackers, and we use no third-party analytics cookies.</p></div>` +
+    `advertising trackers, and we use no third-party analytics cookies.</p>` +
 
-    `<div class="card"><h2>Service providers</h2>` +
+    `<h2>Service providers</h2>` +
     `<p>These providers process data on our behalf:</p>` +
     `<ul>` +
     `<li><strong>Anthropic</strong> (AI search): receives the address, property type, and public building ` +
@@ -4329,26 +4340,26 @@ function renderPrivacyPageHTML() {
     `and <strong>CARTO</strong> (map imagery and tiles).</li>` +
     `<li><strong>US Census Bureau</strong> and <strong>Nominatim</strong> (address geocoding).</li>` +
     `<li><strong>cdnjs</strong> (script delivery for exports).</li>` +
-    `</ul></div>` +
+    `</ul>` +
 
-    `<div class="card"><h2>Cookies, sharing, and retention</h2>` +
-    `<h3>Cookies and local storage</h3>` +
+    `<h2>Cookies and local storage</h2>` +
     `<p>One essential cookie (<code>cn_session</code>, httpOnly) keeps you signed in. Your browser's ` +
     `local storage holds preferences, report history, and map caches on your own device.</p>` +
-    `<h3>Shared report links</h3>` +
+    `<h2>Shared report links</h2>` +
     `<p>Publishing a share link makes that report readable by anyone who has the link. Private financial ` +
     `inputs are stripped before publishing. Share links do not expire.</p>` +
-    `<h3>Retention and deletion</h3>` +
+    `<h2>Retention and deletion</h2>` +
     `<p>You can delete your account in the app (My Desk, Delete account), which removes the account and ` +
     `its saved data. To request deletion of lead or submission data, email ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
-    `<h3>Security</h3>` +
+    `<h2>Security</h2>` +
     `<p>HTTPS everywhere, hashed passwords, and an access-controlled database.</p>` +
-    `<h3>Children</h3>` +
+    `<h2>Children</h2>` +
     `<p>The service is built for business use and is not directed to children under 13.</p>` +
-    `<h3>Changes and contact</h3>` +
+    `<h2>Changes and contact</h2>` +
     `<p>We may update this policy; the date at the top changes when we do. ` +
-    `<a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+    `<a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
+    `</div>`;
 
   return marketShell({ title, description, canonical, body });
 }

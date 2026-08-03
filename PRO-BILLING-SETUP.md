@@ -1,9 +1,11 @@
 # Pro Billing — Setup State & Resume Point
 
-Written 2026-07-31, updated 2026-07-31 after phase 7. Read this first when
-picking the Pro tier back up.
+Written 2026-07-31. **Last updated 2026-08-03**, after phase 8 Stages A–E6 and
+the export cap. Read this first when picking the Pro tier back up.
 
-**Everything below is TEST MODE.** Nothing here touches real money.
+**⚠ Stripe is in LIVE mode as of 2026-08-03.** Earlier revisions of this file
+said "test mode"; that is no longer true and the difference is real money. See
+the warning below before touching anything.
 
 ---
 
@@ -17,20 +19,70 @@ picking the Pro tier back up.
 | 5. Supabase billing schema | ✅ Done, verified |
 | 6. Render env vars | ✅ Done and deployed |
 | 7. Front-end billing UI | ✅ Done, deployed |
-| 8. End-to-end test — Stages A, B, C | ✅ **Passed 2026-07-31 in test mode** |
-| **8. Stage D — clean up the test data** | ❌ **NOT started — this is the next step** |
-| 9. Stage E — live mode + unset `PRO_AUDIENCE` | ❌ Not until D is done |
-
-**Live state right now:** `PRO_ENABLED=on` and `PRO_AUDIENCE=okb336@gmail.com`
-are set in Render, in **test mode**. The paid tier is live for that one account
-and invisible to everyone else. Verified repeatedly: an anonymous visitor gets
-`enabled:false`, `maxComps:"all"`.
+| 8. End-to-end test — Stages A, B, C | ✅ Passed 2026-07-31, test mode |
+| 8. Stage D — clean up the test data | ✅ Done — 0 rows, 50 founding seats restored |
+| 8. Stage E0–E6 — live mode rebuilt and proved | ✅ Done 2026-08-03 |
+| 8. Stage E7 — reconcile hard-coded prices | ✅ N/A — live amounts match test |
+| **9. Stage E8 — delete `PRO_AUDIENCE`** | ❌ **NOT done — this is the launch** |
+| 9. Stage E9 — verify after launch | ❌ Not until E8 |
+| Export cap enforced (5 reports/mo free) | ✅ Shipped 2026-08-03 |
+| Report branding | ❌ Not built — no UI exists |
+| $39 single-report unlock | ❌ Not sellable — see below |
 
 ---
 
-## The price IDs (test mode)
+## ⚠️ READ THIS BEFORE TOUCHING ANYTHING
+
+**Stripe is in LIVE mode. Real cards will be charged.** This document said
+"test mode" until 2026-08-03; that is no longer true. Render holds an
+`sk_live_` key, a live webhook secret, and live price IDs. A "quick test
+purchase" now takes real money from a real card.
+
+**The only thing between you and paying customers is one environment
+variable:**
+
+```
+PRO_ENABLED  = on                  ← the tier is switched on
+PRO_AUDIENCE = okb336@gmail.com    ← and reaches ONLY this account
+```
+
+Delete `PRO_AUDIENCE` and the product is live to the public, instantly, with
+real billing. That is the launch, and it is deliberately the last step.
+
+Check the public is still shielded at any time:
+
+```bash
+curl -s https://market-comp-puller.onrender.com/api/config | python3 -m json.tool
+```
+
+An anonymous visitor **must** show `"enabled": false` and `"maxComps": "all"`.
+If it shows `true` / `4`, the allowlist is gone and real visitors are being
+paywalled against live Stripe.
+
+**To roll everything back:** set `PRO_ENABLED=off` (or delete it) and deploy.
+Within minutes the site behaves exactly as it did before the tier existed. No
+data is lost, no accounts are affected, and any real subscription stays valid in
+Stripe and resumes the moment it is switched back on.
+
+---
+
+## The price IDs
 
 Not secret — a price ID identifies a product, it does not authorize anything.
+
+**LIVE mode (what production uses today, created 2026-08-03):**
+
+```
+STRIPE_PRICE_PRO_MONTHLY          = price_1U0QKkRztxjkvpo57UcIq0uv   # $129/mo
+STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U0QKmRztxjkvpo5mSa8uS9G   # $990/yr founding
+STRIPE_PRICE_SINGLE_REPORT        = price_1U0QKlRztxjkvpo5mK9VEvjJ   # $39, nothing sells it
+```
+
+Note the prefixes run `Kk`, `Kl`, `Km` but map to **Monthly, Single Report,
+Annual** — not the order you would guess. Pasting them in listed order puts the
+$39 one-time price where the $990 annual belongs.
+
+**TEST mode (the sandbox, kept for reference):**
 
 ```
 STRIPE_PRICE_PRO_MONTHLY          = price_1TzLBs2OE1gVYmmxOZGnk6zu   # $129/mo
@@ -57,10 +109,11 @@ with a derived "saves $558 a year" line. Nothing reconciles them against
 Stripe, so changing a price in the dashboard silently makes the page lie.
 Change both places, or serve the amounts from `/api/pricing` before live mode.
 
-The `sk_test_...` secret key and `whsec_...` webhook secret live **only in Render**.
-They are not in this repo, not in `.env`, and were never pasted into a chat.
-(The original secret key was exposed in a screenshot and has been **rotated** —
-the old one is dead.)
+The secret key (now `sk_live_...`) and the webhook signing secret live **only in
+Render**. They are not in this repo, not in `.env`, and were never pasted into a
+chat. An earlier *test* key was exposed in a screenshot and has been **rotated**;
+the old one is dead. The live key has never been shown anywhere — keep it that
+way, and roll it from Stripe → Developers → API keys if it ever is.
 
 ---
 
@@ -116,21 +169,23 @@ alter table stripe_events enable row level security;
 ```
 `service_role` bypasses RLS, so no policies are needed.
 
-### Render — environment (current, as of 2026-07-31 evening)
+### Render — environment (current, as of 2026-08-03)
 
-All seven are set **and deployed**:
+All seven are set **and deployed**, with **LIVE** Stripe values:
 
 ```
-STRIPE_SECRET_KEY                 (sk_test_...)
-STRIPE_WEBHOOK_SECRET             (whsec_...)
-STRIPE_PRICE_PRO_MONTHLY
-STRIPE_PRICE_PRO_ANNUAL_FOUNDING
-STRIPE_PRICE_SINGLE_REPORT
-PRO_ENABLED = on                  ← test mode
+STRIPE_SECRET_KEY                 (sk_live_...)   ← real money
+STRIPE_WEBHOOK_SECRET             (whsec_...)     ← the live destination's
+STRIPE_PRICE_PRO_MONTHLY          price_1U0QKk...
+STRIPE_PRICE_PRO_ANNUAL_FOUNDING  price_1U0QKm...
+STRIPE_PRICE_SINGLE_REPORT        price_1U0QKl...
+PRO_ENABLED = on
 PRO_AUDIENCE = okb336@gmail.com   ← the allowlist; DELETING THIS IS THE LAUNCH
 ```
 
-⚠ **Do not remove `PRO_AUDIENCE` until Stage D and Stage E are done.** While it
+⚠ **Do not remove `PRO_AUDIENCE` until you intend to launch.** Stages D and
+E0–E6 are complete, so removing it now would put a working, real-money product
+in front of the public immediately. While it
 is set, the paid tier exists only for that one signed-in account and every
 other visitor — including anonymous ones — takes the `enabled: false` branch
 and sees the pre-Pro app. Remove it and the tier goes live for everyone,
@@ -348,58 +403,93 @@ older shape.
 
 ---
 
-## NEXT STEP — Stage D: clean up the test data
+## Phase 8 Stage D — DONE (2026-08-03)
 
-**Nothing is launched until this is done.** Test-mode rows still grant Pro in
-live mode, and a test-mode Stripe customer id will mis-map against live Stripe.
+Test-mode rows cleared from `subscriptions` and `stripe_events`, and
+`users.stripe_customer_id` reset. Verified: `select count(*) from subscriptions`
+returned **0**, and `/api/pricing` reported **`foundingLeft: 50`** — all founding
+seats restored.
 
-**Two accounts have test subscription rows**, not one — a second Claude session
-was running phase 8 in parallel on 2026-07-31 and subscribed as
-`agouraninja@gmail.com`, the site's public contact address. That row is inert
-today only because that address sits outside `PRO_AUDIENCE`; the moment the
-allowlist is removed it would grant free Pro to the business account.
-
-```sql
--- Deliberately unqualified: clears BOTH test accounts' rows.
-delete from subscriptions;
-delete from stripe_events;
-update users set stripe_customer_id = null where stripe_customer_id is not null;
-```
-
-That third statement is the one people miss. `userIdForStripeCustomer()` maps a
-Stripe customer back to a user through `users.stripe_customer_id`; a leftover
-**test-mode** customer id would mis-map against live-mode Stripe.
-
-Then verify:
-
-```sql
-select count(*) from subscriptions;   -- expect 0
-```
-
-And confirm `GET /api/pricing` (signed in as the allowlisted account) reports
-`"foundingLeft":50` — all founding seats restored.
-
-Also check **Stripe → Billing → Subscriptions, filter status = active**. Any
-still-active test subscription keeps firing renewal webhooks and would rewrite
-the rows you just deleted. As of 2026-07-31 both known test subscriptions were
-cancelled with "no future invoices", so this should come back empty.
+Two accounts held rows, not one: a second Claude session ran phase 8 in parallel
+and subscribed as the site's public contact address. Both were cleared.
 
 ---
 
-## Then Stage E: going live
+## Phase 8 Stage E — E0 to E6 DONE (2026-08-03)
 
-1. In Stripe, switch **off** test mode and recreate from scratch: products, the
-   three prices, and a **new** webhook destination at the same
-   `/api/stripe/webhook` URL with the same six events.
-2. In Render, replace `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and all three
-   `STRIPE_PRICE_*` with the **live-mode** values.
-3. If any live amount differs from test, update **both** the price comments in
-   this file **and** the hard-coded `$129` / `$990` / "saves $558" in
-   `index.html` — nothing reconciles them against Stripe.
-4. **Delete `PRO_AUDIENCE`. That is the launch.** Left set, the product is live
-   but unbuyable, on a deployment that looks perfectly healthy.
-5. Redeploy. In a private window confirm the Pricing link now appears for a
-   signed-out visitor and reports are gated to 4 comps.
+Live mode was rebuilt from scratch, because nothing carries over from test:
+
+| Step | What was done |
+|---|---|
+| E0 | Stripe account activated for live payments (EIN provided) |
+| E1 | Three products/prices created live; IDs recorded above |
+| E2 | Customer portal configured live — cancel at period end, update card, invoice history, **plan switching OFF** |
+| E3 | Live webhook destination created, same six events, new `whsec_` |
+| E4 | Live `sk_live_` secret key issued |
+| E5 | All five values loaded into Render and deployed; allowlist kept in place |
+| E6 | **Proved with a real card** — a temporary $1/month live price, bought, verified end to end, cancelled, refunded, price restored, $1 price archived |
+| E7 | Not needed — live amounts match test, so nothing hard-coded changed |
+
+E6 confirmed the whole live chain: checkout → webhook 200 → `subscriptions` row
+→ plan card → customer portal. **Both live prices are now confirmed by real
+succeeded charges** ($129 and $990 in test mode, $1 in live), rather than by
+reading a dashboard — which is what the `$49` error earlier should have been.
+
+---
+
+## NEXT STEP — Stage E8: the launch
+
+**One action.** Render → Environment → **delete `PRO_AUDIENCE`** → Save,
+rebuild, and deploy.
+
+Then E9, and note **every check inverts** — until now the correct answer has
+always been `false`:
+
+- Render logs: `⭐ Pro tier ENABLED` present, **`🔬 PRO_AUDIENCE` line gone**
+- Anonymous `/api/config`: now `"enabled": true`, `"maxComps": 4`
+- Private window: Pricing link visible, reports gated to 4 comps, lookback capped at 12 months
+
+If it still reads `false` / `"all"`, the variable did not actually delete — the
+product would be live but unbuyable, on a deployment that looks perfectly
+healthy.
+
+Held pending a founder conversation as of 2026-08-03. Nothing degrades while it
+waits; the allowlist holds the current state indefinitely.
+
+---
+
+## What the tier actually sells (as of 2026-08-03)
+
+| | Free | Pro |
+|---|---|---|
+| Comps itemized | **4** | all |
+| Lookback | **12 months** | **10 years** |
+| Exports | **5 reports/month** | unlimited |
+| Valuation range | uses **every** comp | uses every comp |
+
+That last row is the point: **a free report's valuation is identical to a Pro
+one.** Withheld comps still ride along as anonymised basis rows, so the hero
+range, chart median and stat tiles read the full set. The tier sells the
+evidence, not a better answer.
+
+**Export counting** (shipped 2026-08-03) is counted **per report**, so CSV,
+image, PDF and Excel of the same analysis cost one. Exporting requires an
+account — anonymous is 0, deliberately, because leaving it uncounted would have
+made an account strictly worse to have. It is an honour system: exports are
+generated in the browser, so the server can only be asked whether it may, never
+withhold the file. Every failure path lets the export through.
+
+### Still unbuilt, and deliberately not claimed anywhere
+
+- **Report branding.** `branding_profiles` and `findBrandingProfile()` exist;
+  there is **no UI at all** — nothing uploads a logo and nothing draws one. The
+  bullet is withheld from the pricing tile, plan card and success banner, with a
+  comment at each site marking where it goes back.
+- **The $39 single-report unlock.** The price exists in Stripe and Render, but
+  `/api/checkout` does not recognise `single_report` — it maps
+  `pro_annual_founding` to the founding price and **everything else to
+  monthly**. A button today would charge $129/month to someone expecting a $39
+  one-off. Wire the server before adding one.
 
 ---
 
@@ -408,10 +498,22 @@ cancelled with "no future invoices", so this should come back empty.
 Paste this into a new chat:
 
 > Picking up the Pro billing work on market-comp-puller. Read
-> `PRO-BILLING-SETUP.md` in the project root first. Phases 1-7 are done and
-> deployed, and phase 8 Stages A, B and C all passed in test mode on
-> 2026-07-31. Next is **Stage D — cleaning up the test data** (two accounts
-> have rows, not one), then Stage E, live mode. `PRO_ENABLED=on` and
-> `PRO_AUDIENCE=okb336@gmail.com` are currently set in Render in test mode —
-> leave both alone until Stage D is done. Pull before starting; another session
-> has been committing to this repo.
+> `PRO-BILLING-SETUP.md` in the project root first.
+>
+> Everything is built and deployed. Phase 8 Stages A-D passed in test mode, and
+> Stage E0-E6 rebuilt it in **live mode** and proved it with a real card. The
+> export cap (5 reports/month free, per report) shipped 2026-08-03.
+>
+> **Stripe is LIVE. Real cards will be charged.** The only thing standing
+> between the product and the public is `PRO_AUDIENCE=okb336@gmail.com` in
+> Render, which limits the paid tier to that one account. `PRO_ENABLED=on`.
+> Deleting `PRO_AUDIENCE` is the launch (Stage E8) and is being held pending a
+> founder decision — do not remove it unless asked.
+>
+> Confirm the public is still shielded before anything else:
+> `curl -s https://market-comp-puller.onrender.com/api/config`
+> Anonymous must show `"enabled": false` and `"maxComps": "all"`.
+>
+> Pull before starting — four people commit to this repo and it moves during a
+> session. Unbuilt and deliberately unclaimed: report branding, and the $39
+> single-report unlock.

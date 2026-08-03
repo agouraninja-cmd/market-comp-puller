@@ -3996,27 +3996,27 @@ function renderBrokersPageHTML() {
   const body =
     `<h1>The comps get better because brokers make them better.</h1>` +
     `<p class="sub">CompNinja reports are built from public records, listings, and live search. ` +
-    `The comps brokers confirm are the ones buyers and owners trust most, so those carry ` +
+    `The comps brokers confirm are the ones buyers and owners trust most. Those comps carry ` +
     `the contributor's name wherever they appear.</p>` +
     `<div class="grid">` +
     `<div class="card"><h2>Submit a comp, get the credit.</h2>` +
     `<p>Approved comps appear with a green Verified badge and your firm's name on every report ` +
-    `that uses them: visible proof you know your market.</p>` +
+    `that uses them. That badge is visible proof you know your market.</p>` +
     `<p style="margin:0"><a href="/#submit-comp">Submit a comp &rarr;</a></p></div>` +
     `<div class="card"><h2>Meet owners already asking about value.</h2>` +
     `<p>Owners requesting a Broker Opinion of Value are matched with brokers active in that ` +
-    `market. No cold lists, people mid-decision.</p>` +
+    `market. These are not cold leads; they are owners in the middle of a decision.</p>` +
     `<p style="margin:0"><a href="${introHref}">Get introduced &rarr;</a></p></div>` +
     `</div>` +
     `<div class="card"><h2>What &quot;Verified&quot; means</h2>` +
-    `<p>A submitted comp is hand-reviewed by our team before it joins the comp layer: ` +
+    `<p>Every submitted comp is hand-reviewed by our team before it joins the comp layer. ` +
     `Verified is the highest provenance tier in a CompNinja report, above public record, ` +
     `listing, news, and estimate. Once approved, the comp is offered to every matching search ` +
     `in that market and property type, badged <strong>Verified &middot; via your firm</strong>.</p>` +
     `<p style="margin:0">Contributors with a public profile get a page of their own listing their ` +
     `verified comps, the markets they cover, and how often their comps have been cited.</p></div>` +
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
-    `<p>Takes about a minute. Address, date, price, and size; we handle the review.</p>` +
+    `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
     `<a class="btn" href="/#submit-comp">Submit a comp</a>` +
     `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +

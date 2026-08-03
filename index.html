@@ -219,6 +219,10 @@
     /* Smooth reveal when the subject-property section is expanded. */
     details[open] > div { animation: fadeIn .3s ease-out; }
 
+    /* Dropdown open fade (header menus, market-explorer results). The animation
+       re-runs on every display:none -> shown flip, so closes need no cleanup. */
+    .dd-fade { animation: fadeIn .2s ease-out; }
+
     /* Search-history "show all" toggle. The chevron rule above is scoped to
        #compForm, so style this summary as a quiet link and drop the native
        disclosure marker (which renders differently per browser). */
@@ -682,7 +686,7 @@
             class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
             <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div id="exploreMenu" class="hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+          <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Markets</a>
             <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Brokers</a>
             <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">How it works</a>
@@ -696,7 +700,7 @@
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
-          <div id="acctMenu" class="hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+          <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
@@ -1604,7 +1608,7 @@
         <div class="relative max-w-sm mb-5">
           <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
                  class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-          <div id="marketSearchResults" class="hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
+          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
         </div>
       </section>
 
@@ -5782,7 +5786,7 @@
       const last = snaps[snaps.length - 1] || null;
       const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
       const card = document.createElement("div");
-      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1";
+      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1 fade-in";
       const addr = document.createElement("button");
       addr.type = "button";
       addr.className = "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C] truncate";
@@ -5849,23 +5853,30 @@
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();
     hideLoadingCard();
-    document.getElementById("deskView").classList.remove("hidden");
+    const deskView = document.getElementById("deskView");
+    deskView.classList.remove("hidden");
+    deskView.classList.add("fade-in"); // re-fires on every unhide; closes stay instant
     renderHistory();
     document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
     renderMyDesk();
   }
   function showHomeView() {
     document.getElementById("deskView").classList.add("hidden");
-    document.getElementById("hero").classList.remove("hidden");
-    document.getElementById("searchSection").classList.remove("hidden");
-    document.getElementById("homeInfo").classList.remove("hidden");
+    // fade-in is added here rather than in markup so it doesn't double-animate
+    // against the .enter page-load entrance on first paint.
+    ["hero", "searchSection", "homeInfo"].forEach((id) => {
+      const el = document.getElementById(id);
+      el.classList.remove("hidden");
+      el.classList.add("fade-in");
+    });
   }
   const onDesk = () => !document.getElementById("deskView").classList.contains("hidden");
   function enterDesk({ markSeen } = {}) {
     if (location.pathname !== "/desk") history.pushState({}, "", "/desk");
     showDeskView();
     if (markSeen) renderWatchFeed({ markSeen: true });
-    window.scrollTo({ top: 0 });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   }
   function leaveDesk() {
     if (!onDesk()) return;
@@ -6263,7 +6274,7 @@
     const explore = ({ type, city, state }) => {
       exploring = false; // allow the swap below, then lock
       resultsEl.innerHTML =
-        `<div class="px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot, ` +
+        `<div class="fade-in px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot, ` +
         `checking recent sales. Usually 30–60 seconds.</div>`;
       resultsEl.classList.remove("hidden");
       exploring = true;
@@ -6279,14 +6290,14 @@
           exploring = false;
           input.disabled = false;
           resultsEl.innerHTML =
-            `<div class="px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong. Please try again.")}</div>` +
+            `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong. Please try again.")}</div>` +
             `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
           document.getElementById("marketSearchRun").addEventListener("click", runValuation);
         })
         .catch(() => {
           exploring = false;
           input.disabled = false;
-          resultsEl.innerHTML = `<div class="px-3 py-1.5 text-[#B91C1C]">Connection lost. Please try again.</div>`;
+          resultsEl.innerHTML = `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">Connection lost. Please try again.</div>`;
         });
     };
     const render = () => {

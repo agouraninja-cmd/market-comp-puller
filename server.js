@@ -166,11 +166,12 @@ const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 const DEFAULT_SITE_URL = "https://market-comp-puller.onrender.com";
 const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 
-// Two people searching the same address within a few days shouldn't both bill
-// the Anthropic account for identical work. TTL is deliberately short — comp
-// data goes stale — but long enough to absorb the common case of the same
-// property being searched more than once in a short window.
-const SEARCH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Two people searching the same address shouldn't both bill the Anthropic
+// account for identical work. The TTL balances cost against staleness: CRE
+// comps barely move inside a month (reports already use a 12-month lookback),
+// so 30 days widens the free-repeat window without a stale report being
+// served. Was 7 days until 2026-08-03 — widened purely as a cost lever.
+const SEARCH_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Backstop against a runaway script or scraper burning the Anthropic budget
 // overnight — the per-IP limiter above stops one connection, not a
@@ -1506,7 +1507,7 @@ async function storeCachedSearch(key, payload) {
 // path unchanged. The derived report is deliberately NOT re-cached: after the
 // first probe the parent sits in the in-memory cache map, so a repeat costs
 // one Map lookup — and re-caching under the short key would hand the subset a
-// fresh 7-day TTL running past its parent's.
+// fresh full TTL running past its parent's.
 // Known soft edge: the parent's narrative fields (summary, value_drivers) may
 // occasionally reference the longer window in prose. They are market-level
 // commentary, kept for the same reason curation doesn't move the Avg $/SF

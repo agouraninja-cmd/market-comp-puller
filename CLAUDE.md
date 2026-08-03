@@ -289,7 +289,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
   normalization is a guarantee. **Cached**: identical requests
-  within a 7-day TTL are served from the `search_cache` layer (Supabase table
+  within a 30-day TTL (7 days until 2026-08-03 — widened as a cost lever) are
+  served from the `search_cache` layer (Supabase table
   `search_cache`, keyed by a SHA-256 of address+type+note+window+size+a
   signature of the offered verified comps — so approving a broker comp busts
   the cache for that type — plus a signature of `subjectDetails`, appended only

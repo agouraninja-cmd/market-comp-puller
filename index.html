@@ -1589,32 +1589,40 @@
       </div>
     </div>
 
-    <!-- Home info — fills out the landing view; hidden once a report is shown -->
-    <div id="homeInfo" class="no-print">
+  </div>
 
-      <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
-           report exhibit, the three-step method, and the FAQ. -->
+  <!-- Home info — fills out the landing view; hidden once a report is shown.
+       Sits OUTSIDE the max-w-5xl wrapper so the Market Explorer band can run
+       the full viewport width, like #hero and the footer. -->
+  <div id="homeInfo" class="no-print">
+
+    <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
+         report exhibit, the three-step method, and the FAQ. -->
+    <div class="max-w-5xl mx-auto px-4">
       <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <p class="text-sm text-[#4C5665]">Free reports, 3–6 cited comps each, every source disclosed.</p>
         <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works →</a>
       </div>
+    </div>
 
-      <!-- The For Brokers section moved to its own page, /brokers (built by
-           renderBrokersPageHTML in server.js). Header/footer link there. -->
+    <!-- The For Brokers section moved to its own page, /brokers (built by
+         renderBrokersPageHTML in server.js). Header/footer link there. -->
 
-      <!-- Markets -->
-      <section class="py-12 reveal">
+    <!-- Market Explorer — its own full-width band, deliberately distinct from
+         the comp searcher above: it builds standing market pages, not reports. -->
+    <section class="mt-14 border-y rd-hairline bg-white reveal">
+      <div class="max-w-5xl mx-auto px-4 py-14">
         <div class="rd-kicker">Market Explorer</div>
         <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the page.</h2>
-        <p class="text-sm text-[#4C5665] mb-5 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot (about a minute).</p>
-        <div class="relative max-w-sm mb-5">
+        <p class="text-sm text-[#4C5665] mb-1 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot (about a minute).</p>
+        <p class="text-sm text-[#8A93A0] mb-5 max-w-[58ch]">Standing market pages, separate from the property valuation above.</p>
+        <div class="relative max-w-sm">
           <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
                  class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
           <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
         </div>
-      </section>
-
-    </div>
+      </div>
+    </section>
 
   </div>
 
@@ -6184,11 +6192,6 @@
   // ----------------------------------------------------------------------------
   // Footer links.
   // ----------------------------------------------------------------------------
-  function smoothScrollTo(el) {
-    if (!el) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-  }
   // Straight to the submission modal — the same one /brokers links to via
   // /#submit-comp. openCompModal is a hoisted declaration further down.
   document.getElementById("footerSubmitComp").addEventListener("click", openCompModal);
@@ -6227,7 +6230,8 @@
 
   // Market Explorer: matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed
-  // search, ~30-60s) or handed to the valuation form pre-filled. The list
+  // search, ~30-60s). Dead-end queries get inline hints in the dropdown — the
+  // Explorer is self-contained and never hands off to the comp form. The list
   // comes from /api/markets (seed + explorer pages — never a billed search).
   (() => {
     const input = document.getElementById("marketSearch");
@@ -6241,23 +6245,10 @@
         .then((r) => (r.ok ? r.json() : []))
         .then((list) => (markets = list))
         .catch(() => (markets = [])));
-    const TYPE_WORDS = ["industrial", "office", "retail", "multifamily", "land", "residential"];
     const EXPLORE_TYPES = ["industrial", "office", "retail", "multifamily"];
+    const NON_EXPLORE_TYPES = ["land", "residential"]; // valid report types /api/explore-market rejects
     const US_STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
     const cap = (s) => s[0].toUpperCase() + s.slice(1);
-    const runValuation = () => {
-      const q = input.value.trim();
-      if (!q) return;
-      const typeWord = TYPE_WORDS.find((t) => q.toLowerCase().includes(t));
-      if (typeWord) document.getElementById("propertyType").value = cap(typeWord);
-      syncSubjectFieldsToType();
-      const addr = document.getElementById("address");
-      // The type belongs in the dropdown, not the address text.
-      addr.value = q.replace(new RegExp(typeWord || "$^", "i"), "").replace(/\s{2,}/g, " ").trim() || q;
-      hide();
-      smoothScrollTo(document.getElementById("compForm"));
-      addr.focus();
-    };
     const hide = () => {
       if (exploring) return; // generation in progress — keep the status row up
       resultsEl.classList.add("hidden");
@@ -6266,6 +6257,7 @@
     // "industrial Boise ID" -> {type, city, state}; otherwise {reason} for a hint row.
     const parseExploreQuery = (q) => {
       let tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+      if (tokens.some((t) => NON_EXPLORE_TYPES.includes(t))) return { reason: "unsupported-type" };
       const type = EXPLORE_TYPES.find((t) => tokens.includes(t));
       tokens = tokens.filter((t) => t !== type);
       const last = tokens[tokens.length - 1] || "";
@@ -6296,8 +6288,7 @@
           input.disabled = false;
           resultsEl.innerHTML =
             `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong. Please try again.")}</div>` +
-            `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
-          document.getElementById("marketSearchRun").addEventListener("click", runValuation);
+            `<div class="px-3 py-1.5 text-[#8A93A0]">Adjust the search and try again, e.g. “industrial Boise ID”</div>`;
         })
         .catch(() => {
           exploring = false;
@@ -6328,11 +6319,13 @@
         html += `<div class="px-3 py-1.5 text-[#8A93A0]">Explore ${escq(p.city)}, ${escq(p.state)} as:</div>` +
           EXPLORE_TYPES.map((t) =>
             `<button type="button" data-explore-type="${t}" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">${cap(t)} →</button>`).join("");
+      } else if (p.reason === "unsupported-type" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
+      } else if (p.reason === "no-city" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Search a market like “industrial Boise ID”</div>`;
       }
-      html += `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
       resultsEl.innerHTML = html;
       resultsEl.classList.remove("hidden");
-      document.getElementById("marketSearchRun").addEventListener("click", runValuation);
       const exploreBtn = document.getElementById("marketSearchExplore");
       if (exploreBtn) exploreBtn.addEventListener("click", () => explore(p));
       resultsEl.querySelectorAll("[data-explore-type]").forEach((btn) =>
@@ -6349,7 +6342,7 @@
       const exploreBtn = document.getElementById("marketSearchExplore");
       if (first) window.location.href = first.getAttribute("href");
       else if (exploreBtn) exploreBtn.click();
-      else runValuation();
+      // else: hint rows are already visible — Enter is a no-op, never the comp form.
     });
     document.addEventListener("mousedown", (e) => {
       if (!resultsEl.contains(e.target) && e.target !== input) hide();

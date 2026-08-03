@@ -3585,11 +3585,12 @@ const MARKET_FOOTER =
   `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
-  `<p>&copy; 2026 CompNinja</p></div>` +
+  `<p>&copy; 2026 CompNinja LLC</p></div>` +
   `<div class="right"><a href="mailto:info@compninja.co">info@compninja.co</a>` +
   `<ul><li><a href="/markets">Markets</a></li><li><a href="/brokers">Brokers</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
-  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li></ul></div>` +
+  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li>` +
+  `<li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul></div>` +
   `</div></footer>`;
 
 function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
@@ -4102,6 +4103,167 @@ function renderBrokersPageHTML() {
   return marketShell({ title, description, canonical, body, jsonLd });
 }
 
+// ---------------------------------------------------------------------------
+// /terms + /privacy — the legal pages. CompNinja LLC (Idaho #6928558) is the
+// contracting entity. Rendered through marketShell like /brokers, so they do
+// NOT depend on the purged tailwind.css. The copy is a plain-English draft
+// written for later attorney review; the review note deliberately does NOT
+// appear on the pages themselves (it would weaken them).
+// Owner decisions locked 2026-08-03: no refunds (cancel anytime, access to
+// period end), Idaho law + Ada County venue (no arbitration), email-only
+// contact (no street address; the SOS registry publishes it for anyone who
+// truly needs it).
+// ---------------------------------------------------------------------------
+const LEGAL_UPDATED = "August 3, 2026";
+
+function renderTermsPageHTML() {
+  const title = "Terms of Service | CompNinja";
+  const canonical = `${SITE_URL}/terms`;
+  const description =
+    "The terms that govern CompNinja: what the service is, what it is not, subscriptions, and your responsibilities.";
+  const body =
+    `<h1>Terms of Service</h1>` +
+    `<p class="sub">Last updated: ${LEGAL_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+
+    `<div class="card"><h2>Who we are and what this is</h2>` +
+    `<p>CompNinja is operated by CompNinja LLC, an Idaho limited liability company (file #6928558). ` +
+    `These terms are an agreement between you and CompNinja LLC. By using compninja.co you accept them.</p>` +
+    `<p>The service produces automated commercial real estate comparable-sales reports and value estimates, ` +
+    `built from publicly available data and AI-assisted web search.</p></div>` +
+
+    `<div class="card"><h2>What the service is not</h2>` +
+    `<ul>` +
+    `<li>Every valuation is an automated estimate. It is not an appraisal and no output of the service is one.</li>` +
+    `<li>CompNinja is not a licensed real estate brokerage and does not provide broker opinions of value. ` +
+    `Where the site offers a broker opinion of value, it connects you with an independent local broker.</li>` +
+    `<li>Nothing on the site is financial, investment, legal, or tax advice.</li>` +
+    `<li>Estimates must not be relied on for lending, underwriting, or any transaction decision ` +
+    `without independent verification. Comparable data comes from public sources and automated search; ` +
+    `we do not guarantee its accuracy or completeness.</li>` +
+    `</ul></div>` +
+
+    `<div class="card"><h2>Accounts and acceptable use</h2>` +
+    `<p>Accounts are free. Keep your credentials to yourself, give us accurate information, and use one ` +
+    `account per person. We may suspend or terminate accounts that abuse the service.</p>` +
+    `<p>You agree not to scrape, bulk-extract, or resell report data; not to circumvent rate limits, usage ` +
+    `caps, or access controls; and not to use the service for anything unlawful.</p></div>` +
+
+    `<div class="card"><h2>Paid subscriptions</h2>` +
+    `<p>Payment is processed by Stripe; CompNinja never sees or stores your card number. You can cancel at ` +
+    `any time and your access continues through the end of the period you paid for. Payments are not ` +
+    `refundable, in whole or in part.</p>` +
+    `<p>Prices may change with advance notice; a change applies from your next billing period. ` +
+    `Founding-member pricing stays at its original rate for as long as that subscription remains ` +
+    `continuously active.</p></div>` +
+
+    `<div class="card"><h2>Your submissions</h2>` +
+    `<p>If you submit a comp or other data, you confirm you have the right to share it. We may review, ` +
+    `approve, display, and credit submissions (for example the Verified badge with your firm's name), and ` +
+    `we may decline or remove any submission at our discretion.</p></div>` +
+
+    `<div class="card"><h2>The legal terms</h2>` +
+    `<h3>Intellectual property</h3>` +
+    `<p>The site, branding, and report formats belong to CompNinja LLC. Reports you generate are yours to ` +
+    `use for your own business purposes.</p>` +
+    `<h3>Third-party services</h3>` +
+    `<p>The service depends on third-party data and infrastructure providers. We are not responsible for ` +
+    `their outages or errors.</p>` +
+    `<h3>Disclaimer of warranties</h3>` +
+    `<p>The service is provided &quot;as is&quot; and &quot;as available&quot;, without warranties of any ` +
+    `kind, to the maximum extent permitted by law.</p>` +
+    `<h3>Limitation of liability</h3>` +
+    `<p>To the maximum extent permitted by law, CompNinja LLC's total liability for any claim relating to ` +
+    `the service is capped at the greater of the fees you paid us in the twelve months before the claim ` +
+    `or $100. We are not liable for indirect, incidental, or consequential damages.</p>` +
+    `<h3>Termination</h3>` +
+    `<p>You can stop using the service or delete your account at any time; we can suspend or end access ` +
+    `for breach of these terms. Sections that by their nature should survive (disclaimers, liability ` +
+    `limits, intellectual property) survive.</p>` +
+    `<h3>Governing law and disputes</h3>` +
+    `<p>These terms are governed by Idaho law. Any dispute belongs exclusively in the state or federal ` +
+    `courts located in Ada County, Idaho, and both sides consent to that venue.</p>` +
+    `<h3>Changes to these terms</h3>` +
+    `<p>We may update these terms; the date at the top changes when we do. Continuing to use the service ` +
+    `after a change means you accept it.</p>` +
+    `<h3>Contact</h3>` +
+    `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+
+  return marketShell({ title, description, canonical, body });
+}
+
+function renderPrivacyPageHTML() {
+  const title = "Privacy Policy | CompNinja";
+  const canonical = `${SITE_URL}/privacy`;
+  const description =
+    "What CompNinja collects, what never leaves your browser, which providers we use, and how to delete your data.";
+  const body =
+    `<h1>Privacy Policy</h1>` +
+    `<p class="sub">Last updated: ${LEGAL_UPDATED}. CompNinja is operated by CompNinja LLC, an Idaho ` +
+    `limited liability company (file #6928558). Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+
+    `<div class="card"><h2>What we collect</h2>` +
+    `<ul>` +
+    `<li><strong>Search inputs.</strong> The property address, property type, lookback window, and any ` +
+    `public building attributes you enter (size, units, clear height, and similar).</li>` +
+    `<li><strong>Lead and broker-opinion requests.</strong> Name, email, phone, company, and the property ` +
+    `you asked about.</li>` +
+    `<li><strong>Accounts.</strong> Your email address and a hashed password. Passwords are stored only as ` +
+    `scrypt hashes, never as plain text.</li>` +
+    `<li><strong>Saved work.</strong> Portfolio items and watchlists, including any private financial ` +
+    `inputs you enter (NOI, debt terms, rent roll, gross income).</li>` +
+    `<li><strong>Broker comp submissions.</strong> Broker contact details and the submitted comp.</li>` +
+    `<li><strong>Operational data.</strong> IP addresses for rate limiting, server logs, and analytics ` +
+    `events that carry no personal information: a property type, a city and state, and an outcome, ` +
+    `never names, emails, or street addresses.</li>` +
+    `</ul></div>` +
+
+    `<div class="card"><h2>Your private financials stay in your browser</h2>` +
+    `<p>NOI, debt terms, rent rolls, and gross income never leave your browser except into your own ` +
+    `signed-in portfolio. They are never sent to the AI model, they are stripped on the server before a ` +
+    `shared report link is stored, and they are never shown to anyone else.</p></div>` +
+
+    `<div class="card"><h2>How we use information</h2>` +
+    `<p>To generate your reports, to connect broker-opinion requesters with local brokers, to send ` +
+    `transactional email (confirmations, password resets, broker notifications), to process subscription ` +
+    `billing, and to operate, secure, and improve the service. We do not sell personal data, we run no ` +
+    `advertising trackers, and we use no third-party analytics cookies.</p></div>` +
+
+    `<div class="card"><h2>Service providers</h2>` +
+    `<p>These providers process data on our behalf:</p>` +
+    `<ul>` +
+    `<li><strong>Anthropic</strong> (AI search): receives the address, property type, and public building ` +
+    `attributes only. Never your financials.</li>` +
+    `<li><strong>Supabase</strong> (database) and <strong>Render</strong> (hosting).</li>` +
+    `<li><strong>Stripe</strong> (payments): card details go directly to Stripe and never touch our servers.</li>` +
+    `<li><strong>Resend</strong> (email delivery).</li>` +
+    `<li><strong>Google</strong> (Street View imagery), <strong>Esri</strong>, <strong>OpenStreetMap</strong>, ` +
+    `and <strong>CARTO</strong> (map imagery and tiles).</li>` +
+    `<li><strong>US Census Bureau</strong> and <strong>Nominatim</strong> (address geocoding).</li>` +
+    `<li><strong>cdnjs</strong> (script delivery for exports).</li>` +
+    `</ul></div>` +
+
+    `<div class="card"><h2>Cookies, sharing, and retention</h2>` +
+    `<h3>Cookies and local storage</h3>` +
+    `<p>One essential cookie (<code>cn_session</code>, httpOnly) keeps you signed in. Your browser's ` +
+    `local storage holds preferences, report history, and map caches on your own device.</p>` +
+    `<h3>Shared report links</h3>` +
+    `<p>Publishing a share link makes that report readable by anyone who has the link. Private financial ` +
+    `inputs are stripped before publishing. Share links do not expire.</p>` +
+    `<h3>Retention and deletion</h3>` +
+    `<p>You can delete your account in the app (My Desk, Delete account), which removes the account and ` +
+    `its saved data. To request deletion of lead or submission data, email ` +
+    `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+    `<h3>Security</h3>` +
+    `<p>HTTPS everywhere, hashed passwords, and an access-controlled database.</p>` +
+    `<h3>Children</h3>` +
+    `<p>The service is built for business use and is not directed to children under 13.</p>` +
+    `<h3>Changes and contact</h3>` +
+    `<p>We may update this policy; the date at the top changes when we do. ` +
+    `<a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+
+  return marketShell({ title, description, canonical, body });
+}
+
 function renderHowItWorksHTML() {
   const title = "How CompNinja Works";
   const canonical = `${SITE_URL}/how-it-works`;
@@ -4282,7 +4444,7 @@ function renderHowItWorksHTML() {
       <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
         connect you with local brokers for opinions of value. Comparables derive from publicly available data;
         verify independently before underwriting.</p>
-      <p>&copy; 2026 CompNinja</p>
+      <p>&copy; 2026 CompNinja LLC</p>
     </div>
     <div class="right">
       <a href="mailto:info@compninja.co">info@compninja.co</a>
@@ -4292,6 +4454,8 @@ function renderHowItWorksHTML() {
         <li><a href="/how-it-works">How it works</a></li>
         <li><a href="/how-it-works#faq">FAQ</a></li>
         <li><a href="/">Run a report</a></li>
+        <li><a href="/terms">Terms</a></li>
+        <li><a href="/privacy">Privacy</a></li>
       </ul>
     </div>
   </div>
@@ -7669,6 +7833,18 @@ const server = http.createServer((req, res) => {
     return res.end(renderBrokersPageHTML());
   }
 
+  // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
+  // resolves; Stripe checkout settings and campaign links both send query
+  // strings. Same hour cache as the other static pages. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/terms") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+    return res.end(renderTermsPageHTML());
+  }
+  if (req.method === "GET" && req.url.split("?")[0] === "/privacy") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+    return res.end(renderPrivacyPageHTML());
+  }
+
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && req.url === "/markets") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
@@ -7938,6 +8114,8 @@ const server = http.createServer((req, res) => {
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/terms</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/privacy</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +
       (marketUrls ? marketUrls + "\n" : "") +
       (brokerUrls ? brokerUrls + "\n" : "") +

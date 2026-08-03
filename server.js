@@ -2673,18 +2673,27 @@ async function findBrokersForMarket(market) {
 // ---------------------------------------------------------------------------
 // Call the Anthropic Messages API with web search enabled
 // ---------------------------------------------------------------------------
-// Ceiling on a single Anthropic call. Raised 100s -> 150s on 2026-07-30: real
-// searches were hitting the old ceiling and showing visitors "The search took
-// too long", which reads as a broken site rather than a slow one. Writing the
-// report alone is 40-70s (see the streaming note in CLAUDE.md), so 100s left
-// almost no margin for a busy market.
-// This is safe to raise ONLY because STREAM_IDLE_MS below fails a wedged
-// upstream in 30s regardless — so the full 150s can now elapse only while the
-// model is genuinely still producing output, never on a hang. The SSE
-// heartbeat (openSse) keeps the browser connection alive across it.
-// Note the ceiling is per CALL, and solo() retries once on a parse failure, so
-// the true worst case a visitor can wait is about double this.
-const SEARCH_TIMEOUT_MS = 150_000;
+// Ceiling on a single Anthropic call — a runaway BACKSTOP, not a pacing tool.
+// This was a fixed constant twice (100s, then 150s on 2026-07-30) and healthy
+// searches outgrew it both times: a legitimate call's wall clock is bounded by
+// its own budget (max_uses search rounds at ~4-9s each, then up to max_tokens
+// written at ~78 tok/s — the measured formula in CLAUDE.md), and a full
+// 10-search 10k-token report can honestly run past 150s. Firing a fixed timer
+// below that bound aborts an alive, already-billed call: the visitor pays for
+// every search and token generated and gets "took too long" instead of a
+// report. So the deadline now DERIVES from the work the call actually asks
+// for — 30s connect/overhead slack + 10s per allowed search + 13ms per
+// allowed output token (78 tok/s) — which keeps it above the structural bound
+// no matter how the budgets are tuned later. STREAM_IDLE_MS below is still
+// the real hang detector (30s of silence); this ceiling can only fire on
+// pathological behavior it can't catch, e.g. an upstream that keeps the
+// stream warm with pings while a search round wedges. The SSE heartbeat
+// (openSse) keeps the browser connection alive across the whole wait.
+// Note the ceiling is per CALL, and solo() retries once on a parse failure,
+// so the true worst case a visitor can wait is about double this.
+function searchTimeoutMsFor(maxUses, maxTokens) {
+  return 30_000 + maxUses * 10_000 + maxTokens * 13;
+}
 // No chunk at all for this long means a wedged upstream. Streaming is what
 // makes an idle timeout possible in the first place (the non-streaming call
 // has nothing to measure between "sent" and "done"), so take it.
@@ -2796,6 +2805,9 @@ function makeCompExtractor(onComp) {
 }
 
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
+  // Resolved once: the same number feeds the API's search budget AND the
+  // derived call deadline, so the two can never disagree.
+  const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
   const body = {
     model: MODEL,
     // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
@@ -2812,7 +2824,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // The subject-size lookup gets two extra searches so it doesn't crowd out
     // the comp searches themselves. When we already hold recent comps for this
     // market (corpus-strong), the budget drops hard — that reuse is the saving.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchUses }],
     // The web_search loop re-runs model inference on EVERY round — one per
     // search plus the final report — and each round re-reads this whole prompt
     // at full input price. Measured at ~3,300 tokens, an 8-search report paid
@@ -2852,7 +2864,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // NOT be cleared right after the await, or the whole read loop would run
   // unguarded and a wedged upstream would hang forever. It is cleared in the
   // finally that wraps the reading, further down.
-  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), searchTimeoutMsFor(searchUses, body.max_tokens));
   const timedOut = () => new Error("The search took too long and was stopped. Please try again.");
   let r;
   try {

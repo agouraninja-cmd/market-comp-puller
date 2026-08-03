@@ -154,7 +154,12 @@ dependency. `.env` is git-ignored — never commit it.
   `parseCompJson` sees the same input. Set it to `off` only to rule streaming
   out while debugging. **Careful if you touch the timeout**: with `stream:true`
   `fetch` resolves at the HEADERS, so `clearTimeout` must stay wrapped around
-  the whole read loop or `SEARCH_TIMEOUT_MS` silently stops guarding anything.
+  the whole read loop or the call deadline silently stops guarding anything.
+  The deadline is DERIVED per call (`searchTimeoutMsFor`: 30s slack + 10s per
+  allowed search + 13ms per allowed output token — ~260s for a full 10-search
+  10k-token report) so it always sits above the wall clock of a healthy call;
+  a fixed constant was outgrown twice (100s, then 150s), and each time it
+  aborted alive, already-billed calls into "took too long" errors.
   There is also a `STREAM_IDLE_MS` (30s) per-chunk watchdog, which only becomes
   possible once the response is streamed.
 - **Live search progress** (no env var — always on for the browser). `POST
@@ -736,9 +741,11 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    skipping beats an ALTER TABLE for a rare case). Note `marketOf()` yields
    just "Canada" for Canadian addresses (it parses "City, ST"); harmless
    while non-USD reports skip the corpus, but fix it before ever harvesting
-   them. International searches also run close to `SEARCH_TIMEOUT_MS`
-   (100s) — the first Canadian test search timed out and succeeded on
-   retry.
+   them. International searches run long — the first Canadian test search
+   timed out under the old fixed 100s call ceiling and succeeded on retry;
+   the deadline has since become per-call (`searchTimeoutMsFor`, ~260s for
+   a full-budget report), sized so a healthy slow search finishes instead
+   of being aborted after it was already billed.
 
 ## Deployment
 

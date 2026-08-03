@@ -646,9 +646,10 @@
   <div id="confirmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
       <div class="rd-lab">Confirm property</div>
-      <h2 class="text-lg font-semibold text-slate-900 mt-1">Is this the property you're looking for?</h2>
+      <h2 id="confirmHeading" class="text-lg font-semibold text-slate-900 mt-1">Is this the property you're looking for?</h2>
       <p class="text-sm text-slate-500 mt-3">You searched for:</p>
       <p id="confirmTyped" class="text-sm font-medium text-slate-900"></p>
+      <p id="confirmNoMatch" class="hidden text-sm text-[#B91C1C] mt-2">We couldn't find this address on any map. Check the street number, city, and state; a mistyped address returns comps for the wrong market.</p>
       <div id="confirmMatchedWrap" class="hidden mt-2">
         <p class="text-sm text-slate-500">We matched it to:</p>
         <p id="confirmMatched" class="text-sm font-medium text-slate-900"></p>
@@ -3003,6 +3004,35 @@
         },
         costApproachEntry,
       ]);
+    } else if (ppsfs.length >= 2) {
+      // No building size from any source, but priced sale comps exist - lead
+      // with the per-square-foot band. A unit-price range is a real valuation
+      // answer; bare dashes read as a broken report. Reached only when the
+      // income approach can't lead either, so incomeApproachEntry below always
+      // returns its muted "enter your NOI" pitch (arguments unused).
+      const rr = robustPpsfRange(wItems);
+      const fmtPsf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
+      animateValue(lowEl, rr.low, fmtPsf);
+      animateValue(midEl, rr.mid, fmtPsf);
+      animateValue(highEl, rr.high, fmtPsf);
+      setPpsf("ownerLowPpsf", "per square foot");
+      setPpsf("ownerMidPpsf", "comp median");
+      setPpsf("ownerHighPpsf", "per square foot");
+      basisEl.textContent = (rr.trimmed
+        ? `The middle range of ${ppsfs.length} sale comps, per square foot. `
+        : `$/SF from ${ppsfs.length} sale comps. `)
+        + "We couldn't find this building's square footage; enter it under 'Your property details' and this becomes a total dollar value instantly.";
+      trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
+      trustEl.classList.remove("hidden");
+      const entries = [{
+        label: "Sales comparison approach",
+        text: `${fmtPsf(rr.low)} – ${fmtPsf(rr.high)}, what ${ppsfs.length} recent sale comps say buyers pay per `
+          + `square foot. Enter your building's size above and this becomes a total dollar range.`,
+      }];
+      const incEntry = incomeApproachEntry(rr.low, rr.high);
+      if (incEntry) entries.push(incEntry);
+      entries.push(costApproachEntry);
+      renderApproaches(entries);
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
@@ -8017,9 +8047,19 @@
 
   function openConfirmModal({ typed, key, geo }) {
     pendingConfirmKey = key;
+    // geo: null = no geocoder could place the address. Still openable (the
+    // geocoder may just be down), but the copy switches to a warning: a
+    // mistyped address produces a confident-looking report for the wrong
+    // market, which is worse than no report at all.
+    const noMatch = !geo;
+    document.getElementById("confirmHeading").textContent = noMatch
+      ? "We couldn't verify this address"
+      : "Is this the property you're looking for?";
+    document.getElementById("confirmNoMatch").classList.toggle("hidden", !noMatch);
+    document.getElementById("confirmRunBtn").textContent = noMatch ? "Run anyway" : "Yes, run the report";
     document.getElementById("confirmTyped").textContent = typed;
     const matchedWrap = document.getElementById("confirmMatchedWrap");
-    if (geo.label && geo.label.trim().toLowerCase() !== typed.trim().toLowerCase()) {
+    if (!noMatch && geo.label && geo.label.trim().toLowerCase() !== typed.trim().toLowerCase()) {
       document.getElementById("confirmMatched").textContent = geo.label;
       matchedWrap.classList.remove("hidden");
     } else {
@@ -8030,7 +8070,7 @@
     // Single-pin mini map; text-only fallback when Leaflet or coords are absent.
     const mapEl = document.getElementById("confirmMap");
     if (confirmMapInstance) { confirmMapInstance.remove(); confirmMapInstance = null; }
-    if (typeof L === "undefined" || !isFinite(geo.lat) || !isFinite(geo.lng)) {
+    if (noMatch || typeof L === "undefined" || !isFinite(geo.lat) || !isFinite(geo.lng)) {
       mapEl.classList.add("hidden");
     } else {
       mapEl.classList.remove("hidden");
@@ -8051,7 +8091,8 @@
       // to re-measure.
       setTimeout(() => { if (confirmMapInstance) confirmMapInstance.invalidateSize(); }, 60);
     }
-    document.getElementById("confirmRunBtn").focus();
+    // Unverified addresses default focus to editing, not running.
+    document.getElementById(noMatch ? "confirmEditBtn" : "confirmRunBtn").focus();
   }
 
   function closeConfirmModal() {
@@ -8207,11 +8248,15 @@
       try { geo = await geocodeAddress(address); } catch (_) {}
       submitBtn.disabled = false;
       btnLabel.textContent = "Run a report";
-      if (geo) {
-        openConfirmModal({ typed: address, key: confirmKey, geo });
-        return; // Confirm re-submits; Edit/Escape just closes
-      }
-      confirmedAddresses.add(confirmKey); // geocoder down or no match — never block
+      // Confirm re-submits; Edit/Escape just closes. A geocode miss opens the
+      // same modal in its warning variant rather than silently running: the
+      // report that comes back from a mistyped address is confidently wrong
+      // (real case: "Highway 42 Montana" for a Georgia building returned a
+      // Montana market report). "Run anyway" still goes through, so a down
+      // geocoder or an address the geocoders don't know costs one click, never
+      // the search.
+      openConfirmModal({ typed: address, key: confirmKey, geo });
+      return;
     }
 
     // Returning users usually search the same asset class — remember it.

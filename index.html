@@ -514,14 +514,14 @@
             <span class="text-2xl font-semibold text-[#1A2433]">$129</span>
             <span class="text-sm text-[#8A93A0]">/month</span>
           </div>
-          <!-- Sell only what ships. Unlimited exports and report branding are
-               real Pro entitlements in entitlements.js, but neither is BUILT:
-               nothing writes export_usage (so free is uncapped too) and there
-               is no branding UI at all. Both bullets come back when the
-               features do — see phase 8-9 in PRO-BILLING-SETUP.md. -->
+          <!-- Sell only what ships. Report branding is a real entitlement in
+               entitlements.js but has NO UI at all, so it stays off this list
+               until something actually draws a logo. The exports bullet came
+               back on 2026-08-03 when the monthly cap became real. -->
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
             <li>Every comparable, itemized, not just four</li>
             <li>Look back up to 10 years, not 12 months</li>
+            <li>Unlimited CSV, image, PDF and Excel exports</li>
           </ul>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-4 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
@@ -1030,6 +1030,10 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6"/><path d="m15 13-6 6"/></svg>
           Excel
         </button>
+        <!-- Monthly export allowance. Hidden entirely for Pro, for anyone with
+             the tier switched off, and until we've actually been told a number —
+             a blank counter is worse than none. -->
+        <span id="exportAllowance" class="hidden inline-flex items-center text-xs text-[#8A93A0]"></span>
       </div>
 
       <!-- Captured / printed region -->
@@ -6642,12 +6646,11 @@
     if (p.isPro) {
       return {
         title: p.plan === "pro_annual_founding" ? "Pro: founding member" : "Pro",
-        // Same rule as the pricing tile: name only what ships. Unlimited
-        // exports and report branding are granted by entitlements.js but
-        // neither is BUILT, and promising them to someone who has just paid is
-        // worse than promising them to a prospect. Restore both here in the
-        // same change that builds the features.
-        detail: "Every comparable, and a lookback of up to 10 years.",
+        // Same rule as the pricing tile: name only what ships. Report branding
+        // is granted by entitlements.js but has no UI, so it is not claimed
+        // here; promising it to someone who has just paid is worse than
+        // promising it to a prospect. Restore it with the feature.
+        detail: "Every comparable, a lookback of up to 10 years, and unlimited exports.",
       };
     }
     if (p.status === "expired") {
@@ -6668,6 +6671,13 @@
     const menuBilling = document.getElementById("menuBillingBtn");
     menuUpgrade.classList.toggle("hidden", !live || pro);
     menuBilling.classList.toggle("hidden", !live || !hasBillingHistory());
+
+    // /api/config already carries this visitor's remaining exports, so the
+    // counter can be right on first paint instead of only after an export.
+    if (proConfig && proConfig.exportsRemaining !== undefined) {
+      exportsLeft = proConfig.exportsRemaining;
+    }
+    updateExportAllowance();
 
     const card = document.getElementById("billingCard");
     card.classList.toggle("hidden", !live || !currentUser);
@@ -6743,7 +6753,7 @@
       await refreshProConfig();
       if (proConfig && proConfig.isPro) {
         showCheckoutNotice("ok", "You're on Pro.",
-          "Every comparable, and a lookback of up to 10 years. Re-run a report to see the full list.");
+          "Every comparable, a lookback of up to 10 years, and unlimited exports. Re-run a report to see the full list.");
         return;
       }
       await new Promise((r) => setTimeout(r, 2000));
@@ -7808,7 +7818,7 @@
       btn.disabled = false;
     }
   }
-  document.getElementById("xlsxBtn").addEventListener("click", exportXlsx);
+  document.getElementById("xlsxBtn").addEventListener("click", gatedExport(exportXlsx));
 
   async function downloadImage() {
     const node = document.getElementById("reportArea");
@@ -7882,14 +7892,89 @@
     document.getElementById("leadName").focus();
   }
 
+  // ----------------------------------------------------------------------------
+  // Export allowance. Free accounts get a number of REPORTS per month; Pro is
+  // unlimited. Counted per report, so the same analysis as CSV, image, PDF and
+  // Excel costs one, not four.
+  //
+  // Honour system, and deliberately so: every export is produced in this
+  // browser, so the server can only be asked "may I?" — it can never withhold
+  // the file. Anyone with dev tools walks past it. It is a conversion nudge,
+  // exactly like the lead-capture gate, and nothing of value sits behind it.
+  // ----------------------------------------------------------------------------
+
+  // Identity of "the same report". Address + type + window, and deliberately
+  // NOT a timestamp: meta.generatedAt is absent on a fresh search and falls
+  // back to Date.now(), which would change between two clicks and charge twice
+  // for one report. Reopening a saved report and exporting it again is free.
+  function exportReportKey() {
+    if (!currentMeta) return "";
+    return [currentMeta.address || "", currentMeta.type || "", currentMeta.months || ""]
+      .join("|").trim().toLowerCase();
+  }
+
+  let exportsLeft = null;   // last figure from /api/export; null = unknown
+
+  function updateExportAllowance() {
+    const el = document.getElementById("exportAllowance");
+    if (!el) return;
+    const hide = !proConfig || !proConfig.enabled || exportsLeft === null ||
+                 exportsLeft === "unlimited" || !currentUser;
+    el.classList.toggle("hidden", hide);
+    if (hide) return;
+    const n = Number(exportsLeft);
+    el.textContent = n === 0
+      ? "No exports left this month"
+      : `${n} export${n === 1 ? "" : "s"} left this month`;
+  }
+
+  async function claimExport() {
+    try {
+      const r = await fetch("/api/export", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ report: exportReportKey() }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data.allowed) {
+        exportsLeft = data.remaining;
+        updateExportAllowance();
+        return { allowed: true };
+      }
+      return { allowed: false, code: data.code, error: data.error };
+    } catch (_) {
+      // Server unreachable. Let the export run — never hold someone's own
+      // deliverable hostage to our counter.
+      return { allowed: true };
+    }
+  }
+
   function gatedExport(action) {
-    return () => {
-      if (leadCaptureEnabled && !leadCaptured()) {
-        pendingExport = action;
-        openLeadModal("export");
+    return async () => {
+      // Tier switched off: behave exactly as the app did before it existed —
+      // the lead form is the only export gate.
+      if (!proConfig || !proConfig.enabled) {
+        if (leadCaptureEnabled && !leadCaptured()) {
+          pendingExport = action;
+          openLeadModal("export");
+          return;
+        }
+        return action();
+      }
+      // Tier on: an account REPLACES the lead form as the export gate. One ask
+      // rather than two, and an account is worth more than a contact form —
+      // it persists, syncs, and is the thing a subscription can attach to.
+      const verdict = await claimExport();
+      if (verdict.allowed) return action();
+      if (verdict.code === "signin_required") {
+        openAcctModal("signup", "Create a free account to export — it's free, and your reports follow you across devices.");
         return;
       }
-      action();
+      if (verdict.code === "export_limit") {
+        openUpgradePrompt();
+        return;
+      }
+      alert(verdict.error || "Couldn't start that export. Please try again.");
     };
   }
 

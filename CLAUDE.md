@@ -21,7 +21,7 @@ deep link that pre-opens the property-details section. The hero carries a
 leads are stored with `source: "bov"` (vs `"export"` for export unlocks).
 The front-end is a single HTML file; a small Node proxy holds the API key so
 the browser never sees it. The public contact email across the site is
-agouraninja@gmail.com. The owner is not a licensed broker: site copy must say
+info@compninja.co. The owner is not a licensed broker: site copy must say
 we "connect you with a local broker", never that we are one, and every
 valuation is labeled an automated estimate, never an appraisal.
 

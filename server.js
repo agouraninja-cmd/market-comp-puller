@@ -3519,7 +3519,7 @@ const MARKET_FOOTER =
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
   `<p>&copy; 2026 CompNinja</p></div>` +
-  `<div class="right"><a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a>` +
+  `<div class="right"><a href="mailto:info@compninja.co">info@compninja.co</a>` +
   `<ul><li><a href="/markets">Markets</a></li><li><a href="/brokers">Brokers</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
   `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li></ul></div>` +
@@ -4190,7 +4190,7 @@ function renderHowItWorksHTML() {
       <p>&copy; 2026 CompNinja</p>
     </div>
     <div class="right">
-      <a href="mailto:agouraninja@gmail.com">agouraninja@gmail.com</a>
+      <a href="mailto:info@compninja.co">info@compninja.co</a>
       <ul>
         <li><a href="/markets">Markets</a></li>
         <li><a href="/brokers">Brokers</a></li>

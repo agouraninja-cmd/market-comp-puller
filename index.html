@@ -811,9 +811,10 @@
           </div>
         </details>
 
-        <!-- Submit row; docks to the bottom of the screen on phones. On desktop the
-             red button sits on the right, per the approved mockup. -->
-        <div class="sticky bottom-0 px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3 sm:static">
+        <!-- Submit row; stays in normal flow on phones (no longer docks to the
+             viewport bottom - the owner found that motion distracting). On
+             desktop the red button sits on the right, per the approved mockup. -->
+        <div class="static px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
           <button id="submitBtn" type="submit"
             class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Run a report</span>

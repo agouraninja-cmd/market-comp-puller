@@ -3221,11 +3221,13 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hleft{display:flex;align-items:center;gap:18px}
 /* Red back link, top-left corner of the page — also wired to the Escape key.
    Mirrors HOW_CSS's .backbtn; keep the two in step. Below ~1140px the corner
-   collides with the centered column, so it drops into the header row. */
+   collides with the centered column, so it drops into the header row; below
+   640px (phones) it is hidden entirely — the owner's call. */
 .backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
 .backbtn:hover{color:#991B1B}
 .backbtn svg{width:15px;height:15px;flex-shrink:0}
 @media (max-width:1139px){.backbtn{position:static}}
+@media (max-width:639px){.backbtn{display:none}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
@@ -3921,11 +3923,13 @@ a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
    Deliberately plain (no border/pill): the owner rolled back a boxed version
    as too heavy. Absolute against the page, not the centered column; below
    ~1140px the corner collides with the column, so it drops back into the
-   header flow beside the logo. */
+   header flow beside the logo; below 640px (phones) it is hidden entirely —
+   the owner's call. */
 .backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
 .backbtn:hover{color:#991B1B}
 .backbtn svg{width:15px;height:15px;flex-shrink:0}
 @media (max-width:1139px){.backbtn{position:static}}
+@media (max-width:639px){.backbtn{display:none}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}

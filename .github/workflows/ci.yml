@@ -32,6 +32,31 @@ jobs:
       - name: Run test suite
         run: npm test
 
+      # devlog.json is UTF-8 and full of em dashes and curly quotes. An editor
+      # that saves it as Windows-1252 re-encodes every one of them into
+      # sequences like "ÃƒÆ’Ã†â€™" — and because each merge that resolves this
+      # file re-mangles what is already mangled, the damage roughly doubled on
+      # every merge: 60 -> 182 -> 481 -> 1088 -> 2307 occurrences across five
+      # merges before anyone noticed. Nothing reads devlog.json but /dev, so it
+      # rots silently. This fails the build the first time instead.
+      - name: devlog.json is valid UTF-8 JSON, with no mojibake
+        run: |
+          node -e '
+            const fs = require("fs");
+            const raw = fs.readFileSync("devlog.json");
+            if (raw.includes("﻿")) { console.error("devlog.json has a BOM — save it as UTF-8 without one."); process.exit(1); }
+            const text = raw.toString("utf8");
+            const entries = JSON.parse(text);   // throws on malformed JSON
+            const bad = entries.filter((e) => /Ã|â€|Â/.test(JSON.stringify(e)));
+            if (bad.length) {
+              console.error(`${bad.length} devlog entry(ies) contain mojibake — devlog.json was saved as Windows-1252, not UTF-8.`);
+              console.error("Re-save it as UTF-8. If you resolved a merge conflict here, your editor is the cause.");
+              for (const e of bad.slice(0, 5)) console.error(`  ${e.date}  ${String(e.title).slice(0, 60)}`);
+              process.exit(1);
+            }
+            console.log(`devlog.json OK — ${entries.length} entries, clean UTF-8.`);
+          '
+
       - name: Boot smoke test
         run: |
           PORT=3199 node server.js &

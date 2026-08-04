@@ -117,6 +117,23 @@ dependency. `.env` is git-ignored — never commit it.
   same Resend notifier). An in-memory counter reset at UTC midnight and on
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
+- `GUEST_SEARCH_LIMIT` — optional (default 1, LIVE since 2026-08-03). Free
+  report searches per **anonymous** visitor before a free sign-in is required —
+  a signup funnel, not a paywall (any account clears it; spec in
+  `docs/superpowers/specs/2026-08-03-guest-search-cap-design.md`). `0` = sign-in
+  before any search; `off` = gate disabled entirely (the instant rollback lever).
+  Tracked two ways, blocked when EITHER fires: the Supabase
+  `guest_search_quota` ledger keyed by sha256(IP) (DDL in the comment above
+  `guestGateFor` in server.js — already run in prod), and the httpOnly
+  `cn_guest` cookie set once the quota is spent. **Cache hits count** (the
+  funnel is the point); a failed search doesn't consume; admins and
+  `x-admin-key` callers bypass. Enforced in `/api/comps` (403 +
+  `signin_required: true`, which the client turns into the account modal);
+  `/api/config` carries `guestSearch: { limit, used }` for the form hint and
+  syncs the cookie the SSE exit can't set (its headers are already streaming).
+  Fails OPEN on ledger errors — `DAILY_SEARCH_CAP` still backstops spend. Each
+  block logs a PII-free `signup_gate` analytics event. The privacy policy's
+  cookie section names `cn_guest` and the hashed-IP ledger; keep it in step.
 - `GOOGLE_MAPS_API_KEY` — optional; SET on Render since 2026-07-29 (key
   "CompNinja Street View" in the owner's Google Cloud project `compninja`,
   restricted to the Street View Static API only). When set, map pin popups
@@ -197,8 +214,13 @@ dependency. `.env` is git-ignored — never commit it.
   Measured composition of a report: the `comps` array is 69-76% of it, and
   within that `notes` was by far the largest field (18-28% of the whole
   report, up to 466 chars on one comp), followed by `source_url` (~8-11%,
-  not cuttable — it is the proof). Top-level, `summary` is 7-15% and
-  `value_drivers` 6-12%, both still uncut if more is ever needed.
+  not cuttable — it is the proof). Top-level, the four narrative fields
+  (`summary`, `value_drivers`, `market_trend`, `price_discovery.note`)
+  measured a combined 33% of one real report and got the same notes-style
+  caps on 2026-08-03 (~450 chars / 80-per-entry / 140 / 200, banned
+  patterns named, the summary's REQUIRED honesty caveats given a protected
+  third-sentence slot — don't tighten further without protecting them
+  again). Verified same day: summary 941 → 559, report 13% shorter.
   `notes` is now capped in the prompt at two short sentences with the two
   real sources of bloat banned by name — the model narrating its own search
   ("Included as the nearest comparable found; details require CoStar") and

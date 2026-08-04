@@ -390,6 +390,111 @@ function rateLimited(ip, max = RATE_MAX, windowMs = RATE_WINDOW_MS) {
 }
 
 // ---------------------------------------------------------------------------
+// Guest search quota — every anonymous visitor gets GUEST_SEARCH_LIMIT free
+// report searches (default 1), then a FREE sign-in is required. A signup
+// funnel, not a paywall — spec in docs/superpowers/specs/
+// 2026-08-03-guest-search-cap-design.md. Tracked two ways and blocked when
+// EITHER fires: a durable ledger keyed by sha256(IP) (survives cleared
+// cookies), and the cn_guest cookie set once the ledger says the quota is
+// spent (survives IP changes). Cache hits count too — the funnel is the
+// point, not just API spend. Fails OPEN: a ledger error allows the search;
+// DAILY_SEARCH_CAP still backstops cost.
+// DDL (run in the Supabase SQL editor BEFORE deploying):
+//
+//   create table guest_search_quota (
+//     ip_hash text primary key,
+//     used integer not null default 0,
+//     first_ts timestamptz not null default now(),
+//     last_ts timestamptz not null default now()
+//   );
+// ---------------------------------------------------------------------------
+const GUEST_COOKIE = "cn_guest";
+const GUEST_COOKIE_MAX_AGE_SEC = 2 * 365 * 24 * 60 * 60;
+// GUEST_SEARCH_LIMIT: unset/1 = one free search per visitor; any integer N =
+// N free; 0 = sign-in required before any search; "off" = gate disabled
+// entirely, the app behaves exactly as it did before the gate existed. "off"
+// is the instant rollback lever on Render — an env edit, no deploy.
+const GUEST_LIMIT_RAW = String(process.env.GUEST_SEARCH_LIMIT ?? "1").trim().toLowerCase();
+const GUEST_SEARCH_LIMIT =
+  GUEST_LIMIT_RAW === "off" ? Infinity
+    : Number.isInteger(Number(GUEST_LIMIT_RAW)) && Number(GUEST_LIMIT_RAW) >= 0 ? Number(GUEST_LIMIT_RAW)
+      : 1;
+const GUEST_GATE_ON = GUEST_SEARCH_LIMIT !== Infinity;
+const GUEST_QUOTA_FILE = path.join(__dirname, "guest-quota.jsonl");
+const guestQuotaMem = new Map(); // ip_hash -> used; file-fallback store + outage buffer
+// Short-TTL read memo so /api/config (every page load) doesn't pay a DB read
+// per anonymous visit — the same reasoning that keeps the founding counter
+// out of /api/config entirely.
+const guestQuotaReadCache = new Map(); // ip_hash -> { used, ts }
+const GUEST_READ_TTL_MS = 60 * 1000;
+let guestQuotaFilePromise = null;
+function loadGuestQuotaFile() {
+  if (!guestQuotaFilePromise) {
+    guestQuotaFilePromise = readRowsFromFile(GUEST_QUOTA_FILE).then((rows) => {
+      for (const r of rows) {
+        if (r && r.ip_hash) guestQuotaMem.set(r.ip_hash, Math.max(guestQuotaMem.get(r.ip_hash) || 0, Number(r.used) || 0));
+      }
+    }).catch(() => {});
+  }
+  return guestQuotaFilePromise;
+}
+async function guestSearchesUsed(ipHash) {
+  await loadGuestQuotaFile();
+  const local = guestQuotaMem.get(ipHash) || 0;
+  const memo = guestQuotaReadCache.get(ipHash);
+  if (memo && Date.now() - memo.ts < GUEST_READ_TTL_MS) return Math.max(memo.used, local);
+  if (!DB_CONFIGURED) return local;
+  try {
+    const rows = await sbRequest("GET", `guest_search_quota?ip_hash=eq.${encodeURIComponent(ipHash)}&select=used&limit=1`);
+    const db = rows && rows[0] ? Number(rows[0].used) || 0 : 0;
+    if (guestQuotaReadCache.size > 5000) guestQuotaReadCache.clear(); // crude cap; repopulates on demand
+    guestQuotaReadCache.set(ipHash, { used: db, ts: Date.now() });
+    // The mem copy covers rows that fell back to the file during a DB outage.
+    return Math.max(db, local);
+  } catch (e) {
+    console.error("Guest quota read failed (failing open):", e.message);
+    return local;
+  }
+}
+// Fire-and-forget; `used` is the new total. Read-modify-write is fine at this
+// scale — one instance, and the mem copy was seeded by this request's read.
+function recordGuestSearch(ipHash, used) {
+  guestQuotaMem.set(ipHash, used);
+  guestQuotaReadCache.set(ipHash, { used, ts: Date.now() });
+  const now = new Date().toISOString();
+  const write = DB_CONFIGURED
+    ? sbRequest("POST", "guest_search_quota?on_conflict=ip_hash",
+      { ip_hash: ipHash, used, last_ts: now },
+      { prefer: "resolution=merge-duplicates,return=minimal" })
+    : Promise.reject(new Error("Supabase not configured"));
+  write.catch((e) => {
+    if (DB_CONFIGURED) console.error("Guest quota DB write failed — falling back to file:", e.message);
+    return fs.promises.appendFile(GUEST_QUOTA_FILE, JSON.stringify({ ip_hash: ipHash, used, ts: now }) + "\n").catch(() => {});
+  });
+}
+function setGuestCookie(res, req) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  // Append rather than assign — clobbering a session cookie set on the same
+  // response would be a silent sign-out (same rule as setAdminCookie).
+  const prior = res.getHeader("set-cookie");
+  const cookie = `${GUEST_COOKIE}=1; HttpOnly; SameSite=Lax; Path=/; Max-Age=${GUEST_COOKIE_MAX_AGE_SEC}${secure}`;
+  res.setHeader("set-cookie", prior ? [].concat(prior, cookie) : cookie);
+}
+// The request-shaped resolver /api/comps and /api/config share. Returns null
+// when the gate doesn't apply to this caller: gate off, signed in (any free
+// account clears it), or an admin (cookie or header).
+async function guestGateFor(req) {
+  if (!GUEST_GATE_ON) return null;
+  if (isAdminRequest(req)) return null;
+  const user = await getSessionUser(req);
+  if (user) return null;
+  const ipHash = sha256Hex(clientIp(req));
+  const cookieSpent = Boolean(parseCookies(req)[GUEST_COOKIE]);
+  const used = cookieSpent ? GUEST_SEARCH_LIMIT : await guestSearchesUsed(ipHash);
+  return { ipHash, used, cookieSpent, blocked: cookieSpent || used >= GUEST_SEARCH_LIMIT };
+}
+
+// ---------------------------------------------------------------------------
 // Accounts — email+password users, hashed session tokens, portfolio +
 // watchlist stores. Supabase when configured, one local JSON file otherwise.
 // DDL (run in the Supabase SQL editor; legacy service_role key already works):
@@ -2535,7 +2640,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // Currency rides in BOTH lanes: a foreign-property records lane must quote
     // its comps in the same local currency, and normalizeCurrency needs the
     // code to avoid silently treating those prices as USD on merge.
-    ...(compsOnly ? [] : [`  "summary": "2-3 sentence plain-English takeaway about the local market, understandable to a non-professional - lead with the single thing an owner most needs to know",`]),
+    ...(compsOnly ? [] : [`  "summary": "",`]),
     ...(compsOnly ? [] : [`  "avg_price_per_sqft": "string or null",`]),
     `  "currency": "",`,
     `  "usd_rate": "",`,
@@ -2569,15 +2674,21 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // report's honesty about what a number actually represents.
     `"notes" = at most TWO short sentences, under about 200 characters. This is a table cell, not a paragraph. Include, in this order of priority: (a) any caveat that changes what the price MEANS - asking price rather than a closed sale, price not disclosed, portfolio or partial-interest sale, related-party transfer, distressed or auction sale; (b) the one or two facts that make this property comparable or not - tenant and lease structure, condition or build quality, distance or relation to the target. Then stop.`,
     `Do NOT put in "notes": anything already carried by another field (size, date, price, $/SF, cap rate, clear height, tenancy, year built, zoning) - never restate them; the name of the brokerage or website you found it on (that is what "source_url" and "source_type" are for); or ANY commentary about your own search process. Sentences like "Included as the nearest comparable found", "full transaction details require CoStar or broker access", or "no other listings were available" describe your research, not the property, and must never appear. If a price is not public, the whole caveat is "Price not disclosed."`,
+    // Same treatment as "notes" above, same reasoning: summary was measured at
+    // 941 chars / 14.7% of a real report, and the excess was the same two
+    // patterns - restating comp figures the table already carries, and
+    // narrating the search the "search_radius" field already carries. The
+    // honesty caveats other rules REQUIRE in summary keep a designated slot.
+    ...(compsOnly ? [] : [`"summary" = plain English a non-professional understands: at most THREE short sentences, under about 450 characters total, in this order: (1) the single thing an owner most needs to know about this market right now; (2) the market-level read your comps support - market-level figures like a $/SF spread or a vacancy rate are welcome; (3) only if a rule above requires it, that caveat in ONE compact clause (comps beyond the window, a widened radius, a size mismatch, scarce verified data). Do NOT put in "summary": any individual comp's address, price, size, or date (the comp table carries those); lists of tenant or company names; or any account of your search process beyond that single caveat clause.`]),
     `"currency" = the ISO 4217 code of the currency ALL prices in this report are quoted in. For a target property in the United States use "USD". For a target property in any other country, quote EVERY price figure (each comp's "price_or_rate" and "price_per_sqft", any type-specific price fields like "price_per_unit" and "price_per_acre", plus "avg_price_per_sqft") in that country's local currency, set "currency" to its code (e.g. "CAD", "MXN", "GBP"), and set "usd_rate" to the current value of 1 unit of that currency in US dollars as a plain number string (e.g. "0.73" for CAD), using the exchange rate your web search finds. When currency is "USD", set "usd_rate" to "". Never mix currencies within one report.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
     ...(compsOnly ? [] : [
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
-    `"value_drivers" = 2 to 3 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. "market_trend" = one sentence on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
+    `"value_drivers" = 2 to 3 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. Each entry must stay under about 80 characters: the named factor and its direction, then stop - no explanations, no tenant or company name lists. "market_trend" = one SHORT sentence, under about 140 characters, on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
     `"search_radius" = a short phrase (a few words) naming the geographic scope you actually used to gather these comps and whether you widened it, e.g. "Immediate submarket, ~3 miles" or "Widened to ~20 miles, limited local activity". Keep it under about 10 words. Use "" if not applicable.`,
     `"transactions_reviewed" = your rough estimate, as a plain number, of how many recent ${type} transactions you came across in this market and window before narrowing to the most comparable ones above. An approximation is expected (e.g. 34) - it conveys how much market activity you weighed. It must be greater than the number of comps you returned. Use "" if you cannot reasonably estimate it; never invent a large number to look thorough.`,
-    `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 plain sentences on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
+    `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 short sentences, under about 200 characters total, on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
     ]),
     ...(wantsSize ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
   ].join("\n");
@@ -2978,6 +3089,58 @@ function makeCompExtractor(onComp) {
   };
 }
 
+// One-shot top-level string field extractor, same contract as the comp
+// extractor above: watches the streamed text for `"<key>": "..."` and emits
+// the decoded value once when its closing quote arrives. Purely additive, a
+// bug can only cost a progress event, never the report. The key must be
+// followed (whitespace aside) by ':' then '"' to count — the model prefaces
+// the JSON with prose narration, and a bare mention of the key in prose must
+// not trigger a garbage emit.
+function makeFieldExtractor(key, onValue) {
+  const needle = '"' + key + '"';
+  let buf = "", mode = "seek", from = 0, valStart = -1, pos = 0, escaped = false;
+  return {
+    push(deltaText) {
+      if (mode === "done" || typeof deltaText !== "string" || !deltaText) return;
+      buf += deltaText;
+      while (mode === "seek") {
+        const keyAt = buf.indexOf(needle, from);
+        if (keyAt === -1) {
+          // Keep an overlap so the key can arrive split across two deltas.
+          from = Math.max(from, buf.length - (needle.length - 1));
+          return;
+        }
+        let i = keyAt + needle.length;
+        while (i < buf.length && /\s/.test(buf[i])) i++;
+        if (i >= buf.length) return;               // need more text to judge
+        if (buf[i] !== ":") { from = keyAt + 1; continue; }
+        i++;
+        while (i < buf.length && /\s/.test(buf[i])) i++;
+        if (i >= buf.length) return;
+        if (buf[i] !== '"') { from = keyAt + 1; continue; }
+        mode = "value";
+        valStart = i + 1;
+        pos = valStart;
+      }
+      for (; pos < buf.length; pos++) {
+        const ch = buf[pos];
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') {
+          mode = "done";
+          let value = "";
+          // JSON.parse decodes the escapes exactly the way the final report
+          // parse will; a malformed slice just emits nothing.
+          try { value = JSON.parse('"' + buf.slice(valStart, pos) + '"'); } catch (_) {}
+          buf = "";
+          if (value) onValue(value);
+          return;
+        }
+      }
+    },
+  };
+}
+
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
@@ -3029,7 +3192,20 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
         phase: "comp", n,
         address: String((c && c.address) || ""),
         price: String((c && (c.price_or_rate || c.price_per_sqft)) || ""),
+        // Preview-safe extras only. Deliberately NOT price_per_sqft (corrected
+        // post-parse by reconcilePricePerSqft) and NOT source_type (demoted
+        // post-parse by normalizeSourceTypes): the preview must never show a
+        // figure or badge the final report walks back.
+        size_sqft: String((c && c.size_sqft) || ""),
+        date: String((c && c.date) || ""),
+        transaction: String((c && c.transaction) || ""),
       }))
+    : null;
+  // The prompt orders "summary" before the comps array, so this lands in the
+  // first seconds of the write phase. The records lane has no summary at all.
+  let summaryExtractor = (typeof onProgress === "function" && lane !== "records")
+    ? makeFieldExtractor("summary", (value) =>
+        say({ phase: "field", key: "summary", value: stripEmDashes(value) }))
     : null;
 
   const startedAt = Date.now();
@@ -3115,6 +3291,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
             textChars += d.text.length;
             if (compExtractor) {
               try { compExtractor.push(d.text); } catch (_) { compExtractor = null; }
+            }
+            if (summaryExtractor) {
+              try { summaryExtractor.push(d.text); } catch (_) { summaryExtractor = null; }
             }
             // Writing the report is the LONG stretch — measured, searches finish
             // in ~5s and the JSON burst then runs 60-70s. It must be detected as
@@ -4531,8 +4710,11 @@ function renderPrivacyPageHTML() {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets one essential cookie, <code>cn_session</code>, an httpOnly cookie that keeps ` +
-    `you signed in. Your browser's local storage holds preferences, report history, and map caches; ` +
+    `<p>The Service sets two essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `you signed in, and <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
+    `allowance for visitors without an account. For the same purpose the Service stores a one-way hashed ` +
+    `form of your IP address; the address itself is not retained. Neither cookie is used for advertising ` +
+    `or cross-site tracking. Your browser's local storage holds preferences, report history, and map caches; ` +
     `that data remains on your own device.</p>` +
 
     `<h2>6. Shared Report Links</h2>` +
@@ -6507,6 +6689,31 @@ const server = http.createServer((req, res) => {
             : { phase: "comp", n: evt.n, locked: true, attempt: evt.attempt };
         };
 
+        // Guest search cap: one free report per anonymous visitor, then a
+        // free sign-in (see guestGateFor). Checked before EVERY exit that
+        // serves a report — cache hits count, the funnel is the point — and
+        // consumed only when a report is actually served, so a failed search
+        // never burns the free one. The client keys off `signin_required`,
+        // never the status code.
+        const guestGate = internal ? null : await guestGateFor(req);
+        if (guestGate && guestGate.blocked) {
+          logEvent("signup_gate", { prop_type: typeOk, market: marketOf(addressOk) });
+          if (!guestGate.cookieSpent) setGuestCookie(res, req);
+          return sendJson(res, 403, {
+            error: "You've used your free search. Create a free account to keep searching. It's free, no card needed.",
+            signin_required: true,
+          });
+        }
+        // Runs on every serve exit below. The cookie is set only once the
+        // quota is now spent, and never on the SSE exit — those headers are
+        // already streaming, so /api/config sets it on the next page load.
+        const consumeGuestSearch = (headersOpen) => {
+          if (!guestGate) return;
+          const used = guestGate.used + 1;
+          recordGuestSearch(guestGate.ipHash, used);
+          if (!headersOpen && used >= GUEST_SEARCH_LIMIT) setGuestCookie(res, req);
+        };
+
         const cached = await getCachedSearch(cacheKey);
         if (cached) {
           // Legacy cache entries predate $/SF reconciliation — correct them at
@@ -6516,6 +6723,7 @@ const server = http.createServer((req, res) => {
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
+          consumeGuestSearch(false);
           return sendJson(res, 200, gate(cached));
         }
 
@@ -6535,6 +6743,7 @@ const server = http.createServer((req, res) => {
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
           harvestComps(typeOk, addressOk, dw.parent);
+          consumeGuestSearch(false);
           return sendJson(res, 200, gate(dw.derived));
         }
 
@@ -6594,6 +6803,7 @@ const server = http.createServer((req, res) => {
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan });
         maybePublishMarketSnapshot(typeOk, addressOk, result);
         harvestComps(typeOk, addressOk, result);
+        consumeGuestSearch(Boolean(sse));
         if (sse) return sse.finish("result", gate(result));
         return sendJson(res, 200, gate(result));
       } catch (err) {
@@ -7982,15 +8192,30 @@ const server = http.createServer((req, res) => {
     // second round trip. This is presentation only — every limit it describes
     // is already enforced server-side, so a visitor editing this response in
     // dev tools unlocks nothing but their own disabled buttons.
-    entitlementsFor(req).then((ent) => {
+    (async () => {
+      const ent = await entitlementsFor(req);
       // Per-visitor, not global: computeEntitlements reports status "disabled"
       // exactly when it was handed enabled:false, which is the case both when
       // PRO_ENABLED is off and when this visitor sits outside PRO_AUDIENCE.
       // Reading it back here keeps the UI in step with the routes without
       // resolving the session user a second time.
       const on = ent.status !== "disabled";
+      // The guest search cap's state rides along so the form can hint before
+      // a doomed search, and so the cn_guest cookie can sync HERE — the SSE
+      // report path can't set it (its headers are already streaming), but
+      // every page load passes through /api/config. Omitted entirely when
+      // the gate is off or the visitor is signed in; the DB read behind it
+      // is memoized 60s per IP. Presentation only, like everything else in
+      // this response — enforcement lives in /api/comps.
+      let guestSearch;
+      const gg = await guestGateFor(req);
+      if (gg) {
+        if (gg.blocked && !gg.cookieSpent) setGuestCookie(res, req);
+        guestSearch = { limit: GUEST_SEARCH_LIMIT, used: Math.min(gg.used, GUEST_SEARCH_LIMIT) };
+      }
       sendJson(res, 200, {
         authRequired: Boolean(APP_PASSWORD),
+        guestSearch,
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),
         pro: {
@@ -8016,7 +8241,7 @@ const server = http.createServer((req, res) => {
           graceUntil: ent.graceUntil,
         },
       });
-    }).catch(() => sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) }));
+    })().catch(() => sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) }));
     return;
   }
 
@@ -8705,6 +8930,9 @@ server.listen(PORT, () => {
     : "📈 Analytics logging on; the /admin dashboard needs ADMIN_KEY set to view it.");
   console.log(`🗄  Search cache: ${DB_CONFIGURED ? "Supabase" : path.basename(SEARCH_CACHE_FILE) + " (EPHEMERAL on most hosts)"}, ${SEARCH_CACHE_TTL_MS / 3600000}h TTL.`);
   console.log(`💵 Daily search cap: ${DAILY_SEARCH_CAP} billed searches/day (set DAILY_SEARCH_CAP to change).`);
+  console.log(GUEST_GATE_ON
+    ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`
+    : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);
   if (PRO_ENABLED) {
     console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
       `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);

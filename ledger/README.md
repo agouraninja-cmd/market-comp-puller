@@ -27,7 +27,10 @@ the Cost page displays. That is what this ledger uses.
 That API needs an **Admin API key**, and there are two conditions:
 
 1. The key is an `sk-ant-admin01-…` key — **not** the `sk-ant-api03-…` key the
-   app runs on. Create it at **Console → Settings → API keys → Admin keys**.
+   app runs on. Create it at **Console → Settings → Admin keys**
+   (<https://platform.claude.com/settings/admin-keys>) — its own settings page,
+   *not* a section inside the normal API keys page. Looking for it there is the
+   usual reason people conclude the option is missing.
 2. **The Admin API is not available to individual Anthropic accounts.** If your
    account is a personal one, you first need to create an organization at
    **Console → Settings → Organization**. It's free, and you can be its only

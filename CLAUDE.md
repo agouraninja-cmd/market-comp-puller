@@ -29,15 +29,22 @@ There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 
 There is one small test suite: `npm test` (`node --test`, no dependencies)
-covers **`entitlements.js`** only — the Pro tier's decision table. It needs no
-database and no running server, and it finishes in under a tenth of a second,
-so there is no excuse for not running it after touching entitlement rules.
+covers the three pure modules — **`entitlements.js`** (the Pro tier's decision
+table), **`comp-gate.js`**, and **`stripe.js`** (~90 tests). It needs no
+database and no running server, and it finishes in well under a second, so
+there is no excuse for not running it after touching any of those rules.
 Nothing else in the repo is tested; do not assume a green suite means the app
-works.
+works. CI (`.github/workflows/ci.yml`) runs on every push: `node --check` on
+the entry points, the test suite, and a bare-environment boot smoke against
+`/healthz` — advisory only, since Render deploys main regardless; a red X on
+GitHub Actions means fix or revert now.
 
 The one build-*ish* artifact is **`tailwind.css`**: a vendored, pre-generated
 Tailwind build (checked in, served by `server.js`) that replaced the Play CDN.
-It is NOT regenerated automatically — see the rule under "Restart rule".
+A Claude Code hook (`.claude/hooks/regen-tailwind.js`) regenerates it when
+`index.html` is edited in a session — do not also regen manually; outside a
+session, the manual command is under "Restart rule". Either way, verify a NEW
+utility class actually landed in the vendored file and commit it alongside.
 
 ## Running it
 
@@ -621,7 +628,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "commit": "optional short hash (renders as a GitHub link on /dev)" }`;
   file order doesn't matter (the page groups/sorts by date); routine
   docs-only or refactor commits don't need entries, anything a changelog
-  reader would care about does. Entries are **click-to-edit** on `/dev`:
+  reader would care about does. **Keep devlog.json pure ASCII** — write em
+  dashes/arrows/emoji as `\uXXXX` escapes, never raw. The file has been
+  mojibake'd twice by encoding round-trips (a PowerShell write without
+  `-Encoding utf8` reads UTF-8 as the ANSI codepage); 121 corrupted runs
+  were recovered and escaped on 2026-08-04, ASCII-only is what makes the
+  next accident harmless, and CI now fails the build if mojibake returns. Entries are **click-to-edit** on `/dev`:
   edits and per-entry notes live in a Supabase `devlog_overrides` overlay
   (DDL in `migrations/006-devlog-overrides.sql` — run it
   before deploying) keyed by the file entry's original date+title and merged

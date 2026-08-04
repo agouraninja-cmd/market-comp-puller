@@ -628,12 +628,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "commit": "optional short hash (renders as a GitHub link on /dev)" }`;
   file order doesn't matter (the page groups/sorts by date); routine
   docs-only or refactor commits don't need entries, anything a changelog
-  reader would care about does. **Keep devlog.json pure ASCII** — write em
-  dashes/arrows/emoji as `\uXXXX` escapes, never raw. The file has been
-  mojibake'd twice by encoding round-trips (a PowerShell write without
-  `-Encoding utf8` reads UTF-8 as the ANSI codepage); 121 corrupted runs
-  were recovered and escaped on 2026-08-04, ASCII-only is what makes the
-  next accident harmless, and CI now fails the build if mojibake returns. Entries are **click-to-edit** on `/dev`:
+  reader would care about does. **Save devlog.json as clean UTF-8, never
+  Windows-1252** — em dashes, curly quotes, arrows, and emoji are normal
+  and fine raw; do NOT escape them. The file has been mojibake'd by
+  encoding round-trips more than once (a PowerShell write without
+  `-Encoding utf8` reads UTF-8 as the ANSI codepage, and a merge conflict
+  resolved in the wrong editor re-mangles what's already mangled — one
+  incident doubled on five successive merges, 60 to 2307 occurrences,
+  before anyone noticed). CI (`.github/workflows/ci.yml`) fails the build
+  if the telltale double-encoding pattern (`Ã`, `â€`, `Â` sequences)
+  appears anywhere in the file — that check is what actually guards this,
+  not an ASCII-only rule. Entries are **click-to-edit** on `/dev`:
   edits and per-entry notes live in a Supabase `devlog_overrides` overlay
   (DDL in `migrations/006-devlog-overrides.sql` — run it
   before deploying) keyed by the file entry's original date+title and merged

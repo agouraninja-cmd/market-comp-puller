@@ -166,6 +166,37 @@ const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 const DEFAULT_SITE_URL = "https://market-comp-puller.onrender.com";
 const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 
+// Where a Stripe checkout should return this BUYER — which is not always
+// SITE_URL.
+//
+// The deployment answers on more than one hostname: the canonical SITE_URL
+// (compninja.co) and the Render hostname it is actually served from. A buyer
+// who searched on one and was returned to the other lands on a different
+// ORIGIN, and `localStorage.pendingUnlock.v1` — the only record of which
+// report they just bought — is per-origin, so handlePurchaseReturn() finds
+// nothing and the report they paid for never re-renders. That happened on a
+// real $39 purchase on 2026-08-04.
+//
+// So the return origin follows the request. It is an ALLOWLIST, never the raw
+// Host header: an attacker-controlled Host would otherwise turn our own
+// checkout into an open redirect. Only the canonical site, this service's own
+// Render hostname, and localhost qualify; anything else falls back to
+// SITE_URL, which is always safe if occasionally inconvenient.
+const RENDER_HOST = String(process.env.RENDER_EXTERNAL_HOSTNAME || "").toLowerCase();
+function returnOriginFor(req) {
+  const host = String((req && req.headers && req.headers.host) || "").toLowerCase();
+  if (!host) return SITE_URL;
+  let siteHost = "";
+  try { siteHost = new URL(SITE_URL).host.toLowerCase(); } catch (_) { /* keep "" */ }
+  if (siteHost && host === siteHost) return SITE_URL;
+  if (RENDER_HOST && host === RENDER_HOST) return `https://${host}`;
+  let defHost = "";
+  try { defHost = new URL(DEFAULT_SITE_URL).host.toLowerCase(); } catch (_) { /* keep "" */ }
+  if (defHost && host === defHost) return DEFAULT_SITE_URL;
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)) return `http://${host}`;
+  return SITE_URL;
+}
+
 // Two people searching the same address shouldn't both bill the Anthropic
 // account for identical work. The TTL balances cost against staleness: CRE
 // comps barely move inside a month (reports already use a 12-month lookback),
@@ -6741,7 +6772,16 @@ const server = http.createServer((req, res) => {
         const gate = (rep) => {
           if (internal) return rep;
           const subjectSqft = sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0;
-          return GATE.gateReport(rep, ent, { asOfMs: Date.now(), subjectSqft });
+          const gated = GATE.gateReport(rep, ent, { asOfMs: Date.now(), subjectSqft });
+          if (!gated || typeof gated !== "object") return gated;
+          // `ent` was resolved with THIS report's id, so it already knows a $39
+          // unlock makes its exports unlimited — /api/config cannot, because it
+          // takes no report id and would need a purchase lookup on every page
+          // load. Without this the buyer of a report was shown the free monthly
+          // tally ("4 exports left this month") on a report they own outright.
+          // Spread rather than assign: `rep` may be the CACHED object, and the
+          // cache must never carry one visitor's entitlement to the next.
+          return { ...gated, exports_remaining: ent.exportsRemaining };
         };
 
         // The gate's principle applied to live progress: a limited visitor
@@ -8139,11 +8179,15 @@ const server = http.createServer((req, res) => {
         // before redirecting and re-runs it on the way back (a cache hit, so
         // no billed search), which is why no address rides in this URL.
         const returnPath = plan === "single_report" ? "/?purchase" : "/desk?checkout";
+        // Return them to the origin they are BUYING FROM, not to the canonical
+        // one — pendingUnlock.v1 lives in that origin's localStorage and is
+        // what re-renders the purchased report. See returnOriginFor().
+        const returnOrigin = returnOriginFor(req);
         const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "checkout/sessions", {
           mode: chosen.mode,
           line_items: [{ price: priceId, quantity: 1 }],
-          success_url: `${SITE_URL}${returnPath}=success`,
-          cancel_url: `${SITE_URL}${returnPath}=cancelled`,
+          success_url: `${returnOrigin}${returnPath}=success`,
+          cancel_url: `${returnOrigin}${returnPath}=cancelled`,
           client_reference_id: user.id,
           // Both: metadata rides on the session, and the subscription's or
           // payment intent's own copy lands on the object itself so later

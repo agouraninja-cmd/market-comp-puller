@@ -508,7 +508,7 @@
       <h2 id="pricingTitle" class="text-lg font-semibold text-slate-900">Unlock the full comp set</h2>
       <p id="pricingSubtitle" class="text-sm text-slate-500 mt-1">
         Free reports value your property off every comparable we find, but itemize only four of them.
-        Pro shows the whole list, with the sources.
+        Pro itemizes all of them — unlimited comps, as many as the search turns up, with the sources.
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
@@ -523,8 +523,16 @@
                entitlements.js but has NO UI at all, so it stays off this list
                until something actually draws a logo. The exports bullet came
                back on 2026-08-03 when the monthly cap became real. -->
+          <!-- "Unlimited comps" is a claim about the GATE, not about search
+               depth: entitlements.js returns maxComps "all", so Pro is never
+               shown a shortened list. The search itself still asks for up to
+               12 (server.js's maxCompsOk) and the anti-padding prompt rule
+               means a thin market returns fewer — which is why the bullet is
+               qualified "as many as the search finds" rather than promising a
+               number we don't control. Drop that qualifier only if the ask
+               ceiling and searchBudgetFor() are actually raised. -->
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
-            <li>Every comparable, itemized, not just four</li>
+            <li>Unlimited comps — every comparable the search finds, itemized</li>
             <li>Look back up to 10 years, not 12 months</li>
             <li>Unlimited CSV, image, PDF and Excel exports</li>
             <li>Address Explorer: real addresses to value in any market</li>
@@ -578,7 +586,7 @@
             <span class="text-sm text-[#8A93A0]">once</span>
           </div>
           <p class="text-sm text-[#4C5665] mt-1">
-            Unlocks every comparable on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this report</span>, and its exports, for good. No subscription.
+            Unlimited comps on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this report</span> — every comparable the search found — plus its exports, for good. No subscription.
           </p>
         </div>
         <button type="button" data-plan="single_report"
@@ -7026,7 +7034,7 @@
         // is granted by entitlements.js but has no UI, so it is not claimed
         // here; promising it to someone who has just paid is worse than
         // promising it to a prospect. Restore it with the feature.
-        detail: "Every comparable, a lookback of up to 10 years, and unlimited exports.",
+        detail: "Unlimited comps, a lookback of up to 10 years, and unlimited exports.",
       };
     }
     if (p.status === "expired") {
@@ -7164,7 +7172,7 @@
       await refreshProConfig();
       if (proConfig && proConfig.isPro) {
         showCheckoutNotice("ok", "You're on Pro.",
-          "Every comparable, a lookback of up to 10 years, and unlimited exports. Re-run a report to see the full list.");
+          "Unlimited comps, a lookback of up to 10 years, and unlimited exports. Re-run a report to see the full list.");
         return;
       }
       await new Promise((r) => setTimeout(r, 2000));
@@ -7850,7 +7858,10 @@
     if (n <= 0 || txFilter !== "all") { el.classList.add("hidden"); el.innerHTML = ""; return; }
     el.classList.remove("hidden");
     el.innerHTML =
-      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} available with Pro</div>` +
+      // Names no plan, for the same reason the corpus-offer notice doesn't:
+      // this button opens the ONE modal, which offers Pro AND the $39 one-off,
+      // and which of them fits depends on the report.
+      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} in this report</div>` +
       `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
       `Your value range above already includes ${n === 1 ? "it" : "them"}; only the itemized list is limited.` +
       `</div>` +

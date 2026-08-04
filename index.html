@@ -561,10 +561,34 @@
         </div>
       </div>
 
+      <!-- Single-report unlock. Hidden unless there is a GATED report on
+           screen to buy — updateSingleReportTile() owns that, and a $39 button
+           with no report attached has nothing to unlock and no id to send.
+           Deliberately a full-width strip under the grid rather than a third
+           column: it is the lesser, contextual offer, and this way the
+           founding tile's show/hide logic is left alone.
+           Every class here is already in the vendored tailwind.css, so this
+           needs no Tailwind regen. Check before adding one. -->
+      <div id="singleReportTile" class="hidden border border-[#D8D4C9] rounded-lg p-4 mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <span class="rd-lab">Just this report</span>
+          <div class="mt-1">
+            <span class="text-2xl font-semibold text-[#1A2433]">$39</span>
+            <span class="text-sm text-[#8A93A0]">once</span>
+          </div>
+          <p class="text-sm text-[#4C5665] mt-1">
+            Unlocks every comparable on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this report</span>, and its exports, for good. No subscription.
+          </p>
+        </div>
+        <button type="button" data-plan="single_report"
+          class="pricing-buy btn-live shrink-0 w-full sm:w-auto bg-white border border-[#D8D4C9] hover:bg-slate-50 text-[#1A2433] font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+          Unlock this report
+        </button>
+      </div>
+
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
       <p class="text-xs text-[#8A93A0] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms</a>.
-        A one-off $39 unlock for a single report is coming; for now Pro is the only way to see the full list.
       </p>
       <button id="pricingCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-2 mt-2">Not now</button>
     </div>
@@ -5693,9 +5717,11 @@
     if (currentUser && location.pathname === "/desk") renderWatchFeed({ markSeen: true });
     const m = location.hash.match(/^#reset=([A-Za-z0-9_-]{20,})$/);
     if (m) { resetToken = m[1]; openAcctModal("reset"); }
-    // Runs after the user is known, because the success banner's whole job is
-    // to wait for THIS user's entitlements to catch up with their payment.
+    // Both run after the user is known, because their whole job is to wait for
+    // THIS user's entitlements to catch up with their payment. They key off
+    // different query params (?checkout= vs ?purchase=), so at most one acts.
     handleCheckoutReturn();
+    handlePurchaseReturn();
   })();
 
   // Save the on-screen report into the server-side portfolio. currentMeta /
@@ -6540,9 +6566,37 @@
     renderFoundingTile();
   }
 
+  // Where the report being bought is parked across the Stripe redirect. The
+  // return lands on "/" carrying nothing but ?purchase=success — the address
+  // stays out of the URL so it can't end up in a log or a Referer header — so
+  // this stash is the only thing that knows which report was paid for.
+  const PENDING_UNLOCK = "pendingUnlock.v1";
+
+  /**
+   * Show the $39 tile only when there is something to spend it on.
+   *
+   * The pricing modal opens from the nav, the account menu and the export-limit
+   * path as well as from a locked report, so "there is a current report" is
+   * never a safe assumption. Three ways the offer is meaningless: nothing on
+   * screen to unlock, nothing WITHHELD on what is on screen (Pro, or already
+   * bought — either way lockedCount() is 0), or a shared report, which belongs
+   * to whoever published it and isn't the viewer's to buy.
+   */
+  function updateSingleReportTile() {
+    const tile = document.getElementById("singleReportTile");
+    if (!tile) return;
+    const buyable = Boolean(currentMeta) && !currentMeta.shared && lockedCount() > 0;
+    tile.classList.toggle("hidden", !buyable);
+    if (!buyable) return;
+    const addr = document.getElementById("singleReportAddr");
+    // textContent, not innerHTML: this is a user-typed address.
+    if (addr) addr.textContent = currentMeta.address || "this report";
+  }
+
   function openPricingModal() {
     document.getElementById("pricingError").classList.add("hidden");
     document.getElementById("pricingModal").classList.remove("hidden");
+    updateSingleReportTile();
     // Re-read the counter on every open: a seat may have gone since last time,
     // and the server memoizes for 60s so this is cheap.
     loadPricing();
@@ -6569,8 +6623,20 @@
       // after. Cancelling the account modal clears it again, by design.
       closePricingModal();
       pendingCheckoutPlan = plan;
-      openAcctModal("signup", "Create a free account first: your subscription needs somewhere to live.");
+      openAcctModal("signup", plan === "single_report"
+        // A $39 unlock is recorded against an account, not a device — say so,
+        // because "your subscription needs somewhere to live" is not true of a
+        // one-off and reads as a bait-and-switch to someone avoiding one.
+        ? "Create a free account first: the unlock is saved to your account, so the report stays yours on any device."
+        : "Create a free account first: your subscription needs somewhere to live.");
       return;
+    }
+    // A $39 unlock is bought FOR a report, so the search that produced it has
+    // to travel: the server derives the purchase id from these three fields
+    // (reportIdFor) rather than trusting an id we send.
+    const single = plan === "single_report";
+    if (single && !currentMeta) {
+      return showPricingError("Open a report first, then unlock that one.");
     }
     const label = btn && btn.textContent;
     if (btn) { btn.disabled = true; btn.textContent = "Opening checkout…"; }
@@ -6578,9 +6644,19 @@
       const r = await fetch("/api/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify(single
+          ? { plan, address: currentMeta.address, type: currentMeta.type, months: currentMeta.months }
+          : { plan }),
       });
       const data = await r.json().catch(() => ({}));
+      // Already bought, or Pro already covers it. Both mean "don't pay again" —
+      // close up and re-run so they actually see the full report.
+      if (r.status === 409 && (data.code === "already_owned" || data.code === "already_pro")) {
+        closePricingModal();
+        showStatus(data.error + " Re-running it now.", "info");
+        rerunHistory(currentMeta);
+        return;
+      }
       if (r.status === 409 && data.code === "founding_closed") {
         pricingInfo = Object.assign({}, pricingInfo, { foundingLeft: 0 });
         renderFoundingTile();
@@ -6590,6 +6666,13 @@
       if (!r.ok || !data.url) {
         showPricingError(data.error || "Could not start checkout. Please try again.");
         return;
+      }
+      // Remember WHICH report is being bought. Stripe returns to "/" with no
+      // idea what was purchased, and the report is a client-side artifact —
+      // this stash is the only thing that can re-open it on the way back. It
+      // deliberately carries no address in the return URL; see PENDING_UNLOCK.
+      if (single) {
+        try { localStorage.setItem(PENDING_UNLOCK, JSON.stringify(currentMeta)); } catch (_) {}
       }
       // Hand off to Stripe. assign (not replace) so Back returns here.
       location.assign(data.url);
@@ -6751,6 +6834,74 @@
     }
     showCheckoutNotice("wait", "Payment received. Your account is still activating.",
       "This usually takes a few seconds. Refresh this page shortly; if Pro still isn't showing, email info@compninja.co and we'll sort it.");
+  }
+
+  /**
+   * Handle the ?purchase=success|cancelled return from a $39 single-report unlock.
+   *
+   * Separate from handleCheckoutReturn() on purpose. That one lands on /desk
+   * and announces a plan; this lands on "/" and re-opens a REPORT, because the
+   * report is what was bought and the desk has no idea which building it was.
+   * The re-rendered report is its own receipt: when every comp is there, it
+   * worked. It also can't share the desk's banner — #checkoutNotice lives
+   * inside the desk, which isn't on screen here.
+   *
+   * Stripe redirects the instant the card clears, which routinely beats the
+   * webhook that records the purchase, so this waits on /api/report-access
+   * instead of immediately re-running and rendering a still-locked report at
+   * someone who has just paid $39.
+   */
+  async function handlePurchaseReturn() {
+    const params = new URLSearchParams(location.search);
+    const result = params.get("purchase");
+    if (!result) return;
+    // Clear the query straight away so a refresh doesn't replay any of this.
+    params.delete("purchase");
+    const qs = params.toString();
+    history.replaceState({}, "", location.pathname + (qs ? "?" + qs : ""));
+
+    let meta = null;
+    try { meta = JSON.parse(localStorage.getItem(PENDING_UNLOCK) || "null"); } catch (_) {}
+    try { localStorage.removeItem(PENDING_UNLOCK); } catch (_) {}
+
+    if (result === "cancelled") {
+      showStatus("Checkout cancelled. Nothing was charged.", "info");
+      return;
+    }
+    if (result !== "success") return;
+    // Paid, but the stash is gone — a different browser, or cleared storage.
+    // Recoverable without help: the unlock lives on the ACCOUNT, not the
+    // device, so searching that property again serves it whole.
+    if (!meta || !meta.address) {
+      showStatus("Payment received. Search that property again and the full report is yours.", "info");
+      return;
+    }
+
+    showStatus("Payment received. Unlocking your report…", "info");
+    let unlocked = false;
+    // ~15s of patience, then say something true rather than spin. The purchase
+    // is on the account either way, so running out of patience costs a
+    // re-search, never the money.
+    for (let i = 0; i < 7 && !unlocked; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 2200));
+      try {
+        const r = await fetch("/api/report-access", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ address: meta.address, type: meta.type, months: meta.months }),
+        });
+        const d = await r.json().catch(() => ({}));
+        unlocked = Boolean(d.unlocked || d.pro);
+      } catch (_) { /* keep waiting — a blip shouldn't end the wait */ }
+    }
+    if (!unlocked) {
+      showStatus(`Payment received, but the unlock is still landing. Search ${meta.address} again in a moment and it'll be there. If it isn't, email info@compninja.co and we'll sort it.`, "error");
+      return;
+    }
+    hideStatus();
+    // Re-runs the same search: a cache hit, so no billed search, and the gate
+    // now serves it whole because computeEntitlements can see the purchase.
+    rerunHistory(meta);
   }
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
@@ -7038,7 +7189,9 @@
       p.innerHTML =
         `CompNinja holds <strong>${corpusOfferLocked}</strong> more verified comp` +
         `${corpusOfferLocked === 1 ? "" : "s"} for this market. ` +
-        `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock with Pro</button>`;
+        // Names no plan: the modal this opens now offers Pro AND the $39
+        // one-off, and which of them is on the table depends on the report.
+        `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock them</button>`;
       rowsEl.appendChild(p);
       return;
     }
@@ -7898,6 +8051,13 @@
   // NOT a timestamp: meta.generatedAt is absent on a fresh search and falls
   // back to Date.now(), which would change between two clicks and charge twice
   // for one report. Reopening a saved report and exporting it again is free.
+  // ⚠ MIRROR: server.js's reportIdFor() builds this same string from the
+  // /api/comps body — same three fields, same order, same `|`, same `|| ""`.
+  // Both are then hashed by reportKeyOf() server-side, so this one string is
+  // BOTH the export-tally key and the $39 single-report purchase key. Change
+  // it here and you must change reportIdFor(), or a bought report stops
+  // matching itself: the unlock silently stops applying and the owner's
+  // exports start counting against their free monthly allowance.
   function exportReportKey() {
     if (!currentMeta) return "";
     return [currentMeta.address || "", currentMeta.type || "", currentMeta.months || ""]

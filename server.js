@@ -806,13 +806,27 @@ async function markWatchlistSeen(userId) {
 //   create table report_purchases (
 //     id uuid primary key default gen_random_uuid(),
 //     user_id uuid not null references users(id) on delete cascade,
-//     report_id text not null,
+//     report_id text not null,             -- reportIdFor(): hash of address|type|months
 //     stripe_payment_intent_id text unique,
-//     comp_snapshot jsonb not null,        -- the comps AS SOLD, frozen
+//     comp_snapshot jsonb,                 -- see below: NULLABLE, and unused
 //     purchased_at timestamptz not null default now(),
 //     unique (user_id, report_id)
 //   );
 //   create index on report_purchases (user_id, report_id);
+//
+//   -- If the table was already created with `comp_snapshot jsonb not null`,
+//   -- run this before deploying the single-report unlock or every webhook
+//   -- insert 400s and a paid purchase is never recorded:
+//   --   alter table report_purchases alter column comp_snapshot drop not null;
+//   --
+//   -- Why it is nullable and empty: the row is written by the Stripe webhook,
+//   -- which carries a session and a payment intent and NO report data — the
+//   -- report is a client-side artifact. The unlock is keyed on the SEARCH
+//   -- (address+type+lookback), so re-running that search re-serves it ungated
+//   -- from the cache for free, and computeEntitlements never reads a snapshot:
+//   -- it only flips maxComps/canBrand/exportsRemaining off the row's EXISTENCE.
+//   -- The column is kept for a future "comps exactly as you bought them"
+//   -- feature, which would need a pending row written at checkout creation.
 //
 //   -- One row per REPORT exported, not one per click. The primary key makes a
 //   -- second export of the same report in the same month a no-op, so wanting a
@@ -924,6 +938,24 @@ function reportKeyOf(raw) {
   return sha256Hex(String(raw || "").trim().toLowerCase().replace(/\s+/g, " ")).slice(0, 32);
 }
 
+// The identity a $39 single-report purchase is keyed on.
+//
+// Derived from the SEARCH, never from an id the client hands us: address, type
+// and lookback are already in every /api/comps body, so the server computes
+// this itself and a buyer cannot unlock a report they did not pay for by
+// posting someone else's id.
+//
+// It must produce the same string `exportReportKey()` builds in index.html —
+// same three fields, same order, same `|` separator, same `|| ""` for a missing
+// lookback — because both feed reportKeyOf(), which owns the lowercasing and
+// whitespace collapse. **Change one and you must change the other**, or a
+// purchased report stops matching its own export rows and the buyer is charged
+// an export against a report they own. There is a ⚠ comment on both.
+function reportIdFor({ address, type, months } = {}) {
+  if (!address || !type) return "";
+  return reportKeyOf([address, type, months || ""].join("|"));
+}
+
 // Records one report-export. Idempotent by primary key, so the second format of
 // the same report is a conflict we deliberately swallow.
 async function recordExport(userId, period, reportKey) {
@@ -984,6 +1016,27 @@ async function upsertSubscription(row) {
   await sbRequest("POST", "subscriptions?on_conflict=user_id", [row],
     { prefer: "resolution=merge-duplicates,return=minimal" });
   invalidateSubCache(row.user_id);
+  return true;
+}
+
+// Records a paid $39 single-report unlock.
+//
+// Idempotent on (user_id, report_id) — the table's unique constraint — because
+// Stripe retries webhooks and the same purchase must not become two rows.
+// ignore-duplicates rather than merge: the FIRST purchase is the real one, and
+// a replay must not overwrite its payment intent or its timestamp.
+//
+// Unlike upsertSubscription this THROWS on failure rather than returning false.
+// The webhook's caller counts on that: a purchase that isn't recorded is a
+// customer who paid and got nothing, so it has to be loud, not swallowed.
+async function recordReportPurchase({ userId, reportId, paymentIntentId }) {
+  if (!DB_CONFIGURED) {
+    throw new Error("Supabase is not configured — a paid report unlock cannot be recorded.");
+  }
+  if (!userId || !reportId) throw new Error("A report purchase needs both a user and a report id.");
+  await sbRequest("POST", "report_purchases?on_conflict=user_id,report_id",
+    [{ user_id: userId, report_id: reportId, stripe_payment_intent_id: paymentIntentId || null }],
+    { prefer: "resolution=ignore-duplicates,return=minimal" });
   return true;
 }
 
@@ -1060,6 +1113,27 @@ async function claimStripeEvent(evt) {
   }
 }
 
+// Undo a claim whose handler then failed, so the event can be REPLAYED from
+// the Stripe dashboard.
+//
+// This matters because the route acknowledges 200 before doing the work: once
+// Stripe has its 200 there are no automatic retries, and the claim row would
+// make a manual replay look like a duplicate and skip it. A subscription
+// survives that — the next lifecycle event rewrites the same row — but a $39
+// single-report purchase has NO follow-up event, ever. Without this, one
+// transient DB failure means a customer paid and is permanently locked out of
+// what they bought, with the only recovery path silently disabled.
+async function releaseStripeEvent(evt) {
+  if (!DB_CONFIGURED || !evt || !evt.id) return;
+  try {
+    await sbRequest("DELETE", `stripe_events?id=eq.${encodeURIComponent(evt.id)}`, undefined,
+      { prefer: "return=minimal" });
+    console.log(`Released Stripe event ${evt.id} — replay it from the dashboard to retry.`);
+  } catch (e) {
+    console.error(`Could not release Stripe event ${evt.id}:`, e.message);
+  }
+}
+
 /**
  * Apply one Stripe event to our subscription state.
  *
@@ -1081,6 +1155,32 @@ async function handleStripeEvent(evt) {
       // The one event that reliably carries our user id.
       const userId = (obj.metadata && obj.metadata.user_id) || obj.client_reference_id;
       if (obj.customer && userId) await setUserStripeCustomer(userId, obj.customer);
+
+      // The $39 single-report unlock — a one-off payment, not a subscription.
+      if (obj.mode === "payment") {
+        const reportId = obj.metadata && obj.metadata.report_id;
+        // Belt and braces: `complete` sessions can still be unpaid when the
+        // payment method settles asynchronously, and an unpaid session must
+        // never unlock a report.
+        if (obj.payment_status !== "paid") {
+          return console.log(`Single-report session ${obj.id} is ${obj.payment_status}, not paid — no unlock yet.`);
+        }
+        if (!userId || !reportId) {
+          // Nothing can be done automatically: the money is in and we cannot
+          // tell whose report it was. Shout, because this is a refund or a
+          // manual grant, not a retry.
+          console.error(`⛔ PAID single-report session ${obj.id} has no ${!userId ? "user" : "report"} id — unlock it by hand.`);
+          sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a paid report unlock could not be recorded",
+            `Stripe session ${obj.id} was paid but carries no ${!userId ? "user_id" : "report_id"}.\n` +
+            `The customer has been charged and has NOT been given their report.\n` +
+            `Refund it or grant the unlock manually in report_purchases.`);
+          return;
+        }
+        await recordReportPurchase({ userId, reportId, paymentIntentId: obj.payment_intent });
+        console.log(`✅ Single report unlocked: ${reportId} for user ${userId}`);
+        return;
+      }
+
       if (obj.mode !== "subscription" || !obj.subscription) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${obj.subscription}`);
       const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
@@ -6244,7 +6344,12 @@ const server = http.createServer((req, res) => {
         // Entitlements are resolved BEFORE anything else reads the body's
         // knobs: the lookback ceiling below depends on them, and every exit
         // from here on serializes through gateReport().
-        const ent = await entitlementsFor(req);
+        //
+        // The report id is what makes a $39 unlock mean anything: with it,
+        // computeEntitlements can see this exact report was bought and return
+        // maxComps "all", so re-running the purchased search re-serves it
+        // whole. Derived from the body, never accepted from it.
+        const ent = await entitlementsFor(req, reportIdFor({ address, type, months }));
         // The seed generator and the Explorer are internal callers with no
         // session; they must keep receiving whole reports or market pages
         // would publish four comps. ADMIN_KEY is the existing internal
@@ -7509,10 +7614,49 @@ const server = http.createServer((req, res) => {
         if (!proEnabledFor(user)) {
           return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
         }
-        const { plan } = JSON.parse(body || "{}");
+        const { plan, address, type, months } = JSON.parse(body || "{}");
+
+        // An EXPLICIT table with no fallthrough. This used to read "founding ?
+        // annual : monthly", which mapped every unrecognized plan onto the
+        // $129/mo subscription — that single line is the whole reason a $39
+        // button could not be added, because `plan: "single_report"` would
+        // have quietly sold a monthly subscription to someone expecting a
+        // one-off. An unknown plan is now a 400, not a charge.
+        const PLANS = {
+          pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
+          pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
+          single_report:       { price: STRIPE_PRICES.singleReport,   mode: "payment" },
+        };
+        const chosen = PLANS[plan];
+        if (!chosen) return sendJson(res, 400, { error: "Unknown plan." });
+        if (!chosen.price) return sendJson(res, 503, { error: "That plan isn't configured." });
         const wantsFounding = plan === "pro_annual_founding";
-        let priceId = wantsFounding ? STRIPE_PRICES.annualFounding : STRIPE_PRICES.monthly;
-        if (!priceId) return sendJson(res, 503, { error: "That plan isn't configured." });
+        const priceId = chosen.price;
+
+        // --- single-report specifics ---------------------------------------
+        // The id is derived from the search the buyer names, never accepted as
+        // an id — see reportIdFor(). Both checks below are courtesy, not
+        // security: they stop a pointless charge rather than protect anything.
+        let reportId = "";
+        if (plan === "single_report") {
+          reportId = reportIdFor({ address, type, months });
+          if (!reportId) {
+            return sendJson(res, 400, { error: "Tell us which report you want to unlock." });
+          }
+          const ent = await getEntitlements(user, reportId);
+          if (ent.pro) {
+            return sendJson(res, 409, {
+              error: "Your Pro plan already includes this report in full.",
+              code: "already_pro",
+            });
+          }
+          if (ent.reportUnlocked) {
+            return sendJson(res, 409, {
+              error: "You've already unlocked this report.",
+              code: "already_owned",
+            });
+          }
+        }
 
         // Seat check at checkout CREATION. There is a small race here — two
         // people can pass the check within the same second and both reach 51 —
@@ -7531,21 +7675,34 @@ const server = http.createServer((req, res) => {
         }
 
         const existing = await findSubscription(user.id);
+        // A one-off unlock returns to the REPORT, not to the desk: the desk
+        // has no idea which building was bought. The client stashed the search
+        // before redirecting and re-runs it on the way back (a cache hit, so
+        // no billed search), which is why no address rides in this URL.
+        const returnPath = plan === "single_report" ? "/?purchase" : "/desk?checkout";
         const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "checkout/sessions", {
-          mode: "subscription",
+          mode: chosen.mode,
           line_items: [{ price: priceId, quantity: 1 }],
-          success_url: `${SITE_URL}/desk?checkout=success`,
-          cancel_url: `${SITE_URL}/desk?checkout=cancelled`,
+          success_url: `${SITE_URL}${returnPath}=success`,
+          cancel_url: `${SITE_URL}${returnPath}=cancelled`,
           client_reference_id: user.id,
-          // Both: metadata rides on the session, and subscription_data's copy
-          // lands on the subscription itself so later lifecycle events can be
-          // traced back to a user without a DB round trip.
-          metadata: { user_id: user.id },
-          subscription_data: { metadata: { user_id: user.id } },
+          // Both: metadata rides on the session, and the subscription's or
+          // payment intent's own copy lands on the object itself so later
+          // events can be traced back to a user without a DB round trip.
+          metadata: { user_id: user.id, ...(reportId ? { report_id: reportId } : {}) },
+          ...(chosen.mode === "subscription"
+            ? { subscription_data: { metadata: { user_id: user.id } } }
+            : { payment_intent_data: { metadata: { user_id: user.id, report_id: reportId } } }),
           ...(existing && existing.stripe_customer_id
             ? { customer: existing.stripe_customer_id }
             : { customer_email: user.email }),
-        });
+        },
+        // Idempotent per user+report, so a double-click cannot become two
+        // sessions and two charges for the same report. Stripe returns the
+        // original session instead. Keys and Checkout sessions both lapse 24h
+        // after creation, so the key can never outlive the session it returns.
+        // Subscriptions pass undefined and keep their previous behaviour.
+        reportId ? `single:${user.id}:${reportId}` : undefined);
         return sendJson(res, 200, { url: session.url, id: session.id });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -7611,6 +7768,51 @@ const server = http.createServer((req, res) => {
         await handleStripeEvent(evt);
       } catch (err) {
         console.error(`Stripe webhook ${evt && evt.type} failed:`, err.message);
+        // Stripe already has its 200, so nothing will retry on its own. Give
+        // the claim back so a dashboard replay can, and tell the owner —
+        // a console line does not reach anyone (see the corpus-health note
+        // for how that lesson was learned).
+        await releaseStripeEvent(evt);
+        sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a Stripe webhook failed to apply",
+          `Event ${evt && evt.id} (${evt && evt.type}) was received and verified but the handler threw:\n\n` +
+          `  ${err.message}\n\n` +
+          `Money may have changed hands without the account reflecting it. The event has been\n` +
+          `un-claimed, so "Resend" on the event in the Stripe dashboard will process it again.`);
+      }
+    });
+    return;
+  }
+
+  // --- "Do I own this report yet?" -------------------------------------------
+  // Exists for the return from a $39 checkout: Stripe redirects the moment the
+  // card clears, which can be seconds BEFORE the webhook writes the purchase
+  // row, so the client polls this rather than immediately re-running the search
+  // and rendering a still-locked report at someone who just paid.
+  //
+  // Deliberately NOT part of /api/config, which runs on every page load and
+  // would take a purchase lookup with it. POST, not GET, so the address stays
+  // out of the URL and out of any log or Referer header.
+  if (req.method === "POST" && req.url === "/api/report-access") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("access:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many checks. Please wait a moment." });
+        }
+        const { address, type, months } = JSON.parse(body || "{}");
+        const reportId = reportIdFor({ address, type, months });
+        if (!reportId) return sendJson(res, 400, { error: "address and property type are required." });
+        const ent = await entitlementsFor(req, reportId);
+        // Pro rides along so the client can tell "you own this one" from "you
+        // own everything" without a second call.
+        return sendJson(res, 200, { unlocked: ent.reportUnlocked, pro: ent.pro });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Report access check failed:", err.message);
+        // Fail closed: "not yet" makes the client keep waiting, which is
+        // recoverable. A false "yes" renders a locked report as if it were paid.
+        return sendJson(res, 200, { unlocked: false, pro: false });
       }
     });
     return;
@@ -7707,7 +7909,14 @@ const server = http.createServer((req, res) => {
         }
         const { report } = JSON.parse(body || "{}");
         const user = await getSessionUser(req);
-        const ent = await getEntitlements(user);
+        // The export key IS the purchase key — reportKeyOf() of the same
+        // address|type|months string (see reportIdFor). Passing it here is what
+        // makes a bought report export freely: computeEntitlements returns
+        // exportsRemaining "unlimited" for it, and the branch below leaves
+        // without writing a usage row. A $39 report you cannot export would be
+        // a $39 screenshot.
+        const key = reportKeyOf(report);
+        const ent = await getEntitlements(user, key);
 
         // Pro, a purchased report, or the whole tier switched off: no ceiling,
         // so nothing to count and nothing to store.
@@ -7723,7 +7932,6 @@ const server = http.createServer((req, res) => {
 
         const now = Date.now();
         const period = ENT.usagePeriod(now);
-        const key = reportKeyOf(report);
         const usage = await getExportUsage(user.id, period);
         // A failed read returns null and we let it through — see getExportUsage.
         if (!usage) return sendJson(res, 200, { allowed: true, remaining: ent.exportsRemaining });

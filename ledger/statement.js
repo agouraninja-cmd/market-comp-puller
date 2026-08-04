@@ -51,6 +51,7 @@ function parseArgs(argv) {
     else if (a === "--out") out.out = argv[++i];
     else if (a === "--partial-through") out.partialThrough = argv[++i];
     else if (a === "--company") out.company = argv[++i];
+    else if (a === "--launched") out.launched = argv[++i];
     else if (a === "--help" || a === "-h") out.help = true;
   }
   return out;
@@ -66,6 +67,10 @@ One-page Statement of Profit and Loss.
   --partial-through "TEXT"   note that the final month is incomplete,
                              e.g. --partial-through "August 3, 2026"
   --company NAME             name on the statement (default CompNinja)
+  --launched "TEXT"          paid plans are live as of this date, e.g.
+                             --launched "August 3, 2026". Without it the
+                             statement says purchase is not yet possible,
+                             which is only true before the Stripe key goes live.
   --out PATH                 default ./CompNinja-Profit-and-Loss.xlsx
 
 Reads the same ledger/*.csv files as ledger.js, so the two documents can
@@ -159,11 +164,23 @@ function main() {
   }
   notes.push(`${legal && tot(legal.vals) !== 0 ? "3" : "2"}.  Hosting, database and email services are provided at no cost under ` +
     `free service tiers, and are shown at zero rather than omitted.`);
-  notes.push(`${legal && tot(legal.vals) !== 0 ? "4" : "3"}.  No revenue has been recognized. Paid subscriptions remain in a pre-launch ` +
-    `test configuration and are not yet available for purchase.`);
+  // Written 2026-08-03, when Stripe was still in test mode. CompNinja went
+  // public with a LIVE Stripe key on 2026-08-03, so "not yet available for
+  // purchase" became false the same day — and "we have not launched" reads very
+  // differently from "we launched and have not sold yet" to anyone holding this
+  // page. A statement that overstates how early we are is as wrong as one that
+  // overstates revenue, so the note now follows --launched rather than assuming.
+  notes.push(args.launched
+    ? `${legal && tot(legal.vals) !== 0 ? "4" : "3"}.  No revenue has been recognized. Paid plans became available for ` +
+      `purchase on ${args.launched} and no sale has completed as of the date below.`
+    : `${legal && tot(legal.vals) !== 0 ? "4" : "3"}.  No revenue has been recognized. Paid subscriptions remain in a pre-launch ` +
+      `test configuration and are not yet available for purchase.`);
   if (args.partialThrough) {
-    notes.push(`${legal && tot(legal.vals) !== 0 ? "5" : "4"}.  ${label(months[months.length - 1])} figures are partial, covering ` +
-      `${args.partialThrough} only.`);
+    // "covering August 4, 2026 only" reads as a single day's spend, which
+    // understates a partial month by a factor of four and is exactly the kind
+    // of misreading a reader cannot catch from the figures alone.
+    notes.push(`${legal && tot(legal.vals) !== 0 ? "5" : "4"}.  ${label(months[months.length - 1])} figures are partial, ` +
+      `covering activity through ${args.partialThrough}.`);
   }
   for (const n of notes) rows.push([{ t: "s", v: n, s: S.MUTED }]);
   rows.push([]);

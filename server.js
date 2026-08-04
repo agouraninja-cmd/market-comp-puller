@@ -2773,18 +2773,27 @@ async function findBrokersForMarket(market) {
 // ---------------------------------------------------------------------------
 // Call the Anthropic Messages API with web search enabled
 // ---------------------------------------------------------------------------
-// Ceiling on a single Anthropic call. Raised 100s -> 150s on 2026-07-30: real
-// searches were hitting the old ceiling and showing visitors "The search took
-// too long", which reads as a broken site rather than a slow one. Writing the
-// report alone is 40-70s (see the streaming note in CLAUDE.md), so 100s left
-// almost no margin for a busy market.
-// This is safe to raise ONLY because STREAM_IDLE_MS below fails a wedged
-// upstream in 30s regardless — so the full 150s can now elapse only while the
-// model is genuinely still producing output, never on a hang. The SSE
-// heartbeat (openSse) keeps the browser connection alive across it.
-// Note the ceiling is per CALL, and solo() retries once on a parse failure, so
-// the true worst case a visitor can wait is about double this.
-const SEARCH_TIMEOUT_MS = 150_000;
+// Ceiling on a single Anthropic call — a runaway BACKSTOP, not a pacing tool.
+// This was a fixed constant twice (100s, then 150s on 2026-07-30) and healthy
+// searches outgrew it both times: a legitimate call's wall clock is bounded by
+// its own budget (max_uses search rounds at ~4-9s each, then up to max_tokens
+// written at ~78 tok/s — the measured formula in CLAUDE.md), and a full
+// 10-search 10k-token report can honestly run past 150s. Firing a fixed timer
+// below that bound aborts an alive, already-billed call: the visitor pays for
+// every search and token generated and gets "took too long" instead of a
+// report. So the deadline now DERIVES from the work the call actually asks
+// for — 30s connect/overhead slack + 10s per allowed search + 13ms per
+// allowed output token (78 tok/s) — which keeps it above the structural bound
+// no matter how the budgets are tuned later. STREAM_IDLE_MS below is still
+// the real hang detector (30s of silence); this ceiling can only fire on
+// pathological behavior it can't catch, e.g. an upstream that keeps the
+// stream warm with pings while a search round wedges. The SSE heartbeat
+// (openSse) keeps the browser connection alive across the whole wait.
+// Note the ceiling is per CALL, and solo() retries once on a parse failure,
+// so the true worst case a visitor can wait is about double this.
+function searchTimeoutMsFor(maxUses, maxTokens) {
+  return 30_000 + maxUses * 10_000 + maxTokens * 13;
+}
 // No chunk at all for this long means a wedged upstream. Streaming is what
 // makes an idle timeout possible in the first place (the non-streaming call
 // has nothing to measure between "sent" and "done"), so take it.
@@ -2896,6 +2905,9 @@ function makeCompExtractor(onComp) {
 }
 
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
+  // Resolved once: the same number feeds the API's search budget AND the
+  // derived call deadline, so the two can never disagree.
+  const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
   const body = {
     model: MODEL,
     // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
@@ -2912,7 +2924,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // The subject-size lookup gets two extra searches so it doesn't crowd out
     // the comp searches themselves. When we already hold recent comps for this
     // market (corpus-strong), the budget drops hard — that reuse is the saving.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchUses }],
     // The web_search loop re-runs model inference on EVERY round — one per
     // search plus the final report — and each round re-reads this whole prompt
     // at full input price. Measured at ~3,300 tokens, an 8-search report paid
@@ -2952,7 +2964,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // NOT be cleared right after the await, or the whole read loop would run
   // unguarded and a wedged upstream would hang forever. It is cleared in the
   // finally that wraps the reading, further down.
-  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), searchTimeoutMsFor(searchUses, body.max_tokens));
   const timedOut = () => new Error("The search took too long and was stopped. Please try again.");
   let r;
   try {
@@ -3306,6 +3318,16 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
 .hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
+.hleft{display:flex;align-items:center;gap:18px}
+/* Red back link, top-left corner of the page — also wired to the Escape key.
+   Mirrors HOW_CSS's .backbtn; keep the two in step. Below ~1140px the corner
+   collides with the centered column, so it drops into the header row; below
+   640px (phones) it is hidden entirely — the owner's call. */
+.backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
+.backbtn:hover{color:#991B1B}
+.backbtn svg{width:15px;height:15px;flex-shrink:0}
+@media (max-width:1139px){.backbtn{position:static}}
+@media (max-width:639px){.backbtn{display:none}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
@@ -3403,17 +3425,34 @@ footer li a{text-decoration:none;color:#B8C0CC}
 
 const MARKET_BAR =
   `<header class="hdr"><div class="wrap">` +
+  `<div class="hleft">` +
+  `<a class="backbtn" id="barBack" href="/" aria-label="Go back">` +
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+  `<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>Back</a>` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
+  `</div>` +
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd"><a href="/markets">Markets</a><a href="/brokers">Brokers</a>` +
-  `<a href="/how-it-works">How it works</a></div></details>` +
-  `<a href="/">Run a report</a></nav>` +
+  `<a href="/how-it-works">How it works</a></div></details></nav>` +
   `</div></header>` +
   // Close the dropdown when the visitor clicks anywhere else (scoped to the
   // header nav so it can never touch other <details> on a page, e.g. FAQs).
   `<script>document.addEventListener("click",function(e){` +
   `document.querySelectorAll(".hdr nav details[open]").forEach(function(d){` +
-  `if(!d.contains(e.target))d.open=false;});});</script>`;
+  `if(!d.contains(e.target))d.open=false;});});` +
+  // Back button + Escape: previous CompNinja page when there is one, else the
+  // landing page. Same logic as /how-it-works — keep the two in step.
+  `(function(){` +
+  `function goBack(){` +
+  `try{if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}}catch(err){}` +
+  `location.href="/";}` +
+  `document.getElementById("barBack").addEventListener("click",function(e){e.preventDefault();goBack();});` +
+  `document.addEventListener("keydown",function(e){` +
+  `if(e.key!=="Escape")return;` +
+  `var dd=document.querySelector(".hdr nav details[open]");` +
+  `if(dd){dd.open=false;return;}` +
+  `goBack();});` +
+  `})();</script>`;
 
 // ---------------------------------------------------------------------------
 // Public broker credit — which firms have approved comps in each market, so
@@ -3660,11 +3699,12 @@ const MARKET_FOOTER =
   `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
-  `<p>&copy; 2026 CompNinja</p></div>` +
+  `<p>&copy; 2026 CompNinja LLC</p></div>` +
   `<div class="right"><a href="mailto:info@compninja.co">info@compninja.co</a>` +
   `<ul><li><a href="/markets">Markets</a></li><li><a href="/brokers">Brokers</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
-  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li></ul></div>` +
+  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li>` +
+  `<li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul></div>` +
   `</div></footer>`;
 
 function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
@@ -3979,6 +4019,18 @@ a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
 /* Wraps on narrow screens: the nav drops to its own row rather than squeezing
    each link into a two-line column (which overflowed the viewport at 375px). */
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
+.hleft{display:flex;align-items:center;gap:18px}
+/* Red back link, top-left corner of the page — also wired to the Escape key.
+   Deliberately plain (no border/pill): the owner rolled back a boxed version
+   as too heavy. Absolute against the page, not the centered column; below
+   ~1140px the corner collides with the column, so it drops back into the
+   header flow beside the logo; below 640px (phones) it is hidden entirely —
+   the owner's call. */
+.backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
+.backbtn:hover{color:#991B1B}
+.backbtn svg{width:15px;height:15px;flex-shrink:0}
+@media (max-width:1139px){.backbtn{position:static}}
+@media (max-width:639px){.backbtn{display:none}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
@@ -4167,6 +4219,167 @@ function renderBrokersPageHTML() {
   return marketShell({ title, description, canonical, body, jsonLd });
 }
 
+// ---------------------------------------------------------------------------
+// /terms + /privacy — the legal pages. CompNinja LLC (Idaho #6928558) is the
+// contracting entity. Rendered through marketShell like /brokers, so they do
+// NOT depend on the purged tailwind.css. The copy is a plain-English draft
+// written for later attorney review; the review note deliberately does NOT
+// appear on the pages themselves (it would weaken them).
+// Owner decisions locked 2026-08-03: no refunds (cancel anytime, access to
+// period end), Idaho law + Ada County venue (no arbitration), email-only
+// contact (no street address; the SOS registry publishes it for anyone who
+// truly needs it).
+// ---------------------------------------------------------------------------
+const LEGAL_UPDATED = "August 3, 2026";
+
+function renderTermsPageHTML() {
+  const title = "Terms of Service | CompNinja";
+  const canonical = `${SITE_URL}/terms`;
+  const description =
+    "The terms that govern CompNinja: what the service is, what it is not, subscriptions, and your responsibilities.";
+  const body =
+    `<h1>Terms of Service</h1>` +
+    `<p class="sub">Last updated: ${LEGAL_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+
+    `<div class="card"><h2>Who we are and what this is</h2>` +
+    `<p>CompNinja is operated by CompNinja LLC, an Idaho limited liability company (file #6928558). ` +
+    `These terms are an agreement between you and CompNinja LLC. By using compninja.co you accept them.</p>` +
+    `<p>The service produces automated commercial real estate comparable-sales reports and value estimates, ` +
+    `built from publicly available data and AI-assisted web search.</p></div>` +
+
+    `<div class="card"><h2>What the service is not</h2>` +
+    `<ul>` +
+    `<li>Every valuation is an automated estimate. It is not an appraisal and no output of the service is one.</li>` +
+    `<li>CompNinja is not a licensed real estate brokerage and does not provide broker opinions of value. ` +
+    `Where the site offers a broker opinion of value, it connects you with an independent local broker.</li>` +
+    `<li>Nothing on the site is financial, investment, legal, or tax advice.</li>` +
+    `<li>Estimates must not be relied on for lending, underwriting, or any transaction decision ` +
+    `without independent verification. Comparable data comes from public sources and automated search; ` +
+    `we do not guarantee its accuracy or completeness.</li>` +
+    `</ul></div>` +
+
+    `<div class="card"><h2>Accounts and acceptable use</h2>` +
+    `<p>Accounts are free. Keep your credentials to yourself, give us accurate information, and use one ` +
+    `account per person. We may suspend or terminate accounts that abuse the service.</p>` +
+    `<p>You agree not to scrape, bulk-extract, or resell report data; not to circumvent rate limits, usage ` +
+    `caps, or access controls; and not to use the service for anything unlawful.</p></div>` +
+
+    `<div class="card"><h2>Paid subscriptions</h2>` +
+    `<p>Payment is processed by Stripe; CompNinja never sees or stores your card number. You can cancel at ` +
+    `any time and your access continues through the end of the period you paid for. Payments are not ` +
+    `refundable, in whole or in part.</p>` +
+    `<p>Prices may change with advance notice; a change applies from your next billing period. ` +
+    `Founding-member pricing stays at its original rate for as long as that subscription remains ` +
+    `continuously active.</p></div>` +
+
+    `<div class="card"><h2>Your submissions</h2>` +
+    `<p>If you submit a comp or other data, you confirm you have the right to share it. We may review, ` +
+    `approve, display, and credit submissions (for example the Verified badge with your firm's name), and ` +
+    `we may decline or remove any submission at our discretion.</p></div>` +
+
+    `<div class="card"><h2>The legal terms</h2>` +
+    `<h3>Intellectual property</h3>` +
+    `<p>The site, branding, and report formats belong to CompNinja LLC. Reports you generate are yours to ` +
+    `use for your own business purposes.</p>` +
+    `<h3>Third-party services</h3>` +
+    `<p>The service depends on third-party data and infrastructure providers. We are not responsible for ` +
+    `their outages or errors.</p>` +
+    `<h3>Disclaimer of warranties</h3>` +
+    `<p>The service is provided &quot;as is&quot; and &quot;as available&quot;, without warranties of any ` +
+    `kind, to the maximum extent permitted by law.</p>` +
+    `<h3>Limitation of liability</h3>` +
+    `<p>To the maximum extent permitted by law, CompNinja LLC's total liability for any claim relating to ` +
+    `the service is capped at the greater of the fees you paid us in the twelve months before the claim ` +
+    `or $100. We are not liable for indirect, incidental, or consequential damages.</p>` +
+    `<h3>Termination</h3>` +
+    `<p>You can stop using the service or delete your account at any time; we can suspend or end access ` +
+    `for breach of these terms. Sections that by their nature should survive (disclaimers, liability ` +
+    `limits, intellectual property) survive.</p>` +
+    `<h3>Governing law and disputes</h3>` +
+    `<p>These terms are governed by Idaho law. Any dispute belongs exclusively in the state or federal ` +
+    `courts located in Ada County, Idaho, and both sides consent to that venue.</p>` +
+    `<h3>Changes to these terms</h3>` +
+    `<p>We may update these terms; the date at the top changes when we do. Continuing to use the service ` +
+    `after a change means you accept it.</p>` +
+    `<h3>Contact</h3>` +
+    `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+
+  return marketShell({ title, description, canonical, body });
+}
+
+function renderPrivacyPageHTML() {
+  const title = "Privacy Policy | CompNinja";
+  const canonical = `${SITE_URL}/privacy`;
+  const description =
+    "What CompNinja collects, what never leaves your browser, which providers we use, and how to delete your data.";
+  const body =
+    `<h1>Privacy Policy</h1>` +
+    `<p class="sub">Last updated: ${LEGAL_UPDATED}. CompNinja is operated by CompNinja LLC, an Idaho ` +
+    `limited liability company (file #6928558). Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+
+    `<div class="card"><h2>What we collect</h2>` +
+    `<ul>` +
+    `<li><strong>Search inputs.</strong> The property address, property type, lookback window, and any ` +
+    `public building attributes you enter (size, units, clear height, and similar).</li>` +
+    `<li><strong>Lead and broker-opinion requests.</strong> Name, email, phone, company, and the property ` +
+    `you asked about.</li>` +
+    `<li><strong>Accounts.</strong> Your email address and a hashed password. Passwords are stored only as ` +
+    `scrypt hashes, never as plain text.</li>` +
+    `<li><strong>Saved work.</strong> Portfolio items and watchlists, including any private financial ` +
+    `inputs you enter (NOI, debt terms, rent roll, gross income).</li>` +
+    `<li><strong>Broker comp submissions.</strong> Broker contact details and the submitted comp.</li>` +
+    `<li><strong>Operational data.</strong> IP addresses for rate limiting, server logs, and analytics ` +
+    `events that carry no personal information: a property type, a city and state, and an outcome, ` +
+    `never names, emails, or street addresses.</li>` +
+    `</ul></div>` +
+
+    `<div class="card"><h2>Your private financials stay in your browser</h2>` +
+    `<p>NOI, debt terms, rent rolls, and gross income never leave your browser except into your own ` +
+    `signed-in portfolio. They are never sent to the AI model, they are stripped on the server before a ` +
+    `shared report link is stored, and they are never shown to anyone else.</p></div>` +
+
+    `<div class="card"><h2>How we use information</h2>` +
+    `<p>To generate your reports, to connect broker-opinion requesters with local brokers, to send ` +
+    `transactional email (confirmations, password resets, broker notifications), to process subscription ` +
+    `billing, and to operate, secure, and improve the service. We do not sell personal data, we run no ` +
+    `advertising trackers, and we use no third-party analytics cookies.</p></div>` +
+
+    `<div class="card"><h2>Service providers</h2>` +
+    `<p>These providers process data on our behalf:</p>` +
+    `<ul>` +
+    `<li><strong>Anthropic</strong> (AI search): receives the address, property type, and public building ` +
+    `attributes only. Never your financials.</li>` +
+    `<li><strong>Supabase</strong> (database) and <strong>Render</strong> (hosting).</li>` +
+    `<li><strong>Stripe</strong> (payments): card details go directly to Stripe and never touch our servers.</li>` +
+    `<li><strong>Resend</strong> (email delivery).</li>` +
+    `<li><strong>Google</strong> (Street View imagery), <strong>Esri</strong>, <strong>OpenStreetMap</strong>, ` +
+    `and <strong>CARTO</strong> (map imagery and tiles).</li>` +
+    `<li><strong>US Census Bureau</strong> and <strong>Nominatim</strong> (address geocoding).</li>` +
+    `<li><strong>cdnjs</strong> (script delivery for exports).</li>` +
+    `</ul></div>` +
+
+    `<div class="card"><h2>Cookies, sharing, and retention</h2>` +
+    `<h3>Cookies and local storage</h3>` +
+    `<p>One essential cookie (<code>cn_session</code>, httpOnly) keeps you signed in. Your browser's ` +
+    `local storage holds preferences, report history, and map caches on your own device.</p>` +
+    `<h3>Shared report links</h3>` +
+    `<p>Publishing a share link makes that report readable by anyone who has the link. Private financial ` +
+    `inputs are stripped before publishing. Share links do not expire.</p>` +
+    `<h3>Retention and deletion</h3>` +
+    `<p>You can delete your account in the app (My Desk, Delete account), which removes the account and ` +
+    `its saved data. To request deletion of lead or submission data, email ` +
+    `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+    `<h3>Security</h3>` +
+    `<p>HTTPS everywhere, hashed passwords, and an access-controlled database.</p>` +
+    `<h3>Children</h3>` +
+    `<p>The service is built for business use and is not directed to children under 13.</p>` +
+    `<h3>Changes and contact</h3>` +
+    `<p>We may update this policy; the date at the top changes when we do. ` +
+    `<a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+
+  return marketShell({ title, description, canonical, body });
+}
+
 function renderHowItWorksHTML() {
   const title = "How CompNinja Works";
   const canonical = `${SITE_URL}/how-it-works`;
@@ -4235,7 +4448,10 @@ function renderHowItWorksHTML() {
   const body = `
 <header class="hdr">
   <div class="wrap">
-    <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    <div class="hleft">
+      <a class="backbtn" id="howBack" href="/" aria-label="Go back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>Back</a>
+      <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    </div>
     <nav>
       <details>
         <summary>Explore<span class="car">▾</span></summary>
@@ -4245,13 +4461,28 @@ function renderHowItWorksHTML() {
           <a href="/how-it-works" class="on" aria-current="page">How it works</a>
         </div>
       </details>
-      <a href="/">Run a report</a>
     </nav>
   </div>
 </header>
 <script>document.addEventListener("click",function(e){
   document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
-    if(!d.contains(e.target))d.open=false;});});</script>
+    if(!d.contains(e.target))d.open=false;});});
+(function(){
+  // Back = the page you came from when that was CompNinja; otherwise home.
+  function goBack(){
+    try{
+      if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}
+    }catch(err){}
+    location.href="/";
+  }
+  document.getElementById("howBack").addEventListener("click",function(e){e.preventDefault();goBack();});
+  document.addEventListener("keydown",function(e){
+    if(e.key!=="Escape")return;
+    var dd=document.querySelector(".hdr nav details[open]");
+    if(dd){dd.open=false;return;}
+    goBack();
+  });
+})();</script>
 
 <main>
   <div class="wrap">
@@ -4329,7 +4560,7 @@ function renderHowItWorksHTML() {
       <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
         connect you with local brokers for opinions of value. Comparables derive from publicly available data;
         verify independently before underwriting.</p>
-      <p>&copy; 2026 CompNinja</p>
+      <p>&copy; 2026 CompNinja LLC</p>
     </div>
     <div class="right">
       <a href="mailto:info@compninja.co">info@compninja.co</a>
@@ -4339,6 +4570,8 @@ function renderHowItWorksHTML() {
         <li><a href="/how-it-works">How it works</a></li>
         <li><a href="/how-it-works#faq">FAQ</a></li>
         <li><a href="/">Run a report</a></li>
+        <li><a href="/terms">Terms</a></li>
+        <li><a href="/privacy">Privacy</a></li>
       </ul>
     </div>
   </div>
@@ -7824,6 +8057,18 @@ const server = http.createServer((req, res) => {
     return res.end(renderBrokersPageHTML());
   }
 
+  // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
+  // resolves; Stripe checkout settings and campaign links both send query
+  // strings. Same hour cache as the other static pages. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/terms") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+    return res.end(renderTermsPageHTML());
+  }
+  if (req.method === "GET" && req.url.split("?")[0] === "/privacy") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+    return res.end(renderPrivacyPageHTML());
+  }
+
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && req.url === "/markets") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
@@ -8093,6 +8338,8 @@ const server = http.createServer((req, res) => {
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/terms</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/privacy</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +
       (marketUrls ? marketUrls + "\n" : "") +
       (brokerUrls ? brokerUrls + "\n" : "") +

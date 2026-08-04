@@ -219,6 +219,10 @@
     /* Smooth reveal when the subject-property section is expanded. */
     details[open] > div { animation: fadeIn .3s ease-out; }
 
+    /* Dropdown open fade (header menus, market-explorer results). The animation
+       re-runs on every display:none -> shown flip, so closes need no cleanup. */
+    .dd-fade { animation: fadeIn .2s ease-out; }
+
     /* Search-history "show all" toggle. The chevron rule above is scoped to
        #compForm, so style this summary as a quiet link and drop the native
        disclosure marker (which renders differently per browser). */
@@ -490,7 +494,8 @@
           <button id="acctImportNo" type="button" class="flex-1 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg">Skip</button>
         </div>
       </div>
-      <p class="text-xs text-slate-400 mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.</p>
+      <p class="text-xs text-slate-400 mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.
+        <span id="acctTos" class="hidden">By creating an account you agree to the <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms of Service</a> and <a href="/privacy" target="_blank" class="underline text-slate-500 hover:text-slate-700">Privacy Policy</a>.</span></p>
     </div>
   </div>
 
@@ -583,7 +588,7 @@
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
       <p class="text-xs text-[#8A93A0] mt-4">
-        Prices in USD.
+        Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms</a>.
       </p>
       <button id="pricingCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-2 mt-2">Not now</button>
     </div>
@@ -707,7 +712,7 @@
             class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
             <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div id="exploreMenu" class="hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+          <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Markets</a>
             <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Brokers</a>
             <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">How it works</a>
@@ -721,7 +726,7 @@
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
-          <div id="acctMenu" class="hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+          <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
@@ -1608,46 +1613,40 @@
       </div>
     </div>
 
-    <!-- Home info — fills out the landing view; hidden once a report is shown -->
-    <div id="homeInfo" class="no-print">
+  </div>
 
-      <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
-           report exhibit, the three-step method, and the FAQ. -->
+  <!-- Home info — fills out the landing view; hidden once a report is shown.
+       Sits OUTSIDE the max-w-5xl wrapper so the Market Explorer band can run
+       the full viewport width, like #hero and the footer. -->
+  <div id="homeInfo" class="no-print">
+
+    <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
+         report exhibit, the three-step method, and the FAQ. -->
+    <div class="max-w-5xl mx-auto px-4">
       <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <p class="text-sm text-[#4C5665]">Free reports, 3–6 cited comps each, every source disclosed.</p>
         <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works →</a>
       </div>
+    </div>
 
-      <!-- The For Brokers section moved to its own page, /brokers (built by
-           renderBrokersPageHTML in server.js). Header/footer link there. -->
+    <!-- The For Brokers section moved to its own page, /brokers (built by
+         renderBrokersPageHTML in server.js). Header/footer link there. -->
 
-      <!-- Markets -->
-      <section class="py-12 reveal">
+    <!-- Market Explorer — its own full-width band, deliberately distinct from
+         the comp searcher above: it builds standing market pages, not reports. -->
+    <section class="mt-14 border-y rd-hairline bg-white reveal">
+      <div class="max-w-5xl mx-auto px-4 py-14">
         <div class="rd-kicker">Market Explorer</div>
         <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the page.</h2>
-        <p class="text-sm text-[#4C5665] mb-5 max-w-[58ch]">Pick a covered market below, or search a new one; we'll pull recent sales and build its page on the spot (about a minute).</p>
-        <div class="relative max-w-sm mb-5">
+        <p class="text-sm text-[#4C5665] mb-1 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot (about a minute).</p>
+        <p class="text-sm text-[#8A93A0] mb-5 max-w-[58ch]">Standing market pages, separate from the property valuation above.</p>
+        <div class="relative max-w-sm">
           <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
                  class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-          <div id="marketSearchResults" class="hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
+          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
         </div>
-        <div class="columns-2 sm:columns-4 gap-8 text-[13.5px] leading-8 text-[#46536A]">
-          <a href="/market/industrial-ontario-ca" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Ontario, CA</a>
-          <a href="/market/industrial-fontana-ca" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Fontana, CA</a>
-          <a href="/market/industrial-dallas-tx" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Dallas, TX</a>
-          <a href="/market/industrial-phoenix-az" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Phoenix, AZ</a>
-          <a href="/market/industrial-las-vegas-nv" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Las Vegas, NV</a>
-          <a href="/market/office-austin-tx" class="block break-inside-avoid hover:text-[#1A2433]">Office · Austin, TX</a>
-          <a href="/market/office-nashville-tn" class="block break-inside-avoid hover:text-[#1A2433]">Office · Nashville, TN</a>
-          <a href="/market/office-denver-co" class="block break-inside-avoid hover:text-[#1A2433]">Office · Denver, CO</a>
-          <a href="/market/industrial-savannah-ga" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Savannah, GA</a>
-          <a href="/market/multifamily-atlanta-ga" class="block break-inside-avoid hover:text-[#1A2433]">Multifamily · Atlanta, GA</a>
-          <a href="/market/retail-orlando-fl" class="block break-inside-avoid hover:text-[#1A2433]">Retail · Orlando, FL</a>
-          <a href="/markets" class="block break-inside-avoid font-semibold text-[#B91C1C] hover:text-[#991B1B]">All markets →</a>
-        </div>
-      </section>
-
-    </div>
+      </div>
+    </section>
 
   </div>
 
@@ -1664,7 +1663,7 @@
             <span class="rd-wordmark uppercase" style="color:#fff">Comp<b style="color:#EF4444">Ninja</b></span>
           </div>
           <p class="mt-3 leading-relaxed text-[#8F99A8]">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage: we connect you with local brokers for opinions of value. Comparables derive from publicly available data; verify independently before underwriting.</p>
-          <p class="mt-3 text-[#8F99A8]">© 2026 CompNinja</p>
+          <p class="mt-3 text-[#8F99A8]">© 2026 CompNinja LLC</p>
         </div>
         <div class="sm:text-right shrink-0">
           <a href="mailto:info@compninja.co" class="text-[#D5DAE2] hover:text-white underline decoration-[#46536A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">info@compninja.co</a>
@@ -1674,6 +1673,8 @@
             <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
             <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
             <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
+            <li><a href="/terms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Terms</a></li>
+            <li><a href="/privacy" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Privacy</a></li>
           </ul>
         </div>
       </div>
@@ -5564,6 +5565,7 @@
     document.getElementById("acctSubmit").textContent =
       { signin: "Sign in", signup: "Create account", forgot: "Send reset link", reset: "Set new password" }[mode];
     document.getElementById("acctName").classList.toggle("hidden", mode !== "signup");
+    document.getElementById("acctTos").classList.toggle("hidden", mode !== "signup");
     document.getElementById("acctEmail").classList.toggle("hidden", mode === "reset");
     document.getElementById("acctPassword").classList.toggle("hidden", mode === "forgot");
     document.getElementById("acctPassword").placeholder = mode === "reset" ? "New password (8+ characters)" : "Password";
@@ -5823,7 +5825,7 @@
       const last = snaps[snaps.length - 1] || null;
       const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
       const card = document.createElement("div");
-      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1";
+      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1 fade-in";
       const addr = document.createElement("button");
       addr.type = "button";
       addr.className = "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C] truncate";
@@ -5890,23 +5892,30 @@
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();
     hideLoadingCard();
-    document.getElementById("deskView").classList.remove("hidden");
+    const deskView = document.getElementById("deskView");
+    deskView.classList.remove("hidden");
+    deskView.classList.add("fade-in"); // re-fires on every unhide; closes stay instant
     renderHistory();
     document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
     renderMyDesk();
   }
   function showHomeView() {
     document.getElementById("deskView").classList.add("hidden");
-    document.getElementById("hero").classList.remove("hidden");
-    document.getElementById("searchSection").classList.remove("hidden");
-    document.getElementById("homeInfo").classList.remove("hidden");
+    // fade-in is added here rather than in markup so it doesn't double-animate
+    // against the .enter page-load entrance on first paint.
+    ["hero", "searchSection", "homeInfo"].forEach((id) => {
+      const el = document.getElementById(id);
+      el.classList.remove("hidden");
+      el.classList.add("fade-in");
+    });
   }
   const onDesk = () => !document.getElementById("deskView").classList.contains("hidden");
   function enterDesk({ markSeen } = {}) {
     if (location.pathname !== "/desk") history.pushState({}, "", "/desk");
     showDeskView();
     if (markSeen) renderWatchFeed({ markSeen: true });
-    window.scrollTo({ top: 0 });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   }
   function leaveDesk() {
     if (!onDesk()) return;
@@ -6209,11 +6218,6 @@
   // ----------------------------------------------------------------------------
   // Footer links.
   // ----------------------------------------------------------------------------
-  function smoothScrollTo(el) {
-    if (!el) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-  }
   // Straight to the submission modal — the same one /brokers links to via
   // /#submit-comp. openCompModal is a hoisted declaration further down.
   document.getElementById("footerSubmitComp").addEventListener("click", openCompModal);
@@ -6252,7 +6256,8 @@
 
   // Market Explorer: matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed
-  // search, ~30-60s) or handed to the valuation form pre-filled. The list
+  // search, ~30-60s). Dead-end queries get inline hints in the dropdown — the
+  // Explorer is self-contained and never hands off to the comp form. The list
   // comes from /api/markets (seed + explorer pages — never a billed search).
   (() => {
     const input = document.getElementById("marketSearch");
@@ -6266,23 +6271,10 @@
         .then((r) => (r.ok ? r.json() : []))
         .then((list) => (markets = list))
         .catch(() => (markets = [])));
-    const TYPE_WORDS = ["industrial", "office", "retail", "multifamily", "land", "residential"];
     const EXPLORE_TYPES = ["industrial", "office", "retail", "multifamily"];
+    const NON_EXPLORE_TYPES = ["land", "residential"]; // valid report types /api/explore-market rejects
     const US_STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
     const cap = (s) => s[0].toUpperCase() + s.slice(1);
-    const runValuation = () => {
-      const q = input.value.trim();
-      if (!q) return;
-      const typeWord = TYPE_WORDS.find((t) => q.toLowerCase().includes(t));
-      if (typeWord) document.getElementById("propertyType").value = cap(typeWord);
-      syncSubjectFieldsToType();
-      const addr = document.getElementById("address");
-      // The type belongs in the dropdown, not the address text.
-      addr.value = q.replace(new RegExp(typeWord || "$^", "i"), "").replace(/\s{2,}/g, " ").trim() || q;
-      hide();
-      smoothScrollTo(document.getElementById("compForm"));
-      addr.focus();
-    };
     const hide = () => {
       if (exploring) return; // generation in progress — keep the status row up
       resultsEl.classList.add("hidden");
@@ -6291,6 +6283,7 @@
     // "industrial Boise ID" -> {type, city, state}; otherwise {reason} for a hint row.
     const parseExploreQuery = (q) => {
       let tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+      if (tokens.some((t) => NON_EXPLORE_TYPES.includes(t))) return { reason: "unsupported-type" };
       const type = EXPLORE_TYPES.find((t) => tokens.includes(t));
       tokens = tokens.filter((t) => t !== type);
       const last = tokens[tokens.length - 1] || "";
@@ -6304,7 +6297,7 @@
     const explore = ({ type, city, state }) => {
       exploring = false; // allow the swap below, then lock
       resultsEl.innerHTML =
-        `<div class="px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot, ` +
+        `<div class="fade-in px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot, ` +
         `checking recent sales. Usually 30–60 seconds.</div>`;
       resultsEl.classList.remove("hidden");
       exploring = true;
@@ -6320,14 +6313,13 @@
           exploring = false;
           input.disabled = false;
           resultsEl.innerHTML =
-            `<div class="px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong. Please try again.")}</div>` +
-            `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
-          document.getElementById("marketSearchRun").addEventListener("click", runValuation);
+            `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong. Please try again.")}</div>` +
+            `<div class="px-3 py-1.5 text-[#8A93A0]">Adjust the search and try again, e.g. “industrial Boise ID”</div>`;
         })
         .catch(() => {
           exploring = false;
           input.disabled = false;
-          resultsEl.innerHTML = `<div class="px-3 py-1.5 text-[#B91C1C]">Connection lost. Please try again.</div>`;
+          resultsEl.innerHTML = `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">Connection lost. Please try again.</div>`;
         });
     };
     const render = () => {
@@ -6353,11 +6345,13 @@
         html += `<div class="px-3 py-1.5 text-[#8A93A0]">Explore ${escq(p.city)}, ${escq(p.state)} as:</div>` +
           EXPLORE_TYPES.map((t) =>
             `<button type="button" data-explore-type="${t}" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">${cap(t)} →</button>`).join("");
+      } else if (p.reason === "unsupported-type" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
+      } else if (p.reason === "no-city" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Search a market like “industrial Boise ID”</div>`;
       }
-      html += `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
       resultsEl.innerHTML = html;
       resultsEl.classList.remove("hidden");
-      document.getElementById("marketSearchRun").addEventListener("click", runValuation);
       const exploreBtn = document.getElementById("marketSearchExplore");
       if (exploreBtn) exploreBtn.addEventListener("click", () => explore(p));
       resultsEl.querySelectorAll("[data-explore-type]").forEach((btn) =>
@@ -6374,7 +6368,7 @@
       const exploreBtn = document.getElementById("marketSearchExplore");
       if (first) window.location.href = first.getAttribute("href");
       else if (exploreBtn) exploreBtn.click();
-      else runValuation();
+      // else: hint rows are already visible — Enter is a no-op, never the comp form.
     });
     document.addEventListener("mousedown", (e) => {
       if (!resultsEl.contains(e.target) && e.target !== input) hide();

@@ -3,6 +3,10 @@
 One line per migration, added when it is run on the live database. A file in
 this folder that is missing from this list has NOT been run.
 
+**Full schema verified 2026-08-04:** the query below was run in the Supabase
+SQL editor and returned zero rows, confirming every table and every
+spot-checked column exists in production.
+
 | File | Status on prod | Evidence |
 |------|----------------|----------|
 | 000-baseline-hand-created.sql | live (created by hand, pre-folder) | app has been storing leads/cache/shares/analytics/submissions since launch |
@@ -12,17 +16,16 @@ this folder that is missing from this list has NOT been run.
 | 004-comp-corpus-per-type-columns.sql | applied late 2026-07 | run when the corpus outage was found; harvesting verified resumed |
 | 005-dev-ideas.sql | applied | /dev ideas persist across deploys |
 | 006-devlog-overrides.sql | applied | /dev entry edits persist across deploys |
-| 007-contacts.sql | believed applied — verify | /contacts is live; no dated record of the run |
+| 007-contacts.sql | applied (verified 2026-08-04) | /contacts is live; table confirmed by the schema query |
 | 008-pro-billing.sql | applied ~2026-07-31 (incl. the comp_snapshot drop-not-null) | test checkouts and the $39 unlock wrote rows |
 | 009-subject-sizes.sql | applied 2026-08-01 | run + verified via Chrome, RLS on |
 | 010-market-pages.sql | live (created by hand) | Address Explorer pages persist since 2026-08-03 |
 | 011-guest-search-quota.sql | applied 2026-08-03 | "already run in prod" per server.js/CLAUDE.md |
 
-## One-time verification
+## Verification query
 
-Two rows above are inferred rather than dated. To confirm everything at once,
-paste this into the Supabase SQL editor; **zero rows returned means the schema
-is complete**:
+Last run 2026-08-04: zero rows. Re-run any time schema drift is suspected;
+**zero rows returned means the schema is complete**:
 
 ```sql
 select t as missing_table
@@ -45,5 +48,4 @@ where not exists (select 1 from information_schema.columns
                   where table_name = tc and column_name = c);
 ```
 
-After running it, update the "believed applied" rows here to "applied
-(verified YYYY-MM-DD)".
+After a re-run, update the date on the "Full schema verified" line above.

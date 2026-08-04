@@ -2807,6 +2807,58 @@ function makeCompExtractor(onComp) {
   };
 }
 
+// One-shot top-level string field extractor, same contract as the comp
+// extractor above: watches the streamed text for `"<key>": "..."` and emits
+// the decoded value once when its closing quote arrives. Purely additive, a
+// bug can only cost a progress event, never the report. The key must be
+// followed (whitespace aside) by ':' then '"' to count — the model prefaces
+// the JSON with prose narration, and a bare mention of the key in prose must
+// not trigger a garbage emit.
+function makeFieldExtractor(key, onValue) {
+  const needle = '"' + key + '"';
+  let buf = "", mode = "seek", from = 0, valStart = -1, pos = 0, escaped = false;
+  return {
+    push(deltaText) {
+      if (mode === "done" || typeof deltaText !== "string" || !deltaText) return;
+      buf += deltaText;
+      while (mode === "seek") {
+        const keyAt = buf.indexOf(needle, from);
+        if (keyAt === -1) {
+          // Keep an overlap so the key can arrive split across two deltas.
+          from = Math.max(from, buf.length - (needle.length - 1));
+          return;
+        }
+        let i = keyAt + needle.length;
+        while (i < buf.length && /\s/.test(buf[i])) i++;
+        if (i >= buf.length) return;               // need more text to judge
+        if (buf[i] !== ":") { from = keyAt + 1; continue; }
+        i++;
+        while (i < buf.length && /\s/.test(buf[i])) i++;
+        if (i >= buf.length) return;
+        if (buf[i] !== '"') { from = keyAt + 1; continue; }
+        mode = "value";
+        valStart = i + 1;
+        pos = valStart;
+      }
+      for (; pos < buf.length; pos++) {
+        const ch = buf[pos];
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') {
+          mode = "done";
+          let value = "";
+          // JSON.parse decodes the escapes exactly the way the final report
+          // parse will; a malformed slice just emits nothing.
+          try { value = JSON.parse('"' + buf.slice(valStart, pos) + '"'); } catch (_) {}
+          buf = "";
+          if (value) onValue(value);
+          return;
+        }
+      }
+    },
+  };
+}
+
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
@@ -2858,7 +2910,20 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
         phase: "comp", n,
         address: String((c && c.address) || ""),
         price: String((c && (c.price_or_rate || c.price_per_sqft)) || ""),
+        // Preview-safe extras only. Deliberately NOT price_per_sqft (corrected
+        // post-parse by reconcilePricePerSqft) and NOT source_type (demoted
+        // post-parse by normalizeSourceTypes): the preview must never show a
+        // figure or badge the final report walks back.
+        size_sqft: String((c && c.size_sqft) || ""),
+        date: String((c && c.date) || ""),
+        transaction: String((c && c.transaction) || ""),
       }))
+    : null;
+  // The prompt orders "summary" before the comps array, so this lands in the
+  // first seconds of the write phase. The records lane has no summary at all.
+  let summaryExtractor = (typeof onProgress === "function" && lane !== "records")
+    ? makeFieldExtractor("summary", (value) =>
+        say({ phase: "field", key: "summary", value: stripEmDashes(value) }))
     : null;
 
   const startedAt = Date.now();
@@ -2944,6 +3009,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
             textChars += d.text.length;
             if (compExtractor) {
               try { compExtractor.push(d.text); } catch (_) { compExtractor = null; }
+            }
+            if (summaryExtractor) {
+              try { summaryExtractor.push(d.text); } catch (_) { summaryExtractor = null; }
             }
             // Writing the report is the LONG stretch — measured, searches finish
             // in ~5s and the JSON burst then runs 60-70s. It must be detected as

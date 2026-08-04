@@ -1,0 +1,15 @@
+# One-off entries the APIs can't see: a hardware purchase, an annual invoice, a
+# payment taken outside Stripe, a contractor, a refund you issued by hand.
+#
+# amount: enter a positive number. Cost categories are negated for you; revenue
+# categories are kept positive. (Refunds are always treated as negative.)
+#
+# Valid category values (must match exactly):
+#   Revenue : Subscriptions, One-time sales, Refunds
+#   Direct  : AI — tokens, AI — web search, AI — code execution,
+#             AI — session usage, Payment processing, Maps / Street View
+#   Operating: Legal & professional, Hosting, Database, Email, Domain, Other
+#
+# Note the em dash in the "AI — ..." categories; copy them rather than retyping.
+#
+date,category,vendor,description,amount,notes

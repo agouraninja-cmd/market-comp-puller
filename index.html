@@ -958,10 +958,12 @@
             <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
-        <!-- Comps stream in here as the model writes them (applyProgress phase
-             "comp"). aria-hidden keeps the polite live region above from
-             narrating every line; model text goes in via textContent only. -->
-        <div id="loadingComps" class="hidden w-full max-w-xs mt-4 text-left" aria-hidden="true"></div>
+        <!-- Live report preview: the streamed market summary (applyProgress
+             phase "field") and a growing comp table (phase "comp"). aria-hidden
+             keeps the polite live region above from narrating every row; model
+             text goes in via textContent only. Inline max-width: wider than the
+             bar's max-w-xs, and inline so no Tailwind regen is needed. -->
+        <div id="loadingComps" class="hidden w-full mt-4 text-left" style="max-width:34rem" aria-hidden="true"></div>
       </div>
       <!-- Purely visual (the live region above announces progress): gray placeholders
            in the same card shells the finished report renders into. -->
@@ -2267,15 +2269,37 @@
     if (el) el.textContent = text || "";
   }
 
-  // Live comp lines while the model writes the report. Calm by design: plain
-  // text rows on the existing card, capped at the most recent 5 identified
-  // comps, plus one trailing "+N more" line for comps past the visitor's plan
-  // (the server sends those as { locked: true } with no address).
-  let loadingCompsSeen = 0;   // identified comps received, including scrolled-off ones
+  // Live report preview while the model writes: the streamed market summary
+  // on top, then a compact table gaining one row per identified comp (all rows
+  // kept), plus one trailing "+N more" line for comps past the visitor's plan
+  // (the server sends those as { locked: true } with no address). The final
+  // result still renders through the normal renderResults, which replaces all
+  // of this wholesale — the preview is never the report of record.
+  let loadingCompsSeen = 0;   // identified comps received this attempt
   function resetLoadingComps() {
     loadingCompsSeen = 0;
     const box = document.getElementById("loadingComps");
     if (box) { box.innerHTML = ""; box.classList.add("hidden"); }
+  }
+  function loadingCompTable(box) {
+    let table = box.querySelector("table");
+    if (!table) {
+      table = document.createElement("table");
+      table.className = "w-full text-sm";
+      table.style.tableLayout = "fixed";
+      const head = table.createTHead().insertRow();
+      ["Address", "Price", "Size", "Date"].forEach((h, i) => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        th.className = "text-left font-medium text-slate-500 pb-1 pr-3 text-xs uppercase tracking-wide";
+        if (i === 0) th.style.width = "45%";
+        head.appendChild(th);
+      });
+      table.createTBody();
+      // The lock line (if it ever arrives first) must stay below the table.
+      box.insertBefore(table, box.querySelector("[data-locked]"));
+    }
+    return table;
   }
   function addLoadingCompLine(evt) {
     const box = document.getElementById("loadingComps");
@@ -2285,22 +2309,43 @@
       if (!lock) {
         lock = document.createElement("p");
         lock.dataset.locked = "1";
-        lock.className = "text-sm text-slate-500 mt-1 truncate";
+        lock.className = "text-sm text-slate-500 mt-2 truncate";
         box.appendChild(lock);
       }
       lock.textContent = `+ ${Math.max(1, Number(evt.n) - loadingCompsSeen)} more found · unlock with Pro`;
     } else {
       if (!evt.address) return;
       loadingCompsSeen++;
-      const line = document.createElement("p");
-      line.dataset.comp = "1";
-      line.className = "text-sm text-slate-400 mt-1 truncate";
+      const row = loadingCompTable(box).tBodies[0].insertRow();
       // Model-written text: textContent only, never innerHTML.
-      line.textContent = `${evt.n}. ${evt.address}${evt.price ? " · " + evt.price : ""}`;
-      box.insertBefore(line, box.querySelector("[data-locked]"));  // identified rows stay above the lock line
-      const rows = box.querySelectorAll("[data-comp]");
-      if (rows.length > 5) rows[0].remove();
+      [`${evt.n}. ${evt.address}`, evt.price || "", evt.size_sqft || "", evt.date || ""].forEach((v) => {
+        const td = row.insertCell();
+        td.textContent = v;
+        td.className = "py-0.5 pr-3 text-slate-400 truncate align-top";
+      });
+      // Cache warmer: the same lookup renderResults' map will make, done now
+      // during the wait so pins paint instantly at render. Failures are
+      // already swallowed inside geocodeAddress.
+      geocodeAddress(evt.address);
     }
+    box.classList.remove("hidden");
+  }
+  function showLoadingSummary(text) {
+    const box = document.getElementById("loadingComps");
+    if (!box) return;
+    let p = box.querySelector("[data-summary]");
+    if (!p) {
+      const label = document.createElement("p");
+      label.className = "text-xs uppercase tracking-wide text-slate-500 mb-1";
+      label.textContent = "Early market read";
+      box.insertBefore(label, box.firstChild);
+      p = document.createElement("p");
+      p.dataset.summary = "1";
+      p.className = "text-sm text-slate-600 mb-3";
+      box.insertBefore(p, label.nextSibling);
+    }
+    // Model-written text: textContent only, never innerHTML.
+    p.textContent = text;
     box.classList.remove("hidden");
   }
 
@@ -2385,14 +2430,16 @@
       aimLoadingBar(50 + Math.min(45, (evt.chars / DRAFT_CHARS_FULL) * 45));
     } else if (evt.phase === "comp") {
       addLoadingCompLine(evt);
+    } else if (evt.phase === "field") {
+      if (evt.key === "summary" && evt.value) showLoadingSummary(String(evt.value));
     } else if (evt.phase === "retry") {
       swapHeadline(headline, "The results came back oddly, rechecking…");
       setLoadingDetail("");
       resetLoadingComps();   // attempt 2 finds its own comps
     }
-    // "comp" events interleave with "drafting" — neither may claim lastPhase,
-    // or the drafting branch would re-swap the headline every second.
-    if ((evt.phase !== "drafting" || evt.writing) && evt.phase !== "comp") ctx.lastPhase = evt.phase;
+    // "comp" and "field" events interleave with "drafting" — none may claim
+    // lastPhase, or the drafting branch would re-swap the headline every second.
+    if ((evt.phase !== "drafting" || evt.writing) && evt.phase !== "comp" && evt.phase !== "field") ctx.lastPhase = evt.phase;
   }
 
   // Snap to a satisfying 100% finish, then resolve so the results can render.

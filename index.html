@@ -4253,7 +4253,9 @@
     const status = document.getElementById("exploreAddrStatus");
     const list = document.getElementById("exploreAddrList");
 
-    const AE_CACHE_KEY = "addrExplore.v1";
+    // v2: v1 briefly cached one-address lists produced by the Ontario-Canada
+    // geocode bug below; bumping the key retires those entries everywhere.
+    const AE_CACHE_KEY = "addrExplore.v2";
     const AE_TTL = 7 * 24 * 3600 * 1000;
     let aeCache = (() => { try { return JSON.parse(localStorage.getItem(AE_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
     function aeCacheStore(key, addresses) {
@@ -4303,7 +4305,10 @@
     async function overpassAddresses(city, state, type, exclude) {
       const tags = AE_TAGS[type];
       if (!tags) return [];
-      const center = await geocodeAddress(`${city}, ${state}`);
+      // ", USA" is load-bearing: without it Nominatim reads "Ontario, CA" as
+      // Ontario, CANADA and the top-up searches the wrong continent (found in
+      // production 2026-08-03 — a warm local geocode cache had masked it).
+      const center = await geocodeAddress(`${city}, ${state}, USA`);
       if (!center) return [];
       const j = await overpassQuery(
         `[out:json][timeout:12];nwr(around:8000,${center.lat},${center.lng})["building"~"^(${tags})$"]["addr:housenumber"]["addr:street"];out tags 60;`

@@ -5195,10 +5195,9 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
   <div class="wrap">
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
-      <a href="/dev">Dev log</a>
+      <a href="/hq">HQ</a>
+      <a href="/dev">Dev hub</a>
       <a href="/contacts">Contacts</a>
-      <a href="/markets">Markets</a>
-      <a href="/how-it-works">How it works</a>
       <a href="/">Run a report</a>
     </nav>
   </div>
@@ -5218,7 +5217,7 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </main>
 <footer><div class="wrap">
   <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
-  <span>Internal dashboard &middot; <a href="/">Back to the app</a></span>
+  <span>Internal page &middot; <a href="/hq">HQ</a> &middot; <a href="/">Back to the app</a></span>
 </div></footer>
 <script>
 var KEYK="cn_admin_key";
@@ -5805,6 +5804,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
   <div class="wrap">
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
+      <a href="/hq">HQ</a>
       <a href="/admin">Analytics</a>
       <a href="/contacts">Contacts</a>
       <a href="/">Run a report</a>
@@ -5841,7 +5841,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 </main>
 <footer><div class="wrap">
   <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
-  <span>Internal page &middot; <a href="/admin">Analytics</a> &middot; <a href="/">Back to the app</a></span>
+  <span>Internal page &middot; <a href="/hq">HQ</a> &middot; <a href="/">Back to the app</a></span>
 </div></footer>
 <script>
 var KEYK="cn_admin_key",KEY="",IDEAS=[],IDEAS_OK=false,SAVING=false;
@@ -6277,6 +6277,7 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
   <div class="wrap">
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
+      <a href="/hq">HQ</a>
       <a href="/admin">Analytics</a>
       <a href="/dev">Dev hub</a>
       <a href="/">Run a report</a>
@@ -6335,7 +6336,7 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </main>
 <footer><div class="wrap">
   <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
-  <span>Internal page &middot; <a href="/admin">Analytics</a> &middot; <a href="/dev">Dev hub</a> &middot; <a href="/">Back to the app</a></span>
+  <span>Internal page &middot; <a href="/hq">HQ</a> &middot; <a href="/">Back to the app</a></span>
 </div></footer>
 <script>
 var KEYK="cn_admin_key",KEY="",ROWS=[],EDIT=null,SAVING=false;
@@ -6499,6 +6500,239 @@ el("save").addEventListener("click",save);
 el("cancel").addEventListener("click",clearForm);
 el("export").addEventListener("click",exportCsv);
 el("q").addEventListener("input",function(e){Q=e.target.value.trim();render();});
+try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
+</script>
+</body></html>`;
+}
+
+// ---------------------------------------------------------------------------
+// HQ (/hq) — the internal homepage: the three admin tools with each one's
+// headline number, plus the three CSV downloads that were previously linked
+// from nowhere. Each snapshot block resolves independently; a failed source
+// degrades to null (an em-dash on the page), never a broken page. Every read
+// reuses the reader its own page already uses, so /hq can never disagree with
+// the page it links to.
+// ---------------------------------------------------------------------------
+async function hqSnapshot() {
+  const [analytics, submissions, dev, contacts] = (await Promise.allSettled([
+    (async () => {
+      // Same read + reducer /api/stats uses; the page shows the last-7-day
+      // slice of its 30-day series.
+      const rows = await readRows("analytics_events", ANALYTICS_FILE,
+        ["ts", "kind", "prop_type", "market", "source", "cached"]);
+      const s = aggregateStats(rows);
+      const last7 = s.daily.slice(-7);
+      const sum = (f) => last7.reduce((n, d) => n + d[f], 0);
+      return {
+        searches7d: { billed: sum("billed"), cached: sum("cached"), total: sum("total") },
+        leads: s.totals.leads,
+      };
+    })(),
+    (async () => {
+      // Review is DB-only (mirrors /api/admin/submissions), so file mode
+      // means "unknown", not 0.
+      if (!DB_CONFIGURED) return { db: false, pending: null };
+      const rows = await sbRequest("GET", "comp_submissions?status=eq.pending&select=id&limit=200");
+      return { db: true, pending: Array.isArray(rows) ? rows.length : 0 };
+    })(),
+    (async () => {
+      const [entries, ideas] = await Promise.all([readDevlogMerged(), readDevIdeas()]);
+      let latest = null; // devlog.json is file-ordered, not date-ordered
+      for (const e of entries) if (!latest || String(e.date || "") > String(latest.date || "")) latest = e;
+      return {
+        latest: latest ? { date: latest.date, title: latest.title, type: latest.type } : null,
+        openIdeas: ideas.filter((i) => i && i.status !== "done").length,
+      };
+    })(),
+    // Only the count crosses the wire — the rolodex rows themselves are PII
+    // and stay behind /api/contacts.
+    (async () => ({ count: (await readContacts()).length }))(),
+  ])).map((r) => r.status === "fulfilled" ? r.value
+    : (console.error("hq source failed:", r.reason && r.reason.message), null));
+  return { analytics, submissions, dev, contacts };
+}
+
+// Self-contained HQ page: same public-shell + key-gate pattern and Research
+// Desk skin as /admin (CSS deliberately duplicated — self-contained pages
+// stay independent of tailwind.css). Shares /admin's sessionStorage key so
+// unlocking any internal page unlocks all of them.
+function renderHqHTML() {
+  return `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CompNinja HQ</title><meta name="robots" content="noindex, nofollow"/>
+<meta name="theme-color" content="#FBFBF9"/>
+<link rel="icon" href="/favicon.ico" sizes="48x48"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<style>
+/* Same tokens and discipline as /dev: one type scale, one spacing scale, one
+   radius on controls only, content separated by hairlines rather than boxed,
+   red reserved for interaction. */
+*{box-sizing:border-box}
+:root{
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
+  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
+  --serif:Georgia,'Times New Roman',serif;
+  --r:4px;
+  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+  --spine:104px;--spine-gap:30px;
+}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+  display:flex;flex-direction:column;font-size:var(--t4);
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
+.wrap{max-width:820px;margin:0 auto;padding:0 var(--s6)}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
+.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s5);font-size:var(--t5)}
+.hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+main{flex:1;padding:var(--s8) 0 var(--s9)}
+.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 0;font-size:var(--t1);line-height:1.15}
+.sub{color:var(--ink-2);font-size:var(--t4);max-width:60ch;margin:var(--s4) 0 0}
+.gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
+.gate .lab{display:block;font-size:var(--t5);color:var(--ink-3)}
+.gate input{width:100%;padding:var(--s4);border:1px solid var(--edge);border-radius:var(--r);margin:var(--s4) 0;
+  font-size:var(--t4);font-family:inherit;color:var(--ink);background:var(--paper)}
+.gate input:focus{outline:none;border-color:var(--red)}
+.gate button{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s4) var(--s6);font-weight:600;
+  font-size:var(--t4);font-family:inherit;cursor:pointer}
+.gate button:hover{background:var(--red-deep)}
+.err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
+#hub{margin-top:var(--s8)}
+.card{background:none;border:0;border-radius:0;padding:0;margin:0}
+.card+.card{margin-top:var(--s8);border-top:1px solid var(--line);padding-top:var(--s7)}
+.card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);
+  text-transform:none;margin:0 0 var(--s6)}
+/* One tool per spined row, like /dev's dated entries: the tool's name sits in
+   the margin column, its numbers in the text column. */
+.tool{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
+.tool+.tool{border-top:1px solid var(--hair)}
+.tool-name{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);line-height:1.35;padding-top:var(--s1)}
+.tool-body{grid-column:2;min-width:0}
+.tool-num{font-family:var(--serif);font-size:var(--t2);color:var(--ink);line-height:1.35;font-variant-numeric:tabular-nums}
+.tool-sub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1);overflow-wrap:anywhere}
+#dls{font-size:var(--t4)}
+.muted{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s3)}
+footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
+footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
+footer .wordmark{color:#fff}
+footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
+/* LAST in the sheet on purpose — same specificity as .tool above, so the
+   collapse only wins by being declared later (see /dev's note). */
+@media (max-width:640px){
+  .tool{grid-template-columns:minmax(0,1fr);row-gap:var(--s2);padding:var(--s5) 0}
+  .tool-name{grid-column:1;grid-row:auto;padding-top:0}
+  .tool-body{grid-column:1}
+}
+</style></head><body>
+<header class="hdr">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    <nav>
+      <a href="/admin">Analytics</a>
+      <a href="/dev">Dev hub</a>
+      <a href="/contacts">Contacts</a>
+      <a href="/">Run a report</a>
+    </nav>
+  </div>
+</header>
+<main>
+<div class="wrap">
+<div class="kicker">Internal</div>
+<h1 class="h">HQ</h1>
+<p class="sub">The internal desk: analytics, development and the rolodex, each with its headline number at a glance.</p>
+<div id="gate" class="gate"><span class="lab">Enter admin key</span>
+<input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
+<button id="go">Open HQ</button><div id="err" class="err"></div></div>
+<div id="hub" style="display:none">
+  <div class="card"><h2>Tools</h2>
+    <div id="tools"></div>
+  </div>
+  <div class="card"><h2>Downloads</h2>
+    <div id="dls"></div>
+    <p class="muted">Each link carries the admin key so the browser can download directly. Treat a copied link as the key itself.</p>
+  </div>
+</div>
+</div>
+</main>
+<footer><div class="wrap">
+  <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
+  <span>Internal page &middot; <a href="/">Back to the app</a></span>
+</div></footer>
+<script>
+var KEYK="cn_admin_key";
+// See the same helper on /admin: sessionStorage is per-tab, the cookie is not.
+function grantAdminAccess(key){try{fetch("/api/admin-access",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({key:key})}).catch(function(){});}catch(e){}}
+function el(id){return document.getElementById(id);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+var MOS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDay(d){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(d||""));
+  if(!m)return esc(d);return MOS[Number(m[2])-1]+" "+Number(m[3]);}
+function plural(n,one,many){return n+" "+(n===1?one:many);}
+function toolRow(href,name,head,sub){
+  return '<div class="tool"><a class="tool-name" href="'+href+'">'+name+'</a>'+
+    '<div class="tool-body"><div class="tool-num">'+head+'</div>'+
+    (sub?'<div class="tool-sub">'+sub+'</div>':"")+'</div></div>';
+}
+function render(d){
+  var DASH="—";
+  var a=d&&d.analytics,s=d&&d.submissions,dv=d&&d.dev,c=d&&d.contacts;
+  var rows=[],head,sub;
+  head=DASH;sub="";
+  if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
+    head=plural(a.searches7d.total,"search","searches")+" this week";
+    var bits=[a.searches7d.billed+" billed",a.searches7d.cached+" cached"];
+    if(typeof a.leads==="number")bits.push(plural(a.leads,"lead","leads")+" all-time");
+    if(s&&s.db===true&&typeof s.pending==="number")bits.push(plural(s.pending,"broker comp","broker comps")+" awaiting review");
+    else bits.push('<span title="Submission review requires Supabase">broker comps: '+DASH+'</span>');
+    sub=bits.join(" · ");
+  }
+  rows.push(toolRow("/admin","Analytics",head,sub));
+  head=DASH;sub="";
+  if(dv&&typeof dv.openIdeas==="number"){
+    head=plural(dv.openIdeas,"open idea","open ideas");
+    if(dv.latest&&dv.latest.date)sub="Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"");
+  }
+  rows.push(toolRow("/dev","Dev hub",head,sub));
+  head=DASH;sub="";
+  if(c&&typeof c.count==="number"){
+    head=plural(c.count,"contact","contacts");
+    sub="Leads, brokers, owners and vendors in the shared book.";
+  }
+  rows.push(toolRow("/contacts","Contacts",head,sub));
+  el("tools").innerHTML=rows.join("");
+}
+// Built AFTER the gate passes, from the key in memory — the hrefs exist only
+// in the unlocked DOM, never in the served HTML. The CSV routes accept ?key=
+// precisely because a download link cannot set a header.
+function renderDls(key){
+  var q="?key="+encodeURIComponent(key);
+  el("dls").innerHTML=[["/api/leads","Leads"],["/api/comp-submissions","Broker submissions"],["/api/comp-corpus","Comp corpus"]]
+    .map(function(p){return '<a href="'+p[0]+q+'" download>'+p[1]+' CSV</a>';}).join(" &middot; ");
+}
+function load(key){
+  fetch("/api/hq",{headers:{"x-admin-key":key}}).then(function(r){
+    if(r.status===401){throw new Error("Incorrect key.");}
+    if(r.status===404){throw new Error("HQ is disabled — set ADMIN_KEY on the server.");}
+    if(!r.ok){throw new Error("Error "+r.status);}
+    return r.json();
+  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){}
+    grantAdminAccess(key);render(d);renderDls(key);
+    el("err").textContent="";el("gate").style.display="none";el("hub").style.display="block";})
+  .catch(function(e){el("err").textContent=e.message;
+    el("gate").style.display="block";el("hub").style.display="none";});
+}
+el("go").addEventListener("click",function(){load(el("k").value.trim());});
+el("k").addEventListener("keydown",function(e){if(e.key==="Enter")load(e.target.value.trim());});
 try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
 </script>
 </body></html>`;
@@ -8803,11 +9037,34 @@ const server = http.createServer((req, res) => {
     return res.end(renderAdminHTML());
   }
 
+  // --- HQ: the internal homepage. One aggregate of the three tools' headline
+  // numbers. Same gate as /api/stats (404 with ADMIN_KEY unset, 401 on a bad
+  // key) but header-only like the dev endpoints — ?key= stays confined to the
+  // CSV download routes. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/hq") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    hqSnapshot()
+      .then((snap) => sendJson(res, 200, snap))
+      .catch((err) => { console.error("hq snapshot failed:", err); sendJson(res, 500, { error: "Could not load the overview." }); });
+    return;
+  }
+  if (req.method === "GET" && req.url === "/hq") {
+    // Same triple-noindex treatment as /admin (its own meta tag, this header,
+    // and the robots.txt Disallow).
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(renderHqHTML());
+  }
+
   // --- SEO: robots.txt + sitemap (homepage + market directory + every market
   // page) so crawlers discover and index the whole landing-page set ---
   if (req.method === "GET" && req.url === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
-    return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
+    return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
   }
   if (req.method === "GET" && req.url === "/sitemap.xml") {
     const merged = allMarketPages();

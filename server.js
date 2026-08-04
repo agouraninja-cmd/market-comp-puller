@@ -6978,15 +6978,40 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
 .card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);
   text-transform:none;margin:0 0 var(--s6)}
 /* One tool per spined row, like /dev's dated entries: the tool's name sits in
-   the margin column, its numbers in the text column. */
+   the margin column, its figure in the text column. */
 .tool{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
 .tool+.tool{border-top:1px solid var(--hair)}
-.tool-name{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);line-height:1.35;padding-top:var(--s1)}
+/* Ink like /dev's spine (.day-date / .bucket-h), red only on hover — the same
+   quiet-link treatment this page's own header nav uses. Four red serif names
+   stacked in the margin out-shouted the numbers they label. --s2 (not --s1)
+   sets the name's cap height level with the 32px figure beside it. */
+.tool-name{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);color:var(--ink);
+  line-height:1.35;padding-top:var(--s2)}
+.tool-name:hover{color:var(--red)}
 .tool-body{grid-column:2;min-width:0}
-.tool-num{font-family:var(--serif);font-size:var(--t2);color:var(--ink);line-height:1.35;font-variant-numeric:tabular-nums}
-.tool-sub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1);overflow-wrap:anywhere}
+/* The figure leads the row: the numeral at figure size in serif, its unit
+   words riding the same baseline at body size. Every row therefore starts
+   with a numeral at the same x, so the four read as a column instead of as
+   four similar sentences. --t1 serif is already the house's "this is a
+   figure" treatment (/admin's .tile .v), so the two pages agree.
+   .na is the honest unknown: no orphaned 32px dash, just the reason. */
+.tool-num{font-size:var(--t4);color:var(--ink);line-height:1.2}
+.tool-num .n{font-family:var(--serif);font-size:var(--t1);color:var(--ink);
+  font-variant-numeric:tabular-nums;margin-right:var(--s3)}
+.tool-num.na{font-size:var(--t3);color:var(--ink-3)}
+/* Two supporting lines, never one dot-chain: .tool-sub is scoped to the figure
+   directly above it, .tool-note carries standing totals and anything awaiting
+   a human, so a week figure and an all-time figure never share a sentence.
+   66ch is /dev's .entry-details measure. */
+.tool-sub{color:var(--ink-2);font-size:var(--t5);line-height:1.5;margin-top:var(--s3);
+  max-width:66ch;overflow-wrap:anywhere}
+.tool-note{color:var(--ink-3);font-size:var(--t5);line-height:1.5;margin-top:var(--s1);
+  max-width:66ch;overflow-wrap:anywhere}
 #dls{font-size:var(--t4)}
 .muted{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s3)}
+/* Only present when something is wrong; without it the first section heading
+   sits 12px under a red alarm line. */
+#alerts:not(:empty){margin-bottom:var(--s6)}
 /* Alarm lines: red is interaction everywhere else on this page, so a red
    SENTENCE is unambiguous — it only exists when something is wrong, and the
    healthy page renders none of them. */
@@ -7019,8 +7044,8 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <main>
 <div class="wrap">
 <div class="kicker">Internal</div>
-<h1 class="h">HQ</h1>
-<p class="sub">The internal desk: analytics, development and the rolodex, each with its headline number at a glance.</p>
+<h1 class="h">Headquarters</h1>
+<p class="sub">Analytics, development, contacts and revenue &mdash; each with its headline number, and anything that needs attention at the top.</p>
 <div id="gate" class="gate"><span class="lab">Enter admin key</span>
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">Open HQ</button><div id="err" class="err"></div></div>
@@ -7050,50 +7075,76 @@ var MOS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
 function fmtDay(d){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(d||""));
   if(!m)return esc(d);return MOS[Number(m[2])-1]+" "+Number(m[3]);}
 function plural(n,one,many){return n+" "+(n===1?one:many);}
-function toolRow(href,name,head,sub,ext){
-  return '<div class="tool"><a class="tool-name" href="'+href+'"'+(ext?' target="_blank" rel="noopener"':"")+'>'+name+'</a>'+
-    '<div class="tool-body"><div class="tool-num">'+head+'</div>'+
-    (sub?'<div class="tool-sub">'+sub+'</div>':"")+'</div></div>';
+// plural() returns "3 ideas"; noun() returns just "ideas", for the rows where
+// the numeral is set separately at figure size.
+function noun(n,one,many){return n===1?one:many;}
+// One tool = one spined row: name in the margin column, figure plus up to two
+// supporting lines in the text column. o.num===null means "no figure" — then
+// o.unit is read as the plain-language reason and set small, so a source that
+// failed never renders as a giant orphaned dash.
+function toolRow(o){
+  var fig=(o.num===null||o.num===undefined)
+    ? '<div class="tool-num na">'+o.unit+'</div>'
+    : '<div class="tool-num"><span class="n">'+o.num+'</span>'+o.unit+'</div>';
+  return '<div class="tool"><a class="tool-name" href="'+o.href+'"'+(o.ext?' target="_blank" rel="noopener"':"")+'>'+o.name+'</a>'+
+    '<div class="tool-body">'+fig+
+    (o.sub?'<div class="tool-sub">'+o.sub+'</div>':"")+
+    (o.note?'<div class="tool-note">'+o.note+'</div>':"")+
+    '</div></div>';
 }
 function render(d){
-  var DASH="—";
-  var a=d&&d.analytics,s=d&&d.submissions,dv=d&&d.dev,c=d&&d.contacts;
-  var rows=[],head,sub;
-  head=DASH;sub="";
+  var a=d&&d.analytics,s=d&&d.submissions,dv=d&&d.dev,c=d&&d.contacts,r=d&&d.revenue;
+  var rows=[];
+  // .tool-sub breaks down the figure above it (same week scope); .tool-note
+  // carries standing totals, so a week figure and an all-time figure are never
+  // chained into one sentence. Every unknown says WHY: hqSnapshot maps a
+  // rejected source to null, and a bare dash reads as a rendering fault
+  // rather than as news.
+  var an={href:"/admin",name:"Analytics",num:null,unit:"Search activity is unavailable."};
   if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
-    head=plural(a.searches7d.total,"search","searches")+" this week";
-    var bits=[a.searches7d.billed+" billed",a.searches7d.cached+" cached"];
-    if(typeof a.searches7d.cost==="number")bits.push("est. $"+a.searches7d.cost.toFixed(2)+" API spend");
-    if(typeof a.leads==="number")bits.push(plural(a.leads,"lead","leads")+" all-time");
-    if(s&&s.db===true&&typeof s.pending==="number")bits.push(plural(s.pending,"broker comp","broker comps")+" awaiting review");
-    else bits.push('<span title="Submission review requires Supabase">broker comps: '+DASH+'</span>');
-    sub=bits.join(" · ");
+    an.num=a.searches7d.total;
+    an.unit=noun(a.searches7d.total,"search","searches")+" this week";
+    an.sub=a.searches7d.billed+" billed, "+a.searches7d.cached+" from cache";
+    if(typeof a.searches7d.cost==="number")an.sub+=" · $"+a.searches7d.cost.toFixed(2)+" estimated spend";
+    var st=[];
+    if(typeof a.leads==="number")st.push(plural(a.leads,"lead","leads")+" all time");
+    // db===false is "review needs Supabase"; a null source is a failed read and
+    // says nothing here rather than blaming the wrong thing.
+    if(s&&s.db===true&&typeof s.pending==="number")st.push(plural(s.pending,"broker comp","broker comps")+" awaiting review");
+    else if(s&&s.db===false)st.push("broker review needs Supabase");
+    if(st.length)an.note=st.join(" · ");
   }
-  rows.push(toolRow("/admin","Analytics",head,sub));
-  head=DASH;sub="";
+  rows.push(toolRow(an));
+  var de={href:"/dev",name:"Dev hub",num:null,unit:"The ideas queue is unavailable."};
   if(dv&&typeof dv.openIdeas==="number"){
-    head=plural(dv.openIdeas,"open idea","open ideas");
-    if(dv.latest&&dv.latest.date)sub="Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"");
+    de.num=dv.openIdeas;
+    de.unit=noun(dv.openIdeas,"open idea","open ideas");
+    if(dv.latest&&dv.latest.date)de.sub="Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"");
   }
-  rows.push(toolRow("/dev","Dev hub",head,sub));
-  head=DASH;sub="";
+  rows.push(toolRow(de));
+  var co={href:"/contacts",name:"Contacts",num:null,unit:"The shared book is unavailable."};
   if(c&&typeof c.count==="number"){
-    head=plural(c.count,"contact","contacts");
-    sub="Leads, brokers, owners and vendors in the shared book.";
+    co.num=c.count;
+    co.unit=noun(c.count,"contact","contacts");
+    co.sub="Leads, brokers, owners and vendors in the shared book.";
   }
-  rows.push(toolRow("/contacts","Contacts",head,sub));
-  var r=d&&d.revenue;
-  head=DASH;sub="";
+  rows.push(toolRow(co));
+  // Stripe is the only off-site tool, hence ext. The billing tables have no
+  // file fallback by design, so "no Supabase" is a different unknown from
+  // "the read failed" and says so.
+  var rv={href:"https://dashboard.stripe.com",name:"Revenue",ext:true,num:null,
+    unit:"Billing counts are unavailable."};
   if(r&&r.db===true&&typeof r.active==="number"){
-    head=plural(r.active,"active subscription","active subscriptions");
-    var rb=[r.founding+" of "+r.foundingLimit+" founding seats taken",
-      plural(r.purchases,"report unlock","report unlocks")+(r.purchases7d?" ("+r.purchases7d+" this week)":"")];
-    if(r.atRisk)rb.push(plural(r.atRisk,"subscription","subscriptions")+" in payment grace");
-    sub=rb.join(" · ");
+    rv.num=r.active;
+    rv.unit=noun(r.active,"active subscription","active subscriptions");
+    rv.sub=r.founding+" of "+r.foundingLimit+" founding seats taken";
+    var rn=[plural(r.purchases,"report unlock","report unlocks")+(r.purchases7d?" ("+r.purchases7d+" this week)":"")];
+    if(r.atRisk)rn.push(plural(r.atRisk,"subscription","subscriptions")+" in payment grace");
+    rv.note=rn.join(" · ");
   } else if(r&&r.db===false){
-    sub="Billing counts require Supabase.";
+    rv.unit="Billing counts need Supabase — those tables have no file fallback.";
   }
-  rows.push(toolRow("https://dashboard.stripe.com","Revenue",head,sub,true));
+  rows.push(toolRow(rv));
   el("tools").innerHTML=rows.join("");
 }
 // One red line per firing alarm, nothing when healthy. Wording mirrors

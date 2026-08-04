@@ -26,6 +26,7 @@ the warning below before touching anything.
 | **9. Stage E8 — delete `PRO_AUDIENCE`** | ❌ **NOT done — this is the launch** |
 | 9. Stage E9 — verify after launch | ❌ Not until E8 |
 | Export cap enforced (5 reports/mo free) | ✅ Shipped 2026-08-03 |
+| Admins get Pro comped on sign-in | ✅ Shipped 2026-08-03 — see below |
 | Report branding | ❌ Not built — no UI exists |
 | $39 single-report unlock | ✅ Shipped 2026-08-03 — **needs a one-line ALTER, see below** |
 
@@ -307,6 +308,29 @@ dashboard "Resend" would be skipped as a duplicate. A subscription survived that
 (the next lifecycle event rewrites the row); a one-off purchase has no follow-up
 event ever, so one DB blip meant paid-and-locked-out forever. Failures now
 release the claim and email the owner.
+
+### Comped Pro for admins — shipped 2026-08-03
+
+Founder's instruction from the 2026-08-03 meeting: the team should not be the
+one group that never sees Pro. Signing in now grants full Pro whenever the
+browser carries admin credentials.
+
+**Nothing to configure.** `ADMIN_KEY` is already set in Render and is the admin
+identity — there is no admin user, no new env var and no migration. Unlocking
+`/admin`, `/dev` or `/contacts` also sets an httpOnly `cn_admin` cookie (via
+`POST /api/admin-access`) so the main app sees it in every tab, not just the one
+where the dashboard was unlocked. Full rules under "Admin access" in `CLAUDE.md`.
+
+Two things that matter for the launch specifically:
+
+- **It changes nothing while `PRO_AUDIENCE` is set.** The admin branch is gated
+  on `proEnabledFor(user)`, so an admin outside the allowlist still takes the
+  `enabled: false` path and sees the pre-Pro app. Comped Pro starts mattering at
+  Stage E8, which is exactly when it is needed.
+- **Use "View as a free user" before shipping any paywall change.** It is on the
+  plan card on My Desk and drops comped Pro for the session. Every internal
+  account is otherwise permanently Pro, which means nobody internal renders the
+  free tier by accident.
 
 ### The two Pro bullets to restore (owner's instruction, 2026-07-31)
 

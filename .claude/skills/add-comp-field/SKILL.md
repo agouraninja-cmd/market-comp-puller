@@ -68,12 +68,16 @@ column doesn't break searches, it just silently diverts every harvested comp to
 the ephemeral file fallback, which the host wipes on redeploy. You lose data
 without an error anyone sees.
 
-The DDL lives in a comment above `harvestComps` (server.js:1098). Add the
-column there and run it:
+Schema changes live in the `migrations/` folder (see `migrations/README.md`).
+Write the next numbered file, run it in the Supabase SQL editor, and log it in
+`migrations/APPLIED.md`:
 
 ```sql
 alter table public.comp_corpus add column if not exists my_field text;
 ```
+
+Also add the column to the full-shape `create table` in
+`migrations/001-comp-corpus.sql` so a fresh environment gets it in one go.
 
 Also add the field to the `&select=` list in `corpusRowsForMarket`
 (server.js:694), or reused corpus comps come back without it.

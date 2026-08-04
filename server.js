@@ -430,14 +430,7 @@ function rateLimited(ip, max = RATE_MAX, windowMs = RATE_WINDOW_MS) {
 // spent (survives IP changes). Cache hits count too — the funnel is the
 // point, not just API spend. Fails OPEN: a ledger error allows the search;
 // DAILY_SEARCH_CAP still backstops cost.
-// DDL (run in the Supabase SQL editor BEFORE deploying):
-//
-//   create table guest_search_quota (
-//     ip_hash text primary key,
-//     used integer not null default 0,
-//     first_ts timestamptz not null default now(),
-//     last_ts timestamptz not null default now()
-//   );
+// DDL: migrations/011-guest-search-quota.sql (applied — see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 const GUEST_COOKIE = "cn_guest";
 const GUEST_COOKIE_MAX_AGE_SEC = 2 * 365 * 24 * 60 * 60;
@@ -528,48 +521,7 @@ async function guestGateFor(req) {
 // ---------------------------------------------------------------------------
 // Accounts — email+password users, hashed session tokens, portfolio +
 // watchlist stores. Supabase when configured, one local JSON file otherwise.
-// DDL (run in the Supabase SQL editor; legacy service_role key already works):
-//
-//   create table users (
-//     id uuid primary key default gen_random_uuid(),
-//     email text not null unique,
-//     password_hash text not null,
-//     name text,
-//     created_at timestamptz not null default now()
-//   );
-//   -- (consider: create unique index on users (lower(email));)
-//   create table sessions (
-//     token_hash text primary key,
-//     user_id uuid not null references users(id) on delete cascade,
-//     created_at timestamptz not null default now(),
-//     expires_at timestamptz not null
-//   );
-//   create table portfolio_items (
-//     id uuid primary key default gen_random_uuid(),
-//     user_id uuid not null references users(id) on delete cascade,
-//     address text not null,
-//     property_type text not null,
-//     payload jsonb not null,
-//     snapshots jsonb not null default '[]',
-//     created_at timestamptz not null default now(),
-//     updated_at timestamptz not null default now()
-//   );
-//   create table watchlist_items (
-//     id uuid primary key default gen_random_uuid(),
-//     user_id uuid not null references users(id) on delete cascade,
-//     market text not null,
-//     property_type text not null,
-//     last_seen_at timestamptz not null default now(),
-//     created_at timestamptz not null default now(),
-//     unique (user_id, market, property_type)
-//   );
-//   create table password_resets (
-//     token_hash text primary key,
-//     user_id uuid not null references users(id) on delete cascade,
-//     expires_at timestamptz not null,
-//     used boolean not null default false,
-//     created_at timestamptz not null default now()
-//   );
+// DDL: migrations/002-accounts.sql (applied — see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 const ACCOUNT_STORE_FILE = path.join(__dirname, "account-store.json");
 const SESSION_COOKIE = "cn_session";
@@ -973,88 +925,12 @@ async function markWatchlistSeen(userId) {
 // subscription" without a database, and PRO_ENABLED without DB_CONFIGURED
 // warns loudly at startup.
 //
-// DDL (run in the Supabase SQL editor BEFORE deploying with PRO_ENABLED=on):
-//
-//   alter table users add column if not exists stripe_customer_id text;
-//   create unique index if not exists users_stripe_customer_id_idx
-//     on users (stripe_customer_id) where stripe_customer_id is not null;
-//
-//   create table subscriptions (
-//     user_id uuid primary key references users(id) on delete cascade,
-//     stripe_subscription_id text unique,
-//     stripe_customer_id text,
-//     plan text not null,                  -- pro_monthly | pro_annual_founding
-//     status text not null,                -- active | past_due | grace | cancelled
-//     current_period_end timestamptz,
-//     cancel_at_period_end boolean not null default false,
-//     grace_until timestamptz,             -- set when a payment fails (7 days)
-//     created_at timestamptz not null default now(),
-//     updated_at timestamptz not null default now()
-//   );
-//   -- One subscription per user by primary key: a second checkout by the same
-//   -- person must UPDATE, never insert a rival row that could out-rank it.
-//
-//   create table branding_profiles (
-//     user_id uuid primary key references users(id) on delete cascade,
-//     logo_url text, firm_name text, preparer_name text,
-//     phone text, email text, license_number text, disclaimer text,
-//     updated_at timestamptz not null default now()
-//   );
-//
-//   create table report_purchases (
-//     id uuid primary key default gen_random_uuid(),
-//     user_id uuid not null references users(id) on delete cascade,
-//     report_id text not null,             -- reportIdFor(): hash of address|type|months
-//     stripe_payment_intent_id text unique,
-//     comp_snapshot jsonb,                 -- see below: NULLABLE, and unused
-//     purchased_at timestamptz not null default now(),
-//     unique (user_id, report_id)
-//   );
-//   create index on report_purchases (user_id, report_id);
-//
-//   -- If the table was already created with `comp_snapshot jsonb not null`,
-//   -- run this before deploying the single-report unlock or every webhook
-//   -- insert 400s and a paid purchase is never recorded:
-//   --   alter table report_purchases alter column comp_snapshot drop not null;
-//   --
-//   -- Why it is nullable and empty: the row is written by the Stripe webhook,
-//   -- which carries a session and a payment intent and NO report data — the
-//   -- report is a client-side artifact. The unlock is keyed on the SEARCH
-//   -- (address+type+lookback), so re-running that search re-serves it ungated
-//   -- from the cache for free, and computeEntitlements never reads a snapshot:
-//   -- it only flips maxComps/canBrand/exportsRemaining off the row's EXISTENCE.
-//   -- The column is kept for a future "comps exactly as you bought them"
-//   -- feature, which would need a pending row written at checkout creation.
-//
-//   -- One row per REPORT exported, not one per click. The primary key makes a
-//   -- second export of the same report in the same month a no-op, so wanting a
-//   -- report as both a CSV and a PDF costs one, not two. The tally is the row
-//   -- COUNT for (user_id, period) — there is no counter column to race on.
-//   create table export_usage (
-//     user_id uuid not null references users(id) on delete cascade,
-//     period text not null,                -- 'YYYY-MM', UTC
-//     report_key text not null,            -- stable per report; see reportKeyOf()
-//     created_at timestamptz not null default now(),
-//     primary key (user_id, period, report_key)
-//   );
-//
-//   -- Upgrading an existing (user_id, period, count) table instead:
-//   --   drop table if exists export_usage;   -- nothing ever wrote to it
-//   -- then create it as above.
-//
-//   -- Stripe retries webhooks; this is what makes handlers idempotent.
-//   create table stripe_events (
-//     id text primary key,                 -- Stripe's event id (evt_...)
-//     type text,
-//     received_at timestamptz not null default now()
-//   );
-//
-// After running it, confirm nothing is missing:
-//   select t from unnest(array['subscriptions','branding_profiles',
-//     'report_purchases','export_usage','stripe_events']) as t
-//   where not exists (select 1 from information_schema.tables
-//                     where table_name = t);
-// Zero rows means the schema is complete.
+// DDL: migrations/008-pro-billing.sql (applied — see migrations/APPLIED.md).
+// The migration file keeps the why-notes with the SQL: one subscription per
+// user by primary key, report_purchases.comp_snapshot NULLABLE and never
+// written (the webhook has no report data — the unlock keys on the SEARCH),
+// export_usage keyed per report per month so CSV+PDF of one report costs one
+// export, stripe_events for webhook idempotency, and the verification query.
 // ---------------------------------------------------------------------------
 
 // Subscription reads sit in the hot path of every report, so they are cached
@@ -1525,9 +1401,9 @@ function noteCorpusFailure(kind, err) {
   if (/column|schema cache|PGRST2\d\d/i.test(msg)) {
     CORPUS_HEALTH.schemaMismatch = true;
     console.error(
-      `comp_corpus ${kind} failed on what looks like a MISSING COLUMN. The ALTER TABLE ` +
-      `for a new per-comp field was probably never run — see the DDL comment above ` +
-      `harvestComps(). Until it is, harvested comps land in an ephemeral file and ` +
+      `comp_corpus ${kind} failed on what looks like a MISSING COLUMN. The migration ` +
+      `for a new per-comp field was probably never run — see migrations/APPLIED.md. ` +
+      `Until it is, harvested comps land in an ephemeral file and ` +
       `corpus-first retrieval returns nothing. Detail: ${msg.slice(0, 200)}`);
   } else {
     console.error(`comp_corpus ${kind} failed: ${msg.slice(0, 200)}`);
@@ -1871,15 +1747,9 @@ async function findDerivableReport(keyParams, months, txFocus, maxComps) {
 // building's size doesn't change, so once ANY prior search has looked it up
 // the answer is reusable: hand it to the model up front and the budget drops,
 // exactly as if the visitor had typed it. The visitor's own entry always wins;
-// the memo only fills silence. Supabase table (run this DDL before deploying —
-// absent, every read/write degrades safely to the git-ignored file below):
-//
-//   create table subject_sizes (
-//     address_norm text primary key,
-//     size_sqft    bigint not null,
-//     source       text,
-//     updated_at   timestamptz not null default now()
-//   );
+// the memo only fills silence. Supabase table subject_sizes — DDL in
+// migrations/009-subject-sizes.sql (applied; when the table is absent, every
+// read/write degrades safely to the git-ignored file below).
 //
 // Two deliberate rules. Model-ESTIMATED sizes are never remembered — a guess
 // that quietly becomes "known" for every future search of this address is how
@@ -2180,42 +2050,12 @@ function maybePublishMarketSnapshot(type, address, data) {
 // fallback comp-corpus.jsonl. Fire-and-forget: never blocks or fails the
 // search that triggered it.
 //
-// Supabase DDL (run once in the SQL editor):
-//   create table public.comp_corpus (
-//     id bigint generated always as identity primary key,
-//     ts timestamptz not null default now(),
-//     dedupe_key text not null unique,
-//     property_type text not null, market text not null, address text not null,
-//     transaction text, deal_date text, size_sqft text, price_or_rate text,
-//     price_per_sqft text, cap_rate text,
-//     -- per-type specs (TYPE_COMP_FIELDS); each row carries every column,
-//     -- and the ones its type doesn't use stay empty
-//     clear_height text, dock_doors text,
-//     building_class text, floor_plate text,
-//     center_type text, anchor_tenant text,
-//     units text, price_per_unit text,
-//     lot_acres text, price_per_acre text, zoning text,
-//     beds_baths text,
-//     tenancy text, year_built text,
-//     notes text, source_url text, source_type text, lat text, lng text,
-//     verified boolean default false
-//   );
-//   alter table public.comp_corpus enable row level security;
-//
-// Existing table (added 2026-07-27) — run BEFORE deploying, or every corpus
-// insert 400s on the unknown columns and harvesting silently falls back to
-// the ephemeral file:
-//   alter table public.comp_corpus
-//     add column if not exists building_class text,
-//     add column if not exists floor_plate text,
-//     add column if not exists center_type text,
-//     add column if not exists anchor_tenant text,
-//     add column if not exists units text,
-//     add column if not exists price_per_unit text,
-//     add column if not exists lot_acres text,
-//     add column if not exists price_per_acre text,
-//     add column if not exists zoning text,
-//     add column if not exists beds_baths text;
+// DDL: migrations/001-comp-corpus.sql (create + RLS) and
+// migrations/004-comp-corpus-per-type-columns.sql (the 2026-07-27 per-type
+// ALTER whose missed run caused the silent weeks-long outage). Both applied —
+// see migrations/APPLIED.md. A NEW per-comp field needs the next numbered
+// migration run BEFORE deploying, or every corpus insert 400s on the unknown
+// column and harvesting silently falls back to the ephemeral file.
 // ---------------------------------------------------------------------------
 const corpusSeen = new Set();   // dedupe keys seen this process (file-seeded)
 let corpusSeenSeeded = false;
@@ -5355,10 +5195,9 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
   <div class="wrap">
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
-      <a href="/dev">Dev log</a>
+      <a href="/hq">HQ</a>
+      <a href="/dev">Dev hub</a>
       <a href="/contacts">Contacts</a>
-      <a href="/markets">Markets</a>
-      <a href="/how-it-works">How it works</a>
       <a href="/">Run a report</a>
     </nav>
   </div>
@@ -5378,7 +5217,7 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </main>
 <footer><div class="wrap">
   <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
-  <span>Internal dashboard &middot; <a href="/">Back to the app</a></span>
+  <span>Internal page &middot; <a href="/hq">HQ</a> &middot; <a href="/">Back to the app</a></span>
 </div></footer>
 <script>
 var KEYK="cn_admin_key";
@@ -5412,9 +5251,9 @@ function render(d){
     "<h2 style='color:#B91C1C;margin-bottom:8px;font-family:Georgia,serif;font-weight:500;"+
     "font-size:19px;text-transform:none;letter-spacing:normal'>Comp corpus is not persisting</h2>"+
     (h.schemaMismatch
-      ? "<p><b>This looks like a missing column.</b> The <code>alter table</code> for a new per-comp "+
-        "field was probably never run &mdash; the DDL is in the comment above <code>harvestComps()</code> "+
-        "in server.js. Until it runs, harvested comps land in an ephemeral file and corpus-first "+
+      ? "<p><b>This looks like a missing column.</b> The migration for a new per-comp "+
+        "field was probably never run &mdash; check <code>migrations/APPLIED.md</code> against the "+
+        "<code>migrations/</code> folder. Until it runs, harvested comps land in an ephemeral file and corpus-first "+
         "retrieval returns nothing, so the hit rate below is pinned at 0%.</p>"
       : "<p>Supabase writes or reads for <code>comp_corpus</code> are failing, so harvested comps "+
         "are going to an ephemeral file that is wiped on every redeploy.</p>")+
@@ -5521,23 +5360,8 @@ try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
 // devlog.json (see the standing rule in CLAUDE.md: every shipped
 // fix/improvement/feature appends an entry in the same commit). Ideas live in
 // the Supabase dev_ideas table with a whole-file dev-ideas.json fallback
-// (git-ignored; ephemeral on most hosts). Run this DDL in Supabase before
-// deploying:
-//   create table if not exists dev_ideas (
-//     id text primary key,
-//     text text not null,
-//     status text not null default 'open',
-//     priority text,
-//     notes text,
-//     done_at timestamptz,
-//     created_at timestamptz not null default now()
-//   );
-// Tables created before priority/notes/done_at existed need (run before
-// deploying — PostgREST 400s on unknown columns, the comp-corpus lesson):
-//   alter table dev_ideas
-//     add column if not exists priority text,
-//     add column if not exists notes text,
-//     add column if not exists done_at timestamptz;
+// (git-ignored; ephemeral on most hosts). DDL: migrations/005-dev-ideas.sql
+// (applied — see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 async function readDevIdeas() {
   let fileIdeas = [];
@@ -5593,23 +5417,7 @@ async function writeDevIdeas(ideas) {
 // stale tab silently wipe a colleague's new entry. Cost is one extra route.
 //
 // PII lives here, so contacts.json is git-ignored and the CSV export is
-// ADMIN_KEY-gated. Run this DDL in Supabase before deploying — PostgREST 400s
-// on unknown columns and the write would fall back to the ephemeral file
-// (the comp-corpus lesson):
-//   create table if not exists contacts (
-//     id text primary key,
-//     name text not null,
-//     company text,
-//     role text,
-//     phone text,
-//     email text,
-//     market text,
-//     category text not null default 'lead',
-//     status text not null default 'new',
-//     notes text,
-//     created_at timestamptz not null default now(),
-//     updated_at timestamptz not null default now()
-//   );
+// ADMIN_KEY-gated. DDL: migrations/007-contacts.sql (see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 const CONTACT_COLS = ["id", "name", "company", "role", "phone", "email",
   "market", "category", "status", "notes", "created_at", "updated_at"];
@@ -5704,15 +5512,8 @@ function sanitizeContact(body, existing) {
 // UI edits and notes live in the Supabase devlog_overrides table — keyed by
 // the FILE entry's original date+title — and are merged over the file at
 // read time. An override row stores the full {title, details, notes}
-// snapshot; deleting the row restores the committed text. Run in Supabase
-// before deploying:
-//   create table if not exists devlog_overrides (
-//     key text primary key,
-//     title text,
-//     details text,
-//     notes text,
-//     updated_at timestamptz not null default now()
-//   );
+// snapshot; deleting the row restores the committed text.
+// DDL: migrations/006-devlog-overrides.sql (applied — see migrations/APPLIED.md).
 function devlogKey(e) { return String((e && e.date) || "") + "|" + String((e && e.title) || ""); }
 
 function readDevlogFileEntries() {
@@ -6003,6 +5804,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
   <div class="wrap">
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
+      <a href="/hq">HQ</a>
       <a href="/admin">Analytics</a>
       <a href="/contacts">Contacts</a>
       <a href="/">Run a report</a>
@@ -6039,7 +5841,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 </main>
 <footer><div class="wrap">
   <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
-  <span>Internal page &middot; <a href="/admin">Analytics</a> &middot; <a href="/">Back to the app</a></span>
+  <span>Internal page &middot; <a href="/hq">HQ</a> &middot; <a href="/">Back to the app</a></span>
 </div></footer>
 <script>
 var KEYK="cn_admin_key",KEY="",IDEAS=[],IDEAS_OK=false,SAVING=false;
@@ -6475,6 +6277,7 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
   <div class="wrap">
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
+      <a href="/hq">HQ</a>
       <a href="/admin">Analytics</a>
       <a href="/dev">Dev hub</a>
       <a href="/">Run a report</a>
@@ -6533,7 +6336,7 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </main>
 <footer><div class="wrap">
   <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
-  <span>Internal page &middot; <a href="/admin">Analytics</a> &middot; <a href="/dev">Dev hub</a> &middot; <a href="/">Back to the app</a></span>
+  <span>Internal page &middot; <a href="/hq">HQ</a> &middot; <a href="/">Back to the app</a></span>
 </div></footer>
 <script>
 var KEYK="cn_admin_key",KEY="",ROWS=[],EDIT=null,SAVING=false;
@@ -6697,6 +6500,239 @@ el("save").addEventListener("click",save);
 el("cancel").addEventListener("click",clearForm);
 el("export").addEventListener("click",exportCsv);
 el("q").addEventListener("input",function(e){Q=e.target.value.trim();render();});
+try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
+</script>
+</body></html>`;
+}
+
+// ---------------------------------------------------------------------------
+// HQ (/hq) — the internal homepage: the three admin tools with each one's
+// headline number, plus the three CSV downloads that were previously linked
+// from nowhere. Each snapshot block resolves independently; a failed source
+// degrades to null (an em-dash on the page), never a broken page. Every read
+// reuses the reader its own page already uses, so /hq can never disagree with
+// the page it links to.
+// ---------------------------------------------------------------------------
+async function hqSnapshot() {
+  const [analytics, submissions, dev, contacts] = (await Promise.allSettled([
+    (async () => {
+      // Same read + reducer /api/stats uses; the page shows the last-7-day
+      // slice of its 30-day series.
+      const rows = await readRows("analytics_events", ANALYTICS_FILE,
+        ["ts", "kind", "prop_type", "market", "source", "cached"]);
+      const s = aggregateStats(rows);
+      const last7 = s.daily.slice(-7);
+      const sum = (f) => last7.reduce((n, d) => n + d[f], 0);
+      return {
+        searches7d: { billed: sum("billed"), cached: sum("cached"), total: sum("total") },
+        leads: s.totals.leads,
+      };
+    })(),
+    (async () => {
+      // Review is DB-only (mirrors /api/admin/submissions), so file mode
+      // means "unknown", not 0.
+      if (!DB_CONFIGURED) return { db: false, pending: null };
+      const rows = await sbRequest("GET", "comp_submissions?status=eq.pending&select=id&limit=200");
+      return { db: true, pending: Array.isArray(rows) ? rows.length : 0 };
+    })(),
+    (async () => {
+      const [entries, ideas] = await Promise.all([readDevlogMerged(), readDevIdeas()]);
+      let latest = null; // devlog.json is file-ordered, not date-ordered
+      for (const e of entries) if (!latest || String(e.date || "") > String(latest.date || "")) latest = e;
+      return {
+        latest: latest ? { date: latest.date, title: latest.title, type: latest.type } : null,
+        openIdeas: ideas.filter((i) => i && i.status !== "done").length,
+      };
+    })(),
+    // Only the count crosses the wire — the rolodex rows themselves are PII
+    // and stay behind /api/contacts.
+    (async () => ({ count: (await readContacts()).length }))(),
+  ])).map((r) => r.status === "fulfilled" ? r.value
+    : (console.error("hq source failed:", r.reason && r.reason.message), null));
+  return { analytics, submissions, dev, contacts };
+}
+
+// Self-contained HQ page: same public-shell + key-gate pattern and Research
+// Desk skin as /admin (CSS deliberately duplicated — self-contained pages
+// stay independent of tailwind.css). Shares /admin's sessionStorage key so
+// unlocking any internal page unlocks all of them.
+function renderHqHTML() {
+  return `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CompNinja HQ</title><meta name="robots" content="noindex, nofollow"/>
+<meta name="theme-color" content="#FBFBF9"/>
+<link rel="icon" href="/favicon.ico" sizes="48x48"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<style>
+/* Same tokens and discipline as /dev: one type scale, one spacing scale, one
+   radius on controls only, content separated by hairlines rather than boxed,
+   red reserved for interaction. */
+*{box-sizing:border-box}
+:root{
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
+  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
+  --serif:Georgia,'Times New Roman',serif;
+  --r:4px;
+  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+  --spine:104px;--spine-gap:30px;
+}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+  display:flex;flex-direction:column;font-size:var(--t4);
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
+.wrap{max-width:820px;margin:0 auto;padding:0 var(--s6)}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
+.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s5);font-size:var(--t5)}
+.hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+main{flex:1;padding:var(--s8) 0 var(--s9)}
+.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:var(--s4) 0 0;font-size:var(--t1);line-height:1.15}
+.sub{color:var(--ink-2);font-size:var(--t4);max-width:60ch;margin:var(--s4) 0 0}
+.gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
+.gate .lab{display:block;font-size:var(--t5);color:var(--ink-3)}
+.gate input{width:100%;padding:var(--s4);border:1px solid var(--edge);border-radius:var(--r);margin:var(--s4) 0;
+  font-size:var(--t4);font-family:inherit;color:var(--ink);background:var(--paper)}
+.gate input:focus{outline:none;border-color:var(--red)}
+.gate button{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s4) var(--s6);font-weight:600;
+  font-size:var(--t4);font-family:inherit;cursor:pointer}
+.gate button:hover{background:var(--red-deep)}
+.err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
+#hub{margin-top:var(--s8)}
+.card{background:none;border:0;border-radius:0;padding:0;margin:0}
+.card+.card{margin-top:var(--s8);border-top:1px solid var(--line);padding-top:var(--s7)}
+.card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);
+  text-transform:none;margin:0 0 var(--s6)}
+/* One tool per spined row, like /dev's dated entries: the tool's name sits in
+   the margin column, its numbers in the text column. */
+.tool{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
+.tool+.tool{border-top:1px solid var(--hair)}
+.tool-name{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);line-height:1.35;padding-top:var(--s1)}
+.tool-body{grid-column:2;min-width:0}
+.tool-num{font-family:var(--serif);font-size:var(--t2);color:var(--ink);line-height:1.35;font-variant-numeric:tabular-nums}
+.tool-sub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1);overflow-wrap:anywhere}
+#dls{font-size:var(--t4)}
+.muted{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s3)}
+footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
+footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
+footer .wordmark{color:#fff}
+footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
+/* LAST in the sheet on purpose — same specificity as .tool above, so the
+   collapse only wins by being declared later (see /dev's note). */
+@media (max-width:640px){
+  .tool{grid-template-columns:minmax(0,1fr);row-gap:var(--s2);padding:var(--s5) 0}
+  .tool-name{grid-column:1;grid-row:auto;padding-top:0}
+  .tool-body{grid-column:1}
+}
+</style></head><body>
+<header class="hdr">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+    <nav>
+      <a href="/admin">Analytics</a>
+      <a href="/dev">Dev hub</a>
+      <a href="/contacts">Contacts</a>
+      <a href="/">Run a report</a>
+    </nav>
+  </div>
+</header>
+<main>
+<div class="wrap">
+<div class="kicker">Internal</div>
+<h1 class="h">HQ</h1>
+<p class="sub">The internal desk: analytics, development and the rolodex, each with its headline number at a glance.</p>
+<div id="gate" class="gate"><span class="lab">Enter admin key</span>
+<input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
+<button id="go">Open HQ</button><div id="err" class="err"></div></div>
+<div id="hub" style="display:none">
+  <div class="card"><h2>Tools</h2>
+    <div id="tools"></div>
+  </div>
+  <div class="card"><h2>Downloads</h2>
+    <div id="dls"></div>
+    <p class="muted">Each link carries the admin key so the browser can download directly. Treat a copied link as the key itself.</p>
+  </div>
+</div>
+</div>
+</main>
+<footer><div class="wrap">
+  <span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span>
+  <span>Internal page &middot; <a href="/">Back to the app</a></span>
+</div></footer>
+<script>
+var KEYK="cn_admin_key";
+// See the same helper on /admin: sessionStorage is per-tab, the cookie is not.
+function grantAdminAccess(key){try{fetch("/api/admin-access",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({key:key})}).catch(function(){});}catch(e){}}
+function el(id){return document.getElementById(id);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+var MOS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDay(d){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(d||""));
+  if(!m)return esc(d);return MOS[Number(m[2])-1]+" "+Number(m[3]);}
+function plural(n,one,many){return n+" "+(n===1?one:many);}
+function toolRow(href,name,head,sub){
+  return '<div class="tool"><a class="tool-name" href="'+href+'">'+name+'</a>'+
+    '<div class="tool-body"><div class="tool-num">'+head+'</div>'+
+    (sub?'<div class="tool-sub">'+sub+'</div>':"")+'</div></div>';
+}
+function render(d){
+  var DASH="—";
+  var a=d&&d.analytics,s=d&&d.submissions,dv=d&&d.dev,c=d&&d.contacts;
+  var rows=[],head,sub;
+  head=DASH;sub="";
+  if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
+    head=plural(a.searches7d.total,"search","searches")+" this week";
+    var bits=[a.searches7d.billed+" billed",a.searches7d.cached+" cached"];
+    if(typeof a.leads==="number")bits.push(plural(a.leads,"lead","leads")+" all-time");
+    if(s&&s.db===true&&typeof s.pending==="number")bits.push(plural(s.pending,"broker comp","broker comps")+" awaiting review");
+    else bits.push('<span title="Submission review requires Supabase">broker comps: '+DASH+'</span>');
+    sub=bits.join(" · ");
+  }
+  rows.push(toolRow("/admin","Analytics",head,sub));
+  head=DASH;sub="";
+  if(dv&&typeof dv.openIdeas==="number"){
+    head=plural(dv.openIdeas,"open idea","open ideas");
+    if(dv.latest&&dv.latest.date)sub="Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"");
+  }
+  rows.push(toolRow("/dev","Dev hub",head,sub));
+  head=DASH;sub="";
+  if(c&&typeof c.count==="number"){
+    head=plural(c.count,"contact","contacts");
+    sub="Leads, brokers, owners and vendors in the shared book.";
+  }
+  rows.push(toolRow("/contacts","Contacts",head,sub));
+  el("tools").innerHTML=rows.join("");
+}
+// Built AFTER the gate passes, from the key in memory — the hrefs exist only
+// in the unlocked DOM, never in the served HTML. The CSV routes accept ?key=
+// precisely because a download link cannot set a header.
+function renderDls(key){
+  var q="?key="+encodeURIComponent(key);
+  el("dls").innerHTML=[["/api/leads","Leads"],["/api/comp-submissions","Broker submissions"],["/api/comp-corpus","Comp corpus"]]
+    .map(function(p){return '<a href="'+p[0]+q+'" download>'+p[1]+' CSV</a>';}).join(" &middot; ");
+}
+function load(key){
+  fetch("/api/hq",{headers:{"x-admin-key":key}}).then(function(r){
+    if(r.status===401){throw new Error("Incorrect key.");}
+    if(r.status===404){throw new Error("HQ is disabled — set ADMIN_KEY on the server.");}
+    if(!r.ok){throw new Error("Error "+r.status);}
+    return r.json();
+  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){}
+    grantAdminAccess(key);render(d);renderDls(key);
+    el("err").textContent="";el("gate").style.display="none";el("hub").style.display="block";})
+  .catch(function(e){el("err").textContent=e.message;
+    el("gate").style.display="block";el("hub").style.display="none";});
+}
+el("go").addEventListener("click",function(){load(el("k").value.trim());});
+el("k").addEventListener("keydown",function(e){if(e.key==="Enter")load(e.target.value.trim());});
 try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
 </script>
 </body></html>`;
@@ -8002,23 +8038,9 @@ const server = http.createServer((req, res) => {
 
   // --- Admin: broker submission review — list + approve/reject. The whole
   // verified layer keys off comp_submissions.status, so this replaces the
-  // manual Supabase table edit with one click in /admin. Broker-network DDL
-  // (run 2026-07-19, alongside the hand-created comp_submissions table which
-  // already carries "id bigint generated always as identity"):
-  //
-  //   alter table comp_submissions
-  //     add column if not exists cited_count integer not null default 0;
-  //   create table broker_profiles (
-  //     id uuid primary key default gen_random_uuid(),
-  //     email text not null unique,          -- always stored lowercased
-  //     display_name text not null default '',
-  //     company text default '',
-  //     slug text not null unique,
-  //     public boolean not null default false,
-  //     created_at timestamptz not null default now(),
-  //     updated_at timestamptz not null default now()
-  //   );
-  //   alter table broker_profiles enable row level security;
+  // manual Supabase table edit with one click in /admin. Broker-network DDL:
+  // migrations/003-broker-network.sql (run 2026-07-19, alongside the
+  // hand-created comp_submissions table — see migrations/APPLIED.md).
   // ---------------------------------------------------------------------------
   if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/submissions") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
@@ -9015,11 +9037,34 @@ const server = http.createServer((req, res) => {
     return res.end(renderAdminHTML());
   }
 
+  // --- HQ: the internal homepage. One aggregate of the three tools' headline
+  // numbers. Same gate as /api/stats (404 with ADMIN_KEY unset, 401 on a bad
+  // key) but header-only like the dev endpoints — ?key= stays confined to the
+  // CSV download routes. ---
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/hq") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    hqSnapshot()
+      .then((snap) => sendJson(res, 200, snap))
+      .catch((err) => { console.error("hq snapshot failed:", err); sendJson(res, 500, { error: "Could not load the overview." }); });
+    return;
+  }
+  if (req.method === "GET" && req.url === "/hq") {
+    // Same triple-noindex treatment as /admin (its own meta tag, this header,
+    // and the robots.txt Disallow).
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(renderHqHTML());
+  }
+
   // --- SEO: robots.txt + sitemap (homepage + market directory + every market
   // page) so crawlers discover and index the whole landing-page set ---
   if (req.method === "GET" && req.url === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
-    return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
+    return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
   }
   if (req.method === "GET" && req.url === "/sitemap.xml") {
     const merged = allMarketPages();

@@ -21,6 +21,7 @@ spot-checked column exists in production.
 | 009-subject-sizes.sql | applied 2026-08-01 | run + verified via Chrome, RLS on |
 | 010-market-pages.sql | live (created by hand) | Address Explorer pages persist since 2026-08-03 |
 | 011-guest-search-quota.sql | applied 2026-08-03 | "already run in prod" per server.js/CLAUDE.md |
+| 012-search-timings.sql | applied 2026-08-04 | run + verified via Chrome (information_schema returned all 4 columns) |
 
 ## Verification query
 

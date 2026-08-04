@@ -416,7 +416,12 @@ async function fetchVolume(months) {
 async function fetchStripe(secretKey, months) {
   const rows = [];
   const warnings = [];
-  const testMode = secretKey.startsWith("sk_test_");
+  // Stripe has four prefixes, not two: sk_live_/sk_test_ for full secret keys
+  // and rk_live_/rk_test_ for restricted ones. Checking only sk_test_ meant a
+  // RESTRICTED test key — the safest thing to hand this tool, and the one the
+  // .env.example now recommends — was silently treated as live, tagging play
+  // money as real revenue on a document people make decisions from.
+  const testMode = /^[sr]k_test_/.test(secretKey);
   if (testMode) {
     warnings.push(
       "STRIPE_SECRET_KEY is a TEST-mode key. Its charges are not real money — they are " +

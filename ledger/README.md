@@ -135,7 +135,26 @@ Everything is read from `.env` (already git-ignored) or the real environment.
 ```bash
 # .env
 ANTHROPIC_ADMIN_KEY=sk-ant-admin01-...
+STRIPE_SECRET_KEY=rk_live_...
 ```
+
+#### Use a restricted Stripe key, not the one the server runs on
+
+The ledger makes exactly one Stripe call — `GET /v1/balance_transactions` — so
+it never needs the `sk_live_` key that powers checkout. Give it a **restricted**
+key instead:
+
+> Stripe Dashboard → Developers → API keys → **Create restricted key** → set
+> **Balance transactions** to **Read**, leave every other resource at **None**.
+
+You get an `rk_live_…` key that can read settled transactions and nothing else.
+It cannot charge a card, issue a refund, or change a subscription, so a copy
+left in a laptop's `.env` is a far smaller problem than a full secret key would
+be. The `sk_live_` key belongs only in Render's environment.
+
+Test-mode keys are detected by prefix and their charges are tagged
+`stripe-test` on the Transactions sheet so play money never reads as revenue —
+this covers `rk_test_` as well as `sk_test_`.
 
 ### The data files are NOT in git
 

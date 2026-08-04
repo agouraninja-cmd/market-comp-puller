@@ -757,6 +757,9 @@
           <div class="rd-cell">
             <label class="rd-lab" for="address">Property address</label>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
+            <div class="text-xs text-[#8A93A0] mt-1">
+              <button id="exploreAddrLink" type="button" class="underline decoration-slate-300 hover:text-[#1A2433]">Not sure what to value? Explore addresses in a market</button>
+            </div>
           </div>
           <div class="rd-cell">
             <label class="rd-lab" for="propertyType">Property type</label>
@@ -770,6 +773,23 @@
             </select>
             <div id="typeAutoNote" class="text-xs text-[#8A93A0] mt-1"></div>
           </div>
+        </div>
+        <!-- Address Explorer — hands a visitor with no address a stable list of
+             real ones (see docs/superpowers/specs/2026-08-03-address-explorer-
+             design.md). Corpus first via /api/explore-addresses, browser-side
+             OSM Overpass top-up for thin markets. The list is deterministic on
+             purpose: everyone exploring a market sees the same addresses, so
+             repeat clicks land on the 30-day search cache instead of billing. -->
+        <div id="exploreAddrPanel" class="hidden rd-row px-4 py-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="exploreAddrInput" type="text" placeholder="City, ST or 5-digit zip" aria-label="City and state, or zip code"
+              class="w-56 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            <button id="exploreAddrBtn" type="button"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded px-3 py-1.5">Find addresses</button>
+            <span id="exploreAddrStatus" class="text-xs text-[#8A93A0]"></span>
+          </div>
+          <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
+          <p id="exploreAddrNote" class="hidden text-xs text-[#8A93A0] mt-2">Real properties from CompNinja's records and OpenStreetMap, for the property type selected above. Clicking one runs a report.</p>
         </div>
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
           <div class="rd-cell">
@@ -4213,6 +4233,183 @@
     }
     return null;
   }
+
+  // ----------------------------------------------------------------------------
+  // Address Explorer — "I don't have an address" entry point (spec:
+  // docs/superpowers/specs/2026-08-03-address-explorer-design.md).
+  //
+  // Corpus first (/api/explore-addresses, $0), then an Overpass top-up when the
+  // corpus holds fewer than 8 for that market. Both halves are DETERMINISTIC
+  // (server: newest deal then alphabetical; here: OSM id order) so every
+  // visitor sees the same list — that concentration is what turns repeat
+  // clicks into free 30-day search-cache hits instead of billed searches.
+  // Clicking an address submits the ordinary compForm flow; this block adds
+  // no billable path of its own.
+  // ----------------------------------------------------------------------------
+  (function () {
+    const panel = document.getElementById("exploreAddrPanel");
+    const link = document.getElementById("exploreAddrLink");
+    const input = document.getElementById("exploreAddrInput");
+    const btn = document.getElementById("exploreAddrBtn");
+    const status = document.getElementById("exploreAddrStatus");
+    const list = document.getElementById("exploreAddrList");
+    const note = document.getElementById("exploreAddrNote");
+
+    const AE_CACHE_KEY = "addrExplore.v1";
+    const AE_TTL = 7 * 24 * 3600 * 1000;
+    let aeCache = (() => { try { return JSON.parse(localStorage.getItem(AE_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
+    function aeCacheStore(key, addresses) {
+      aeCache[key] = { ts: Date.now(), addresses };
+      try {
+        const keys = Object.keys(aeCache);
+        if (keys.length > 40) keys.slice(0, keys.length - 40).forEach((k) => delete aeCache[k]);
+        localStorage.setItem(AE_CACHE_KEY, JSON.stringify(aeCache));
+      } catch (_) { /* private mode — the cache is a nicety */ }
+    }
+
+    // Only SPECIFIC OSM building tags decide anything (same philosophy as the
+    // type detector below — building=yes/commercial are ambiguous). Land has
+    // no entry: parcels rarely carry addresses, so it stays corpus-only.
+    const AE_TAGS = {
+      Industrial: "industrial|warehouse",
+      Office: "office",
+      Retail: "retail|supermarket|mall",
+      Multifamily: "apartments",
+      Residential: "house|detached|semidetached_house|residential",
+    };
+
+    // Mirrors the server route's dedupe: street line only, suffixes normalized.
+    function normStreetKey(addr) {
+      return String(addr).split(",")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+        .replace(/\b(street|avenue|boulevard|drive|road|lane|court|place|parkway|highway)\b/g,
+          (w) => ({ street: "st", avenue: "ave", boulevard: "blvd", drive: "dr", road: "rd", lane: "ln", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy" }[w]));
+    }
+
+    async function resolveMarket(raw) {
+      const s = String(raw || "").trim();
+      if (/^\d{5}$/.test(s)) {
+        try {
+          const r = await fetch("https://api.zippopotam.us/us/" + s, { signal: AbortSignal.timeout(7000) });
+          if (r.ok) {
+            const j = await r.json();
+            const p = j && j.places && j.places[0];
+            if (p) return { city: p["place name"], state: p["state abbreviation"] };
+          }
+        } catch (_) { /* unresolvable zip falls through to null */ }
+        return null;
+      }
+      const m = s.match(/^(.+?),?\s+([A-Za-z]{2})$/);
+      return m ? { city: m[1].trim(), state: m[2].toUpperCase() } : null;
+    }
+
+    async function overpassAddresses(city, state, type, exclude) {
+      const tags = AE_TAGS[type];
+      if (!tags) return [];
+      const center = await geocodeAddress(`${city}, ${state}`);
+      if (!center) return [];
+      const j = await overpassQuery(
+        `[out:json][timeout:12];nwr(around:8000,${center.lat},${center.lng})["building"~"^(${tags})$"]["addr:housenumber"]["addr:street"];out tags 60;`
+      );
+      const els = (j && j.elements) || [];
+      els.sort((a, b) => (a.id || 0) - (b.id || 0));   // same list for every visitor
+      const out = [];
+      for (const el of els) {
+        const t = el.tags || {};
+        const line = `${t["addr:housenumber"] || ""} ${t["addr:street"] || ""}`.trim();
+        if (!/^\d+\s+\S/.test(line)) continue;
+        const key = normStreetKey(line);
+        if (exclude.has(key)) continue;
+        exclude.add(key);
+        out.push({ address: `${line}, ${t["addr:city"] || city}, ${state}`, source: "osm" });
+        if (out.length >= 8) break;
+      }
+      return out;
+    }
+
+    function render(addresses, loc) {
+      list.textContent = "";
+      if (!addresses.length) {
+        status.textContent = `No addresses found for ${loc.city}, ${loc.state} — try a nearby larger city, or type any address above.`;
+        note.classList.add("hidden");
+        return;
+      }
+      const type = document.getElementById("propertyType").value.toLowerCase();
+      status.textContent = `${addresses.length} ${type} address${addresses.length === 1 ? "" : "es"} in ${loc.city}, ${loc.state}:`;
+      for (const a of addresses) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn-live text-sm text-[#1A2433] border border-[#D8D4C9] bg-white hover:bg-[#FBFBF9] hover:text-[#B91C1C] rounded px-3 py-1.5";
+        b.textContent = a.address;   // textContent on purpose: OSM data is untrusted
+        b.addEventListener("click", () => {
+          document.getElementById("address").value = a.address;
+          panel.classList.add("hidden");
+          document.getElementById("compForm").requestSubmit();
+        });
+        list.appendChild(b);
+      }
+      note.classList.remove("hidden");
+    }
+
+    async function findAddresses() {
+      const loc = await resolveMarket(input.value);
+      if (!loc) {
+        status.textContent = "Enter a city and state (e.g. Dallas, TX) or a 5-digit zip.";
+        return;
+      }
+      const type = document.getElementById("propertyType").value;
+      const cacheKey = `${loc.city.toLowerCase()}, ${loc.state}|${type}`;
+      const hit = aeCache[cacheKey];
+      if (hit && Date.now() - hit.ts < AE_TTL && hit.addresses.length) {
+        return render(hit.addresses, loc);
+      }
+      btn.disabled = true;
+      status.textContent = "Looking up addresses…";
+      list.textContent = "";
+      try {
+        let addresses = [];
+        try {
+          const r = await fetch(`/api/explore-addresses?city=${encodeURIComponent(loc.city)}&state=${loc.state}&type=${encodeURIComponent(type)}`);
+          if (r.ok) addresses = (await r.json()).addresses || [];
+        } catch (_) { /* corpus offline — the OSM top-up still answers */ }
+        if (addresses.length < 8) {
+          const exclude = new Set(addresses.map((a) => normStreetKey(a.address)));
+          addresses = addresses.concat(await overpassAddresses(loc.city, loc.state, type, exclude)).slice(0, 8);
+        }
+        if (addresses.length) aeCacheStore(cacheKey, addresses);
+        render(addresses, loc);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    link.addEventListener("click", () => {
+      panel.classList.toggle("hidden");
+      if (!panel.classList.contains("hidden")) input.focus();
+    });
+    btn.addEventListener("click", findAddresses);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); findAddresses(); }
+    });
+
+    // Deep link: /?explore=City,%20ST&type=Industrial opens the panel
+    // prefilled and fetches the list — never auto-runs a billed search. Lets
+    // market pages and campaigns point at the explorer with no server work.
+    try {
+      const qp = new URLSearchParams(location.search);
+      const ex = qp.get("explore");
+      if (ex) {
+        const sel = document.getElementById("propertyType");
+        const t = qp.get("type");
+        if (t && [...sel.options].some((o) => o.value === t)) {
+          sel.value = t;
+          syncSubjectFieldsToType();   // programmatic set fires no "change"
+        }
+        input.value = ex;
+        panel.classList.remove("hidden");
+        findAddresses();
+      }
+    } catch (_) { /* malformed query string — the app must still boot */ }
+  })();
 
   // ----------------------------------------------------------------------------
   // Smart property-type default — fills the type in for someone who forgot to

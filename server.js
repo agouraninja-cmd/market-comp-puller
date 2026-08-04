@@ -7384,6 +7384,65 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Address Explorer: corpus-backed address suggestions (see
+  // docs/superpowers/specs/2026-08-03-address-explorer-design.md). Returns up
+  // to 8 real, street-numbered addresses for a market+type so a visitor with
+  // no address in hand can still reach a report. Addresses ONLY — no prices,
+  // dates, or transactions — so it exposes nothing the Pro comp gate
+  // withholds; it reads as "buildings you could value", not comp data. The
+  // list is deliberately DETERMINISTIC (newest deal first, then alphabetical)
+  // so every visitor sees the same addresses and their clicks concentrate
+  // onto the same search-cache entries: first click bills, repeats are free.
+  // Zero Anthropic cost here; the browser tops up thin markets from OSM
+  // Overpass on its own. Failure-safe: errors answer 200 with an empty list.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/explore-addresses") {
+    const params = new URL(req.url, "http://localhost").searchParams;
+    const cityRaw = (params.get("city") || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const stateOk = (params.get("state") || "").trim().toUpperCase();
+    const typeIn = String(params.get("type") || "");
+    const typeOk = Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
+    if (!typeOk || !US_STATES.has(stateOk) || !/^[a-zA-Z][a-zA-Z .'\-]{1,39}$/.test(cityRaw)) {
+      return sendJson(res, 400, { error: "city, a two-letter state, and a valid property type are required." });
+    }
+    if (rateLimited("exploreaddr:" + clientIp(req), 30)) {
+      return sendJson(res, 429, { error: "Too many requests." });
+    }
+    (async () => {
+      const market = marketOf(`${cityRaw}, ${stateOk}`);
+      try {
+        const rows = await corpusRowsForMarket(market, typeOk, 200);
+        const seen = new Set();
+        const picked = [];
+        for (const r of rows) {
+          const a = String(r.address || "").trim();
+          // Same street-number rule as map pins / street view: a leading
+          // number that isn't a quantity, and never an aggregate row —
+          // a submarket blurb is not an address someone can value.
+          if (!/^\d+\s+(?!(sf|sq|sqft|acres?|units?)\b)/i.test(a) || isAggregateAddress(a)) continue;
+          // Dedupe on the street line alone (the market is fixed), with
+          // common suffixes normalized so "875 W State St" and "875 W State
+          // Street" collapse into one entry.
+          const key = a.split(",")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+            .replace(/\b(street|avenue|boulevard|drive|road|lane|court|place|parkway|highway)\b/g,
+              (w) => ({ street: "st", avenue: "ave", boulevard: "blvd", drive: "dr", road: "rd", lane: "ln", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy" }[w]));
+          if (seen.has(key)) continue;
+          seen.add(key);
+          picked.push({ address: a.includes(",") ? a : `${a}, ${market}`, dealDate: parseDealDate(r.deal_date) || 0 });
+        }
+        picked.sort((x, y) => (y.dealDate - x.dealDate) || x.address.localeCompare(y.address));
+        const addresses = picked.slice(0, 8).map((p) => ({ address: p.address, source: "corpus" }));
+        if (addresses.length) {
+          logEvent("explore_addresses", { prop_type: typeOk, market, cached: false, source: String(addresses.length) });
+        }
+        return sendJson(res, 200, { market, addresses });
+      } catch (e) {
+        console.error("explore-addresses error:", e.message);
+        return sendJson(res, 200, { market, addresses: [] });
+      }
+    })();
+    return;
+  }
+
   // --- Lead download (CSV). Disabled unless ADMIN_KEY is set. ---
   // referred_to is filled in manually (Supabase table editor) when a lead is
   // handed to a contributing broker; new leads arrive with it empty.

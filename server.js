@@ -7611,9 +7611,15 @@ const server = http.createServer((req, res) => {
   // never breaks over this. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-comps") {
     const params = new URL(req.url, "http://localhost").searchParams;
-    const address = (params.get("address") || "").trim().slice(0, 300);
+    const addressRaw = params.get("address") || "";
+    const address = addressRaw.trim().slice(0, 300);
     const typeIn = String(params.get("type") || "");
     const typeOk = Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
+    // The report's lookback, carried so this panel can resolve the SAME report
+    // id the $39 unlock was bought against — see the entitlements call below.
+    // Absent (an older client) simply yields a different hash, which fails
+    // closed to the locked count rather than opening the panel.
+    const months = params.get("months") || "";
     if (!address || !typeOk) {
       return sendJson(res, 400, { error: "address and a valid property type are required." });
     }
@@ -7662,7 +7668,17 @@ const server = http.createServer((req, res) => {
         // addresses included, no login required. Free users get the COUNT
         // instead: a locked number converts better than an absent panel, and
         // it is the same conversion logic as the locked comp rows.
-        const ent = await entitlementsFor(req);
+        // Ask about THIS report, not about the visitor in the abstract. Without
+        // the id a $39 buyer resolved to the free tier here and stayed locked
+        // out of the very panel whose CTA sold them the unlock — they paid and
+        // then hit the same paywall. Derived from the query, never accepted as
+        // an id: reportIdFor() hashes address|type|months exactly as /api/comps
+        // does, so this cannot unlock a report that was not bought.
+        // `addressRaw`, not the trimmed copy: /api/comps and /api/checkout both
+        // hash the address exactly as the body carried it, so trimming here
+        // would hash a different string for any address with stray whitespace
+        // and silently leave a paid report locked.
+        const ent = await entitlementsFor(req, reportIdFor({ address: addressRaw, type: typeOk, months }));
         if (ent.maxComps !== "all") {
           return sendJson(res, 200, { market, comps: [], locked_count: comps.length });
         }

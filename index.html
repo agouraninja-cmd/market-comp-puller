@@ -506,9 +506,18 @@
   <div id="pricingModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-2xl p-6 my-8">
       <h2 id="pricingTitle" class="text-lg font-semibold text-slate-900">Unlock the full comp set</h2>
+      <!-- Lead with the LOOKBACK, not the comp count. Measured 2026-08-03: two
+           searches in dense industrial markets (Dallas, Ontario CA) each
+           returned only four comps inside the free 12-month window, so "Pro
+           itemizes all of them" promised a longer list that Pro would not have
+           delivered — same four, nothing withheld. The ten-year window is the
+           thing that actually surfaces more transactions, so it goes first here
+           and in the bullet list. Don't reorder these back without re-checking
+           that claim against real thin-market reports. -->
       <p id="pricingSubtitle" class="text-sm text-slate-500 mt-1">
-        Free reports value your property off every comparable we find, but itemize only four of them.
-        Pro itemizes all of them — unlimited comps, as many as the search turns up, with the sources.
+        Free reports look back 12 months and itemize four of the comps found.
+        Pro widens the search to ten years — the change that actually surfaces more
+        transactions — and itemizes every one it finds, with the sources.
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
@@ -532,8 +541,8 @@
                number we don't control. Drop that qualifier only if the ask
                ceiling and searchBudgetFor() are actually raised. -->
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
-            <li>Unlimited comps — every comparable the search finds, itemized</li>
             <li>Look back up to 10 years, not 12 months</li>
+            <li>Unlimited comps — every comparable the search finds, itemized</li>
             <li>Unlimited CSV, image, PDF and Excel exports</li>
             <li>Address Explorer: real addresses to value in any market</li>
           </ul>
@@ -585,8 +594,15 @@
             <span class="text-2xl font-semibold text-[#1A2433]">$39</span>
             <span class="text-sm text-[#8A93A0]">once</span>
           </div>
+          <!-- Says plainly what this does NOT buy. computeEntitlements keeps
+               maxLookbackMonths on `pro` alone (a purchase is retroactive — it
+               unlocks a report that already exists, it does not re-run a wider
+               search), and the subtitle above now leads with the ten-year
+               window, so without this line a buyer could reasonably read the
+               $39 as buying that too. -->
           <p class="text-sm text-[#4C5665] mt-1">
             Unlimited comps on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this report</span> — every comparable the search found — plus its exports, for good. No subscription.
+            It unlocks this report as it stands; the 10-year lookback is Pro.
           </p>
         </div>
         <button type="button" data-plan="single_report"
@@ -7570,7 +7586,10 @@
     corpusOfferLocked = 0;
     renderCorpusOffer();
     if (!meta || meta.shared || meta.sample || !meta.address || !meta.type) return;
-    fetch(`/api/corpus-comps?address=${encodeURIComponent(meta.address)}&type=${encodeURIComponent(meta.type)}`)
+    // `months` rides along so the server can hash the same report id the $39
+    // unlock was bought against (reportIdFor / exportReportKey — same three
+    // fields). Without it a buyer stays locked out of this panel.
+    fetch(`/api/corpus-comps?address=${encodeURIComponent(meta.address)}&type=${encodeURIComponent(meta.type)}&months=${encodeURIComponent(meta.months || "")}`)
       .then((r) => (r.ok ? r.json() : { comps: [] }))
       .then((d) => {
         corpusOfferRows = Array.isArray(d.comps) ? d.comps : [];

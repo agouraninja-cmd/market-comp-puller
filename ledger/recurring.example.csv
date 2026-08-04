@@ -1,0 +1,27 @@
+# Fixed monthly costs. One line per subscription; the ledger expands it across
+# every month in the reporting window so you don't retype it twelve times.
+#
+# monthly_amount: enter a positive number. Cost categories are negated for you.
+# start_month / end_month: optional YYYY-MM. Leave blank for "the whole window".
+# Rows with monthly_amount 0 are ignored, so a 0.00 line costs nothing to keep —
+# and keeping it records that the figure was CHECKED and is genuinely zero,
+# which is different from never having looked.
+#
+# Valid category values (must match exactly):
+#   Legal & professional, Hosting, Database, Email, Domain, Maps / Street View, Other
+#
+# STATUS as of 2026-08-03: every service below is confirmed on a free tier, so
+# CompNinja's entire fixed cost base is $0 and the Anthropic API is its only
+# real expense. Revisit when any of the free-tier ceilings below is crossed.
+#
+category,vendor,description,monthly_amount,start_month,end_month,notes
+Hosting,Render,Web service plan,0.00,,,Free tier confirmed 2026-08-03. Paid plans start ~$7/mo; free instances also sleep when idle.
+Database,Supabase,Postgres project,0.00,,,Free tier confirmed 2026-08-03. Ceilings: 500MB database and pausing after ~7 days of inactivity.
+Email,Resend,Transactional email,0.00,,,Free tier confirmed 2026-08-03. Ceiling: 3,000 emails/mo. Only delivers to the owner address until a domain is verified.
+Maps / Street View,Google Cloud,Street View Static API,0.00,,,Free tier confirmed 2026-08-03. Ceiling: 10k photos/mo; a fully-hovered report uses ~6. A $5/mo budget alert is already set on the billing account.
+#
+# Domain: no custom domain — the site runs on Render's free subdomain
+# (market-comp-puller.onrender.com), so there is nothing to pay for. If a custom
+# domain is ever pointed at it, add a line here for the annual fee divided by 12.
+# Note the registrar account would be Jacob Adler's, not the owner's, so confirm
+# who actually pays it before booking the cost against CompNinja.

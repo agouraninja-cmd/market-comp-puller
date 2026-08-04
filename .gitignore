@@ -50,12 +50,6 @@ CompNinja*.xlsx
 # files carry monthly costs, the LLC fee, and (now that Stripe is live) revenue
 # and customer payment descriptions. The tooling and the *.example.csv templates
 # are tracked; the real books are not. Same split as .env / .env.example above.
-#
-# These rules were written on the `ledger` branch (8aefcba) and are duplicated
-# here deliberately: that branch is still unmerged, so until it lands, anyone
-# working from main has the real CSVs sitting untracked and one `git add -A`
-# away from being published. Keep both copies in step; the merge will no-op.
 ledger/manual-entries.csv
 ledger/recurring.csv
 compninja-ai-costs.csv
-

@@ -181,14 +181,16 @@ const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(proce
 
 // Rough per-search API cost, used ONLY for the /admin spend estimate — nothing
 // here reads a real invoice, so treat the tiles as a sanity check, not
-// accounting. A market (Explorer) search costs more because it always runs the
-// full 8-use web_search budget: the Explorer path never passes a corpus, so it
-// can't take the corpus-assisted discount a report search can. Both are
-// env-overridable as real Anthropic invoices come in.
-// 0.75 is an ESTIMATE for the 12-comp default (measured $0.60 at 8 comps,
-// scaled by the 8→10 search-budget rise) — recalibrate from a real invoice.
-const COST_REPORT_SEARCH = Number(process.env.COST_REPORT_SEARCH) > 0 ? Number(process.env.COST_REPORT_SEARCH) : 0.75;
-const COST_MARKET_SEARCH = Number(process.env.COST_MARKET_SEARCH) > 0 ? Number(process.env.COST_MARKET_SEARCH) : 0.75;
+// accounting. Explorer shares the getComps pipeline, so both prices track the
+// same measurement; Explorer just never takes the corpus-assisted discount
+// (its path never passes a corpus). Both are env-overridable.
+// 0.36 was MEASURED 2026-08-03 on a fresh 12-comp report search (8 searches,
+// 5,035 out, 45.9k cache-write + 121.9k cache-read in): $0.08 searches +
+// $0.172 cache-write + $0.037 cache-read + $0.076 output. Down from the
+// pre-caching ~$0.75 because the prompt cache_control (see callAnthropicOnce)
+// turns the ~167k of per-round re-read input into $0.30/MTok cache reads.
+const COST_REPORT_SEARCH = Number(process.env.COST_REPORT_SEARCH) > 0 ? Number(process.env.COST_REPORT_SEARCH) : 0.36;
+const COST_MARKET_SEARCH = Number(process.env.COST_MARKET_SEARCH) > 0 ? Number(process.env.COST_MARKET_SEARCH) : 0.36;
 // A corpus-assisted report search drops max_uses 10→3 (see searchBudgetFor), and
 // web_search is what costs money, so it lands near 3/10 of a full search.
 const CORPUS_HIT_COST_FACTOR = 3 / 10;

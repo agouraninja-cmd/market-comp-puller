@@ -882,7 +882,14 @@
           </button>
         </div>
       </form>
-      <div class="text-[12.5px] text-[#8A8577] mt-3">Free · No account required · An automated estimate, not an appraisal</div>
+      <div class="text-[12.5px] text-[#8A8577] mt-3">First report free · Free account for more · An automated estimate, not an appraisal</div>
+      <!-- Shown only once /api/config says this signed-out visitor's free
+           search is spent; sign-in/refreshProConfig hides it again. -->
+      <div id="guestSearchHint" class="hidden text-[12.5px] text-[#5A6473] mt-1">
+        You've used your free search.
+        <button id="guestHintSignIn" type="button" class="underline hover:text-[#1A2433]">Sign in free</button>
+        to keep searching.
+      </div>
     </div>
 
     <!-- My Desk view — its own /desk page (mutually exclusive with the home
@@ -2173,6 +2180,8 @@
     leadCaptureEnabled = Boolean(cfg.leadCapture);
     streetviewEnabled = Boolean(cfg.streetview);
     proConfig = cfg.pro || { enabled: false };
+    guestSearch = cfg.guestSearch || null;
+    renderGuestSearchHint();
     applyLookbackGating();
     // Safe here despite initGate() being called near the top of the script:
     // the await above yields, so `currentUser` and every billing control have
@@ -5936,6 +5945,8 @@
   }
 
   document.getElementById("signInLink").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("guestHintSignIn").addEventListener("click", () =>
+    openAcctModal("signup", "Create a free account to keep searching. It's free, no card needed."));
   document.getElementById("acctTabIn").addEventListener("click", () => setAcctMode("signin"));
   document.getElementById("acctTabUp").addEventListener("click", () => setAcctMode("signup"));
   document.getElementById("acctForgotLink").addEventListener("click", () => setAcctMode("forgot"));
@@ -7162,7 +7173,10 @@
       const r = await fetch("/api/config", { cache: "no-store" });
       const cfg = await r.json();
       proConfig = cfg.pro || { enabled: false };
+      // Absent for signed-in visitors, so signing in clears the hint here.
+      guestSearch = cfg.guestSearch || null;
     } catch (_) { /* keep the last known answer */ }
+    renderGuestSearchHint();
     refreshBillingUI();
     applyLookbackGating();
   }
@@ -8399,6 +8413,15 @@
   // limit described here is enforced server-side, so editing this object in
   // the console unlocks nothing but the visitor's own greyed-out controls.
   let proConfig = { enabled: false };
+  // Free-search state from /api/config: { limit, used } for a signed-out
+  // visitor when the guest gate is on, null otherwise. Presentation only —
+  // /api/comps enforces the cap server-side and answers signin_required.
+  let guestSearch = null;
+  function renderGuestSearchHint() {
+    const el = document.getElementById("guestSearchHint");
+    if (!el) return;
+    el.classList.toggle("hidden", !(guestSearch && guestSearch.used >= guestSearch.limit));
+  }
   let pendingExport = null;         // export action to run after the form submits
   let leadContext = "export";       // which ask the modal is making: "export" unlock or "bov" request
 
@@ -8928,9 +8951,20 @@
         throw new Error("Your session needs a password. Please unlock and try again.");
       }
       if (!res.ok) {
-        let detail = "";
-        try { detail = (await res.json())?.error || ""; } catch (_) {}
-        throw new Error(detail || `Request failed (${res.status}).`);
+        let payload = null;
+        try { payload = await res.json(); } catch (_) {}
+        // The guest search cap answers with signin_required — that's an ask,
+        // not an error, so it gets the account modal instead of the red card.
+        if (payload && payload.signin_required) {
+          hideLoadingCard();
+          pendingPortfolioRefresh = null;
+          guestSearch = guestSearch || { limit: 1, used: 1 };
+          guestSearch.used = guestSearch.limit;
+          renderGuestSearchHint();
+          openAcctModal("signup", "You've used your free search. Create a free account to keep searching. It's free, no card needed.");
+          return;
+        }
+        throw new Error((payload && payload.error) || `Request failed (${res.status}).`);
       }
 
       const ct = res.headers.get("content-type") || "";

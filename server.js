@@ -390,6 +390,111 @@ function rateLimited(ip, max = RATE_MAX, windowMs = RATE_WINDOW_MS) {
 }
 
 // ---------------------------------------------------------------------------
+// Guest search quota — every anonymous visitor gets GUEST_SEARCH_LIMIT free
+// report searches (default 1), then a FREE sign-in is required. A signup
+// funnel, not a paywall — spec in docs/superpowers/specs/
+// 2026-08-03-guest-search-cap-design.md. Tracked two ways and blocked when
+// EITHER fires: a durable ledger keyed by sha256(IP) (survives cleared
+// cookies), and the cn_guest cookie set once the ledger says the quota is
+// spent (survives IP changes). Cache hits count too — the funnel is the
+// point, not just API spend. Fails OPEN: a ledger error allows the search;
+// DAILY_SEARCH_CAP still backstops cost.
+// DDL (run in the Supabase SQL editor BEFORE deploying):
+//
+//   create table guest_search_quota (
+//     ip_hash text primary key,
+//     used integer not null default 0,
+//     first_ts timestamptz not null default now(),
+//     last_ts timestamptz not null default now()
+//   );
+// ---------------------------------------------------------------------------
+const GUEST_COOKIE = "cn_guest";
+const GUEST_COOKIE_MAX_AGE_SEC = 2 * 365 * 24 * 60 * 60;
+// GUEST_SEARCH_LIMIT: unset/1 = one free search per visitor; any integer N =
+// N free; 0 = sign-in required before any search; "off" = gate disabled
+// entirely, the app behaves exactly as it did before the gate existed. "off"
+// is the instant rollback lever on Render — an env edit, no deploy.
+const GUEST_LIMIT_RAW = String(process.env.GUEST_SEARCH_LIMIT ?? "1").trim().toLowerCase();
+const GUEST_SEARCH_LIMIT =
+  GUEST_LIMIT_RAW === "off" ? Infinity
+    : Number.isInteger(Number(GUEST_LIMIT_RAW)) && Number(GUEST_LIMIT_RAW) >= 0 ? Number(GUEST_LIMIT_RAW)
+      : 1;
+const GUEST_GATE_ON = GUEST_SEARCH_LIMIT !== Infinity;
+const GUEST_QUOTA_FILE = path.join(__dirname, "guest-quota.jsonl");
+const guestQuotaMem = new Map(); // ip_hash -> used; file-fallback store + outage buffer
+// Short-TTL read memo so /api/config (every page load) doesn't pay a DB read
+// per anonymous visit — the same reasoning that keeps the founding counter
+// out of /api/config entirely.
+const guestQuotaReadCache = new Map(); // ip_hash -> { used, ts }
+const GUEST_READ_TTL_MS = 60 * 1000;
+let guestQuotaFilePromise = null;
+function loadGuestQuotaFile() {
+  if (!guestQuotaFilePromise) {
+    guestQuotaFilePromise = readRowsFromFile(GUEST_QUOTA_FILE).then((rows) => {
+      for (const r of rows) {
+        if (r && r.ip_hash) guestQuotaMem.set(r.ip_hash, Math.max(guestQuotaMem.get(r.ip_hash) || 0, Number(r.used) || 0));
+      }
+    }).catch(() => {});
+  }
+  return guestQuotaFilePromise;
+}
+async function guestSearchesUsed(ipHash) {
+  await loadGuestQuotaFile();
+  const local = guestQuotaMem.get(ipHash) || 0;
+  const memo = guestQuotaReadCache.get(ipHash);
+  if (memo && Date.now() - memo.ts < GUEST_READ_TTL_MS) return Math.max(memo.used, local);
+  if (!DB_CONFIGURED) return local;
+  try {
+    const rows = await sbRequest("GET", `guest_search_quota?ip_hash=eq.${encodeURIComponent(ipHash)}&select=used&limit=1`);
+    const db = rows && rows[0] ? Number(rows[0].used) || 0 : 0;
+    if (guestQuotaReadCache.size > 5000) guestQuotaReadCache.clear(); // crude cap; repopulates on demand
+    guestQuotaReadCache.set(ipHash, { used: db, ts: Date.now() });
+    // The mem copy covers rows that fell back to the file during a DB outage.
+    return Math.max(db, local);
+  } catch (e) {
+    console.error("Guest quota read failed (failing open):", e.message);
+    return local;
+  }
+}
+// Fire-and-forget; `used` is the new total. Read-modify-write is fine at this
+// scale — one instance, and the mem copy was seeded by this request's read.
+function recordGuestSearch(ipHash, used) {
+  guestQuotaMem.set(ipHash, used);
+  guestQuotaReadCache.set(ipHash, { used, ts: Date.now() });
+  const now = new Date().toISOString();
+  const write = DB_CONFIGURED
+    ? sbRequest("POST", "guest_search_quota?on_conflict=ip_hash",
+      { ip_hash: ipHash, used, last_ts: now },
+      { prefer: "resolution=merge-duplicates,return=minimal" })
+    : Promise.reject(new Error("Supabase not configured"));
+  write.catch((e) => {
+    if (DB_CONFIGURED) console.error("Guest quota DB write failed — falling back to file:", e.message);
+    return fs.promises.appendFile(GUEST_QUOTA_FILE, JSON.stringify({ ip_hash: ipHash, used, ts: now }) + "\n").catch(() => {});
+  });
+}
+function setGuestCookie(res, req) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  // Append rather than assign — clobbering a session cookie set on the same
+  // response would be a silent sign-out (same rule as setAdminCookie).
+  const prior = res.getHeader("set-cookie");
+  const cookie = `${GUEST_COOKIE}=1; HttpOnly; SameSite=Lax; Path=/; Max-Age=${GUEST_COOKIE_MAX_AGE_SEC}${secure}`;
+  res.setHeader("set-cookie", prior ? [].concat(prior, cookie) : cookie);
+}
+// The request-shaped resolver /api/comps and /api/config share. Returns null
+// when the gate doesn't apply to this caller: gate off, signed in (any free
+// account clears it), or an admin (cookie or header).
+async function guestGateFor(req) {
+  if (!GUEST_GATE_ON) return null;
+  if (isAdminRequest(req)) return null;
+  const user = await getSessionUser(req);
+  if (user) return null;
+  const ipHash = sha256Hex(clientIp(req));
+  const cookieSpent = Boolean(parseCookies(req)[GUEST_COOKIE]);
+  const used = cookieSpent ? GUEST_SEARCH_LIMIT : await guestSearchesUsed(ipHash);
+  return { ipHash, used, cookieSpent, blocked: cookieSpent || used >= GUEST_SEARCH_LIMIT };
+}
+
+// ---------------------------------------------------------------------------
 // Accounts — email+password users, hashed session tokens, portfolio +
 // watchlist stores. Supabase when configured, one local JSON file otherwise.
 // DDL (run in the Supabase SQL editor; legacy service_role key already works):
@@ -4605,8 +4710,11 @@ function renderPrivacyPageHTML() {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets one essential cookie, <code>cn_session</code>, an httpOnly cookie that keeps ` +
-    `you signed in. Your browser's local storage holds preferences, report history, and map caches; ` +
+    `<p>The Service sets two essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `you signed in, and <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
+    `allowance for visitors without an account. For the same purpose the Service stores a one-way hashed ` +
+    `form of your IP address; the address itself is not retained. Neither cookie is used for advertising ` +
+    `or cross-site tracking. Your browser's local storage holds preferences, report history, and map caches; ` +
     `that data remains on your own device.</p>` +
 
     `<h2>6. Shared Report Links</h2>` +
@@ -6581,6 +6689,31 @@ const server = http.createServer((req, res) => {
             : { phase: "comp", n: evt.n, locked: true, attempt: evt.attempt };
         };
 
+        // Guest search cap: one free report per anonymous visitor, then a
+        // free sign-in (see guestGateFor). Checked before EVERY exit that
+        // serves a report — cache hits count, the funnel is the point — and
+        // consumed only when a report is actually served, so a failed search
+        // never burns the free one. The client keys off `signin_required`,
+        // never the status code.
+        const guestGate = internal ? null : await guestGateFor(req);
+        if (guestGate && guestGate.blocked) {
+          logEvent("signup_gate", { prop_type: typeOk, market: marketOf(addressOk) });
+          if (!guestGate.cookieSpent) setGuestCookie(res, req);
+          return sendJson(res, 403, {
+            error: "You've used your free search. Create a free account to keep searching. It's free, no card needed.",
+            signin_required: true,
+          });
+        }
+        // Runs on every serve exit below. The cookie is set only once the
+        // quota is now spent, and never on the SSE exit — those headers are
+        // already streaming, so /api/config sets it on the next page load.
+        const consumeGuestSearch = (headersOpen) => {
+          if (!guestGate) return;
+          const used = guestGate.used + 1;
+          recordGuestSearch(guestGate.ipHash, used);
+          if (!headersOpen && used >= GUEST_SEARCH_LIMIT) setGuestCookie(res, req);
+        };
+
         const cached = await getCachedSearch(cacheKey);
         if (cached) {
           // Legacy cache entries predate $/SF reconciliation — correct them at
@@ -6590,6 +6723,7 @@ const server = http.createServer((req, res) => {
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
+          consumeGuestSearch(false);
           return sendJson(res, 200, gate(cached));
         }
 
@@ -6609,6 +6743,7 @@ const server = http.createServer((req, res) => {
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
           harvestComps(typeOk, addressOk, dw.parent);
+          consumeGuestSearch(false);
           return sendJson(res, 200, gate(dw.derived));
         }
 
@@ -6668,6 +6803,7 @@ const server = http.createServer((req, res) => {
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan });
         maybePublishMarketSnapshot(typeOk, addressOk, result);
         harvestComps(typeOk, addressOk, result);
+        consumeGuestSearch(Boolean(sse));
         if (sse) return sse.finish("result", gate(result));
         return sendJson(res, 200, gate(result));
       } catch (err) {
@@ -8056,15 +8192,30 @@ const server = http.createServer((req, res) => {
     // second round trip. This is presentation only — every limit it describes
     // is already enforced server-side, so a visitor editing this response in
     // dev tools unlocks nothing but their own disabled buttons.
-    entitlementsFor(req).then((ent) => {
+    (async () => {
+      const ent = await entitlementsFor(req);
       // Per-visitor, not global: computeEntitlements reports status "disabled"
       // exactly when it was handed enabled:false, which is the case both when
       // PRO_ENABLED is off and when this visitor sits outside PRO_AUDIENCE.
       // Reading it back here keeps the UI in step with the routes without
       // resolving the session user a second time.
       const on = ent.status !== "disabled";
+      // The guest search cap's state rides along so the form can hint before
+      // a doomed search, and so the cn_guest cookie can sync HERE — the SSE
+      // report path can't set it (its headers are already streaming), but
+      // every page load passes through /api/config. Omitted entirely when
+      // the gate is off or the visitor is signed in; the DB read behind it
+      // is memoized 60s per IP. Presentation only, like everything else in
+      // this response — enforcement lives in /api/comps.
+      let guestSearch;
+      const gg = await guestGateFor(req);
+      if (gg) {
+        if (gg.blocked && !gg.cookieSpent) setGuestCookie(res, req);
+        guestSearch = { limit: GUEST_SEARCH_LIMIT, used: Math.min(gg.used, GUEST_SEARCH_LIMIT) };
+      }
       sendJson(res, 200, {
         authRequired: Boolean(APP_PASSWORD),
+        guestSearch,
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),
         pro: {
@@ -8090,7 +8241,7 @@ const server = http.createServer((req, res) => {
           graceUntil: ent.graceUntil,
         },
       });
-    }).catch(() => sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) }));
+    })().catch(() => sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) }));
     return;
   }
 
@@ -8779,6 +8930,9 @@ server.listen(PORT, () => {
     : "📈 Analytics logging on; the /admin dashboard needs ADMIN_KEY set to view it.");
   console.log(`🗄  Search cache: ${DB_CONFIGURED ? "Supabase" : path.basename(SEARCH_CACHE_FILE) + " (EPHEMERAL on most hosts)"}, ${SEARCH_CACHE_TTL_MS / 3600000}h TTL.`);
   console.log(`💵 Daily search cap: ${DAILY_SEARCH_CAP} billed searches/day (set DAILY_SEARCH_CAP to change).`);
+  console.log(GUEST_GATE_ON
+    ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`
+    : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);
   if (PRO_ENABLED) {
     console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
       `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);

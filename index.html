@@ -788,11 +788,12 @@
           <div class="rd-cell">
             <div class="flex items-baseline justify-between">
               <label class="rd-lab" for="address">Property address</label>
-              <!-- Pro-gated (applyExplorerGating). The label is rewritten rather
-                   than the button hidden: a locked feature nobody can see sells
-                   nothing, and this is the pricing modal's best entry point on
-                   the page. Stays exactly as written here while the tier is
-                   dark, which is the pre-Pro behavior PRO_ENABLED promises. -->
+              <!-- Pro-gated (applyExplorerGating). Free users don't see this
+                   link at all — the owner's call is that the Address Explorer
+                   is discovered only through the Upgrade-to-Pro card, which
+                   lists it as a Pro perk. Stays exactly as written here while
+                   the tier is dark, which is the pre-Pro behavior PRO_ENABLED
+                   promises. -->
               <button id="exploreAddrLink" type="button" class="text-xs text-[#8A93A0] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
             </div>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
@@ -4407,10 +4408,12 @@
     const panel = document.getElementById("exploreAddrPanel");
     if (!link || !panel) return;
     const allowed = addressExplorerAllowed();
-    // A locked explorer keeps its link but says what it costs. The lock glyph is
-    // text, not an icon font, so it survives the print stylesheet and copy/paste.
-    link.textContent = allowed ? "No address? Explore a market" : "🔒 Explore a market — Pro";
-    link.title = allowed ? "" : "Find real addresses to value in any market. Included with Pro.";
+    // Free tier: the link and panel disappear entirely. The Address Explorer
+    // is discovered only through the Upgrade-to-Pro card's feature list —
+    // no lock glyph or teaser on the search form. classList runs both ways
+    // because entitlements can flip mid-session (sign-in, upgrade, expiry).
+    link.classList.toggle("hidden", !allowed);
+    link.title = "";
     if (!allowed) panel.classList.add("hidden");
     if (allowed && runPendingExplore) {
       const run = runPendingExplore;
@@ -4577,7 +4580,8 @@
     }
 
     link.addEventListener("click", () => {
-      // Locked: the link becomes the sales pitch it is already labelled as,
+      // Locked: normally unreachable (the link is hidden for free users), but
+      // if a click lands in the gap before gating applies, route to pricing
       // rather than opening a panel whose every path ends in the same modal.
       if (!addressExplorerAllowed()) {
         panel.classList.add("hidden");

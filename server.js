@@ -6773,7 +6773,7 @@ try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
 // the page it links to.
 // ---------------------------------------------------------------------------
 async function hqSnapshot() {
-  const [analytics, submissions, dev, contacts] = (await Promise.allSettled([
+  const [analytics, submissions, dev, contacts, revenue] = (await Promise.allSettled([
     (async () => {
       // Same read + reducer /api/stats uses; the page shows the last-7-day
       // slice of its 30-day series.
@@ -6811,6 +6811,29 @@ async function hqSnapshot() {
     // Only the count crosses the wire — the rolodex rows themselves are PII
     // and stay behind /api/contacts.
     (async () => ({ count: (await readContacts()).length }))(),
+    (async () => {
+      // Money in. The billing tables are DB-only by design (no file
+      // fallback), so file mode is "unknown", not zero. Counts are facts
+      // about the tables and deliberately ignore PRO_ENABLED — a dark
+      // deployment still shows what has been sold.
+      if (!DB_CONFIGURED) return { db: false };
+      const [subs, purchases] = await Promise.all([
+        sbRequest("GET", "subscriptions?select=plan,status"),
+        sbRequest("GET", "report_purchases?select=purchased_at"),
+      ]);
+      const sl = Array.isArray(subs) ? subs : [];
+      const pl = Array.isArray(purchases) ? purchases : [];
+      const cut = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+      return {
+        db: true,
+        active: sl.filter((x) => x.status === "active").length,
+        atRisk: sl.filter((x) => x.status === "grace" || x.status === "past_due").length,
+        founding: sl.filter((x) => x.plan === "pro_annual_founding").length,
+        foundingLimit: FOUNDING_MEMBER_LIMIT,
+        purchases: pl.length,
+        purchases7d: pl.filter((x) => String(x.purchased_at || "").slice(0, 10) >= cut).length,
+      };
+    })(),
   ])).map((r) => r.status === "fulfilled" ? r.value
     : (console.error("hq source failed:", r.reason && r.reason.message), null));
   // The two smoke alarms, so the front door can never show calm numbers while
@@ -6827,7 +6850,7 @@ async function hqSnapshot() {
       schemaMismatch: CORPUS_HEALTH.schemaMismatch,
     },
   };
-  return { analytics, submissions, dev, contacts, alerts };
+  return { analytics, submissions, dev, contacts, revenue, alerts };
 }
 
 // Self-contained HQ page: same public-shell + key-gate pattern and Research
@@ -6963,8 +6986,8 @@ var MOS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
 function fmtDay(d){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(d||""));
   if(!m)return esc(d);return MOS[Number(m[2])-1]+" "+Number(m[3]);}
 function plural(n,one,many){return n+" "+(n===1?one:many);}
-function toolRow(href,name,head,sub){
-  return '<div class="tool"><a class="tool-name" href="'+href+'">'+name+'</a>'+
+function toolRow(href,name,head,sub,ext){
+  return '<div class="tool"><a class="tool-name" href="'+href+'"'+(ext?' target="_blank" rel="noopener"':"")+'>'+name+'</a>'+
     '<div class="tool-body"><div class="tool-num">'+head+'</div>'+
     (sub?'<div class="tool-sub">'+sub+'</div>':"")+'</div></div>';
 }
@@ -6995,6 +7018,18 @@ function render(d){
     sub="Leads, brokers, owners and vendors in the shared book.";
   }
   rows.push(toolRow("/contacts","Contacts",head,sub));
+  var r=d&&d.revenue;
+  head=DASH;sub="";
+  if(r&&r.db===true&&typeof r.active==="number"){
+    head=plural(r.active,"active subscription","active subscriptions");
+    var rb=[r.founding+" of "+r.foundingLimit+" founding seats taken",
+      plural(r.purchases,"report unlock","report unlocks")+(r.purchases7d?" ("+r.purchases7d+" this week)":"")];
+    if(r.atRisk)rb.push(plural(r.atRisk,"subscription","subscriptions")+" in payment grace");
+    sub=rb.join(" · ");
+  } else if(r&&r.db===false){
+    sub="Billing counts require Supabase.";
+  }
+  rows.push(toolRow("https://dashboard.stripe.com","Revenue",head,sub,true));
   el("tools").innerHTML=rows.join("");
 }
 // One red line per firing alarm, nothing when healthy. Wording mirrors

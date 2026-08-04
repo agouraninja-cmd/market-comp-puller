@@ -824,7 +824,17 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×
    the subject SF — the user's entry wins over the looked-up
    `subject_size_sqft`, and a looked-up size is auto-filled into the form
-   input as an editable override. NOI **never reaches the model or any public
+   input as an editable override. Since 2026-08-04 the browser also pre-fills
+   an OSM footprint-derived size estimate during the address-confirm dialog
+   (`maybeEstimateSize` in index.html: shoelace area × building:levels,
+   `fpSize.v1` cache, gated to verified street-numbered non-Land addresses,
+   labeled by `#sizeEstimateNote` and editable) — which doubles as a
+   search-budget cut, since a size that rides the request skips the model's
+   2-search size lookup. An Overpass outage is deliberately NOT cached as a
+   miss. The prompt's PRICED BUT UNSIZED COMPS rule is the server-side
+   sibling: a priced sale comp missing its size is worth one dedicated
+   search, verified to lift priced-comp counts on thin markets.
+   NOI **never reaches the model or any public
    surface**: the income-approach cross-check divides the browser-held NOI by
    the model's `market_cap_rate_range`, `/api/comps` never receives it, and
    `/api/share` strips it before publishing. The same rule covers **debt

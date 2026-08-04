@@ -486,6 +486,27 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   from the ephemeral fallback; **a console line alone was not the fix** (one was
   already logged on every failure and nobody tails Render's logs), which is why
   this surfaces in the dashboard instead.
+- **Upstream health (`UPSTREAM_HEALTH` + `upstreamError()` + `noteUpstreamFailure()`).**
+  Anthropic's error text is written for *us*, not for a customer, so it is never
+  passed through to the browser. On 2026-08-04 it was: the Console API credit
+  balance hit zero and every visitor — including people who had just paid $39 —
+  got "Anthropic API error (400). Your credit balance is too low ... purchase
+  credits", which reads as *their* billing problem and names a vendor they never
+  bought from. Both leak sites (the non-2xx at `callAnthropicOnce` and the
+  mid-stream `error` frame) now throw `upstreamError()`, which carries
+  `.message` for the log and `.userMessage` for the browser; `clientErrorMessage()`
+  at the two handler catches (`/api/comps`, `/api/explore-market`) is the only
+  thing that decides what a visitor reads. It deliberately passes `.message`
+  through when there is no `.userMessage`, because most errors here are ours and
+  are already good customer copy ("The search took too long and was stopped.").
+  429/529 gets a "busy, try again in a minute" line; everything else gets
+  "temporarily unavailable". The real cause goes to `/api/stats` as `upstream`,
+  to a red `/admin` banner **above** the corpus one (when this fires nothing else
+  on the page matters — no search is completing at all), and, for the billing
+  class only, to one email per process. **API credits are prepaid and billed to
+  the Console org that owns `ANTHROPIC_API_KEY`; no Claude Pro/Team subscription,
+  comped or otherwise, funds them.** Recovery is buying credits — nothing to
+  redeploy. Counters reset on restart: a smoke alarm, not accounting.
 - **Corpus-first retrieval** (the cost saver, not a route): on a cache *miss*,
   before paying for a fresh web search, `retrieveCorpusComps()` pulls comps
   already harvested for that market+type. Rows count as *usable* when the

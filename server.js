@@ -3136,6 +3136,86 @@ function makeFieldExtractor(key, onValue) {
   };
 }
 
+// --- Upstream (Anthropic) health --------------------------------------------
+// The model call is the one dependency whose failures are written by somebody
+// else and addressed to *us*, not to a customer. We used to pass that text
+// straight through, which on 2026-08-04 put "Anthropic API error (400). Your
+// credit balance is too low ... purchase credits" in front of every visitor,
+// including people who had just paid $39: it reads as *their* billing problem,
+// it names a vendor they never bought from, and it says nothing they can act
+// on. So an upstream failure now carries two messages — `.message` for the log
+// and `.userMessage` for the browser — and the real cause is routed to the
+// owner instead, because the customer is the one person who cannot fix it.
+const UPSTREAM_HEALTH = {
+  failures: 0,        // upstream non-2xx since the last restart
+  billing: false,     // credits exhausted / key not entitled — searches are DOWN
+  lastStatus: null,
+  lastError: null,
+  lastErrorAt: null,
+};
+let upstreamAlertSent = false;   // one email per process, not one per request
+
+// A credit-exhausted org 400s on every call, so this is a *total* outage of the
+// only thing the product does, and it arrives with no Stripe event and no
+// deploy to notice. It gets the same treatment as the corpus alarm (dashboard
+// banner, because nobody tails Render's logs) plus a mail, because unlike a
+// frozen corpus this one is losing sales by the minute.
+function noteUpstreamFailure(status, detail) {
+  const msg = String(detail || "");
+  UPSTREAM_HEALTH.failures += 1;
+  UPSTREAM_HEALTH.lastStatus = status;
+  UPSTREAM_HEALTH.lastError = msg.slice(0, 300);
+  UPSTREAM_HEALTH.lastErrorAt = new Date().toISOString();
+
+  // 401/403 = key revoked or not entitled; the 400 that says "credit balance"
+  // is the prepaid balance hitting zero. Both mean *no search can succeed*,
+  // which is a different emergency from a 429 or a one-off 500.
+  const billing = status === 401 || status === 403 ||
+    /credit balance|purchase credits|billing|payment/i.test(msg);
+  if (!billing) {
+    console.error(`Anthropic call failed (${status}): ${msg.slice(0, 200)}`);
+    return;
+  }
+
+  UPSTREAM_HEALTH.billing = true;
+  console.error(
+    `Anthropic API is refusing every call for BILLING reasons (${status}). Comp search is ` +
+    `DOWN site-wide until the Console org that owns ANTHROPIC_API_KEY has credits again — ` +
+    `console.anthropic.com -> Plans & Billing. A comped Claude Pro/Team seat does not fund ` +
+    `this; API credits are a separate prepaid balance. Detail: ${msg.slice(0, 200)}`);
+  if (upstreamAlertSent) return;
+  upstreamAlertSent = true;
+  sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja is DOWN: Anthropic API billing",
+    `Every comp search is failing. The Anthropic API returned ${status}:\n\n` +
+    `  ${msg.slice(0, 300)}\n\n` +
+    `This is the Console API credit balance for the org that owns ANTHROPIC_API_KEY, which is\n` +
+    `billed separately from any Claude Pro/Team subscription — a comped seat does not cover it.\n\n` +
+    `Fix: console.anthropic.com -> Plans & Billing -> buy credits, and turn on auto-reload so\n` +
+    `this cannot happen silently again. Nothing needs redeploying; the next search will work.\n\n` +
+    `Customers are currently seeing a generic "temporarily unavailable" message, not this one.`);
+}
+
+// The browser gets a message about *our* service, in our voice, that tells the
+// reader what to do next. Never the upstream text.
+function upstreamError(status, detail) {
+  noteUpstreamFailure(status, detail);
+  const err = new Error(`Anthropic API error (${status}). ${detail || ""}`.trim());
+  err.upstream = true;
+  err.userMessage = (status === 429 || status === 529)
+    ? "Our comp search is unusually busy right now. Please try again in a minute."
+    : "Comp search is temporarily unavailable. The team has been alerted — please try again shortly.";
+  return err;
+}
+
+// The single place that decides what a caught error is allowed to say to a
+// visitor. Most errors here are written by us and are already good customer
+// copy ("The search took too long and was stopped."), so this deliberately
+// passes `.message` through and only overrides where `.userMessage` was set.
+function clientErrorMessage(err) {
+  if (err && err.userMessage) return err.userMessage;
+  return err && err.message ? err.message : "Unknown server error.";
+}
+
 // One no-tools follow-up call that asks the model to re-emit a malformed
 // report as valid JSON — rescuing the ~$0.35 search already paid for at the
 // price of a small completion (~$0.05, ~40s) instead of solo()'s full
@@ -3274,7 +3354,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     clearTimeout(timer);
     let detail = "";
     try { detail = (await r.json())?.error?.message || ""; } catch (_) {}
-    throw new Error(`Anthropic API error (${r.status}). ${detail}`.trim());
+    throw upstreamError(r.status, detail);
   }
 
   let text = "";
@@ -3305,7 +3385,12 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     try {
       for await (const ev of sseFrames(r.body, () => controller.abort())) {
         if (ev.type === "error") {
-          throw new Error(`Anthropic stream error: ${(ev.error && ev.error.message) || "unknown"}`);
+          // A mid-stream error carries the same vendor-authored text as a
+          // non-2xx, just after the 200 — so it goes through the same door.
+          // `overloaded_error` is the 529 that never got a status line.
+          const e = ev.error || {};
+          throw upstreamError(e.type === "overloaded_error" ? 529 : "stream",
+                              e.message || e.type || "unknown");
         }
         if (ev.type === "message_start") {
           usage = (ev.message && ev.message.usage) || {};
@@ -5181,6 +5266,10 @@ function aggregateStats(rows) {
         pct: a.length ? Math.round((n("applied") / a.length) * 1000) / 10 : 0,
       };
     })(),
+    // Anthropic call failures since the last restart. Customers only ever see
+    // a generic "temporarily unavailable" now, so this is the only place the
+    // real reason shows up outside the logs.
+    upstream: { ...UPSTREAM_HEALTH },
     corpus: {
       hits: corpusHits,
       billedReport: billedReport.length,
@@ -5358,6 +5447,27 @@ function render(d){
   var bars=d.daily.map(function(x){var bh=Math.round(x.billed/max*120),ch=Math.round(x.cached/max*120);
     return "<div class=col title='"+x.date+": "+x.billed+" billed, "+x.cached+" cached'><div class=c style='height:"+ch+"px'></div><div class=b style='height:"+bh+"px'></div></div>";}).join("");
   var xax=d.daily.map(function(x,i){return "<div>"+((i%5===0)?x.date.slice(5):"")+"</div>";}).join("");
+  // Upstream alarm, ABOVE the corpus one: when this fires nothing else on the
+  // page matters, because no search is completing at all. Absent on a stale
+  // /api/stats from before this existed.
+  var u=d.upstream||{};
+  var upAlarm = (u.failures||0) ? (
+    "<div class='card alarm'>"+
+    "<h2>"+
+    (u.billing?"Comp search is DOWN &mdash; Anthropic API billing":"Anthropic calls are failing")+"</h2>"+
+    (u.billing
+      ? "<p><b>The API credit balance is exhausted or the key is not entitled, so every search "+
+        "is failing site-wide.</b> Buy credits at <code>console.anthropic.com</code> &rarr; Plans &amp; "+
+        "Billing for the org that owns <code>ANTHROPIC_API_KEY</code>, and switch on auto-reload. "+
+        "This is <b>not</b> covered by a Claude Pro or Team subscription &mdash; API credits are a "+
+        "separate prepaid balance. No redeploy needed; the next search picks it up.</p>"
+      : "<p>Some Anthropic calls are returning errors. If these are 429s or 529s the site is "+
+        "just busy and retries absorb it; anything else is worth reading below.</p>")+
+    "<p class=muted>"+esc(u.failures||0)+" failure(s) since the last restart"+
+    (u.lastStatus?" &middot; last status "+esc(u.lastStatus):"")+
+    (u.lastErrorAt?" &middot; last at "+esc(u.lastErrorAt):"")+".</p>"+
+    (u.lastError?"<p class=muted style='word-break:break-word'>"+esc(u.lastError)+"</p>":"")+
+    "</div>") : "";
   // Corpus persistence alarm. Sits above the tiles because a 0% corpus hit
   // rate is meaningless until you know whether the corpus is even being
   // written — the failure this catches froze the corpus for weeks unnoticed.
@@ -5377,6 +5487,7 @@ function render(d){
     (h.lastError?"<p class=muted style='word-break:break-word'>"+esc(h.lastError)+"</p>":"")+
     "</div>") : "";
   document.getElementById("dash").innerHTML=
+    upAlarm+
     alarm+
     "<div class=tiles>"+
     "<div class=tile><div class=k>Searches</div><div class=v>"+t.searches+"</div></div>"+
@@ -7110,7 +7221,9 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, gate(result));
       } catch (err) {
         console.error("Error handling /api/comps:", err);
-        const msg = err && err.message ? err.message : "Unknown server error.";
+        // The log above keeps the full upstream detail; the browser gets only
+        // what clientErrorMessage() allows (see the upstream-health note).
+        const msg = clientErrorMessage(err);
         // Once the SSE headers are out there is no status code left to send —
         // deliver the SAME {error} shape as the JSON path so the client's
         // existing catch/retry card handles it with no new error UI.
@@ -7212,8 +7325,7 @@ const server = http.createServer((req, res) => {
         return sendJson(res, status, out);
       } catch (err) {
         console.error("Error handling /api/explore-market:", err);
-        const msg = err && err.message ? err.message : "Unknown server error.";
-        return sendJson(res, 502, { error: msg });
+        return sendJson(res, 502, { error: clientErrorMessage(err) });
       }
     });
     return;

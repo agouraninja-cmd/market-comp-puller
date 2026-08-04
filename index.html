@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Free Commercial Real Estate Comps | CompNinja</title>
+  <title>Commercial Real Estate Comps | CompNinja</title>
   <meta name="description" content="Enter any commercial property address and get recent sale and lease comps in under a minute. Free reports with maps, price per square foot, and PDF export." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://market-comp-puller.onrender.com/" />
@@ -11,7 +11,7 @@
   <!-- Social sharing previews -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CompNinja" />
-  <meta property="og:title" content="Free Commercial Real Estate Comps" />
+  <meta property="og:title" content="Commercial Real Estate Comps" />
   <meta property="og:description" content="Enter any commercial property address and get recent comparable sales and lease comps in under a minute. Free, no subscription." />
   <meta property="og:url" content="https://market-comp-puller.onrender.com/" />
   <meta property="og:locale" content="en_US" />
@@ -19,7 +19,7 @@
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Free Commercial Real Estate Comps" />
+  <meta name="twitter:title" content="Commercial Real Estate Comps" />
   <meta name="twitter:description" content="Recent comparable sales and lease comps for any commercial property. Free, in under a minute." />
   <meta name="twitter:image" content="https://market-comp-puller.onrender.com/og-image.png" />
   <!-- Structured data for search engines -->
@@ -218,6 +218,10 @@
 
     /* Smooth reveal when the subject-property section is expanded. */
     details[open] > div { animation: fadeIn .3s ease-out; }
+
+    /* Dropdown open fade (header menus, market-explorer results). The animation
+       re-runs on every display:none -> shown flip, so closes need no cleanup. */
+    .dd-fade { animation: fadeIn .2s ease-out; }
 
     /* Search-history "show all" toggle. The chevron rule above is scoped to
        #compForm, so style this summary as a quiet link and drop the native
@@ -484,13 +488,14 @@
         </div>
       </form>
       <div id="acctImport" class="hidden">
-        <p class="text-sm text-slate-600 mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser — import them into your portfolio?</p>
+        <p class="text-sm text-slate-600 mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser. Import them into your portfolio?</p>
         <div class="flex gap-2 mt-3">
           <button id="acctImportYes" type="button" class="btn-live flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">Import</button>
           <button id="acctImportNo" type="button" class="flex-1 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg">Skip</button>
         </div>
       </div>
-      <p class="text-xs text-slate-400 mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.</p>
+      <p class="text-xs text-slate-400 mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.
+        <span id="acctTos" class="hidden">By creating an account you agree to the <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms of Service</a> and <a href="/privacy" target="_blank" class="underline text-slate-500 hover:text-slate-700">Privacy Policy</a>.</span></p>
     </div>
   </div>
 
@@ -501,9 +506,21 @@
   <div id="pricingModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-2xl p-6 my-8">
       <h2 id="pricingTitle" class="text-lg font-semibold text-slate-900">Unlock the full comp set</h2>
+      <!-- Lead with the LOOKBACK, not the comp count. Measured 2026-08-03 on the
+           then-12-month free window: dense industrial markets (Dallas, Ontario
+           CA, Phoenix) each returned four or fewer comps, so "Pro itemizes all
+           of them" promised a longer list Pro would not have delivered — same
+           four, nothing withheld. The free window was widened to 36 months on
+           2026-08-04 partly to fix that (see FREE_MAX_LOOKBACK_MONTHS), which
+           gives the comp gate something real to hold back; the ten-year window
+           is still what surfaces the most transactions, so it stays first here
+           and in the bullet list. These numbers are hard-coded copy — if
+           FREE_MAX_LOOKBACK_MONTHS moves again, this paragraph, the Pro bullet
+           and both plan-card strings all have to move with it. -->
       <p id="pricingSubtitle" class="text-sm text-slate-500 mt-1">
-        Free reports value your property off every comparable we find — but itemize only four of them.
-        Pro shows the whole list, with the sources.
+        Free reports look back 3 years and itemize four of the comps found.
+        Pro widens the search to ten years — the change that actually surfaces more
+        transactions — and itemizes every one it finds, with the sources.
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
@@ -514,20 +531,29 @@
             <span class="text-2xl font-semibold text-[#1A2433]">$129</span>
             <span class="text-sm text-[#8A93A0]">/month</span>
           </div>
-          <!-- Sell only what ships. Unlimited exports and report branding are
-               real Pro entitlements in entitlements.js, but neither is BUILT:
-               nothing writes export_usage (so free is uncapped too) and there
-               is no branding UI at all. Both bullets come back when the
-               features do — see phase 8-9 in PRO-BILLING-SETUP.md. -->
+          <!-- Sell only what ships. Report branding is a real entitlement in
+               entitlements.js but has NO UI at all, so it stays off this list
+               until something actually draws a logo. The exports bullet came
+               back on 2026-08-03 when the monthly cap became real. -->
+          <!-- "Unlimited comps" is a claim about the GATE, not about search
+               depth: entitlements.js returns maxComps "all", so Pro is never
+               shown a shortened list. The search itself still asks for up to
+               12 (server.js's maxCompsOk) and the anti-padding prompt rule
+               means a thin market returns fewer — which is why the bullet is
+               qualified "as many as the search finds" rather than promising a
+               number we don't control. Drop that qualifier only if the ask
+               ceiling and searchBudgetFor() are actually raised. -->
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
-            <li>Every comparable, itemized — not just four</li>
-            <li>Look back up to 10 years, not 12 months</li>
+            <li>Look back up to 10 years, not 3</li>
+            <li>Unlimited comps — every comparable the search finds, itemized</li>
+            <li>Unlimited CSV, image, PDF and Excel exports</li>
+            <li>Address Explorer: real addresses to value in any market</li>
           </ul>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-4 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
             Upgrade to Pro
           </button>
-          <p class="text-xs text-[#8A93A0] mt-2">Cancel any time — access runs to the end of the period you paid for.</p>
+          <p class="text-xs text-[#8A93A0] mt-2">Cancel any time; access runs to the end of the period you paid for.</p>
         </div>
 
         <!-- Founding annual. Hidden unless seats remain. -->
@@ -556,9 +582,44 @@
         </div>
       </div>
 
+      <!-- Single-report unlock. Hidden unless there is a GATED report on
+           screen to buy — updateSingleReportTile() owns that, and a single-report button
+           with no report attached has nothing to unlock and no id to send.
+           Deliberately a full-width strip under the grid rather than a third
+           column: it is the lesser, contextual offer, and this way the
+           founding tile's show/hide logic is left alone.
+           Every class here is already in the vendored tailwind.css, so this
+           needs no Tailwind regen. Check before adding one. -->
+      <div id="singleReportTile" class="hidden border border-[#D8D4C9] rounded-lg p-4 mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <span class="rd-lab">Just this report</span>
+          <div class="mt-1">
+            <span class="text-2xl font-semibold text-[#1A2433]">$20</span>
+            <span class="text-sm text-[#8A93A0]">once</span>
+          </div>
+          <!-- What this buys is now every Pro capability that is SCOPED TO A
+               PROPERTY: all comps, the ten-year window, unlimited exports,
+               branding — for this address and type, permanently. The earlier
+               "the 10-year lookback is Pro" line was removed because it is no
+               longer true; a purchase carries PRO_MAX_LOOKBACK_MONTHS since the
+               report id stopped hashing the lookback (see reportIdFor).
+               The one Pro capability deliberately NOT included is the Address
+               Explorer, because it finds the NEXT property and cannot be scoped
+               to a report — so it stays the reason to subscribe. If that ever
+               changes, this copy and canExploreAddresses move together. -->
+          <p class="text-sm text-[#4C5665] mt-1">
+            Everything Pro gives you on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this property</span> — every comparable, the full 10-year history, and unlimited exports — permanently, with no subscription.
+          </p>
+        </div>
+        <button type="button" data-plan="single_report"
+          class="pricing-buy btn-live shrink-0 w-full sm:w-auto bg-white border border-[#D8D4C9] hover:bg-slate-50 text-[#1A2433] font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+          Unlock this report
+        </button>
+      </div>
+
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
       <p class="text-xs text-[#8A93A0] mt-4">
-        Prices in USD. A one-off $39 unlock for a single report is coming — for now Pro is the only way to see the full list.
+        Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms</a>.
       </p>
       <button id="pricingCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-2 mt-2">Not now</button>
     </div>
@@ -569,7 +630,7 @@
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-8">
       <div id="compFormWrap">
         <h2 class="text-lg font-semibold text-slate-900">Submit a comp</h2>
-        <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission. Approved comps carry your firm's name in every matching report and on our public market pages — and when an owner in your market requests a Broker Opinion of Value, contributing brokers are who we reach out to first.</p>
+        <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission. Approved comps carry your firm's name in every matching report and on our public market pages, and when an owner in your market requests a Broker Opinion of Value, contributing brokers are who we reach out to first.</p>
         <form id="compForm2" class="space-y-3">
           <div class="rd-lab">Your details</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -632,7 +693,7 @@
       <div id="compSuccess" class="hidden text-center py-6">
         <div class="text-3xl mb-2">🤝</div>
         <h2 class="text-lg font-semibold text-slate-900">Thanks, we got it.</h2>
-        <p class="text-sm text-slate-500 mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit — and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
+        <p class="text-sm text-slate-500 mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit, and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
         <p class="text-xs text-slate-400 mt-2">Tip: create a free CompNinja account with this same email to track your submissions and see when reports cite your comps.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Submit another</button>
@@ -646,17 +707,18 @@
   <div id="confirmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
       <div class="rd-lab">Confirm property</div>
-      <h2 class="text-lg font-semibold text-slate-900 mt-1">Is this the property you're looking for?</h2>
+      <h2 id="confirmHeading" class="text-lg font-semibold text-slate-900 mt-1">Is this the property you're looking for?</h2>
       <p class="text-sm text-slate-500 mt-3">You searched for:</p>
       <p id="confirmTyped" class="text-sm font-medium text-slate-900"></p>
+      <p id="confirmNoMatch" class="hidden text-sm text-[#B91C1C] mt-2">We couldn't find this address on any map. Check the street number, city, and state; a mistyped address returns comps for the wrong market.</p>
       <div id="confirmMatchedWrap" class="hidden mt-2">
         <p class="text-sm text-slate-500">We matched it to:</p>
         <p id="confirmMatched" class="text-sm font-medium text-slate-900"></p>
       </div>
       <div id="confirmMap" class="mt-4 h-[200px] rounded-lg border border-slate-200 overflow-hidden"></div>
       <div class="mt-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-        <button id="confirmEditBtn" type="button" class="text-sm text-[#5A6473] hover:text-[#1A2433]">No — edit address</button>
-        <button id="confirmRunBtn" type="button" class="btn-live inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded">Yes — run the report</button>
+        <button id="confirmEditBtn" type="button" class="text-sm text-[#5A6473] hover:text-[#1A2433]">No, edit address</button>
+        <button id="confirmRunBtn" type="button" class="btn-live inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded">Yes, run the report</button>
       </div>
     </div>
   </div>
@@ -671,19 +733,31 @@
         </svg>
         <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </a>
-      <nav class="flex items-center gap-6 text-[13.5px] text-[#5A6473]">
-        <a href="/markets" class="hover:text-[#1A2433]">Markets</a>
-        <a href="/brokers" class="hover:text-[#1A2433]">Brokers</a>
-        <a href="/how-it-works" class="hover:text-[#1A2433] hidden sm:inline">How it works</a>
-        <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
-             unset there is nothing to sell and the link would dead-end. -->
-        <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
+      <nav class="flex items-center gap-4 sm:gap-6 text-[13.5px] text-[#5A6473]">
+        <!-- The browse links live behind one dropdown so the bar stays three
+             items on every screen; My Desk and Sign in are actions and stay
+             visible. Mirrored (as a no-JS <details>) on the server-rendered
+             market / brokers / how-it-works headers in server.js. -->
+        <div id="exploreMenuWrap" class="relative">
+          <button id="exploreMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
+            class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
+            <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Markets</a>
+            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Brokers</a>
+            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">How it works</a>
+            <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
+                 unset there is nothing to sell and the link would dead-end. -->
+            <button id="pricingLink" type="button" class="hidden block w-full text-left px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Pricing</button>
+          </div>
+        </div>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
-          <div id="acctMenu" class="hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
+          <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
@@ -700,9 +774,8 @@
   <!-- Hero -->
   <div id="hero" class="no-print bg-[#FBFBF9]">
     <div class="max-w-5xl mx-auto px-4 pt-12 sm:pt-14 pb-4">
-      <div class="rd-kicker enter enter-1">Commercial Comp Reports</div>
-      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] mt-3 max-w-[22ch] enter enter-1">Know what the building is worth before you make the call.</h1>
-      <p class="text-[#4C5665] mt-4 text-[16.5px] max-w-[58ch] enter enter-1">Recent sale and lease comparables for any U.S. commercial property — searched live from public records and listings, every comp cited, delivered in about a minute.</p>
+      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] max-w-[22ch] enter enter-1">Know what the building is worth before you make the call.</h1>
+      <p class="text-[#4C5665] mt-4 text-[16.5px] max-w-[58ch] enter enter-1">Recent sale and lease comparables for any U.S. commercial property, searched live from public records and listings, every comp cited, delivered in about a minute.</p>
     </div>
   </div>
 
@@ -713,7 +786,16 @@
       <form id="compForm" class="rd-form">
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[2.2fr_1fr]">
           <div class="rd-cell">
-            <label class="rd-lab" for="address">Property address</label>
+            <div class="flex items-baseline justify-between">
+              <label class="rd-lab" for="address">Property address</label>
+              <!-- Pro-gated (applyExplorerGating). Free users don't see this
+                   link at all — the owner's call is that the Address Explorer
+                   is discovered only through the Upgrade-to-Pro card, which
+                   lists it as a Pro perk. Stays exactly as written here while
+                   the tier is dark, which is the pre-Pro behavior PRO_ENABLED
+                   promises. -->
+              <button id="exploreAddrLink" type="button" class="text-xs text-[#8A93A0] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
+            </div>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
           </div>
           <div class="rd-cell">
@@ -728,6 +810,22 @@
             </select>
             <div id="typeAutoNote" class="text-xs text-[#8A93A0] mt-1"></div>
           </div>
+        </div>
+        <!-- Address Explorer — hands a visitor with no address a stable list of
+             real ones (see docs/superpowers/specs/2026-08-03-address-explorer-
+             design.md). Corpus first via /api/explore-addresses, browser-side
+             OSM Overpass top-up for thin markets. The list is deterministic on
+             purpose: everyone exploring a market sees the same addresses, so
+             repeat clicks land on the 30-day search cache instead of billing. -->
+        <div id="exploreAddrPanel" class="hidden rd-row px-4 py-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="exploreAddrInput" type="text" placeholder="City, ST or 5-digit zip" aria-label="City and state, or zip code"
+              class="w-56 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            <button id="exploreAddrBtn" type="button"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded px-3 py-1.5">Find addresses</button>
+            <span id="exploreAddrStatus" class="text-xs text-[#8A93A0]"></span>
+          </div>
+          <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
           <div class="rd-cell">
@@ -762,7 +860,7 @@
         <!-- Subject property (optional; size auto-pulled from public records when blank) -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(size, price, NOI — optional, sharpens the estimate)</span></span>
+            <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(size, price, NOI: optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
             <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</p>
@@ -774,6 +872,7 @@
                   <span class="text-sm text-slate-400 shrink-0">to</span>
                   <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
+                <p id="sizeEstimateNote" class="hidden text-xs text-slate-500 mt-1">Estimated from the building's footprint - edit if it's off.</p>
               </div>
               <div>
                 <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
@@ -793,9 +892,10 @@
           </div>
         </details>
 
-        <!-- Submit row; docks to the bottom of the screen on phones. On desktop the
-             red button sits on the right, per the approved mockup. -->
-        <div class="sticky bottom-0 px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3 sm:static">
+        <!-- Submit row; stays in normal flow on phones (no longer docks to the
+             viewport bottom - the owner found that motion distracting). On
+             desktop the red button sits on the right, per the approved mockup. -->
+        <div class="static px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
           <button id="submitBtn" type="submit"
             class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Run a report</span>
@@ -806,7 +906,14 @@
           </button>
         </div>
       </form>
-      <div class="text-[12.5px] text-[#8A8577] mt-3">Free · No account required · An automated estimate, not an appraisal</div>
+      <div class="text-[12.5px] text-[#8A8577] mt-3">First report free · Free account for more · An automated estimate, not an appraisal</div>
+      <!-- Shown only once /api/config says this signed-out visitor's free
+           search is spent; sign-in/refreshProConfig hides it again. -->
+      <div id="guestSearchHint" class="hidden text-[12.5px] text-[#5A6473] mt-1">
+        You've used your free search.
+        <button id="guestHintSignIn" type="button" class="underline hover:text-[#1A2433]">Sign in free</button>
+        to keep searching.
+      </div>
     </div>
 
     <!-- My Desk view — its own /desk page (mutually exclusive with the home
@@ -846,7 +953,7 @@
 
       <!-- Signed-out prompt for the account-backed areas -->
       <div id="deskSignIn" class="hidden mt-8 border border-[#D8D4C9] rounded-lg bg-white p-4">
-        <p class="text-sm text-[#4C5665]">Sign in to track a portfolio of properties and watch markets for new comps — free.</p>
+        <p class="text-sm text-[#4C5665]">Sign in to track a portfolio of properties and watch markets for new comps, free.</p>
         <button id="deskSignInBtn" type="button"
           class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
       </div>
@@ -892,7 +999,7 @@
           <a id="brokerProfileLink" class="hidden text-[#B91C1C] underline" href="#" target="_blank" rel="noopener">View profile</a>
           <span id="brokerProfileErr" class="hidden text-red-600 text-xs"></span>
         </div>
-        <p class="text-xs text-[#8A93A0] mt-1.5">Your public profile shows your name, firm, and contribution stats — never your email or phone.</p>
+        <p class="text-xs text-[#8A93A0] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
       </div>
 
       <!-- Plan + billing. Shown only when the deployment actually sells
@@ -908,6 +1015,10 @@
               class="hidden btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Upgrade to Pro</button>
             <button id="billingPortalBtn" type="button"
               class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
+            <!-- Admins only. Comped Pro hides every paywall from the one team
+                 that needs to see it work; this drops it for the session. -->
+            <button id="billingAdminOffBtn" type="button"
+              class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">View as a free user</button>
           </div>
           <p id="billingError" class="hidden text-sm text-red-600 mt-2"></p>
         </div>
@@ -939,10 +1050,12 @@
             <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
-        <!-- Comps stream in here as the model writes them (applyProgress phase
-             "comp"). aria-hidden keeps the polite live region above from
-             narrating every line; model text goes in via textContent only. -->
-        <div id="loadingComps" class="hidden w-full max-w-xs mt-4 text-left" aria-hidden="true"></div>
+        <!-- Live report preview: the streamed market summary (applyProgress
+             phase "field") and a growing comp table (phase "comp"). aria-hidden
+             keeps the polite live region above from narrating every row; model
+             text goes in via textContent only. Inline max-width: wider than the
+             bar's max-w-xs, and inline so no Tailwind regen is needed. -->
+        <div id="loadingComps" class="hidden w-full mt-4 text-left" style="max-width:34rem" aria-hidden="true"></div>
       </div>
       <!-- Purely visual (the live region above announces progress): gray placeholders
            in the same card shells the finished report renders into. -->
@@ -1018,6 +1131,10 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6"/><path d="m15 13-6 6"/></svg>
           Excel
         </button>
+        <!-- Monthly export allowance. Hidden entirely for Pro, for anyone with
+             the tier switched off, and until we've actually been told a number —
+             a blank counter is worse than none. -->
+        <span id="exportAllowance" class="hidden inline-flex items-center text-xs text-[#8A93A0]"></span>
       </div>
 
       <!-- Captured / printed region -->
@@ -1034,7 +1151,7 @@
               <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
             </div>
             <div class="text-right text-xs text-slate-500">
-              <div>agouraninja@gmail.com</div>
+              <div>info@compninja.co</div>
               <div id="printDate"></div>
             </div>
           </div>
@@ -1182,7 +1299,7 @@
           </div>
           <p id="dcfWhatIs" class="text-sm text-[#4C5665] leading-relaxed mt-4"></p>
           <p id="dcfHoldSell" class="text-sm text-[#4C5665] leading-relaxed mt-2"></p>
-          <p class="text-xs text-[#8A93A0] mt-4">Automated planning estimate — unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
+          <p class="text-xs text-[#8A93A0] mt-4">Automated planning estimate: unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
         </div>
 
         <!-- Signed-out gate for the toolkit below: one calm framed nudge stands
@@ -1191,7 +1308,7 @@
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Expense, Debt &amp; Risk Analysis</h2>
-              <p class="text-sm text-[#5A6473] mt-1">How your expense ratio compares to this market, plus DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk — free with an account.</p>
+              <p class="text-sm text-[#5A6473] mt-1">How your expense ratio compares to this market, plus DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk, free with an account.</p>
             </div>
             <button id="analysisLockBtn" type="button"
               class="btn-live text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Create a free account</button>
@@ -1290,7 +1407,7 @@
             <div id="debtHeadroom" class="rd-h text-[30px] mt-1">—</div>
             <div id="debtHeadroomSub" class="text-xs text-[#5A6473] mt-1"></div>
           </div>
-          <p class="text-xs text-[#8A93A0] mt-4">Loan terms stay in your browser and your own portfolio — never on shared links. Screening math at market-standard limits, not a loan quote.</p>
+          <p class="text-xs text-[#8A93A0] mt-4">Loan terms stay in your browser and your own portfolio, never on shared links. Screening math at market-standard limits, not a loan quote.</p>
         </div>
 
         <!-- Sensitivity — DCF value across exit cap × NOI growth. Same math as
@@ -1334,7 +1451,7 @@
             </div>
             <div id="rrScheduleWrap" class="overflow-x-auto mt-4"></div>
           </div>
-          <p class="text-xs text-[#8A93A0] mt-4">Lease data stays in your browser and your own portfolio — never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
+          <p class="text-xs text-[#8A93A0] mt-4">Lease data stays in your browser and your own portfolio, never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
         </div>
 
         <p id="analysisEmpty" class="hidden text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
@@ -1381,7 +1498,7 @@
           </div>
           <div id="userReadControls" class="no-print no-capture hidden mt-3 pt-3 border-t border-[#F0EFE9]">
             <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">Your read of this market</div>
-            <p class="text-xs text-[#8A93A0] mb-2">The read above is automated. Agree or disagree &mdash; record your own call here. It's saved with this report and appears next to the automated read on prints, exports, and shared links (labeled &ldquo;Owner's read&rdquo;).</p>
+            <p class="text-xs text-[#8A93A0] mb-2">The read above is automated. Agree or disagree; record your own call here. It's saved with this report and appears next to the automated read on prints, exports, and shared links (labeled &ldquo;Owner's read&rdquo;).</p>
             <div class="flex flex-wrap items-center gap-2">
               <div class="inline-flex rounded border border-[#D8D4C9] overflow-hidden" role="group" aria-label="Your price-discovery read">
                 <button type="button" data-read-dir="expanding" class="px-3 py-1.5 text-xs font-medium">Expanding</button>
@@ -1522,7 +1639,7 @@
               <div class="flex items-center gap-3 mt-3">
                 <button id="acSubmit" type="button" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Add to report</button>
                 <button id="acCancel" type="button" class="text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">Cancel</button>
-                <span class="text-xs text-[#8A93A0]">Stays in your report — never added to CompNinja's data.</span>
+                <span class="text-xs text-[#8A93A0]">Stays in your report, never added to CompNinja's data.</span>
               </div>
             </div>
           </div>
@@ -1538,7 +1655,7 @@
                table once added, so the whole section stays out of print/PNG. -->
           <div id="corpusOffer" class="hidden no-print no-capture px-6 py-4 border-t border-[#F0EFE9]">
             <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">From CompNinja's records</div>
-            <p class="text-xs text-[#8A93A0] mb-3">Comps CompNinja has gathered for this market. Add any that fit — they join your report's math and keep their source badge.</p>
+            <p class="text-xs text-[#8A93A0] mb-3">Comps CompNinja has gathered for this market. Add any that fit; they join your report's math and keep their source badge.</p>
             <div id="corpusOfferRows" class="space-y-2"></div>
           </div>
         </div>
@@ -1552,7 +1669,7 @@
 
         <!-- Print footer -->
         <div class="print-only pt-3 mt-2 border-t border-[#E4E2DA] text-center text-xs text-[#8A93A0]">
-          CompNinja · agouraninja@gmail.com · https://market-comp-puller.onrender.com
+          CompNinja · info@compninja.co · https://market-comp-puller.onrender.com
         </div>
       </div>
 
@@ -1560,7 +1677,7 @@
       <div id="ctaCard" class="hidden no-print mt-6 rounded-md bg-[#1A2433] text-white p-6 sm:p-8 fade-in">
         <h2 id="ctaTitle" class="text-lg font-bold">Thinking about selling or leasing this property?</h2>
         <p id="ctaText" class="text-sm text-white/75 mt-1 mb-4 max-w-2xl">These comps are a starting point. Reach out and we will connect you with a local broker who really knows your market, at no cost to you.</p>
-        <a id="ctaLink" href="mailto:agouraninja@gmail.com"
+        <a id="ctaLink" href="mailto:info@compninja.co"
           class="btn-live inline-flex items-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">
           Get in touch
         </a>
@@ -1580,29 +1697,18 @@
       <!-- The For Brokers section moved to its own page, /brokers (built by
            renderBrokersPageHTML in server.js). Header/footer link there. -->
 
-      <!-- Markets -->
+      <!-- Market Explorer — inline in the content column (the full-width band
+           treatment was reverted), but still self-contained: it builds standing
+           market pages and never hands a query to the comp form above. -->
       <section class="py-12 reveal">
         <div class="rd-kicker">Market Explorer</div>
         <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the page.</h2>
-        <p class="text-sm text-[#4C5665] mb-5 max-w-[58ch]">Pick a covered market below, or search a new one — we'll pull recent sales and build its page on the spot (about a minute).</p>
+        <p class="text-sm text-[#4C5665] mb-1 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot (about a minute).</p>
+        <p class="text-sm text-[#8A93A0] mb-5 max-w-[58ch]">Standing market pages, separate from the property valuation above.</p>
         <div class="relative max-w-sm mb-5">
-          <input id="marketSearch" type="search" placeholder="Try any market — e.g. industrial Boise ID" autocomplete="off"
+          <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
                  class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-          <div id="marketSearchResults" class="hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
-        </div>
-        <div class="columns-2 sm:columns-4 gap-8 text-[13.5px] leading-8 text-[#46536A]">
-          <a href="/market/industrial-ontario-ca" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Ontario, CA</a>
-          <a href="/market/industrial-fontana-ca" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Fontana, CA</a>
-          <a href="/market/industrial-dallas-tx" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Dallas, TX</a>
-          <a href="/market/industrial-phoenix-az" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Phoenix, AZ</a>
-          <a href="/market/industrial-las-vegas-nv" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Las Vegas, NV</a>
-          <a href="/market/office-austin-tx" class="block break-inside-avoid hover:text-[#1A2433]">Office · Austin, TX</a>
-          <a href="/market/office-nashville-tn" class="block break-inside-avoid hover:text-[#1A2433]">Office · Nashville, TN</a>
-          <a href="/market/office-denver-co" class="block break-inside-avoid hover:text-[#1A2433]">Office · Denver, CO</a>
-          <a href="/market/industrial-savannah-ga" class="block break-inside-avoid hover:text-[#1A2433]">Industrial · Savannah, GA</a>
-          <a href="/market/multifamily-atlanta-ga" class="block break-inside-avoid hover:text-[#1A2433]">Multifamily · Atlanta, GA</a>
-          <a href="/market/retail-orlando-fl" class="block break-inside-avoid hover:text-[#1A2433]">Retail · Orlando, FL</a>
-          <a href="/markets" class="block break-inside-avoid font-semibold text-[#B91C1C] hover:text-[#991B1B]">All markets →</a>
+          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
         </div>
       </section>
 
@@ -1622,17 +1728,22 @@
             </svg>
             <span class="rd-wordmark uppercase" style="color:#fff">Comp<b style="color:#EF4444">Ninja</b></span>
           </div>
-          <p class="mt-3 leading-relaxed text-[#8F99A8]">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage — we connect you with local brokers for opinions of value. Comparables derive from publicly available data; verify independently before underwriting.</p>
-          <p class="mt-3 text-[#8F99A8]">© 2026 CompNinja</p>
+          <p class="mt-3 leading-relaxed text-[#8F99A8]">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage: we connect you with local brokers for opinions of value. Comparables derive from publicly available data; verify independently before underwriting.</p>
+          <p class="mt-3 text-[#8F99A8]">© 2026 CompNinja LLC</p>
         </div>
         <div class="sm:text-right shrink-0">
-          <a href="mailto:agouraninja@gmail.com" class="text-[#D5DAE2] hover:text-white underline decoration-[#46536A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">agouraninja@gmail.com</a>
+          <a href="mailto:info@compninja.co" class="text-[#D5DAE2] hover:text-white underline decoration-[#46536A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">info@compninja.co</a>
           <ul class="mt-3 space-y-2">
             <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
             <li><a href="/brokers" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Brokers</a></li>
             <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
             <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
             <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
+            <li><a href="/terms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Terms</a></li>
+            <li><a href="/privacy" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Privacy</a></li>
+            <li><a href="https://www.instagram.com/comp.ninja/" target="_blank" rel="noopener noreferrer" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Instagram</a></li>
+            <li><a href="https://www.tiktok.com/@comp.ninja?_r=1%_t=ZP-98bbfnZBMoo" target="_blank" rel="noopener noreferrer" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">TikTok</a></li>
+            <li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">X</a></li>
           </ul>
         </div>
       </div>
@@ -1880,7 +1991,16 @@
   // still override afterward. All values are preset windows, so the control snaps
   // cleanly. Programmatic type sets (loading a saved/shared report) don't fire
   // "change", so a restored report's window is never overwritten.
-  const RECOMMENDED_LOOKBACK = { Industrial: 12, Office: 24, Retail: 12, Multifamily: 6, Land: 24, Residential: 6 };
+  // Industrial moved 12 -> 24 on 2026-08-04. A live Phoenix industrial search on
+  // the 12-month recommendation returned five comps of which exactly ONE was a
+  // sale, and the value hero needs two priced sales to compute a range — so the
+  // recommended window was itself producing reports with no number in them. The
+  // other types are unmeasured and deliberately untouched: multifamily and
+  // residential really do trade often enough that a fresher window is better
+  // evidence, and widening them on inference could make reports worse, not
+  // better. Measure before moving any of them (count PRICED SALE comps per
+  // window, not total comps — total is not what the hero needs).
+  const RECOMMENDED_LOOKBACK = { Industrial: 24, Office: 24, Retail: 12, Multifamily: 6, Land: 24, Residential: 6 };
   const propertyTypeSel = document.getElementById("propertyType");
   const lookbackHint = document.getElementById("lookbackHint");
   function applyRecommendedLookback() {
@@ -2032,6 +2152,12 @@
   // in place — pure client-side math, no new billed search. (Programmatic
   // value assignment, e.g. the hero's looked-up-size autofill, does not fire
   // "input", so this can't loop.)
+  // The "estimated from footprint" note stops applying the moment the
+  // visitor types their own number; programmatic fills (isTrusted false)
+  // keep it, and the record-backed autofill hides it at its own site.
+  document.getElementById("targetSize").addEventListener("input", (e) => {
+    if (e.isTrusted) document.getElementById("sizeEstimateNote").classList.add("hidden");
+  });
   let subjectEditTimer = null;
   ["targetSize", "targetSizeMax", "targetPrice", "targetPriceMax", "noi"].forEach((id) => {
     document.getElementById(id).addEventListener("input", () => {
@@ -2096,6 +2222,8 @@
     leadCaptureEnabled = Boolean(cfg.leadCapture);
     streetviewEnabled = Boolean(cfg.streetview);
     proConfig = cfg.pro || { enabled: false };
+    guestSearch = cfg.guestSearch || null;
+    renderGuestSearchHint();
     applyLookbackGating();
     // Safe here despite initGate() being called near the top of the script:
     // the await above yields, so `currentUser` and every billing control have
@@ -2224,7 +2352,7 @@
       { at: 16500, text: "Comparing size, age, and location…" },
       { at: 24000, text: "Calculating price per square foot…" },
       { at: 32000, text: "Cross-checking the strongest comps…" },
-      { at: 42000, text: "Assembling your report — almost there…" },
+      { at: 42000, text: "Assembling your report, almost there…" },
     ];
   }
   let loadingMsgTimer = null;
@@ -2253,15 +2381,37 @@
     if (el) el.textContent = text || "";
   }
 
-  // Live comp lines while the model writes the report. Calm by design: plain
-  // text rows on the existing card, capped at the most recent 5 identified
-  // comps, plus one trailing "+N more" line for comps past the visitor's plan
-  // (the server sends those as { locked: true } with no address).
-  let loadingCompsSeen = 0;   // identified comps received, including scrolled-off ones
+  // Live report preview while the model writes: the streamed market summary
+  // on top, then a compact table gaining one row per identified comp (all rows
+  // kept), plus one trailing "+N more" line for comps past the visitor's plan
+  // (the server sends those as { locked: true } with no address). The final
+  // result still renders through the normal renderResults, which replaces all
+  // of this wholesale — the preview is never the report of record.
+  let loadingCompsSeen = 0;   // identified comps received this attempt
   function resetLoadingComps() {
     loadingCompsSeen = 0;
     const box = document.getElementById("loadingComps");
     if (box) { box.innerHTML = ""; box.classList.add("hidden"); }
+  }
+  function loadingCompTable(box) {
+    let table = box.querySelector("table");
+    if (!table) {
+      table = document.createElement("table");
+      table.className = "w-full text-sm";
+      table.style.tableLayout = "fixed";
+      const head = table.createTHead().insertRow();
+      ["Address", "Price", "Size", "Date"].forEach((h, i) => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        th.className = "text-left font-medium text-slate-500 pb-1 pr-3 text-xs uppercase tracking-wide";
+        if (i === 0) th.style.width = "45%";
+        head.appendChild(th);
+      });
+      table.createTBody();
+      // The lock line (if it ever arrives first) must stay below the table.
+      box.insertBefore(table, box.querySelector("[data-locked]"));
+    }
+    return table;
   }
   function addLoadingCompLine(evt) {
     const box = document.getElementById("loadingComps");
@@ -2271,22 +2421,43 @@
       if (!lock) {
         lock = document.createElement("p");
         lock.dataset.locked = "1";
-        lock.className = "text-sm text-slate-500 mt-1 truncate";
+        lock.className = "text-sm text-slate-500 mt-2 truncate";
         box.appendChild(lock);
       }
       lock.textContent = `+ ${Math.max(1, Number(evt.n) - loadingCompsSeen)} more found · unlock with Pro`;
     } else {
       if (!evt.address) return;
       loadingCompsSeen++;
-      const line = document.createElement("p");
-      line.dataset.comp = "1";
-      line.className = "text-sm text-slate-400 mt-1 truncate";
+      const row = loadingCompTable(box).tBodies[0].insertRow();
       // Model-written text: textContent only, never innerHTML.
-      line.textContent = `${evt.n}. ${evt.address}${evt.price ? " · " + evt.price : ""}`;
-      box.insertBefore(line, box.querySelector("[data-locked]"));  // identified rows stay above the lock line
-      const rows = box.querySelectorAll("[data-comp]");
-      if (rows.length > 5) rows[0].remove();
+      [`${evt.n}. ${evt.address}`, evt.price || "", evt.size_sqft || "", evt.date || ""].forEach((v) => {
+        const td = row.insertCell();
+        td.textContent = v;
+        td.className = "py-0.5 pr-3 text-slate-400 truncate align-top";
+      });
+      // Cache warmer: the same lookup renderResults' map will make, done now
+      // during the wait so pins paint instantly at render. Failures are
+      // already swallowed inside geocodeAddress.
+      geocodeAddress(evt.address);
     }
+    box.classList.remove("hidden");
+  }
+  function showLoadingSummary(text) {
+    const box = document.getElementById("loadingComps");
+    if (!box) return;
+    let p = box.querySelector("[data-summary]");
+    if (!p) {
+      const label = document.createElement("p");
+      label.className = "text-xs uppercase tracking-wide text-slate-500 mb-1";
+      label.textContent = "Early market read";
+      box.insertBefore(label, box.firstChild);
+      p = document.createElement("p");
+      p.dataset.summary = "1";
+      p.className = "text-sm text-slate-600 mb-3";
+      box.insertBefore(p, label.nextSibling);
+    }
+    // Model-written text: textContent only, never innerHTML.
+    p.textContent = text;
     box.classList.remove("hidden");
   }
 
@@ -2371,14 +2542,16 @@
       aimLoadingBar(50 + Math.min(45, (evt.chars / DRAFT_CHARS_FULL) * 45));
     } else if (evt.phase === "comp") {
       addLoadingCompLine(evt);
+    } else if (evt.phase === "field") {
+      if (evt.key === "summary" && evt.value) showLoadingSummary(String(evt.value));
     } else if (evt.phase === "retry") {
       swapHeadline(headline, "The results came back oddly, rechecking…");
       setLoadingDetail("");
       resetLoadingComps();   // attempt 2 finds its own comps
     }
-    // "comp" events interleave with "drafting" — neither may claim lastPhase,
-    // or the drafting branch would re-swap the headline every second.
-    if ((evt.phase !== "drafting" || evt.writing) && evt.phase !== "comp") ctx.lastPhase = evt.phase;
+    // "comp" and "field" events interleave with "drafting" — none may claim
+    // lastPhase, or the drafting branch would re-swap the headline every second.
+    if ((evt.phase !== "drafting" || evt.writing) && evt.phase !== "comp" && evt.phase !== "field") ctx.lastPhase = evt.phase;
   }
 
   // Snap to a satisfying 100% finish, then resolve so the results can render.
@@ -2676,7 +2849,7 @@
     const plural = a.qty === 1 ? "" : "s";
     return {
       label: a.spec.label,
-      text: `${money(a.rr.low * a.qty)} – ${money(a.rr.high * a.qty)} — ${a.qty.toLocaleString()} ${a.spec.noun}${plural} at `
+      text: `${money(a.rr.low * a.qty)} – ${money(a.rr.high * a.qty)}, ${a.qty.toLocaleString()} ${a.spec.noun}${plural} at `
         + `${money(a.rr.low)}–${money(a.rr.high)} per ${a.spec.noun} across ${a.per.length} sale comps.`,
     };
   }
@@ -2716,7 +2889,11 @@
         // Surface the looked-up size in the form input (only if still empty)
         // so the override path is obvious and the comparison/chart pick it up.
         const sizeInput = document.getElementById("targetSize");
-        if (!sizeInput.value) sizeInput.value = Math.round(found);
+        if (!sizeInput.value) {
+          sizeInput.value = Math.round(found);
+          // A record-backed size supersedes any footprint-note claim.
+          document.getElementById("sizeEstimateNote").classList.add("hidden");
+        }
       }
     }
     // Sale comps only — lease $/SF/yr is a different unit and would skew the
@@ -2820,7 +2997,7 @@
         if (meta.type === "Land") return null;
         return {
           label: "Income approach",
-          text: "not run — enter your NOI under 'Your property details' and the building gets valued on its income too.",
+          text: "not run: enter your NOI under 'Your property details' and the building gets valued on its income too.",
           muted: true,
         };
       }
@@ -2829,11 +3006,11 @@
       const agree = incLo <= salesHi && incHi >= salesLo
         ? "The two approaches overlap, which strengthens the estimate."
         : incLo > salesHi
-          ? "The income approach comes in higher than the sale comps — either the market prices this asset type below its income, or the NOI and cap-rate inputs deserve a second look."
-          : "The income approach comes in lower than the sale comps — worth a second look at the NOI and cap-rate inputs before leaning on either number.";
+          ? "The income approach comes in higher than the sale comps: either the market prices this asset type below its income, or the NOI and cap-rate inputs deserve a second look."
+          : "The income approach comes in lower than the sale comps, worth a second look at the NOI and cap-rate inputs before leaning on either number.";
       return {
         label: "Income approach",
-        text: `${fmtTotal(incLo)} – ${fmtTotal(incHi)} — your net operating income valued at the market's `
+        text: `${fmtTotal(incLo)} – ${fmtTotal(incHi)}, your net operating income valued at the market's `
           + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
       };
     };
@@ -2904,13 +3081,13 @@
         ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps (${excludedSaleN} excluded ${whoCurated})`
         : `Based on ${ppsfs.length} sale comps`;
       trustEl.textContent = countPhrase
-        + (srcBits.length ? ` — ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote
+        + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote
         + sizeNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
 
       const entries = [{
         label: "Sales comparison approach",
-        text: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)} — what ${ppsfs.length} recent `
+        text: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)}, what ${ppsfs.length} recent `
           + `sale comps say buyers pay per square foot, applied to your building's size. This is the headline range above.`,
       }];
       // Sits right after the sales-comparison line because it is the same
@@ -2950,7 +3127,7 @@
       trustEl.classList.remove("hidden");
       const entries = [{
         label: "Sales comparison approach",
-        text: `${fmtTotal(rr.low * qty)} – ${fmtTotal(rr.high * qty)} — what ${per.length} recent sale comps say `
+        text: `${fmtTotal(rr.low * qty)} – ${fmtTotal(rr.high * qty)}, what ${per.length} recent sale comps say `
           + `buyers pay per ${spec.noun}, applied to your ${qty.toLocaleString()} ${spec.noun}${plural}. This is the headline range above.`,
       }];
       // Mirror of the cross-check on the $/SF path: when a per-square-foot
@@ -2960,7 +3137,7 @@
         const rrSf = robustPpsfRange(wItems);
         entries.push({
           label: "Price per square foot cross-check",
-          text: `${fmtTotal(rrSf.low * sizeR.min)} – ${fmtTotal(rrSf.high * sizeR.max)} — the same comps on a `
+          text: `${fmtTotal(rrSf.low * sizeR.min)} – ${fmtTotal(rrSf.high * sizeR.max)}, the same comps on a `
             + `per-square-foot basis across ${ppsfs.length} sale comps.`,
         });
       }
@@ -2982,7 +3159,7 @@
       renderApproaches([
         {
           label: "Income approach",
-          text: `${fmtTotal(loVal)} – ${fmtTotal(hiVal)} — your net operating income valued at the market's `
+          text: `${fmtTotal(loVal)} – ${fmtTotal(hiVal)}, your net operating income valued at the market's `
             + `${capLo}%–${capHi}% cap-rate range. This is the headline range above.`,
         },
         {
@@ -2992,6 +3169,35 @@
         },
         costApproachEntry,
       ]);
+    } else if (ppsfs.length >= 2) {
+      // No building size from any source, but priced sale comps exist - lead
+      // with the per-square-foot band. A unit-price range is a real valuation
+      // answer; bare dashes read as a broken report. Reached only when the
+      // income approach can't lead either, so incomeApproachEntry below always
+      // returns its muted "enter your NOI" pitch (arguments unused).
+      const rr = robustPpsfRange(wItems);
+      const fmtPsf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
+      animateValue(lowEl, rr.low, fmtPsf);
+      animateValue(midEl, rr.mid, fmtPsf);
+      animateValue(highEl, rr.high, fmtPsf);
+      setPpsf("ownerLowPpsf", "per square foot");
+      setPpsf("ownerMidPpsf", "comp median");
+      setPpsf("ownerHighPpsf", "per square foot");
+      basisEl.textContent = (rr.trimmed
+        ? `The middle range of ${ppsfs.length} sale comps, per square foot. `
+        : `$/SF from ${ppsfs.length} sale comps. `)
+        + "We couldn't find this building's square footage; enter it under 'Your property details' and this becomes a total dollar value instantly.";
+      trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
+      trustEl.classList.remove("hidden");
+      const entries = [{
+        label: "Sales comparison approach",
+        text: `${fmtPsf(rr.low)} – ${fmtPsf(rr.high)}, what ${ppsfs.length} recent sale comps say buyers pay per `
+          + `square foot. Enter your building's size above and this becomes a total dollar range.`,
+      }];
+      const incEntry = incomeApproachEntry(rr.low, rr.high);
+      if (incEntry) entries.push(incEntry);
+      entries.push(costApproachEntry);
+      renderApproaches(entries);
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
@@ -3008,14 +3214,22 @@
       // the fix here is to restore a comp, not to wait for a fresh search.
       const curatedShortfall = !!sizeR && allSaleComps.length >= 2 && ppsfs.length < 2;
       basisEl.textContent = altCompN >= 3
-        ? `Enter your ${altSpec.askFor} under 'Your property details' — ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
+        ? `Enter your ${altSpec.askFor} under 'Your property details': ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
         : curatedShortfall
           ? (meta.shared
-            ? "Not enough included sale comps to compute a range — the report owner excluded some comps."
-            : "Not enough included sale comps to compute a range — restore an excluded comp or add your own.")
-          : !sizeR
-            ? "We couldn't find this building's square footage. Enter it under 'Your property details' and the estimate updates instantly."
-            : "Not enough sale comps returned to compute a numeric range";
+            ? "Not enough included sale comps to compute a range: the report owner excluded some comps."
+            : "Not enough included sale comps to compute a range: restore an excluded comp or add your own.")
+          // This branch is only reachable with FEWER THAN TWO priced sale
+          // comps (the >= 2 case leads with a $/SF band above), so the missing
+          // square footage is never the whole story and was never the fix —
+          // entering it cannot build a range out of one sale. The old copy said
+          // "enter it and the estimate updates instantly", which sent a paying
+          // buyer after a number that would have changed nothing. Name the real
+          // blocker first; mention the size only when it is ALSO missing.
+          : (ppsfs.length === 0
+              ? "No priced sale comps came back in this window, so there's no per-square-foot range to build."
+              : `Only ${ppsfs.length} priced sale comp came back in this window; a per-square-foot range needs at least two.`)
+            + (sizeR ? "" : " We also couldn't find this building's square footage.");
     }
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.
@@ -3329,7 +3543,7 @@
 
     document.getElementById("dcfWhatIs").textContent =
       `What this is: a DCF (discounted cash flow) values the building by adding up the income it should ` +
-      `produce — your ${fmtTotal(noi)} NOI growing ${pct1(growth * 100)}% a year for ${years} years — plus ` +
+      `produce: your ${fmtTotal(noi)} NOI growing ${pct1(growth * 100)}% a year for ${years} years, plus ` +
       `an estimated sale at the end (year-${years + 1} income at a ${pct1(exitCap * 100)}% exit cap rate, ` +
       `worth ${fmtTotal(terminal)} then), with every future dollar discounted back to today at ` +
       `${pct1(disc * 100)}% a year, because money later is worth less than money now.`;
@@ -3360,7 +3574,7 @@
     let verdict;
     if (Math.abs(deltaPct) < 2.5) {
       verdict = "Toss-up";
-      verdictSubEl.textContent = "within " + pct1(Math.abs(deltaPct)) + "% — effectively a wash";
+      verdictSubEl.textContent = "within " + pct1(Math.abs(deltaPct)) + "%, effectively a wash";
     } else if (delta > 0) {
       verdict = "Hold";
       verdictSubEl.textContent = "holding is worth " + fmtTotal(delta) + " more (" + pct1(deltaPct) + "%)";
@@ -3376,7 +3590,7 @@
       `(${fmtTotal(sell.value)}).` +
       (irr != null
         ? ` Put differently, holding pencils out to an implied ~${pct1(irr)}%/yr unlevered return on today's ` +
-          `value — if you can reliably earn more than that elsewhere, selling wins; if not, holding wins. ` +
+          `value: if you can reliably earn more than that elsewhere, selling wins; if not, holding wins. ` +
           `Your ${pct1(disc * 100)}% discount rate is that benchmark: the verdict flips where they cross.`
         : "");
 
@@ -3432,7 +3646,7 @@
       (dscr == null ? "text-[#1A2433]" : dscr >= REFI_DSCR ? "text-[#06603A]" : dscr >= 1 ? "text-[#8A6D1A]" : "text-[#B91C1C]");
     set("debtDscr", dscr ? (Math.round(dscr * 100) / 100).toFixed(2) + "×" : "—",
       dscr == null ? "NOI ÷ debt service" :
-      dscr >= REFI_DSCR ? "comfortably covered" : dscr >= 1 ? "thin coverage — lenders want 1.25×+" : "NOI doesn't cover the payments");
+      dscr >= REFI_DSCR ? "comfortably covered" : dscr >= 1 ? "thin coverage, lenders want 1.25×+" : "NOI doesn't cover the payments");
     set("debtLtv", ltv ? Math.round(ltv * 100) + "%" : "—",
       ltv ? "of the likely value" : value ? "enter a loan balance" : "no value estimate yet");
     set("debtYield", dyield ? (Math.round(dyield * 1000) / 10).toFixed(1) + "%" : "—",
@@ -3454,7 +3668,7 @@
         headSub.textContent = (room >= 0
           ? "room to borrow beyond today's balance"
           : "over-levered vs. what this building supports") +
-          ` — max loan ~${fmtT(maxLoan)} (${binding})`;
+          `, max loan ~${fmtT(maxLoan)} (${binding})`;
       } else {
         headEl.textContent = fmtT(maxLoan);
         headSub.textContent = `debt this building supports (${binding})`;
@@ -3536,7 +3750,7 @@
       set("opexRatio", "—", "operating expenses ÷ gross income");
       set("opexDollars", "—", "gross income − NOI");
       verdictEl.textContent = "";
-      readEl.textContent = "Gross income should be larger than NOI — worth a check on the two figures.";
+      readEl.textContent = "Gross income should be larger than NOI, worth a check on the two figures.";
       card.classList.remove("hidden");
       return;
     }
@@ -3546,14 +3760,14 @@
 
     if (!bandOk) {
       verdictEl.textContent = "";
-      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "% of gross income. This report has no market benchmark to compare against — a future search will include one.";
+      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "% of gross income. This report has no market benchmark to compare against; a future search will include one.";
     } else if (ratioPct > bandHi) {
       const gap = expenses - (bandHi / 100) * gross;
       verdictEl.textContent = " · Above typical range";
       readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "%; this market typically runs " + bandStr + " for " + typeWord + ". That gap is about " + fmtT(gap) + " a year on your gross income.";
     } else if (ratioPct < bandLo) {
       verdictEl.textContent = " · Below typical range";
-      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "%, below the " + bandStr + " typical here — often the case where leases pass most operating costs to tenants.";
+      readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "%, below the " + bandStr + " typical here, often the case where leases pass most operating costs to tenants.";
     } else {
       verdictEl.textContent = " · Within typical range";
       readEl.textContent = "Your expense ratio is " + pc(ratioPct) + "%, inside the " + bandStr + " this market typically runs for " + typeWord + ".";
@@ -3747,7 +3961,7 @@
       : st.occupancy > 1 ? "leased SF exceeds the entered building SF" : `${st.totSf.toLocaleString()} SF leased`;
     document.getElementById("rrRent").textContent = st.totRent ? formatUsd(Math.round(st.totRent), { maximumFractionDigits: 0 }) : "—";
     document.getElementById("rrRentSub").textContent = s.noi > 0
-      ? `base rent before expenses & vacancy — your NOI is ${formatUsd(Math.round(s.noi), { maximumFractionDigits: 0 })}` : "";
+      ? `base rent before expenses & vacancy; your NOI is ${formatUsd(Math.round(s.noi), { maximumFractionDigits: 0 })}` : "";
     document.getElementById("rrBasis").textContent = `${st.leases.length} lease${st.leases.length === 1 ? "" : "s"}`;
     const wrap = document.getElementById("rrScheduleWrap");
     wrap.innerHTML = "";
@@ -4148,6 +4362,268 @@
   }
 
   // ----------------------------------------------------------------------------
+  // Address Explorer — "I don't have an address" entry point (spec:
+  // docs/superpowers/specs/2026-08-03-address-explorer-design.md).
+  //
+  // Corpus first (/api/explore-addresses, $0), then an Overpass top-up when the
+  // corpus holds fewer than 8 for that market. Both halves are DETERMINISTIC
+  // (server: newest deal then alphabetical; here: OSM id order) so every
+  // visitor sees the same list — that concentration is what turns repeat
+  // clicks into free 30-day search-cache hits instead of billed searches.
+  // Clicking an address submits the ordinary compForm flow; this block adds
+  // no billable path of its own.
+  //
+  // PRO-ONLY as of 2026-08-03. The gate has two halves and needs both: this one
+  // hides the panel (the Overpass top-up is browser-direct, so the server can
+  // never withhold it), and /api/explore-addresses 403s (so a hand-rolled fetch
+  // can't lift the corpus list). Neither half alone closes the feature.
+  // ----------------------------------------------------------------------------
+
+  // Declared ABOVE the IIFE deliberately. `proConfig` is a `let` ~4000 lines
+  // below in this same script, so anything reading it while the page is still
+  // executing top-to-bottom hits the temporal dead zone — and the explorer's
+  // /?explore= deep link used to fire in exactly that window. So the deep link
+  // now parks itself here instead of running, and applyExplorerGating() calls it
+  // once /api/config has actually answered.
+  let runPendingExplore = null;
+
+  // True when the explorer may be used at all. The `enabled` check comes first
+  // and is load-bearing: with PRO_ENABLED unset, computeEntitlements returns
+  // canExploreAddresses:true and the explorer behaves exactly as it did before
+  // the tier existed — the promise the whole disabled branch makes.
+  function addressExplorerAllowed() {
+    try {
+      if (!proConfig || !proConfig.enabled) return true;
+      return Boolean(proConfig.canExploreAddresses);
+    } catch (_) {
+      // TDZ: config hasn't loaded yet. Withhold rather than flash the panel open
+      // and yank it back a moment later.
+      return false;
+    }
+  }
+
+  // Called from refreshBillingUI(), i.e. every time proConfig changes.
+  function applyExplorerGating() {
+    const link = document.getElementById("exploreAddrLink");
+    const panel = document.getElementById("exploreAddrPanel");
+    if (!link || !panel) return;
+    const allowed = addressExplorerAllowed();
+    // Free tier: the link and panel disappear entirely. The Address Explorer
+    // is discovered only through the Upgrade-to-Pro card's feature list —
+    // no lock glyph or teaser on the search form. classList runs both ways
+    // because entitlements can flip mid-session (sign-in, upgrade, expiry).
+    link.classList.toggle("hidden", !allowed);
+    link.title = "";
+    if (!allowed) panel.classList.add("hidden");
+    if (allowed && runPendingExplore) {
+      const run = runPendingExplore;
+      runPendingExplore = null;   // clear first: the deep link is a one-shot
+      run();
+    }
+  }
+
+  (function () {
+    const panel = document.getElementById("exploreAddrPanel");
+    const link = document.getElementById("exploreAddrLink");
+    const input = document.getElementById("exploreAddrInput");
+    const btn = document.getElementById("exploreAddrBtn");
+    const status = document.getElementById("exploreAddrStatus");
+    const list = document.getElementById("exploreAddrList");
+
+    // v2: v1 briefly cached one-address lists produced by the Ontario-Canada
+    // geocode bug below; bumping the key retires those entries everywhere.
+    const AE_CACHE_KEY = "addrExplore.v2";
+    const AE_TTL = 7 * 24 * 3600 * 1000;
+    let aeCache = (() => { try { return JSON.parse(localStorage.getItem(AE_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
+    function aeCacheStore(key, addresses) {
+      aeCache[key] = { ts: Date.now(), addresses };
+      try {
+        const keys = Object.keys(aeCache);
+        if (keys.length > 40) keys.slice(0, keys.length - 40).forEach((k) => delete aeCache[k]);
+        localStorage.setItem(AE_CACHE_KEY, JSON.stringify(aeCache));
+      } catch (_) { /* private mode — the cache is a nicety */ }
+    }
+
+    // Only SPECIFIC OSM building tags decide anything (same philosophy as the
+    // type detector below — building=yes/commercial are ambiguous). Land has
+    // no entry: parcels rarely carry addresses, so it stays corpus-only.
+    const AE_TAGS = {
+      Industrial: "industrial|warehouse",
+      Office: "office",
+      Retail: "retail|supermarket|mall",
+      Multifamily: "apartments",
+      Residential: "house|detached|semidetached_house|residential",
+    };
+
+    // Mirrors the server route's dedupe: street line only, suffixes normalized.
+    function normStreetKey(addr) {
+      return String(addr).split(",")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+        .replace(/\b(street|avenue|boulevard|drive|road|lane|court|place|parkway|highway)\b/g,
+          (w) => ({ street: "st", avenue: "ave", boulevard: "blvd", drive: "dr", road: "rd", lane: "ln", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy" }[w]));
+    }
+
+    async function resolveMarket(raw) {
+      const s = String(raw || "").trim();
+      if (/^\d{5}$/.test(s)) {
+        try {
+          const r = await fetch("https://api.zippopotam.us/us/" + s, { signal: AbortSignal.timeout(7000) });
+          if (r.ok) {
+            const j = await r.json();
+            const p = j && j.places && j.places[0];
+            if (p) return { city: p["place name"], state: p["state abbreviation"] };
+          }
+        } catch (_) { /* unresolvable zip falls through to null */ }
+        return null;
+      }
+      const m = s.match(/^(.+?),?\s+([A-Za-z]{2})$/);
+      return m ? { city: m[1].trim(), state: m[2].toUpperCase() } : null;
+    }
+
+    async function overpassAddresses(city, state, type, exclude) {
+      const tags = AE_TAGS[type];
+      if (!tags) return [];
+      // ", USA" is load-bearing: without it Nominatim reads "Ontario, CA" as
+      // Ontario, CANADA and the top-up searches the wrong continent (found in
+      // production 2026-08-03 — a warm local geocode cache had masked it).
+      const center = await geocodeAddress(`${city}, ${state}, USA`);
+      if (!center) return [];
+      const j = await overpassQuery(
+        `[out:json][timeout:12];nwr(around:8000,${center.lat},${center.lng})["building"~"^(${tags})$"]["addr:housenumber"]["addr:street"];out tags 60;`
+      );
+      const els = (j && j.elements) || [];
+      els.sort((a, b) => (a.id || 0) - (b.id || 0));   // same list for every visitor
+      const out = [];
+      for (const el of els) {
+        const t = el.tags || {};
+        const line = `${t["addr:housenumber"] || ""} ${t["addr:street"] || ""}`.trim();
+        if (!/^\d+\s+\S/.test(line)) continue;
+        const key = normStreetKey(line);
+        if (exclude.has(key)) continue;
+        exclude.add(key);
+        out.push({ address: `${line}, ${t["addr:city"] || city}, ${state}`, source: "osm" });
+        if (out.length >= 8) break;
+      }
+      return out;
+    }
+
+    function render(addresses, loc) {
+      list.textContent = "";
+      if (!addresses.length) {
+        status.textContent = `No addresses found for ${loc.city}, ${loc.state}. Try a nearby larger city, or type any address above.`;
+        return;
+      }
+      const type = document.getElementById("propertyType").value.toLowerCase();
+      status.textContent = `${addresses.length} ${type} address${addresses.length === 1 ? "" : "es"} · click one to run a report`;
+      for (const a of addresses) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn-live text-xs text-[#1A2433] border border-[#D8D4C9] bg-white hover:bg-[#FBFBF9] hover:text-[#B91C1C] rounded px-2.5 py-1.5";
+        b.textContent = a.address;   // textContent on purpose: OSM data is untrusted
+        b.addEventListener("click", () => {
+          document.getElementById("address").value = a.address;
+          panel.classList.add("hidden");
+          document.getElementById("compForm").requestSubmit();
+        });
+        list.appendChild(b);
+      }
+    }
+
+    async function findAddresses() {
+      // Re-checked here and not just on the link: the panel can be open from
+      // before a subscription lapsed, and Enter in the input reaches this too.
+      if (!addressExplorerAllowed()) {
+        panel.classList.add("hidden");
+        openUpgradePrompt();
+        return;
+      }
+      const loc = await resolveMarket(input.value);
+      if (!loc) {
+        status.textContent = "Enter a city and state (e.g. Dallas, TX) or a 5-digit zip.";
+        return;
+      }
+      const type = document.getElementById("propertyType").value;
+      const cacheKey = `${loc.city.toLowerCase()}, ${loc.state}|${type}`;
+      const hit = aeCache[cacheKey];
+      if (hit && Date.now() - hit.ts < AE_TTL && hit.addresses.length) {
+        return render(hit.addresses, loc);
+      }
+      btn.disabled = true;
+      status.textContent = "Looking up addresses…";
+      list.textContent = "";
+      try {
+        let addresses = [];
+        let denied = false;
+        try {
+          const r = await fetch(`/api/explore-addresses?city=${encodeURIComponent(loc.city)}&state=${loc.state}&type=${encodeURIComponent(type)}`);
+          // 403 is the server's Pro gate, and it must stop the whole function —
+          // the Overpass top-up below runs browser-side and would happily fill
+          // the panel on its own, quietly undoing the gate whenever the cached
+          // proConfig is stale (a lapsed subscription, a second tab).
+          if (r.status === 403) denied = true;
+          else if (r.ok) addresses = (await r.json()).addresses || [];
+        } catch (_) { /* corpus offline — the OSM top-up still answers */ }
+        if (denied) {
+          panel.classList.add("hidden");
+          refreshProConfig();   // re-sync the label/lock with what the server just said
+          openUpgradePrompt();
+          return;
+        }
+        if (addresses.length < 8) {
+          const exclude = new Set(addresses.map((a) => normStreetKey(a.address)));
+          addresses = addresses.concat(await overpassAddresses(loc.city, loc.state, type, exclude)).slice(0, 8);
+        }
+        if (addresses.length) aeCacheStore(cacheKey, addresses);
+        render(addresses, loc);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    link.addEventListener("click", () => {
+      // Locked: normally unreachable (the link is hidden for free users), but
+      // if a click lands in the gap before gating applies, route to pricing
+      // rather than opening a panel whose every path ends in the same modal.
+      if (!addressExplorerAllowed()) {
+        panel.classList.add("hidden");
+        openUpgradePrompt();
+        return;
+      }
+      panel.classList.toggle("hidden");
+      if (!panel.classList.contains("hidden")) input.focus();
+    });
+    btn.addEventListener("click", findAddresses);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); findAddresses(); }
+    });
+
+    // Deep link: /?explore=City,%20ST&type=Industrial opens the panel
+    // prefilled and fetches the list — never auto-runs a billed search. Lets
+    // market pages and campaigns point at the explorer with no server work.
+    //
+    // Parked rather than run: at this point in the script /api/config has not
+    // answered, so entitlements are unknown and `proConfig` is still in its TDZ.
+    // applyExplorerGating() fires this once the answer arrives — and simply
+    // never fires it for a visitor without Pro, who is left on a locked link.
+    try {
+      const qp = new URLSearchParams(location.search);
+      const ex = qp.get("explore");
+      if (ex) {
+        const sel = document.getElementById("propertyType");
+        const t = qp.get("type");
+        if (t && [...sel.options].some((o) => o.value === t)) {
+          sel.value = t;
+          syncSubjectFieldsToType();   // programmatic set fires no "change"
+        }
+        input.value = ex;
+        runPendingExplore = () => {
+          panel.classList.remove("hidden");
+          findAddresses();
+        };
+      }
+    } catch (_) { /* malformed query string — the app must still boot */ }
+  })();
+
+  // ----------------------------------------------------------------------------
   // Smart property-type default — fills the type in for someone who forgot to
   // change it, and never overrides a type the visitor picked themselves.
   //
@@ -4312,7 +4788,7 @@
     typeAutoNote.textContent = "";
     const msg = document.createElement("span");
     msg.textContent = "Set to " + next + (movedLookback ? " and its recommended lookback" : "") +
-      " — OpenStreetMap tags this building “" + label + "”. ";
+      ": OpenStreetMap tags this building “" + label + "”. ";
     const undo = document.createElement("button");
     undo.type = "button";
     undo.textContent = "Undo";
@@ -4379,6 +4855,86 @@
   // cache in localStorage; every failure path — Overpass down, no footprint
   // mapped, timeout — leaves the photo centered on the pin as before.
   // ----------------------------------------------------------------------------
+  // Pre-search footprint sizing: while the visitor reads the confirm modal,
+  // estimate the building's SF from its OSM footprint and fill the editable
+  // size field. A filled size gives the hero its denominator on buildings
+  // public records miss AND shrinks the server's search budget by the two
+  // searches it would have spent looking the size up. Same honesty gate as
+  // the map photos (verified geocode + street-numbered address), and the
+  // value lands in the USER-EDITABLE field under a visible "estimated"
+  // note - never presented as a record.
+  const FP_SIZE_CACHE_KEY = "fpSize.v1";
+  let fpSizeCache = (() => { try { return JSON.parse(localStorage.getItem(FP_SIZE_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
+  function fpSizeStore(key, val) {
+    fpSizeCache[key] = val;
+    try {
+      const keys = Object.keys(fpSizeCache);
+      if (keys.length > 300) keys.slice(0, keys.length - 300).forEach((k) => delete fpSizeCache[k]);
+      localStorage.setItem(FP_SIZE_CACHE_KEY, JSON.stringify(fpSizeCache));
+    } catch (_) { /* private mode - the cache is a nicety */ }
+  }
+  // Shoelace area of an OSM way's geometry in square feet, computed on
+  // meter offsets from a local origin so float cancellation stays tame.
+  function footprintSqft(geometry, lat0, lng0) {
+    const mLat = 111320, mLng = 111320 * Math.cos(lat0 * Math.PI / 180);
+    const pts = geometry.map((p) => ({ x: (p.lon - lng0) * mLng, y: (p.lat - lat0) * mLat }));
+    let area = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      area += a.x * b.y - b.x * a.y;
+    }
+    return Math.abs(area / 2) * 10.7639;
+  }
+  async function estimateSizeFromFootprint(geo) {
+    const key = `${geo.lat.toFixed(6)},${geo.lng.toFixed(6)}`;
+    if (key in fpSizeCache) return fpSizeCache[key] || null;
+    const j = await overpassQuery(`[out:json][timeout:10];way(around:120,${geo.lat.toFixed(6)},${geo.lng.toFixed(6)})["building"];out geom;`);
+    // An Overpass outage must NOT be cached as a known miss — that would
+    // permanently poison this address. No answer today, try again next time.
+    if (!j) return null;
+    let best = null, bestScore = 0;
+    for (const w of (j && j.elements) || []) {
+      if (!Array.isArray(w.geometry) || w.geometry.length < 3) continue;
+      const cLat = w.geometry.reduce((s, p) => s + p.lat, 0) / w.geometry.length;
+      const cLng = w.geometry.reduce((s, p) => s + p.lon, 0) / w.geometry.length;
+      const dLat = (cLat - geo.lat) * 111320;
+      const dLng = (cLng - geo.lng) * 111320 * Math.cos(geo.lat * Math.PI / 180);
+      const dist = Math.hypot(dLat, dLng);
+      if (dist > 120) continue;
+      // Biggest footprint near the pin, distance-discounted - the same idea
+      // the photo snap uses, so both features pick the same main building.
+      const sqft = footprintSqft(w.geometry, geo.lat, geo.lng);
+      const score = Math.max(sqft, 100) / (dist + 25);
+      if (score > bestScore) { bestScore = score; best = { sqft, tags: w.tags || {} }; }
+    }
+    let est = null;
+    if (best) {
+      const levels = Math.min(6, Math.max(1, parseInt(best.tags["building:levels"] || "1", 10) || 1));
+      const total = best.sqft * levels;
+      if (total >= 800 && total <= 2000000) est = Math.round(total / 100) * 100;
+    }
+    fpSizeStore(key, est || 0);   // 0 = known miss, cached so repeats are free
+    return est;
+  }
+  async function maybeEstimateSize(typed, geo) {
+    const sizeInput = document.getElementById("targetSize");
+    if (!geo || !isFinite(geo.lat) || !isFinite(geo.lng)) return;
+    if (sizeInput.value.trim() !== "") return;
+    if (!/^\s*\d+\s+\S/.test(typed)) return;   // a submarket point must never size a random building
+    if (document.getElementById("propertyType").value === "Land") return;
+    try {
+      const est = await estimateSizeFromFootprint(geo);
+      // Fill only if nothing changed while we looked: no typed size, no
+      // search already in flight (a fast confirm just runs sizeless, as
+      // today, and the estimate waits for the next run).
+      if (est && sizeInput.value.trim() === "" && !searchInFlight) {
+        sizeInput.value = est;
+        sizeInput.dispatchEvent(new Event("input", { bubbles: true }));
+        document.getElementById("sizeEstimateNote").classList.remove("hidden");
+      }
+    } catch (_) { /* Overpass down - no estimate, exactly today */ }
+  }
+
   const BLDG_CACHE_KEY = "bldgCache.v1";
   let bldgCache = (() => { try { return JSON.parse(localStorage.getItem(BLDG_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
   function bldgCacheStore(key, val) {
@@ -4827,7 +5383,7 @@
         iconSize: [20, 20], iconAnchor: [10, 10],
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
-      const title = (c._num ? "Comp " + c._num + " — " : "") + (c.address || "Comp");
+      const title = (c._num ? "Comp " + c._num + ": " : "") + (c.address || "Comp");
       // The popup carries the comp's source-confidence badge (same tinted
       // tiers as the table) — the map is where untrustworthy comps get
       // noticed, so confidence must be visible right there. Built at open
@@ -5137,11 +5693,14 @@
     const cta = document.getElementById("ctaCard");
     cta.classList.toggle("hidden", !leadCaptureEnabled);
     document.getElementById("ctaLink").href =
-      "mailto:agouraninja@gmail.com?subject=" +
+      "mailto:info@compninja.co?subject=" +
       encodeURIComponent(`What is my property worth? ${meta.address}`);
 
     document.getElementById("results").classList.remove("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
+    // The pitch has already landed once there's a report to read — hide it
+    // so the report starts near the top instead of below a sales headline.
+    document.getElementById("hero").classList.add("hidden");
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
     // Glide down to the finished report.
@@ -5491,6 +6050,7 @@
     document.getElementById("acctSubmit").textContent =
       { signin: "Sign in", signup: "Create account", forgot: "Send reset link", reset: "Set new password" }[mode];
     document.getElementById("acctName").classList.toggle("hidden", mode !== "signup");
+    document.getElementById("acctTos").classList.toggle("hidden", mode !== "signup");
     document.getElementById("acctEmail").classList.toggle("hidden", mode === "reset");
     document.getElementById("acctPassword").classList.toggle("hidden", mode === "forgot");
     document.getElementById("acctPassword").placeholder = mode === "reset" ? "New password (8+ characters)" : "Password";
@@ -5522,16 +6082,32 @@
   }
 
   document.getElementById("signInLink").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("guestHintSignIn").addEventListener("click", () =>
+    openAcctModal("signup", "Create a free account to keep searching. It's free, no card needed."));
   document.getElementById("acctTabIn").addEventListener("click", () => setAcctMode("signin"));
   document.getElementById("acctTabUp").addEventListener("click", () => setAcctMode("signup"));
   document.getElementById("acctForgotLink").addEventListener("click", () => setAcctMode("forgot"));
   document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
   document.getElementById("acctMenuBtn").addEventListener("click", () =>
     document.getElementById("acctMenu").classList.toggle("hidden"));
+  document.getElementById("exploreMenuBtn").addEventListener("click", () => {
+    const menu = document.getElementById("exploreMenu");
+    menu.classList.toggle("hidden");
+    document.getElementById("exploreMenuBtn")
+      .setAttribute("aria-expanded", String(!menu.classList.contains("hidden")));
+  });
+  function closeExploreMenu() {
+    document.getElementById("exploreMenu").classList.add("hidden");
+    document.getElementById("exploreMenuBtn").setAttribute("aria-expanded", "false");
+  }
   document.addEventListener("click", (e) => {
     if (!document.getElementById("acctMenuWrap").contains(e.target)) {
       document.getElementById("acctMenu").classList.add("hidden");
     }
+    if (!document.getElementById("exploreMenuWrap").contains(e.target)) closeExploreMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeExploreMenu();
   });
 
   document.getElementById("acctForm").addEventListener("submit", async (e) => {
@@ -5555,7 +6131,7 @@
         resetToken = "";
         history.replaceState(null, "", location.pathname + location.search);
         setAcctMode("signin");
-        info.textContent = "Password updated — sign in with it below.";
+        info.textContent = "Password updated. Sign in with it below.";
         info.classList.remove("hidden");
         return;
       }
@@ -5632,9 +6208,11 @@
     if (currentUser && location.pathname === "/desk") renderWatchFeed({ markSeen: true });
     const m = location.hash.match(/^#reset=([A-Za-z0-9_-]{20,})$/);
     if (m) { resetToken = m[1]; openAcctModal("reset"); }
-    // Runs after the user is known, because the success banner's whole job is
-    // to wait for THIS user's entitlements to catch up with their payment.
+    // Both run after the user is known, because their whole job is to wait for
+    // THIS user's entitlements to catch up with their payment. They key off
+    // different query params (?checkout= vs ?purchase=), so at most one acts.
     handleCheckoutReturn();
+    handlePurchaseReturn();
   })();
 
   // Save the on-screen report into the server-side portfolio. currentMeta /
@@ -5734,7 +6312,7 @@
       const last = snaps[snaps.length - 1] || null;
       const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
       const card = document.createElement("div");
-      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1";
+      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1 fade-in";
       const addr = document.createElement("button");
       addr.type = "button";
       addr.className = "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C] truncate";
@@ -5788,7 +6366,9 @@
   // ----------------------------------------------------------------------------
   // /desk — My Desk lives on its own URL. The desk view and the home stack
   // (hero/form/results/homeInfo) are mutually exclusive; within the home stack,
-  // results-vs-homeInfo stays renderResults'/Escape's job. popstate reads only
+  // hero-vs-results and results-vs-homeInfo stay renderResults'/Escape's job
+  // (hero hides once a report renders — no reason to keep selling the pitch
+  // above a report the visitor is already reading). popstate reads only
   // location.pathname (entries created by full page loads carry null state),
   // and going Back never resurrects a closed report — saved chips cover that.
   // ----------------------------------------------------------------------------
@@ -5799,23 +6379,30 @@
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();
     hideLoadingCard();
-    document.getElementById("deskView").classList.remove("hidden");
+    const deskView = document.getElementById("deskView");
+    deskView.classList.remove("hidden");
+    deskView.classList.add("fade-in"); // re-fires on every unhide; closes stay instant
     renderHistory();
     document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
     renderMyDesk();
   }
   function showHomeView() {
     document.getElementById("deskView").classList.add("hidden");
-    document.getElementById("hero").classList.remove("hidden");
-    document.getElementById("searchSection").classList.remove("hidden");
-    document.getElementById("homeInfo").classList.remove("hidden");
+    // fade-in is added here rather than in markup so it doesn't double-animate
+    // against the .enter page-load entrance on first paint.
+    ["hero", "searchSection", "homeInfo"].forEach((id) => {
+      const el = document.getElementById(id);
+      el.classList.remove("hidden");
+      el.classList.add("fade-in");
+    });
   }
   const onDesk = () => !document.getElementById("deskView").classList.contains("hidden");
   function enterDesk({ markSeen } = {}) {
     if (location.pathname !== "/desk") history.pushState({}, "", "/desk");
     showDeskView();
     if (markSeen) renderWatchFeed({ markSeen: true });
-    window.scrollTo({ top: 0 });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   }
   function leaveDesk() {
     if (!onDesk()) return;
@@ -6118,11 +6705,6 @@
   // ----------------------------------------------------------------------------
   // Footer links.
   // ----------------------------------------------------------------------------
-  function smoothScrollTo(el) {
-    if (!el) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-  }
   // Straight to the submission modal — the same one /brokers links to via
   // /#submit-comp. openCompModal is a hoisted declaration further down.
   document.getElementById("footerSubmitComp").addEventListener("click", openCompModal);
@@ -6148,9 +6730,10 @@
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
     results.classList.add("hidden");
     document.getElementById("homeInfo").classList.remove("hidden");
+    document.getElementById("hero").classList.remove("hidden");
     // Samples and shared reports aren't saved to this browser, so no note.
     if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
-      showStatus("Report closed — reopen it any time from <strong>My Desk</strong>, at no cost.", "info");
+      showStatus("Report closed. Reopen it any time from <strong>My Desk</strong>, at no cost.", "info");
     } else {
       hideStatus();
     }
@@ -6160,7 +6743,8 @@
 
   // Market Explorer: matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed
-  // search, ~30-60s) or handed to the valuation form pre-filled. The list
+  // search, ~30-60s). Dead-end queries get inline hints in the dropdown — the
+  // Explorer is self-contained and never hands off to the comp form. The list
   // comes from /api/markets (seed + explorer pages — never a billed search).
   (() => {
     const input = document.getElementById("marketSearch");
@@ -6174,23 +6758,10 @@
         .then((r) => (r.ok ? r.json() : []))
         .then((list) => (markets = list))
         .catch(() => (markets = [])));
-    const TYPE_WORDS = ["industrial", "office", "retail", "multifamily", "land", "residential"];
     const EXPLORE_TYPES = ["industrial", "office", "retail", "multifamily"];
+    const NON_EXPLORE_TYPES = ["land", "residential"]; // valid report types /api/explore-market rejects
     const US_STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
     const cap = (s) => s[0].toUpperCase() + s.slice(1);
-    const runValuation = () => {
-      const q = input.value.trim();
-      if (!q) return;
-      const typeWord = TYPE_WORDS.find((t) => q.toLowerCase().includes(t));
-      if (typeWord) document.getElementById("propertyType").value = cap(typeWord);
-      syncSubjectFieldsToType();
-      const addr = document.getElementById("address");
-      // The type belongs in the dropdown, not the address text.
-      addr.value = q.replace(new RegExp(typeWord || "$^", "i"), "").replace(/\s{2,}/g, " ").trim() || q;
-      hide();
-      smoothScrollTo(document.getElementById("compForm"));
-      addr.focus();
-    };
     const hide = () => {
       if (exploring) return; // generation in progress — keep the status row up
       resultsEl.classList.add("hidden");
@@ -6199,6 +6770,7 @@
     // "industrial Boise ID" -> {type, city, state}; otherwise {reason} for a hint row.
     const parseExploreQuery = (q) => {
       let tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+      if (tokens.some((t) => NON_EXPLORE_TYPES.includes(t))) return { reason: "unsupported-type" };
       const type = EXPLORE_TYPES.find((t) => tokens.includes(t));
       tokens = tokens.filter((t) => t !== type);
       const last = tokens[tokens.length - 1] || "";
@@ -6212,7 +6784,7 @@
     const explore = ({ type, city, state }) => {
       exploring = false; // allow the swap below, then lock
       resultsEl.innerHTML =
-        `<div class="px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot — ` +
+        `<div class="fade-in px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot, ` +
         `checking recent sales. Usually 30–60 seconds.</div>`;
       resultsEl.classList.remove("hidden");
       exploring = true;
@@ -6228,14 +6800,13 @@
           exploring = false;
           input.disabled = false;
           resultsEl.innerHTML =
-            `<div class="px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong — please try again.")}</div>` +
-            `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
-          document.getElementById("marketSearchRun").addEventListener("click", runValuation);
+            `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong. Please try again.")}</div>` +
+            `<div class="px-3 py-1.5 text-[#8A93A0]">Adjust the search and try again, e.g. “industrial Boise ID”</div>`;
         })
         .catch(() => {
           exploring = false;
           input.disabled = false;
-          resultsEl.innerHTML = `<div class="px-3 py-1.5 text-[#B91C1C]">Connection lost — please try again.</div>`;
+          resultsEl.innerHTML = `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">Connection lost. Please try again.</div>`;
         });
     };
     const render = () => {
@@ -6254,18 +6825,20 @@
       const exactMatch = p.type && matches.some((m) =>
         m.type.toLowerCase() === p.type.toLowerCase() && m.city.toLowerCase() === p.city.toLowerCase() && m.state === p.state);
       if (p.type && !exactMatch) {
-        html += `<button type="button" id="marketSearchExplore" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Explore this market — build the ${escq(p.type)} · ${escq(p.city)}, ${escq(p.state)} page →</button>`;
+        html += `<button type="button" id="marketSearchExplore" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Explore this market, build the ${escq(p.type)} · ${escq(p.city)}, ${escq(p.state)} page →</button>`;
       } else if (p.reason === "no-state" && !matches.length) {
-        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Add the state to explore a new market — e.g. “industrial Boise ID”</div>`;
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Add the state to explore a new market, e.g. “industrial Boise ID”</div>`;
       } else if (p.reason === "no-type" && !matches.length) {
         html += `<div class="px-3 py-1.5 text-[#8A93A0]">Explore ${escq(p.city)}, ${escq(p.state)} as:</div>` +
           EXPLORE_TYPES.map((t) =>
             `<button type="button" data-explore-type="${t}" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">${cap(t)} →</button>`).join("");
+      } else if (p.reason === "unsupported-type" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
+      } else if (p.reason === "no-city" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Search a market like “industrial Boise ID”</div>`;
       }
-      html += `<button type="button" id="marketSearchRun" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Run a valuation for “${escq(input.value.trim())}” →</button>`;
       resultsEl.innerHTML = html;
       resultsEl.classList.remove("hidden");
-      document.getElementById("marketSearchRun").addEventListener("click", runValuation);
       const exploreBtn = document.getElementById("marketSearchExplore");
       if (exploreBtn) exploreBtn.addEventListener("click", () => explore(p));
       resultsEl.querySelectorAll("[data-explore-type]").forEach((btn) =>
@@ -6282,7 +6855,7 @@
       const exploreBtn = document.getElementById("marketSearchExplore");
       if (first) window.location.href = first.getAttribute("href");
       else if (exploreBtn) exploreBtn.click();
-      else runValuation();
+      // else: hint rows are already visible — Enter is a no-op, never the comp form.
     });
     document.addEventListener("mousedown", (e) => {
       if (!resultsEl.contains(e.target) && e.target !== input) hide();
@@ -6448,10 +7021,15 @@
   // Is there anything to sell? PRO_ENABLED alone isn't enough — checkout 503s
   // without Stripe keys too, so the server reports the AND of both.
   function billingLive() { return Boolean(proConfig && proConfig.billing); }
+  // Comped team access. Pro, but with nothing behind it at Stripe — so every
+  // billing control has to be kept away from it, not just re-labelled.
+  function isAdminPro() { return Boolean(proConfig && proConfig.admin); }
   // "none" means no Stripe customer has ever existed for this user, so the
-  // portal would 400. Any other state means there is something to manage.
+  // portal would 400. Any other state means there is something to manage —
+  // except "admin", which is comped and likewise has no customer to manage.
   function hasBillingHistory() {
-    return Boolean(currentUser) && proConfig && proConfig.status && proConfig.status !== "none";
+    return Boolean(currentUser) && proConfig && proConfig.status
+      && proConfig.status !== "none" && !isAdminPro();
   }
 
   function showPricingError(msg) {
@@ -6484,9 +7062,37 @@
     renderFoundingTile();
   }
 
+  // Where the report being bought is parked across the Stripe redirect. The
+  // return lands on "/" carrying nothing but ?purchase=success — the address
+  // stays out of the URL so it can't end up in a log or a Referer header — so
+  // this stash is the only thing that knows which report was paid for.
+  const PENDING_UNLOCK = "pendingUnlock.v1";
+
+  /**
+   * Show the single-report tile only when there is something to spend it on.
+   *
+   * The pricing modal opens from the nav, the account menu and the export-limit
+   * path as well as from a locked report, so "there is a current report" is
+   * never a safe assumption. Three ways the offer is meaningless: nothing on
+   * screen to unlock, nothing WITHHELD on what is on screen (Pro, or already
+   * bought — either way lockedCount() is 0), or a shared report, which belongs
+   * to whoever published it and isn't the viewer's to buy.
+   */
+  function updateSingleReportTile() {
+    const tile = document.getElementById("singleReportTile");
+    if (!tile) return;
+    const buyable = Boolean(currentMeta) && !currentMeta.shared && lockedCount() > 0;
+    tile.classList.toggle("hidden", !buyable);
+    if (!buyable) return;
+    const addr = document.getElementById("singleReportAddr");
+    // textContent, not innerHTML: this is a user-typed address.
+    if (addr) addr.textContent = currentMeta.address || "this report";
+  }
+
   function openPricingModal() {
     document.getElementById("pricingError").classList.add("hidden");
     document.getElementById("pricingModal").classList.remove("hidden");
+    updateSingleReportTile();
     // Re-read the counter on every open: a seat may have gone since last time,
     // and the server memoizes for 60s so this is cheap.
     loadPricing();
@@ -6513,8 +7119,20 @@
       // after. Cancelling the account modal clears it again, by design.
       closePricingModal();
       pendingCheckoutPlan = plan;
-      openAcctModal("signup", "Create a free account first — your subscription needs somewhere to live.");
+      openAcctModal("signup", plan === "single_report"
+        // A single-report unlock is recorded against an account, not a device — say so,
+        // because "your subscription needs somewhere to live" is not true of a
+        // one-off and reads as a bait-and-switch to someone avoiding one.
+        ? "Create a free account first: the unlock is saved to your account, so the report stays yours on any device."
+        : "Create a free account first: your subscription needs somewhere to live.");
       return;
+    }
+    // A single-report unlock is bought FOR a report, so the search that produced it has
+    // to travel: the server derives the purchase id from these three fields
+    // (reportIdFor) rather than trusting an id we send.
+    const single = plan === "single_report";
+    if (single && !currentMeta) {
+      return showPricingError("Open a report first, then unlock that one.");
     }
     const label = btn && btn.textContent;
     if (btn) { btn.disabled = true; btn.textContent = "Opening checkout…"; }
@@ -6522,18 +7140,35 @@
       const r = await fetch("/api/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify(single
+          ? { plan, address: currentMeta.address, type: currentMeta.type, months: currentMeta.months }
+          : { plan }),
       });
       const data = await r.json().catch(() => ({}));
+      // Already bought, or Pro already covers it. Both mean "don't pay again" —
+      // close up and re-run so they actually see the full report.
+      if (r.status === 409 && (data.code === "already_owned" || data.code === "already_pro")) {
+        closePricingModal();
+        showStatus(data.error + " Re-running it now.", "info");
+        rerunHistory(currentMeta);
+        return;
+      }
       if (r.status === 409 && data.code === "founding_closed") {
         pricingInfo = Object.assign({}, pricingInfo, { foundingLeft: 0 });
         renderFoundingTile();
-        showPricingError("The founding-member offer just closed — the last seat went. Pro monthly is still available above.");
+        showPricingError("The founding-member offer just closed: the last seat went. Pro monthly is still available above.");
         return;
       }
       if (!r.ok || !data.url) {
         showPricingError(data.error || "Could not start checkout. Please try again.");
         return;
+      }
+      // Remember WHICH report is being bought. Stripe returns to "/" with no
+      // idea what was purchased, and the report is a client-side artifact —
+      // this stash is the only thing that can re-open it on the way back. It
+      // deliberately carries no address in the return URL; see PENDING_UNLOCK.
+      if (single) {
+        try { localStorage.setItem(PENDING_UNLOCK, JSON.stringify(currentMeta)); } catch (_) {}
       }
       // Hand off to Stripe. assign (not replace) so Back returns here.
       location.assign(data.url);
@@ -6566,33 +7201,41 @@
   function billingStatusCopy() {
     const p = proConfig || {};
     if (!currentUser) return { title: "Not signed in", detail: "Sign in to see your plan." };
+    // Before the Stripe states: an admin has none of them, and saying "Pro"
+    // flat would leave a team member believing they're testing a real
+    // subscription.
+    if (p.admin) {
+      return {
+        title: "Pro — comped (team)",
+        detail: "Full Pro access while your admin key is unlocked. Nothing is billed, and there's no subscription behind it.",
+      };
+    }
     if (p.isPro && p.status === "grace") {
       const until = p.graceUntil ? new Date(p.graceUntil) : null;
       return {
-        title: "Pro — payment needs attention",
+        title: "Pro: payment needs attention",
         detail: "Your last payment failed. Pro keeps working" +
           (until && !isNaN(until) ? ` until ${until.toLocaleDateString()}` : " for a few more days") +
-          " — update your card to keep it.",
+          "; update your card to keep it.",
       };
     }
     if (p.isPro && p.status === "cancelling") {
-      return { title: "Pro — cancelling", detail: "Your subscription won't renew. Pro stays active until the end of the period you've paid for." };
+      return { title: "Pro: cancelling", detail: "Your subscription won't renew. Pro stays active until the end of the period you've paid for." };
     }
     if (p.isPro) {
       return {
-        title: p.plan === "pro_annual_founding" ? "Pro — founding member" : "Pro",
-        // Same rule as the pricing tile: name only what ships. Unlimited
-        // exports and report branding are granted by entitlements.js but
-        // neither is BUILT, and promising them to someone who has just paid is
-        // worse than promising them to a prospect. Restore both here in the
-        // same change that builds the features.
-        detail: "Every comparable, and a lookback of up to 10 years.",
+        title: p.plan === "pro_annual_founding" ? "Pro: founding member" : "Pro",
+        // Same rule as the pricing tile: name only what ships. Report branding
+        // is granted by entitlements.js but has no UI, so it is not claimed
+        // here; promising it to someone who has just paid is worse than
+        // promising it to a prospect. Restore it with the feature.
+        detail: "Unlimited comps, a lookback of up to 10 years, and unlimited exports.",
       };
     }
     if (p.status === "expired") {
-      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 12-month lookback." };
+      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 3-year lookback." };
     }
-    return { title: "Free", detail: "Reports itemize 4 comps and look back 12 months. The valuation still uses every comp we find." };
+    return { title: "Free", detail: "Reports itemize 4 comps and look back 3 years. The valuation still uses every comp we find." };
   }
 
   // Single owner of every billing control's visibility. Called after both
@@ -6601,6 +7244,11 @@
     const live = billingLive();
     const pro = Boolean(proConfig && proConfig.isPro);
 
+    // All three callers of this function are points where entitlements have
+    // just changed (config load, post-checkout refresh, sign-in/out), which
+    // makes it the one seam the explorer's lock needs too.
+    applyExplorerGating();
+
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
 
     const menuUpgrade = document.getElementById("menuUpgradeBtn");
@@ -6608,14 +7256,51 @@
     menuUpgrade.classList.toggle("hidden", !live || pro);
     menuBilling.classList.toggle("hidden", !live || !hasBillingHistory());
 
+    // /api/config already carries this visitor's remaining exports, so the
+    // counter can be right on first paint instead of only after an export.
+    if (proConfig && proConfig.exportsRemaining !== undefined) {
+      exportsLeft = proConfig.exportsRemaining;
+    }
+    updateExportAllowance();
+
     const card = document.getElementById("billingCard");
-    card.classList.toggle("hidden", !live || !currentUser);
-    if (live && currentUser) {
+    // Admins see the card even where billing isn't live (a dev box with no
+    // Stripe keys): comped Pro applies there too, so the way back out of it
+    // has to as well.
+    const showCard = Boolean(currentUser) && (live || isAdminPro());
+    card.classList.toggle("hidden", !showCard);
+    if (showCard) {
       const copy = billingStatusCopy();
       document.getElementById("billingStatus").textContent = copy.title;
       document.getElementById("billingDetail").textContent = copy.detail;
       document.getElementById("billingUpgradeBtn").classList.toggle("hidden", pro);
       document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
+      document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
+    }
+  }
+
+  // Drop comped Pro and reload as an ordinary account. The paywall is the part
+  // of this product the team never sees, because the team is permanently on
+  // the other side of it — this is the way back.
+  //
+  // Reload rather than re-fetch: gating is applied when a report is
+  // SERIALIZED, so the report already on screen was sent whole and no amount
+  // of re-reading /api/config would claw those comps back. A fresh page is the
+  // only honest picture.
+  async function dropAdminAccess() {
+    const btn = document.getElementById("billingAdminOffBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Switching…"; }
+    try {
+      await fetch("/api/admin-access", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clear: true }),
+      });
+      // The dashboards would hand it straight back on their next page load.
+      try { sessionStorage.removeItem("cn_admin_key"); } catch (_) {}
+      location.reload();
+    } catch (_) {
+      if (btn) { btn.disabled = false; btn.textContent = "View as a free user"; }
     }
   }
 
@@ -6625,7 +7310,10 @@
       const r = await fetch("/api/config", { cache: "no-store" });
       const cfg = await r.json();
       proConfig = cfg.pro || { enabled: false };
+      // Absent for signed-in visitors, so signing in clears the hint here.
+      guestSearch = cfg.guestSearch || null;
     } catch (_) { /* keep the last known answer */ }
+    renderGuestSearchHint();
     refreshBillingUI();
     applyLookbackGating();
   }
@@ -6676,19 +7364,87 @@
     }
     if (result !== "success") return;
 
-    showCheckoutNotice("wait", "Payment received — activating your account…");
+    showCheckoutNotice("wait", "Payment received. Activating your account…");
     // ~10s of patience, then tell the truth rather than spin forever.
     for (let i = 0; i < 6; i++) {
       await refreshProConfig();
       if (proConfig && proConfig.isPro) {
         showCheckoutNotice("ok", "You're on Pro.",
-          "Every comparable, and a lookback of up to 10 years. Re-run a report to see the full list.");
+          "Unlimited comps, a lookback of up to 10 years, and unlimited exports. Re-run a report to see the full list.");
         return;
       }
       await new Promise((r) => setTimeout(r, 2000));
     }
-    showCheckoutNotice("wait", "Payment received — your account is still activating.",
-      "This usually takes a few seconds. Refresh this page shortly; if Pro still isn't showing, email agouraninja@gmail.com and we'll sort it.");
+    showCheckoutNotice("wait", "Payment received. Your account is still activating.",
+      "This usually takes a few seconds. Refresh this page shortly; if Pro still isn't showing, email info@compninja.co and we'll sort it.");
+  }
+
+  /**
+   * Handle the ?purchase=success|cancelled return from a single-report unlock.
+   *
+   * Separate from handleCheckoutReturn() on purpose. That one lands on /desk
+   * and announces a plan; this lands on "/" and re-opens a REPORT, because the
+   * report is what was bought and the desk has no idea which building it was.
+   * The re-rendered report is its own receipt: when every comp is there, it
+   * worked. It also can't share the desk's banner — #checkoutNotice lives
+   * inside the desk, which isn't on screen here.
+   *
+   * Stripe redirects the instant the card clears, which routinely beats the
+   * webhook that records the purchase, so this waits on /api/report-access
+   * instead of immediately re-running and rendering a still-locked report at
+   * someone who has just paid.
+   */
+  async function handlePurchaseReturn() {
+    const params = new URLSearchParams(location.search);
+    const result = params.get("purchase");
+    if (!result) return;
+    // Clear the query straight away so a refresh doesn't replay any of this.
+    params.delete("purchase");
+    const qs = params.toString();
+    history.replaceState({}, "", location.pathname + (qs ? "?" + qs : ""));
+
+    let meta = null;
+    try { meta = JSON.parse(localStorage.getItem(PENDING_UNLOCK) || "null"); } catch (_) {}
+    try { localStorage.removeItem(PENDING_UNLOCK); } catch (_) {}
+
+    if (result === "cancelled") {
+      showStatus("Checkout cancelled. Nothing was charged.", "info");
+      return;
+    }
+    if (result !== "success") return;
+    // Paid, but the stash is gone — a different browser, or cleared storage.
+    // Recoverable without help: the unlock lives on the ACCOUNT, not the
+    // device, so searching that property again serves it whole.
+    if (!meta || !meta.address) {
+      showStatus("Payment received. Search that property again and the full report is yours.", "info");
+      return;
+    }
+
+    showStatus("Payment received. Unlocking your report…", "info");
+    let unlocked = false;
+    // ~15s of patience, then say something true rather than spin. The purchase
+    // is on the account either way, so running out of patience costs a
+    // re-search, never the money.
+    for (let i = 0; i < 7 && !unlocked; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 2200));
+      try {
+        const r = await fetch("/api/report-access", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ address: meta.address, type: meta.type, months: meta.months }),
+        });
+        const d = await r.json().catch(() => ({}));
+        unlocked = Boolean(d.unlocked || d.pro);
+      } catch (_) { /* keep waiting — a blip shouldn't end the wait */ }
+    }
+    if (!unlocked) {
+      showStatus(`Payment received, but the unlock is still landing. Search ${meta.address} again in a moment and it'll be there. If it isn't, email info@compninja.co and we'll sort it.`, "error");
+      return;
+    }
+    hideStatus();
+    // Re-runs the same search: a cache hit, so no billed search, and the gate
+    // now serves it whole because computeEntitlements can see the purchase.
+    rerunHistory(meta);
   }
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
@@ -6699,7 +7455,13 @@
     const btn = e.target.closest && e.target.closest(".pricing-buy");
     if (btn) startCheckout(btn.dataset.plan, btn);
   });
-  document.getElementById("pricingLink").addEventListener("click", openPricingModal);
+  document.getElementById("pricingLink").addEventListener("click", () => {
+    // Lives inside the Explore dropdown — close it so it isn't left open
+    // behind the pricing modal.
+    document.getElementById("exploreMenu").classList.add("hidden");
+    document.getElementById("exploreMenuBtn").setAttribute("aria-expanded", "false");
+    openPricingModal();
+  });
   document.getElementById("menuUpgradeBtn").addEventListener("click", () => {
     document.getElementById("acctMenu").classList.add("hidden");
     openPricingModal();
@@ -6710,9 +7472,11 @@
   });
   document.getElementById("billingUpgradeBtn").addEventListener("click", openPricingModal);
   document.getElementById("billingPortalBtn").addEventListener("click", (e) => openBillingPortal(e.currentTarget));
+  document.getElementById("billingAdminOffBtn").addEventListener("click", dropAdminAccess);
 
   // Every locked surface in the app — the comp table's locked notice, the
-  // corpus offer — routes through this one control.
+  // corpus offer, the Address Explorer's link and panel — routes through this
+  // one control.
   function openUpgradePrompt() {
     if (!billingLive()) {
       // Pro gating is on but nothing is for sale yet (PRO_ENABLED on without
@@ -6736,7 +7500,7 @@
     const { total, excluded, added, included } = curationCounts();
     const who = currentMeta && currentMeta.shared ? "the report owner" : "you";
     const bits = [];
-    if (excluded > 0) bits.push(`Based on ${included} of ${total} comps — ${excluded} excluded by ${who}.`);
+    if (excluded > 0) bits.push(`Based on ${included} of ${total} comps, ${excluded} excluded by ${who}.`);
     if (added > 0) {
       const cur = currentMeta && currentMeta.curation;
       const fromCorpus = cur ? cur.added.filter((c) => c.from_corpus).length : 0;
@@ -6827,7 +7591,7 @@
     // Credit the contributing broker on a verified comp (server sets verified_by
     // by matching the comp back to the submission that supplied it).
     const by = tier === "verified" ? String(comp.verified_by || "").trim() : "";
-    badge.title = by ? "Verified — comp contributed by " + by
+    badge.title = by ? "Verified, comp contributed by " + by
       : (t.legend.charAt(0).toUpperCase() + t.legend.slice(1));
     if (!by) return badge;
     const wrap = document.createElement("span");
@@ -6943,7 +7707,10 @@
     corpusOfferLocked = 0;
     renderCorpusOffer();
     if (!meta || meta.shared || meta.sample || !meta.address || !meta.type) return;
-    fetch(`/api/corpus-comps?address=${encodeURIComponent(meta.address)}&type=${encodeURIComponent(meta.type)}`)
+    // `months` rides along so the server can hash the same report id the single-report
+    // unlock was bought against (reportIdFor / exportReportKey — same three
+    // fields). Without it a buyer stays locked out of this panel.
+    fetch(`/api/corpus-comps?address=${encodeURIComponent(meta.address)}&type=${encodeURIComponent(meta.type)}&months=${encodeURIComponent(meta.months || "")}`)
       .then((r) => (r.ok ? r.json() : { comps: [] }))
       .then((d) => {
         corpusOfferRows = Array.isArray(d.comps) ? d.comps : [];
@@ -6970,7 +7737,9 @@
       p.innerHTML =
         `CompNinja holds <strong>${corpusOfferLocked}</strong> more verified comp` +
         `${corpusOfferLocked === 1 ? "" : "s"} for this market. ` +
-        `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock with Pro</button>`;
+        // Names no plan: the modal this opens now offers Pro AND the 
+        // one-off, and which of them is on the table depends on the report.
+        `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock them</button>`;
       rowsEl.appendChild(p);
       return;
     }
@@ -7222,7 +7991,7 @@
           // Different size class than the subject — down-weighted in the
           // valuation, disclosed here (the trust line names the count).
           if (col.key === "size_sqft" && val && offSizeClass(comp)) {
-            td.title = "Different size class than your building — counts less in the valuation";
+            td.title = "Different size class than your building, counts less in the valuation";
             const sup = document.createElement("sup");
             sup.textContent = "‡";
             sup.className = "text-[#8A93A0]";
@@ -7290,9 +8059,12 @@
     if (n <= 0 || txFilter !== "all") { el.classList.add("hidden"); el.innerHTML = ""; return; }
     el.classList.remove("hidden");
     el.innerHTML =
-      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} available with Pro</div>` +
+      // Names no plan, for the same reason the corpus-offer notice doesn't:
+      // this button opens the ONE modal, which offers Pro AND the one-off,
+      // and which of them fits depends on the report.
+      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} in this report</div>` +
       `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
-      `Your value range above already includes ${n === 1 ? "it" : "them"} — only the itemized list is limited.` +
+      `Your value range above already includes ${n === 1 ? "it" : "them"}; only the itemized list is limited.` +
       `</div>` +
       `<button type="button" class="unlock-comps-btn btn-live mt-3 inline-flex items-center justify-center gap-2 ` +
       `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>`;
@@ -7399,7 +8171,7 @@
           }
           // Same size-class disclosure as the desktop table.
           if (col.key === "size_sqft" && !empty && offSizeClass(comp)) {
-            dd.title = "Different size class than your building — counts less in the valuation";
+            dd.title = "Different size class than your building, counts less in the valuation";
             const sup = document.createElement("sup");
             sup.textContent = "‡";
             sup.className = "text-[#8A93A0]";
@@ -7559,7 +8331,7 @@
         ? `Prices converted to USD where unambiguous, at 1 ${reportCurrency.code} = $${fmtRate(reportCurrency.rate)}`
         : `Prices in ${reportCurrency.code}`);
     }
-    if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps — ${cc.excluded} excluded by report owner`);
+    if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps, ${cc.excluded} excluded by report owner`);
     if (cc.added > 0) curationBits.push(`${cc.added} comp${cc.added === 1 ? "" : "s"} added by report owner`);
     const title = currentMeta
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
@@ -7587,7 +8359,7 @@
         s.onload = resolve;
         s.onerror = () => {
           sheetJsPromise = null;
-          reject(new Error("Could not load the Excel library — check your connection and try again."));
+          reject(new Error("Could not load the Excel library. Check your connection and try again."));
         };
         document.head.appendChild(s);
       });
@@ -7647,12 +8419,12 @@
           ? [["Sell today (est.)", xlsxMoney(Math.round(sell.value))], ["Sell-today basis", sell.source]] : []),
         ...(capR ? [["Market cap-rate range", `${capR.low}–${capR.high}`]] : []),
         ...(currentMeta.curation && currentMeta.curation.read && (currentMeta.curation.read.direction || currentMeta.curation.read.note)
-          ? [["Owner's price-discovery read", [currentMeta.curation.read.direction, currentMeta.curation.read.note].filter(Boolean).join(" — ")]] : []),
+          ? [["Owner's price-discovery read", [currentMeta.curation.read.direction, currentMeta.curation.read.note].filter(Boolean).join(": ")]] : []),
         ...(cc.excluded > 0 || cc.added > 0 ? [[
           "Comps used",
           `${cc.included} of ${cc.total}` +
-          (cc.excluded ? ` — ${cc.excluded} excluded by report owner` : "") +
-          (cc.added ? ` — ${cc.added} added by report owner` : ""),
+          (cc.excluded ? `, ${cc.excluded} excluded by report owner` : "") +
+          (cc.added ? `, ${cc.added} added by report owner` : ""),
         ]] : []),
         ...(s.noi > 0 ? [["NOI (yours)", xlsxMoney(s.noi)]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
@@ -7741,7 +8513,7 @@
       btn.disabled = false;
     }
   }
-  document.getElementById("xlsxBtn").addEventListener("click", exportXlsx);
+  document.getElementById("xlsxBtn").addEventListener("click", gatedExport(exportXlsx));
 
   async function downloadImage() {
     const node = document.getElementById("reportArea");
@@ -7781,6 +8553,15 @@
   // limit described here is enforced server-side, so editing this object in
   // the console unlocks nothing but the visitor's own greyed-out controls.
   let proConfig = { enabled: false };
+  // Free-search state from /api/config: { limit, used } for a signed-out
+  // visitor when the guest gate is on, null otherwise. Presentation only —
+  // /api/comps enforces the cap server-side and answers signin_required.
+  let guestSearch = null;
+  function renderGuestSearchHint() {
+    const el = document.getElementById("guestSearchHint");
+    if (!el) return;
+    el.classList.toggle("hidden", !(guestSearch && guestSearch.used >= guestSearch.limit));
+  }
   let pendingExport = null;         // export action to run after the form submits
   let leadContext = "export";       // which ask the modal is making: "export" unlock or "bov" request
 
@@ -7815,14 +8596,103 @@
     document.getElementById("leadName").focus();
   }
 
+  // ----------------------------------------------------------------------------
+  // Export allowance. Free accounts get a number of REPORTS per month; Pro is
+  // unlimited. Counted per report, so the same analysis as CSV, image, PDF and
+  // Excel costs one, not four.
+  //
+  // Honour system, and deliberately so: every export is produced in this
+  // browser, so the server can only be asked "may I?" — it can never withhold
+  // the file. Anyone with dev tools walks past it. It is a conversion nudge,
+  // exactly like the lead-capture gate, and nothing of value sits behind it.
+  // ----------------------------------------------------------------------------
+
+  // Identity of "the same report". Address + type, and deliberately NOT a
+  // timestamp: meta.generatedAt is absent on a fresh search and falls back to
+  // Date.now(), which would change between two clicks and charge twice for one
+  // report. Reopening a saved report and exporting it again is free.
+  //
+  // The LOOKBACK left this key on 2026-08-04, together with reportIdFor(). A
+  // purchase now buys the property rather than one window of it, so the same
+  // building at 12 and at 120 months is one report here too — which also means
+  // exporting both windows costs one export, not two. That is the intended
+  // reading: the visitor analysed one building.
+  //
+  // ⚠ MIRROR: server.js's reportIdFor() builds this same string from the
+  // /api/comps body — same two fields, same order, same `|`. Both are then
+  // hashed by reportKeyOf() server-side, so this one string is BOTH the
+  // export-tally key and the single-report purchase key. Change it here and you
+  // must change reportIdFor(), or a bought report stops matching itself: the
+  // unlock silently stops applying and the owner's exports start counting
+  // against their free monthly allowance.
+  function exportReportKey() {
+    if (!currentMeta) return "";
+    return [currentMeta.address || "", currentMeta.type || ""]
+      .join("|").trim().toLowerCase();
+  }
+
+  let exportsLeft = null;   // last figure from /api/export; null = unknown
+
+  function updateExportAllowance() {
+    const el = document.getElementById("exportAllowance");
+    if (!el) return;
+    const hide = !proConfig || !proConfig.enabled || exportsLeft === null ||
+                 exportsLeft === "unlimited" || !currentUser;
+    el.classList.toggle("hidden", hide);
+    if (hide) return;
+    const n = Number(exportsLeft);
+    el.textContent = n === 0
+      ? "No exports left this month"
+      : `${n} export${n === 1 ? "" : "s"} left this month`;
+  }
+
+  async function claimExport() {
+    try {
+      const r = await fetch("/api/export", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ report: exportReportKey() }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data.allowed) {
+        exportsLeft = data.remaining;
+        updateExportAllowance();
+        return { allowed: true };
+      }
+      return { allowed: false, code: data.code, error: data.error };
+    } catch (_) {
+      // Server unreachable. Let the export run — never hold someone's own
+      // deliverable hostage to our counter.
+      return { allowed: true };
+    }
+  }
+
   function gatedExport(action) {
-    return () => {
-      if (leadCaptureEnabled && !leadCaptured()) {
-        pendingExport = action;
-        openLeadModal("export");
+    return async () => {
+      // Tier switched off: behave exactly as the app did before it existed —
+      // the lead form is the only export gate.
+      if (!proConfig || !proConfig.enabled) {
+        if (leadCaptureEnabled && !leadCaptured()) {
+          pendingExport = action;
+          openLeadModal("export");
+          return;
+        }
+        return action();
+      }
+      // Tier on: an account REPLACES the lead form as the export gate. One ask
+      // rather than two, and an account is worth more than a contact form —
+      // it persists, syncs, and is the thing a subscription can attach to.
+      const verdict = await claimExport();
+      if (verdict.allowed) return action();
+      if (verdict.code === "signin_required") {
+        openAcctModal("signup", "Create a free account to export — it's free, and your reports follow you across devices.");
         return;
       }
-      action();
+      if (verdict.code === "export_limit") {
+        openUpgradePrompt();
+        return;
+      }
+      alert(verdict.error || "Couldn't start that export. Please try again.");
     };
   }
 
@@ -7980,9 +8850,19 @@
 
   function openConfirmModal({ typed, key, geo }) {
     pendingConfirmKey = key;
+    // geo: null = no geocoder could place the address. Still openable (the
+    // geocoder may just be down), but the copy switches to a warning: a
+    // mistyped address produces a confident-looking report for the wrong
+    // market, which is worse than no report at all.
+    const noMatch = !geo;
+    document.getElementById("confirmHeading").textContent = noMatch
+      ? "We couldn't verify this address"
+      : "Is this the property you're looking for?";
+    document.getElementById("confirmNoMatch").classList.toggle("hidden", !noMatch);
+    document.getElementById("confirmRunBtn").textContent = noMatch ? "Run anyway" : "Yes, run the report";
     document.getElementById("confirmTyped").textContent = typed;
     const matchedWrap = document.getElementById("confirmMatchedWrap");
-    if (geo.label && geo.label.trim().toLowerCase() !== typed.trim().toLowerCase()) {
+    if (!noMatch && geo.label && geo.label.trim().toLowerCase() !== typed.trim().toLowerCase()) {
       document.getElementById("confirmMatched").textContent = geo.label;
       matchedWrap.classList.remove("hidden");
     } else {
@@ -7993,7 +8873,7 @@
     // Single-pin mini map; text-only fallback when Leaflet or coords are absent.
     const mapEl = document.getElementById("confirmMap");
     if (confirmMapInstance) { confirmMapInstance.remove(); confirmMapInstance = null; }
-    if (typeof L === "undefined" || !isFinite(geo.lat) || !isFinite(geo.lng)) {
+    if (noMatch || typeof L === "undefined" || !isFinite(geo.lat) || !isFinite(geo.lng)) {
       mapEl.classList.add("hidden");
     } else {
       mapEl.classList.remove("hidden");
@@ -8014,7 +8894,11 @@
       // to re-measure.
       setTimeout(() => { if (confirmMapInstance) confirmMapInstance.invalidateSize(); }, 60);
     }
-    document.getElementById("confirmRunBtn").focus();
+    // Footprint sizing runs while the visitor reads the modal; it never
+    // blocks the confirm. noMatch means geo is null, which the helper skips.
+    maybeEstimateSize(typed, geo);
+    // Unverified addresses default focus to editing, not running.
+    document.getElementById(noMatch ? "confirmEditBtn" : "confirmRunBtn").focus();
   }
 
   function closeConfirmModal() {
@@ -8170,11 +9054,15 @@
       try { geo = await geocodeAddress(address); } catch (_) {}
       submitBtn.disabled = false;
       btnLabel.textContent = "Run a report";
-      if (geo) {
-        openConfirmModal({ typed: address, key: confirmKey, geo });
-        return; // Confirm re-submits; Edit/Escape just closes
-      }
-      confirmedAddresses.add(confirmKey); // geocoder down or no match — never block
+      // Confirm re-submits; Edit/Escape just closes. A geocode miss opens the
+      // same modal in its warning variant rather than silently running: the
+      // report that comes back from a mistyped address is confidently wrong
+      // (real case: "Highway 42 Montana" for a Georgia building returned a
+      // Montana market report). "Run anyway" still goes through, so a down
+      // geocoder or an address the geocoders don't know costs one click, never
+      // the search.
+      openConfirmModal({ typed: address, key: confirmKey, geo });
+      return;
     }
 
     // Returning users usually search the same asset class — remember it.
@@ -8213,9 +9101,20 @@
         throw new Error("Your session needs a password. Please unlock and try again.");
       }
       if (!res.ok) {
-        let detail = "";
-        try { detail = (await res.json())?.error || ""; } catch (_) {}
-        throw new Error(detail || `Request failed (${res.status}).`);
+        let payload = null;
+        try { payload = await res.json(); } catch (_) {}
+        // The guest search cap answers with signin_required — that's an ask,
+        // not an error, so it gets the account modal instead of the red card.
+        if (payload && payload.signin_required) {
+          hideLoadingCard();
+          pendingPortfolioRefresh = null;
+          guestSearch = guestSearch || { limit: 1, used: 1 };
+          guestSearch.used = guestSearch.limit;
+          renderGuestSearchHint();
+          openAcctModal("signup", "You've used your free search. Create a free account to keep searching. It's free, no card needed.");
+          return;
+        }
+        throw new Error((payload && payload.error) || `Request failed (${res.status}).`);
       }
 
       const ct = res.headers.get("content-type") || "";
@@ -8238,6 +9137,17 @@
       }
       await completeLoadingCard();   // fill the bar to 100% for a satisfying finish
       hideLoadingCard();
+      // Per-REPORT export allowance, resolved server-side against this report's
+      // purchase row (see the gate in /api/comps). /api/config can only report
+      // the monthly free tally, which is wrong for a report the visitor bought
+      // outright. Read it, then DELETE it: this object gets saved to history,
+      // the portfolio and shares, and a stored entitlement would be re-read as
+      // fact long after it stopped being true.
+      if (parsed && parsed.exports_remaining !== undefined) {
+        exportsLeft = parsed.exports_remaining;
+        delete parsed.exports_remaining;
+        updateExportAllowance();
+      }
       renderResults(parsed, {
         address, type, note, months, txFocus,
         // Subject inputs ride along in meta so saved/reopened reports can

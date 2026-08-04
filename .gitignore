@@ -23,6 +23,9 @@ server.err.log
 leads.jsonl
 comp-submissions.jsonl
 
+# The team's internal contact book (names, phones, emails) — never commit
+contacts.json
+
 # Account store (emails + password hashes; * covers .tmp/.corrupt sidecars) — never commit
 account-store.json*
 
@@ -34,6 +37,8 @@ market-pages-dynamic.json
 comp-corpus.jsonl
 dev-ideas.json
 devlog-overrides.json
+subject-sizes.json
+guest-quota.jsonl
 
 # Owner's local planning spreadsheets — not app code. Also covers the generated
 # CompNinja-Ledger.xlsx and CompNinja-Profit-and-Loss.xlsx, which hold cost and
@@ -41,11 +46,10 @@ devlog-overrides.json
 # The ledger's inputs are ignored too — see the ledger DATA rule below.
 CompNinja*.xlsx
 
-
 # Ledger DATA — the company's actual finances. This repo is PUBLIC, and these
-# files carry monthly costs, the LLC fee, and (once Stripe is live) revenue and
-# customer payment descriptions. The tooling and the *.example.csv templates are
-# tracked; the real books are not. Same split as .env / .env.example above.
+# files carry monthly costs, the LLC fee, and (now that Stripe is live) revenue
+# and customer payment descriptions. The tooling and the *.example.csv templates
+# are tracked; the real books are not. Same split as .env / .env.example above.
 ledger/manual-entries.csv
 ledger/recurring.csv
 compninja-ai-costs.csv

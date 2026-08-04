@@ -14,6 +14,7 @@ model returns data nobody renders, or a column renders forever-empty cells.
 | Where | What it declares |
 |---|---|
 | `TYPE_COMP_FIELDS` (server.js:1340) | field keys + the prompt sentence. **Source of truth.** |
+| `SHORT_COMP_KEYS` (server.js, right after `ALL_TYPE_COMP_FIELDS`) | the field's compact 1-3 char key the model writes (see step 1b) |
 | `TYPE_COLUMNS` (index.html:1386) | comp-table columns, per type |
 | `TYPE_SUBJECT_FIELDS` (index.html:1444) | subject-property form inputs, per type |
 | `ALT_BASIS` (index.html:2031) | optional: a per-unit valuation cross-check |
@@ -46,6 +47,18 @@ server.js:1168 via `ALL_TYPE_COMP_FIELDS`), and the corpus CSV export
 onto the enum the way `source_type` does (unknown → safest value), so the
 front-end can trust it.
 
+### 1b. Give it a short key (server.js — same edit session)
+
+Since 2026-08-03 the model writes comps under compact keys (`SHORT_COMP_KEYS`,
+declared right after `ALL_TYPE_COMP_FIELDS`) and `expandCompKeys` restores the
+long names at parse time. **A new comp field needs an entry there too** — 1-3
+chars, unique among the shorts, and never colliding with any long field name.
+The prompt template (`compShape`) and legend line pick it up automatically.
+Miss this and the prompt's template line throws at build time (`S[f]` is
+undefined inside a template literal renders "undefined" as the key — the
+model will write junk keys that survive expansion as unknowns), so add the
+entry in the same edit as `TYPE_COMP_FIELDS`.
+
 ### 2. Run the Supabase migration BEFORE deploying
 
 `harvestComps` writes one flat `comp_corpus` row per comp using
@@ -55,12 +68,16 @@ column doesn't break searches, it just silently diverts every harvested comp to
 the ephemeral file fallback, which the host wipes on redeploy. You lose data
 without an error anyone sees.
 
-The DDL lives in a comment above `harvestComps` (server.js:1098). Add the
-column there and run it:
+Schema changes live in the `migrations/` folder (see `migrations/README.md`).
+Write the next numbered file, run it in the Supabase SQL editor, and log it in
+`migrations/APPLIED.md`:
 
 ```sql
 alter table public.comp_corpus add column if not exists my_field text;
 ```
+
+Also add the column to the full-shape `create table` in
+`migrations/001-comp-corpus.sql` so a fresh environment gets it in one go.
 
 Also add the field to the `&select=` list in `corpusRowsForMarket`
 (server.js:694), or reused corpus comps come back without it.

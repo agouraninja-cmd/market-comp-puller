@@ -755,11 +755,11 @@
       <form id="compForm" class="rd-form">
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[2.2fr_1fr]">
           <div class="rd-cell">
-            <label class="rd-lab" for="address">Property address</label>
-            <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
-            <div class="text-xs text-[#8A93A0] mt-1">
-              <button id="exploreAddrLink" type="button" class="underline decoration-slate-300 hover:text-[#1A2433]">Not sure what to value? Explore addresses in a market</button>
+            <div class="flex items-baseline justify-between">
+              <label class="rd-lab" for="address">Property address</label>
+              <button id="exploreAddrLink" type="button" class="text-xs text-[#8A93A0] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
             </div>
+            <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
           </div>
           <div class="rd-cell">
             <label class="rd-lab" for="propertyType">Property type</label>
@@ -789,7 +789,6 @@
             <span id="exploreAddrStatus" class="text-xs text-[#8A93A0]"></span>
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
-          <p id="exploreAddrNote" class="hidden text-xs text-[#8A93A0] mt-2">Real properties from CompNinja's records and OpenStreetMap, for the property type selected above. Clicking one runs a report.</p>
         </div>
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
           <div class="rd-cell">
@@ -4253,7 +4252,6 @@
     const btn = document.getElementById("exploreAddrBtn");
     const status = document.getElementById("exploreAddrStatus");
     const list = document.getElementById("exploreAddrList");
-    const note = document.getElementById("exploreAddrNote");
 
     const AE_CACHE_KEY = "addrExplore.v1";
     const AE_TTL = 7 * 24 * 3600 * 1000;
@@ -4329,16 +4327,15 @@
     function render(addresses, loc) {
       list.textContent = "";
       if (!addresses.length) {
-        status.textContent = `No addresses found for ${loc.city}, ${loc.state} — try a nearby larger city, or type any address above.`;
-        note.classList.add("hidden");
+        status.textContent = `No addresses found for ${loc.city}, ${loc.state}. Try a nearby larger city, or type any address above.`;
         return;
       }
       const type = document.getElementById("propertyType").value.toLowerCase();
-      status.textContent = `${addresses.length} ${type} address${addresses.length === 1 ? "" : "es"} in ${loc.city}, ${loc.state}:`;
+      status.textContent = `${addresses.length} ${type} address${addresses.length === 1 ? "" : "es"} · click one to run a report`;
       for (const a of addresses) {
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "btn-live text-sm text-[#1A2433] border border-[#D8D4C9] bg-white hover:bg-[#FBFBF9] hover:text-[#B91C1C] rounded px-3 py-1.5";
+        b.className = "btn-live text-xs text-[#1A2433] border border-[#D8D4C9] bg-white hover:bg-[#FBFBF9] hover:text-[#B91C1C] rounded px-2.5 py-1.5";
         b.textContent = a.address;   // textContent on purpose: OSM data is untrusted
         b.addEventListener("click", () => {
           document.getElementById("address").value = a.address;
@@ -4347,7 +4344,6 @@
         });
         list.appendChild(b);
       }
-      note.classList.remove("hidden");
     }
 
     async function findAddresses() {

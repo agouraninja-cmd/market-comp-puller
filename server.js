@@ -6813,7 +6813,21 @@ async function hqSnapshot() {
     (async () => ({ count: (await readContacts()).length }))(),
   ])).map((r) => r.status === "fulfilled" ? r.value
     : (console.error("hq source failed:", r.reason && r.reason.message), null));
-  return { analytics, submissions, dev, contacts };
+  // The two smoke alarms, so the front door can never show calm numbers while
+  // search is down or the corpus is bleeding. Same in-memory sources as
+  // /admin's banners (reset on restart); healthy = the page shows nothing.
+  const alerts = {
+    upstream: {
+      failures: UPSTREAM_HEALTH.failures,
+      billing: UPSTREAM_HEALTH.billing,
+      lastStatus: UPSTREAM_HEALTH.lastStatus,
+    },
+    corpus: {
+      broken: (CORPUS_HEALTH.writeFallbacks || 0) + (CORPUS_HEALTH.readFailures || 0),
+      schemaMismatch: CORPUS_HEALTH.schemaMismatch,
+    },
+  };
+  return { analytics, submissions, dev, contacts, alerts };
 }
 
 // Self-contained HQ page: same public-shell + key-gate pattern and Research
@@ -6886,6 +6900,12 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
 .tool-sub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1);overflow-wrap:anywhere}
 #dls{font-size:var(--t4)}
 .muted{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s3)}
+/* Alarm lines: red is interaction everywhere else on this page, so a red
+   SENTENCE is unambiguous — it only exists when something is wrong, and the
+   healthy page renders none of them. */
+.alert{color:var(--red);font-size:var(--t4);font-weight:600;border-left:2px solid var(--red);
+  padding-left:var(--s4);margin:0 0 var(--s4)}
+.alert a{text-decoration:underline}
 footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
@@ -6918,6 +6938,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">Open HQ</button><div id="err" class="err"></div></div>
 <div id="hub" style="display:none">
+  <div id="alerts"></div>
   <div class="card"><h2>Tools</h2>
     <div id="tools"></div>
   </div>
@@ -6976,6 +6997,21 @@ function render(d){
   rows.push(toolRow("/contacts","Contacts",head,sub));
   el("tools").innerHTML=rows.join("");
 }
+// One red line per firing alarm, nothing when healthy. Wording mirrors
+// /admin's banners, which hold the detail and the fix.
+function renderAlerts(al){
+  var out=[];
+  var up=al&&al.upstream,co=al&&al.corpus;
+  if(up&&up.failures){
+    out.push(up.billing
+      ? 'Comp search is DOWN: the Anthropic API is refusing every call for billing reasons. <a href="/admin">Details on Analytics</a>'
+      : plural(up.failures,"Anthropic call failure","Anthropic call failures")+' since the last restart'+(up.lastStatus?" (last status "+esc(up.lastStatus)+")":"")+'. <a href="/admin">Details on Analytics</a>');
+  }
+  if(co&&co.broken){
+    out.push('Comp corpus is not persisting'+(co.schemaMismatch?", likely a missing column (check migrations/APPLIED.md)":"")+'. <a href="/admin">Details on Analytics</a>');
+  }
+  el("alerts").innerHTML=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
+}
 // Built AFTER the gate passes, from the key in memory — the hrefs exist only
 // in the unlocked DOM, never in the served HTML. The CSV routes accept ?key=
 // precisely because a download link cannot set a header.
@@ -6991,7 +7027,7 @@ function load(key){
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
   }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){}
-    grantAdminAccess(key);render(d);renderDls(key);
+    grantAdminAccess(key);render(d);renderAlerts(d.alerts);renderDls(key);
     el("err").textContent="";el("gate").style.display="none";el("hub").style.display="block";})
   .catch(function(e){el("err").textContent=e.message;
     el("gate").style.display="block";el("hub").style.display="none";});

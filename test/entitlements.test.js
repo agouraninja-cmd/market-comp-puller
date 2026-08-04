@@ -53,6 +53,9 @@ test("flag off restores pre-Pro behavior for everyone", () => {
     assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
     assert.equal(e.pro, false, "flag off must not grant Pro-only extras like branding");
     assert.equal(e.canBrand, false);
+    // The Address Explorer shipped free and only became Pro-only afterwards, so
+    // "pre-Pro behavior" means it stays open to everyone while the tier is dark.
+    assert.equal(e.canExploreAddresses, true);
   }
 });
 
@@ -66,6 +69,24 @@ test("anonymous visitor: 4 comps, 12 months, one export", () => {
   assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
   assert.equal(e.exportsRemaining, ANON_EXPORTS_PER_MONTH);
   assert.equal(e.canBrand, false);
+  assert.equal(e.canExploreAddresses, false);
+});
+
+test("the Address Explorer is Pro-only once the tier is on", () => {
+  // Covers the states a visitor is actually in when they click the link, and
+  // pins the two that keep paying customers whole: cancelling and grace both
+  // still hold Pro, so neither may lock the explorer.
+  assert.equal(ent({ user: null }).canExploreAddresses, false, "anonymous");
+  assert.equal(ent({ user: USER }).canExploreAddresses, false, "free account");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", cancel_at_period_end: true }) }).canExploreAddresses,
+    true, "cancelling, still inside the paid period");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "past_due", grace_until: iso(NOW + 3 * DAY) }) }).canExploreAddresses,
+    true, "inside the payment grace window");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) }) }).canExploreAddresses,
+    false, "expired");
 });
 
 test("free account: 4 comps and three exports a month", () => {
@@ -122,6 +143,7 @@ test("active Pro: everything unlocked", () => {
   assert.equal(e.canBrand, true);
   assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
   assert.equal(e.exportsRemaining, "unlimited");
+  assert.equal(e.canExploreAddresses, true);
 });
 
 test("founding annual is a Pro plan and reports its own name", () => {
@@ -234,6 +256,14 @@ test("a purchase row with no reportId asked about unlocks nothing", () => {
 test("a purchase does not widen the search window for the next search", () => {
   const e = ent({ user: USER, purchase, reportId: "rep_abc" });
   assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
+});
+
+test("a purchase does not buy the Address Explorer either", () => {
+  // Same reasoning as the lookback window: $39 buys one report that already
+  // exists, and the explorer's whole job is finding the NEXT property.
+  const e = ent({ user: USER, purchase, reportId: "rep_abc" });
+  assert.equal(e.reportUnlocked, true);
+  assert.equal(e.canExploreAddresses, false);
 });
 
 test("buying a report then subscribing: both hold, no conflict", () => {

@@ -169,6 +169,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
       reportUnlocked: false,
+      canExploreAddresses: true,
       graceUntil: null,
       reason: "Pro tier is switched off (PRO_ENABLED is not 'on').",
     };
@@ -208,6 +209,11 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     maxLookbackMonths: pro ? PRO_MAX_LOOKBACK_MONTHS : FREE_MAX_LOOKBACK_MONTHS,
     exportsRemaining,
     reportUnlocked,
+    // The Address Explorer is a Pro discovery tool. Deliberately NOT widened by
+    // `reportUnlocked`: a single-report purchase buys one report that already
+    // exists, and the explorer's job is finding the NEXT property — the same
+    // reasoning that keeps maxLookbackMonths on `pro` alone.
+    canExploreAddresses: pro,
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
     reason: reasonFor({ state, pro, reportUnlocked, user }),
   };

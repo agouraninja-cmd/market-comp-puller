@@ -527,6 +527,7 @@
             <li>Every comparable, itemized, not just four</li>
             <li>Look back up to 10 years, not 12 months</li>
             <li>Unlimited CSV, image, PDF and Excel exports</li>
+            <li>Address Explorer: real addresses to value in any market</li>
           </ul>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-4 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
@@ -757,6 +758,11 @@
           <div class="rd-cell">
             <div class="flex items-baseline justify-between">
               <label class="rd-lab" for="address">Property address</label>
+              <!-- Pro-gated (applyExplorerGating). The label is rewritten rather
+                   than the button hidden: a locked feature nobody can see sells
+                   nothing, and this is the pricing modal's best entry point on
+                   the page. Stays exactly as written here while the tier is
+                   dark, which is the pre-Pro behavior PRO_ENABLED promises. -->
               <button id="exploreAddrLink" type="button" class="text-xs text-[#8A93A0] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
             </div>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
@@ -4244,7 +4250,54 @@
   // clicks into free 30-day search-cache hits instead of billed searches.
   // Clicking an address submits the ordinary compForm flow; this block adds
   // no billable path of its own.
+  //
+  // PRO-ONLY as of 2026-08-03. The gate has two halves and needs both: this one
+  // hides the panel (the Overpass top-up is browser-direct, so the server can
+  // never withhold it), and /api/explore-addresses 403s (so a hand-rolled fetch
+  // can't lift the corpus list). Neither half alone closes the feature.
   // ----------------------------------------------------------------------------
+
+  // Declared ABOVE the IIFE deliberately. `proConfig` is a `let` ~4000 lines
+  // below in this same script, so anything reading it while the page is still
+  // executing top-to-bottom hits the temporal dead zone — and the explorer's
+  // /?explore= deep link used to fire in exactly that window. So the deep link
+  // now parks itself here instead of running, and applyExplorerGating() calls it
+  // once /api/config has actually answered.
+  let runPendingExplore = null;
+
+  // True when the explorer may be used at all. The `enabled` check comes first
+  // and is load-bearing: with PRO_ENABLED unset, computeEntitlements returns
+  // canExploreAddresses:true and the explorer behaves exactly as it did before
+  // the tier existed — the promise the whole disabled branch makes.
+  function addressExplorerAllowed() {
+    try {
+      if (!proConfig || !proConfig.enabled) return true;
+      return Boolean(proConfig.canExploreAddresses);
+    } catch (_) {
+      // TDZ: config hasn't loaded yet. Withhold rather than flash the panel open
+      // and yank it back a moment later.
+      return false;
+    }
+  }
+
+  // Called from refreshBillingUI(), i.e. every time proConfig changes.
+  function applyExplorerGating() {
+    const link = document.getElementById("exploreAddrLink");
+    const panel = document.getElementById("exploreAddrPanel");
+    if (!link || !panel) return;
+    const allowed = addressExplorerAllowed();
+    // A locked explorer keeps its link but says what it costs. The lock glyph is
+    // text, not an icon font, so it survives the print stylesheet and copy/paste.
+    link.textContent = allowed ? "No address? Explore a market" : "🔒 Explore a market — Pro";
+    link.title = allowed ? "" : "Find real addresses to value in any market. Included with Pro.";
+    if (!allowed) panel.classList.add("hidden");
+    if (allowed && runPendingExplore) {
+      const run = runPendingExplore;
+      runPendingExplore = null;   // clear first: the deep link is a one-shot
+      run();
+    }
+  }
+
   (function () {
     const panel = document.getElementById("exploreAddrPanel");
     const link = document.getElementById("exploreAddrLink");
@@ -4352,6 +4405,13 @@
     }
 
     async function findAddresses() {
+      // Re-checked here and not just on the link: the panel can be open from
+      // before a subscription lapsed, and Enter in the input reaches this too.
+      if (!addressExplorerAllowed()) {
+        panel.classList.add("hidden");
+        openUpgradePrompt();
+        return;
+      }
       const loc = await resolveMarket(input.value);
       if (!loc) {
         status.textContent = "Enter a city and state (e.g. Dallas, TX) or a 5-digit zip.";
@@ -4368,10 +4428,22 @@
       list.textContent = "";
       try {
         let addresses = [];
+        let denied = false;
         try {
           const r = await fetch(`/api/explore-addresses?city=${encodeURIComponent(loc.city)}&state=${loc.state}&type=${encodeURIComponent(type)}`);
-          if (r.ok) addresses = (await r.json()).addresses || [];
+          // 403 is the server's Pro gate, and it must stop the whole function —
+          // the Overpass top-up below runs browser-side and would happily fill
+          // the panel on its own, quietly undoing the gate whenever the cached
+          // proConfig is stale (a lapsed subscription, a second tab).
+          if (r.status === 403) denied = true;
+          else if (r.ok) addresses = (await r.json()).addresses || [];
         } catch (_) { /* corpus offline — the OSM top-up still answers */ }
+        if (denied) {
+          panel.classList.add("hidden");
+          refreshProConfig();   // re-sync the label/lock with what the server just said
+          openUpgradePrompt();
+          return;
+        }
         if (addresses.length < 8) {
           const exclude = new Set(addresses.map((a) => normStreetKey(a.address)));
           addresses = addresses.concat(await overpassAddresses(loc.city, loc.state, type, exclude)).slice(0, 8);
@@ -4384,6 +4456,13 @@
     }
 
     link.addEventListener("click", () => {
+      // Locked: the link becomes the sales pitch it is already labelled as,
+      // rather than opening a panel whose every path ends in the same modal.
+      if (!addressExplorerAllowed()) {
+        panel.classList.add("hidden");
+        openUpgradePrompt();
+        return;
+      }
       panel.classList.toggle("hidden");
       if (!panel.classList.contains("hidden")) input.focus();
     });
@@ -4395,6 +4474,11 @@
     // Deep link: /?explore=City,%20ST&type=Industrial opens the panel
     // prefilled and fetches the list — never auto-runs a billed search. Lets
     // market pages and campaigns point at the explorer with no server work.
+    //
+    // Parked rather than run: at this point in the script /api/config has not
+    // answered, so entitlements are unknown and `proConfig` is still in its TDZ.
+    // applyExplorerGating() fires this once the answer arrives — and simply
+    // never fires it for a visitor without Pro, who is left on a locked link.
     try {
       const qp = new URLSearchParams(location.search);
       const ex = qp.get("explore");
@@ -4406,8 +4490,10 @@
           syncSubjectFieldsToType();   // programmatic set fires no "change"
         }
         input.value = ex;
-        panel.classList.remove("hidden");
-        findAddresses();
+        runPendingExplore = () => {
+          panel.classList.remove("hidden");
+          findAddresses();
+        };
       }
     } catch (_) { /* malformed query string — the app must still boot */ }
   })();
@@ -6937,6 +7023,11 @@
     const live = billingLive();
     const pro = Boolean(proConfig && proConfig.isPro);
 
+    // All three callers of this function are points where entitlements have
+    // just changed (config load, post-checkout refresh, sign-in/out), which
+    // makes it the one seam the explorer's lock needs too.
+    applyExplorerGating();
+
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
 
     const menuUpgrade = document.getElementById("menuUpgradeBtn");
@@ -7129,7 +7220,8 @@
   document.getElementById("billingPortalBtn").addEventListener("click", (e) => openBillingPortal(e.currentTarget));
 
   // Every locked surface in the app — the comp table's locked notice, the
-  // corpus offer — routes through this one control.
+  // corpus offer, the Address Explorer's link and panel — routes through this
+  // one control.
   function openUpgradePrompt() {
     if (!billingLive()) {
       // Pro gating is on but nothing is for sale yet (PRO_ENABLED on without

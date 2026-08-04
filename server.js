@@ -7388,9 +7388,11 @@ const server = http.createServer((req, res) => {
   // docs/superpowers/specs/2026-08-03-address-explorer-design.md). Returns up
   // to 8 real, street-numbered addresses for a market+type so a visitor with
   // no address in hand can still reach a report. Addresses ONLY — no prices,
-  // dates, or transactions — so it exposes nothing the Pro comp gate
-  // withholds; it reads as "buildings you could value", not comp data. The
-  // list is deliberately DETERMINISTIC (newest deal first, then alphabetical)
+  // dates, or transactions; it reads as "buildings you could value", not comp
+  // data. That once made it safe to serve to everyone, but the feature is now
+  // Pro-only (`canExploreAddresses`), so the gate below is what decides — not
+  // the harmlessness of the payload.
+  // The list is deliberately DETERMINISTIC (newest deal first, then alphabetical)
   // so every visitor sees the same addresses and their clicks concentrate
   // onto the same search-cache entries: first click bills, repeats are free.
   // Zero Anthropic cost here; the browser tops up thin markets from OSM
@@ -7409,6 +7411,20 @@ const server = http.createServer((req, res) => {
     }
     (async () => {
       const market = marketOf(`${cityRaw}, ${stateOk}`);
+      // Real enforcement, not an honour-system nudge like the export cap: the
+      // corpus is the asset here, and the front-end gate alone is one fetch()
+      // away from being walked past. 403 rather than an empty 200 so the UI can
+      // tell "no coverage in this market" from "you need Pro" — an empty list
+      // would read as the former and send a Pro prospect away disappointed
+      // instead of to the pricing modal.
+      //
+      // Note the browser's OSM Overpass top-up runs client-side and is beyond
+      // this gate's reach; hiding the panel is what withholds it, so treat the
+      // front-end gate as load-bearing too, not decoration.
+      const ent = await entitlementsFor(req);
+      if (!ent.canExploreAddresses) {
+        return sendJson(res, 403, { error: "The Address Explorer is a Pro feature.", upgrade: true });
+      }
       try {
         const rows = await corpusRowsForMarket(market, typeOk, 200);
         const seen = new Set();
@@ -7910,6 +7926,7 @@ const server = http.createServer((req, res) => {
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
+          canExploreAddresses: ent.canExploreAddresses,
           graceUntil: ent.graceUntil,
         },
       });

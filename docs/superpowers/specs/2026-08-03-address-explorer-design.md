@@ -60,6 +60,38 @@ the list (does NOT auto-run a search). Lets market pages and campaigns adopt
 the explorer later without new server work. Handled client-side; `GET /`
 already matches on path only, so the query string is safe.
 
+## Amendment, 2026-08-03: Pro-only
+
+Shipped open to everyone as described above, then gated to Pro the same day.
+The entitlement is `canExploreAddresses` in `entitlements.js` — true for Pro
+(including the cancelling and grace states, which still hold Pro), false for
+free and anonymous, and **true for everyone while `PRO_ENABLED` is unset**, so
+the disabled branch keeps its promise of exact pre-Pro behavior. Deliberately
+NOT widened by a `$39` single-report purchase: that buys one report that
+already exists, and the explorer's job is finding the next property — the same
+reasoning that keeps `maxLookbackMonths` on `pro` alone.
+
+Both halves of the gate are load-bearing, because neither closes the feature
+alone:
+
+- **Server** — `/api/explore-addresses` answers `403 {upgrade:true}`. Without
+  it, a hand-rolled request lifts the corpus list.
+- **Browser** — `applyExplorerGating()` relabels the link and withholds the
+  panel. Without it, the Overpass top-up (which is browser-direct and beyond
+  the server's reach) fills the panel on its own.
+
+A 403 reaching a client that believed otherwise — a lapsed subscription, a
+second tab — closes the panel, re-syncs `proConfig`, and opens the pricing
+modal, rather than falling through to the OSM top-up.
+
+One trap worth knowing: `proConfig` is a `let` declared ~4000 lines BELOW the
+explorer's code in the same inline script, so anything reading it during
+initial script execution hits the temporal dead zone. `addressExplorerAllowed()`
+therefore reads it inside a `try/catch`, and the `/?explore=` deep link parks
+itself in `runPendingExplore` instead of running — `applyExplorerGating()`
+(called from `refreshBillingUI()`, the one seam where `proConfig` changes)
+fires it once entitlements are actually known.
+
 ## Out of scope for v1
 
 - "Instant report" badge on already-cached addresses (needs per-address

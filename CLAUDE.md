@@ -536,6 +536,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   session that started it). Paid plan gating free reports to **4 comps**, a
   **12-month** lookback ceiling, and **3 exports/month** (1 for anonymous
   visitors), against Pro's unlimited everything plus report branding.
+  The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the
+  amendment in its spec for why that gate needs a browser half AND a server
+  half, and for the `proConfig` temporal-dead-zone trap that shapes the
+  front-end code.
   **`entitlements.js`** holds the rules and is deliberately **pure** — no I/O,
   no clock reads (the caller passes `now`), no requires — which is what makes
   `npm test` able to exercise the whole decision table with no database.

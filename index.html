@@ -2747,6 +2747,20 @@
     return { low: items[0].v, mid: q(0.5), high: items[n - 1].v, trimmed: false };
   }
 
+  // Display rounding for the hero's TOTAL dollar figures. "$926,987" projects
+  // dollar precision the math doesn't have — it's an interpolated percentile
+  // of a handful of comps times a size range — and a to-the-dollar number
+  // reads as a lie the moment an owner knows their real value. Round to a
+  // step matched to the number's magnitude so the range reads as the estimate
+  // it is. Never applied to $/SF or per-unit rates (those are genuinely
+  // observed figures) — only to totals derived from them.
+  function heroRound(v) {
+    if (!isFinite(v) || v === 0) return v;
+    const a = Math.abs(v);
+    const step = a >= 10e6 ? 100000 : a >= 1e6 ? 25000 : a >= 100000 ? 5000 : 1000;
+    return Math.round(v / step) * step;
+  }
+
   // --------------------------------------------------------------------------
   // Comp weighting + time adjustment. Applied ONLY inside the valuation math —
   // the table, chart, and stat tiles always show each comp's raw reported
@@ -2942,7 +2956,9 @@
       .map((c) => salePsfOf(c))
       .filter((v) => v > 0);
 
-    const fmtTotal = (v) => formatUsd(Math.round(v), { maximumFractionDigits: 0 });
+    // heroRound, not Math.round: totals display at estimate-honest precision
+    // (see heroRound). $/SF sub-labels below keep their exact figures.
+    const fmtTotal = (v) => formatUsd(heroRound(v), { maximumFractionDigits: 0 });
     const lowEl = document.getElementById("ownerLow");
     const midEl = document.getElementById("ownerMid");
     const highEl = document.getElementById("ownerHigh");
@@ -3039,9 +3055,11 @@
       animateValue(midEl, rr.mid * midSize, fmtTotal);
       animateValue(highEl, rr.high * sizeR.max, fmtTotal);
       lastValuation = {
-        low: Math.round(rr.low * sizeR.min),
-        likely: Math.round(rr.mid * midSize),
-        high: Math.round(rr.high * sizeR.max),
+        // heroRound so every downstream reader (XLSX valuation sheet, CSV
+        // subject line, LTV, snapshot analytics) agrees with the hero display.
+        low: heroRound(rr.low * sizeR.min),
+        likely: heroRound(rr.mid * midSize),
+        high: heroRound(rr.high * sizeR.max),
         median_psf: Math.round(rr.mid * 100) / 100,
       };
       const ppsf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });   // $/SF reads as whole dollars
@@ -3110,9 +3128,9 @@
       animateValue(midEl, rr.mid * qty, fmtTotal);
       animateValue(highEl, rr.high * qty, fmtTotal);
       lastValuation = {
-        low: Math.round(rr.low * qty),
-        likely: Math.round(rr.mid * qty),
-        high: Math.round(rr.high * qty),
+        low: heroRound(rr.low * qty),
+        likely: heroRound(rr.mid * qty),
+        high: heroRound(rr.high * qty),
         median_psf: null,   // this basis isn't per-SF, so there is no $/SF to report
       };
       const per0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });
@@ -3230,6 +3248,17 @@
               ? "No priced sale comps came back in this window, so there's no per-square-foot range to build."
               : `Only ${ppsfs.length} priced sale comp came back in this window; a per-square-foot range needs at least two.`)
             + (sizeR ? "" : " We also couldn't find this building's square footage.");
+    }
+
+    // Residential is the one type whose closed sales mostly live behind the
+    // MLS, where web search can't reliably reach — the comp pool is thinner
+    // and skews toward listing-worthy (pricier) sales. Say so on EVERY
+    // Residential report, whichever branch rendered above, rather than
+    // letting the range carry commercial-grade confidence.
+    if (meta.type === "Residential") {
+      trustEl.textContent += (trustEl.textContent ? " " : "")
+        + "Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.";
+      trustEl.classList.remove("hidden");
     }
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.
@@ -4291,7 +4320,11 @@
   // called directly), then OSM Nominatim from the browser as a fallback.
   // Hits AND misses are cached in localStorage so reopening reports is free.
   // ----------------------------------------------------------------------------
-  const GEO_CACHE_KEY = "geoCache.v1";
+  // v2 (2026-08-04): entries must carry the geocoder's echo label for
+  // geoLabelMatches below — and any wrong-street result cached under v1
+  // (the poisoned entry behind a wrong-house subject photo) retires with
+  // the bump. A re-geocode per address, once, is the whole cost.
+  const GEO_CACHE_KEY = "geoCache.v2";
   let geoCache = (() => { try { return JSON.parse(localStorage.getItem(GEO_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
 
   function geoCacheStore(key, val) {
@@ -4340,6 +4373,44 @@
     if (!found) found = await nominatimGeocode(address);
     geoCacheStore(key, found);   // null is cached too: a known miss
     return found;
+  }
+
+  // A geocoder ANSWERED ≠ the answer matches the address. When the house
+  // number can't be matched, Census returns nothing but Nominatim silently
+  // falls back to a street/district centroid — or a similarly named street —
+  // and everything downstream that trusts the point at house-number precision
+  // then fails with full confidence: the photo pipeline passes its other
+  // gates (the pin lands somewhere real, a footprint exists there) and serves
+  // a Street View of a stranger's property (seen live 2026-08-04 on a
+  // Residential report: subject photo showed a house one street over).
+  // Both geocoders echo what they matched (Census matchedAddress, Nominatim
+  // display_name), so verify the label repeats the typed house number and
+  // street name — and, when both sides name one, the street type, which
+  // catches "Maple St" matched to the Maple CT one block over. Pins stay
+  // approximate by design; photos and footprint sizing gate on this.
+  const STREET_SUFFIX_CANON = {
+    st: "st", street: "st", ave: "ave", avenue: "ave", av: "ave", rd: "rd", road: "rd",
+    dr: "dr", drive: "dr", ct: "ct", court: "ct", ln: "ln", lane: "ln",
+    blvd: "blvd", boulevard: "blvd", hwy: "hwy", highway: "hwy", pl: "pl", place: "pl",
+    cir: "cir", circle: "cir", ter: "ter", terrace: "ter", pkwy: "pkwy", parkway: "pkwy",
+    way: "way", trl: "trl", trail: "trl", loop: "loop",
+  };
+  const GEO_DIRECTIONALS = new Set(["n", "s", "e", "w", "ne", "nw", "se", "sw", "north", "south", "east", "west"]);
+  function geoLabelMatches(typed, ll) {
+    if (!ll || !ll.label) return false;
+    const words = (s) => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+    // Only the street part of the typed address — city/state tokens would
+    // false-match label tokens ("Boise Ave" vs. the city Boise).
+    const t = words(String(typed).split(",")[0]);
+    if (!t.length || !/^\d+$/.test(t[0])) return false;
+    const streetWord = t.slice(1).find((w) => !GEO_DIRECTIONALS.has(w) && !STREET_SUFFIX_CANON[w]);
+    if (!streetWord) return false;
+    const l = words(ll.label);
+    if (!l.includes(t[0]) || !l.includes(streetWord)) return false;
+    const typedSuffix = [...t].reverse().map((w) => STREET_SUFFIX_CANON[w]).find(Boolean);
+    const labelSuffixes = l.map((w) => STREET_SUFFIX_CANON[w]).filter(Boolean);
+    if (typedSuffix && labelSuffixes.length && !labelSuffixes.includes(typedSuffix)) return false;
+    return true;
   }
 
   // Two public Overpass instances, tried in order — the main one 504s under
@@ -4921,6 +4992,7 @@
     if (!geo || !isFinite(geo.lat) || !isFinite(geo.lng)) return;
     if (sizeInput.value.trim() !== "") return;
     if (!/^\s*\d+\s+\S/.test(typed)) return;   // a submarket point must never size a random building
+    if (!geoLabelMatches(typed, geo)) return;  // a wrong-street geocode must never size the wrong building
     if (document.getElementById("propertyType").value === "Land") return;
     try {
       const est = await estimateSizeFromFootprint(geo);
@@ -5232,6 +5304,14 @@
       // (cities/suburbs) and thin exactly where they embarrassed us.
       const snapped = marker._bldgLL;
       if (!snapped) return "";
+      // ...and only when the geocoder's answer demonstrably matches the
+      // address (geoLabelMatches, set during the re-place pass). A
+      // wrong-street geocode passes every other gate — the pin lands
+      // somewhere real, a footprint exists there — and produces this
+      // feature's worst failure: a confident photo of someone else's
+      // property. Unverified (undefined) is treated the same as failed:
+      // show the actual property or show nothing.
+      if (marker._geoOk !== true) return "";
       // ...and only when the address names a specific street number. The
       // model sometimes returns submarket-level rows ("Washington Street
       // corridor, Downtown Crossing", "Financial District (general
@@ -5464,12 +5544,17 @@
         if (r.subject) {
           if (subjMarker) subjMarker.setLatLng([r.ll.lat, r.ll.lng]);
           else subjMarker = addSubjMarker(r.ll.lat, r.ll.lng);
+          // Photo eligibility: did the geocoder demonstrably match THIS
+          // address? Markers that never pass here (geocode miss → the pin
+          // keeps the model's block-level guess) stay unverified — no photo.
+          subjMarker._geoOk = geoLabelMatches(meta.address, r.ll);
           parsed.subject_lat = String(r.ll.lat);
           parsed.subject_lng = String(r.ll.lng);
         } else {
           const existing = compMarkersByNum[r.c._num];
           if (existing) existing.setLatLng([r.ll.lat, r.ll.lng]);
           else compMarkersByNum[r.c._num] = addCompMarker(r.c, r.ll.lat, r.ll.lng);
+          compMarkersByNum[r.c._num]._geoOk = geoLabelMatches(String(r.c.address), r.ll);
           r.c.lat = String(r.ll.lat);
           r.c.lng = String(r.ll.lng);
         }
@@ -8337,7 +8422,17 @@
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
           + curationBits.map((b) => ` | ${b}`).join(""))
       : "";
-    const csv = [...(title ? [title] : []), header, ...rows].join("\r\n");
+    // The file travels on its own, and a reader who searched their OWN
+    // property opens a list of other addresses and reasonably asks why theirs
+    // isn't a row (a real complaint, 2026-08-04). One line states whose
+    // report this is, what the comps said it's worth, and why the subject is
+    // not in the table below. XLSX already carries this on its Valuation
+    // sheet; CSV is the export that lacked it.
+    const fmtV = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+    const subjectLine = currentMeta && lastValuation && lastValuation.likely > 0
+      ? esc(`Subject property: ${currentMeta.address} | Estimated value range ${fmtV(lastValuation.low)} – ${fmtV(lastValuation.high)} (likely ${fmtV(lastValuation.likely)}) | Comp-based estimate, not an appraisal. The rows below are the comparable transactions, so the subject itself is not a row.`)
+      : "";
+    const csv = [...(title ? [title] : []), ...(subjectLine ? [subjectLine] : []), header, ...rows].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

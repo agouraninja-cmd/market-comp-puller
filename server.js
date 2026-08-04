@@ -2459,7 +2459,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     Retail:      "Focus on retail/strip/single-tenant net lease. Report price/SF for sales and NNN $/SF/yr for leases, tenant/anchor and cap rate where relevant.",
     Multifamily: "Focus on apartment/multifamily. Report price per unit AND price/SF, cap rate, and unit count in notes.",
     Land:        "Focus on comparable land sales. Report price per acre and price/SF of land, zoning and entitlement notes.",
-    Residential: "Focus on single-family homes, townhomes, and condos. Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
+    // Residential gets the longest guidance because it's the type the open
+    // web covers worst: closed home sales live in the MLS, and what web
+    // search CAN see skews toward listing-page-worthy sales — newer, larger,
+    // pricier. Left unsteered, the model fills the list from that skew (a
+    // pricier pocket a mile away) and the hero range lands far above what
+    // the subject's own street trades at (seen live 2026-08-04: a ~$750k
+    // house shown a $927k LOW end off 4 such comps).
+    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
 
   // The subject-size lookup belongs to whichever lane searches assessor data:
@@ -2676,7 +2683,7 @@ function extractFirstJsonObject(text) {
   return null;
 }
 
-function parseCompJson(rawText) {
+function parseCompJson(rawText, stats) {
   let text = (rawText || "").trim();
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   const first = text.indexOf("{");

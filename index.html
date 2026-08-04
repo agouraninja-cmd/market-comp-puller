@@ -1983,7 +1983,16 @@
   // still override afterward. All values are preset windows, so the control snaps
   // cleanly. Programmatic type sets (loading a saved/shared report) don't fire
   // "change", so a restored report's window is never overwritten.
-  const RECOMMENDED_LOOKBACK = { Industrial: 12, Office: 24, Retail: 12, Multifamily: 6, Land: 24, Residential: 6 };
+  // Industrial moved 12 -> 24 on 2026-08-04. A live Phoenix industrial search on
+  // the 12-month recommendation returned five comps of which exactly ONE was a
+  // sale, and the value hero needs two priced sales to compute a range — so the
+  // recommended window was itself producing reports with no number in them. The
+  // other types are unmeasured and deliberately untouched: multifamily and
+  // residential really do trade often enough that a fresher window is better
+  // evidence, and widening them on inference could make reports worse, not
+  // better. Measure before moving any of them (count PRICED SALE comps per
+  // window, not total comps — total is not what the hero needs).
+  const RECOMMENDED_LOOKBACK = { Industrial: 24, Office: 24, Retail: 12, Multifamily: 6, Land: 24, Residential: 6 };
   const propertyTypeSel = document.getElementById("propertyType");
   const lookbackHint = document.getElementById("lookbackHint");
   function applyRecommendedLookback() {

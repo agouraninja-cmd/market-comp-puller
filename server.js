@@ -2561,6 +2561,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
         ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
         : ` (once you determine the target's size)`
     } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
+    `PRICED BUT UNSIZED COMPS: a sale comp that has a price but no building size cannot support the valuation math. If a sale comp you are including has a price but you could not find its size, spend one of your searches specifically on that building's size (an assessor or listing page) before finalizing. Completing the size on 2-3 priced sale comps matters more than adding one more marginal comp.`,
     subjectDetailBlock,
     typeSpec
       ? `For EACH comp, also report ${["one", "two", "three"][typeSpec.fields.length - 1]} ${type.toLowerCase()} specific${typeSpec.fields.length > 1 ? "s" : ""}: ${typeSpec.instruction}. Search listing pages, brokerage flyers, and property records for these. If one genuinely can't be found, use an empty string "" — do not guess.`

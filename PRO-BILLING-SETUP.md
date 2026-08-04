@@ -28,7 +28,7 @@ the warning below before touching anything.
 | Export cap enforced (5 reports/mo free) | ✅ Shipped 2026-08-03 |
 | Admins get Pro comped on sign-in | ✅ Shipped 2026-08-03 — see below |
 | Report branding | ❌ Not built — no UI exists |
-| $39 single-report unlock | ✅ Shipped 2026-08-03 — **needs a one-line ALTER, see below** |
+| $39 single-report unlock | ✅ Shipped 2026-08-03 — `comp_snapshot` ALTER verified applied 2026-08-03 |
 
 ---
 
@@ -261,10 +261,13 @@ previous user's plan.
 Both of the things this section used to list as unbuilt now exist. Export
 counting shipped earlier the same day; the $39 unlock is described here.
 
-**⚠ One migration is required before this works in production.** The webhook
-writes `report_purchases` with no `comp_snapshot`, so if the table was created
-from the original DDL (`comp_snapshot jsonb not null`) every purchase insert
-400s — the customer is charged and never unlocked. Run:
+**✅ This migration has been applied** — verified 2026-08-03 against the live
+project's PostgREST schema, which no longer lists `comp_snapshot` as required
+on `report_purchases`. Kept here because it is the one migration that fails
+*silently and expensively* if a future environment is built from the original
+DDL. The webhook writes `report_purchases` with no `comp_snapshot`, so where
+the column is still `not null` every purchase insert 400s — the customer is
+charged and never unlocked. In that case, run:
 
 ```sql
 alter table report_purchases alter column comp_snapshot drop not null;
@@ -550,8 +553,9 @@ withhold the file. Every failure path lets the export through.
   bullet is withheld from the pricing tile, plan card and success banner, with a
   comment at each site marking where it goes back.
 - ~~**The $39 single-report unlock.**~~ Built 2026-08-03 — see "The
-  single-report unlock" above. It needs the `comp_snapshot` ALTER run before
-  anyone buys one.
+  single-report unlock" above. Its `comp_snapshot` ALTER was verified applied
+  on 2026-08-03, so nothing is outstanding. It has still never been exercised
+  against a real card — see "Untested" below.
 
 ---
 
@@ -578,6 +582,6 @@ Paste this into a new chat:
 >
 > Pull before starting — four people commit to this repo and it moves during a
 > session. Still unbuilt and deliberately unclaimed: report branding. The $39
-> single-report unlock shipped 2026-08-03 and needs one `alter table
-> report_purchases alter column comp_snapshot drop not null;` run in Supabase
-> before a purchase can be recorded.
+> single-report unlock shipped 2026-08-03; its `comp_snapshot` ALTER is applied
+> and verified, but no purchase has ever been made with a real card, so the
+> live payment round-trip is still unproven.

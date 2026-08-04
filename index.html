@@ -508,7 +508,7 @@
       <h2 id="pricingTitle" class="text-lg font-semibold text-slate-900">Unlock the full comp set</h2>
       <p id="pricingSubtitle" class="text-sm text-slate-500 mt-1">
         Free reports value your property off every comparable we find, but itemize only four of them.
-        Pro shows the whole list, with the sources.
+        Pro itemizes all of them — unlimited comps, as many as the search turns up, with the sources.
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
@@ -523,10 +523,19 @@
                entitlements.js but has NO UI at all, so it stays off this list
                until something actually draws a logo. The exports bullet came
                back on 2026-08-03 when the monthly cap became real. -->
+          <!-- "Unlimited comps" is a claim about the GATE, not about search
+               depth: entitlements.js returns maxComps "all", so Pro is never
+               shown a shortened list. The search itself still asks for up to
+               12 (server.js's maxCompsOk) and the anti-padding prompt rule
+               means a thin market returns fewer — which is why the bullet is
+               qualified "as many as the search finds" rather than promising a
+               number we don't control. Drop that qualifier only if the ask
+               ceiling and searchBudgetFor() are actually raised. -->
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
-            <li>Every comparable, itemized, not just four</li>
+            <li>Unlimited comps — every comparable the search finds, itemized</li>
             <li>Look back up to 10 years, not 12 months</li>
             <li>Unlimited CSV, image, PDF and Excel exports</li>
+            <li>Address Explorer: real addresses to value in any market</li>
           </ul>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-4 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
@@ -561,10 +570,34 @@
         </div>
       </div>
 
+      <!-- Single-report unlock. Hidden unless there is a GATED report on
+           screen to buy — updateSingleReportTile() owns that, and a $39 button
+           with no report attached has nothing to unlock and no id to send.
+           Deliberately a full-width strip under the grid rather than a third
+           column: it is the lesser, contextual offer, and this way the
+           founding tile's show/hide logic is left alone.
+           Every class here is already in the vendored tailwind.css, so this
+           needs no Tailwind regen. Check before adding one. -->
+      <div id="singleReportTile" class="hidden border border-[#D8D4C9] rounded-lg p-4 mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <span class="rd-lab">Just this report</span>
+          <div class="mt-1">
+            <span class="text-2xl font-semibold text-[#1A2433]">$39</span>
+            <span class="text-sm text-[#8A93A0]">once</span>
+          </div>
+          <p class="text-sm text-[#4C5665] mt-1">
+            Unlimited comps on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this report</span> — every comparable the search found — plus its exports, for good. No subscription.
+          </p>
+        </div>
+        <button type="button" data-plan="single_report"
+          class="pricing-buy btn-live shrink-0 w-full sm:w-auto bg-white border border-[#D8D4C9] hover:bg-slate-50 text-[#1A2433] font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+          Unlock this report
+        </button>
+      </div>
+
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
       <p class="text-xs text-[#8A93A0] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms</a>.
-        A one-off $39 unlock for a single report is coming; for now Pro is the only way to see the full list.
       </p>
       <button id="pricingCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-2 mt-2">Not now</button>
     </div>
@@ -731,7 +764,15 @@
       <form id="compForm" class="rd-form">
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[2.2fr_1fr]">
           <div class="rd-cell">
-            <label class="rd-lab" for="address">Property address</label>
+            <div class="flex items-baseline justify-between">
+              <label class="rd-lab" for="address">Property address</label>
+              <!-- Pro-gated (applyExplorerGating). The label is rewritten rather
+                   than the button hidden: a locked feature nobody can see sells
+                   nothing, and this is the pricing modal's best entry point on
+                   the page. Stays exactly as written here while the tier is
+                   dark, which is the pre-Pro behavior PRO_ENABLED promises. -->
+              <button id="exploreAddrLink" type="button" class="text-xs text-[#8A93A0] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
+            </div>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
           </div>
           <div class="rd-cell">
@@ -746,6 +787,22 @@
             </select>
             <div id="typeAutoNote" class="text-xs text-[#8A93A0] mt-1"></div>
           </div>
+        </div>
+        <!-- Address Explorer — hands a visitor with no address a stable list of
+             real ones (see docs/superpowers/specs/2026-08-03-address-explorer-
+             design.md). Corpus first via /api/explore-addresses, browser-side
+             OSM Overpass top-up for thin markets. The list is deterministic on
+             purpose: everyone exploring a market sees the same addresses, so
+             repeat clicks land on the 30-day search cache instead of billing. -->
+        <div id="exploreAddrPanel" class="hidden rd-row px-4 py-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="exploreAddrInput" type="text" placeholder="City, ST or 5-digit zip" aria-label="City and state, or zip code"
+              class="w-56 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            <button id="exploreAddrBtn" type="button"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded px-3 py-1.5">Find addresses</button>
+            <span id="exploreAddrStatus" class="text-xs text-[#8A93A0]"></span>
+          </div>
+          <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
         <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
           <div class="rd-cell">
@@ -927,6 +984,10 @@
               class="hidden btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Upgrade to Pro</button>
             <button id="billingPortalBtn" type="button"
               class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
+            <!-- Admins only. Comped Pro hides every paywall from the one team
+                 that needs to see it work; this drops it for the session. -->
+            <button id="billingAdminOffBtn" type="button"
+              class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">View as a free user</button>
           </div>
           <p id="billingError" class="hidden text-sm text-red-600 mt-2"></p>
         </div>
@@ -4238,6 +4299,265 @@
   }
 
   // ----------------------------------------------------------------------------
+  // Address Explorer — "I don't have an address" entry point (spec:
+  // docs/superpowers/specs/2026-08-03-address-explorer-design.md).
+  //
+  // Corpus first (/api/explore-addresses, $0), then an Overpass top-up when the
+  // corpus holds fewer than 8 for that market. Both halves are DETERMINISTIC
+  // (server: newest deal then alphabetical; here: OSM id order) so every
+  // visitor sees the same list — that concentration is what turns repeat
+  // clicks into free 30-day search-cache hits instead of billed searches.
+  // Clicking an address submits the ordinary compForm flow; this block adds
+  // no billable path of its own.
+  //
+  // PRO-ONLY as of 2026-08-03. The gate has two halves and needs both: this one
+  // hides the panel (the Overpass top-up is browser-direct, so the server can
+  // never withhold it), and /api/explore-addresses 403s (so a hand-rolled fetch
+  // can't lift the corpus list). Neither half alone closes the feature.
+  // ----------------------------------------------------------------------------
+
+  // Declared ABOVE the IIFE deliberately. `proConfig` is a `let` ~4000 lines
+  // below in this same script, so anything reading it while the page is still
+  // executing top-to-bottom hits the temporal dead zone — and the explorer's
+  // /?explore= deep link used to fire in exactly that window. So the deep link
+  // now parks itself here instead of running, and applyExplorerGating() calls it
+  // once /api/config has actually answered.
+  let runPendingExplore = null;
+
+  // True when the explorer may be used at all. The `enabled` check comes first
+  // and is load-bearing: with PRO_ENABLED unset, computeEntitlements returns
+  // canExploreAddresses:true and the explorer behaves exactly as it did before
+  // the tier existed — the promise the whole disabled branch makes.
+  function addressExplorerAllowed() {
+    try {
+      if (!proConfig || !proConfig.enabled) return true;
+      return Boolean(proConfig.canExploreAddresses);
+    } catch (_) {
+      // TDZ: config hasn't loaded yet. Withhold rather than flash the panel open
+      // and yank it back a moment later.
+      return false;
+    }
+  }
+
+  // Called from refreshBillingUI(), i.e. every time proConfig changes.
+  function applyExplorerGating() {
+    const link = document.getElementById("exploreAddrLink");
+    const panel = document.getElementById("exploreAddrPanel");
+    if (!link || !panel) return;
+    const allowed = addressExplorerAllowed();
+    // A locked explorer keeps its link but says what it costs. The lock glyph is
+    // text, not an icon font, so it survives the print stylesheet and copy/paste.
+    link.textContent = allowed ? "No address? Explore a market" : "🔒 Explore a market — Pro";
+    link.title = allowed ? "" : "Find real addresses to value in any market. Included with Pro.";
+    if (!allowed) panel.classList.add("hidden");
+    if (allowed && runPendingExplore) {
+      const run = runPendingExplore;
+      runPendingExplore = null;   // clear first: the deep link is a one-shot
+      run();
+    }
+  }
+
+  (function () {
+    const panel = document.getElementById("exploreAddrPanel");
+    const link = document.getElementById("exploreAddrLink");
+    const input = document.getElementById("exploreAddrInput");
+    const btn = document.getElementById("exploreAddrBtn");
+    const status = document.getElementById("exploreAddrStatus");
+    const list = document.getElementById("exploreAddrList");
+
+    // v2: v1 briefly cached one-address lists produced by the Ontario-Canada
+    // geocode bug below; bumping the key retires those entries everywhere.
+    const AE_CACHE_KEY = "addrExplore.v2";
+    const AE_TTL = 7 * 24 * 3600 * 1000;
+    let aeCache = (() => { try { return JSON.parse(localStorage.getItem(AE_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
+    function aeCacheStore(key, addresses) {
+      aeCache[key] = { ts: Date.now(), addresses };
+      try {
+        const keys = Object.keys(aeCache);
+        if (keys.length > 40) keys.slice(0, keys.length - 40).forEach((k) => delete aeCache[k]);
+        localStorage.setItem(AE_CACHE_KEY, JSON.stringify(aeCache));
+      } catch (_) { /* private mode — the cache is a nicety */ }
+    }
+
+    // Only SPECIFIC OSM building tags decide anything (same philosophy as the
+    // type detector below — building=yes/commercial are ambiguous). Land has
+    // no entry: parcels rarely carry addresses, so it stays corpus-only.
+    const AE_TAGS = {
+      Industrial: "industrial|warehouse",
+      Office: "office",
+      Retail: "retail|supermarket|mall",
+      Multifamily: "apartments",
+      Residential: "house|detached|semidetached_house|residential",
+    };
+
+    // Mirrors the server route's dedupe: street line only, suffixes normalized.
+    function normStreetKey(addr) {
+      return String(addr).split(",")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+        .replace(/\b(street|avenue|boulevard|drive|road|lane|court|place|parkway|highway)\b/g,
+          (w) => ({ street: "st", avenue: "ave", boulevard: "blvd", drive: "dr", road: "rd", lane: "ln", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy" }[w]));
+    }
+
+    async function resolveMarket(raw) {
+      const s = String(raw || "").trim();
+      if (/^\d{5}$/.test(s)) {
+        try {
+          const r = await fetch("https://api.zippopotam.us/us/" + s, { signal: AbortSignal.timeout(7000) });
+          if (r.ok) {
+            const j = await r.json();
+            const p = j && j.places && j.places[0];
+            if (p) return { city: p["place name"], state: p["state abbreviation"] };
+          }
+        } catch (_) { /* unresolvable zip falls through to null */ }
+        return null;
+      }
+      const m = s.match(/^(.+?),?\s+([A-Za-z]{2})$/);
+      return m ? { city: m[1].trim(), state: m[2].toUpperCase() } : null;
+    }
+
+    async function overpassAddresses(city, state, type, exclude) {
+      const tags = AE_TAGS[type];
+      if (!tags) return [];
+      // ", USA" is load-bearing: without it Nominatim reads "Ontario, CA" as
+      // Ontario, CANADA and the top-up searches the wrong continent (found in
+      // production 2026-08-03 — a warm local geocode cache had masked it).
+      const center = await geocodeAddress(`${city}, ${state}, USA`);
+      if (!center) return [];
+      const j = await overpassQuery(
+        `[out:json][timeout:12];nwr(around:8000,${center.lat},${center.lng})["building"~"^(${tags})$"]["addr:housenumber"]["addr:street"];out tags 60;`
+      );
+      const els = (j && j.elements) || [];
+      els.sort((a, b) => (a.id || 0) - (b.id || 0));   // same list for every visitor
+      const out = [];
+      for (const el of els) {
+        const t = el.tags || {};
+        const line = `${t["addr:housenumber"] || ""} ${t["addr:street"] || ""}`.trim();
+        if (!/^\d+\s+\S/.test(line)) continue;
+        const key = normStreetKey(line);
+        if (exclude.has(key)) continue;
+        exclude.add(key);
+        out.push({ address: `${line}, ${t["addr:city"] || city}, ${state}`, source: "osm" });
+        if (out.length >= 8) break;
+      }
+      return out;
+    }
+
+    function render(addresses, loc) {
+      list.textContent = "";
+      if (!addresses.length) {
+        status.textContent = `No addresses found for ${loc.city}, ${loc.state}. Try a nearby larger city, or type any address above.`;
+        return;
+      }
+      const type = document.getElementById("propertyType").value.toLowerCase();
+      status.textContent = `${addresses.length} ${type} address${addresses.length === 1 ? "" : "es"} · click one to run a report`;
+      for (const a of addresses) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn-live text-xs text-[#1A2433] border border-[#D8D4C9] bg-white hover:bg-[#FBFBF9] hover:text-[#B91C1C] rounded px-2.5 py-1.5";
+        b.textContent = a.address;   // textContent on purpose: OSM data is untrusted
+        b.addEventListener("click", () => {
+          document.getElementById("address").value = a.address;
+          panel.classList.add("hidden");
+          document.getElementById("compForm").requestSubmit();
+        });
+        list.appendChild(b);
+      }
+    }
+
+    async function findAddresses() {
+      // Re-checked here and not just on the link: the panel can be open from
+      // before a subscription lapsed, and Enter in the input reaches this too.
+      if (!addressExplorerAllowed()) {
+        panel.classList.add("hidden");
+        openUpgradePrompt();
+        return;
+      }
+      const loc = await resolveMarket(input.value);
+      if (!loc) {
+        status.textContent = "Enter a city and state (e.g. Dallas, TX) or a 5-digit zip.";
+        return;
+      }
+      const type = document.getElementById("propertyType").value;
+      const cacheKey = `${loc.city.toLowerCase()}, ${loc.state}|${type}`;
+      const hit = aeCache[cacheKey];
+      if (hit && Date.now() - hit.ts < AE_TTL && hit.addresses.length) {
+        return render(hit.addresses, loc);
+      }
+      btn.disabled = true;
+      status.textContent = "Looking up addresses…";
+      list.textContent = "";
+      try {
+        let addresses = [];
+        let denied = false;
+        try {
+          const r = await fetch(`/api/explore-addresses?city=${encodeURIComponent(loc.city)}&state=${loc.state}&type=${encodeURIComponent(type)}`);
+          // 403 is the server's Pro gate, and it must stop the whole function —
+          // the Overpass top-up below runs browser-side and would happily fill
+          // the panel on its own, quietly undoing the gate whenever the cached
+          // proConfig is stale (a lapsed subscription, a second tab).
+          if (r.status === 403) denied = true;
+          else if (r.ok) addresses = (await r.json()).addresses || [];
+        } catch (_) { /* corpus offline — the OSM top-up still answers */ }
+        if (denied) {
+          panel.classList.add("hidden");
+          refreshProConfig();   // re-sync the label/lock with what the server just said
+          openUpgradePrompt();
+          return;
+        }
+        if (addresses.length < 8) {
+          const exclude = new Set(addresses.map((a) => normStreetKey(a.address)));
+          addresses = addresses.concat(await overpassAddresses(loc.city, loc.state, type, exclude)).slice(0, 8);
+        }
+        if (addresses.length) aeCacheStore(cacheKey, addresses);
+        render(addresses, loc);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    link.addEventListener("click", () => {
+      // Locked: the link becomes the sales pitch it is already labelled as,
+      // rather than opening a panel whose every path ends in the same modal.
+      if (!addressExplorerAllowed()) {
+        panel.classList.add("hidden");
+        openUpgradePrompt();
+        return;
+      }
+      panel.classList.toggle("hidden");
+      if (!panel.classList.contains("hidden")) input.focus();
+    });
+    btn.addEventListener("click", findAddresses);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); findAddresses(); }
+    });
+
+    // Deep link: /?explore=City,%20ST&type=Industrial opens the panel
+    // prefilled and fetches the list — never auto-runs a billed search. Lets
+    // market pages and campaigns point at the explorer with no server work.
+    //
+    // Parked rather than run: at this point in the script /api/config has not
+    // answered, so entitlements are unknown and `proConfig` is still in its TDZ.
+    // applyExplorerGating() fires this once the answer arrives — and simply
+    // never fires it for a visitor without Pro, who is left on a locked link.
+    try {
+      const qp = new URLSearchParams(location.search);
+      const ex = qp.get("explore");
+      if (ex) {
+        const sel = document.getElementById("propertyType");
+        const t = qp.get("type");
+        if (t && [...sel.options].some((o) => o.value === t)) {
+          sel.value = t;
+          syncSubjectFieldsToType();   // programmatic set fires no "change"
+        }
+        input.value = ex;
+        runPendingExplore = () => {
+          panel.classList.remove("hidden");
+          findAddresses();
+        };
+      }
+    } catch (_) { /* malformed query string — the app must still boot */ }
+  })();
+
+  // ----------------------------------------------------------------------------
   // Smart property-type default — fills the type in for someone who forgot to
   // change it, and never overrides a type the visitor picked themselves.
   //
@@ -5740,9 +6060,11 @@
     if (currentUser && location.pathname === "/desk") renderWatchFeed({ markSeen: true });
     const m = location.hash.match(/^#reset=([A-Za-z0-9_-]{20,})$/);
     if (m) { resetToken = m[1]; openAcctModal("reset"); }
-    // Runs after the user is known, because the success banner's whole job is
-    // to wait for THIS user's entitlements to catch up with their payment.
+    // Both run after the user is known, because their whole job is to wait for
+    // THIS user's entitlements to catch up with their payment. They key off
+    // different query params (?checkout= vs ?purchase=), so at most one acts.
     handleCheckoutReturn();
+    handlePurchaseReturn();
   })();
 
   // Save the on-screen report into the server-side portfolio. currentMeta /
@@ -6551,10 +6873,15 @@
   // Is there anything to sell? PRO_ENABLED alone isn't enough — checkout 503s
   // without Stripe keys too, so the server reports the AND of both.
   function billingLive() { return Boolean(proConfig && proConfig.billing); }
+  // Comped team access. Pro, but with nothing behind it at Stripe — so every
+  // billing control has to be kept away from it, not just re-labelled.
+  function isAdminPro() { return Boolean(proConfig && proConfig.admin); }
   // "none" means no Stripe customer has ever existed for this user, so the
-  // portal would 400. Any other state means there is something to manage.
+  // portal would 400. Any other state means there is something to manage —
+  // except "admin", which is comped and likewise has no customer to manage.
   function hasBillingHistory() {
-    return Boolean(currentUser) && proConfig && proConfig.status && proConfig.status !== "none";
+    return Boolean(currentUser) && proConfig && proConfig.status
+      && proConfig.status !== "none" && !isAdminPro();
   }
 
   function showPricingError(msg) {
@@ -6587,9 +6914,37 @@
     renderFoundingTile();
   }
 
+  // Where the report being bought is parked across the Stripe redirect. The
+  // return lands on "/" carrying nothing but ?purchase=success — the address
+  // stays out of the URL so it can't end up in a log or a Referer header — so
+  // this stash is the only thing that knows which report was paid for.
+  const PENDING_UNLOCK = "pendingUnlock.v1";
+
+  /**
+   * Show the $39 tile only when there is something to spend it on.
+   *
+   * The pricing modal opens from the nav, the account menu and the export-limit
+   * path as well as from a locked report, so "there is a current report" is
+   * never a safe assumption. Three ways the offer is meaningless: nothing on
+   * screen to unlock, nothing WITHHELD on what is on screen (Pro, or already
+   * bought — either way lockedCount() is 0), or a shared report, which belongs
+   * to whoever published it and isn't the viewer's to buy.
+   */
+  function updateSingleReportTile() {
+    const tile = document.getElementById("singleReportTile");
+    if (!tile) return;
+    const buyable = Boolean(currentMeta) && !currentMeta.shared && lockedCount() > 0;
+    tile.classList.toggle("hidden", !buyable);
+    if (!buyable) return;
+    const addr = document.getElementById("singleReportAddr");
+    // textContent, not innerHTML: this is a user-typed address.
+    if (addr) addr.textContent = currentMeta.address || "this report";
+  }
+
   function openPricingModal() {
     document.getElementById("pricingError").classList.add("hidden");
     document.getElementById("pricingModal").classList.remove("hidden");
+    updateSingleReportTile();
     // Re-read the counter on every open: a seat may have gone since last time,
     // and the server memoizes for 60s so this is cheap.
     loadPricing();
@@ -6616,8 +6971,20 @@
       // after. Cancelling the account modal clears it again, by design.
       closePricingModal();
       pendingCheckoutPlan = plan;
-      openAcctModal("signup", "Create a free account first: your subscription needs somewhere to live.");
+      openAcctModal("signup", plan === "single_report"
+        // A $39 unlock is recorded against an account, not a device — say so,
+        // because "your subscription needs somewhere to live" is not true of a
+        // one-off and reads as a bait-and-switch to someone avoiding one.
+        ? "Create a free account first: the unlock is saved to your account, so the report stays yours on any device."
+        : "Create a free account first: your subscription needs somewhere to live.");
       return;
+    }
+    // A $39 unlock is bought FOR a report, so the search that produced it has
+    // to travel: the server derives the purchase id from these three fields
+    // (reportIdFor) rather than trusting an id we send.
+    const single = plan === "single_report";
+    if (single && !currentMeta) {
+      return showPricingError("Open a report first, then unlock that one.");
     }
     const label = btn && btn.textContent;
     if (btn) { btn.disabled = true; btn.textContent = "Opening checkout…"; }
@@ -6625,9 +6992,19 @@
       const r = await fetch("/api/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify(single
+          ? { plan, address: currentMeta.address, type: currentMeta.type, months: currentMeta.months }
+          : { plan }),
       });
       const data = await r.json().catch(() => ({}));
+      // Already bought, or Pro already covers it. Both mean "don't pay again" —
+      // close up and re-run so they actually see the full report.
+      if (r.status === 409 && (data.code === "already_owned" || data.code === "already_pro")) {
+        closePricingModal();
+        showStatus(data.error + " Re-running it now.", "info");
+        rerunHistory(currentMeta);
+        return;
+      }
       if (r.status === 409 && data.code === "founding_closed") {
         pricingInfo = Object.assign({}, pricingInfo, { foundingLeft: 0 });
         renderFoundingTile();
@@ -6637,6 +7014,13 @@
       if (!r.ok || !data.url) {
         showPricingError(data.error || "Could not start checkout. Please try again.");
         return;
+      }
+      // Remember WHICH report is being bought. Stripe returns to "/" with no
+      // idea what was purchased, and the report is a client-side artifact —
+      // this stash is the only thing that can re-open it on the way back. It
+      // deliberately carries no address in the return URL; see PENDING_UNLOCK.
+      if (single) {
+        try { localStorage.setItem(PENDING_UNLOCK, JSON.stringify(currentMeta)); } catch (_) {}
       }
       // Hand off to Stripe. assign (not replace) so Back returns here.
       location.assign(data.url);
@@ -6669,6 +7053,15 @@
   function billingStatusCopy() {
     const p = proConfig || {};
     if (!currentUser) return { title: "Not signed in", detail: "Sign in to see your plan." };
+    // Before the Stripe states: an admin has none of them, and saying "Pro"
+    // flat would leave a team member believing they're testing a real
+    // subscription.
+    if (p.admin) {
+      return {
+        title: "Pro — comped (team)",
+        detail: "Full Pro access while your admin key is unlocked. Nothing is billed, and there's no subscription behind it.",
+      };
+    }
     if (p.isPro && p.status === "grace") {
       const until = p.graceUntil ? new Date(p.graceUntil) : null;
       return {
@@ -6688,7 +7081,7 @@
         // is granted by entitlements.js but has no UI, so it is not claimed
         // here; promising it to someone who has just paid is worse than
         // promising it to a prospect. Restore it with the feature.
-        detail: "Every comparable, a lookback of up to 10 years, and unlimited exports.",
+        detail: "Unlimited comps, a lookback of up to 10 years, and unlimited exports.",
       };
     }
     if (p.status === "expired") {
@@ -6702,6 +7095,11 @@
   function refreshBillingUI() {
     const live = billingLive();
     const pro = Boolean(proConfig && proConfig.isPro);
+
+    // All three callers of this function are points where entitlements have
+    // just changed (config load, post-checkout refresh, sign-in/out), which
+    // makes it the one seam the explorer's lock needs too.
+    applyExplorerGating();
 
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
 
@@ -6718,13 +7116,43 @@
     updateExportAllowance();
 
     const card = document.getElementById("billingCard");
-    card.classList.toggle("hidden", !live || !currentUser);
-    if (live && currentUser) {
+    // Admins see the card even where billing isn't live (a dev box with no
+    // Stripe keys): comped Pro applies there too, so the way back out of it
+    // has to as well.
+    const showCard = Boolean(currentUser) && (live || isAdminPro());
+    card.classList.toggle("hidden", !showCard);
+    if (showCard) {
       const copy = billingStatusCopy();
       document.getElementById("billingStatus").textContent = copy.title;
       document.getElementById("billingDetail").textContent = copy.detail;
       document.getElementById("billingUpgradeBtn").classList.toggle("hidden", pro);
       document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
+      document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
+    }
+  }
+
+  // Drop comped Pro and reload as an ordinary account. The paywall is the part
+  // of this product the team never sees, because the team is permanently on
+  // the other side of it — this is the way back.
+  //
+  // Reload rather than re-fetch: gating is applied when a report is
+  // SERIALIZED, so the report already on screen was sent whole and no amount
+  // of re-reading /api/config would claw those comps back. A fresh page is the
+  // only honest picture.
+  async function dropAdminAccess() {
+    const btn = document.getElementById("billingAdminOffBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Switching…"; }
+    try {
+      await fetch("/api/admin-access", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clear: true }),
+      });
+      // The dashboards would hand it straight back on their next page load.
+      try { sessionStorage.removeItem("cn_admin_key"); } catch (_) {}
+      location.reload();
+    } catch (_) {
+      if (btn) { btn.disabled = false; btn.textContent = "View as a free user"; }
     }
   }
 
@@ -6791,13 +7219,81 @@
       await refreshProConfig();
       if (proConfig && proConfig.isPro) {
         showCheckoutNotice("ok", "You're on Pro.",
-          "Every comparable, a lookback of up to 10 years, and unlimited exports. Re-run a report to see the full list.");
+          "Unlimited comps, a lookback of up to 10 years, and unlimited exports. Re-run a report to see the full list.");
         return;
       }
       await new Promise((r) => setTimeout(r, 2000));
     }
     showCheckoutNotice("wait", "Payment received. Your account is still activating.",
       "This usually takes a few seconds. Refresh this page shortly; if Pro still isn't showing, email info@compninja.co and we'll sort it.");
+  }
+
+  /**
+   * Handle the ?purchase=success|cancelled return from a $39 single-report unlock.
+   *
+   * Separate from handleCheckoutReturn() on purpose. That one lands on /desk
+   * and announces a plan; this lands on "/" and re-opens a REPORT, because the
+   * report is what was bought and the desk has no idea which building it was.
+   * The re-rendered report is its own receipt: when every comp is there, it
+   * worked. It also can't share the desk's banner — #checkoutNotice lives
+   * inside the desk, which isn't on screen here.
+   *
+   * Stripe redirects the instant the card clears, which routinely beats the
+   * webhook that records the purchase, so this waits on /api/report-access
+   * instead of immediately re-running and rendering a still-locked report at
+   * someone who has just paid $39.
+   */
+  async function handlePurchaseReturn() {
+    const params = new URLSearchParams(location.search);
+    const result = params.get("purchase");
+    if (!result) return;
+    // Clear the query straight away so a refresh doesn't replay any of this.
+    params.delete("purchase");
+    const qs = params.toString();
+    history.replaceState({}, "", location.pathname + (qs ? "?" + qs : ""));
+
+    let meta = null;
+    try { meta = JSON.parse(localStorage.getItem(PENDING_UNLOCK) || "null"); } catch (_) {}
+    try { localStorage.removeItem(PENDING_UNLOCK); } catch (_) {}
+
+    if (result === "cancelled") {
+      showStatus("Checkout cancelled. Nothing was charged.", "info");
+      return;
+    }
+    if (result !== "success") return;
+    // Paid, but the stash is gone — a different browser, or cleared storage.
+    // Recoverable without help: the unlock lives on the ACCOUNT, not the
+    // device, so searching that property again serves it whole.
+    if (!meta || !meta.address) {
+      showStatus("Payment received. Search that property again and the full report is yours.", "info");
+      return;
+    }
+
+    showStatus("Payment received. Unlocking your report…", "info");
+    let unlocked = false;
+    // ~15s of patience, then say something true rather than spin. The purchase
+    // is on the account either way, so running out of patience costs a
+    // re-search, never the money.
+    for (let i = 0; i < 7 && !unlocked; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 2200));
+      try {
+        const r = await fetch("/api/report-access", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ address: meta.address, type: meta.type, months: meta.months }),
+        });
+        const d = await r.json().catch(() => ({}));
+        unlocked = Boolean(d.unlocked || d.pro);
+      } catch (_) { /* keep waiting — a blip shouldn't end the wait */ }
+    }
+    if (!unlocked) {
+      showStatus(`Payment received, but the unlock is still landing. Search ${meta.address} again in a moment and it'll be there. If it isn't, email info@compninja.co and we'll sort it.`, "error");
+      return;
+    }
+    hideStatus();
+    // Re-runs the same search: a cache hit, so no billed search, and the gate
+    // now serves it whole because computeEntitlements can see the purchase.
+    rerunHistory(meta);
   }
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
@@ -6825,9 +7321,11 @@
   });
   document.getElementById("billingUpgradeBtn").addEventListener("click", openPricingModal);
   document.getElementById("billingPortalBtn").addEventListener("click", (e) => openBillingPortal(e.currentTarget));
+  document.getElementById("billingAdminOffBtn").addEventListener("click", dropAdminAccess);
 
   // Every locked surface in the app — the comp table's locked notice, the
-  // corpus offer — routes through this one control.
+  // corpus offer, the Address Explorer's link and panel — routes through this
+  // one control.
   function openUpgradePrompt() {
     if (!billingLive()) {
       // Pro gating is on but nothing is for sale yet (PRO_ENABLED on without
@@ -7085,7 +7583,9 @@
       p.innerHTML =
         `CompNinja holds <strong>${corpusOfferLocked}</strong> more verified comp` +
         `${corpusOfferLocked === 1 ? "" : "s"} for this market. ` +
-        `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock with Pro</button>`;
+        // Names no plan: the modal this opens now offers Pro AND the $39
+        // one-off, and which of them is on the table depends on the report.
+        `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock them</button>`;
       rowsEl.appendChild(p);
       return;
     }
@@ -7405,7 +7905,10 @@
     if (n <= 0 || txFilter !== "all") { el.classList.add("hidden"); el.innerHTML = ""; return; }
     el.classList.remove("hidden");
     el.innerHTML =
-      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} available with Pro</div>` +
+      // Names no plan, for the same reason the corpus-offer notice doesn't:
+      // this button opens the ONE modal, which offers Pro AND the $39 one-off,
+      // and which of them fits depends on the report.
+      `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} in this report</div>` +
       `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
       `Your value range above already includes ${n === 1 ? "it" : "them"}; only the itemized list is limited.` +
       `</div>` +
@@ -7945,6 +8448,13 @@
   // NOT a timestamp: meta.generatedAt is absent on a fresh search and falls
   // back to Date.now(), which would change between two clicks and charge twice
   // for one report. Reopening a saved report and exporting it again is free.
+  // ⚠ MIRROR: server.js's reportIdFor() builds this same string from the
+  // /api/comps body — same three fields, same order, same `|`, same `|| ""`.
+  // Both are then hashed by reportKeyOf() server-side, so this one string is
+  // BOTH the export-tally key and the $39 single-report purchase key. Change
+  // it here and you must change reportIdFor(), or a bought report stops
+  // matching itself: the unlock silently stops applying and the owner's
+  // exports start counting against their free monthly allowance.
   function exportReportKey() {
     if (!currentMeta) return "";
     return [currentMeta.address || "", currentMeta.type || "", currentMeta.months || ""]

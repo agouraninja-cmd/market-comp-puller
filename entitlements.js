@@ -152,9 +152,52 @@ function subscriptionState(sub, now) {
  * @param {string?} o.reportId      the report being asked about, if any
  * @param {number}  o.now           epoch ms (injected so tests need no clock)
  * @param {boolean} o.enabled       PRO_ENABLED — false restores pre-Pro behavior
+ * @param {boolean} o.admin        the caller holds ADMIN_KEY — comps Pro, but
+ *                                 only alongside `enabled` AND a signed-in user
  */
-function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled } = {}) {
+function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin } = {}) {
   const at = Number.isFinite(now) ? now : Date.now();
+
+  // --- Comped Pro for the internal team -------------------------------------
+  //
+  // Checked before any subscription reasoning, because an admin has no Stripe
+  // row to reason about — server.js short-circuits three DB reads on this
+  // branch.
+  //
+  // Two conditions, both load-bearing:
+  //
+  //   `enabled` — an admin on a deployment where the tier is dark must still
+  //   see the dark app, or the one person who can spot a broken paywall is the
+  //   one person who never looks at it. It also keeps the disabled branch's
+  //   promise literal: PRO_ENABLED off means the app behaves exactly as it did
+  //   before the tier existed, for everyone.
+  //
+  //   `user` — possession of ADMIN_KEY identifies a machine, not a person, and
+  //   the rule is that admins get Pro WHEN THEY SIGN IN. An anonymous request
+  //   holding the key lands on the normal free path. (Internal machine callers
+  //   like gen-market-seed.js do NOT come through here; /api/comps has its own
+  //   header-only `internal` bypass for them.)
+  if (enabled && admin && user) {
+    return {
+      plan: "admin",
+      pro: true,
+      // Deliberately not "active": nothing here came from Stripe, and the UI
+      // must not offer a billing portal to an account with no customer record.
+      status: "admin",
+      maxComps: "all",
+      canBrand: true,
+      maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
+      exportsRemaining: "unlimited",
+      reportUnlocked: false,
+      // Comped Pro means the WHOLE Pro app. Omitting this reads as `undefined`,
+      // i.e. locked — which would leave the team staring at the paywall the
+      // branch above exists to lift.
+      canExploreAddresses: true,
+      graceUntil: null,
+      admin: true,
+      reason: "Pro is comped for the CompNinja team.",
+    };
+  }
 
   // The feature flag is a real off switch, not a UI toggle: with Pro disabled
   // every visitor gets exactly what the app gave them before this tier
@@ -169,7 +212,9 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
       reportUnlocked: false,
+      canExploreAddresses: true,
       graceUntil: null,
+      admin: false,
       reason: "Pro tier is switched off (PRO_ENABLED is not 'on').",
     };
   }
@@ -208,7 +253,13 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     maxLookbackMonths: pro ? PRO_MAX_LOOKBACK_MONTHS : FREE_MAX_LOOKBACK_MONTHS,
     exportsRemaining,
     reportUnlocked,
+    // The Address Explorer is a Pro discovery tool. Deliberately NOT widened by
+    // `reportUnlocked`: a single-report purchase buys one report that already
+    // exists, and the explorer's job is finding the NEXT property — the same
+    // reasoning that keeps maxLookbackMonths on `pro` alone.
+    canExploreAddresses: pro,
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
+    admin: false,
     reason: reasonFor({ state, pro, reportUnlocked, user }),
   };
 }

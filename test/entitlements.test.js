@@ -53,7 +53,81 @@ test("flag off restores pre-Pro behavior for everyone", () => {
     assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
     assert.equal(e.pro, false, "flag off must not grant Pro-only extras like branding");
     assert.equal(e.canBrand, false);
+    // The Address Explorer shipped free and only became Pro-only afterwards, so
+    // "pre-Pro behavior" means it stays open to everyone while the tier is dark.
+    assert.equal(e.canExploreAddresses, true);
   }
+});
+
+// --- comped team access ----------------------------------------------------
+//
+// "Admin" is possession of ADMIN_KEY, which server.js resolves from a header or
+// the cn_admin cookie. By the time it reaches here it is a boolean, and these
+// tests pin the two conditions that boolean is NOT allowed to override.
+
+test("admin: comped Pro with no subscription, purchase or export tally", () => {
+  const e = ent({ user: USER, admin: true });
+  assert.equal(e.plan, "admin");
+  assert.equal(e.pro, true);
+  assert.equal(e.admin, true);
+  assert.equal(e.maxComps, "all");
+  assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+  assert.equal(e.exportsRemaining, "unlimited");
+  assert.equal(e.canBrand, true);
+  // Comped means the WHOLE app. This one is asserted rather than assumed
+  // because it is the failure a merge produces silently: the admin branch is a
+  // separate early return, so a Pro-only field added to the branches below it
+  // is simply ABSENT here, and `undefined` reads as locked.
+  assert.equal(e.canExploreAddresses, true);
+});
+
+test("every Pro-granting branch answers every Pro question", () => {
+  // The guard for the trap above, generalized: whatever an active subscriber is
+  // granted, a comped admin must be granted too, or the team ends up staring at
+  // a paywall only they can see.
+  const pro = ent({ user: USER, subscription: activeSub() });
+  const admin = ent({ user: USER, admin: true });
+  for (const key of Object.keys(pro)) {
+    assert.ok(key in admin, `admin entitlements are missing "${key}"`);
+  }
+  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses"]) {
+    assert.deepEqual(admin[key], pro[key], `admin should match Pro on "${key}"`);
+  }
+});
+
+test("admin status is never a Stripe status — there is no customer to manage", () => {
+  // The UI decides whether to offer the billing portal off `status !== "none"`.
+  // Reporting "active" here would send a comped account to a portal that 400s.
+  assert.equal(ent({ user: USER, admin: true }).status, "admin");
+});
+
+test("admin without an account gets nothing — the key identifies a machine", () => {
+  const e = ent({ user: null, admin: true });
+  assert.equal(e.plan, "anonymous");
+  assert.equal(e.pro, false);
+  assert.equal(e.maxComps, FREE_MAX_COMPS);
+});
+
+test("admin cannot switch a dark deployment back on", () => {
+  // PRO_ENABLED off must mean the pre-Pro app for EVERYONE, staff included —
+  // otherwise the only people who can spot a broken paywall never render one.
+  const e = computeEntitlements({ user: USER, admin: true, now: NOW, enabled: false });
+  assert.equal(e.plan, "free");
+  assert.equal(e.admin, false);
+  assert.equal(e.status, "disabled");
+});
+
+test("admin does not spend, or get credit for, a real subscription", () => {
+  // A subscribed admin stays on the comped branch; their row is untouched and
+  // unread, so cancelling Pro can never look like losing admin access.
+  const e = ent({ user: USER, admin: true, subscription: activeSub({ plan: "pro_annual_founding" }) });
+  assert.equal(e.plan, "admin");
+  assert.equal(e.graceUntil, null);
+});
+
+test("non-admins carry admin:false, so the UI can read one field", () => {
+  assert.equal(ent({ user: USER }).admin, false);
+  assert.equal(ent({ user: USER, subscription: activeSub() }).admin, false);
 });
 
 // --- anonymous and free ----------------------------------------------------
@@ -66,6 +140,24 @@ test("anonymous visitor: 4 comps, 12 months, one export", () => {
   assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
   assert.equal(e.exportsRemaining, ANON_EXPORTS_PER_MONTH);
   assert.equal(e.canBrand, false);
+  assert.equal(e.canExploreAddresses, false);
+});
+
+test("the Address Explorer is Pro-only once the tier is on", () => {
+  // Covers the states a visitor is actually in when they click the link, and
+  // pins the two that keep paying customers whole: cancelling and grace both
+  // still hold Pro, so neither may lock the explorer.
+  assert.equal(ent({ user: null }).canExploreAddresses, false, "anonymous");
+  assert.equal(ent({ user: USER }).canExploreAddresses, false, "free account");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", cancel_at_period_end: true }) }).canExploreAddresses,
+    true, "cancelling, still inside the paid period");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "past_due", grace_until: iso(NOW + 3 * DAY) }) }).canExploreAddresses,
+    true, "inside the payment grace window");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) }) }).canExploreAddresses,
+    false, "expired");
 });
 
 test("free account: 4 comps and three exports a month", () => {
@@ -122,6 +214,7 @@ test("active Pro: everything unlocked", () => {
   assert.equal(e.canBrand, true);
   assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
   assert.equal(e.exportsRemaining, "unlimited");
+  assert.equal(e.canExploreAddresses, true);
 });
 
 test("founding annual is a Pro plan and reports its own name", () => {
@@ -234,6 +327,14 @@ test("a purchase row with no reportId asked about unlocks nothing", () => {
 test("a purchase does not widen the search window for the next search", () => {
   const e = ent({ user: USER, purchase, reportId: "rep_abc" });
   assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
+});
+
+test("a purchase does not buy the Address Explorer either", () => {
+  // Same reasoning as the lookback window: $39 buys one report that already
+  // exists, and the explorer's whole job is finding the NEXT property.
+  const e = ent({ user: USER, purchase, reportId: "rep_abc" });
+  assert.equal(e.reportUnlocked, true);
+  assert.equal(e.canExploreAddresses, false);
 });
 
 test("buying a report then subscribing: both hold, no conflict", () => {

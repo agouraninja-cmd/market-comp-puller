@@ -38,6 +38,7 @@ comp-corpus.jsonl
 dev-ideas.json
 devlog-overrides.json
 subject-sizes.json
+guest-quota.jsonl
 
 # Owner's local planning spreadsheets — not app code
 CompNinja*.xlsx

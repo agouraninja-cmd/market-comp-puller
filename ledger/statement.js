@@ -22,7 +22,8 @@ const fs = require("fs");
 const path = require("path");
 const { workbook, S } = require("./xlsx");
 const {
-  readManualEntries, readRecurring, monthRange, fetchStripe, CAT, REVENUE_CATS,
+  readManualEntries, readRecurring, monthRange, fetchStripe, fetchAnthropicCost,
+  supersedeAutoConsole, CAT, REVENUE_CATS,
 } = require("./ledger.js");
 
 const ROOT = path.join(__dirname, "..");
@@ -90,6 +91,23 @@ async function main() {
 
   const warnings = [];
   const txns = [...readRecurring(months), ...readManualEntries(months, warnings)];
+
+  // Anthropic billed cost, from the same call ledger.js makes. Wiring Stripe in
+  // (and not this) is how the two documents diverged the second time: the
+  // workbook read the invoice while this page still read the CSV transcription
+  // of it, and they disagreed by whatever had been spent since the last
+  // hand-entry. Every source ledger.js reads, this file reads too — the
+  // supersede rule is imported rather than reimplemented so the two cannot
+  // drift apart again.
+  if (process.env.ANTHROPIC_ADMIN_KEY && process.env.ANTHROPIC_ADMIN_KEY.startsWith("sk-ant-admin")) {
+    const res = await fetchAnthropicCost(process.env.ANTHROPIC_ADMIN_KEY, months, {});
+    if (!res.fatal && res.rows.length) {
+      const note = supersedeAutoConsole(txns, res.rows);
+      if (note) warnings.push(note.warning);
+      txns.push(...res.rows);
+    }
+    warnings.push(...res.warnings);
+  }
 
   // Stripe, from the same call ledger.js makes. Until a key existed, "reads the
   // same CSVs, so the two documents cannot disagree" was true by construction.

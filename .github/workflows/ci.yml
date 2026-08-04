@@ -1,0 +1,47 @@
+# CI: catches what would otherwise ship straight to prod, since Render
+# deploys main on every push. Three layers, all dependency-free:
+#   1. node --check on every entry point (a syntax error in server.js would
+#      take the whole site down at boot).
+#   2. npm test — the entitlements/comp-gate/stripe decision tables.
+#   3. Boot smoke: start server.js with no env at all and require /healthz
+#      and / to answer 200, proving the server survives a bare environment
+#      (no API key, no Supabase, no Stripe — everything optional degrades).
+# No secrets are configured here on purpose: server.js boots without any,
+# and CI must never hold a key that a fork PR could exfiltrate.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Syntax-check entry points
+        run: |
+          for f in server.js entitlements.js comp-gate.js stripe.js gen-market-seed.js market-snapshot.js; do
+            node --check "$f"
+          done
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Boot smoke test
+        run: |
+          PORT=3199 node server.js &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3199/healthz > /dev/null; then break; fi
+            if ! kill -0 $SERVER_PID 2>/dev/null; then echo "server exited early"; exit 1; fi
+            sleep 0.5
+          done
+          curl -sf http://localhost:3199/healthz
+          # The home page must render, not just the health probe.
+          curl -sf http://localhost:3199/ | grep -qi "compninja" || { echo "home page did not render"; exit 1; }
+          kill $SERVER_PID

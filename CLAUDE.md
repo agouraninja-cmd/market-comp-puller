@@ -117,6 +117,23 @@ dependency. `.env` is git-ignored — never commit it.
   same Resend notifier). An in-memory counter reset at UTC midnight and on
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
+- `GUEST_SEARCH_LIMIT` — optional (default 1, LIVE since 2026-08-03). Free
+  report searches per **anonymous** visitor before a free sign-in is required —
+  a signup funnel, not a paywall (any account clears it; spec in
+  `docs/superpowers/specs/2026-08-03-guest-search-cap-design.md`). `0` = sign-in
+  before any search; `off` = gate disabled entirely (the instant rollback lever).
+  Tracked two ways, blocked when EITHER fires: the Supabase
+  `guest_search_quota` ledger keyed by sha256(IP) (DDL in the comment above
+  `guestGateFor` in server.js — already run in prod), and the httpOnly
+  `cn_guest` cookie set once the quota is spent. **Cache hits count** (the
+  funnel is the point); a failed search doesn't consume; admins and
+  `x-admin-key` callers bypass. Enforced in `/api/comps` (403 +
+  `signin_required: true`, which the client turns into the account modal);
+  `/api/config` carries `guestSearch: { limit, used }` for the form hint and
+  syncs the cookie the SSE exit can't set (its headers are already streaming).
+  Fails OPEN on ledger errors — `DAILY_SEARCH_CAP` still backstops spend. Each
+  block logs a PII-free `signup_gate` analytics event. The privacy policy's
+  cookie section names `cn_guest` and the hashed-IP ledger; keep it in step.
 - `GOOGLE_MAPS_API_KEY` — optional; SET on Render since 2026-07-29 (key
   "CompNinja Street View" in the owner's Google Cloud project `compninja`,
   restricted to the Street View Static API only). When set, map pin popups

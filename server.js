@@ -2695,6 +2695,7 @@ function parseCompJson(rawText) {
         const salvaged = JSON.parse(inner);
         if (salvaged && Array.isArray(salvaged.comps)) {
           console.warn(`Comp JSON salvaged: first balanced object parsed, ${text.length - inner.length} trailing chars discarded`);
+          if (stats) stats.rescue = "salvaged";
           return stripEmDashes(salvaged);
         }
       } catch (_) { /* fall through to the diagnostic + rethrow */ }
@@ -3265,7 +3266,7 @@ async function repairCompJson(brokenText, maxTokens) {
   }
 }
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null, stats = null) {
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
@@ -3486,12 +3487,13 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // 0 write is a silent miss — the usual cause is the prompt slipping under the
   // 1,024-token cacheable minimum, which raises no error.
   console.log(`Anthropic call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_input_tokens || 0} read / ${usage.cache_creation_input_tokens || 0} write · stop=${stopReason}`);
+  if (stats) { stats.searches = searches; stats.out_tokens = usage.output_tokens || 0; }
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
   const finishReport = (raw) =>
     attachVerifiedAttribution(
-      reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw), type))))),
+      reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type))))),
       verifiedComps);
   try {
     return finishReport(text);
@@ -3508,6 +3510,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
       throw err;
     }
     const report = finishReport(repaired);   // still broken -> SyntaxError -> solo() retries as today
+    if (stats) stats.rescue = "repaired";
     console.warn("Comp JSON repaired by follow-up call.");
     return report;
   }
@@ -3562,7 +3565,7 @@ function mergeLaneReports(primary, records, maxComps) {
   return primary;
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null) {
+async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null, stats = null) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
   }
@@ -3581,7 +3584,7 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
     // duplicates the merge has to throw away.
     // Progress rides the PRIMARY lane only. Two concurrent streams would
     // interleave and double-count the search numbers the bar advances on.
-    const primaryCall = solo((attempt) => callAnthropicOnce(address, type, note, months, laneComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "primary", perLane, progressFor(onProgress, attempt)), onProgress);
+    const primaryCall = solo((attempt) => callAnthropicOnce(address, type, note, months, laneComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "primary", perLane, progressFor(onProgress, attempt), stats), onProgress, stats);
     const recordsCall = callAnthropicOnce(address, type, note, months, laneComps, txFocus, [], subjectSizeSqft, { comps: [] }, subjectDetails, "records", perLane)
       .catch((err) => {
         // The records lane is additive. Losing it costs comps and provenance
@@ -3595,7 +3598,7 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
     return mergeLaneReports(primary, records, maxComps);
   }
 
-  return solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt)), onProgress);
+  return solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
 }
 
 // Stamps every progress event with which attempt produced it, so the client can
@@ -3611,7 +3614,7 @@ function progressFor(onProgress, attempt) {
 // surfacing a parse error to the user. If the retry ALSO fails to parse,
 // never leak the raw JSON.parse error text to the client — it's meaningless
 // to a visitor and reads like a broken site rather than a one-off hiccup.
-async function solo(call, onProgress = null) {
+async function solo(call, onProgress = null, stats = null) {
   try {
     return await call(1);
   } catch (err) {
@@ -3619,7 +3622,11 @@ async function solo(call, onProgress = null) {
       console.warn("Comp JSON failed to parse; retrying once.", err.message);
       if (typeof onProgress === "function") onProgress({ phase: "retry", attempt: 2 });
       try {
-        return await call(2);
+        const second = await call(2);
+        // Precedence: retried > repaired > salvaged — a full re-search is the
+        // dominant fact about this search's rescue history.
+        if (stats) stats.rescue = "retried";
+        return second;
       } catch (err2) {
         if (err2 instanceof SyntaxError) {
           console.warn("Comp JSON failed to parse on retry too; giving up.", err2.message);
@@ -5200,6 +5207,12 @@ function logEvent(kind, dims) {
     market: marketForLog(dims && dims.market),
     source: (dims && dims.source) || "",
     cached: Boolean(dims && dims.cached),
+    // Speed observability (2026-08-04): billed searches carry timing. All
+    // optional — every other event keeps its exact previous shape.
+    duration_ms: dims && Number.isFinite(dims.duration_ms) ? Math.round(dims.duration_ms) : null,
+    searches: dims && Number.isFinite(dims.searches) ? dims.searches : null,
+    out_tokens: dims && Number.isFinite(dims.out_tokens) ? dims.out_tokens : null,
+    rescue: (dims && dims.rescue) || "",
   };
   // Analytics must never delay or break a real request.
   storeRow("analytics_events", ANALYTICS_FILE, row).catch((e) =>
@@ -5300,6 +5313,25 @@ function aggregateStats(rows) {
       total: round2(reportSpend + marketSpend),
       listPriceReport: round2(COST_REPORT_SEARCH),
     },
+    // Search speed (last 7 days): billed searches that recorded a duration.
+    // Speed observability (2026-08-04) — see migrations/012-search-timings.sql.
+    speed: (() => {
+      const weekAgo = Date.now() - 7 * 864e5;
+      const timed = searches.filter((r) => !r.cached && Number.isFinite(Number(r.duration_ms)) && Number(r.duration_ms) > 0 && Date.parse(r.ts) > weekAgo);
+      const durs = timed.map((r) => Number(r.duration_ms)).sort((a, b) => a - b);
+      const pct = (p) => durs.length ? durs[Math.min(durs.length - 1, Math.floor(durs.length * p))] : null;
+      return {
+        count: durs.length,
+        p50_ms: pct(0.5),
+        p90_ms: pct(0.9),
+        avg_searches: timed.length ? Math.round((timed.reduce((s, r) => s + (Number(r.searches) || 0), 0) / timed.length) * 10) / 10 : null,
+        rescues: {
+          salvaged: timed.filter((r) => r.rescue === "salvaged").length,
+          repaired: timed.filter((r) => r.rescue === "repaired").length,
+          retried: timed.filter((r) => r.rescue === "retried").length,
+        },
+      };
+    })(),
     eventCount: rows.length,
     capped: rows.length >= 10000,
   };
@@ -5454,6 +5486,8 @@ function render(d){
   // Render an em-dash rather than $0.00, which would read as "searches are free".
   var sp=d.spend||null;
   var money=function(n){return "$"+Number(n||0).toFixed(2);};
+  // speed section (2026-08-04): seconds formatter for the speed card.
+  var secs=function(ms){return ms==null?"&mdash;":(ms/1000).toFixed(ms<10000?1:0)+"s";};
   var max=Math.max(1,Math.max.apply(null,d.daily.map(function(x){return x.total;})));
   var bars=d.daily.map(function(x){var bh=Math.round(x.billed/max*120),ch=Math.round(x.cached/max*120);
     return "<div class=col title='"+x.date+": "+x.billed+" billed, "+x.cached+" cached'><div class=c style='height:"+ch+"px'></div><div class=b style='height:"+bh+"px'></div></div>";}).join("");
@@ -5520,6 +5554,15 @@ function render(d){
     "<div class=tile><div class=k>Leads</div><div class=v>"+t.leads+"</div></div>"+
     "<div class=tile><div class=k>Conversion</div><div class=v>"+d.conversionPct+"%</div></div>"+
     "<div class=tile><div class=k>Shares</div><div class=v>"+t.shares+"</div></div>"+
+    "</div>"+
+    // speed section (2026-08-04): its own card, deliberately not tiles in the
+    // strip above (the strip's grid column count must divide its tile count).
+    "<div class=card><h2>Search speed (last 7 days)</h2>"+
+    (d.speed && d.speed.count
+      ? "<div class=muted>Typical <b>"+secs(d.speed.p50_ms)+"</b> &middot; slowest 10% <b>"+secs(d.speed.p90_ms)+"</b> &middot; avg "+
+        (d.speed.avg_searches==null?"&mdash;":d.speed.avg_searches)+" web searches &middot; "+d.speed.count+" timed search(es)"+
+        "<div style='margin-top:6px'>Rescues: "+d.speed.rescues.salvaged+" salvaged &middot; "+d.speed.rescues.repaired+" repaired &middot; "+d.speed.rescues.retried+" full retries</div></div>"
+      : "<div class=muted>No timed searches yet &mdash; timing lands with each billed search after the 2026-08-04 deploy.</div>")+
     "</div>"+
     "<div class=card><h2>Searches per day (last 30 days)</h2><div class=chart>"+bars+"</div><div class=xax>"+xax+"</div>"+
     "<div class=leg><span class=sb></span>Billed<span class=sc></span>Cache hit</div></div>"+
@@ -7289,8 +7332,13 @@ const server = http.createServer((req, res) => {
           }
         }
 
+        // Speed observability: time the whole billed leg (what the visitor
+        // actually waits for server-side) and collect the call's search
+        // count, output size, and rescue history for the analytics event.
+        const callStats = {};
+        const billedT0 = Date.now();
         const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
-          sse ? (evt) => sse.send("progress", guardComp(evt)) : null);
+          sse ? (evt) => sse.send("progress", guardComp(evt)) : null, callStats);
         // With the size supplied (memo hit), the prompt skips the lookup and
         // the payload has no subject_size_sqft — carry the remembered size
         // into the report so the client's hero math and size autofill still
@@ -7304,7 +7352,8 @@ const server = http.createServer((req, res) => {
         // every future search of this address. Fire-and-forget.
         if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
         await storeCachedSearch(cacheKey, result);
-        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan });
+        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan,
+          duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
         maybePublishMarketSnapshot(typeOk, addressOk, result);
         harvestComps(typeOk, addressOk, result);
         consumeGuestSearch(Boolean(sse));
@@ -9364,7 +9413,7 @@ const server = http.createServer((req, res) => {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     const key = req.headers["x-admin-key"] || new URL(req.url, "http://localhost").searchParams.get("key");
     if (!secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
-    readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached"])
+    readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"])
       .then((rows) => sendJson(res, 200, aggregateStats(rows)))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
     return;

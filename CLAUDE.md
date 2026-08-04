@@ -221,6 +221,13 @@ dependency. `.env` is git-ignored — never commit it.
   patterns named, the summary's REQUIRED honesty caveats given a protected
   third-sentence slot — don't tighten further without protecting them
   again). Verified same day: summary 941 → 559, report 13% shorter.
+  The comps array itself got compact encoding the same day: the model
+  writes 1-3 char keys (`SHORT_COMP_KEYS`) and omits empty fields;
+  `expandCompKeys` restores the long-keyed, ""-backfilled shape at parse
+  time, so only the MODEL OUTPUT is smaller — every stored and served
+  report keeps the classic shape. A new comp field needs a short key too
+  (the add-comp-field skill has the step). Measured with caps + encoding
+  together: a 7-comp report fell from 6,111 to 3,111 output tokens.
   `notes` is now capped in the prompt at two short sentences with the two
   real sources of bloat banned by name — the model narrating its own search
   ("Included as the nearest comparable found; details require CoStar") and

@@ -6782,8 +6782,13 @@ async function hqSnapshot() {
       const s = aggregateStats(rows);
       const last7 = s.daily.slice(-7);
       const sum = (f) => last7.reduce((n, d) => n + d[f], 0);
+      // Estimated API spend for the same 7 days: aggregateStats re-run on just
+      // the week's rows, so the blended pricing (corpus-discounted reports,
+      // flat market searches) can never drift from /admin's cost tiles.
+      const cut = last7.length ? last7[0].date : "";
+      const spend7 = aggregateStats(rows.filter((r) => String(r.ts || "").slice(0, 10) >= cut)).spend.total;
       return {
-        searches7d: { billed: sum("billed"), cached: sum("cached"), total: sum("total") },
+        searches7d: { billed: sum("billed"), cached: sum("cached"), total: sum("total"), cost: spend7 },
         leads: s.totals.leads,
       };
     })(),
@@ -6950,6 +6955,7 @@ function render(d){
   if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
     head=plural(a.searches7d.total,"search","searches")+" this week";
     var bits=[a.searches7d.billed+" billed",a.searches7d.cached+" cached"];
+    if(typeof a.searches7d.cost==="number")bits.push("est. $"+a.searches7d.cost.toFixed(2)+" API spend");
     if(typeof a.leads==="number")bits.push(plural(a.leads,"lead","leads")+" all-time");
     if(s&&s.db===true&&typeof s.pending==="number")bits.push(plural(s.pending,"broker comp","broker comps")+" awaiting review");
     else bits.push('<span title="Submission review requires Supabase">broker comps: '+DASH+'</span>');

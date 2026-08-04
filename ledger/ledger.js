@@ -1049,6 +1049,32 @@ async function main() {
       txns.push(...res.rows);
       console.log(`Anthropic: ${res.rows.length} cost rows.`);
       mode = "Anthropic cost: billed (Admin Cost API)";
+
+      // The estimator has always stood down for a month already costed by hand.
+      // This branch never did — and it is the one people switch to *after*
+      // months of typing Console figures into manual-entries.csv, so the
+      // collision is the normal case here too. Left unguarded, the first run
+      // with an Admin key silently bills every one of those months twice.
+      //
+      // The billed figure wins: it IS the invoice, where the CSV row was only
+      // ever a transcription of it. Only rows add-month.js wrote are dropped —
+      // they carry its `auto:console` marker — so anything typed by hand
+      // survives and stays visible even if it then double-counts on purpose.
+      const costedByApi = new Set(res.rows.map((r) => r.month));
+      const superseded = man.filter((r) =>
+        AI_CATS.has(r.category) && costedByApi.has(r.month) &&
+        String(r.notes || "").includes("auto:console"));
+      if (superseded.length) {
+        const drop = new Set(superseded);
+        for (let i = man.length - 1; i >= 0; i--) if (drop.has(man[i])) man.splice(i, 1);
+        const mths = [...new Set(superseded.map((r) => r.month))].sort();
+        warnings.push(
+          `Replaced ${superseded.length} hand-entered Anthropic row(s) for ${mths.join(", ")} with the ` +
+          "billed figure from the Admin Cost API — the invoice supersedes a transcription of it. " +
+          "Rows you typed yourself were not touched. Tidy them out of manual-entries.csv when convenient."
+        );
+        console.log(`Anthropic: superseded ${superseded.length} auto:console row(s) for ${mths.join(", ")}.`);
+      }
     }
   } else {
     const why = adminKey

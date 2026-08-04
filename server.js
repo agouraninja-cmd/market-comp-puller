@@ -166,11 +166,12 @@ const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 const DEFAULT_SITE_URL = "https://market-comp-puller.onrender.com";
 const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 
-// Two people searching the same address within a few days shouldn't both bill
-// the Anthropic account for identical work. TTL is deliberately short — comp
-// data goes stale — but long enough to absorb the common case of the same
-// property being searched more than once in a short window.
-const SEARCH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Two people searching the same address shouldn't both bill the Anthropic
+// account for identical work. The TTL balances cost against staleness: CRE
+// comps barely move inside a month (reports already use a 12-month lookback),
+// so 30 days widens the free-repeat window without a stale report being
+// served. Was 7 days until 2026-08-03 — widened purely as a cost lever.
+const SEARCH_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Backstop against a runaway script or scraper burning the Anthropic budget
 // overnight — the per-IP limiter above stops one connection, not a
@@ -180,14 +181,16 @@ const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(proce
 
 // Rough per-search API cost, used ONLY for the /admin spend estimate — nothing
 // here reads a real invoice, so treat the tiles as a sanity check, not
-// accounting. A market (Explorer) search costs more because it always runs the
-// full 8-use web_search budget: the Explorer path never passes a corpus, so it
-// can't take the corpus-assisted discount a report search can. Both are
-// env-overridable as real Anthropic invoices come in.
-// 0.75 is an ESTIMATE for the 12-comp default (measured $0.60 at 8 comps,
-// scaled by the 8→10 search-budget rise) — recalibrate from a real invoice.
-const COST_REPORT_SEARCH = Number(process.env.COST_REPORT_SEARCH) > 0 ? Number(process.env.COST_REPORT_SEARCH) : 0.75;
-const COST_MARKET_SEARCH = Number(process.env.COST_MARKET_SEARCH) > 0 ? Number(process.env.COST_MARKET_SEARCH) : 0.75;
+// accounting. Explorer shares the getComps pipeline, so both prices track the
+// same measurement; Explorer just never takes the corpus-assisted discount
+// (its path never passes a corpus). Both are env-overridable.
+// 0.36 was MEASURED 2026-08-03 on a fresh 12-comp report search (8 searches,
+// 5,035 out, 45.9k cache-write + 121.9k cache-read in): $0.08 searches +
+// $0.172 cache-write + $0.037 cache-read + $0.076 output. Down from the
+// pre-caching ~$0.75 because the prompt cache_control (see callAnthropicOnce)
+// turns the ~167k of per-round re-read input into $0.30/MTok cache reads.
+const COST_REPORT_SEARCH = Number(process.env.COST_REPORT_SEARCH) > 0 ? Number(process.env.COST_REPORT_SEARCH) : 0.36;
+const COST_MARKET_SEARCH = Number(process.env.COST_MARKET_SEARCH) > 0 ? Number(process.env.COST_MARKET_SEARCH) : 0.36;
 // A corpus-assisted report search drops max_uses 10→3 (see searchBudgetFor), and
 // web_search is what costs money, so it lands near 3/10 of a full search.
 const CORPUS_HIT_COST_FACTOR = 3 / 10;
@@ -1606,7 +1609,7 @@ async function storeCachedSearch(key, payload) {
 // path unchanged. The derived report is deliberately NOT re-cached: after the
 // first probe the parent sits in the in-memory cache map, so a repeat costs
 // one Map lookup — and re-caching under the short key would hand the subset a
-// fresh 7-day TTL running past its parent's.
+// fresh full TTL running past its parent's.
 // Known soft edge: the parent's narrative fields (summary, value_drivers) may
 // occasionally reference the longer window in prose. They are market-level
 // commentary, kept for the same reason curation doesn't move the Avg $/SF
@@ -3319,15 +3322,6 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
 .hleft{display:flex;align-items:center;gap:18px}
-/* Red back link, top-left corner of the page — also wired to the Escape key.
-   Mirrors HOW_CSS's .backbtn; keep the two in step. Below ~1140px the corner
-   collides with the centered column, so it drops into the header row; below
-   640px (phones) it is hidden entirely — the owner's call. */
-.backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
-.backbtn:hover{color:#991B1B}
-.backbtn svg{width:15px;height:15px;flex-shrink:0}
-@media (max-width:1139px){.backbtn{position:static}}
-@media (max-width:639px){.backbtn{display:none}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
@@ -3405,6 +3399,15 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
 .mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 .disc{color:#8A93A0;font-size:12.5px;margin-top:26px}
+/* Legal pages (/terms, /privacy) — document style: flowing prose under serif
+   section headings, a readable measure, no cards or boxes. */
+.legal{max-width:72ch}
+.legal h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;color:#1A2433;
+  letter-spacing:normal;text-transform:none;margin:34px 0 10px}
+.legal p{margin:0 0 12px;color:#374253;font-size:14.5px}
+.legal ul{margin:0 0 12px;padding-left:22px}
+.legal li{margin:6px 0;color:#374253;font-size:14.5px}
+.legal code{font-size:13px;background:#F5F4EF;padding:1px 5px;border-radius:3px}
 /* Footer — the navy ink footer from the home page. */
 footer{background:#1A2433;color:#B8C0CC;font-size:13px}
 footer .wrap{padding:36px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
@@ -3426,9 +3429,6 @@ footer li a{text-decoration:none;color:#B8C0CC}
 const MARKET_BAR =
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
-  `<a class="backbtn" id="barBack" href="/" aria-label="Go back">` +
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
-  `<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>Back</a>` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
@@ -3440,13 +3440,14 @@ const MARKET_BAR =
   `<script>document.addEventListener("click",function(e){` +
   `document.querySelectorAll(".hdr nav details[open]").forEach(function(d){` +
   `if(!d.contains(e.target))d.open=false;});});` +
-  // Back button + Escape: previous CompNinja page when there is one, else the
-  // landing page. Same logic as /how-it-works — keep the two in step.
+  // Escape returns to the previous CompNinja page when there is one, else the
+  // landing page (a first press closes an open Explore dropdown instead). The
+  // visible back button was removed 2026-08-03 at the owner's request; the
+  // key stayed. Same logic as /how-it-works — keep the two in step.
   `(function(){` +
   `function goBack(){` +
   `try{if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}}catch(err){}` +
   `location.href="/";}` +
-  `document.getElementById("barBack").addEventListener("click",function(e){e.preventDefault();goBack();});` +
   `document.addEventListener("keydown",function(e){` +
   `if(e.key!=="Escape")return;` +
   `var dd=document.querySelector(".hdr nav details[open]");` +
@@ -3707,7 +3708,90 @@ const MARKET_FOOTER =
   `<li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul></div>` +
   `</div></footer>`;
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
+// Client script for the market pages' comp map. Mirrors index.html's geocoding
+// stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
+// misses cached in localStorage geoCache.v1 — same key shape, so the app and
+// these pages share a cache). Comps geocode sequentially, not in a burst, to
+// stay friendly to /api/geocode's per-IP rate limit. If not a single pin
+// resolves, the whole card hides rather than showing an empty map.
+const MARKET_MAP_JS = `(function(){
+  var data = JSON.parse(document.getElementById("mktMapData").textContent);
+  var CACHE_KEY = "geoCache.v1";
+  var cache = {}; try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) {}
+  function save(k, v) {
+    cache[k] = v;
+    try {
+      var ks = Object.keys(cache);
+      if (ks.length > 300) ks.slice(0, ks.length - 300).forEach(function (old) { delete cache[old]; });
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    } catch (e) {}
+  }
+  function jfetch(u) {
+    return Promise.race([
+      fetch(u).then(function (r) { return r.json(); }),
+      new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, 7000); }),
+    ]);
+  }
+  var nq = Promise.resolve();
+  function nominatim(a) {
+    var run = function () {
+      return jfetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" + encodeURIComponent(a))
+        .then(function (j) {
+          return (Array.isArray(j) && j[0] && isFinite(parseFloat(j[0].lat)))
+            ? { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) } : null;
+        }).catch(function () { return null; });
+    };
+    var res = nq.then(run);
+    nq = res.then(function () { return new Promise(function (r) { setTimeout(r, 1100); }); });
+    return res;
+  }
+  function geocode(a) {
+    var k = String(a || "").trim().toLowerCase();
+    if (!k) return Promise.resolve(null);
+    if (k in cache) { var h = cache[k]; return Promise.resolve(h && isFinite(h.lat) ? h : null); }
+    return jfetch("/api/geocode?address=" + encodeURIComponent(a))
+      .then(function (j) { return (j && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null; })
+      .catch(function () { return null; })
+      .then(function (f) { return f || nominatim(a); })
+      .then(function (f) { save(k, f); return f; });
+  }
+  var map = null, pts = [];
+  function ensureMap(center) {
+    if (map) return map;
+    map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }).addTo(map);
+    return map;
+  }
+  function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
+  // ", USA" disambiguates the sanity point: bare "Ontario, CA" reads as the
+  // Canadian province to Nominatim (CA = Canada), which put the city point
+  // 1,900 miles out and gated every correct pin off the map.
+  geocode(data.city + ", USA").then(function (cityPt) {
+    var chain = Promise.resolve();
+    data.comps.forEach(function (c) {
+      chain = chain.then(function () {
+        return geocode(c.a).then(function (pt) {
+          if (!pt) return;
+          // ~100 mile sanity gate against geocoder mismatches (wrong state).
+          if (cityPt && (Math.abs(pt.lat - cityPt.lat) > 1.5 || Math.abs(pt.lng - cityPt.lng) > 1.5)) return;
+          var m = L.marker([pt.lat, pt.lng]).addTo(ensureMap([pt.lat, pt.lng]));
+          var lines = [c.a.split(",")[0], [c.d, c.t].filter(Boolean).join(" \\u00b7 "), c.pr].filter(Boolean);
+          m.bindPopup(lines.map(function (s) { return "<div>" + esc(s) + "</div>"; }).join(""));
+          pts.push([pt.lat, pt.lng]);
+          if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30] });
+        });
+      });
+    });
+    chain.then(function () {
+      if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
+    });
+  });
+})();`;
+
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head }) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
@@ -3725,6 +3809,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex }) {
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
+    (head || "") +
     `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${MARKET_BAR}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
@@ -3861,6 +3946,40 @@ function renderMarketPageHTML(slug, p, opts = {}) {
       `</tr></thead><tbody>${compRows}</tbody></table></div></div>`
     : "";
 
+  // Comp map — same idea as the report's map, pins placed ENTIRELY from real
+  // geocoding in the visitor's browser (Census proxy, then Nominatim), cached
+  // under the same localStorage geoCache.v1 the app uses so the two share
+  // hits. Only street-numbered addresses get pins: submarket/aggregate rows
+  // geocode to a district point, which reads as a wrong pin (same rule as the
+  // report's street-view gate). A rough city-distance gate drops geocoder
+  // mismatches that would land a pin in another state. The leading number
+  // must look like a street number, not a quantity: "72,031 SF Renovated
+  // Warehouse, Dallas County" starts with a digit but isn't an address (the
+  // comma inside the number and the unit word after it are the tells).
+  const mappable = marketComps.filter((c) => {
+    const a = String(c.address || "").trim();
+    return /^\d+\s+(?!(sf|sq|sqft|acres?|units?)\b)/i.test(a) && !isAggregateAddress(a);
+  });
+  const mapData = mappable.map((c) => {
+    const addr = String(c.address).trim();
+    return {
+      a: addr.includes(",") ? addr : `${addr}, ${p.city}, ${p.state}`,
+      d: String(c.date || ""), t: String(c.transaction || ""), pr: String(c.price_or_rate || ""),
+    };
+  });
+  const mapCard = mapData.length
+    ? `<div class="card" id="mktMapCard"><h2>Where these comps are</h2>` +
+      `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
+      `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
+      `Comps quoted at the submarket level aren't pinned.</p></div>` +
+      `<script id="mktMapData" type="application/json">${JSON.stringify({ city: `${p.city}, ${p.state}`, comps: mapData }).replace(/</g, "\\u003c")}</script>` +
+      `<script>${MARKET_MAP_JS}</script>`
+    : "";
+  const mapHead = mapData.length
+    ? `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
+      `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n`
+    : "";
+
   // Quiet contributor credit — the public half of the broker loop.
   const creditNames = (MARKET_CREDIT.byMarket[`${p.city}, ${p.state}`.toLowerCase()] || []).slice(0, 6);
   const creditLine = creditNames.length
@@ -3868,27 +3987,10 @@ function renderMarketPageHTML(slug, p, opts = {}) {
       `${creditNames.map(escHtml).join(", ")}. Are you a broker in ${escHtml(p.city)}? <a href="/">Submit a comp</a>.</p>`
     : "";
 
-  // One Q/A array feeds both the visible FAQ block and the FAQPage JSON-LD,
-  // so the two can never drift (Google flags mismatched FAQ markup).
-  const typeLc = p.type.toLowerCase();
-  const faq = [
-    [`What is the average price per square foot for ${typeLc} space in ${p.city}, ${p.state}?`,
-     `Recent sale comps put the median around ${usd0(p.ppsf.median)}/SF, with a typical range of ` +
-     `${rangeTxt}/SF across ${p.ppsf.count} recent sales${p.date_range ? " (" + p.date_range + ")" : ""}.`],
-    ...(p.cap_rate_low && p.cap_rate_high ? [[
-      `What cap rates are ${typeLc} properties trading at in ${p.city}?`,
-      `Recent market data suggests roughly ${p.cap_rate_low}–${p.cap_rate_high} for stabilized ${typeLc} deals in the ${p.city} area.`]] : []),
-    [`How are these numbers calculated?`,
-     `They are automated estimates built from recent comparable sales found in public listings, property records, ` +
-     `and brokerage announcements. They are not an appraisal or a broker opinion of value.`],
-    [`How do I find out what my ${p.city} ${typeLc} property is worth?`,
-     `Run a free valuation on CompNinja: enter the address and property type and you get an estimated value range ` +
-     `from recent comps in under a minute. For a real opinion of value, we connect you with a licensed local broker at no cost.`],
-  ];
-  const faqCard =
-    `<div class="card"><h2>Frequently asked questions</h2>` +
-    faq.map(([q, a]) => `<h3>${escHtml(q)}</h3><p>${escHtml(a)}</p>`).join("") +
-    `</div>`;
+  // No FAQ on market pages (removed 2026-08-03 at the owner's request; the
+  // site-wide FAQ lives on /how-it-works, which the footer links to). If it
+  // ever comes back, the visible block and the FAQPage JSON-LD must be fed
+  // from ONE array — Google flags mismatched FAQ markup.
 
   const merged = allMarketPages();
   const others = Object.keys(merged).filter((s) => s !== slug).slice(0, 6);
@@ -3915,14 +4017,6 @@ function renderMarketPageHTML(slug, p, opts = {}) {
           ],
         },
       },
-      {
-        "@type": "FAQPage",
-        mainEntity: faq.map(([q, a]) => ({
-          "@type": "Question",
-          name: q,
-          acceptedAnswer: { "@type": "Answer", text: a },
-        })),
-      },
     ],
   });
 
@@ -3943,9 +4037,9 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     intelCard +
+    mapCard +
     compsTable +
     creditLine +
-    faqCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
     `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>` +
@@ -3957,6 +4051,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     description, canonical, body,
     jsonLd: opts.preview ? null : jsonLd,
     noindex: Boolean(opts.preview),
+    head: mapHead,
   });
 }
 
@@ -4020,17 +4115,6 @@ a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
    each link into a two-line column (which overflowed the viewport at 375px). */
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
 .hleft{display:flex;align-items:center;gap:18px}
-/* Red back link, top-left corner of the page — also wired to the Escape key.
-   Deliberately plain (no border/pill): the owner rolled back a boxed version
-   as too heavy. Absolute against the page, not the centered column; below
-   ~1140px the corner collides with the column, so it drops back into the
-   header flow beside the logo; below 640px (phones) it is hidden entirely —
-   the owner's call. */
-.backbtn{position:absolute;top:21px;left:18px;display:inline-flex;align-items:center;gap:6px;color:#B91C1C;font-size:13.5px;font-weight:500;white-space:nowrap}
-.backbtn:hover{color:#991B1B}
-.backbtn svg{width:15px;height:15px;flex-shrink:0}
-@media (max-width:1139px){.backbtn{position:static}}
-@media (max-width:639px){.backbtn{display:none}}
 .brand{display:flex;align-items:center;gap:10px;color:#1A2433}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
@@ -4241,13 +4325,14 @@ function renderTermsPageHTML() {
     `<h1>Terms of Service</h1>` +
     `<p class="sub">Last updated: ${LEGAL_UPDATED}. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
-    `<div class="card"><h2>Who we are and what this is</h2>` +
+    `<div class="legal">` +
+    `<h2>Who we are and what this is</h2>` +
     `<p>CompNinja is operated by CompNinja LLC, an Idaho limited liability company (file #6928558). ` +
     `These terms are an agreement between you and CompNinja LLC. By using compninja.co you accept them.</p>` +
     `<p>The service produces automated commercial real estate comparable-sales reports and value estimates, ` +
-    `built from publicly available data and AI-assisted web search.</p></div>` +
+    `built from publicly available data and AI-assisted web search.</p>` +
 
-    `<div class="card"><h2>What the service is not</h2>` +
+    `<h2>What the service is not</h2>` +
     `<ul>` +
     `<li>Every valuation is an automated estimate. It is not an appraisal and no output of the service is one.</li>` +
     `<li>CompNinja is not a licensed real estate brokerage and does not provide broker opinions of value. ` +
@@ -4256,53 +4341,53 @@ function renderTermsPageHTML() {
     `<li>Estimates must not be relied on for lending, underwriting, or any transaction decision ` +
     `without independent verification. Comparable data comes from public sources and automated search; ` +
     `we do not guarantee its accuracy or completeness.</li>` +
-    `</ul></div>` +
+    `</ul>` +
 
-    `<div class="card"><h2>Accounts and acceptable use</h2>` +
+    `<h2>Accounts and acceptable use</h2>` +
     `<p>Accounts are free. Keep your credentials to yourself, give us accurate information, and use one ` +
     `account per person. We may suspend or terminate accounts that abuse the service.</p>` +
     `<p>You agree not to scrape, bulk-extract, or resell report data; not to circumvent rate limits, usage ` +
-    `caps, or access controls; and not to use the service for anything unlawful.</p></div>` +
+    `caps, or access controls; and not to use the service for anything unlawful.</p>` +
 
-    `<div class="card"><h2>Paid subscriptions</h2>` +
+    `<h2>Paid subscriptions</h2>` +
     `<p>Payment is processed by Stripe; CompNinja never sees or stores your card number. You can cancel at ` +
     `any time and your access continues through the end of the period you paid for. Payments are not ` +
     `refundable, in whole or in part.</p>` +
     `<p>Prices may change with advance notice; a change applies from your next billing period. ` +
     `Founding-member pricing stays at its original rate for as long as that subscription remains ` +
-    `continuously active.</p></div>` +
+    `continuously active.</p>` +
 
-    `<div class="card"><h2>Your submissions</h2>` +
+    `<h2>Your submissions</h2>` +
     `<p>If you submit a comp or other data, you confirm you have the right to share it. We may review, ` +
     `approve, display, and credit submissions (for example the Verified badge with your firm's name), and ` +
-    `we may decline or remove any submission at our discretion.</p></div>` +
+    `we may decline or remove any submission at our discretion.</p>` +
 
-    `<div class="card"><h2>The legal terms</h2>` +
-    `<h3>Intellectual property</h3>` +
+    `<h2>Intellectual property</h2>` +
     `<p>The site, branding, and report formats belong to CompNinja LLC. Reports you generate are yours to ` +
     `use for your own business purposes.</p>` +
-    `<h3>Third-party services</h3>` +
+    `<h2>Third-party services</h2>` +
     `<p>The service depends on third-party data and infrastructure providers. We are not responsible for ` +
     `their outages or errors.</p>` +
-    `<h3>Disclaimer of warranties</h3>` +
+    `<h2>Disclaimer of warranties</h2>` +
     `<p>The service is provided &quot;as is&quot; and &quot;as available&quot;, without warranties of any ` +
     `kind, to the maximum extent permitted by law.</p>` +
-    `<h3>Limitation of liability</h3>` +
+    `<h2>Limitation of liability</h2>` +
     `<p>To the maximum extent permitted by law, CompNinja LLC's total liability for any claim relating to ` +
     `the service is capped at the greater of the fees you paid us in the twelve months before the claim ` +
     `or $100. We are not liable for indirect, incidental, or consequential damages.</p>` +
-    `<h3>Termination</h3>` +
+    `<h2>Termination</h2>` +
     `<p>You can stop using the service or delete your account at any time; we can suspend or end access ` +
     `for breach of these terms. Sections that by their nature should survive (disclaimers, liability ` +
     `limits, intellectual property) survive.</p>` +
-    `<h3>Governing law and disputes</h3>` +
+    `<h2>Governing law and disputes</h2>` +
     `<p>These terms are governed by Idaho law. Any dispute belongs exclusively in the state or federal ` +
     `courts located in Ada County, Idaho, and both sides consent to that venue.</p>` +
-    `<h3>Changes to these terms</h3>` +
+    `<h2>Changes to these terms</h2>` +
     `<p>We may update these terms; the date at the top changes when we do. Continuing to use the service ` +
     `after a change means you accept it.</p>` +
-    `<h3>Contact</h3>` +
-    `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+    `<h2>Contact</h2>` +
+    `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
+    `</div>`;
 
   return marketShell({ title, description, canonical, body });
 }
@@ -4311,71 +4396,103 @@ function renderPrivacyPageHTML() {
   const title = "Privacy Policy | CompNinja";
   const canonical = `${SITE_URL}/privacy`;
   const description =
-    "What CompNinja collects, what never leaves your browser, which providers we use, and how to delete your data.";
+    "How CompNinja LLC collects, uses, and shares information, which data never leaves your browser, and how to request deletion.";
   const body =
     `<h1>Privacy Policy</h1>` +
-    `<p class="sub">Last updated: ${LEGAL_UPDATED}. CompNinja is operated by CompNinja LLC, an Idaho ` +
-    `limited liability company (file #6928558). Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+    `<p class="sub">Effective date: ${LEGAL_UPDATED}</p>` +
+    `<div class="legal">` +
+    `<p>This Privacy Policy describes how CompNinja LLC, an Idaho limited liability company ` +
+    `(file no. 6928558) (&quot;CompNinja,&quot; &quot;we,&quot; &quot;us&quot;), collects, uses, and ` +
+    `shares information in connection with compninja.co (the &quot;Service&quot;). By using the ` +
+    `Service, you agree to the practices described in this policy.</p>` +
 
-    `<div class="card"><h2>What we collect</h2>` +
+    `<h2>1. Information We Collect</h2>` +
+    `<p>We collect the following categories of information when you provide them:</p>` +
     `<ul>` +
     `<li><strong>Search inputs.</strong> The property address, property type, lookback window, and any ` +
-    `public building attributes you enter (size, units, clear height, and similar).</li>` +
-    `<li><strong>Lead and broker-opinion requests.</strong> Name, email, phone, company, and the property ` +
-    `you asked about.</li>` +
-    `<li><strong>Accounts.</strong> Your email address and a hashed password. Passwords are stored only as ` +
-    `scrypt hashes, never as plain text.</li>` +
-    `<li><strong>Saved work.</strong> Portfolio items and watchlists, including any private financial ` +
-    `inputs you enter (NOI, debt terms, rent roll, gross income).</li>` +
-    `<li><strong>Broker comp submissions.</strong> Broker contact details and the submitted comp.</li>` +
-    `<li><strong>Operational data.</strong> IP addresses for rate limiting, server logs, and analytics ` +
-    `events that carry no personal information: a property type, a city and state, and an outcome, ` +
-    `never names, emails, or street addresses.</li>` +
-    `</ul></div>` +
+    `building attributes you enter, such as size, unit count, or clear height.</li>` +
+    `<li><strong>Account information.</strong> Your email address and a password. Passwords are stored ` +
+    `only as salted scrypt hashes and are never stored in plain text.</li>` +
+    `<li><strong>Lead and broker-opinion requests.</strong> Your name, email address, phone number, ` +
+    `company, and the property your request concerns.</li>` +
+    `<li><strong>Saved work.</strong> Portfolio items and watchlist entries associated with your ` +
+    `account, including any financial inputs you choose to save (see Section 2).</li>` +
+    `<li><strong>Broker comp submissions.</strong> The submitting broker's contact details and the ` +
+    `submitted comparable-sale data.</li>` +
+    `</ul>` +
+    `<p>We also collect limited information automatically: IP addresses, used for rate limiting and ` +
+    `abuse prevention; standard server logs; and aggregate analytics events. Analytics events are ` +
+    `limited to a property type, a city and state, and an outcome, and do not include names, email ` +
+    `addresses, or street addresses.</p>` +
 
-    `<div class="card"><h2>Your private financials stay in your browser</h2>` +
-    `<p>NOI, debt terms, rent rolls, and gross income never leave your browser except into your own ` +
-    `signed-in portfolio. They are never sent to the AI model, they are stripped on the server before a ` +
-    `shared report link is stored, and they are never shown to anyone else.</p></div>` +
+    `<h2>2. Information That Does Not Leave Your Browser</h2>` +
+    `<p>The financial inputs you may enter while analyzing a property, including net operating income, ` +
+    `debt terms, rent roll, and gross income, are processed entirely within your browser. They are not ` +
+    `transmitted to the AI model, they are removed on the server before any shared report link is ` +
+    `stored, and they are not visible to any other user. The sole exception is your own portfolio: ` +
+    `saving a report to a signed-in account stores these inputs in that account so your analysis can be ` +
+    `restored across devices.</p>` +
 
-    `<div class="card"><h2>How we use information</h2>` +
-    `<p>To generate your reports, to connect broker-opinion requesters with local brokers, to send ` +
-    `transactional email (confirmations, password resets, broker notifications), to process subscription ` +
-    `billing, and to operate, secure, and improve the service. We do not sell personal data, we run no ` +
-    `advertising trackers, and we use no third-party analytics cookies.</p></div>` +
+    `<h2>3. How We Use Information</h2>` +
+    `<p>We use the information described above to generate your reports; to connect broker-opinion ` +
+    `requesters with independent local brokers; to send transactional email such as confirmations, ` +
+    `password resets, and broker notifications; to process subscription billing; and to operate, ` +
+    `secure, and improve the Service.</p>` +
+    `<p>We do not sell personal information. The Service contains no advertising trackers and uses no ` +
+    `third-party analytics cookies.</p>` +
 
-    `<div class="card"><h2>Service providers</h2>` +
-    `<p>These providers process data on our behalf:</p>` +
+    `<h2>4. Service Providers</h2>` +
+    `<p>We share information with the following providers only as necessary to operate the Service:</p>` +
     `<ul>` +
-    `<li><strong>Anthropic</strong> (AI search): receives the address, property type, and public building ` +
-    `attributes only. Never your financials.</li>` +
-    `<li><strong>Supabase</strong> (database) and <strong>Render</strong> (hosting).</li>` +
-    `<li><strong>Stripe</strong> (payments): card details go directly to Stripe and never touch our servers.</li>` +
-    `<li><strong>Resend</strong> (email delivery).</li>` +
-    `<li><strong>Google</strong> (Street View imagery), <strong>Esri</strong>, <strong>OpenStreetMap</strong>, ` +
-    `and <strong>CARTO</strong> (map imagery and tiles).</li>` +
-    `<li><strong>US Census Bureau</strong> and <strong>Nominatim</strong> (address geocoding).</li>` +
-    `<li><strong>cdnjs</strong> (script delivery for exports).</li>` +
-    `</ul></div>` +
+    `<li><strong>Anthropic</strong> performs the AI-assisted comparable search. It receives the ` +
+    `property address, property type, and the building attributes you enter. It does not receive the ` +
+    `financial inputs described in Section 2.</li>` +
+    `<li><strong>Supabase</strong> provides database hosting, and <strong>Render</strong> provides ` +
+    `application hosting.</li>` +
+    `<li><strong>Stripe</strong> processes subscription payments. Card details are provided by you ` +
+    `directly to Stripe and are never transmitted to or stored on our servers.</li>` +
+    `<li><strong>Resend</strong> delivers transactional email.</li>` +
+    `<li><strong>Google</strong> (Street View imagery), <strong>Esri</strong>, ` +
+    `<strong>OpenStreetMap</strong>, and <strong>CARTO</strong> provide map imagery and tiles.</li>` +
+    `<li>The <strong>US Census Bureau</strong> and <strong>Nominatim</strong> provide address ` +
+    `geocoding.</li>` +
+    `<li><strong>cdnjs</strong> provides content delivery for the export feature.</li>` +
+    `</ul>` +
 
-    `<div class="card"><h2>Cookies, sharing, and retention</h2>` +
-    `<h3>Cookies and local storage</h3>` +
-    `<p>One essential cookie (<code>cn_session</code>, httpOnly) keeps you signed in. Your browser's ` +
-    `local storage holds preferences, report history, and map caches on your own device.</p>` +
-    `<h3>Shared report links</h3>` +
-    `<p>Publishing a share link makes that report readable by anyone who has the link. Private financial ` +
-    `inputs are stripped before publishing. Share links do not expire.</p>` +
-    `<h3>Retention and deletion</h3>` +
-    `<p>You can delete your account in the app (My Desk, Delete account), which removes the account and ` +
-    `its saved data. To request deletion of lead or submission data, email ` +
+    `<h2>5. Cookies and Local Storage</h2>` +
+    `<p>The Service sets one essential cookie, <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `you signed in. Your browser's local storage holds preferences, report history, and map caches; ` +
+    `that data remains on your own device.</p>` +
+
+    `<h2>6. Shared Report Links</h2>` +
+    `<p>If you publish a share link, the associated report becomes readable by anyone who has the ` +
+    `link. The financial inputs described in Section 2 are removed before the shared copy is stored. ` +
+    `Share links do not expire.</p>` +
+
+    `<h2>7. Data Retention and Deletion</h2>` +
+    `<p>We retain information for as long as it is needed to provide the Service. You may delete your ` +
+    `account at any time from within the application (My Desk, Delete account); doing so removes the ` +
+    `account and its saved data. To request deletion of lead or submission data, contact us at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
-    `<h3>Security</h3>` +
-    `<p>HTTPS everywhere, hashed passwords, and an access-controlled database.</p>` +
-    `<h3>Children</h3>` +
-    `<p>The service is built for business use and is not directed to children under 13.</p>` +
-    `<h3>Changes and contact</h3>` +
-    `<p>We may update this policy; the date at the top changes when we do. ` +
-    `<a href="mailto:info@compninja.co">info@compninja.co</a></p></div>`;
+
+    `<h2>8. Security</h2>` +
+    `<p>The Service is served exclusively over HTTPS. Passwords are stored as salted scrypt hashes, ` +
+    `and database access is restricted. No method of transmission or storage is completely secure, ` +
+    `and we cannot guarantee absolute security.</p>` +
+
+    `<h2>9. Children's Privacy</h2>` +
+    `<p>The Service is intended for business use and is not directed to children under 13. We do not ` +
+    `knowingly collect personal information from children under 13.</p>` +
+
+    `<h2>10. Changes to This Policy</h2>` +
+    `<p>We may update this policy from time to time. When we do, we will revise the effective date at ` +
+    `the top of this page. Your continued use of the Service after a change takes effect constitutes ` +
+    `acceptance of the updated policy.</p>` +
+
+    `<h2>11. Contact</h2>` +
+    `<p>Questions about this policy or about your data may be directed to CompNinja LLC at ` +
+    `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
+    `</div>`;
 
   return marketShell({ title, description, canonical, body });
 }
@@ -4449,7 +4566,6 @@ function renderHowItWorksHTML() {
 <header class="hdr">
   <div class="wrap">
     <div class="hleft">
-      <a class="backbtn" id="howBack" href="/" aria-label="Go back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>Back</a>
       <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     </div>
     <nav>
@@ -4468,14 +4584,15 @@ function renderHowItWorksHTML() {
   document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
     if(!d.contains(e.target))d.open=false;});});
 (function(){
-  // Back = the page you came from when that was CompNinja; otherwise home.
+  // Escape = the page you came from when that was CompNinja; otherwise home.
+  // The visible back button was removed 2026-08-03 at the owner's request;
+  // the key stayed. Same logic as MARKET_BAR — keep the two in step.
   function goBack(){
     try{
       if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}
     }catch(err){}
     location.href="/";
   }
-  document.getElementById("howBack").addEventListener("click",function(e){e.preventDefault();goBack();});
   document.addEventListener("keydown",function(e){
     if(e.key!=="Escape")return;
     var dd=document.querySelector(".hdr nav details[open]");

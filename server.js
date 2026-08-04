@@ -5224,68 +5224,88 @@ function renderAdminHTML() {
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <style>
+/* Same tokens and discipline as /dev and /hq: one type scale (--t1..--t6),
+   one spacing scale (--s1..--s9), one radius on controls, uppercase reserved
+   for the kicker and wordmark, red for interaction. The dashboard keeps its
+   own structures (tile strip, boxed cards, chart) — only the skin is shared.
+   The one page-local token is --red-wash, the alarm card's tint. */
 *{box-sizing:border-box}
+:root{
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;--red-wash:#FCF3F2;
+  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
+  --serif:Georgia,'Times New Roman',serif;
+  --r:4px;
+  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+}
 /* Flex column so the ink footer sits at the bottom even on the short key gate. */
-body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+  display:flex;flex-direction:column;font-size:var(--t4);
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#F5F4EF;border-radius:3px;padding:1px 5px}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px}
-/* Header — same bar as the landing page, so /admin reads as the same site. */
-.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
-.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
-.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--t5);background:var(--wash);border-radius:var(--r);padding:1px 5px}
+.wrap{max-width:1024px;margin:0 auto;padding:0 var(--s6)}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
+.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
-.wordmark b{color:#B91C1C;font-weight:600}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
-main{flex:1;padding:36px 0 64px}
-.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
-.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
-h1.h{font-size:32px;line-height:1.15;margin:10px 0 0}
-.sub{color:#4C5665;font-size:14px;max-width:62ch;margin:8px 0 0}
-/* Key gate */
-.gate{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:26px;max-width:420px;margin:48px auto;text-align:center}
-.gate .lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
-.gate input{width:100%;padding:10px 12px;border:1px solid #D8D4C9;border-radius:4px;margin:12px 0;font-size:14px;
-  font-family:inherit;color:#1A2433;background:#FBFBF9}
-.gate input:focus{outline:none;border-color:#B91C1C}
-.gate button,.btn{background:#B91C1C;color:#fff;border:0;border-radius:4px;padding:10px 22px;font-weight:600;
-  font-size:14px;font-family:inherit;cursor:pointer}
-.gate button:hover,.btn:hover{background:#991B1B}
-.err{color:#B91C1C;font-size:13px;margin-top:8px}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s5);font-size:var(--t5)}
+.hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+main{flex:1;padding:var(--s8) 0 var(--s9)}
+.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+h1.h{font-size:var(--t1);line-height:1.15;margin:var(--s4) 0 0}
+.sub{color:var(--ink-2);font-size:var(--t4);max-width:62ch;margin:var(--s4) 0 0}
+.gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
+.gate .lab{display:block;font-size:var(--t5);color:var(--ink-3)}
+.gate input{width:100%;padding:var(--s4);border:1px solid var(--edge);border-radius:var(--r);margin:var(--s4) 0;
+  font-size:var(--t4);font-family:inherit;color:var(--ink);background:var(--paper)}
+.gate input:focus{outline:none;border-color:var(--red)}
+.gate button,.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s4) var(--s6);font-weight:600;
+  font-size:var(--t4);font-family:inherit;cursor:pointer}
+.gate button:hover,.btn:hover{background:var(--red-deep)}
+.btn.mute{background:var(--ink-2)}
+.err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
 /* Tile strip — hairline grid on white, like the landing page's stat strip.
    The 1px gaps show the container's cream background, so a partly-filled last
-   row would render as a grey block. render() emits exactly 9 tiles, hence the
-   fixed 1-or-3 column counts (both divide 9) instead of auto-fit: add or drop
-   a tile and this needs a column count that divides the new total. */
-.tiles{display:grid;grid-template-columns:1fr;gap:1px;background:#E4E2DA;
-  border:1px solid #E4E2DA;border-radius:6px;overflow:hidden;margin:22px 0}
-@media (min-width:560px){.tiles{grid-template-columns:repeat(3,1fr)}}
-.tile{background:#fff;padding:16px 18px}
-.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600}
-.tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:27px;line-height:1.2;margin-top:4px;
-  color:#1A2433;font-variant-numeric:tabular-nums}
-.card{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:20px 22px;margin:16px 0}
-.card h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600;margin:0 0 14px}
-.card p{margin:0 0 8px;font-size:14px;color:#374253}
+   row would render as a grey block. render() emits exactly 10 tiles, hence
+   the fixed 1-2-5 column counts (all divide 10) instead of auto-fit: add or
+   drop a tile and this needs a column count that divides the new total.
+   (The type-autofill tile made it 10 while this read "9 and 3 columns", and
+   the last row showed exactly that grey block.) */
+.tiles{display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:var(--s6) 0}
+@media (min-width:560px){.tiles{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:900px){.tiles{grid-template-columns:repeat(5,1fr)}}
+.tile{background:#fff;padding:var(--s5)}
+.tile .k{font-size:var(--t5);color:var(--ink-3);font-weight:500}
+.tile .v{font-family:var(--serif);font-weight:500;font-size:var(--t1);line-height:1.2;margin-top:var(--s2);
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.card{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s5) var(--s6);margin:var(--s5) 0}
+.card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);margin:0 0 var(--s4)}
+.card p{margin:0 0 var(--s3);font-size:var(--t4);color:var(--ink-2)}
+.card.alarm{border-color:var(--red);background:var(--red-wash)}
+.card.alarm h2{color:var(--red)}
 .chart{display:flex;align-items:flex-end;gap:3px;height:130px}
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
-.chart .b{background:#1A2433;border-radius:2px 2px 0 0}.chart .c{background:#D8D4C9}
-.xax{display:flex;gap:3px;margin-top:6px;font-size:10px;color:#8A93A0}.xax div{flex:1;text-align:center;overflow:hidden;white-space:nowrap}
-table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
-td{padding:9px 8px 9px 0;border-top:1px solid #F0EFE9;color:#374253}
+.chart .b{background:var(--ink);border-radius:2px 2px 0 0}.chart .c{background:var(--edge)}
+.xax{display:flex;gap:3px;margin-top:var(--s2);font-size:var(--t6);color:var(--ink-3)}.xax div{flex:1;text-align:center;overflow:hidden;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:var(--t4);font-variant-numeric:tabular-nums}
+td{padding:var(--s3) var(--s3) var(--s3) 0;border-top:1px solid var(--hair);color:var(--ink-2)}
 td:last-child{text-align:right;font-weight:600;padding-right:0}
-.leg{font-size:12.5px;color:#5A6473;margin-top:10px}
-.leg span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 12px;vertical-align:middle}
-.muted{color:#8A93A0;font-size:12.5px}
-/* Footer — the navy ink footer from the home page, trimmed for a private page. */
-footer{background:#1A2433;color:#B8C0CC;font-size:13px}
-footer .wrap{padding:28px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.leg{font-size:var(--t5);color:var(--ink-2);margin-top:var(--s4)}
+.leg span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 var(--s2) 0 var(--s4);vertical-align:middle}
+.leg .sb{background:var(--ink)}.leg .sc{background:var(--edge)}
+.muted{color:var(--ink-3);font-size:var(--t5)}
+footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
+footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
-footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
+footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
@@ -5343,9 +5363,8 @@ function render(d){
   // written — the failure this catches froze the corpus for weeks unnoticed.
   var h=c.health||{}, broken=(h.writeFallbacks||0)+(h.readFailures||0);
   var alarm = broken ? (
-    "<div class=card style='border:1px solid #B91C1C;background:#FCF3F2'>"+
-    "<h2 style='color:#B91C1C;margin-bottom:8px;font-family:Georgia,serif;font-weight:500;"+
-    "font-size:19px;text-transform:none;letter-spacing:normal'>Comp corpus is not persisting</h2>"+
+    "<div class='card alarm'>"+
+    "<h2>Comp corpus is not persisting</h2>"+
     (h.schemaMismatch
       ? "<p><b>This looks like a missing column.</b> The migration for a new per-comp "+
         "field was probably never run &mdash; check <code>migrations/APPLIED.md</code> against the "+
@@ -5381,7 +5400,7 @@ function render(d){
     "<div class=tile><div class=k>Shares</div><div class=v>"+t.shares+"</div></div>"+
     "</div>"+
     "<div class=card><h2>Searches per day (last 30 days)</h2><div class=chart>"+bars+"</div><div class=xax>"+xax+"</div>"+
-    "<div class=leg><span style='background:#1A2433'></span>Billed<span style='background:#D8D4C9'></span>Cache hit</div></div>"+
+    "<div class=leg><span class=sb></span>Billed<span class=sc></span>Cache hit</div></div>"+
     "<div class=card><h2>Searches by property type</h2><table>"+rows(d.byType)+"</table></div>"+
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
@@ -5405,7 +5424,7 @@ function subRow(x){
   var notes=x.notes?"<div class=muted>"+esc(String(x.notes).slice(0,160))+"</div>":"";
   return "<tr><td style='text-align:left'><div style='font-weight:600'>"+comp+"</div><div class=muted>"+who+"</div>"+notes+"</td>"+
     "<td style='white-space:nowrap'><button class='btn ap' data-id='"+Number(x.id)+"'>Approve</button> "+
-    "<button class='btn rj' data-id='"+Number(x.id)+"' style='background:#5A6473'>Reject</button></td></tr>";
+    "<button class='btn rj mute' data-id='"+Number(x.id)+"'>Reject</button></td></tr>";
 }
 function renderSubs(d,key){
   var el=document.getElementById("subs"), inner;
@@ -6292,81 +6311,103 @@ function renderContactsHTML() {
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <style>
+/* Same tokens and discipline as /dev and /hq: one type scale (--t1..--t6),
+   one spacing scale (--s1..--s9), one radius on controls, uppercase reserved
+   for the kicker and wordmark, red for interaction. The rolodex keeps its own
+   structures (form grid, contact rows) — only the skin is shared. The status
+   tag hues below :root are deliberate content color-coding (a CRM state read
+   at a glance), the one place this page steps outside the token palette. */
 *{box-sizing:border-box}
-body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
+:root{
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
+  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
+  --serif:Georgia,'Times New Roman',serif;
+  --r:4px;
+  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+  display:flex;flex-direction:column;font-size:var(--t4);
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
-.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
-.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
-.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
-.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
+.wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6)}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
+.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
-.wordmark b{color:#B91C1C;font-weight:600}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
-main{flex:1;padding:36px 0 64px}
-.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
-.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
-h1.h{font-size:32px;line-height:1.15;margin:10px 0 0}
-.sub{color:#4C5665;font-size:14px;max-width:62ch;margin:8px 0 0}
-.gate{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:26px;max-width:420px;margin:48px auto;text-align:center}
-.gate .lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
-.gate input{width:100%;padding:10px 12px;border:1px solid #D8D4C9;border-radius:4px;margin:12px 0;font-size:14px;
-  font-family:inherit;color:#1A2433;background:#FBFBF9}
-.gate input:focus{outline:none;border-color:#B91C1C}
-.gate button,.btn{background:#B91C1C;color:#fff;border:0;border-radius:4px;padding:10px 22px;font-weight:600;
-  font-size:14px;font-family:inherit;cursor:pointer}
-.gate button:hover,.btn:hover{background:#991B1B}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s5);font-size:var(--t5)}
+.hdr nav a{color:var(--ink-2);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+main{flex:1;padding:var(--s8) 0 var(--s9)}
+.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+h1.h{font-size:var(--t1);line-height:1.15;margin:var(--s4) 0 0}
+.sub{color:var(--ink-2);font-size:var(--t4);max-width:62ch;margin:var(--s4) 0 0}
+.gate{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s6);max-width:400px;margin:var(--s8) auto;text-align:center}
+.gate .lab{display:block;font-size:var(--t5);color:var(--ink-3)}
+.gate input{width:100%;padding:var(--s4);border:1px solid var(--edge);border-radius:var(--r);margin:var(--s4) 0;
+  font-size:var(--t4);font-family:inherit;color:var(--ink);background:var(--paper)}
+.gate input:focus{outline:none;border-color:var(--red)}
+.gate button,.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s4) var(--s6);font-weight:600;
+  font-size:var(--t4);font-family:inherit;cursor:pointer}
+.gate button:hover,.btn:hover{background:var(--red-deep)}
 .btn[disabled]{opacity:.55;cursor:default}
-.btn.ghost{background:#fff;color:#4C5665;border:1px solid #D8D4C9}
-.btn.ghost:hover{background:#F4F2EC;color:#1A2433}
-.btn.sm{padding:6px 12px;font-size:12.5px}
-.err{color:#B91C1C;font-size:13px;margin-top:8px}
-.card{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:20px 22px;margin:16px 0}
-.card h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600;margin:0 0 14px}
-.muted{color:#8A93A0;font-size:12.5px}
-.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 16px}
-.bar input[type=search]{flex:1;min-width:200px;padding:9px 12px;border:1px solid #D8D4C9;border-radius:4px;
-  font-size:14px;font-family:inherit;color:#1A2433;background:#fff}
-.bar input[type=search]:focus{outline:none;border-color:#B91C1C}
-.seg{display:flex;flex-wrap:wrap;gap:6px}
-.seg button{background:#fff;border:1px solid #D8D4C9;color:#5A6473;border-radius:999px;padding:5px 12px;
-  font-size:12.5px;font-family:inherit;cursor:pointer;text-transform:capitalize}
-.seg button[aria-pressed=true]{background:#1A2433;border-color:#1A2433;color:#fff}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
-.grid label{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#8A93A0;font-weight:600;margin-bottom:4px}
-.grid input,.grid select,.grid textarea{width:100%;padding:9px 12px;border:1px solid #D8D4C9;border-radius:4px;
-  font-size:14px;font-family:inherit;color:#1A2433;background:#FBFBF9}
-.grid input:focus,.grid select:focus,.grid textarea:focus{outline:none;border-color:#B91C1C}
+.btn.ghost{background:#fff;color:var(--ink-2);border:1px solid var(--edge)}
+.btn.ghost:hover{background:var(--wash);color:var(--ink)}
+.btn.sm{padding:var(--s2) var(--s4);font-size:var(--t5)}
+.err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
+.card{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s5) var(--s6);margin:var(--s5) 0}
+.card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);margin:0 0 var(--s4)}
+.muted{color:var(--ink-3);font-size:var(--t5)}
+.bar{display:flex;gap:var(--s4);align-items:center;flex-wrap:wrap;margin:0 0 var(--s5)}
+.bar input[type=search]{flex:1;min-width:200px;padding:var(--s3) var(--s4);border:1px solid var(--edge);border-radius:var(--r);
+  font-size:var(--t4);font-family:inherit;color:var(--ink);background:#fff}
+.bar input[type=search]:focus{outline:none;border-color:var(--red)}
+/* Filters read as a line of links, not raised widgets — /dev's idiom, with
+   aria-pressed as the "on" state instead of a class. */
+.seg{display:inline-flex;flex-wrap:wrap;gap:var(--s5)}
+.seg button{background:none;border:0;border-radius:0;padding:0 0 var(--s1);font-family:inherit;font-size:var(--t5);
+  color:var(--ink-3);cursor:pointer;text-transform:capitalize;white-space:nowrap;border-bottom:1px solid transparent}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed=true]{color:var(--ink);font-weight:600;border-bottom-color:var(--red)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4) var(--s5)}
+.grid label{display:block;font-size:var(--t5);color:var(--ink-3);font-weight:500;margin-bottom:var(--s1)}
+.grid input,.grid select,.grid textarea{width:100%;padding:var(--s3) var(--s4);border:1px solid var(--edge);border-radius:var(--r);
+  font-size:var(--t4);font-family:inherit;color:var(--ink);background:var(--paper)}
+.grid input:focus,.grid select:focus,.grid textarea:focus{outline:none;border-color:var(--red)}
 .grid textarea{min-height:74px;resize:vertical}
 .grid .full{grid-column:1/-1}
-.formact{display:flex;gap:10px;align-items:center;margin-top:14px}
-.row{border-top:1px solid #EDEBE3;padding:14px 0;display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.formact{display:flex;gap:var(--s4);align-items:center;margin-top:var(--s5)}
+.row{border-top:1px solid var(--hair);padding:var(--s5) 0;display:flex;gap:var(--s5);align-items:flex-start;flex-wrap:wrap}
 .row:first-child{border-top:0}
 .row .who{flex:1 1 220px;min-width:0}
-.row .nm{font-weight:600;font-size:15px;color:#1A2433;word-break:break-word}
-.row .co{font-size:13px;color:#5A6473;word-break:break-word}
-.row .reach{flex:1 1 220px;min-width:0;font-size:13.5px}
+.row .nm{font-weight:600;font-size:var(--t3);color:var(--ink);word-break:break-word}
+.row .co{font-size:var(--t5);color:var(--ink-2);word-break:break-word}
+.row .reach{flex:1 1 220px;min-width:0;font-size:var(--t4)}
 .row .reach a{display:block;word-break:break-word}
-.row .meta{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.row .acts{display:flex;gap:6px}
-.note{flex:1 1 100%;font-size:13px;color:#4C5665;background:#FBFBF9;border-left:2px solid #E4E2DA;
-  padding:6px 10px;white-space:pre-wrap;word-break:break-word}
-.tag{display:inline-block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
-  border-radius:3px;padding:2px 7px;white-space:nowrap}
-.tag.cat{background:#EEF1F5;color:#4C5665}
+.row .meta{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:var(--s3)}
+.row .acts{display:flex;gap:var(--s2)}
+.note{flex:1 1 100%;font-size:var(--t5);color:var(--ink-2);background:var(--paper);border-left:2px solid var(--line);
+  padding:var(--s2) var(--s4);white-space:pre-wrap;word-break:break-word}
+.tag{display:inline-block;font-size:var(--t6);letter-spacing:.06em;text-transform:capitalize;font-weight:600;
+  border-radius:var(--r);padding:var(--s1) var(--s3);white-space:nowrap}
+.tag.cat{background:var(--wash);color:var(--ink-2)}
 .st-new{background:#E8F0FE;color:#1A4FA0}
 .st-contacted{background:#FEF3C7;color:#8A6100}
 .st-following-up{background:#FFE8D9;color:#9A4A12}
 .st-client{background:#DCFCE7;color:#166534}
 .st-dead{background:#F1F0EC;color:#8A93A0}
-.empty{text-align:center;color:#8A93A0;font-size:14px;padding:28px 0}
-footer{background:#1A2433;color:#B8C0CC;font-size:13px}
-footer .wrap{padding:28px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.empty{text-align:center;color:var(--ink-3);font-size:var(--t4);padding:var(--s7) 0}
+footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
+footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
-footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
+footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
+/* LAST in the sheet on purpose — same specificity as the rules above, so the
+   collapse only wins by being declared later. */
 @media(max-width:620px){.grid{grid-template-columns:1fr}.row .meta{align-items:flex-start}}
 </style></head><body>
 <header class="hdr">

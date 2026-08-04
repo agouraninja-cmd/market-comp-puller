@@ -6899,6 +6899,13 @@ async function hqSnapshot() {
       broken: (CORPUS_HEALTH.writeFallbacks || 0) + (CORPUS_HEALTH.readFailures || 0),
       schemaMismatch: CORPUS_HEALTH.schemaMismatch,
     },
+    // The daily spend cap is the one alarm that can warn BEFORE the failure.
+    // The counter resets lazily inside tryConsumeDailySearch, so mirror its
+    // day check rather than trusting the raw number across midnight UTC.
+    cap: {
+      used: new Date().toISOString().slice(0, 10) === dailySearchDay ? dailySearchCount : 0,
+      limit: DAILY_SEARCH_CAP,
+    },
   };
   return { analytics, submissions, dev, contacts, revenue, alerts };
 }
@@ -7094,6 +7101,12 @@ function renderAlerts(al){
   }
   if(co&&co.broken){
     out.push('Comp corpus is not persisting'+(co.schemaMismatch?", likely a missing column (check migrations/APPLIED.md)":"")+'. <a href="/admin">Details on Analytics</a>');
+  }
+  var cap=al&&al.cap;
+  if(cap&&typeof cap.used==="number"&&cap.limit&&cap.used>=cap.limit*0.8){
+    out.push(cap.used>=cap.limit
+      ? 'The daily search cap is exhausted ('+cap.limit+'): visitors get a 429 until midnight UTC. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Raise DAILY_SEARCH_CAP on Render</a>'
+      : cap.used+' of '+cap.limit+' billed searches used today; at the cap visitors get a 429 until midnight UTC. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Raise DAILY_SEARCH_CAP on Render</a>');
   }
   el("alerts").innerHTML=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
 }

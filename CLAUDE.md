@@ -606,10 +606,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `migrations/005-dev-ideas.sql` — **run it before deploying**),
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
   it done on `/dev` and add the devlog entry.
-- **Pro tier** (added 2026-07-31, in progress — see the build spec in the
-  session that started it). Paid plan gating free reports to **4 comps**, a
-  **12-month** lookback ceiling, and **3 exports/month** (1 for anonymous
-  visitors), against Pro's unlimited everything plus report branding.
+- **Pro tier** (added 2026-07-31; launched to the public 2026-08-03). Paid plan
+  gating free reports to **4 comps**, a **36-month** lookback ceiling, and
+  **5 exports/month** (0 for anonymous visitors — exporting requires an
+  account), against Pro's unlimited everything plus report branding.
+  The free lookback was **12 months until 2026-08-04**. It was widened because
+  at 12 months the free report often could not compute a valuation at all (the
+  hero needs two priced sale comps and dense markets returned one), and because
+  a window that short usually returned ≤4 comps, so the 4-comp gate withheld
+  nothing and the $39 tile never appeared. Not widened further: the window is
+  clamped BEFORE the search and the model is asked for up to 12 comps
+  regardless of plan, so a longer free window grows output — the cost and
+  wall-clock driver — on the majority of traffic. The numbers live in
+  `entitlements.js`; the pricing modal and both plan-card strings hard-code
+  them in prose and must be edited together.
   The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the
   amendment in its spec for why that gate needs a browser half AND a server
   half, and for the `proConfig` temporal-dead-zone trap that shapes the

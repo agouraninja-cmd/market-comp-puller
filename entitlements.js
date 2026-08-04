@@ -21,10 +21,28 @@
 // locked-basis rows in server.js), but the itemized list is short enough that
 // a professional wants the rest.
 const FREE_MAX_COMPS = 4;
-// Free lookback stops at 12 months. Note this is a REDUCTION from the app's
-// historical default of 24 — pre-Pro reports were 24-month searches, so
-// existing free users will see a shorter window than they used to.
-const FREE_MAX_LOOKBACK_MONTHS = 12;
+// Free lookback stops at 36 months — WIDENED from 12 on 2026-08-04, and the
+// reason matters more than the number.
+//
+// At 12 months the free report did not just withhold value, it frequently
+// FAILED. The hero needs two priced sale comps to compute a range, and a
+// 12-month window in dense industrial markets kept returning fewer: Phoenix
+// came back with five comps of which one was a sale, so the headline rendered
+// "-" "-" "-". A free tier that cannot answer its own headline question
+// converts nobody, because a broken demo is no evidence the paid version works.
+//
+// It also disarmed the OTHER gate. A 12-month search often returned four or
+// fewer comps, so the 4-comp limit withheld nothing and the $39 tile — which
+// only appears when something is actually locked — never rendered. Widening the
+// window is what gives the comp gate something to hold back.
+//
+// Not unlimited, deliberately: the window is clamped BEFORE the search, and the
+// model is asked for up to 12 comps regardless of plan, so a 120-month free
+// window would find and write far more comps on every free search. The comps
+// array is 69-76% of report output and output is the cost and wall-clock
+// driver, so free traffic (most traffic, billed to us) would cost materially
+// more. 36 buys a working valuation; 120 stays the thing Pro sells.
+const FREE_MAX_LOOKBACK_MONTHS = 36;
 // Counted PER REPORT PER MONTH, not per click: CSV, image, PDF and Excel of
 // the same report together cost one. People think in reports ("I get five a
 // month"), and charging twice for wanting the same analysis in two formats

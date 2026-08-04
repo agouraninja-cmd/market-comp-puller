@@ -381,15 +381,28 @@ test("compLimit turns the 'all' sentinel into a usable number", () => {
   assert.equal(compLimit(null), Infinity);
 });
 
-test("clampLookback holds free users to 12 months and lets Pro through", () => {
+// Asserted against the CONSTANTS, not against literals. This test previously
+// hard-coded 12 and so failed the moment the free ceiling moved to 36 — which
+// reads as a regression when it is really just the policy changing underneath
+// a stale literal. What matters is the RELATIONSHIP: an ask above the free
+// ceiling comes back clamped to it, and Pro is clamped only at its own.
+test("clampLookback holds free users to the free ceiling and lets Pro through", () => {
   const free = ent({ user: USER });
   const pro = ent({ user: USER, subscription: activeSub() });
-  assert.equal(clampLookback(36, free), 12);
-  assert.equal(clampLookback(6, free), 6);
-  assert.equal(clampLookback(36, pro), 36);
+  assert.equal(free.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
+  assert.equal(clampLookback(PRO_MAX_LOOKBACK_MONTHS, free), FREE_MAX_LOOKBACK_MONTHS,
+    "an ask above the free ceiling is clamped down to it");
+  assert.equal(clampLookback(FREE_MAX_LOOKBACK_MONTHS + 1, free), FREE_MAX_LOOKBACK_MONTHS,
+    "one month over the ceiling is still clamped");
+  assert.equal(clampLookback(6, free), 6, "an ask inside the ceiling is untouched");
+  assert.equal(clampLookback(FREE_MAX_LOOKBACK_MONTHS, pro), FREE_MAX_LOOKBACK_MONTHS);
   assert.equal(clampLookback(999, pro), PRO_MAX_LOOKBACK_MONTHS);
   assert.equal(clampLookback(0, pro), 1);
-  assert.equal(clampLookback("nonsense", free), 12, "a junk value falls back inside the free ceiling");
+  // Junk falls back to the app's historical 24-month default, itself capped by
+  // the visitor's ceiling — so this is 24 while the free ceiling is >= 24, and
+  // would be the ceiling itself if it were ever set lower.
+  assert.equal(clampLookback("nonsense", free), Math.min(24, FREE_MAX_LOOKBACK_MONTHS),
+    "a junk value falls back to the default, inside the free ceiling");
 });
 
 test("canExport reads both the sentinel and the count", () => {

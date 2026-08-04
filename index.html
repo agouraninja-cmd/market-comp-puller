@@ -976,6 +976,10 @@
               class="hidden btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Upgrade to Pro</button>
             <button id="billingPortalBtn" type="button"
               class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
+            <!-- Admins only. Comped Pro hides every paywall from the one team
+                 that needs to see it work; this drops it for the session. -->
+            <button id="billingAdminOffBtn" type="button"
+              class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">View as a free user</button>
           </div>
           <p id="billingError" class="hidden text-sm text-red-600 mt-2"></p>
         </div>
@@ -6814,10 +6818,15 @@
   // Is there anything to sell? PRO_ENABLED alone isn't enough — checkout 503s
   // without Stripe keys too, so the server reports the AND of both.
   function billingLive() { return Boolean(proConfig && proConfig.billing); }
+  // Comped team access. Pro, but with nothing behind it at Stripe — so every
+  // billing control has to be kept away from it, not just re-labelled.
+  function isAdminPro() { return Boolean(proConfig && proConfig.admin); }
   // "none" means no Stripe customer has ever existed for this user, so the
-  // portal would 400. Any other state means there is something to manage.
+  // portal would 400. Any other state means there is something to manage —
+  // except "admin", which is comped and likewise has no customer to manage.
   function hasBillingHistory() {
-    return Boolean(currentUser) && proConfig && proConfig.status && proConfig.status !== "none";
+    return Boolean(currentUser) && proConfig && proConfig.status
+      && proConfig.status !== "none" && !isAdminPro();
   }
 
   function showPricingError(msg) {
@@ -6989,6 +6998,15 @@
   function billingStatusCopy() {
     const p = proConfig || {};
     if (!currentUser) return { title: "Not signed in", detail: "Sign in to see your plan." };
+    // Before the Stripe states: an admin has none of them, and saying "Pro"
+    // flat would leave a team member believing they're testing a real
+    // subscription.
+    if (p.admin) {
+      return {
+        title: "Pro — comped (team)",
+        detail: "Full Pro access while your admin key is unlocked. Nothing is billed, and there's no subscription behind it.",
+      };
+    }
     if (p.isPro && p.status === "grace") {
       const until = p.graceUntil ? new Date(p.graceUntil) : null;
       return {
@@ -7043,13 +7061,43 @@
     updateExportAllowance();
 
     const card = document.getElementById("billingCard");
-    card.classList.toggle("hidden", !live || !currentUser);
-    if (live && currentUser) {
+    // Admins see the card even where billing isn't live (a dev box with no
+    // Stripe keys): comped Pro applies there too, so the way back out of it
+    // has to as well.
+    const showCard = Boolean(currentUser) && (live || isAdminPro());
+    card.classList.toggle("hidden", !showCard);
+    if (showCard) {
       const copy = billingStatusCopy();
       document.getElementById("billingStatus").textContent = copy.title;
       document.getElementById("billingDetail").textContent = copy.detail;
       document.getElementById("billingUpgradeBtn").classList.toggle("hidden", pro);
       document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
+      document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
+    }
+  }
+
+  // Drop comped Pro and reload as an ordinary account. The paywall is the part
+  // of this product the team never sees, because the team is permanently on
+  // the other side of it — this is the way back.
+  //
+  // Reload rather than re-fetch: gating is applied when a report is
+  // SERIALIZED, so the report already on screen was sent whole and no amount
+  // of re-reading /api/config would claw those comps back. A fresh page is the
+  // only honest picture.
+  async function dropAdminAccess() {
+    const btn = document.getElementById("billingAdminOffBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Switching…"; }
+    try {
+      await fetch("/api/admin-access", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clear: true }),
+      });
+      // The dashboards would hand it straight back on their next page load.
+      try { sessionStorage.removeItem("cn_admin_key"); } catch (_) {}
+      location.reload();
+    } catch (_) {
+      if (btn) { btn.disabled = false; btn.textContent = "View as a free user"; }
     }
   }
 
@@ -7218,6 +7266,7 @@
   });
   document.getElementById("billingUpgradeBtn").addEventListener("click", openPricingModal);
   document.getElementById("billingPortalBtn").addEventListener("click", (e) => openBillingPortal(e.currentTarget));
+  document.getElementById("billingAdminOffBtn").addEventListener("click", dropAdminAccess);
 
   // Every locked surface in the app — the comp table's locked notice, the
   // corpus offer, the Address Explorer's link and panel — routes through this

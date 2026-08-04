@@ -95,6 +95,7 @@ dependency. `.env` is git-ignored — never commit it.
   as CSV (send the key via `x-admin-key` header or `?key=`). Unset = that
   endpoint is disabled. Without Supabase configured, leads live only in
   `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
+  **It is also the admin identity for comped Pro** — see "Admin access" below.
 - `RESEND_API_KEY` — optional. When set, every stored lead AND every broker
   comp submission fires an email notification via Resend's REST API (plain
   fetch, free tier is plenty). Fire-and-forget: a failing provider is logged
@@ -255,6 +256,49 @@ dependency. `.env` is git-ignored — never commit it.
   which is why startup logs it loudly. Rules live in `entitlements.js`
   (`parseAudience` / `inAudience`), so `npm test` covers them.
 - `PORT` — defaults to 3000. Hosts set this themselves.
+
+### Admin access — comped Pro for the team
+
+There is **no admin user** in this codebase: `ADMIN_KEY` is a shared secret
+typed into `/admin`, `/dev` and `/contacts`, and `users` has no `is_admin`
+column. So "is this an admin?" is answered by **possession of that key**, which
+`isAdminRequest(req)` reads two ways:
+
+1. the **`x-admin-key` header** — how machine callers have always identified
+   themselves (`gen-market-seed.js`, the dashboards' own fetches); and
+2. the **`cn_admin` cookie** — how a browser carries it. The dashboards keep the
+   key in `sessionStorage`, which is scoped to **one tab**, so a developer who
+   unlocked `/admin` and then opened the app in a second tab would silently be a
+   free user again. `POST /api/admin-access` trades the key for this cookie, and
+   all three dashboards call it (`grantAdminAccess()`) the moment their own key
+   check passes.
+
+The cookie is **not the key**: it is `<expiry ms>.<HMAC-SHA256(expiry,
+ADMIN_KEY)>`, httpOnly, 30 days. It cannot be turned back into the key, and
+rotating `ADMIN_KEY` invalidates every cookie ever issued. `index.html` never
+holds a secret to get Pro.
+
+Four rules, all in `entitlements.js` and covered by `npm test`:
+
+- **It requires a signed-in account.** A key identifies a machine, not a person,
+  and the rule is that admins get Pro *when they sign in*. An anonymous request
+  holding the key takes the ordinary free path.
+- **It cannot switch a dark deployment on.** `getEntitlements` only takes the
+  admin branch when `proEnabledFor(user)` is true, so `PRO_ENABLED=off` still
+  means the pre-Pro app for everyone, staff included.
+- **`status` is `"admin"`, never `"active"`.** The UI decides whether to offer
+  the Stripe billing portal off `status !== "none"`; reporting a Stripe status
+  would send a comped account to a portal that 400s. `/api/config` also carries
+  `pro.admin` so the plan card can say "Pro — comped (team)".
+- **It is NOT the `internal` bypass.** `/api/comps` has its own header-only
+  `internal` check that skips comp gating, the lookback clamp and the daily
+  search cap for the seed generator. That stays header-only on purpose — a
+  cookie must never widen a bypass a browser was not meant to have.
+
+`POST /api/admin-access {clear:true}` drops it again, which is what the "View as
+a free user" button on the plan card does. Keep that button working: the team is
+permanently on the far side of the paywall, so it is the only way anyone
+internal ever renders one.
 
 `MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`

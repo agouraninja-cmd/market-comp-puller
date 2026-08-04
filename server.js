@@ -297,6 +297,68 @@ function secretMatches(candidate, secret) {
 function passwordMatches(candidate) { return secretMatches(candidate, APP_PASSWORD); }
 
 // ---------------------------------------------------------------------------
+// Admin identity — who gets Pro comped.
+//
+// There is no admin USER in this codebase. `ADMIN_KEY` is a shared secret typed
+// into /admin, /dev and /contacts; `users` has no is_admin column and nothing
+// on an account says "staff". So "is this an admin?" is answered by possession
+// of that key, in two forms:
+//
+//   1. The `x-admin-key` header — how machine callers have always identified
+//      themselves (gen-market-seed.js, the dashboards' own fetches). Unchanged.
+//   2. The `cn_admin` cookie — how a BROWSER carries it. The dashboards keep
+//      the key in sessionStorage, which is scoped to one TAB: a developer who
+//      unlocked /admin and then opened the app in a second tab would silently
+//      be a free user again, which is precisely the confusion this feature
+//      exists to remove. POST /api/admin-access trades the key for this cookie.
+//
+// The cookie is NOT the key. It is `<expiry ms>.<HMAC-SHA256(expiry, ADMIN_KEY)>`,
+// so it cannot be turned back into the key, it expires on its own, and
+// rotating ADMIN_KEY invalidates every cookie ever issued. It is httpOnly, so
+// index.html never has to read or hold a secret to get Pro.
+//
+// This grants Pro and nothing else. It is deliberately NOT wired into the
+// `internal` bypass in /api/comps (which skips comp gating, the lookback clamp
+// and the daily search cap for machine callers) — that stays header-only, so
+// a cookie can never widen a bypass a browser was not meant to have.
+// ---------------------------------------------------------------------------
+const ADMIN_COOKIE = "cn_admin";
+const ADMIN_COOKIE_TTL_MS = 30 * 24 * 60 * 60 * 1000;   // re-unlock monthly
+
+function adminMac(expiresAtMs) {
+  return crypto.createHmac("sha256", ADMIN_KEY).update(`admin:${expiresAtMs}`).digest("hex");
+}
+function adminToken(expiresAtMs) {
+  return `${expiresAtMs}.${adminMac(expiresAtMs)}`;
+}
+function adminCookieValid(value) {
+  if (!ADMIN_KEY) return false;
+  const raw = String(value || "");
+  const dot = raw.indexOf(".");
+  if (dot <= 0) return false;
+  const exp = Number(raw.slice(0, dot));
+  // An unparseable or elapsed expiry fails before any HMAC work — the expiry
+  // is signed, so a forged one cannot survive the compare below either.
+  if (!Number.isFinite(exp) || exp <= Date.now()) return false;
+  return secretMatches(raw.slice(dot + 1), adminMac(exp));
+}
+// Unset ADMIN_KEY = no admins, which is also what makes this inert on any
+// deployment that never configured the dashboards.
+function isAdminRequest(req) {
+  if (!ADMIN_KEY || !req) return false;
+  if (secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return true;
+  return adminCookieValid(parseCookies(req)[ADMIN_COOKIE]);
+}
+function setAdminCookie(res, req, value, maxAgeSec) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  // Append rather than assign: /api/admin-access sets no other cookie today,
+  // but clobbering a session cookie would be a silent sign-out.
+  const prior = res.getHeader("set-cookie");
+  const cookie = `${ADMIN_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
+  res.setHeader("set-cookie", prior ? [].concat(prior, cookie) : cookie);
+}
+
+// ---------------------------------------------------------------------------
 // Per-IP rate limit — every search is billed, so cap how fast one connection
 // can burn the budget even when it has the password.
 // ---------------------------------------------------------------------------
@@ -988,8 +1050,17 @@ async function findBrandingProfile(userId) {
  *
  * @param {object?} user      a row from getSessionUser(), or null (anonymous)
  * @param {string?} reportId  the report in question, for single-report unlocks
+ * @param {boolean} admin     isAdminRequest(req) — comps Pro for the team
  */
-async function getEntitlements(user, reportId) {
+async function getEntitlements(user, reportId, admin = false) {
+  // Comped Pro for the team, checked first: an admin has no subscription row,
+  // no purchase row and no export tally worth reading, so this also skips the
+  // three DB round trips below. Both guards matter — proEnabledFor() keeps a
+  // dark or audience-scoped deployment dark even for staff, and the signed-in
+  // requirement lives in computeEntitlements so `npm test` covers it.
+  if (admin && user && proEnabledFor(user)) {
+    return ENT.computeEntitlements({ user, admin: true, now: Date.now(), enabled: true });
+  }
   // Skip every DB round trip when the tier is switched off — the flag must
   // cost nothing on the hot path while Pro ships dark. A visitor outside
   // PRO_AUDIENCE takes this same path, so during a test window the public
@@ -1274,7 +1345,7 @@ async function handleStripeEvent(evt) {
 async function entitlementsFor(req, reportId) {
   try {
     const user = await getSessionUser(req);
-    return await getEntitlements(user, reportId);
+    return await getEntitlements(user, reportId, isAdminRequest(req));
   } catch (e) {
     console.error("Entitlement resolution failed (defaulting to free):", e.message);
     // No user survived the failure, so proEnabledFor(null) is the honest input:
@@ -5009,6 +5080,12 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </div></footer>
 <script>
 var KEYK="cn_admin_key";
+// Unlocking any dashboard also comps Pro in the main app. sessionStorage is
+// scoped to ONE TAB, so it cannot do that on its own; this trades the key for
+// an httpOnly cn_admin cookie that /api/config reads on every page load.
+// Fire-and-forget: a failure costs a developer their Pro view of the app,
+// never the dashboard they actually came here for.
+function grantAdminAccess(key){try{fetch("/api/admin-access",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({key:key})}).catch(function(){});}catch(e){}}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function rows(a){return a.length?a.map(function(x){return "<tr><td>"+esc(x.label)+"</td><td>"+x.count+"</td></tr>";}).join(""):"<tr><td class=muted colspan=2>No data yet</td></tr>";}
 function render(d){
@@ -5125,7 +5202,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){} render(d); loadSubs(key);})
+  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key); render(d); loadSubs(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -5664,6 +5741,8 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 </div></footer>
 <script>
 var KEYK="cn_admin_key",KEY="",IDEAS=[],IDEAS_OK=false,SAVING=false;
+// See the same helper on /admin: sessionStorage is per-tab, the cookie is not.
+function grantAdminAccess(key){try{fetch("/api/admin-access",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({key:key})}).catch(function(){});}catch(e){}}
 var LOG=[],LOG_TYPE="all",LOG_Q="";
 var COMMIT_URL="https://github.com/agouraninja-cmd/market-comp-puller/commit/";
 var PRIORITIES=["now","next","later"],PR_LABEL={now:"Now",next:"Next",later:"Later"};
@@ -5972,7 +6051,7 @@ function load(key){
     if((rl&&rl.status===401)||(ri&&ri.status===401))return gateErr("Incorrect key.");
     if((rl&&rl.status===404)||(ri&&ri.status===404))return gateErr("The hub is disabled — set ADMIN_KEY on the server.");
     if(!rl&&!ri)return gateErr("Network error — is the server reachable?");
-    KEY=key;try{sessionStorage.setItem(KEYK,key);}catch(e){}
+    KEY=key;try{sessionStorage.setItem(KEYK,key);}catch(e){}grantAdminAccess(key);
     document.getElementById("gate").style.display="none";
     document.getElementById("hub").style.display="block";
     var logFail=function(){
@@ -6156,6 +6235,8 @@ footer a{color:#D5DAE2;text-decoration:none}footer a:hover{color:#fff}
 </div></footer>
 <script>
 var KEYK="cn_admin_key",KEY="",ROWS=[],EDIT=null,SAVING=false;
+// See the same helper on /admin: sessionStorage is per-tab, the cookie is not.
+function grantAdminAccess(key){try{fetch("/api/admin-access",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({key:key})}).catch(function(){});}catch(e){}}
 var Q="",CAT="all",ST="all";
 var CATS=${JSON.stringify(CONTACT_CATEGORIES)},STATUSES=${JSON.stringify(CONTACT_STATUSES)};
 var FIELDS=["name","company","role","market","phone","email","category","status","notes"];
@@ -6300,7 +6381,7 @@ function load(key){
     return r.json();
   })
   .then(function(d){
-    KEY=key;try{sessionStorage.setItem(KEYK,key);}catch(e){}
+    KEY=key;try{sessionStorage.setItem(KEYK,key);}catch(e){}grantAdminAccess(key);
     ROWS=d.contacts||[];
     el("gate").style.display="none";el("app").style.display="block";
     fillSelects();clearForm();render();
@@ -7029,7 +7110,7 @@ const server = http.createServer((req, res) => {
       // trend arrows) are market-level figures, not comp data, and they are
       // most of why the feed is useful. Only the itemized rows are gated,
       // the same rule the report itself follows.
-      const ent = await getEntitlements(user);
+      const ent = await getEntitlements(user, undefined, isAdminRequest(req));
       const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
       const items = await listWatchlist(user.id);
       const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
@@ -7721,7 +7802,7 @@ const server = http.createServer((req, res) => {
           if (!reportId) {
             return sendJson(res, 400, { error: "Tell us which report you want to unlock." });
           }
-          const ent = await getEntitlements(user, reportId);
+          const ent = await getEntitlements(user, reportId, isAdminRequest(req));
           if (ent.pro) {
             return sendJson(res, 409, {
               error: "Your Pro plan already includes this report in full.",
@@ -7921,8 +8002,13 @@ const server = http.createServer((req, res) => {
           isPro: ent.pro,
           plan: ent.plan,
           // "none" = never subscribed; anything else means a Stripe customer
-          // exists, which is what decides whether "Manage billing" is offered.
+          // exists, which is what decides whether "Manage billing" is offered
+          // — with one exception, "admin", which is comped and has no customer.
           status: ent.status,
+          // Comped team access. The UI reads this to label the plan honestly
+          // and to keep billing controls (which would 503 or 400 at Stripe)
+          // away from an account that never bought anything.
+          admin: ent.admin === true,
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
@@ -7931,6 +8017,49 @@ const server = http.createServer((req, res) => {
         },
       });
     }).catch(() => sendJson(res, 200, { authRequired: Boolean(APP_PASSWORD), leadCapture: LEAD_CAPTURE, streetview: Boolean(GOOGLE_MAPS_API_KEY) }));
+    return;
+  }
+
+  // --- Trade ADMIN_KEY for the cn_admin cookie -------------------------------
+  //
+  // The dashboards (/admin, /dev, /contacts) call this the moment their own
+  // key check passes, so unlocking any one of them also comps Pro in the main
+  // app — including in tabs opened later, which their sessionStorage copy of
+  // the key cannot reach.
+  //
+  // `{ clear: true }` drops it again, which is the only way a developer can
+  // see the app as a paying customer sees it. That matters more than it
+  // sounds: the person most likely to ship a broken paywall is the one who
+  // never renders one.
+  //
+  // 404 with ADMIN_KEY unset, matching every other admin surface — an endpoint
+  // that cannot succeed should not advertise that it exists.
+  if (req.method === "POST" && req.url === "/api/admin-access") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+    req.on("end", () => {
+      try {
+        if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+        // Tighter than the other limiters: this one guards a shared secret
+        // against being guessed a request at a time.
+        if (rateLimited("adminaccess:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes." });
+        }
+        const { key, clear } = JSON.parse(body || "{}");
+        if (clear) {
+          setAdminCookie(res, req, "", 0);
+          return sendJson(res, 200, { admin: false });
+        }
+        if (!secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+        setAdminCookie(res, req, adminToken(Date.now() + ADMIN_COOKIE_TTL_MS),
+          Math.floor(ADMIN_COOKIE_TTL_MS / 1000));
+        return sendJson(res, 200, { admin: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Admin access failed:", err.message);
+        return sendJson(res, 500, { error: "Could not set admin access." });
+      }
+    });
     return;
   }
 
@@ -7995,7 +8124,7 @@ const server = http.createServer((req, res) => {
         // without writing a usage row. A $39 report you cannot export would be
         // a $39 screenshot.
         const key = reportKeyOf(report);
-        const ent = await getEntitlements(user, key);
+        const ent = await getEntitlements(user, key, isAdminRequest(req));
 
         // Pro, a purchased report, or the whole tier switched off: no ceiling,
         // so nothing to count and nothing to store.

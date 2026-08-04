@@ -27,7 +27,7 @@ the warning below before touching anything.
 | 9. Stage E9 — verify after launch | ❌ Not until E8 |
 | Export cap enforced (5 reports/mo free) | ✅ Shipped 2026-08-03 |
 | Report branding | ❌ Not built — no UI exists |
-| $39 single-report unlock | ❌ Not sellable — see below |
+| $39 single-report unlock | ✅ Shipped 2026-08-03 — **needs a one-line ALTER, see below** |
 
 ---
 
@@ -75,7 +75,7 @@ Not secret — a price ID identifies a product, it does not authorize anything.
 ```
 STRIPE_PRICE_PRO_MONTHLY          = price_1U0QKkRztxjkvpo57UcIq0uv   # $129/mo
 STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U0QKmRztxjkvpo5mSa8uS9G   # $990/yr founding
-STRIPE_PRICE_SINGLE_REPORT        = price_1U0QKlRztxjkvpo5mK9VEvjJ   # $39, nothing sells it
+STRIPE_PRICE_SINGLE_REPORT        = price_1U0QKlRztxjkvpo5mK9VEvjJ   # $39, sold since 2026-08-03
 ```
 
 Note the prefixes run `Kk`, `Kl`, `Km` but map to **Monthly, Single Report,
@@ -255,18 +255,58 @@ deleting an account, and returning from checkout all call `refreshProConfig()`
 to re-read `/api/config`. Without it a signed-out browser keeps rendering the
 previous user's plan.
 
-### Two things deliberately NOT built
+### The single-report unlock — shipped 2026-08-03
 
-1. **The single-report unlock has no button.** `/api/checkout` only maps
-   `pro_annual_founding` → the founding price and *everything else* → monthly,
-   so a `plan: "single_report"` request would silently sell a $129/mo
-   subscription. The price ID exists but nothing reads it. The modal advertises
-   the $39 unlock as coming (amount confirmed by the owner 2026-07-31);
-   **wire the server before adding a button.**
-2. **Export counting.** `exportsRemaining` rides on `/api/config` but nothing
-   server-side tallies exports yet — `getExportUsage()` reads `export_usage` and
-   no code ever writes a row — so free users are uncapped too and the UI shows
-   no count it can't trust.
+Both of the things this section used to list as unbuilt now exist. Export
+counting shipped earlier the same day; the $39 unlock is described here.
+
+**⚠ One migration is required before this works in production.** The webhook
+writes `report_purchases` with no `comp_snapshot`, so if the table was created
+from the original DDL (`comp_snapshot jsonb not null`) every purchase insert
+400s — the customer is charged and never unlocked. Run:
+
+```sql
+alter table report_purchases alter column comp_snapshot drop not null;
+```
+
+Then confirm it took, **before** letting anyone buy one:
+
+```sql
+select is_nullable from information_schema.columns
+where table_name = 'report_purchases' and column_name = 'comp_snapshot';
+```
+
+`YES` means it's safe. The column is deliberately kept and left empty: the
+webhook carries a session and a payment intent but no report data (the report is
+a client-side artifact), and `computeEntitlements` only ever tests whether the
+ROW EXISTS. It's there for a future "the comps exactly as you bought them"
+feature, which would need a pending row written at checkout creation instead.
+
+**What changed.** `/api/checkout`'s plan map used to send
+`pro_annual_founding` → the founding price and *everything else* → monthly. That
+fallthrough is gone: `PLANS` is an explicit table and an unknown plan is a 400.
+`single_report` opens a **payment**-mode session carrying `report_id` in both the
+session and payment-intent metadata, with an idempotency key of
+`single:<user>:<report>` so a double-click can't become two charges.
+
+**What "a report" means.** `reportIdFor()` hashes `address|type|months` from the
+request body — derived, never accepted as an id. It mirrors `exportReportKey()`
+in index.html exactly, so the purchase key and the export-tally key are the same
+string and a bought report never spends a free export. The unlock is therefore
+**permanent for that address + type + lookback**; a different lookback is a
+different report, by design.
+
+**The return.** Lands on `/?purchase=success` (not `/desk` — the buyer wants the
+report). The address rides in `localStorage.pendingUnlock.v1`, never the URL, and
+`handlePurchaseReturn()` polls `POST /api/report-access` until the webhook lands
+before re-running the search.
+
+**Also fixed here.** A webhook that threw used to stay claimed in
+`stripe_events` while Stripe already had its 200 — no automatic retry, and a
+dashboard "Resend" would be skipped as a duplicate. A subscription survived that
+(the next lifecycle event rewrites the row); a one-off purchase has no follow-up
+event ever, so one DB blip meant paid-and-locked-out forever. Failures now
+release the claim and email the owner.
 
 ### The two Pro bullets to restore (owner's instruction, 2026-07-31)
 
@@ -399,7 +439,7 @@ older shape.
 |---|---|
 | Pro monthly **$129.00** | ✅ succeeded charge, 2026-07-31 |
 | Founding annual **$990.00** | ✅ succeeded charge, 2026-07-31 |
-| Single report **$39** | owner-confirmed; no charge yet (nothing sells it) |
+| Single report **$39** | owner-confirmed; sellable since 2026-08-03, no real charge yet |
 
 ---
 
@@ -485,11 +525,9 @@ withhold the file. Every failure path lets the export through.
   there is **no UI at all** — nothing uploads a logo and nothing draws one. The
   bullet is withheld from the pricing tile, plan card and success banner, with a
   comment at each site marking where it goes back.
-- **The $39 single-report unlock.** The price exists in Stripe and Render, but
-  `/api/checkout` does not recognise `single_report` — it maps
-  `pro_annual_founding` to the founding price and **everything else to
-  monthly**. A button today would charge $129/month to someone expecting a $39
-  one-off. Wire the server before adding one.
+- ~~**The $39 single-report unlock.**~~ Built 2026-08-03 — see "The
+  single-report unlock" above. It needs the `comp_snapshot` ALTER run before
+  anyone buys one.
 
 ---
 
@@ -515,5 +553,7 @@ Paste this into a new chat:
 > Anonymous must show `"enabled": false` and `"maxComps": "all"`.
 >
 > Pull before starting — four people commit to this repo and it moves during a
-> session. Unbuilt and deliberately unclaimed: report branding, and the $39
-> single-report unlock.
+> session. Still unbuilt and deliberately unclaimed: report branding. The $39
+> single-report unlock shipped 2026-08-03 and needs one `alter table
+> report_purchases alter column comp_snapshot drop not null;` run in Supabase
+> before a purchase can be recorded.

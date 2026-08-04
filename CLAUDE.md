@@ -307,6 +307,16 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `foundingLeft: null` means unknown (DB down or unconfigured); checkout treats
   unknown as closed, so the UI hides the founding tile rather than advertise an
   offer that would 409.
+- `POST /api/report-access` — "do I own this report yet?", answering
+  `{ unlocked, pro }` for the `{ address, type, months }` in the body. Exists
+  for the return from a $39 checkout: Stripe redirects the instant the card
+  clears, routinely before the webhook writes the purchase row, so the client
+  polls this instead of re-running the search and rendering a still-locked
+  report at someone who just paid. Deliberately **not** folded into
+  `/api/config`, which runs on every page load and would drag a purchase lookup
+  along with it, and deliberately **POST** so the address never lands in a URL,
+  a log, or a Referer header. Fails CLOSED — an error answers "not yet", which
+  makes the client wait, where a false yes would render a locked report as paid.
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
@@ -583,14 +593,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   land on `/desk?checkout=success|cancelled` and the success banner **polls for
   the webhook** rather than assuming Pro is live, because Stripe redirects
   before the webhook arrives.
-  **The `.pricing-buy` `data-plan` values must stay in step with
-  `/api/checkout`**, which maps `pro_annual_founding` → the founding price and
-  **everything else** → monthly. That fallthrough is why there is no
-  single-report button: `plan: "single_report"` would quietly sell a $129/mo
-  subscription. Wire the server before adding one.
-  Still unbuilt: report branding, export counting, and the $39 single-report
-  unlock (phase 8-9 work). `exportsRemaining` rides on `/api/config` but nothing
-  tallies exports yet, so no UI reads it.
+  **The `.pricing-buy` `data-plan` values must stay in step with the `PLANS`
+  table in `/api/checkout`**, which is an explicit map with **no fallthrough** —
+  an unrecognized plan is a 400. It used to map everything that wasn't the
+  founding plan onto monthly, which is why a $39 button was unsafe to add;
+  restoring any such default would re-arm exactly that mischarge.
+  **The $39 single-report unlock (shipped 2026-08-03).** `plan:
+  "single_report"` opens a Stripe **payment**-mode session, and the
+  `checkout.session.completed` handler writes a `report_purchases` row, after
+  which `computeEntitlements` returns `maxComps: "all"` and unlimited exports
+  **for that report only**. Four things to know before touching it:
+  - **The report id is derived, never accepted.** `reportIdFor()` hashes
+    `address|type|months` out of the request body, so a buyer cannot unlock a
+    report they didn't pay for by posting an id. It **mirrors
+    `exportReportKey()` in index.html byte for byte** (there is a ⚠ comment on
+    both) — the purchase key and the export-tally key are deliberately the same
+    string, which is what stops a bought report burning a free export.
+  - **The unlock is permanent for that address + type + lookback**, not for a
+    frozen set of comps. `report_purchases.comp_snapshot` is **nullable and
+    never written**: the webhook has a session and a payment intent but no
+    report data, and nothing reads a snapshot. If the table was created with
+    `not null`, the ALTER in the DDL comment must run or every purchase webhook
+    400s. Re-running the search re-serves it whole from cache.
+  - **Buying returns to `/?purchase=success`, not `/desk`** — the buyer wants
+    the report, and the desk doesn't know which building it was. The address is
+    kept out of the URL; `localStorage.pendingUnlock.v1` carries it across the
+    redirect, and `handlePurchaseReturn()` polls **`POST /api/report-access`**
+    before re-running, so nobody who just paid gets a still-locked report.
+  - **The $39 tile is contextual.** `updateSingleReportTile()` shows it only
+    when a report is on screen with `lockedCount() > 0` and it isn't a shared
+    report. It still lives inside the ONE pricing modal — do not add a second
+    upgrade prompt.
+  Still unbuilt: report branding. `canBrand` is a real entitlement and
+  `findBrandingProfile()` exists, but there is no UI at all, so the bullet stays
+  off the pricing tile.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`. The same handler covers `/index.html`,

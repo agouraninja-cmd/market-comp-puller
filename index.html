@@ -3189,9 +3189,17 @@
           ? (meta.shared
             ? "Not enough included sale comps to compute a range: the report owner excluded some comps."
             : "Not enough included sale comps to compute a range: restore an excluded comp or add your own.")
-          : !sizeR
-            ? "We couldn't find this building's square footage. Enter it under 'Your property details' and the estimate updates instantly."
-            : "Not enough sale comps returned to compute a numeric range";
+          // This branch is only reachable with FEWER THAN TWO priced sale
+          // comps (the >= 2 case leads with a $/SF band above), so the missing
+          // square footage is never the whole story and was never the fix —
+          // entering it cannot build a range out of one sale. The old copy said
+          // "enter it and the estimate updates instantly", which sent a paying
+          // buyer after a number that would have changed nothing. Name the real
+          // blocker first; mention the size only when it is ALSO missing.
+          : (ppsfs.length === 0
+              ? "No priced sale comps came back in this window, so there's no per-square-foot range to build."
+              : `Only ${ppsfs.length} priced sale comp came back in this window; a per-square-foot range needs at least two.`)
+            + (sizeR ? "" : " We also couldn't find this building's square footage.");
     }
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.
@@ -9006,6 +9014,17 @@
       }
       await completeLoadingCard();   // fill the bar to 100% for a satisfying finish
       hideLoadingCard();
+      // Per-REPORT export allowance, resolved server-side against this report's
+      // purchase row (see the gate in /api/comps). /api/config can only report
+      // the monthly free tally, which is wrong for a report the visitor bought
+      // outright. Read it, then DELETE it: this object gets saved to history,
+      // the portfolio and shares, and a stored entitlement would be re-read as
+      // fact long after it stopped being true.
+      if (parsed && parsed.exports_remaining !== undefined) {
+        exportsLeft = parsed.exports_remaining;
+        delete parsed.exports_remaining;
+        updateExportAllowance();
+      }
       renderResults(parsed, {
         address, type, note, months, txFocus,
         // Subject inputs ride along in meta so saved/reopened reports can

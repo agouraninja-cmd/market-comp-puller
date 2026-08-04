@@ -743,6 +743,14 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    outer `{...}` before `JSON.parse`. The model is told to return raw JSON, but
    this guards against stray text. If you change the output shape, keep the
    "return ONLY JSON" instruction intact.
+   Since 2026-08-04 a FAILED parse is rescued in layers before the expensive
+   full retry: first the first BALANCED object is salvaged
+   (`extractFirstJsonObject` — the observed failure mode is a complete report
+   plus trailing junk containing a brace, which fools the first-{-to-last-}
+   slice), then one no-tools repair call (`repairCompJson`) asks the model to
+   re-emit the same JSON corrected; `solo()`'s full re-search only runs if
+   both fail. Every layer logs (`salvaged` / `repaired` / `retrying`), so
+   Render logs show which fires and how often.
 
 2. **Property-type-aware reporting is split across both files.** `buildPrompt` in
    `server.js` switches guidance per type (Industrial/Office/Retail/Multifamily/

@@ -2639,6 +2639,30 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // ---------------------------------------------------------------------------
 // Safely extract a JSON object from Claude's text output
 // ---------------------------------------------------------------------------
+// The first balanced {...} in a text, found with the same string- and
+// escape-aware walk the live-preview comp extractor uses — because the
+// captured parse failure was a COMPLETE report followed by stray text
+// containing a brace, which fools a first-{-to-last-} slice.
+function extractFirstJsonObject(text) {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0, inString = false, escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 function parseCompJson(rawText) {
   let text = (rawText || "").trim();
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
@@ -2650,6 +2674,19 @@ function parseCompJson(rawText) {
   try {
     return stripEmDashes(JSON.parse(text));
   } catch (err) {
+    // Layer A rescue (2026-08-04): try the first BALANCED object before
+    // giving up — the comps sanity check keeps a stray early object from
+    // being mistaken for the report (both lanes always return comps).
+    const inner = extractFirstJsonObject(text);
+    if (inner && inner.length < text.length) {
+      try {
+        const salvaged = JSON.parse(inner);
+        if (salvaged && Array.isArray(salvaged.comps)) {
+          console.warn(`Comp JSON salvaged: first balanced object parsed, ${text.length - inner.length} trailing chars discarded`);
+          return stripEmDashes(salvaged);
+        }
+      } catch (_) { /* fall through to the diagnostic + rethrow */ }
+    }
     // Evidence for the recurring "unexpected format" flake (a Phoenix search
     // failed BOTH attempts on 2026-08-03): log where the parse died and the
     // bytes around it, so one Render log line is enough to diagnose without
@@ -3098,6 +3135,44 @@ function makeFieldExtractor(key, onValue) {
   };
 }
 
+// One no-tools follow-up call that asks the model to re-emit a malformed
+// report as valid JSON — rescuing the ~$0.35 search already paid for at the
+// price of a small completion (~$0.05, ~40s) instead of solo()'s full
+// ~$0.35/~90s re-search. Every failure path here surfaces to the caller,
+// which falls back to that full retry, so this can only ever save.
+async function repairCompJson(brokenText, maxTokens) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: maxTokens,
+        messages: [{
+          role: "user",
+          content: `The text below was supposed to be exactly one valid JSON object but fails to parse. Return ONLY the corrected JSON object. Preserve every field and every value exactly as written; fix only the syntax. Do not add, remove, reorder, or invent anything, and output nothing outside the object.\n\n${brokenText}`,
+        }],
+      }),
+      signal: controller.signal,
+    });
+    if (!r.ok) throw new Error(`repair call HTTP ${r.status}`);
+    const data = await r.json();
+    return (data.content || [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null) {
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
@@ -3317,8 +3392,28 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
-  const parsed = reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(text), type)))));
-  return attachVerifiedAttribution(parsed, verifiedComps);
+  const finishReport = (raw) =>
+    attachVerifiedAttribution(
+      reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw), type))))),
+      verifiedComps);
+  try {
+    return finishReport(text);
+  } catch (err) {
+    // Layer B rescue (2026-08-04): one repair attempt before solo()'s full
+    // re-search. Only for substantial text — a garbage response deserves
+    // the full retry — and only for parse failures.
+    if (!(err instanceof SyntaxError) || text.length <= 500) throw err;
+    let repaired;
+    try {
+      repaired = await repairCompJson(text, body.max_tokens);
+    } catch (repairErr) {
+      console.warn("Comp JSON repair call failed; falling back to the full retry.", repairErr && repairErr.message);
+      throw err;
+    }
+    const report = finishReport(repaired);   // still broken -> SyntaxError -> solo() retries as today
+    console.warn("Comp JSON repaired by follow-up call.");
+    return report;
+  }
 }
 
 // Fold the records lane's comps into the primary lane's report. The primary

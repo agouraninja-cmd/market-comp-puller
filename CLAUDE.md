@@ -197,8 +197,13 @@ dependency. `.env` is git-ignored — never commit it.
   Measured composition of a report: the `comps` array is 69-76% of it, and
   within that `notes` was by far the largest field (18-28% of the whole
   report, up to 466 chars on one comp), followed by `source_url` (~8-11%,
-  not cuttable — it is the proof). Top-level, `summary` is 7-15% and
-  `value_drivers` 6-12%, both still uncut if more is ever needed.
+  not cuttable — it is the proof). Top-level, the four narrative fields
+  (`summary`, `value_drivers`, `market_trend`, `price_discovery.note`)
+  measured a combined 33% of one real report and got the same notes-style
+  caps on 2026-08-03 (~450 chars / 80-per-entry / 140 / 200, banned
+  patterns named, the summary's REQUIRED honesty caveats given a protected
+  third-sentence slot — don't tighten further without protecting them
+  again). Verified same day: summary 941 → 559, report 13% shorter.
   `notes` is now capped in the prompt at two short sentences with the two
   real sources of bloat banned by name — the model narrating its own search
   ("Included as the nearest comparable found; details require CoStar") and

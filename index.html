@@ -583,7 +583,7 @@
       </div>
 
       <!-- Single-report unlock. Hidden unless there is a GATED report on
-           screen to buy — updateSingleReportTile() owns that, and a $39 button
+           screen to buy — updateSingleReportTile() owns that, and a single-report button
            with no report attached has nothing to unlock and no id to send.
            Deliberately a full-width strip under the grid rather than a third
            column: it is the lesser, contextual offer, and this way the
@@ -594,18 +594,21 @@
         <div class="flex-1 min-w-0">
           <span class="rd-lab">Just this report</span>
           <div class="mt-1">
-            <span class="text-2xl font-semibold text-[#1A2433]">$39</span>
+            <span class="text-2xl font-semibold text-[#1A2433]">$20</span>
             <span class="text-sm text-[#8A93A0]">once</span>
           </div>
-          <!-- Says plainly what this does NOT buy. computeEntitlements keeps
-               maxLookbackMonths on `pro` alone (a purchase is retroactive — it
-               unlocks a report that already exists, it does not re-run a wider
-               search), and the subtitle above now leads with the ten-year
-               window, so without this line a buyer could reasonably read the
-               $39 as buying that too. -->
+          <!-- What this buys is now every Pro capability that is SCOPED TO A
+               PROPERTY: all comps, the ten-year window, unlimited exports,
+               branding — for this address and type, permanently. The earlier
+               "the 10-year lookback is Pro" line was removed because it is no
+               longer true; a purchase carries PRO_MAX_LOOKBACK_MONTHS since the
+               report id stopped hashing the lookback (see reportIdFor).
+               The one Pro capability deliberately NOT included is the Address
+               Explorer, because it finds the NEXT property and cannot be scoped
+               to a report — so it stays the reason to subscribe. If that ever
+               changes, this copy and canExploreAddresses move together. -->
           <p class="text-sm text-[#4C5665] mt-1">
-            Unlimited comps on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this report</span> — every comparable the search found — plus its exports, for good. No subscription.
-            It unlocks this report as it stands; the 10-year lookback is Pro.
+            Everything Pro gives you on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this property</span> — every comparable, the full 10-year history, and unlimited exports — permanently, with no subscription.
           </p>
         </div>
         <button type="button" data-plan="single_report"
@@ -7062,7 +7065,7 @@
   const PENDING_UNLOCK = "pendingUnlock.v1";
 
   /**
-   * Show the $39 tile only when there is something to spend it on.
+   * Show the single-report tile only when there is something to spend it on.
    *
    * The pricing modal opens from the nav, the account menu and the export-limit
    * path as well as from a locked report, so "there is a current report" is
@@ -7113,14 +7116,14 @@
       closePricingModal();
       pendingCheckoutPlan = plan;
       openAcctModal("signup", plan === "single_report"
-        // A $39 unlock is recorded against an account, not a device — say so,
+        // A single-report unlock is recorded against an account, not a device — say so,
         // because "your subscription needs somewhere to live" is not true of a
         // one-off and reads as a bait-and-switch to someone avoiding one.
         ? "Create a free account first: the unlock is saved to your account, so the report stays yours on any device."
         : "Create a free account first: your subscription needs somewhere to live.");
       return;
     }
-    // A $39 unlock is bought FOR a report, so the search that produced it has
+    // A single-report unlock is bought FOR a report, so the search that produced it has
     // to travel: the server derives the purchase id from these three fields
     // (reportIdFor) rather than trusting an id we send.
     const single = plan === "single_report";
@@ -7373,7 +7376,7 @@
   }
 
   /**
-   * Handle the ?purchase=success|cancelled return from a $39 single-report unlock.
+   * Handle the ?purchase=success|cancelled return from a single-report unlock.
    *
    * Separate from handleCheckoutReturn() on purpose. That one lands on /desk
    * and announces a plan; this lands on "/" and re-opens a REPORT, because the
@@ -7385,7 +7388,7 @@
    * Stripe redirects the instant the card clears, which routinely beats the
    * webhook that records the purchase, so this waits on /api/report-access
    * instead of immediately re-running and rendering a still-locked report at
-   * someone who has just paid $39.
+   * someone who has just paid.
    */
   async function handlePurchaseReturn() {
     const params = new URLSearchParams(location.search);
@@ -7700,7 +7703,7 @@
     corpusOfferLocked = 0;
     renderCorpusOffer();
     if (!meta || meta.shared || meta.sample || !meta.address || !meta.type) return;
-    // `months` rides along so the server can hash the same report id the $39
+    // `months` rides along so the server can hash the same report id the single-report
     // unlock was bought against (reportIdFor / exportReportKey — same three
     // fields). Without it a buyer stays locked out of this panel.
     fetch(`/api/corpus-comps?address=${encodeURIComponent(meta.address)}&type=${encodeURIComponent(meta.type)}&months=${encodeURIComponent(meta.months || "")}`)
@@ -7730,7 +7733,7 @@
       p.innerHTML =
         `CompNinja holds <strong>${corpusOfferLocked}</strong> more verified comp` +
         `${corpusOfferLocked === 1 ? "" : "s"} for this market. ` +
-        // Names no plan: the modal this opens now offers Pro AND the $39
+        // Names no plan: the modal this opens now offers Pro AND the 
         // one-off, and which of them is on the table depends on the report.
         `<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">Unlock them</button>`;
       rowsEl.appendChild(p);
@@ -8053,7 +8056,7 @@
     el.classList.remove("hidden");
     el.innerHTML =
       // Names no plan, for the same reason the corpus-offer notice doesn't:
-      // this button opens the ONE modal, which offers Pro AND the $39 one-off,
+      // this button opens the ONE modal, which offers Pro AND the one-off,
       // and which of them fits depends on the report.
       `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} in this report</div>` +
       `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
@@ -8600,20 +8603,27 @@
   // exactly like the lead-capture gate, and nothing of value sits behind it.
   // ----------------------------------------------------------------------------
 
-  // Identity of "the same report". Address + type + window, and deliberately
-  // NOT a timestamp: meta.generatedAt is absent on a fresh search and falls
-  // back to Date.now(), which would change between two clicks and charge twice
-  // for one report. Reopening a saved report and exporting it again is free.
+  // Identity of "the same report". Address + type, and deliberately NOT a
+  // timestamp: meta.generatedAt is absent on a fresh search and falls back to
+  // Date.now(), which would change between two clicks and charge twice for one
+  // report. Reopening a saved report and exporting it again is free.
+  //
+  // The LOOKBACK left this key on 2026-08-04, together with reportIdFor(). A
+  // purchase now buys the property rather than one window of it, so the same
+  // building at 12 and at 120 months is one report here too — which also means
+  // exporting both windows costs one export, not two. That is the intended
+  // reading: the visitor analysed one building.
+  //
   // ⚠ MIRROR: server.js's reportIdFor() builds this same string from the
-  // /api/comps body — same three fields, same order, same `|`, same `|| ""`.
-  // Both are then hashed by reportKeyOf() server-side, so this one string is
-  // BOTH the export-tally key and the $39 single-report purchase key. Change
-  // it here and you must change reportIdFor(), or a bought report stops
-  // matching itself: the unlock silently stops applying and the owner's
-  // exports start counting against their free monthly allowance.
+  // /api/comps body — same two fields, same order, same `|`. Both are then
+  // hashed by reportKeyOf() server-side, so this one string is BOTH the
+  // export-tally key and the single-report purchase key. Change it here and you
+  // must change reportIdFor(), or a bought report stops matching itself: the
+  // unlock silently stops applying and the owner's exports start counting
+  // against their free monthly allowance.
   function exportReportKey() {
     if (!currentMeta) return "";
-    return [currentMeta.address || "", currentMeta.type || "", currentMeta.months || ""]
+    return [currentMeta.address || "", currentMeta.type || ""]
       .join("|").trim().toLowerCase();
   }
 

@@ -713,18 +713,33 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   an unrecognized plan is a 400. It used to map everything that wasn't the
   founding plan onto monthly, which is why a $39 button was unsafe to add;
   restoring any such default would re-arm exactly that mischarge.
-  **The $39 single-report unlock (shipped 2026-08-03).** `plan:
-  "single_report"` opens a Stripe **payment**-mode session, and the
+  **The single-report unlock — $20 since 2026-08-04** (shipped 2026-08-03 at
+  $39). `plan: "single_report"` opens a Stripe **payment**-mode session, and the
   `checkout.session.completed` handler writes a `report_purchases` row, after
-  which `computeEntitlements` returns `maxComps: "all"` and unlimited exports
-  **for that report only**. Four things to know before touching it:
-  - **The report id is derived, never accepted.** `reportIdFor()` hashes
-    `address|type|months` out of the request body, so a buyer cannot unlock a
-    report they didn't pay for by posting an id. It **mirrors
-    `exportReportKey()` in index.html byte for byte** (there is a ⚠ comment on
-    both) — the purchase key and the export-tally key are deliberately the same
-    string, which is what stops a bought report burning a free export.
-  - **The unlock is permanent for that address + type + lookback**, not for a
+  which `computeEntitlements` grants **every Pro capability that can be scoped
+  to a property** — `maxComps: "all"`, `PRO_MAX_LOOKBACK_MONTHS`, unlimited
+  exports, `canBrand` — for that address + type. Four things to know:
+  - **The price lives in Stripe, not here.** The tile's `$20` is prose in
+    index.html; the actual charge comes from `STRIPE_PRICE_SINGLE_REPORT` in
+    Render. **They can disagree, and nothing detects it** — changing the copy
+    without creating a new Stripe price silently mischarges. Always move the
+    Stripe price FIRST (undercharging while the copy is stale is the safe
+    direction), then deploy the copy.
+  - **The report id is derived, never accepted, and is `address|type` —
+    NOT the lookback.** `reportIdFor()` hashes it out of the request body, so a
+    buyer cannot unlock a report they didn't pay for by posting an id. The
+    lookback left the key on 2026-08-04: while it was in there, a re-run at a
+    wider window was a different id that matched no purchase, so a purchase
+    could never carry Pro's ten-year window — which is exactly what the price
+    is now selling. It **mirrors `exportReportKey()` in index.html byte for
+    byte** (⚠ comment on both) — purchase key and export-tally key are the same
+    string, which stops a bought report burning a free export. Consequence:
+    exporting one property at two windows costs one export, not two.
+  - **The Address Explorer is the one Pro capability a purchase does NOT
+    grant** (`canExploreAddresses: pro`). It finds the NEXT property, so it
+    can't be scoped to a report without making $20 a substitute for the
+    subscription. It is deliberately the reason to subscribe.
+  - **The unlock is permanent for that address + type**, not for a
     frozen set of comps. `report_purchases.comp_snapshot` is **nullable and
     never written**: the webhook has a session and a payment intent but no
     report data, and nothing reads a snapshot. If the table was created with

@@ -175,7 +175,7 @@ const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 // ORIGIN, and `localStorage.pendingUnlock.v1` — the only record of which
 // report they just bought — is per-origin, so handlePurchaseReturn() finds
 // nothing and the report they paid for never re-renders. That happened on a
-// real $39 purchase on 2026-08-04.
+// real single-report purchase on 2026-08-04.
 //
 // So the return origin follows the request. It is an ALLOWLIST, never the raw
 // Host header: an attacker-controlled Host would otherwise turn our own
@@ -1012,22 +1012,33 @@ function reportKeyOf(raw) {
   return sha256Hex(String(raw || "").trim().toLowerCase().replace(/\s+/g, " ")).slice(0, 32);
 }
 
-// The identity a $39 single-report purchase is keyed on.
+// The identity a single-report purchase is keyed on: ADDRESS + TYPE.
 //
-// Derived from the SEARCH, never from an id the client hands us: address, type
-// and lookback are already in every /api/comps body, so the server computes
-// this itself and a buyer cannot unlock a report they did not pay for by
-// posting someone else's id.
+// Derived from the SEARCH, never from an id the client hands us: address and
+// type are already in every /api/comps body, so the server computes this itself
+// and a buyer cannot unlock a report they did not pay for by posting someone
+// else's id.
+//
+// **The lookback was dropped from this key on 2026-08-04**, and that is what
+// lets a purchase carry Pro's 10-year window. While `months` was part of the
+// hash, buying a 36-month report and then re-running it at 120 months produced
+// a DIFFERENT id, matched no purchase, and came back locked — so the unlock
+// could never widen the window, which is precisely why maxLookbackMonths used
+// to sit on `pro` alone. Keyed on address+type, one purchase covers that
+// property at every window, which is what the price is actually buying.
+// Safe to change when it was: `report_purchases` held zero rows, so nothing
+// orphaned. It will never be that cheap again — a later change needs a
+// migration that re-keys every existing purchase.
 //
 // It must produce the same string `exportReportKey()` builds in index.html —
-// same three fields, same order, same `|` separator, same `|| ""` for a missing
-// lookback — because both feed reportKeyOf(), which owns the lowercasing and
-// whitespace collapse. **Change one and you must change the other**, or a
-// purchased report stops matching its own export rows and the buyer is charged
-// an export against a report they own. There is a ⚠ comment on both.
-function reportIdFor({ address, type, months } = {}) {
+// same two fields, same order, same `|` separator — because both feed
+// reportKeyOf(), which owns the lowercasing and whitespace collapse.
+// **Change one and you must change the other**, or a purchased report stops
+// matching its own export rows and the buyer is charged an export against a
+// report they own. There is a ⚠ comment on both.
+function reportIdFor({ address, type } = {}) {
   if (!address || !type) return "";
-  return reportKeyOf([address, type, months || ""].join("|"));
+  return reportKeyOf([address, type].join("|"));
 }
 
 // Records one report-export. Idempotent by primary key, so the second format of
@@ -1102,7 +1113,7 @@ async function upsertSubscription(row) {
   return true;
 }
 
-// Records a paid $39 single-report unlock.
+// Records a paid single-report unlock.
 //
 // Idempotent on (user_id, report_id) — the table's unique constraint — because
 // Stripe retries webhooks and the same purchase must not become two rows.
@@ -1202,7 +1213,7 @@ async function claimStripeEvent(evt) {
 // This matters because the route acknowledges 200 before doing the work: once
 // Stripe has its 200 there are no automatic retries, and the claim row would
 // make a manual replay look like a duplicate and skip it. A subscription
-// survives that — the next lifecycle event rewrites the same row — but a $39
+// survives that — the next lifecycle event rewrites the same row — but a
 // single-report purchase has NO follow-up event, ever. Without this, one
 // transient DB failure means a customer paid and is permanently locked out of
 // what they bought, with the only recovery path silently disabled.
@@ -1239,7 +1250,7 @@ async function handleStripeEvent(evt) {
       const userId = (obj.metadata && obj.metadata.user_id) || obj.client_reference_id;
       if (obj.customer && userId) await setUserStripeCustomer(userId, obj.customer);
 
-      // The $39 single-report unlock — a one-off payment, not a subscription.
+      // The single-report unlock — a one-off payment, not a subscription.
       if (obj.mode === "payment") {
         const reportId = obj.metadata && obj.metadata.report_id;
         // Belt and braces: `complete` sessions can still be unpaid when the
@@ -6972,11 +6983,14 @@ const server = http.createServer((req, res) => {
         // knobs: the lookback ceiling below depends on them, and every exit
         // from here on serializes through gateReport().
         //
-        // The report id is what makes a $39 unlock mean anything: with it,
-        // computeEntitlements can see this exact report was bought and return
-        // maxComps "all", so re-running the purchased search re-serves it
-        // whole. Derived from the body, never accepted from it.
-        const ent = await entitlementsFor(req, reportIdFor({ address, type, months }));
+        // The report id is what makes a single-report unlock mean anything: with
+        // it, computeEntitlements can see this property was bought and return
+        // maxComps "all" AND Pro's lookback ceiling, so re-running the purchased
+        // search — at any window — re-serves it whole. Derived from the body,
+        // never accepted from it. Note this is resolved BEFORE the lookback
+        // clamp below reads ent.maxLookbackMonths, which is what lets a buyer
+        // actually run the ten-year window they paid for.
+        const ent = await entitlementsFor(req, reportIdFor({ address, type }));
         // The seed generator and the Explorer are internal callers with no
         // session; they must keep receiving whole reports or market pages
         // would publish four comps. ADMIN_KEY is the existing internal
@@ -7033,7 +7047,7 @@ const server = http.createServer((req, res) => {
           const subjectSqft = sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0;
           const gated = GATE.gateReport(rep, ent, { asOfMs: Date.now(), subjectSqft });
           if (!gated || typeof gated !== "object") return gated;
-          // `ent` was resolved with THIS report's id, so it already knows a $39
+          // `ent` was resolved with THIS report's id, so it already knows a single-report
           // unlock makes its exports unlimited — /api/config cannot, because it
           // takes no report id and would need a purchase lookup on every page
           // load. Without this the buyer of a report was shown the free monthly
@@ -7989,11 +8003,11 @@ const server = http.createServer((req, res) => {
     const address = addressRaw.trim().slice(0, 300);
     const typeIn = String(params.get("type") || "");
     const typeOk = Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
-    // The report's lookback, carried so this panel can resolve the SAME report
-    // id the $39 unlock was bought against — see the entitlements call below.
-    // Absent (an older client) simply yields a different hash, which fails
-    // closed to the locked count rather than opening the panel.
-    const months = params.get("months") || "";
+    // NOTE: the client still sends `&months=`, and it is deliberately ignored.
+    // It was needed while the report id hashed the lookback; now that the id is
+    // address+type, this panel resolves the same purchase at any window. The
+    // param is harmless and left in the client so an older cached page keeps
+    // working — do not "fix" one side without the other.
     if (!address || !typeOk) {
       return sendJson(res, 400, { error: "address and a valid property type are required." });
     }
@@ -8043,16 +8057,16 @@ const server = http.createServer((req, res) => {
         // instead: a locked number converts better than an absent panel, and
         // it is the same conversion logic as the locked comp rows.
         // Ask about THIS report, not about the visitor in the abstract. Without
-        // the id a $39 buyer resolved to the free tier here and stayed locked
+        // the id a single-report buyer resolved to the free tier here and stayed locked
         // out of the very panel whose CTA sold them the unlock — they paid and
         // then hit the same paywall. Derived from the query, never accepted as
-        // an id: reportIdFor() hashes address|type|months exactly as /api/comps
-        // does, so this cannot unlock a report that was not bought.
+        // an id: reportIdFor() hashes address|type exactly as /api/comps does,
+        // so this cannot unlock a report that was not bought.
         // `addressRaw`, not the trimmed copy: /api/comps and /api/checkout both
         // hash the address exactly as the body carried it, so trimming here
         // would hash a different string for any address with stray whitespace
         // and silently leave a paid report locked.
-        const ent = await entitlementsFor(req, reportIdFor({ address: addressRaw, type: typeOk, months }));
+        const ent = await entitlementsFor(req, reportIdFor({ address: addressRaw, type: typeOk }));
         if (ent.maxComps !== "all") {
           return sendJson(res, 200, { market, comps: [], locked_count: comps.length });
         }
@@ -8338,7 +8352,7 @@ const server = http.createServer((req, res) => {
   // --- Tells the front-end whether a password is required ---
   // --- Stripe: create a Checkout Session ---
   // Subscribing requires an account (a subscription has to attach to a user).
-  // The $39 single-report path is deliberately different — see phase 8.
+  // The single-report path is deliberately different — see phase 8.
   if (req.method === "POST" && req.url === "/api/checkout") {
     let body = "";
     req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
@@ -8363,7 +8377,7 @@ const server = http.createServer((req, res) => {
 
         // An EXPLICIT table with no fallthrough. This used to read "founding ?
         // annual : monthly", which mapped every unrecognized plan onto the
-        // $129/mo subscription — that single line is the whole reason a $39
+        // $129/mo subscription — that single line is the whole reason a single-report
         // button could not be added, because `plan: "single_report"` would
         // have quietly sold a monthly subscription to someone expecting a
         // one-off. An unknown plan is now a 400, not a charge.
@@ -8384,7 +8398,9 @@ const server = http.createServer((req, res) => {
         // security: they stop a pointless charge rather than protect anything.
         let reportId = "";
         if (plan === "single_report") {
-          reportId = reportIdFor({ address, type, months });
+          // Address + type only: the buyer is purchasing the PROPERTY, at every
+          // lookback, so the lookback must not enter the id (see reportIdFor).
+          reportId = reportIdFor({ address, type });
           if (!reportId) {
             return sendJson(res, 400, { error: "Tell us which report you want to unlock." });
           }
@@ -8533,7 +8549,7 @@ const server = http.createServer((req, res) => {
   }
 
   // --- "Do I own this report yet?" -------------------------------------------
-  // Exists for the return from a $39 checkout: Stripe redirects the moment the
+  // Exists for the return from a single-report checkout: Stripe redirects the moment the
   // card clears, which can be seconds BEFORE the webhook writes the purchase
   // row, so the client polls this rather than immediately re-running the search
   // and rendering a still-locked report at someone who just paid.
@@ -8549,8 +8565,10 @@ const server = http.createServer((req, res) => {
         if (rateLimited("access:" + clientIp(req), 60)) {
           return sendJson(res, 429, { error: "Too many checks. Please wait a moment." });
         }
-        const { address, type, months } = JSON.parse(body || "{}");
-        const reportId = reportIdFor({ address, type, months });
+        // `months` is still accepted in the body (older clients send it) and
+        // deliberately unused — ownership is per property, not per window.
+        const { address, type } = JSON.parse(body || "{}");
+        const reportId = reportIdFor({ address, type });
         if (!reportId) return sendJson(res, 400, { error: "address and property type are required." });
         const ent = await entitlementsFor(req, reportId);
         // Pro rides along so the client can tell "you own this one" from "you
@@ -8726,8 +8744,8 @@ const server = http.createServer((req, res) => {
         // address|type|months string (see reportIdFor). Passing it here is what
         // makes a bought report export freely: computeEntitlements returns
         // exportsRemaining "unlimited" for it, and the branch below leaves
-        // without writing a usage row. A $39 report you cannot export would be
-        // a $39 screenshot.
+        // without writing a usage row. A paid report you cannot export would be
+        // a paid screenshot.
         const key = reportKeyOf(report);
         const ent = await getEntitlements(user, key, isAdminRequest(req));
 

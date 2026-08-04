@@ -7419,6 +7419,9 @@ const server = http.createServer((req, res) => {
           // number that isn't a quantity, and never an aggregate row —
           // a submarket blurb is not an address someone can value.
           if (!/^\d+\s+(?!(sf|sq|sqft|acres?|units?)\b)/i.test(a) || isAggregateAddress(a)) continue;
+          // Portfolio rows name several buildings at once ("3351 E Philadelphia
+          // St & 4450 E Lowell St") — not one address a visitor can value.
+          if (/&|\band\b/i.test(a.split(",")[0])) continue;
           // Dedupe on the street line alone (the market is fixed), with
           // common suffixes normalized so "875 W State St" and "875 W State
           // Street" collapse into one entry.

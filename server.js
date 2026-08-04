@@ -2807,7 +2807,22 @@ function parseCompJson(rawText) {
   if (first !== -1 && last !== -1 && last > first) {
     text = text.slice(first, last + 1);
   }
-  return stripEmDashes(JSON.parse(text));
+  try {
+    return stripEmDashes(JSON.parse(text));
+  } catch (err) {
+    // Evidence for the recurring "unexpected format" flake (a Phoenix search
+    // failed BOTH attempts on 2026-08-03): log where the parse died and the
+    // bytes around it, so one Render log line is enough to diagnose without
+    // a reproduction. Bounded snippet, never the whole report. Rethrows —
+    // behavior is unchanged.
+    const at = Number((String(err.message).match(/position (\d+)/) || [])[1]);
+    if (Number.isFinite(at)) {
+      console.error(`Comp JSON parse failure at ${at}/${text.length}: ${JSON.stringify(text.slice(Math.max(0, at - 120), at + 200))}`);
+    } else {
+      console.error(`Comp JSON parse failure (${err.message}); head=${JSON.stringify(text.slice(0, 160))} tail=${JSON.stringify(text.slice(-160))}`);
+    }
+    throw err;
+  }
 }
 
 // Site style rule: no em dashes anywhere. The prompt already forbids them,

@@ -2459,6 +2459,63 @@ const ALL_TYPE_COMP_FIELDS = [...new Set(
   Object.values(TYPE_COMP_FIELDS).flatMap((t) => t.fields)
 )];
 
+// Compact comp encoding (2026-08-03): the model writes each comp under these
+// SHORT keys and the server re-expands immediately after parse — the long key
+// names alone measured 20-23% of a real report, and model OUTPUT is the wall
+// clock. Long -> short. A NEW COMP FIELD NEEDS AN ENTRY HERE (the
+// add-comp-field skill has the step). Shorts must stay unique and must never
+// collide with a long name.
+const SHORT_COMP_KEYS = {
+  address: "a", date: "d", transaction: "t", size_sqft: "sf",
+  price_or_rate: "p", price_per_sqft: "psf", cap_rate: "cap",
+  tenancy: "ten", year_built: "yr", notes: "n", source_url: "u",
+  source_type: "st", verified: "v",
+  clear_height: "ch", dock_doors: "dd", building_class: "bc",
+  floor_plate: "fp", center_type: "ct", anchor_tenant: "at",
+  units: "un", price_per_unit: "ppu", lot_acres: "ac",
+  price_per_acre: "ppa", zoning: "z", beds_baths: "bb",
+};
+const LONG_COMP_KEYS = Object.fromEntries(
+  Object.entries(SHORT_COMP_KEYS).map(([l, s]) => [s, l])
+);
+
+// Re-expand one short-keyed comp. Tolerant by design: long keys pass through
+// (a model that ignores the encoding produces exactly the old behavior),
+// unknown keys survive, and a long key wins over its short twin if both
+// arrive. Never throws on junk — returns it unchanged.
+function expandComp(c) {
+  if (!c || typeof c !== "object" || Array.isArray(c)) return c;
+  const out = {};
+  for (const [k, v] of Object.entries(c)) {
+    const long = LONG_COMP_KEYS[k];
+    if (long) { if (!(long in c)) out[long] = v; }
+    else out[k] = v;
+  }
+  return out;
+}
+
+// Expand every comp in a parsed report, then backfill omitted fields to ""
+// for the base shape + this type's fields (+ tenancy/year_built unless Land),
+// and coerce `verified` to a boolean — so the stored/served report is
+// byte-shaped exactly like the pre-encoding output and nothing downstream
+// (normalization, gate, cache, harvest, market pages) can meet undefined.
+function expandCompKeys(parsed, type) {
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  const base = ["address", "date", "transaction", "size_sqft", "price_or_rate",
+    "price_per_sqft", "cap_rate", "notes", "source_url", "source_type"];
+  const spec = TYPE_COMP_FIELDS[type];
+  const fill = [...base, ...(spec ? spec.fields : []),
+    ...(type === "Land" ? [] : ["tenancy", "year_built"])];
+  parsed.comps = parsed.comps.map((c) => {
+    const e = expandComp(c);
+    if (!e || typeof e !== "object" || Array.isArray(e)) return e;
+    for (const k of fill) if (e[k] == null) e[k] = "";
+    e.verified = e.verified === true;
+    return e;
+  });
+  return parsed;
+}
+
 // Display labels for the per-type comp fields, for the server-rendered market
 // pages. Flat and keyed by field name — NOT a fifth per-type map. These must
 // match index.html's TYPE_COLUMNS labels exactly, so the same field never
@@ -2541,9 +2598,22 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   // tenancy nor year built.
   const isLand = type === "Land";
   const typeSpec = TYPE_COMP_FIELDS[type];
-  const typeFields = typeSpec ? typeSpec.fields.map((f) => `"${f}": "", `).join("") : ``;
-  const buildingFields = isLand ? `` : `"tenancy": "", "year_built": "", `;
-  const compShape = `{ "address": "", "date": "", "transaction": "", "size_sqft": "", ${typeFields}"price_or_rate": "", "price_per_sqft": "", "cap_rate": "", ${buildingFields}"notes": "", "source_url": "", "source_type": "", "verified": false }`;
+  // Compact encoding: the template the model copies shows the SHORT keys
+  // (see SHORT_COMP_KEYS); the legend line below maps them back to the full
+  // names every rule in this prompt uses. expandCompKeys restores the long
+  // shape at parse time, so only the model's OUTPUT is smaller.
+  const S = SHORT_COMP_KEYS;
+  const typeFields = typeSpec ? typeSpec.fields.map((f) => `"${S[f]}": "", `).join("") : ``;
+  const buildingFields = isLand ? `` : `"${S.tenancy}": "", "${S.year_built}": "", `;
+  const compShape = `{ "${S.address}": "", "${S.date}": "", "${S.transaction}": "", "${S.size_sqft}": "", ${typeFields}"${S.price_or_rate}": "", "${S.price_per_sqft}": "", "${S.cap_rate}": "", ${buildingFields}"${S.notes}": "", "${S.source_url}": "", "${S.source_type}": "", "${S.verified}": false }`;
+  // Legend restricted to the fields this type's shape actually carries, so
+  // the prompt never teaches keys the shape doesn't use.
+  const legendFields = ["address", "date", "transaction", "size_sqft",
+    ...(typeSpec ? typeSpec.fields : []),
+    "price_or_rate", "price_per_sqft", "cap_rate",
+    ...(isLand ? [] : ["tenancy", "year_built"]),
+    "notes", "source_url", "source_type", "verified"];
+  const compKeyLegend = legendFields.map((f) => `"${S[f]}"=${f}`).join(", ");
 
   // Trusted internal comps get their own prompt section when any exist.
   const verifiedBlock = (verifiedComps && verifiedComps.length) ? [
@@ -2662,6 +2732,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `  ]`,
     `}`,
     ``,
+    `COMPACT COMP KEYS: in "comps", write every field under its SHORT key exactly as the template shows: ${compKeyLegend}. The rules in this prompt refer to these fields by their FULL names - apply each rule to its short key. Also, in "comps", OMIT any field you have no value for instead of writing an empty string (top-level fields outside "comps" keep "" when unknown, exactly as stated elsewhere).`,
     `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     // "notes" was the single largest field in the output — measured at 18-28%
     // of a report, up to 316 characters per comp — and the report is slow
@@ -3188,18 +3259,21 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // one (the records lane never does), and any throw disables it for the rest
   // of the call — the report itself never depends on the extractor.
   let compExtractor = (typeof onProgress === "function" && lane !== "records")
-    ? makeCompExtractor((c, n) => say({
-        phase: "comp", n,
-        address: String((c && c.address) || ""),
-        price: String((c && (c.price_or_rate || c.price_per_sqft)) || ""),
-        // Preview-safe extras only. Deliberately NOT price_per_sqft (corrected
-        // post-parse by reconcilePricePerSqft) and NOT source_type (demoted
-        // post-parse by normalizeSourceTypes): the preview must never show a
-        // figure or badge the final report walks back.
-        size_sqft: String((c && c.size_sqft) || ""),
-        date: String((c && c.date) || ""),
-        transaction: String((c && c.transaction) || ""),
-      }))
+    ? makeCompExtractor((c0, n) => {
+        const c = expandComp(c0);   // comps stream short-keyed; events keep long names
+        say({
+          phase: "comp", n,
+          address: String((c && c.address) || ""),
+          price: String((c && (c.price_or_rate || c.price_per_sqft)) || ""),
+          // Preview-safe extras only. Deliberately NOT price_per_sqft (corrected
+          // post-parse by reconcilePricePerSqft) and NOT source_type (demoted
+          // post-parse by normalizeSourceTypes): the preview must never show a
+          // figure or badge the final report walks back.
+          size_sqft: String((c && c.size_sqft) || ""),
+          date: String((c && c.date) || ""),
+          transaction: String((c && c.transaction) || ""),
+        });
+      })
     : null;
   // The prompt orders "summary" before the comps array, so this lands in the
   // first seconds of the write phase. The records lane has no summary at all.
@@ -3357,7 +3431,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
-  const parsed = reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(parseCompJson(text)))));
+  const parsed = reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(text), type)))));
   return attachVerifiedAttribution(parsed, verifiedComps);
 }
 

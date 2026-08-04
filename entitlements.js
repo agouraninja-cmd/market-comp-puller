@@ -32,7 +32,7 @@ const FREE_MAX_COMPS = 4;
 // converts nobody, because a broken demo is no evidence the paid version works.
 //
 // It also disarmed the OTHER gate. A 12-month search often returned four or
-// fewer comps, so the 4-comp limit withheld nothing and the $39 tile — which
+// fewer comps, so the 4-comp limit withheld nothing and the single-report tile — which
 // only appears when something is actually locked — never rendered. Widening the
 // window is what gives the comp gate something to hold back.
 //
@@ -254,7 +254,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
 
   let exportsRemaining;
   if (pro) exportsRemaining = "unlimited";
-  // A $39 report you cannot export would be a $39 screenshot. The unlock
+  // A paid report you cannot export would be a paid screenshot. The unlock
   // covers exports OF THAT REPORT — callers ask with its reportId, so a
   // buyer's other reports still count against the free monthly cap.
   else if (reportUnlocked) exportsRemaining = "unlimited";
@@ -266,15 +266,22 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     status: state,
     maxComps: pro || reportUnlocked ? "all" : FREE_MAX_COMPS,
     canBrand: pro || reportUnlocked,
-    // A purchase is retroactive — it unlocks a report that already exists, so
-    // it does not widen the search window for the NEXT search.
-    maxLookbackMonths: pro ? PRO_MAX_LOOKBACK_MONTHS : FREE_MAX_LOOKBACK_MONTHS,
+    // A purchase now carries Pro's full window FOR ITS OWN PROPERTY (changed
+    // 2026-08-04). This only became possible when reportIdFor() stopped hashing
+    // the lookback: while `months` was in the key, a re-run at a wider window
+    // was a different report id, matched no purchase, and came back locked — so
+    // granting the ceiling here would have done nothing. Keyed on address+type,
+    // the buyer can re-run their building at ten years and it stays unlocked,
+    // which is the difference between selling a snapshot and selling the
+    // property's history.
+    maxLookbackMonths: pro || reportUnlocked ? PRO_MAX_LOOKBACK_MONTHS : FREE_MAX_LOOKBACK_MONTHS,
     exportsRemaining,
     reportUnlocked,
-    // The Address Explorer is a Pro discovery tool. Deliberately NOT widened by
-    // `reportUnlocked`: a single-report purchase buys one report that already
-    // exists, and the explorer's job is finding the NEXT property — the same
-    // reasoning that keeps maxLookbackMonths on `pro` alone.
+    // The Address Explorer stays Pro-only, deliberately, even though everything
+    // else a purchase grants now matches Pro. It is a DISCOVERY tool — its job
+    // is finding the next property to value — so it is the one Pro capability
+    // that is not scoped to a report and cannot be sold per-report without
+    // simply being Pro at a one-off price.
     canExploreAddresses: pro,
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
     admin: false,

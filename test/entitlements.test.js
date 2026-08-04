@@ -324,14 +324,39 @@ test("a purchase row with no reportId asked about unlocks nothing", () => {
   assert.equal(e.maxComps, FREE_MAX_COMPS);
 });
 
-test("a purchase does not widen the search window for the next search", () => {
+// REVERSED 2026-08-04. This test used to assert the opposite — that a purchase
+// did NOT widen the window — which was true only because the report id hashed
+// the lookback, so a re-run at a wider window was a different report and simply
+// came back locked. With the id keyed on address+type, the purchase covers the
+// property at every window, and the buyer gets Pro's full history.
+test("a purchase carries Pro's full lookback for its own property", () => {
   const e = ent({ user: USER, purchase, reportId: "rep_abc" });
+  assert.equal(e.reportUnlocked, true);
+  assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+});
+
+// The scoping guarantee the change must NOT break: a purchase is still one
+// property. Asking about any other report falls straight back to free limits.
+test("a purchase widens nothing for a report it was not bought for", () => {
+  const e = ent({ user: USER, purchase, reportId: "rep_somethingelse" });
+  assert.equal(e.reportUnlocked, false);
+  assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
+  assert.equal(e.maxComps, FREE_MAX_COMPS);
+});
+
+// And with NO report in question at all — /api/config takes no report id — a
+// buyer still reads as a free user. Otherwise one purchase would silently widen
+// every search they ever run.
+test("a purchase grants nothing when no report is named", () => {
+  const e = ent({ user: USER, purchase });
+  assert.equal(e.reportUnlocked, false);
   assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
 });
 
-test("a purchase does not buy the Address Explorer either", () => {
-  // Same reasoning as the lookback window: $39 buys one report that already
-  // exists, and the explorer's whole job is finding the NEXT property.
+test("a purchase does not buy the Address Explorer", () => {
+  // The one Pro capability a purchase deliberately does NOT carry: the explorer
+  // finds the NEXT property, so it cannot be scoped to a report without simply
+  // being Pro at a one-off price. It is the reason to subscribe.
   const e = ent({ user: USER, purchase, reportId: "rep_abc" });
   assert.equal(e.reportUnlocked, true);
   assert.equal(e.canExploreAddresses, false);

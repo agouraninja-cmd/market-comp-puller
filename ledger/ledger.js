@@ -1125,4 +1125,4 @@ if (require.main === module) {
   main().catch((e) => { console.error(e); process.exitCode = 1; });
 }
 
-module.exports = { parseCsv, splitCsvLine, signFor, monthRange, rollUpMonthly, readManualEntries, readRecurring, parseEntryDate, CAT, REVENUE_CATS, COGS_CATS, OPEX_CATS, RATES };
+module.exports = { parseCsv, splitCsvLine, signFor, monthRange, rollUpMonthly, readManualEntries, readRecurring, parseEntryDate, fetchStripe, CAT, REVENUE_CATS, COGS_CATS, OPEX_CATS, RATES };

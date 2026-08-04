@@ -22,7 +22,7 @@ const fs = require("fs");
 const path = require("path");
 const { workbook, S } = require("./xlsx");
 const {
-  readManualEntries, readRecurring, monthRange, CAT, REVENUE_CATS,
+  readManualEntries, readRecurring, monthRange, fetchStripe, CAT, REVENUE_CATS,
 } = require("./ledger.js");
 
 const ROOT = path.join(__dirname, "..");
@@ -73,11 +73,12 @@ One-page Statement of Profit and Loss.
                              which is only true before the Stripe key goes live.
   --out PATH                 default ./CompNinja-Profit-and-Loss.xlsx
 
-Reads the same ledger/*.csv files as ledger.js, so the two documents can
-never disagree.
+Reads the same ledger/*.csv files as ledger.js — and, when STRIPE_SECRET_KEY
+is set, the same Stripe balance transactions — so the two documents can never
+disagree.
 `;
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv);
   if (args.help) { console.log(HELP); return; }
 
@@ -89,6 +90,20 @@ function main() {
 
   const warnings = [];
   const txns = [...readRecurring(months), ...readManualEntries(months, warnings)];
+
+  // Stripe, from the same call ledger.js makes. Until a key existed, "reads the
+  // same CSVs, so the two documents cannot disagree" was true by construction.
+  // The moment ledger.js gained a source this file did not share, the guarantee
+  // broke silently: the workbook booked $40.00 of payments, $40.00 of refunds
+  // and $1.77 of processing fees while this statement showed none of them, and
+  // the two net figures differed by exactly those fees. A statement that
+  // disagrees with the working ledger is worse than no statement, so this reads
+  // Stripe too, or neither of them does.
+  if (process.env.STRIPE_SECRET_KEY) {
+    const { rows, warnings: sw } = await fetchStripe(process.env.STRIPE_SECRET_KEY, months);
+    txns.push(...rows);
+    warnings.push(...sw);
+  }
 
   const sumCats = (m, cats) => round2(
     txns.filter((t) => t.month === m && cats.includes(t.category))
@@ -170,9 +185,22 @@ function main() {
   // differently from "we launched and have not sold yet" to anyone holding this
   // page. A statement that overstates how early we are is as wrong as one that
   // overstates revenue, so the note now follows --launched rather than assuming.
+  // Once Stripe is connected, "no sale has completed" stops being safe to
+  // assume: payments can have been taken and refunded, netting to the same
+  // zero. Saying none completed would be flatly false to anyone who opens the
+  // Stripe dashboard, so the wording follows the gross figures. Stripe does not
+  // return the processing fee on a refund, which is why an all-refunded period
+  // still leaves real money in operating expenses.
+  const grossIn = tot(months.map((m) => sumCats(m, [CAT.SUBSCRIPTIONS, CAT.ONE_TIME])));
+  const refunded = tot(months.map((m) => sumCats(m, [CAT.REFUNDS])));
   notes.push(args.launched
-    ? `${legal && tot(legal.vals) !== 0 ? "4" : "3"}.  No revenue has been recognized. Paid plans became available for ` +
-      `purchase on ${args.launched} and no sale has completed as of the date below.`
+    ? (grossIn > 0
+      ? `${legal && tot(legal.vals) !== 0 ? "4" : "3"}.  Paid plans became available for purchase on ${args.launched}. ` +
+        `Gross payments of $${grossIn.toFixed(2)} were processed and $${Math.abs(refunded).toFixed(2)} was refunded, ` +
+        `so no revenue has been retained for the period. Processing fees on refunded payments are not ` +
+        `returned by the payment provider and remain in operating expenses.`
+      : `${legal && tot(legal.vals) !== 0 ? "4" : "3"}.  No revenue has been recognized. Paid plans became available for ` +
+        `purchase on ${args.launched} and no sale has completed as of the date below.`)
     : `${legal && tot(legal.vals) !== 0 ? "4" : "3"}.  No revenue has been recognized. Paid subscriptions remain in a pre-launch ` +
       `test configuration and are not yet available for purchase.`);
   if (args.partialThrough) {
@@ -278,4 +306,4 @@ function main() {
   for (const w of warnings) console.log(`  ! ${w}`);
 }
 
-if (require.main === module) main();
+if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

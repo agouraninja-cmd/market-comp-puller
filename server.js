@@ -430,14 +430,7 @@ function rateLimited(ip, max = RATE_MAX, windowMs = RATE_WINDOW_MS) {
 // spent (survives IP changes). Cache hits count too — the funnel is the
 // point, not just API spend. Fails OPEN: a ledger error allows the search;
 // DAILY_SEARCH_CAP still backstops cost.
-// DDL (run in the Supabase SQL editor BEFORE deploying):
-//
-//   create table guest_search_quota (
-//     ip_hash text primary key,
-//     used integer not null default 0,
-//     first_ts timestamptz not null default now(),
-//     last_ts timestamptz not null default now()
-//   );
+// DDL: migrations/011-guest-search-quota.sql (applied — see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 const GUEST_COOKIE = "cn_guest";
 const GUEST_COOKIE_MAX_AGE_SEC = 2 * 365 * 24 * 60 * 60;
@@ -528,48 +521,7 @@ async function guestGateFor(req) {
 // ---------------------------------------------------------------------------
 // Accounts — email+password users, hashed session tokens, portfolio +
 // watchlist stores. Supabase when configured, one local JSON file otherwise.
-// DDL (run in the Supabase SQL editor; legacy service_role key already works):
-//
-//   create table users (
-//     id uuid primary key default gen_random_uuid(),
-//     email text not null unique,
-//     password_hash text not null,
-//     name text,
-//     created_at timestamptz not null default now()
-//   );
-//   -- (consider: create unique index on users (lower(email));)
-//   create table sessions (
-//     token_hash text primary key,
-//     user_id uuid not null references users(id) on delete cascade,
-//     created_at timestamptz not null default now(),
-//     expires_at timestamptz not null
-//   );
-//   create table portfolio_items (
-//     id uuid primary key default gen_random_uuid(),
-//     user_id uuid not null references users(id) on delete cascade,
-//     address text not null,
-//     property_type text not null,
-//     payload jsonb not null,
-//     snapshots jsonb not null default '[]',
-//     created_at timestamptz not null default now(),
-//     updated_at timestamptz not null default now()
-//   );
-//   create table watchlist_items (
-//     id uuid primary key default gen_random_uuid(),
-//     user_id uuid not null references users(id) on delete cascade,
-//     market text not null,
-//     property_type text not null,
-//     last_seen_at timestamptz not null default now(),
-//     created_at timestamptz not null default now(),
-//     unique (user_id, market, property_type)
-//   );
-//   create table password_resets (
-//     token_hash text primary key,
-//     user_id uuid not null references users(id) on delete cascade,
-//     expires_at timestamptz not null,
-//     used boolean not null default false,
-//     created_at timestamptz not null default now()
-//   );
+// DDL: migrations/002-accounts.sql (applied — see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 const ACCOUNT_STORE_FILE = path.join(__dirname, "account-store.json");
 const SESSION_COOKIE = "cn_session";
@@ -973,88 +925,12 @@ async function markWatchlistSeen(userId) {
 // subscription" without a database, and PRO_ENABLED without DB_CONFIGURED
 // warns loudly at startup.
 //
-// DDL (run in the Supabase SQL editor BEFORE deploying with PRO_ENABLED=on):
-//
-//   alter table users add column if not exists stripe_customer_id text;
-//   create unique index if not exists users_stripe_customer_id_idx
-//     on users (stripe_customer_id) where stripe_customer_id is not null;
-//
-//   create table subscriptions (
-//     user_id uuid primary key references users(id) on delete cascade,
-//     stripe_subscription_id text unique,
-//     stripe_customer_id text,
-//     plan text not null,                  -- pro_monthly | pro_annual_founding
-//     status text not null,                -- active | past_due | grace | cancelled
-//     current_period_end timestamptz,
-//     cancel_at_period_end boolean not null default false,
-//     grace_until timestamptz,             -- set when a payment fails (7 days)
-//     created_at timestamptz not null default now(),
-//     updated_at timestamptz not null default now()
-//   );
-//   -- One subscription per user by primary key: a second checkout by the same
-//   -- person must UPDATE, never insert a rival row that could out-rank it.
-//
-//   create table branding_profiles (
-//     user_id uuid primary key references users(id) on delete cascade,
-//     logo_url text, firm_name text, preparer_name text,
-//     phone text, email text, license_number text, disclaimer text,
-//     updated_at timestamptz not null default now()
-//   );
-//
-//   create table report_purchases (
-//     id uuid primary key default gen_random_uuid(),
-//     user_id uuid not null references users(id) on delete cascade,
-//     report_id text not null,             -- reportIdFor(): hash of address|type|months
-//     stripe_payment_intent_id text unique,
-//     comp_snapshot jsonb,                 -- see below: NULLABLE, and unused
-//     purchased_at timestamptz not null default now(),
-//     unique (user_id, report_id)
-//   );
-//   create index on report_purchases (user_id, report_id);
-//
-//   -- If the table was already created with `comp_snapshot jsonb not null`,
-//   -- run this before deploying the single-report unlock or every webhook
-//   -- insert 400s and a paid purchase is never recorded:
-//   --   alter table report_purchases alter column comp_snapshot drop not null;
-//   --
-//   -- Why it is nullable and empty: the row is written by the Stripe webhook,
-//   -- which carries a session and a payment intent and NO report data — the
-//   -- report is a client-side artifact. The unlock is keyed on the SEARCH
-//   -- (address+type+lookback), so re-running that search re-serves it ungated
-//   -- from the cache for free, and computeEntitlements never reads a snapshot:
-//   -- it only flips maxComps/canBrand/exportsRemaining off the row's EXISTENCE.
-//   -- The column is kept for a future "comps exactly as you bought them"
-//   -- feature, which would need a pending row written at checkout creation.
-//
-//   -- One row per REPORT exported, not one per click. The primary key makes a
-//   -- second export of the same report in the same month a no-op, so wanting a
-//   -- report as both a CSV and a PDF costs one, not two. The tally is the row
-//   -- COUNT for (user_id, period) — there is no counter column to race on.
-//   create table export_usage (
-//     user_id uuid not null references users(id) on delete cascade,
-//     period text not null,                -- 'YYYY-MM', UTC
-//     report_key text not null,            -- stable per report; see reportKeyOf()
-//     created_at timestamptz not null default now(),
-//     primary key (user_id, period, report_key)
-//   );
-//
-//   -- Upgrading an existing (user_id, period, count) table instead:
-//   --   drop table if exists export_usage;   -- nothing ever wrote to it
-//   -- then create it as above.
-//
-//   -- Stripe retries webhooks; this is what makes handlers idempotent.
-//   create table stripe_events (
-//     id text primary key,                 -- Stripe's event id (evt_...)
-//     type text,
-//     received_at timestamptz not null default now()
-//   );
-//
-// After running it, confirm nothing is missing:
-//   select t from unnest(array['subscriptions','branding_profiles',
-//     'report_purchases','export_usage','stripe_events']) as t
-//   where not exists (select 1 from information_schema.tables
-//                     where table_name = t);
-// Zero rows means the schema is complete.
+// DDL: migrations/008-pro-billing.sql (applied — see migrations/APPLIED.md).
+// The migration file keeps the why-notes with the SQL: one subscription per
+// user by primary key, report_purchases.comp_snapshot NULLABLE and never
+// written (the webhook has no report data — the unlock keys on the SEARCH),
+// export_usage keyed per report per month so CSV+PDF of one report costs one
+// export, stripe_events for webhook idempotency, and the verification query.
 // ---------------------------------------------------------------------------
 
 // Subscription reads sit in the hot path of every report, so they are cached
@@ -1525,9 +1401,9 @@ function noteCorpusFailure(kind, err) {
   if (/column|schema cache|PGRST2\d\d/i.test(msg)) {
     CORPUS_HEALTH.schemaMismatch = true;
     console.error(
-      `comp_corpus ${kind} failed on what looks like a MISSING COLUMN. The ALTER TABLE ` +
-      `for a new per-comp field was probably never run — see the DDL comment above ` +
-      `harvestComps(). Until it is, harvested comps land in an ephemeral file and ` +
+      `comp_corpus ${kind} failed on what looks like a MISSING COLUMN. The migration ` +
+      `for a new per-comp field was probably never run — see migrations/APPLIED.md. ` +
+      `Until it is, harvested comps land in an ephemeral file and ` +
       `corpus-first retrieval returns nothing. Detail: ${msg.slice(0, 200)}`);
   } else {
     console.error(`comp_corpus ${kind} failed: ${msg.slice(0, 200)}`);
@@ -1871,15 +1747,9 @@ async function findDerivableReport(keyParams, months, txFocus, maxComps) {
 // building's size doesn't change, so once ANY prior search has looked it up
 // the answer is reusable: hand it to the model up front and the budget drops,
 // exactly as if the visitor had typed it. The visitor's own entry always wins;
-// the memo only fills silence. Supabase table (run this DDL before deploying —
-// absent, every read/write degrades safely to the git-ignored file below):
-//
-//   create table subject_sizes (
-//     address_norm text primary key,
-//     size_sqft    bigint not null,
-//     source       text,
-//     updated_at   timestamptz not null default now()
-//   );
+// the memo only fills silence. Supabase table subject_sizes — DDL in
+// migrations/009-subject-sizes.sql (applied; when the table is absent, every
+// read/write degrades safely to the git-ignored file below).
 //
 // Two deliberate rules. Model-ESTIMATED sizes are never remembered — a guess
 // that quietly becomes "known" for every future search of this address is how
@@ -2180,42 +2050,12 @@ function maybePublishMarketSnapshot(type, address, data) {
 // fallback comp-corpus.jsonl. Fire-and-forget: never blocks or fails the
 // search that triggered it.
 //
-// Supabase DDL (run once in the SQL editor):
-//   create table public.comp_corpus (
-//     id bigint generated always as identity primary key,
-//     ts timestamptz not null default now(),
-//     dedupe_key text not null unique,
-//     property_type text not null, market text not null, address text not null,
-//     transaction text, deal_date text, size_sqft text, price_or_rate text,
-//     price_per_sqft text, cap_rate text,
-//     -- per-type specs (TYPE_COMP_FIELDS); each row carries every column,
-//     -- and the ones its type doesn't use stay empty
-//     clear_height text, dock_doors text,
-//     building_class text, floor_plate text,
-//     center_type text, anchor_tenant text,
-//     units text, price_per_unit text,
-//     lot_acres text, price_per_acre text, zoning text,
-//     beds_baths text,
-//     tenancy text, year_built text,
-//     notes text, source_url text, source_type text, lat text, lng text,
-//     verified boolean default false
-//   );
-//   alter table public.comp_corpus enable row level security;
-//
-// Existing table (added 2026-07-27) — run BEFORE deploying, or every corpus
-// insert 400s on the unknown columns and harvesting silently falls back to
-// the ephemeral file:
-//   alter table public.comp_corpus
-//     add column if not exists building_class text,
-//     add column if not exists floor_plate text,
-//     add column if not exists center_type text,
-//     add column if not exists anchor_tenant text,
-//     add column if not exists units text,
-//     add column if not exists price_per_unit text,
-//     add column if not exists lot_acres text,
-//     add column if not exists price_per_acre text,
-//     add column if not exists zoning text,
-//     add column if not exists beds_baths text;
+// DDL: migrations/001-comp-corpus.sql (create + RLS) and
+// migrations/004-comp-corpus-per-type-columns.sql (the 2026-07-27 per-type
+// ALTER whose missed run caused the silent weeks-long outage). Both applied —
+// see migrations/APPLIED.md. A NEW per-comp field needs the next numbered
+// migration run BEFORE deploying, or every corpus insert 400s on the unknown
+// column and harvesting silently falls back to the ephemeral file.
 // ---------------------------------------------------------------------------
 const corpusSeen = new Set();   // dedupe keys seen this process (file-seeded)
 let corpusSeenSeeded = false;
@@ -5412,9 +5252,9 @@ function render(d){
     "<h2 style='color:#B91C1C;margin-bottom:8px;font-family:Georgia,serif;font-weight:500;"+
     "font-size:19px;text-transform:none;letter-spacing:normal'>Comp corpus is not persisting</h2>"+
     (h.schemaMismatch
-      ? "<p><b>This looks like a missing column.</b> The <code>alter table</code> for a new per-comp "+
-        "field was probably never run &mdash; the DDL is in the comment above <code>harvestComps()</code> "+
-        "in server.js. Until it runs, harvested comps land in an ephemeral file and corpus-first "+
+      ? "<p><b>This looks like a missing column.</b> The migration for a new per-comp "+
+        "field was probably never run &mdash; check <code>migrations/APPLIED.md</code> against the "+
+        "<code>migrations/</code> folder. Until it runs, harvested comps land in an ephemeral file and corpus-first "+
         "retrieval returns nothing, so the hit rate below is pinned at 0%.</p>"
       : "<p>Supabase writes or reads for <code>comp_corpus</code> are failing, so harvested comps "+
         "are going to an ephemeral file that is wiped on every redeploy.</p>")+
@@ -5521,23 +5361,8 @@ try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
 // devlog.json (see the standing rule in CLAUDE.md: every shipped
 // fix/improvement/feature appends an entry in the same commit). Ideas live in
 // the Supabase dev_ideas table with a whole-file dev-ideas.json fallback
-// (git-ignored; ephemeral on most hosts). Run this DDL in Supabase before
-// deploying:
-//   create table if not exists dev_ideas (
-//     id text primary key,
-//     text text not null,
-//     status text not null default 'open',
-//     priority text,
-//     notes text,
-//     done_at timestamptz,
-//     created_at timestamptz not null default now()
-//   );
-// Tables created before priority/notes/done_at existed need (run before
-// deploying — PostgREST 400s on unknown columns, the comp-corpus lesson):
-//   alter table dev_ideas
-//     add column if not exists priority text,
-//     add column if not exists notes text,
-//     add column if not exists done_at timestamptz;
+// (git-ignored; ephemeral on most hosts). DDL: migrations/005-dev-ideas.sql
+// (applied — see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 async function readDevIdeas() {
   let fileIdeas = [];
@@ -5593,23 +5418,7 @@ async function writeDevIdeas(ideas) {
 // stale tab silently wipe a colleague's new entry. Cost is one extra route.
 //
 // PII lives here, so contacts.json is git-ignored and the CSV export is
-// ADMIN_KEY-gated. Run this DDL in Supabase before deploying — PostgREST 400s
-// on unknown columns and the write would fall back to the ephemeral file
-// (the comp-corpus lesson):
-//   create table if not exists contacts (
-//     id text primary key,
-//     name text not null,
-//     company text,
-//     role text,
-//     phone text,
-//     email text,
-//     market text,
-//     category text not null default 'lead',
-//     status text not null default 'new',
-//     notes text,
-//     created_at timestamptz not null default now(),
-//     updated_at timestamptz not null default now()
-//   );
+// ADMIN_KEY-gated. DDL: migrations/007-contacts.sql (see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
 const CONTACT_COLS = ["id", "name", "company", "role", "phone", "email",
   "market", "category", "status", "notes", "created_at", "updated_at"];
@@ -5704,15 +5513,8 @@ function sanitizeContact(body, existing) {
 // UI edits and notes live in the Supabase devlog_overrides table — keyed by
 // the FILE entry's original date+title — and are merged over the file at
 // read time. An override row stores the full {title, details, notes}
-// snapshot; deleting the row restores the committed text. Run in Supabase
-// before deploying:
-//   create table if not exists devlog_overrides (
-//     key text primary key,
-//     title text,
-//     details text,
-//     notes text,
-//     updated_at timestamptz not null default now()
-//   );
+// snapshot; deleting the row restores the committed text.
+// DDL: migrations/006-devlog-overrides.sql (applied — see migrations/APPLIED.md).
 function devlogKey(e) { return String((e && e.date) || "") + "|" + String((e && e.title) || ""); }
 
 function readDevlogFileEntries() {
@@ -8002,23 +7804,9 @@ const server = http.createServer((req, res) => {
 
   // --- Admin: broker submission review — list + approve/reject. The whole
   // verified layer keys off comp_submissions.status, so this replaces the
-  // manual Supabase table edit with one click in /admin. Broker-network DDL
-  // (run 2026-07-19, alongside the hand-created comp_submissions table which
-  // already carries "id bigint generated always as identity"):
-  //
-  //   alter table comp_submissions
-  //     add column if not exists cited_count integer not null default 0;
-  //   create table broker_profiles (
-  //     id uuid primary key default gen_random_uuid(),
-  //     email text not null unique,          -- always stored lowercased
-  //     display_name text not null default '',
-  //     company text default '',
-  //     slug text not null unique,
-  //     public boolean not null default false,
-  //     created_at timestamptz not null default now(),
-  //     updated_at timestamptz not null default now()
-  //   );
-  //   alter table broker_profiles enable row level security;
+  // manual Supabase table edit with one click in /admin. Broker-network DDL:
+  // migrations/003-broker-network.sql (run 2026-07-19, alongside the
+  // hand-created comp_submissions table — see migrations/APPLIED.md).
   // ---------------------------------------------------------------------------
   if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/submissions") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }

@@ -123,8 +123,8 @@ dependency. `.env` is git-ignored — never commit it.
   `docs/superpowers/specs/2026-08-03-guest-search-cap-design.md`). `0` = sign-in
   before any search; `off` = gate disabled entirely (the instant rollback lever).
   Tracked two ways, blocked when EITHER fires: the Supabase
-  `guest_search_quota` ledger keyed by sha256(IP) (DDL in the comment above
-  `guestGateFor` in server.js — already run in prod), and the httpOnly
+  `guest_search_quota` ledger keyed by sha256(IP) (DDL in
+  `migrations/011-guest-search-quota.sql` — already run in prod), and the httpOnly
   `cn_guest` cookie set once the quota is spent. **Cache hits count** (the
   funnel is the point); a failed search doesn't consume; admins and
   `x-admin-key` callers bypass. Enforced in `/api/comps` (403 +
@@ -265,8 +265,8 @@ dependency. `.env` is git-ignored — never commit it.
   (`computeEntitlements`' `enabled: false` branch returns
   `maxComps: "all"` / `exportsRemaining: "unlimited"` and skips every billing
   read, so the flag costs nothing on the hot path). **Do not turn this on
-  before running the Pro DDL** in the comment block above `findSubscription`
-  in server.js — and note the billing tables have **no file fallback** by
+  before running the Pro DDL** in `migrations/008-pro-billing.sql`
+  — and note the billing tables have **no file fallback** by
   design, so `PRO_ENABLED=on` without Supabase configured resolves every
   visitor to the free tier and logs a `⛔` line at startup.
 - `PRO_AUDIENCE` — optional comma-separated email allowlist narrowing **who**
@@ -466,7 +466,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   ignore-duplicates upsert; in-memory seen-set for the file path). Fire-and-
   forget — a corpus failure never affects the request. This is the permanent
   raw-data layer that broker verification and future retrieval features build
-  on; the DDL lives in a comment above `harvestComps` in server.js.
+  on; the DDL lives in `migrations/001-comp-corpus.sql` (+ `004` for the
+  per-type columns).
   `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`).
   **Corpus health (`CORPUS_HEALTH` + `noteCorpusFailure()`).** Fire-and-forget
   means both the write (`harvestComps`) and the read (`corpusRowsForMarket`)
@@ -575,8 +576,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `GET|POST|DELETE /api/portfolio`, `GET|POST|DELETE /api/watchlist`,
   `GET /api/watchlist/feed` (exact URL, no query string), `POST
   /api/watchlist/seen`. Storage: Supabase tables `users`, `sessions`,
-  `portfolio_items`, `watchlist_items`, `password_resets` (DDL in a comment
-  atop the Accounts section of server.js) with a git-ignored
+  `portfolio_items`, `watchlist_items`, `password_resets` (DDL in
+  `migrations/002-accounts.sql`) with a git-ignored
   `account-store.json` file fallback for local dev. Search stays fully open
   to visitors — accounts only gate saving/watching. The feed marks items
   "seen" only on explicit My Desk/bell clicks, never on render. Password
@@ -596,13 +597,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   docs-only or refactor commits don't need entries, anything a changelog
   reader would care about does. Entries are **click-to-edit** on `/dev`:
   edits and per-entry notes live in a Supabase `devlog_overrides` overlay
-  (DDL in the comment above `readDevlogOverrides` in server.js — run it
+  (DDL in `migrations/006-devlog-overrides.sql` — run it
   before deploying) keyed by the file entry's original date+title and merged
   at read time, so devlog.json itself is never rewritten at runtime and
   stays the source of truth. Renaming an entry's date or title in the FILE
   orphans its override — re-edit on /dev if that happens. Future ideas are whole-list replaced via
-  `PUT /api/dev-ideas` into the Supabase `dev_ideas` table (DDL in the
-  comment above `readDevIdeas` in server.js — **run it before deploying**),
+  `PUT /api/dev-ideas` into the Supabase `dev_ideas` table (DDL in
+  `migrations/005-dev-ideas.sql` — **run it before deploying**),
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
   it done on `/dev` and add the devlog entry.
 - **Pro tier** (added 2026-07-31, in progress — see the build spec in the
@@ -696,8 +697,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     frozen set of comps. `report_purchases.comp_snapshot` is **nullable and
     never written**: the webhook has a session and a payment intent but no
     report data, and nothing reads a snapshot. If the table was created with
-    `not null`, the ALTER in the DDL comment must run or every purchase webhook
-    400s. Re-running the search re-serves it whole from cache.
+    `not null`, the ALTER in `migrations/008-pro-billing.sql` must run or every
+    purchase webhook 400s. Re-running the search re-serves it whole from cache.
   - **Buying returns to `/?purchase=success`, not `/desk`** — the buyer wants
     the report, and the desk doesn't know which building it was. The address is
     kept out of the URL; `localStorage.pendingUnlock.v1` carries it across the
@@ -756,7 +757,8 @@ CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
    — use it rather than working from memory.**
    A further place matters for durability: `harvestComps()` writes one flat corpus
    row per comp using `ALL_TYPE_COMP_FIELDS`, so the Supabase `comp_corpus` table
-   needs a column per field. **Run the ALTER TABLE in the DDL comment before
+   needs a column per field. **Write the ALTER TABLE as the next numbered file
+   in `migrations/` and run it before
    deploying a new field** — PostgREST 400s on an unknown column, which makes
    harvesting fall back to the ephemeral file and quietly lose data.
    `ALL_TYPE_COMP_FIELDS` is also in the `select` of `corpusRowsForMarket()`,

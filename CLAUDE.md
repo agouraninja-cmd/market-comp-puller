@@ -296,11 +296,16 @@ column. So "is this an admin?" is answered by **possession of that key**, which
 1. the **`x-admin-key` header** — how machine callers have always identified
    themselves (`gen-market-seed.js`, the dashboards' own fetches); and
 2. the **`cn_admin` cookie** — how a browser carries it. The dashboards keep the
-   key in `sessionStorage`, which is scoped to **one tab**, so a developer who
-   unlocked `/admin` and then opened the app in a second tab would silently be a
-   free user again. `POST /api/admin-access` trades the key for this cookie, and
-   all three dashboards call it (`grantAdminAccess()`) the moment their own key
-   check passes.
+   key in `sessionStorage`, which is scoped to **one tab**; `POST
+   /api/admin-access` trades the key for this cookie, and all four dashboards
+   (`/hq`, `/admin`, `/dev`, `/contacts`) call it (`grantAdminAccess()`) the
+   moment their own key check passes. Since 2026-08-04 **every dashboard
+   endpoint accepts the cookie** (via `isAdminRequest`) as an alternative to
+   the header, so a new tab within the 30-day cookie window opens unlocked
+   without retyping the key — each page's loader silently tries a keyless
+   fetch before showing the gate. In a cookie session `/hq`'s CSV links are
+   plain hrefs (the cookie rides along); `?key=` survives on the CSV routes
+   and `/api/stats`/`/api/admin/submissions` for machine callers only.
 
 The cookie is **not the key**: it is `<expiry ms>.<HMAC-SHA256(expiry,
 ADMIN_KEY)>`, httpOnly, 30 days. It cannot be turned back into the key, and

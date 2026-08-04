@@ -299,9 +299,10 @@ function sendCsvDownload(req, res, table, file, cols, filename) {
     res.writeHead(404, { "content-type": "text/plain" });
     return res.end("Not found");
   }
-  const key = req.headers["x-admin-key"] ||
-    new URL(req.url, "http://localhost").searchParams.get("key");
-  if (!secretMatches(key, ADMIN_KEY)) {
+  // Header, ?key= (machine callers), or the cn_admin cookie — the cookie is
+  // what lets the dashboards link these as plain hrefs with no key in the URL.
+  const key = new URL(req.url, "http://localhost").searchParams.get("key");
+  if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) {
     return sendJson(res, 401, { error: "Unauthorized." });
   }
   readRows(table, file, cols).then((rows) => {
@@ -5619,17 +5620,21 @@ function loadSubs(key){
 }
 function load(key){
   fetch("/api/stats",{headers:{"x-admin-key":key}}).then(function(r){
-    if(r.status===401){throw new Error("Incorrect key.");}
+    // A 401 on the keyless attempt just means "no cookie" — show the gate
+    // without scolding anyone.
+    if(r.status===401){throw new Error(key?"Incorrect key.":"");}
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key); render(d); loadSubs(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
 document.getElementById("go").addEventListener("click",function(){load(document.getElementById("k").value.trim());});
 document.getElementById("k").addEventListener("keydown",function(e){if(e.key==="Enter")load(e.target.value.trim());});
-try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
+// No sessionStorage key? Try the 30-day cn_admin cookie before showing the
+// gate — the empty key sends a useless header, so the cookie decides.
+try{var sk=sessionStorage.getItem(KEYK);load(sk||"");}catch(e){load("");}
 </script>
 </body></html>`;
 }
@@ -6432,10 +6437,10 @@ function load(key){
     fetch("/api/dev-ideas",{headers:{"x-admin-key":key}}).catch(function(){return null;}),
   ]).then(function(rs){
     var rl=rs[0],ri=rs[1];
-    if((rl&&rl.status===401)||(ri&&ri.status===401))return gateErr("Incorrect key.");
+    if((rl&&rl.status===401)||(ri&&ri.status===401))return gateErr(key?"Incorrect key.":"");
     if((rl&&rl.status===404)||(ri&&ri.status===404))return gateErr("The hub is disabled — set ADMIN_KEY on the server.");
     if(!rl&&!ri)return gateErr("Network error — is the server reachable?");
-    KEY=key;try{sessionStorage.setItem(KEYK,key);}catch(e){}grantAdminAccess(key);
+    KEY=key;if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){}grantAdminAccess(key);}
     document.getElementById("gate").style.display="none";
     document.getElementById("hub").style.display="block";
     var logFail=function(){
@@ -6455,7 +6460,8 @@ function load(key){
 }
 document.getElementById("go").addEventListener("click",function(){load(document.getElementById("k").value.trim());});
 document.getElementById("k").addEventListener("keydown",function(e){if(e.key==="Enter")load(e.target.value.trim());});
-try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
+// See /admin: no stored key still tries the cn_admin cookie, silently.
+try{var sk=sessionStorage.getItem(KEYK);load(sk||"");}catch(e){load("");}
 </script>
 </body></html>`;
 }
@@ -6782,18 +6788,18 @@ function gateErr(msg){
 function load(key){
   fetch("/api/contacts",{headers:{"x-admin-key":key}})
   .then(function(r){
-    if(r.status===401)throw new Error("Incorrect key.");
+    if(r.status===401){var er=new Error(key?"Incorrect key.":"");er.silent=!key;throw er;}
     if(r.status===404)throw new Error("Contacts are disabled — set ADMIN_KEY on the server.");
     if(!r.ok)throw new Error("Error "+r.status);
     return r.json();
   })
   .then(function(d){
-    KEY=key;try{sessionStorage.setItem(KEYK,key);}catch(e){}grantAdminAccess(key);
+    KEY=key;if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){}grantAdminAccess(key);}
     ROWS=d.contacts||[];
     el("gate").style.display="none";el("app").style.display="block";
     fillSelects();clearForm();render();
   })
-  .catch(function(e){gateErr(e.message||"Network error — is the server reachable?");});
+  .catch(function(e){gateErr(e.silent?"":(e.message||"Network error — is the server reachable?"));});
 }
 
 el("go").addEventListener("click",function(){load(el("k").value.trim());});
@@ -6802,7 +6808,8 @@ el("save").addEventListener("click",save);
 el("cancel").addEventListener("click",clearForm);
 el("export").addEventListener("click",exportCsv);
 el("q").addEventListener("input",function(e){Q=e.target.value.trim();render();});
-try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
+// See /admin: no stored key still tries the cn_admin cookie, silently.
+try{var sk=sessionStorage.getItem(KEYK);load(sk||"");}catch(e){load("");}
 </script>
 </body></html>`;
 }
@@ -7090,29 +7097,33 @@ function renderAlerts(al){
   }
   el("alerts").innerHTML=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
 }
-// Built AFTER the gate passes, from the key in memory — the hrefs exist only
-// in the unlocked DOM, never in the served HTML. The CSV routes accept ?key=
-// precisely because a download link cannot set a header.
+// Built AFTER the gate passes. In a cookie-unlocked session the links are
+// plain hrefs — the cn_admin cookie rides along with the click and no key
+// ever appears in a URL. Only a typed-key session (where the cookie may not
+// have landed yet) falls back to the ?key= form the CSV routes still accept.
 function renderDls(key){
-  var q="?key="+encodeURIComponent(key);
+  var q=key?"?key="+encodeURIComponent(key):"";
   el("dls").innerHTML=[["/api/leads","Leads"],["/api/comp-submissions","Broker submissions"],["/api/comp-corpus","Comp corpus"]]
     .map(function(p){return '<a href="'+p[0]+q+'" download>'+p[1]+' CSV</a>';}).join(" &middot; ");
 }
 function load(key){
   fetch("/api/hq",{headers:{"x-admin-key":key}}).then(function(r){
-    if(r.status===401){throw new Error("Incorrect key.");}
+    // A 401 on the keyless attempt just means "no cookie" — show the gate
+    // without scolding anyone.
+    if(r.status===401){throw new Error(key?"Incorrect key.":"");}
     if(r.status===404){throw new Error("HQ is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){try{sessionStorage.setItem(KEYK,key);}catch(e){}
-    grantAdminAccess(key);render(d);renderAlerts(d.alerts);renderDls(key);
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){}
+    grantAdminAccess(key);}render(d);renderAlerts(d.alerts);renderDls(key);
     el("err").textContent="";el("gate").style.display="none";el("hub").style.display="block";})
   .catch(function(e){el("err").textContent=e.message;
     el("gate").style.display="block";el("hub").style.display="none";});
 }
 el("go").addEventListener("click",function(){load(el("k").value.trim());});
 el("k").addEventListener("keydown",function(e){if(e.key==="Enter")load(e.target.value.trim());});
-try{var sk=sessionStorage.getItem(KEYK);if(sk){load(sk);}}catch(e){}
+// See /admin: no stored key still tries the cn_admin cookie, silently.
+try{var sk=sessionStorage.getItem(KEYK);load(sk||"");}catch(e){load("");}
 </script>
 </body></html>`;
 }
@@ -8433,8 +8444,8 @@ const server = http.createServer((req, res) => {
   // ---------------------------------------------------------------------------
   if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/submissions") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = req.headers["x-admin-key"] || new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    const key = new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     (async () => {
       // The verified layer is DB-only, so review is too — file mode just tells
       // the admin UI to render its "requires Supabase" note.
@@ -8457,7 +8468,7 @@ const server = http.createServer((req, res) => {
     req.on("end", async () => {
       try {
         if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-        if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+        if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
         if (rateLimited("astat:" + clientIp(req), 60)) return sendJson(res, 429, { error: "Too many requests. Please slow down." });
         const { id, status } = JSON.parse(body || "{}");
         const idOk = Number.isInteger(Number(id)) && Number(id) > 0 ? Number(id) : null;
@@ -9247,10 +9258,10 @@ const server = http.createServer((req, res) => {
   // Same gate as /api/stats: 404 with ADMIN_KEY unset, 401 on a bad key. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/devlog") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    // Header-only on the dev endpoints: the page always sends the header, and
-    // a ?key= form would leak the admin key into URLs and access logs. (The
-    // CSV downloads keep ?key= — browser download links can't set headers.)
-    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    // Header or the cn_admin cookie; never ?key=, which would leak the admin
+    // key into URLs and access logs. (The CSV downloads keep ?key= for
+    // machine callers — browser download links ride the cookie instead.)
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
     readDevlogMerged()
       .then((entries) => sendJson(res, 200, { entries }))
       .catch((err) => { console.error("devlog read failed:", err); sendJson(res, 500, { error: "Could not load the changelog." }); });
@@ -9260,7 +9271,7 @@ const server = http.createServer((req, res) => {
   // a real file entry, so junk rows can't accumulate in the overlay.
   if (req.method === "PUT" && req.url.split("?")[0] === "/api/devlog-edit") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
     let body = "";
     req.on("data", (c) => { body += c; if (body.length > 256 * 1024) req.destroy(); });
     req.on("end", async () => {
@@ -9295,7 +9306,7 @@ const server = http.createServer((req, res) => {
   }
   if ((req.method === "GET" || req.method === "PUT") && req.url.split("?")[0] === "/api/dev-ideas") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
     if (req.method === "GET") {
       readDevIdeas()
         .then((ideas) => sendJson(res, 200, { ideas }))
@@ -9356,7 +9367,7 @@ const server = http.createServer((req, res) => {
   if (req.url.split("?")[0] === "/api/contacts" &&
       (req.method === "GET" || req.method === "POST" || req.method === "DELETE")) {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
 
     if (req.method === "GET") {
       readContacts()
@@ -9411,8 +9422,8 @@ const server = http.createServer((req, res) => {
   // admin dashboard. Logging happens regardless; only the view is gated. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/stats") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    const key = req.headers["x-admin-key"] || new URL(req.url, "http://localhost").searchParams.get("key");
-    if (!secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    const key = new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"])
       .then((rows) => sendJson(res, 200, aggregateStats(rows)))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
@@ -9432,11 +9443,11 @@ const server = http.createServer((req, res) => {
 
   // --- HQ: the internal homepage. One aggregate of the three tools' headline
   // numbers. Same gate as /api/stats (404 with ADMIN_KEY unset, 401 on a bad
-  // key) but header-only like the dev endpoints — ?key= stays confined to the
-  // CSV download routes. ---
+  // key): header or the cn_admin cookie, like the dev endpoints — ?key= stays
+  // confined to the CSV download routes. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/hq") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
-    if (!secretMatches(req.headers["x-admin-key"], ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
     hqSnapshot()
       .then((snap) => sendJson(res, 200, snap))
       .catch((err) => { console.error("hq snapshot failed:", err); sendJson(res, 500, { error: "Could not load the overview." }); });

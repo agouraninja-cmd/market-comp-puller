@@ -12,6 +12,37 @@
 
 ---
 
+## STATUS as of 2026-08-05: part 1 shipped, part 2 paused
+
+Tasks 1 through 6 are done and committed. `npm test` is green at 222.
+
+**Tasks 7 and 8 are DEFERRED**, not abandoned. A second Claude session shares
+this checkout and had uncommitted `server.js` work in flight (a timeout /
+idle-watchdog split in `callAnthropicOnce`) at the moment Task 7 needed to edit
+and commit `server.js`. `git add server.js` stages the whole file, so
+committing the streaming work would have swept their half-finished change into
+it. The owner's call was to ship the guest gate on its own and resume streaming
+when the branch is quiet.
+
+Three things to know when you pick this back up:
+
+- **The client half of streaming is already shipped and dormant** (commit
+  `e0310fe`): `readProgressStream` takes an applier, `applyExploreProgress`
+  and the dropdown progress markup exist, and `explore()` already sends
+  `stream: true` and branches on the response content-type. The server simply
+  never answers `text/event-stream` yet, so the JSON branch is always taken.
+  Task 7 is therefore server-only now. Do not redo Tasks 4-6.
+- **Two extra tasks were inserted** and are done: Task 1b fixed `server.js`'s
+  `.env` loader, which was refilling deliberately-cleared env vars and had let
+  `test/routes.test.js` bill two real Anthropic searches; and the rollback test
+  was adapted to `ACCOUNT_WALL`.
+- **`ACCOUNT_WALL` landed on this branch from the other session** (`ef42691`,
+  default ON) and forces the guest limit to 0 regardless of
+  `GUEST_SEARCH_LIMIT`, making `ACCOUNT_WALL` the outer rollback lever. Task 9's
+  CLAUDE.md edit must not contradict whatever that session documents.
+
+---
+
 ## Before you start
 
 Read `CLAUDE.md`. Three rules govern almost every step below:

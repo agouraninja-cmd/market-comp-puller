@@ -7198,6 +7198,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 (function(){
   var $=function(id){return document.getElementById(id)};
   var esc=function(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML};
+  // esc() is only innerHTML-safe: it leaves a literal " untouched, which
+  // breaks out of a quoted attribute. Attribute values built from free text
+  // (the coverage chip's aria-label/title) must go through this instead.
+  // Order matters: esc() first (so a literal & in the text becomes &amp;),
+  // then &quot; the remaining bare double quotes.
+  var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
   var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -7304,7 +7310,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   }
   function renderCoverage(cov){
     $("covRow").innerHTML=cov.length?cov.map(function(c){
-      var label=esc(c.market)+" "+esc(c.property_type);
+      var label=escA(c.market)+" "+escA(c.property_type);
       return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
         ' <button data-cov="'+esc(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
         '" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';

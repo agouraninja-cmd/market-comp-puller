@@ -29,11 +29,13 @@ There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 
 There is one small test suite: `npm test` (`node --test`, no dependencies)
-covers the five pure modules — **`entitlements.js`** (the Pro tier's decision
-table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`** and
-**`corpus-audit.js`** — plus **`test/routes.test.js`**, which boots a real
+covers the six pure modules — **`entitlements.js`** (the Pro tier's decision
+table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`**,
+**`corpus-audit.js`** and **`broker-leads.js`** (the broker lead inbox's
+rules: coverage matching, lead anonymization allowlist, coverage seeding,
+notify dedupe) — plus **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
-routes and not merely correct in isolation (212 tests on 2026-08-05). The
+routes and not merely correct in isolation (231 tests on 2026-08-05). The
 count moves whenever a module is added, and this line has already lagged
 twice, so trust `npm test`'s own summary over the number written here.
 Nothing needs a database, only the routes file starts a server and it calls
@@ -419,7 +421,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
   `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
-  a matching `source` column). Rate-limited per IP.
+  a matching `source` column). Also takes an optional `size_sqft`, cleaned by
+  `LEADSVC.cleanSizeSqft` and written only when present (a conditional spread,
+  so a lead with no size never touches the column — protects the file
+  fallback if migration 015 has not run). A durably-stored (`dest === "db"`)
+  `bov` lead fires a fire-and-forget alert to every broker covering that
+  market + property type: the same four anonymized facts the inbox shows,
+  never the owner's name/email/phone/company/address, throttled to one email
+  per broker/market/hour (`BROKER_ALERT_SUPPRESS`, `BROKER_ALERT_WINDOW_MS`)
+  so a hot market cannot turn one lead into a mail storm. Rate-limited per IP.
 - `POST /api/share` — publishes the current report (`{ data, meta }`) under a
   short random id so the visitor can share the link; returns `{ id, url }`.
   Strips `meta.subject.noi` and `meta.assumptions` `debt`/`rentRoll`/`opex`
@@ -852,6 +862,35 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     Pure and tested (`npm test`, 64 cases).
   - **Every read is scoped by `user_id`**, including the DELETE — without it,
     knowing another broker's upload id would be enough to delete their data.
+- **Broker lead inbox** (v1, 2026-08-05). DDL in
+  `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
+  live in the pure, tested **`broker-leads.js`** (coverage matching, the lead
+  anonymization allowlist, coverage seeding, notify dedupe); server.js owns
+  every read/write and computes `market` with `marketOf()` before calling in.
+  `GET|POST|DELETE /api/broker/coverage` — the broker's list of market +
+  property-type pairs to watch. `GET` lists it; `POST` adds one pair
+  (validated against `LEADSVC.isCanonicalMarket` and `VAULT.PROPERTY_TYPES`,
+  capped at 200); `DELETE?id=` removes one, scoped by `user_id`.
+  `GET /api/broker/leads` — the inbox itself: BOV leads from the last
+  `LEAD_WINDOW_DAYS` (90) days matching the caller's coverage, anonymized to
+  market/type/size/date only (`LEADSVC.anonymizeLead` — name, email, phone,
+  company and street address never leave the handler). **DB-only, no file
+  fallback**: any read error is a 503, because an empty inbox on error would
+  misreport demand as zero. On first open with no coverage rows, seeds
+  coverage from the broker's own approved comp submissions
+  (`LEADSVC.seedCoverageFromSubmissions`); `?noseed=1` skips that reseed so a
+  market a broker just removed stays removed for the rest of the page
+  session. `POST /api/broker/leads/intro` — a broker raising a hand for one
+  lead. Owner-mediated: emails the owner naming the broker, never contacts
+  the property owner and never sends broker PII anywhere it didn't already
+  go. Coverage-gated (mirrors the inbox's same source + window filters, so a
+  broker cannot request an intro to a lead they cannot see) and deduped via
+  `unique(lead_id, user_id)` on `lead_intro_requests` — a repeat request
+  answers `{ ok: true, already: true }` rather than emailing the owner twice.
+  All three routes go through **`requireBroker`**, a deliberate second copy
+  of the vault's `openVault` gate (same three refusals, same order: 401 not
+  signed in, 403 not a broker, 503 no database) — `test/routes.test.js`
+  exists specifically to catch drift between the two copies.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`. The same handler covers `/index.html`,

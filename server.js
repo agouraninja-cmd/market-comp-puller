@@ -8616,6 +8616,110 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Gate for the broker lead inbox routes: signed in (401), broker plan
+  // (403), database up (503) — the same three refusals, in the same order,
+  // as the vault's openVault(). Kept as a second small copy because the
+  // vault's refusal copy names the vault; if a third broker area appears,
+  // fold both into one.
+  const requireBroker = async () => {
+    const user = await requireUser(req, res);
+    if (!user) return null;
+    const ent = await entitlementsFor(req);
+    if (!ent.canUseVault) {
+      sendJson(res, 403, {
+        error: "The lead inbox is part of the broker plan.",
+        code: "broker_required",
+      });
+      return null;
+    }
+    if (!DB_CONFIGURED) {
+      sendJson(res, 503, { error: "The lead inbox is unavailable right now. Please try again in a minute." });
+      return null;
+    }
+    return user;
+  };
+
+  // --- Broker lead inbox: coverage -----------------------------------------
+  // Which market + property-type pairs this broker sees leads for. Seeded
+  // from approved submissions on first inbox open (see /api/broker/leads),
+  // edited here. market is canonicalized with marketOf() and NOWHERE else.
+  if (req.url.split("?")[0] === "/api/broker/coverage") {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await requireBroker();
+        if (!user) return;
+        try {
+          const rows = await sbRequest("GET",
+            `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&select=id,market,property_type,source&order=market.asc&limit=500`);
+          return sendJson(res, 200, { coverage: rows || [] });
+        } catch (err) {
+          console.error("coverage read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your coverage. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage lookup failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await requireBroker();
+          if (!user) return;
+          const { market, property_type } = JSON.parse(body || "{}");
+          const canonical = marketOf(String(market || ""));
+          // marketOf falls back to echoing text with no recognizable state;
+          // require the canonical "City, ST" shape so junk cannot become a
+          // coverage key that matches nothing forever. One tested rule
+          // (broker-leads.js) governs every writer.
+          if (!LEADSVC.isCanonicalMarket(canonical)) {
+            return sendJson(res, 400, { error: 'Enter a market as "City, ST" (for example "Boise, ID").' });
+          }
+          if (!VAULT.PROPERTY_TYPES.includes(String(property_type || ""))) {
+            return sendJson(res, 400, { error: "Unknown property type." });
+          }
+          try {
+            // Plain insert, not an upsert with merge-duplicates: if this
+            // market was already 'earned' from an approved submission, a
+            // re-add here must never flip its source to 'chosen'. A 409 on
+            // an existing row is treated as success and the row is left as
+            // it was found.
+            await sbRequest("POST", "broker_coverage",
+              { user_id: user.id, market: canonical, property_type, source: "chosen" });
+          } catch (err) {
+            // Already covered = success, not an error.
+            if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+          }
+          return sendJson(res, 200, { ok: true, market: canonical });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("coverage add failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that market. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await requireBroker();
+        if (!user) return;
+        const id = new URL(req.url, "http://x").searchParams.get("id") || "";
+        if (!id) return sendJson(res, 400, { error: "Missing id." });
+        try {
+          // Scoped by user_id: nobody deletes another broker's coverage.
+          await sbRequest("DELETE",
+            `broker_coverage?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`);
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error("coverage delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't remove that market. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage update failed." }); });
+      return;
+    }
+  }
+
   // --- Broker vault (v1) ----------------------------------------------------
   //
   // A broker's private comp store. Plan:

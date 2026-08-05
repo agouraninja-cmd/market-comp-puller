@@ -557,7 +557,83 @@ function submissionRowFrom(comp, { creditName: by, email }) {
   };
 }
 
+// --- who may wear the Verified badge ----------------------------------------
+//
+// The badge means "a named broker vouched for this deal". It is the single
+// most trusted provenance the report can show, and — since the broker tier
+// pays brokers in credit rather than cash — it is also the entire currency the
+// tier trades in. A badge that can appear without a broker behind it is worth
+// nothing to the broker who earned theirs.
+//
+// The model is TOLD to set `verified: false` on anything it found by web
+// search. It does not always comply: 16 corpus rows were found badged verified
+// on 2026-08-05 against a grand total of one broker submission ever, mostly
+// Boise and Eagle addresses nobody ever submitted.
+//
+// So this is ENFORCEMENT, deliberately mirroring the source_type rule in
+// server.js's normalizeSourceTypes: prompt rules are requests, normalization
+// is a guarantee. A comp is verified if and only if it matches a comp we
+// actually offered. There is no third way to earn the badge.
+
+const normAddr = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Which offered comp (if any) a returned comp is. The model copies an offered
+ * address faithfully, so exact-or-prefix in either direction ties them
+ * together; the length floor stops "1 " matching half the world.
+ */
+function matchOffered(address, offered) {
+  const a = normAddr(address);
+  if (!a || !Array.isArray(offered)) return null;
+  return offered.find((v) =>
+    v && v.a && (v.a === a ||
+      (v.a.length >= 8 && a.length >= 8 && (a.startsWith(v.a) || v.a.startsWith(a))))) || null;
+}
+
+/**
+ * Force every comp's `verified` flag to the truth, and attribute the ones that
+ * earned it. MUTATES `comps` (the caller owns a freshly parsed report).
+ *
+ * Returns { cleared, kept, citedIds } — `cleared` is how many badges the model
+ * claimed and did not deserve, which is worth logging: it is the only visible
+ * signal that the prompt rule is being ignored.
+ *
+ * Note it runs with an EMPTY `offered` list too, which is the case the old
+ * code returned early on. That early return is exactly how a search with no
+ * broker comps in play — a property type nobody has ever submitted for —
+ * shipped invented badges straight into the corpus.
+ */
+function enforceVerifiedFlags(comps, offered) {
+  const out = { cleared: 0, kept: 0, citedIds: [] };
+  if (!Array.isArray(comps)) return out;
+  const list = Array.isArray(offered) ? offered.filter((v) => v && v.a) : [];
+  const cited = new Set();
+
+  for (const c of comps) {
+    if (!c || typeof c !== "object") continue;
+    if (c.verified !== true) { c.verified = false; continue; }
+    const m = matchOffered(c.address, list);
+    if (!m) {
+      // Claimed but unearned. Clear the attribution too — a stale verified_by
+      // on an unverified comp would still render "via <firm>" beside it.
+      c.verified = false;
+      delete c.verified_by;
+      delete c.verified_by_slug;
+      out.cleared++;
+      continue;
+    }
+    out.kept++;
+    if (m.by) c.verified_by = m.by;
+    if (m.id) cited.add(m.id);
+  }
+  out.citedIds = [...cited];
+  return out;
+}
+
 module.exports = {
+  normAddr,
+  matchOffered,
+  enforceVerifiedFlags,
   canPublish,
   creditName,
   submissionRowFrom,

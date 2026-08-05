@@ -2919,37 +2919,54 @@ async function bumpCitedCounts(ids) {
   }
 }
 
+// The Verified badge is decided here, and ONLY here.
+//
+// It used to only ADD attribution, and it returned early when no broker comps
+// had been offered — so a `verified: true` the model invented was passed
+// straight through, into the report and then into the corpus by harvestComps.
+// That is not hypothetical: on 2026-08-05 the corpus held 16 rows badged
+// verified against one broker submission ever, mostly Boise and Eagle
+// addresses nobody had ever submitted. Aggregate-shaped ones too ("Eagle, ID
+// 83616 (built 1999, 1,173-5,333 SF)").
+//
+// The rule is now absolute and lives in broker-vault.js so `npm test` covers
+// it: a comp is verified if and only if it matches a comp we offered. Same
+// principle as the source_type enforcement in normalizeSourceTypes — prompt
+// rules are requests, normalization is a guarantee — and it matters more here,
+// because the badge is what the broker tier pays brokers IN.
 function attachVerifiedAttribution(parsed, verifiedComps) {
-  if (!parsed || !Array.isArray(parsed.comps) || !verifiedComps || !verifiedComps.length) return parsed;
-  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const offered = verifiedComps
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  const offered = (verifiedComps || [])
     .map((v) => ({
-      a: norm(v.address),
+      a: VAULT.normAddr(v.address),
       by: String(v.broker_company || v.broker_name || "").trim(),
       id: Number(v.id) || null,
       email: String(v.broker_email || "").trim().toLowerCase(),
     }))
     .filter((v) => v.a && v.by);
-  if (!offered.length) return parsed;
-  const citedIds = new Set(); // two returned comps can match one submission
+
+  // Runs even when `offered` is empty — that is the case the early return used
+  // to skip, and the case that produced every bad row above.
+  const res = VAULT.enforceVerifiedFlags(parsed.comps, offered);
+
+  // Public profile → the badge becomes a link. The cache holds only
+  // public=true rows, so presence implies consent. Done here rather than in the
+  // pure module because it reads process state.
   for (const c of parsed.comps) {
     if (!c || c.verified !== true) continue;
-    const ca = norm(c.address);
-    if (!ca) continue;
-    // The model copies the address faithfully, so an exact or prefix match
-    // (either direction, guarded by length) reliably ties it to the submission.
-    const m = offered.find((v) =>
-      v.a === ca || (v.a.length >= 8 && ca.length >= 8 && (ca.startsWith(v.a) || v.a.startsWith(ca))));
-    if (m) {
-      c.verified_by = m.by;
-      if (m.id) citedIds.add(m.id);
-      // Public profile → the badge becomes a link. Cache holds only
-      // public=true rows, so presence implies consent.
-      const prof = BROKER_PROFILES.byEmail[m.email];
-      if (prof) c.verified_by_slug = prof.slug;
-    }
+    const m = VAULT.matchOffered(c.address, offered);
+    const prof = m && BROKER_PROFILES.byEmail[m.email];
+    if (prof) c.verified_by_slug = prof.slug;
   }
-  if (citedIds.size) bumpCitedCounts([...citedIds]).catch(() => {});
+
+  // The only visible signal that the prompt rule is being ignored, and how
+  // often. If this line starts appearing on every report, the prompt needs
+  // work — but the badge is already correct either way.
+  if (res.cleared) {
+    console.log(`⚠ Cleared ${res.cleared} unearned "verified" badge(s) the model claimed` +
+      `${res.kept ? ` (kept ${res.kept} real one(s))` : ""}.`);
+  }
+  if (res.citedIds.length) bumpCitedCounts(res.citedIds).catch(() => {});
   return parsed;
 }
 

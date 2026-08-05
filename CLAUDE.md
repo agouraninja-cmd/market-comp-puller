@@ -40,7 +40,8 @@ Nothing needs a database, only the routes file starts a server and it calls
 nothing external, and the whole run finishes in about a second, so there is
 no excuse for not running it after touching any of those rules.
 Nothing beyond those modules and that route wiring is tested; do not assume a
-green suite means the app works. CI (`.github/workflows/ci.yml`) runs on every push: `node --check` on
+green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
+every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
 `/healthz` — advisory only, since Render deploys main regardless; a red X on
 GitHub Actions means fix or revert now.

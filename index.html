@@ -6111,6 +6111,7 @@
   // automatically on same-origin fetches.
   // ----------------------------------------------------------------------------
   let currentUser = null;           // { email, name } | null
+  let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
   let acctMode = "signin";          // signin | signup | forgot | reset
   let resetToken = "";
@@ -7378,17 +7379,31 @@
     document.getElementById("vaultCard")
       .classList.toggle("hidden", !(canVault && currentUser));
 
-    // Lead count on the card: best-effort, silent on any failure. The server
-    // re-checks canUseVault, so this fetch simply 403s for everyone else.
-    if (proConfig && proConfig.canUseVault) {
+    // Lead count on the card: fetched once per sign-in, not on every
+    // refreshBillingUI call — the checkout-return flow polls this function
+    // roughly six times, and /api/broker/leads has nothing new to say between
+    // those polls. Reset to empty/hidden right here, the same place the card
+    // itself is hidden, and re-arm the once-guard so a later sign-in (a
+    // different broker, or the same one again) fetches fresh instead of
+    // showing whatever the previous session left behind.
+    const vaultLeadsEl = document.getElementById("vaultCardLeads");
+    if (!(canVault && currentUser)) {
+      vaultLeadsFetched = false;
+      vaultLeadsEl.textContent = "";
+      vaultLeadsEl.classList.add("hidden");
+    } else if (!vaultLeadsFetched) {
+      vaultLeadsFetched = true;
+      vaultLeadsEl.textContent = "";
+      vaultLeadsEl.classList.add("hidden");
+      // Best-effort, silent on any failure. The server re-checks
+      // canUseVault, so this fetch simply 403s for everyone else.
       fetch("/api/broker/leads").then((r) => (r.ok ? r.json() : null)).then((j) => {
         if (!j || !Array.isArray(j.leads)) return;
         const n = j.leads.length;
-        const el = document.getElementById("vaultCardLeads");
-        el.textContent = n
-          ? `${n} BOV lead${n === 1 ? "" : "s"} in your markets in the last 90 days.`
+        vaultLeadsEl.textContent = n
+          ? `${n} valuation lead${n === 1 ? "" : "s"} in your markets in the last 90 days.`
           : "";
-        el.classList.toggle("hidden", !n);
+        vaultLeadsEl.classList.toggle("hidden", !n);
       }).catch(() => {});
     }
 

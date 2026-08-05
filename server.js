@@ -7089,12 +7089,13 @@ h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(-
 .btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--edge)}
 .btn.ghost:hover{background:var(--wash);color:var(--ink)}
 .row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
-select{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
+select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink)}
 table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
 th{text-align:left;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer}
-th:hover{color:var(--ink)}
+  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--line);white-space:nowrap}
+th[data-k]{cursor:pointer}
+th[data-k]:hover{color:var(--ink)}
 th .ar{color:var(--red)}
 td{padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--hair);vertical-align:top}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -7167,23 +7168,23 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <div class="empty hide" id="none">Nothing here yet. Upload a spreadsheet above.</div>
     </section>
 
-    <section>
+    <section id="leads">
       <h2>Leads in your markets</h2>
       <p class="sub" style="margin-top:0">Property owners requesting a Broker Opinion of Value
         in markets you cover. Details are anonymized; request an introduction and the
         CompNinja team connects you. Removing every market re-fills the earned ones on your next visit.</p>
       <div class="row" id="covRow"></div>
       <div class="row" style="margin-top:var(--s4)">
-        <input id="covMarket" placeholder="City, ST" style="padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);font-family:inherit;font-size:var(--t5)"/>
-        <select id="covType"></select>
+        <label>Market <input id="covMarket" type="text" placeholder="City, ST"/></label>
+        <label>Type <select id="covType"></select></label>
         <button class="btn ghost" id="covAdd">Watch this market</button>
       </div>
+      <div id="leadMsg"></div>
       <div class="tw"><table>
         <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
         <tbody id="leadRows"></tbody>
       </table></div>
       <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
-      <div id="leadMsg"></div>
     </section>
 
     <section>
@@ -7197,7 +7198,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 (function(){
   var $=function(id){return document.getElementById(id)};
   var esc=function(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML};
-  var comps=[],sortK="deal_date",sortAsc=false;
+  var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -7222,7 +7223,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
         fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
         renderUploads(o.j.uploads||[]);
-        loadLeads();
+        // Loaded once per page visit, not on every filter change/publish/
+        // import-delete that re-runs load() — those all hit /api/vault, a
+        // different endpoint, and re-querying /api/broker/leads on each one
+        // would be wasted work with no new information.
+        if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
         render();
       })
       .catch(function(){ gate('<div class="msg bad">Could not reach the server. Please try again.</div>'); });
@@ -7274,57 +7279,108 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   }
 
   var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Land","Residential"];
-  function loadLeads(){
-    fetch("/api/broker/leads",{credentials:"same-origin"})
+  // noseed=true after a delete: that call must NOT re-earn the market the
+  // broker just removed. A plain page visit (no arg) always reseeds, which is
+  // what the section's own copy promises.
+  function loadLeads(noseed){
+    fetch("/api/broker/leads"+(noseed?"?noseed=1":""),{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
-        if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>"; return; }
+        if(o.s!==200){
+          // No stale rows left on screen under an error message.
+          $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+          $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>";
+          return;
+        }
         $("leadMsg").innerHTML="";
-        renderCoverage(o.j.coverage||[]);
-        renderLeads(o.j.leads||[]);
+        var cov=o.j.coverage||[];
+        renderCoverage(cov);
+        renderLeads(o.j.leads||[],cov.length);
       })
-      .catch(function(){ $("leadMsg").innerHTML='<div class="msg bad">Couldn\\'t load leads. Please try again.</div>'; });
+      .catch(function(){
+        $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+        $("leadMsg").innerHTML='<div class="msg bad">Couldn\\'t load leads. Please try again.</div>';
+      });
   }
   function renderCoverage(cov){
     $("covRow").innerHTML=cov.length?cov.map(function(c){
+      var label=esc(c.market)+" "+esc(c.property_type);
       return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
-        ' <button data-cov="'+esc(c.id)+'" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
+        ' <button data-cov="'+esc(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        '" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
     }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add one below, or submit comps to earn them.</span>';
   }
-  function renderLeads(leads){
-    $("noLeads").className=leads.length?"empty hide":"empty";
+  // covCount lets an empty inbox tell two situations apart: nothing to show
+  // because there is no coverage yet (the covRow hint above already says so,
+  // so #noLeads stays hidden) vs. coverage exists but nothing has come in
+  // (that's the case #noLeads is for).
+  function renderLeads(leads,covCount){
+    var showEmpty=leads.length===0&&covCount>0;
+    $("noLeads").className=showEmpty?"empty":"empty hide";
     $("leadRows").innerHTML=leads.map(function(l){
       var btn=l.intro_requested
         ? '<button class="pubbtn on" disabled>Intro requested</button>'
         : '<button class="pubbtn" data-intro="'+esc(l.id)+'">Request introduction</button>';
       return "<tr><td>"+esc(String(l.ts||"").slice(0,10))+"</td><td>"+esc(l.market)+"</td><td>"+esc(l.type)+
-        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"")+"</td><td>"+btn+"</td></tr>";
+        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"\\u2014")+"</td><td>"+btn+"</td></tr>";
     }).join("");
   }
   $("covType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
+  $("covMarket").addEventListener("keydown",function(e){
+    if(e.key==="Enter"){ e.preventDefault(); $("covAdd").click(); }
+  });
   $("covAdd").addEventListener("click",function(){
+    var b=$("covAdd");
+    b.disabled=true;
     fetch("/api/broker/coverage",{method:"POST",credentials:"same-origin",
       headers:{"content-type":"application/json"},
       body:JSON.stringify({market:$("covMarket").value,property_type:$("covType").value})})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
+        b.disabled=false;
         if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't add that market.")+"</div>"; return; }
         $("covMarket").value=""; loadLeads();
-      });
+      })
+      .catch(function(){ b.disabled=false;
+        $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was added.</div>'; });
   });
   document.addEventListener("click",function(e){
     var cov=e.target.getAttribute&&e.target.getAttribute("data-cov");
-    if(cov){ fetch("/api/broker/coverage?id="+encodeURIComponent(cov),{method:"DELETE",credentials:"same-origin"})
-      .then(function(){loadLeads()}); return; }
+    if(cov){
+      fetch("/api/broker/coverage?id="+encodeURIComponent(cov),{method:"DELETE",credentials:"same-origin"})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that market.")+"</div>"; return; }
+          // noseed: the market just removed must not be re-earned by this
+          // same reload. A full page visit still reseeds it.
+          loadLeads(true);
+        })
+        .catch(function(){ $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+      return;
+    }
     var intro=e.target.getAttribute&&e.target.getAttribute("data-intro");
-    if(intro){ e.target.disabled=true;
+    if(intro){
+      e.target.disabled=true; e.target.textContent="Sending\\u2026";
       fetch("/api/broker/leads/intro",{method:"POST",credentials:"same-origin",
         headers:{"content-type":"application/json"},body:JSON.stringify({lead_id:intro})})
         .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
         .then(function(o){
-          if(o.s!==200){ e.target.disabled=false; $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't send that request.")+"</div>"; return; }
+          if(o.s!==200){
+            // Re-query by selector: loadLeads may have re-rendered this row
+            // (a concurrent click elsewhere) and detached the captured node.
+            var again=document.querySelector('[data-intro="'+intro+'"]');
+            if(again){ again.disabled=false; again.textContent="Request introduction"; }
+            $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't send that request.")+"</div>";
+            return;
+          }
           loadLeads();
-        }); }
+        })
+        .catch(function(){
+          var again=document.querySelector('[data-intro="'+intro+'"]');
+          if(again){ again.disabled=false; again.textContent="Request introduction"; }
+          $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was sent.</div>';
+        });
+    }
   });
 
   function upload(file){
@@ -7369,7 +7425,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   $("drop").addEventListener("drop",function(e){ upload(e.dataTransfer.files[0]) });
   $("fMarket").addEventListener("change",load);
   $("fType").addEventListener("change",load);
-  document.querySelector("thead").addEventListener("click",function(e){
+  document.querySelector("#tbl thead").addEventListener("click",function(e){
     var th=e.target.closest("th[data-k]"); if(!th)return;
     var k=th.getAttribute("data-k");
     if(k===sortK)sortAsc=!sortAsc; else{sortK=k;sortAsc=false;}
@@ -8834,11 +8890,17 @@ const server = http.createServer((req, res) => {
       }
       const user = await requireBroker(req, res);
       if (!user) return;
+      // noseed=1: skip the earn-from-submissions reseed for this call only.
+      // The page's post-delete reload passes it so a market a broker just
+      // removed stays removed for the rest of the session; the vault page's
+      // own copy promises a full visit (a plain reload of /vault, no query
+      // string) re-fills the earned ones, which only the default path does.
+      const noseed = new URL(req.url, "http://localhost").searchParams.get("noseed") === "1";
       try {
         let cov = await sbRequest("GET",
           `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
           `&select=id,market,property_type,source&order=market.asc&limit=500`);
-        if (!cov || !cov.length) {
+        if (!noseed && (!cov || !cov.length)) {
           // First open: earn coverage from approved submissions. Inline, not
           // fetchSubmissionsForEmail: that helper swallows its own errors
           // into [] (fine for a profile page, a lie here — an empty inbox on

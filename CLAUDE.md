@@ -29,15 +29,18 @@ There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 
 There is one small test suite: `npm test` (`node --test`, no dependencies)
-covers the four pure modules — **`entitlements.js`** (the Pro tier's decision
-table), **`comp-gate.js`**, **`stripe.js`**, and **`broker-vault.js`** (170
-tests on 2026-08-05). The count moves whenever a module is added, and this
-line has already lagged twice, so trust `npm test`'s own summary over the
-number written here. It needs no database and no running server, and it
-finishes in well under a second, so there is no excuse for not running it
-after touching any of those rules.
-Nothing else in the repo is tested; do not assume a green suite means the app
-works. CI (`.github/workflows/ci.yml`) runs on every push: `node --check` on
+covers the five pure modules — **`entitlements.js`** (the Pro tier's decision
+table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`** and
+**`corpus-audit.js`** — plus **`test/routes.test.js`**, which boots a real
+server twice as a child process to prove the gates are actually WIRED to the
+routes and not merely correct in isolation (212 tests on 2026-08-05). The
+count moves whenever a module is added, and this line has already lagged
+twice, so trust `npm test`'s own summary over the number written here.
+Nothing needs a database, only the routes file starts a server and it calls
+nothing external, and the whole run finishes in about a second, so there is
+no excuse for not running it after touching any of those rules.
+Nothing beyond those modules and that route wiring is tested; do not assume a
+green suite means the app works. CI (`.github/workflows/ci.yml`) runs on every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
 `/healthz` — advisory only, since Render deploys main regardless; a red X on
 GitHub Actions means fix or revert now.

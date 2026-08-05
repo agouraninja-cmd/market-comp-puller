@@ -411,6 +411,11 @@ const RATE_WINDOW_MAX_MS = 15 * 60 * 1000; // longest window any caller uses —
 const RATE_MAX = 10; // searches per IP per window
 const rateHits = new Map();
 
+// One alert per broker per market+type per hour. In-memory: a restart
+// forgiving the window is fine, a mail storm is not.
+const BROKER_ALERT_SUPPRESS = new Map(); // "userId|market|type" -> lastSentMs
+const BROKER_ALERT_WINDOW_MS = 60 * 60 * 1000;
+
 function clientIp(req) {
   // Hosts like Render sit behind a proxy; the proxy APPENDS the real client to
   // x-forwarded-for, so the last entry is the trustworthy one (earlier entries
@@ -7953,6 +7958,7 @@ const server = http.createServer((req, res) => {
         }
         const { name, email, phone, company, address, type, source, report_url, size_sqft } = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
+        const sizeClean = LEADSVC.cleanSizeSqft(size_sqft);
         const lead = {
           ts: new Date().toISOString(),
           name: clean(name, 120),
@@ -7966,7 +7972,7 @@ const server = http.createServer((req, res) => {
           // an unknown column would 400 EVERY insert into the file fallback;
           // this way only sized leads are exposed to that risk, and
           // migrations/verify.js checks the column exists.
-          ...(LEADSVC.cleanSizeSqft(size_sqft) ? { size_sqft: LEADSVC.cleanSizeSqft(size_sqft) } : {}),
+          ...(sizeClean ? { size_sqft: sizeClean } : {}),
           // "bov" = the owner-mode Broker Opinion of Value request; anything
           // else is the export-unlock form.
           source: ["export", "bov"].includes(source) ? source : "export",
@@ -7987,13 +7993,14 @@ const server = http.createServer((req, res) => {
         }
         const dest = await storeRow("leads", LEADS_FILE, lead);
         console.log(`Lead captured (${dest}): ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
-        logEvent("lead", { source: lead.source, prop_type: lead.type, market: marketOf(lead.address) });
+        const market = marketOf(lead.address);
+        logEvent("lead", { source: lead.source, prop_type: lead.type, market });
         // For a BOV request, surface any brokers who've contributed comps in
         // this market so the owner can connect them — the loop's payoff for the
         // broker. Owner-mediated: the broker isn't contacted automatically.
         let brokerField = [];
         if (lead.source === "bov") {
-          const brokers = await findBrokersForMarket(marketOf(lead.address));
+          const brokers = await findBrokersForMarket(market);
           if (brokers.length) {
             brokerField = [["Brokers active in this market", brokers.map((b) =>
               `${b.broker_name}${b.broker_company ? " (" + b.broker_company + ")" : ""} — ${b.broker_email}${b.broker_phone ? ", " + b.broker_phone : ""}`).join("; ")]];
@@ -8019,22 +8026,33 @@ const server = http.createServer((req, res) => {
         // Fire-and-forget: a DB or mail failure never breaks lead capture.
         // Content is the same four facts the inbox shows — never the owner's
         // name, email, phone, company, or street address.
-        if (lead.source === "bov" && DB_CONFIGURED) {
+        // Gated on dest === "db": the inbox is DB-only, so a lead that fell
+        // back to the local file is invisible there, and mailing brokers
+        // about a lead they can never see would be worse than saying nothing.
+        if (lead.source === "bov" && DB_CONFIGURED && dest === "db") {
           (async () => {
-            const market = marketOf(lead.address);
-            if (!market || !lead.type) return;
+            // A non-canonical market (marketOf's no-state fallback) can never
+            // match a coverage row, so skip the round trip entirely.
+            if (!LEADSVC.isCanonicalMarket(market) || !lead.type) return;
             const cov = await sbRequest("GET",
               `broker_coverage?market=eq.${encodeURIComponent(market)}` +
               `&property_type=eq.${encodeURIComponent(lead.type)}&select=user_id&limit=200`);
             const ids = LEADSVC.notifyTargets(cov);
             if (!ids.length) return;
+            // Not entitlement-checked: a lapsed broker still gets this
+            // anonymized alert and hits the inbox paywall on click-through.
+            // Accepted for v1 as harmless re-subscribe pressure.
             const users = await sbRequest("GET",
               `users?id=in.(${ids.join(",")})&select=id,email`);
             const line = [lead.type, market,
               lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
               .filter(Boolean).join(" · ");
+            const now = Date.now();
             for (const u of users || []) {
               if (!u || !u.email) continue;
+              const suppressKey = `${u.id}|${market}|${lead.type}`;
+              if (now - (BROKER_ALERT_SUPPRESS.get(suppressKey) || 0) < BROKER_ALERT_WINDOW_MS) continue;
+              BROKER_ALERT_SUPPRESS.set(suppressKey, now);
               sendOutboundEmail(u.email, `New BOV request in your market: ${line}`, [
                 `A property owner just requested a Broker Opinion of Value in a market you cover.`,
                 ``,

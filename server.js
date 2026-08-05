@@ -26,6 +26,10 @@ const GATE = require("./comp-gate");
 // Stripe over plain fetch — signature verification and the Stripe->our-row
 // mapping are pure and tested; see stripe.js.
 const STRIPE = require("./stripe");
+// Broker vault imports — reading a broker's spreadsheet into storable rows.
+// Pure and tested, for the same reason as the three above, and with more at
+// stake: a misparsed column is a wrong number in a paying broker's own records.
+const VAULT = require("./broker-vault");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -8140,6 +8144,235 @@ const server = http.createServer((req, res) => {
       }
     });
     return;
+  }
+
+  // --- Broker vault (v1) ----------------------------------------------------
+  //
+  // A broker's private comp store. Plan:
+  // docs/superpowers/plans/2026-08-05-broker-vault-v1.md
+  //
+  // THE PRIVACY WALL: nothing public reads `broker_comps`. Not harvestComps(),
+  // not corpusRowsForMarket(), not maybePublishMarketSnapshot(), not
+  // /api/corpus-comps, not gen-market-seed.js. It is a separate table read only
+  // by the four routes below, and every one of them scopes by user_id. If you
+  // are about to add a "…or broker rows" branch to a corpus query, don't — see
+  // the header of migrations/013-broker-vault.sql for why that leak would be
+  // silent.
+  //
+  // Publishing (step 2) is what will eventually move a comp across, one comp at
+  // a time by explicit broker action. Nothing here writes `published`.
+  if (req.url.split("?")[0].startsWith("/api/vault")) {
+    const path = req.url.split("?")[0];
+
+    // Every vault route answers through this. Three refusals, in order:
+    // not signed in (401), not a broker (403), no database (503).
+    //
+    // The last one is deliberate and is the opposite of what the rest of the
+    // app does. Everywhere else a Supabase failure falls back to a local file
+    // so nothing is lost; here that would be the loss — Render erases its disk
+    // on every deploy, so a broker's uploaded book of business would silently
+    // disappear days later. Refusing the upload is the honest answer.
+    const openVault = async () => {
+      const user = await requireUser(req, res);
+      if (!user) return null;
+      const ent = await entitlementsFor(req);
+      if (!ent.canUseVault) {
+        sendJson(res, 403, {
+          error: "The private vault is part of the broker plan.",
+          code: "broker_required",
+        });
+        return null;
+      }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, {
+          error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+        });
+        return null;
+      }
+      return user;
+    };
+
+    // The template a broker fills in. See the plan's decision 2: we hand them
+    // our column names rather than guessing at theirs, because "Sale Price",
+    // "Price" and "$" all mean the same thing and a wrong guess puts the price
+    // in the size column.
+    if (req.method === "GET" && path === "/api/vault/template") {
+      (async () => {
+        if (!(await openVault())) return;
+        res.writeHead(200, {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": 'attachment; filename="compninja-comp-template.csv"',
+          "x-robots-tag": "noindex, nofollow",
+        });
+        res.end(VAULT.templateCsv());
+      })().catch((err) => {
+        console.error("vault template error:", err.message);
+        sendJson(res, 500, { error: "Could not build the template." });
+      });
+      return;
+    }
+
+    // Upload. The body is JSON carrying the file's text, not multipart — the
+    // browser reads the file with FileReader and posts it. Multipart would be
+    // a few hundred lines of hand-rolled parsing in a repo with no
+    // dependencies, to solve a problem we do not have.
+    if (req.method === "POST" && path === "/api/vault/upload") {
+      let body = "";
+      let tooBig = false;
+      // ~8MB of text. A 5,000-row comp sheet is well under 1MB; this is a
+      // runaway guard, not a product limit (the real cap is row-based and
+      // lives in broker-vault.js so it can be tested).
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 8e6 && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultup:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
+          }
+
+          const { filename, csv } = JSON.parse(body || "{}");
+          const parsed = VAULT.parseUpload(csv);
+          // Nothing usable: report why and write NOTHING, so a wrong-file
+          // mistake does not leave an empty batch behind.
+          if (!parsed.ok) {
+            return sendJson(res, 400, {
+              error: parsed.errors[0] || "Nothing in that file could be imported.",
+              errors: parsed.errors,
+              total: parsed.total,
+              skipped: parsed.skipped,
+            });
+          }
+
+          // The batch row first, so every comp can point at it and a bad import
+          // is one delete rather than forty.
+          const batch = await sbRequest("POST", "broker_uploads",
+            [{
+              user_id: user.id,
+              filename: String(filename || "").trim().slice(0, 200),
+              row_count: parsed.rows.length,
+              skipped_count: parsed.skipped,
+            }],
+            { prefer: "return=representation" });
+          const uploadId = batch && batch[0] && batch[0].id;
+          if (!uploadId) throw new Error("broker_uploads insert returned no id");
+
+          // `market` is attached HERE, with server.js's own marketOf() and no
+          // other parse, so broker_comps.market agrees byte for byte with
+          // comp_corpus.market. broker-vault.js deliberately does not compute
+          // it — a second copy of that parse is a second thing to keep in sync.
+          const rows = parsed.rows.map((r) => ({
+            ...r,
+            user_id: user.id,
+            upload_id: uploadId,
+            market: marketOf(r.address) || "",
+          }));
+
+          // ignore-duplicates: re-importing an overlapping spreadsheet is
+          // normal, and the second copy of a deal is a no-op rather than an
+          // error. The unique (user_id, dedupe_key) constraint is what makes
+          // this exact.
+          await sbRequest("POST", "broker_comps?on_conflict=user_id,dedupe_key",
+            rows, { prefer: "resolution=ignore-duplicates,return=minimal" });
+
+          console.log(`Vault import: ${parsed.rows.length} comp(s) for user ${user.id}` +
+            `${parsed.skipped ? `, ${parsed.skipped} skipped` : ""}` +
+            `${parsed.duplicates ? `, ${parsed.duplicates} duplicate(s) in file` : ""}`);
+
+          return sendJson(res, 200, {
+            ok: true,
+            uploadId,
+            imported: parsed.rows.length,
+            total: parsed.total,
+            skipped: parsed.skipped,
+            duplicates: parsed.duplicates,
+            errors: parsed.errors,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault upload failed:", err.message);
+          return sendJson(res, 502, {
+            error: "That import could not be saved — nothing was stored. Please try again.",
+          });
+        }
+      });
+      return;
+    }
+
+    // The dashboard's read. Filters by market and by property type are the
+    // "sortable by property and by market" promise from Ecosystem Plan §3.
+    if (req.method === "GET" && path === "/api/vault") {
+      (async () => {
+        const user = await openVault();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
+        const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
+        const market = (q.get("market") || "").trim().slice(0, 80);
+        const type = (q.get("type") || "").trim().slice(0, 40);
+
+        // Scoped by user_id FIRST and always. One broker must not see another
+        // broker's vault any more than the public may.
+        let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
+        if (market) query += `&market=eq.${encodeURIComponent(market)}`;
+        if (type && VAULT.PROPERTY_TYPES.includes(type)) {
+          query += `&property_type=eq.${encodeURIComponent(type)}`;
+        }
+        query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
+
+        const [comps, uploads] = await Promise.all([
+          sbRequest("GET", query),
+          sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&order=created_at.desc&limit=100`),
+        ]);
+        const rows = comps || [];
+
+        return sendJson(res, 200, {
+          comps: rows,
+          uploads: uploads || [],
+          // The header line: "N comps · 0 published · visible only to you".
+          // The published count is the trust proof the whole tier rests on, so
+          // it is counted from the rows rather than assumed to be zero.
+          counts: {
+            returned: rows.length,
+            published: rows.filter((r) => r.published).length,
+          },
+          markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
+          types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
+        });
+      })().catch((err) => {
+        console.error("vault read failed:", err.message);
+        sendJson(res, 502, { error: "Could not load your vault. Please try again." });
+      });
+      return;
+    }
+
+    // Undo one import. The comps cascade with the batch row.
+    if (req.method === "DELETE" && path === "/api/vault/upload") {
+      (async () => {
+        const user = await openVault();
+        if (!user) return;
+        const id = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which import?" });
+        // user_id in the filter, not just the id: without it, knowing another
+        // broker's upload id would be enough to delete their data.
+        await sbRequest("DELETE",
+          `broker_uploads?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+          undefined, { prefer: "return=minimal" });
+        console.log(`Vault import ${id} removed by user ${user.id}`);
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("vault delete failed:", err.message);
+        sendJson(res, 502, { error: "Could not remove that import. Please try again." });
+      });
+      return;
+    }
+
+    return sendJson(res, 404, { error: "Not found." });
   }
 
   // --- Geocode proxy. The model's lat/lng values are block-level guesses, so

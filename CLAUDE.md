@@ -812,6 +812,39 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Enforce it with **separate tables read by separate functions**, not a
   `private` column filtered in the corpus queries — the corpus read path
   swallows its own errors, so one missed filter would leak silently.
+- **Broker vault** (v1 server side, 2026-08-05; no UI yet). `GET|POST|DELETE
+  /api/vault*` — the broker's private comp store. DDL in
+  `migrations/013-broker-vault.sql` (**run before deploying**); plan in
+  `docs/superpowers/plans/2026-08-05-broker-vault-v1.md`. Routes:
+  `GET /api/vault/template` (the CSV a broker fills in), `POST
+  /api/vault/upload` (JSON `{filename, csv}` — deliberately not multipart,
+  which would be hundreds of lines of hand-rolled parsing in a repo with no
+  dependencies), `GET /api/vault` (filters by `market` and `type`), and
+  `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
+  All four go through one `openVault()` helper: 401 not signed in → 403 not a
+  broker (`canUseVault`) → 503 no database.
+  - **That 503 is the opposite of the rest of the app, deliberately.**
+    Everywhere else a Supabase failure falls back to a local file so nothing is
+    lost. Here the file WOULD be the loss — Render erases its disk on every
+    deploy, so a broker's uploaded book of business would silently vanish days
+    later. The vault has **no file fallback**; it refuses instead.
+  - **`market` is attached in server.js with `marketOf()`, never in
+    `broker-vault.js`.** It has to agree byte for byte with `comp_corpus.market`
+    so a comp published in step 2 needs no translation, and a second copy of
+    that parse would be a second thing to keep in sync (the repo already has
+    one such pair — `compWeight` — and it carries a ⚠).
+  - **`dedupe_key` is an explicit column**, like `comp_corpus`'s, not a
+    multi-column unique constraint. Postgres compares NULLs as DISTINCT, so
+    `unique (user_id, address_key, deal_date, price)` would let an *unpriced*
+    comp (explicitly allowed — brokers track undisclosed deals) re-import
+    without limit on every upload.
+  - **`broker-vault.js` rejects rather than guesses.** "1.2M", a bare number as
+    a date (Excel's serial), and day-first dates are all refused with a line
+    number rather than stored as a best effort — a wrong number in a broker's
+    own records is worse than a rejected row, because nobody will notice it.
+    Pure and tested (`npm test`, ~44 cases).
+  - **Every read is scoped by `user_id`**, including the DELETE — without it,
+    knowing another broker's upload id would be enough to delete their data.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`. The same handler covers `/index.html`,

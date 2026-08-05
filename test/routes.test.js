@@ -197,6 +197,26 @@ test("admin gating", async (t) => {
 // No Anthropic call is possible here: the bare environment has no API key, so
 // a request that clears the gate stops at the missing-key 500. That distinct
 // status is exactly how "got past the gate" is observed.
+
+// Pick a market this deployment does NOT already cover. A covered market is
+// short-circuited free ABOVE the gate (deliberately — it is a DB read), so a
+// hard-coded city makes the gate untestable the moment anything covers it:
+// a seed addition, or the git-ignored market-pages-dynamic.json that local
+// testing leaves behind on a developer machine.
+async function uncoveredMarket(base) {
+  const covered = new Set(
+    (await (await fetch(base + "/api/markets")).json())
+      .map((m) => `${m.type}|${m.city}|${m.state}`));
+  const pick = [
+    { type: "Industrial", city: "Nampa", state: "ID" },
+    { type: "Office", city: "Sheridan", state: "WY" },
+    { type: "Retail", city: "Bismarck", state: "ND" },
+    { type: "Multifamily", city: "Presque Isle", state: "ME" },
+  ].find((c) => !covered.has(`${c.type}|${c.city}|${c.state}`));
+  assert.ok(pick, "every candidate market is already covered — add another to this list");
+  return pick;
+}
+
 test("market explorer guest cap", async (t) => {
   // limit 0 = every anonymous visitor is blocked before any search, which
   // makes the gate observable without having to spend a quota first.
@@ -210,7 +230,7 @@ test("market explorer guest cap", async (t) => {
   });
 
   await t.test("an anonymous visitor cannot bill a new market search", async () => {
-    const r = await explore({ type: "Industrial", city: "Nampa", state: "ID" });
+    const r = await explore(await uncoveredMarket(base));
     assert.equal(r.status, 403);
     const j = await r.json();
     // The client keys off this flag, never off the status code — it decides
@@ -236,10 +256,11 @@ test("market explorer with the guest gate disabled", async (t) => {
   t.after(stop);
 
   await t.test("the rollback lever really disables the gate", async () => {
+    const m = await uncoveredMarket(base);
     const r = await fetch(base + "/api/explore-market", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "Industrial", city: "Nampa", state: "ID" }),
+      body: JSON.stringify(m),
     });
     // Past the gate, stopped by the absent API key — never 403.
     assert.equal(r.status, 500);

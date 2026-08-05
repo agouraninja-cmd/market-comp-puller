@@ -254,7 +254,13 @@ test("market explorer guest cap", async (t) => {
 });
 
 test("market explorer with the guest gate disabled", async (t) => {
-  const { base, stop } = await boot({ GUEST_SEARCH_LIMIT: "off" });
+  // BOTH levers, and the order matters. ACCOUNT_WALL (added 2026-08-05,
+  // default ON) forces GUEST_LIMIT_RAW to "0" whatever GUEST_SEARCH_LIMIT
+  // says, deliberately, so the wall and the API gate can never disagree.
+  // That makes ACCOUNT_WALL the outer lever: with the wall up,
+  // GUEST_SEARCH_LIMIT="off" alone disables nothing. Rolling the gate back
+  // now means dropping the wall first.
+  const { base, stop } = await boot({ ACCOUNT_WALL: "off", GUEST_SEARCH_LIMIT: "off" });
   t.after(stop);
 
   await t.test("the rollback lever really disables the gate", async () => {

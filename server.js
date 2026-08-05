@@ -3863,11 +3863,17 @@ footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
 footer li a{text-decoration:none;color:#B8C0CC}
+/* Grouped link columns — the flat list had grown long enough that the footer
+   became the tallest block on the page. Wraps on narrow screens so three
+   groups never push past 375px. Mirrored in HOW_CSS and in index.html's
+   footer; keep the three in step. */
+footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
   footer .wrap{flex-direction:row}
-  footer .right{text-align:right;flex-shrink:0}
+  footer .right{flex-shrink:0}
 }
 `;
 
@@ -4166,13 +4172,19 @@ const MARKET_FOOTER =
   `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
+  `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
   `<p>&copy; 2026 CompNinja LLC</p></div>` +
-  `<div class="right"><a href="mailto:info@compninja.co">info@compninja.co</a>` +
-  `<ul><li><a href="/markets">Markets</a></li><li><a href="/brokers">Brokers</a></li>` +
+  `<div class="right"><div class="cols">` +
+  `<div><div class="ch">Explore</div>` +
+  `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
+  `<li><a href="/brokers">Brokers</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
-  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li>` +
-  `<li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul></div>` +
-  `</div></footer>`;
+  `<li><a href="/how-it-works#faq">FAQ</a></li>` +
+  `<li><a href="/">Run a report</a></li></ul></div>` +
+  `<div><div class="ch">Company</div>` +
+  `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
+  `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
 // stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
@@ -4667,6 +4679,12 @@ footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
 footer li a{text-decoration:none;color:#B8C0CC}
+/* Grouped link columns — the flat list had grown long enough that the footer
+   became the tallest block on the page. Wraps on narrow screens so three
+   groups never push past 375px. Mirrored in HOW_CSS and in index.html's
+   footer; keep the three in step. */
+footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .stats{grid-template-columns:repeat(4,1fr)}
@@ -4677,7 +4695,7 @@ footer li a{text-decoration:none;color:#B8C0CC}
   .step:last-child{border-right:0}
   h1.h{font-size:42px}
   footer .wrap{flex-direction:row}
-  footer .right{text-align:right;flex-shrink:0}
+  footer .right{flex-shrink:0}
 }
 @media (min-width:1024px){
   .exrow{flex-direction:row}
@@ -5146,19 +5164,29 @@ function renderHowItWorksHTML() {
       <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
         connect you with local brokers for opinions of value. Comparables derive from publicly available data;
         verify independently before underwriting.</p>
+      <p><a href="mailto:info@compninja.co">info@compninja.co</a></p>
       <p>&copy; 2026 CompNinja LLC</p>
     </div>
     <div class="right">
-      <a href="mailto:info@compninja.co">info@compninja.co</a>
-      <ul>
-        <li><a href="/markets">Markets</a></li>
-        <li><a href="/brokers">Brokers</a></li>
-        <li><a href="/how-it-works">How it works</a></li>
-        <li><a href="/how-it-works#faq">FAQ</a></li>
-        <li><a href="/">Run a report</a></li>
-        <li><a href="/terms">Terms</a></li>
-        <li><a href="/privacy">Privacy</a></li>
-      </ul>
+      <div class="cols">
+        <div>
+          <div class="ch">Explore</div>
+          <ul aria-label="Explore">
+            <li><a href="/markets">Markets</a></li>
+            <li><a href="/brokers">Brokers</a></li>
+            <li><a href="/how-it-works">How it works</a></li>
+            <li><a href="/how-it-works#faq">FAQ</a></li>
+            <li><a href="/">Run a report</a></li>
+          </ul>
+        </div>
+        <div>
+          <div class="ch">Company</div>
+          <ul aria-label="Company">
+            <li><a href="/terms">Terms</a></li>
+            <li><a href="/privacy">Privacy</a></li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </footer>`;

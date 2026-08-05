@@ -8070,6 +8070,7 @@ const server = http.createServer((req, res) => {
         const { name, email, phone, company, address, type, source, report_url, size_sqft } = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
         const sizeClean = LEADSVC.cleanSizeSqft(size_sqft);
+        const typeClean = clean(type, 40);
         const lead = {
           ts: new Date().toISOString(),
           name: clean(name, 120),
@@ -8081,7 +8082,7 @@ const server = http.createServer((req, res) => {
           // "industrial" from a stray client path) is not invisible to
           // every broker's coverage match forever. Junk that matches nothing
           // keeps its raw cleaned value — unchanged for analytics/CSV.
-          type: VAULT.PROPERTY_TYPES.find((t) => t.toLowerCase() === clean(type, 40).toLowerCase()) || clean(type, 40),
+          type: VAULT.PROPERTY_TYPES.find((t) => t.toLowerCase() === typeClean.toLowerCase()) || typeClean,
           // Optional building size for the broker-facing anonymized lead
           // card. Spread only when present: if migration 015 has not run,
           // an unknown column would 400 EVERY insert into the file fallback;
@@ -8841,12 +8842,18 @@ const server = http.createServer((req, res) => {
           // First open: earn coverage from approved submissions. Inline, not
           // fetchSubmissionsForEmail: that helper swallows its own errors
           // into [] (fine for a profile page, a lie here — an empty inbox on
-          // error must 503, per the header comment), and its global
-          // limit-then-filter loses early contributors as the table grows.
-          const subs = ((await sbRequest("GET",
+          // error must 503, per the header comment). Querying status=eq.approved
+          // directly also narrows the population to approved-only up front and
+          // gains its own tripwire below — it does NOT fully fix the
+          // limit-then-filter shape: server-side eq/ilike matching on
+          // broker_email is unsafe here (the column is stored as typed, and
+          // ilike wildcards on "_"), so the email filter still runs client-side
+          // over whatever page the limit returns.
+          const subs0 = (await sbRequest("GET",
             "comp_submissions?status=eq.approved&order=ts.desc&limit=500" +
-            "&select=status,broker_email,address,property_type")) || [])
-            .filter((s) => String(s.broker_email || "").trim().toLowerCase() === String(user.email).toLowerCase());
+            "&select=status,broker_email,address,property_type")) || [];
+          if (subs0.length === 500) console.warn("broker coverage seeding: hit the 500-row approved-submissions cap — early contributors may seed no coverage");
+          const subs = subs0.filter((s) => String(s.broker_email || "").trim().toLowerCase() === String(user.email).toLowerCase());
           const seeds = LEADSVC.seedCoverageFromSubmissions(
             subs.map((s) => ({ market: marketOf(s.address), property_type: s.property_type })));
           if (seeds.length) {
@@ -8910,8 +8917,9 @@ const server = http.createServer((req, res) => {
         const user = await requireBroker(req, res);
         if (!user) return;
         const leadId = String(JSON.parse(body || "{}").lead_id || "");
-        if (!leadId) return sendJson(res, 400, { error: "Missing lead_id." });
-        // leads.id is bigint; reject anything else before touching the DB.
+        // leads.id is bigint; reject anything else (including empty) before
+        // touching the DB — the regex already fails on "", so a separate
+        // emptiness check is dead code.
         if (!/^\d+$/.test(leadId)) return sendJson(res, 400, { error: "Missing lead_id." });
         const lead = ((await sbRequest("GET",
           `leads?id=eq.${encodeURIComponent(leadId)}&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];

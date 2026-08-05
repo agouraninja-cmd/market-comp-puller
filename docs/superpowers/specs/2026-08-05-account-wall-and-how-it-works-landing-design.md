@@ -204,3 +204,43 @@ the site became account-only and that `ACCOUNT_WALL=off` reverses it.
 3. If the trade lands badly, set `ACCOUNT_WALL=off` in Render. No redeploy, no
    code change, and the sitemap and guest cap both return to their previous
    behaviour on restart.
+
+### Pulling the lever re-opens a known race
+
+`ACCOUNT_WALL=off` also restores a latent double-spend window in the guest cap.
+`guestGateFor()` reads the visitor's `used` count at the *start* of a request,
+but `consumeGuestSearchFor()` writes the incremented count only *after* the
+billed Anthropic call returns, 40 to 70 seconds later. Concurrent anonymous
+requests therefore all pass the gate before any consumption lands, and each
+spends a billed search against a one-search allowance.
+
+The wall does not fix this, it makes it unreachable: at a forced limit of 0,
+`used >= 0` is always true, every anonymous request is refused at the gate, and
+the consumption path never runs. The window exists only while the limit is 1 or
+more, which is to say only with this lever off.
+
+Judged not worth fixing on 2026-08-05, on these bounds:
+
+- `rateLimited(clientIp(req))` runs *before* the gate on `/api/comps` and is
+  synchronous (it pushes then checks), so a burst is capped at 10 per IP per 5
+  minutes.
+- Every winner writes `used = gate.used + 1 = 1` and sets `cn_guest`, so the
+  burst is one-shot per IP rather than a repeatable well.
+- `DAILY_SEARCH_CAP` still bounds total spend, unchanged.
+
+**Do not fix it by reserving on gate pass and releasing on failure.** A durable
+reservation held across a 40-to-70-second call leaks on any restart, redeploy,
+or missed release path, and a leaked reservation permanently burns an honest
+visitor's free search. That is the exact rule the guest cap is built to protect
+("a failed or refused search must never burn the visitor's free one"), and
+Render redeploys on every push to `main`, so the leak is not hypothetical. It
+trades a rare overspend for a rare silent failure of the signup funnel, which is
+the more expensive direction.
+
+The shape that does fit, if it is ever wanted: an in-memory in-flight `Set`
+keyed by `ipHash`, released in a `finally`. No durable write, so a crash
+releases it by definition. It matches the existing `exploreInFlight` pattern and
+the single-instance assumption already documented above `recordGuestSearch`. The
+open question is user-facing rather than technical, since it changes the gate
+from "have you used it" to "are you using it", and telling a second tab "You've
+used your free search" when they have not yet is its own small wrong.

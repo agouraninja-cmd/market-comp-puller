@@ -30,6 +30,13 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+// Corpus audit — the structural integrity rules for the comp corpus. It also
+// owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
+// which USED to live inline below: the audit has to detect rows that predate a
+// tightening of that rule, and a second copy would be one more mirrored pair to
+// keep in sync (this repo already carries one, compWeight, and it has a ⚠).
+const AUDIT = require("./corpus-audit");
+const { isAggregateAddress } = AUDIT;
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -1453,6 +1460,41 @@ async function corpusRowsForMarket(market, property_type, limit) {
     .slice(0, limit);
 }
 
+// Whole-corpus read for the audit: no market or type filter, newest first,
+// hard-capped. Selects only the columns the audit reads, deliberately NOT
+// ALL_TYPE_COMP_FIELDS — a missing per-type column is exactly what froze the
+// corpus for weeks in July, and the integrity report is the last thing that
+// should go dark when that happens again.
+async function readCorpusRowsForAudit(limit) {
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        "comp_corpus?select=ts,market,property_type,address,deal_date," +
+        `price_or_rate,price_per_sqft,source_url,source_type&order=ts.desc&limit=${limit}`) || [];
+    } catch (e) { noteCorpusFailure("read", e); }
+  }
+  const fileRows = await readRowsFromFile(COMP_CORPUS_FILE);
+  return [...dbRows, ...fileRows].slice(0, limit);
+}
+
+// Memoized 60s, following /api/pricing: this is a whole-table read, and
+// /admin is refreshed by hand rather than polled.
+const CORPUS_AUDIT_LIMIT = 2000;
+let CORPUS_AUDIT_CACHE = { at: 0, data: null };
+async function corpusAuditReport() {
+  if (CORPUS_AUDIT_CACHE.data && Date.now() - CORPUS_AUDIT_CACHE.at < 60_000) {
+    return CORPUS_AUDIT_CACHE.data;
+  }
+  const rows = await readCorpusRowsForAudit(CORPUS_AUDIT_LIMIT);
+  // parseDealDate is INJECTED rather than reimplemented so the audit and
+  // corpus-first retrieval can never disagree about what counts as a usable
+  // date. A row this call flags is exactly a row retrieval cannot see.
+  const data = AUDIT.auditCorpus(rows, { now: Date.now(), parseDealDate });
+  CORPUS_AUDIT_CACHE = { at: Date.now(), data };
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Corpus-first retrieval (cost saver). On a cache miss, before paying for a
 // fresh web search, pull comps we already harvested for this market+type. When
@@ -2087,18 +2129,11 @@ let corpusSeenSeeded = false;
 // the model sometimes pads the comp list with rows like "Pittsburgh Metro
 // Multifamily - Market Median Benchmark".
 //
-// Deliberately keyed on aggregate VOCABULARY, not on address shape: plenty of
-// genuine small multifamily and retail comps are listed without a street
-// number ("Highland Park Triplex, Pittsburgh, PA 15206", "Swissvale Triplex
-// (near Edgewood Town Center)"), so requiring one would discard real data.
-// Street names survive too — "123 Market St" has no aggregate word, while
-// "Market Median" does.
-const AGGREGATE_ADDRESS_RE =
-  /\b(benchmark|median|average|avg|composite|index|market (report|data|summary|stats?|statistics)|year[\s-]end (summary|report))\b/i;
-
-function isAggregateAddress(address) {
-  return AGGREGATE_ADDRESS_RE.test(String(address || ""));
-}
+// isAggregateAddress now lives in corpus-audit.js (imported at the top of this
+// file) so the live normalization and the audit share ONE copy of the rule.
+// The reasoning behind it is preserved there: it is keyed on aggregate
+// VOCABULARY rather than address shape, because genuine small multifamily and
+// retail comps are often listed without a street number.
 
 function corpusKeyOf(c) {
   const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -2753,31 +2788,22 @@ function stripEmDashes(value) {
 // source_type drives a trust badge and lands in CSV exports, so stray model
 // values are coerced onto the enum. Unknown maps to "estimate": the label may
 // under-claim a comp's provenance, never over-claim it.
-const SOURCE_TYPES = ["public_record", "listing", "news", "estimate"];
+// Both halves of the rule (coerce onto the enum, then ENFORCE the
+// individual-property requirement) live in corpus-audit.js as
+// enforcedSourceType. The enforcement matters as much as the coercion: the
+// prompt already forbids market-level rows as comps, but in thin markets the
+// model pads anyway (a Boston report shipped "Financial District (general
+// submarket estimate)" rows claiming listing provenance), and a prompt rule is
+// a request while normalization is a guarantee.
+//
+// It is shared with the audit rather than duplicated so the audit can flag
+// rows harvested BEFORE a tightening of this rule — the corpus has them, and
+// corpus-first retrieval still serves them.
 function normalizeSourceTypes(parsed) {
   if (!parsed || !Array.isArray(parsed.comps)) return parsed;
   for (const c of parsed.comps) {
     if (!c || typeof c !== "object") continue;
-    const raw = String(c.source_type || "").toLowerCase();
-    c.source_type =
-      SOURCE_TYPES.find((t) => raw === t) ||
-      (/record|assessor|deed|tax|county|public/.test(raw) ? "public_record"
-        : /list|broker|flyer|loopnet|crexi|costar/.test(raw) ? "listing"
-        : /news|article|press|announc/.test(raw) ? "news"
-        : "estimate");
-    // ENFORCEMENT, not just prompting: the prompt already forbids market-
-    // level rows as comps, but in thin markets the model pads anyway (a
-    // Boston report shipped "Financial District (general submarket
-    // estimate)" rows claiming listing provenance). A comp whose address
-    // has no leading street number, or that names a statistic, cannot be
-    // one verifiable transaction — force its badge to "estimate" so the
-    // report can never present a submarket guess as a sourced deal. Same
-    // under-claim principle as above; the Verified badge (broker-matched,
-    // separate flag) is unaffected.
-    if (c.source_type !== "estimate" &&
-        (!/^\s*\d+\s+\S/.test(String(c.address || "")) || isAggregateAddress(c.address))) {
-      c.source_type = "estimate";
-    }
+    c.source_type = AUDIT.enforcedSourceType(c.source_type, c.address);
   }
   return parsed;
 }
@@ -5545,6 +5571,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">View analytics</button><div id="err" class="err"></div></div>
 <div id="dash" style="display:none"></div>
+<div id="auditPanel"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -5696,6 +5723,42 @@ function renderSubs(d,key){
     });
   });
 }
+// Corpus integrity. Neutral ink even at a low score: red is reserved on this
+// page for the two outright-failure banners (upstream down, corpus not
+// persisting). This reports a standing condition, not an outage.
+var AUDIT_LABELS={weak_citation:"Citation does not name the property",
+  badge_drift:"Badge stronger than today's rule allows",
+  shared_citation:"Same source cited by different addresses",
+  unparseable_date:"Date will not parse, so retrieval cannot see it",
+  no_price:"No usable price"};
+function renderAudit(d){
+  var el=document.getElementById("auditPanel");
+  if(!d||d.error){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>Unavailable right now — the corpus could not be read. Nothing else on this page is affected.</p></div>";return;}
+  if(!d.total){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>No corpus rows yet.</p></div>";return;}
+  var f=d.findings||{},h=d.hosts||{};
+  var lines=Object.keys(AUDIT_LABELS).map(function(k){
+    return "<p class=muted>"+esc(f[k]||0)+" &middot; "+esc(AUDIT_LABELS[k])+"</p>";}).join("");
+  var rows=(d.worst||[]).map(function(w){
+    return "<p class=muted style='word-break:break-word'><b>"+esc(w.address)+"</b> ("+
+      esc(w.property_type||"?")+", badge "+esc(w.source_type||"?")+")<br>"+
+      esc((w.findings||[]).join(", "))+"<br>"+esc(w.source_url)+"</p>";}).join("");
+  el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p><b>"+Math.round(d.score*100)+"%</b> of "+esc(d.total)+" rows carry no structural finding.</p>"+
+    "<p class=muted>This measures CITATION quality, not accuracy. It checks that a comp's source link "+
+    "names the property; it never reads the page, and it is not the 90% accuracy gate.</p>"+
+    lines+
+    "<p class=muted>"+esc(h.blocked||0)+" of "+esc(d.total)+" rows cite hosts that block automated reading. "+
+    "That is context only and does not affect the score.</p>"+
+    (rows?"<h2 style='margin-top:12px'>Worst rows</h2>"+rows:"");
+}
+function loadAudit(key){
+  fetch("/api/corpus-audit",{headers:{"x-admin-key":key}})
+    .then(function(r){if(!r.ok){throw new Error("audit "+r.status);}return r.json();})
+    .then(renderAudit)
+    .catch(function(e){console.error(e);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -5710,7 +5773,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -7489,42 +7552,58 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
   font-size:var(--t4);font-family:inherit;cursor:pointer}
 .gate button:hover{background:var(--red-deep)}
 .err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
+/* HQ is a DASHBOARD, so it takes /admin's 1024px measure rather than /dev's
+   820px reading measure. Declared here (not at the .wrap rule above) only
+   because that rule is byte-identical to /contacts' and the later declaration
+   wins by cascade order. */
+.wrap{max-width:1024px}
 #hub{margin-top:var(--s8)}
-.card{background:none;border:0;border-radius:0;padding:0;margin:0}
-.card+.card{margin-top:var(--s8);border-top:1px solid var(--line);padding-top:var(--s7)}
+/* One card left (Downloads), so the rule that used to separate two cards is
+   folded into .card itself. */
+.card{background:none;border:0;border-radius:0;margin:var(--s8) 0 0;
+  border-top:1px solid var(--line);padding:var(--s7) 0 0}
 .card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);
-  text-transform:none;margin:0 0 var(--s6)}
-/* One tool per spined row, like /dev's dated entries: the tool's name sits in
-   the margin column, its figure in the text column. */
-.tool{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
-.tool+.tool{border-top:1px solid var(--hair)}
-/* Ink like /dev's spine (.day-date / .bucket-h), red only on hover — the same
-   quiet-link treatment this page's own header nav uses. Four red serif names
-   stacked in the margin out-shouted the numbers they label. --s2 (not --s1)
-   sets the name's cap height level with the 32px figure beside it. */
-.tool-name{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);color:var(--ink);
-  line-height:1.35;padding-top:var(--s2)}
-.tool-name:hover{color:var(--red)}
-.tool-body{grid-column:2;min-width:0}
-/* The figure leads the row: the numeral at figure size in serif, its unit
-   words riding the same baseline at body size. Every row therefore starts
-   with a numeral at the same x, so the four read as a column instead of as
-   four similar sentences. --t1 serif is already the house's "this is a
-   figure" treatment (/admin's .tile .v), so the two pages agree.
-   .na is the honest unknown: no orphaned 32px dash, just the reason. */
-.tool-num{font-size:var(--t4);color:var(--ink);line-height:1.2}
-.tool-num .n{font-family:var(--serif);font-size:var(--t1);color:var(--ink);
-  font-variant-numeric:tabular-nums;margin-right:var(--s3)}
-.tool-num.na{font-size:var(--t3);color:var(--ink-3)}
-/* Two supporting lines, never one dot-chain: .tool-sub is scoped to the figure
-   directly above it, .tool-note carries standing totals and anything awaiting
-   a human, so a week figure and an all-time figure never share a sentence.
-   66ch is /dev's .entry-details measure. */
-.tool-sub{color:var(--ink-2);font-size:var(--t5);line-height:1.5;margin-top:var(--s3);
-  max-width:66ch;overflow-wrap:anywhere}
-.tool-note{color:var(--ink-3);font-size:var(--t5);line-height:1.5;margin-top:var(--s1);
-  max-width:66ch;overflow-wrap:anywhere}
-#dls{font-size:var(--t4)}
+  text-transform:none;margin:0 0 var(--s5)}
+/* The sentence that answers the page's own question, above the figures: four
+   numbers in a grid still need one line tying them together, and this is what
+   the owner opens the page to read. Reading size, ink, not a caption. */
+.hubtop{display:flex;align-items:baseline;justify-content:space-between;
+  gap:var(--s4) var(--s6);flex-wrap:wrap;margin:0 0 var(--s5)}
+.lede{font-size:var(--t3);color:var(--ink);line-height:1.55;margin:0;max-width:62ch}
+.asof{color:var(--ink-3);font-size:var(--t5);margin:0;white-space:nowrap}
+/* Tiles, mirroring /admin's hairline mesh — the two dashboards now agree.
+   This page previously borrowed /dev's spined prose rows, which are built for
+   a bold title plus a full paragraph; a two-glyph number left every row's rule
+   underlining mostly empty space. Four tiles, so 1/2/4 columns all divide the
+   total and no half-empty row can appear (same constraint as /admin's grid). */
+.tiles{display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:0}
+@media (min-width:560px){.tiles{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:920px){.tiles{grid-template-columns:repeat(4,1fr)}}
+.tile{background:#fff;padding:var(--s5);min-width:0}
+/* The tool name IS the link. This page exists to send you somewhere, so the
+   four names carry an affordance at rest instead of reading as inert labels
+   while the CSV links at the bottom were the only red on the page. */
+.tile-name{display:inline-block;font-size:var(--t5);font-weight:600;color:var(--ink-2);
+  text-decoration:underline;text-decoration-color:var(--ink-4);text-underline-offset:3px}
+.tile-name:hover{color:var(--red);text-decoration-color:var(--red)}
+.tile-v{font-family:var(--serif);font-weight:500;font-size:var(--t1);line-height:1.15;
+  margin-top:var(--s4);color:var(--ink);font-variant-numeric:tabular-nums}
+/* Three distinct steps under the figure, so the supporting lines stop reading
+   as one grey mush: the unit at body size in mid ink, details a step smaller
+   and lighter. */
+.tile-u{font-size:var(--t4);color:var(--ink-2);line-height:1.4;margin-top:var(--s1)}
+.tile-n{font-size:var(--t5);color:var(--ink-3);line-height:1.5;margin-top:var(--s3);
+  overflow-wrap:anywhere}
+/* The honest unknown: a failed source says why at reading size, never a 32px
+   orphaned dash. */
+.tile-na{font-size:var(--t4);color:var(--ink-3);line-height:1.5;margin-top:var(--s4)}
+/* Demoted to match the tile names: these are the least important thing on the
+   page and used to be the only red, so the eye landed on them first. */
+#dls{font-size:var(--t5)}
+#dls a{color:var(--ink-2);text-decoration:underline;
+  text-decoration-color:var(--ink-4);text-underline-offset:3px}
+#dls a:hover{color:var(--red);text-decoration-color:var(--red)}
 .muted{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s3)}
 /* Only present when something is wrong; without it the first section heading
    sits 12px under a red alarm line. */
@@ -7545,13 +7624,6 @@ footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
 footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
-/* LAST in the sheet on purpose — same specificity as .tool above, so the
-   collapse only wins by being declared later (see /dev's note). */
-@media (max-width:640px){
-  .tool{grid-template-columns:minmax(0,1fr);row-gap:var(--s2);padding:var(--s5) 0}
-  .tool-name{grid-column:1;grid-row:auto;padding-top:0}
-  .tool-body{grid-column:1}
-}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
@@ -7568,20 +7640,21 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div class="wrap">
 <div class="kicker">Internal</div>
 <h1 class="h">Headquarters</h1>
-<p class="sub">Analytics, development, contacts and revenue &mdash; each with its headline number, and anything that needs attention at the top.</p>
+<p class="sub">Everything internal in one place, with anything that needs attention at the top.</p>
 <div id="gate" class="gate"><span class="lab">Enter admin key</span>
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">Open HQ</button><div id="err" class="err"></div></div>
 <div id="hub" style="display:none">
   <div id="alerts"></div>
-  <div class="card"><h2>Tools</h2>
-    <div id="tools"></div>
+  <div class="hubtop">
+    <p class="lede" id="lede"></p>
+    <p class="asof" id="asof"></p>
   </div>
+  <div class="tiles" id="tiles"></div>
   <div class="card"><h2>Downloads</h2>
     <div id="dls"></div>
     <p class="muted">Each link carries the admin key so the browser can download directly. Treat a copied link as the key itself.</p>
   </div>
-  <p class="muted" id="asof"></p>
 </div>
 </div>
 </main>
@@ -7599,26 +7672,22 @@ var MOS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
 function fmtDay(d){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(d||""));
   if(!m)return esc(d);return MOS[Number(m[2])-1]+" "+Number(m[3]);}
 function plural(n,one,many){return n+" "+(n===1?one:many);}
-// plural() returns "3 ideas"; noun() returns just "ideas", for the rows where
+// plural() returns "3 ideas"; noun() returns just "ideas", for the tiles where
 // the numeral is set separately at figure size.
 function noun(n,one,many){return n===1?one:many;}
-// One tool = one spined row: name in the margin column, figure plus up to two
-// supporting lines in the text column. o.num===null means "no figure" — then
-// o.unit is read as the plain-language reason and set small, so a source that
-// failed never renders as a giant orphaned dash.
-function toolRow(o){
-  var fig=(o.num===null||o.num===undefined)
-    ? '<div class="tool-num na">'+o.unit+'</div>'
-    : '<div class="tool-num"><span class="n">'+o.num+'</span>'+o.unit+'</div>';
-  // o.sub takes a string or an array: each entry is its own week-scoped line
-  // (the funnel line under Analytics is the second), while o.note stays the
-  // single standing-totals line.
-  var subs=o.sub?(Array.isArray(o.sub)?o.sub:[o.sub]):[];
-  return '<div class="tool"><a class="tool-name" href="'+o.href+'"'+(o.ext?' target="_blank" rel="noopener"':"")+'>'+o.name+'</a>'+
-    '<div class="tool-body">'+fig+
-    subs.map(function(t){return '<div class="tool-sub">'+t+'</div>';}).join("")+
-    (o.note?'<div class="tool-note">'+o.note+'</div>':"")+
-    '</div></div>';
+// One tile per tool: the name (the link) above the figure, the unit under it,
+// then up to two detail lines. o.num===null means the source failed — then
+// o.unit is read as the plain-language reason and set at reading size, so a
+// dead source never renders as a giant orphaned dash.
+function tile(o){
+  var body=(o.num===null||o.num===undefined)
+    ? '<div class="tile-na">'+o.unit+'</div>'
+    : '<div class="tile-v">'+o.num+'</div><div class="tile-u">'+o.unit+'</div>';
+  var notes=(o.notes||[]).filter(Boolean)
+    .map(function(t){return '<div class="tile-n">'+t+'</div>';}).join("");
+  return '<div class="tile">'+
+    '<a class="tile-name" href="'+o.href+'"'+(o.ext?' target="_blank" rel="noopener"':"")+'>'+o.name+'</a>'+
+    body+notes+'</div>';
 }
 function render(d){
   var a=d&&d.analytics,s=d&&d.submissions,dv=d&&d.dev,c=d&&d.contacts,r=d&&d.revenue;
@@ -7632,42 +7701,39 @@ function render(d){
   if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
     var w=a.searches7d;
     an.num=w.total;
-    // The prior week rides the figure line in parentheses — direction without
-    // a second numeral competing at figure size.
+    // The prior week rides the unit line in parentheses — direction without a
+    // second numeral competing at figure size.
     an.unit=noun(w.total,"search","searches")+" this week"+
       (typeof w.prevTotal==="number"?" ("+w.prevTotal+" last week)":"");
-    var s1=w.billed+" billed, "+w.cached+" from cache";
-    if(typeof w.cost==="number")s1+=" · $"+w.cost.toFixed(2)+" estimated spend";
-    an.sub=[s1];
-    // The signup funnel, same 7-day window: this is the number the guest
-    // gate exists to move, and the page couldn't answer it before.
-    var f=a.funnel7d;
-    if(f)an.sub.push(plural(f.signups,"signup","signups")+" · "+plural(f.leads,"lead","leads")+" · "+
-      plural(f.gated,"visitor hit","visitors hit")+" the sign-in gate");
-    var st=[];
-    if(typeof a.leads==="number")st.push(plural(a.leads,"lead","leads")+" all time");
-    // Pending broker comps moved up to the attention line (renderAlerts) —
-    // they're work awaiting a human, not a footnote. Only the can't-review
-    // state stays here. A null source is a failed read and says nothing
-    // rather than blaming the wrong thing.
-    if(s&&s.db===false)st.push("broker review needs Supabase");
-    if(st.length)an.note=st.join(" · ");
+    var s1=w.billed+" billed · "+w.cached+" cached";
+    if(typeof w.cost==="number")s1+=" · $"+w.cost.toFixed(2)+" est. spend";
+    // The lede carries this week's signups and leads, so the tile keeps what
+    // it doesn't: the gate hits the guest cap produced, and the standing lead
+    // total. Splitting them this way also retires the old adjacency where
+    // "0 leads" (this week) sat one line above "1 lead all time".
+    var s2=[],f=a.funnel7d;
+    if(f)s2.push(plural(f.gated,"visitor","visitors")+" hit the sign-in gate");
+    if(typeof a.leads==="number")s2.push(plural(a.leads,"lead","leads")+" all time");
+    // A null source is a failed read and says nothing rather than blaming the
+    // wrong thing; db===false is specifically "review needs Supabase".
+    if(s&&s.db===false)s2.push("broker review needs Supabase");
+    an.notes=[s1,s2.join(" · ")];
   }
-  rows.push(toolRow(an));
+  rows.push(tile(an));
   var de={href:"/dev",name:"Dev hub",num:null,unit:"The ideas queue is unavailable."};
   if(dv&&typeof dv.openIdeas==="number"){
     de.num=dv.openIdeas;
     de.unit=noun(dv.openIdeas,"open idea","open ideas");
-    if(dv.latest&&dv.latest.date)de.sub="Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"");
+    if(dv.latest&&dv.latest.date)de.notes=["Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"")];
   }
-  rows.push(toolRow(de));
+  rows.push(tile(de));
   var co={href:"/contacts",name:"Contacts",num:null,unit:"The shared book is unavailable."};
   if(c&&typeof c.count==="number"){
     co.num=c.count;
     co.unit=noun(c.count,"contact","contacts");
-    co.sub="Leads, brokers, owners and vendors in the shared book.";
+    co.notes=["Leads, brokers, owners and vendors in the shared book."];
   }
-  rows.push(toolRow(co));
+  rows.push(tile(co));
   // Stripe is the only off-site tool, hence ext. The billing tables have no
   // file fallback by design, so "no Supabase" is a different unknown from
   // "the read failed" and says so.
@@ -7676,16 +7742,49 @@ function render(d){
   if(r&&r.db===true&&typeof r.active==="number"){
     rv.num=r.active;
     rv.unit=noun(r.active,"active subscription","active subscriptions");
-    rv.sub=r.founding+" of "+r.foundingLimit+" founding seats taken";
     var rn=[plural(r.purchases,"report unlock","report unlocks")+
       ((r.purchases7d||r.purchasesPrev7)?" ("+r.purchases7d+" this week, "+r.purchasesPrev7+" last)":"")];
     if(r.atRisk)rn.push(plural(r.atRisk,"subscription","subscriptions")+" in payment grace");
-    rv.note=rn.join(" · ");
+    rv.notes=[r.founding+" of "+r.foundingLimit+" founding seats taken",rn.join(" · ")];
   } else if(r&&r.db===false){
     rv.unit="Billing counts need Supabase — those tables have no file fallback.";
   }
-  rows.push(toolRow(rv));
-  el("tools").innerHTML=rows.join("");
+  rows.push(tile(rv));
+  el("tiles").innerHTML=rows.join("");
+}
+// The one sentence the page exists to answer, above the grid: demand and its
+// direction, what that converted into, and whether anything sold. Assembled
+// from whatever resolved — a failed source drops its clause instead of
+// blanking the line — and deliberately NOT a restatement of the tiles: spend
+// and the billed/cached split stay down in Analytics, sales counts in Revenue.
+function renderLede(d){
+  var a=d&&d.analytics,r=d&&d.revenue,parts=[];
+  if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
+    var w=a.searches7d,t=plural(w.total,"search","searches")+" this week";
+    if(typeof w.prevTotal==="number"&&w.prevTotal!==w.total){
+      t+=", "+(w.total>w.prevTotal?"up":"down")+" from "+w.prevTotal;
+    }
+    parts.push(t);
+  }
+  var f=a&&a.funnel7d;
+  if(f){
+    parts.push(plural(f.signups,"signup","signups")+" and "+
+      (f.leads?plural(f.leads,"lead","leads"):"no new leads"));
+  }
+  // Money only when the billing tables actually answered: "nothing sold yet"
+  // is a claim, and an unreadable database must never be allowed to make it.
+  if(r&&r.db===true&&typeof r.active==="number"){
+    parts.push(r.purchases7d ? plural(r.purchases7d,"report sold","reports sold")+" this week"
+      : (r.active||r.purchases) ? "nothing new sold this week"
+      : "nothing sold yet");
+  }
+  // Short sentences, not comma-joined clauses: "up from 28, 7 signups" puts two
+  // unrelated numerals either side of a comma and reads as one figure.
+  // textContent, not innerHTML: the line is assembled from numbers and fixed
+  // words, and keeping it text means it can never become an injection path.
+  el("lede").textContent=parts.length
+    ? parts.map(function(p){return p.charAt(0).toUpperCase()+p.slice(1)+".";}).join(" ")
+    : "";
 }
 // One red line per firing alarm, nothing when healthy. Wording mirrors
 // /admin's banners, which hold the detail and the fix. Takes the whole
@@ -7740,9 +7839,11 @@ function load(key){
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
   }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){}
-    grantAdminAccess(key);}render(d);renderAlerts(d);renderDls(key);
+    grantAdminAccess(key);}render(d);renderLede(d);renderAlerts(d);renderDls(key);
     // A tab left open shows stale numbers; the stamp says so and the link
-    // re-fetches in place (same key or cookie session as this load).
+    // re-fetches in place (same key or cookie session as this load). It sits
+    // beside the lede rather than under the Downloads caveat, where it used to
+    // read as a caption for the "treat a copied link as the key" warning.
     el("asof").innerHTML="Updated "+esc(new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))+
       ' &middot; <a href="#" id="rf">Refresh</a>';
     el("rf").addEventListener("click",function(e){e.preventDefault();load(key);});
@@ -10358,6 +10459,23 @@ const server = http.createServer((req, res) => {
     readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"])
       .then((rows) => sendJson(res, 200, aggregateStats(rows)))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
+    return;
+  }
+  // Corpus integrity, gated exactly like /api/stats. REPORT-ONLY: it reads
+  // rows and changes nothing — no badge is corrected, nothing is withheld from
+  // retrieval. Fails SAFE: any error answers "unavailable" with a 200, because
+  // /admin is the page the owner opens when something else is already wrong,
+  // and this panel must never be what breaks it.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-audit") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const key = new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    corpusAuditReport()
+      .then((data) => sendJson(res, 200, data))
+      .catch((err) => {
+        console.warn("Corpus audit failed:", err && err.message);
+        return sendJson(res, 200, { error: "unavailable" });
+      });
     return;
   }
   if (req.method === "GET" && req.url === "/admin") {

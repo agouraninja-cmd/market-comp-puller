@@ -1616,6 +1616,13 @@
               <thead>
                 <tr id="tableHead"></tr>
               </thead>
+              <!-- Your property, pinned above the comps so the grid reads
+                   across like an appraisal's subject column. Deliberately its
+                   OWN tbody and NOT a member of currentComps: that array feeds
+                   the valuation, the chart, the map, curation and the exports,
+                   and the subject is not a transaction. Sorting only rebuilds
+                   #tableBody, so this row never moves. -->
+              <tbody id="subjectRowBody" class="border-b-2 border-[#E4E2DA]"></tbody>
               <tbody id="tableBody" class="divide-y divide-[#F0EFE9]"></tbody>
             </table>
           </div>
@@ -1806,6 +1813,10 @@
     // Filled in the browser once pins geocode (applyCompDistances), so it
     // prunes itself away on reports where nothing resolved.
     { key: "distance_mi",    label: "Distance",       numeric: true  },
+    // `derived` = computed at render time, never stored on the comp, so the
+    // empty-column prune must not judge it by comp[key] (which is undefined).
+    { key: "match",          label: "Match",          numeric: true, derived: true,
+      sortValue: (c) => matchQuality(c, currentMeta, currentParsed).weight },
     { key: "date",           label: "Date",           numeric: false, isDate: true },
     { key: "transaction",    label: "Type",           numeric: false },
     { key: "size_sqft",      label: "Size (SF)",      numeric: true  },
@@ -1883,7 +1894,7 @@
   // locked-row placeholders — inherits the pruning automatically.
   const ALWAYS_COLUMNS = new Set(["address", "date", "transaction", "price_or_rate", "source_url"]);
   function pruneEmptyColumns(cols, comps) {
-    return cols.filter((col) => ALWAYS_COLUMNS.has(col.key) ||
+    return cols.filter((col) => ALWAYS_COLUMNS.has(col.key) || col.derived ||
       comps.some((c) => String(c[col.key] ?? "").trim() !== ""));
   }
 
@@ -2323,6 +2334,10 @@
         renderAnalysisCluster(currentParsed, currentMeta, false);
         renderComparison(currentParsed);
         renderMarketChart();
+        // The table reads the subject too now: its pinned row shows these very
+        // figures, and Match weighs each comp's size against them. Without
+        // this both would keep showing the pre-edit building.
+        renderTableBody(false);
         if (!currentMeta.sample && !currentMeta.fromHistory && !currentMeta.shared) saveHistory(currentMeta, currentParsed);
       }, 300);
     });
@@ -2955,6 +2970,54 @@
     const age = compAgeYears(c, meta);
     if (!age) return 1;
     return Math.pow(1 + pct / 100, Math.min(age, 3));
+  }
+
+  // --------------------------------------------------------------------------
+  // The comp ranking, made visible. compWeight already decides which comps a
+  // free visitor sees and how much each one moves the range, but the only part
+  // of it ever on screen was the size ‡ — so "why does that comp carry so much
+  // of the number?" had no answer in the report. Labels rather than the raw
+  // weight: it is a relative ranking, and printing "0.63" would invite
+  // arithmetic it cannot support.
+  //
+  // Thresholds: a fresh, similar-size, well-sourced comp lands at 1.0 and a
+  // two-year-old off-size estimate floors at 0.15, so 0.6 / 0.3 splits the
+  // range where the factors actually separate.
+  // --------------------------------------------------------------------------
+  const MATCH_TIERS = [
+    { min: 0.6, label: "Strong", cls: "text-[#1A2433] font-medium" },
+    { min: 0.3, label: "Fair",   cls: "text-[#5A6473]" },
+    { min: 0,   label: "Weak",   cls: "text-[#8A93A0]" },
+  ];
+
+  // The subject size the weighting compares against: the user's entry first,
+  // then the looked-up record. Mirrors offSizeClass's resolution order.
+  function subjectSizeForMatch(parsed) {
+    const r = subjectRangeFromMeta("size");
+    if (r) return (r.min + r.max) / 2;
+    const f = numericValue((parsed || currentParsed || {}).subject_size_sqft);
+    return f > 0 ? f : 0;
+  }
+
+  function matchQuality(comp, meta, parsed) {
+    const w = compWeight(comp, meta, subjectSizeForMatch(parsed));
+    const tier = MATCH_TIERS.find((t) => w >= t.min) || MATCH_TIERS[MATCH_TIERS.length - 1];
+    // Reasons in the same order compWeight multiplies them, so the label can
+    // always be traced back to the three factors that produced it.
+    const reasons = [];
+    const age = compAgeYears(comp, meta);
+    if (age !== null) {
+      reasons.push(age < 0.5 ? "sold in the last 6 months"
+        : age < 1.5 ? "about a year old"
+        : `about ${Math.round(age)} years old`);
+    }
+    const subjSF = subjectSizeForMatch(parsed), csf = numericValue(comp.size_sqft);
+    if (subjSF > 0 && csf > 0) {
+      reasons.push(Math.abs(Math.log2(csf / subjSF)) > 1 ? "different size class" : "similar size");
+    }
+    const t = SOURCE_TIERS[compTier(comp)];
+    if (t) reasons.push(t.label.toLowerCase() + " source");
+    return { label: tier.label, cls: tier.cls, weight: w, reasons };
   }
 
   // Disclosure for that time adjustment. The table deliberately shows each
@@ -5797,17 +5860,31 @@
     const median = sizes.length === 0 ? NaN
       : sizes.length % 2 ? sizes[Math.floor(mid)]
       : (sizes[mid - 1] + sizes[mid]) / 2;
-    const counts = curationCounts();
+    // How recent the comps actually are, which the Lookback tile beside it
+    // cannot say: a 24-month window that came back with nothing newer than 22
+    // months is a weak report, and nothing else on the page discloses that.
+    // Reads the full set (locked rows included) like the tiles either side.
+    const ages = valuationComps()
+      .map((c) => compAgeYears(c, meta))
+      .filter((v) => v !== null)
+      .sort((a, b) => a - b);
+    const medAge = ages.length
+      ? (ages.length % 2 ? ages[(ages.length - 1) / 2]
+         : (ages[ages.length / 2 - 1] + ages[ages.length / 2]) / 2)
+      : null;
+    const medAgeMonths = medAge === null ? null : Math.round(medAge * 12);
     const tiles = [
       // Market-level model figure — deliberately NOT curated; the comp-set
       // spread bar below is what reflects the user's comp set. Labeled
       // "Market" so it can't be read as the average of the table's comps
       // (the hero's median is the comp-set statistic).
       { label: "Market Avg $/SF", value: displayMoney(parsed.avg_price_per_sqft) || "" },
-      { label: "Comps Found",
-        value: counts.excluded > 0 ? `${counts.included} (of ${counts.total} in report)`
-          : currentComps.length ? String(currentComps.length) : "",
-        animate: { target: counts.included, format: (n) => String(Math.round(n)) } },
+      // The comp count used to sit here; it is already in the chip beside the
+      // table header, and exclusions are spelled out in the curation note.
+      { label: "Median Comp Age",
+        value: medAgeMonths === null ? ""
+          : medAgeMonths < 1 ? "under a month"
+          : medAgeMonths === 1 ? "1 month" : medAgeMonths + " months" },
       { label: "Median Size", value: isFinite(median) ? Math.round(median).toLocaleString() + " SF" : "",
         animate: { target: median, format: (n) => Math.round(n).toLocaleString() + " SF" } },
       { label: "Lookback", value: meta.months ? (meta.months === 1 ? "1 month" : meta.months + " months") : "" },
@@ -8186,9 +8263,85 @@
     });
   })();
 
+  // The subject's value for one comp column, or "" when the column asks a
+  // question a building-you-own has no answer to (it has no sale date, no
+  // transaction type, no source). NOI is deliberately unreachable from here:
+  // it is private finance, and this row prints and travels in the PNG export.
+  function subjectCellValue(col) {
+    const s = (currentMeta && currentMeta.subject) || {};
+    const details = s.details || {};
+    const range = (min, max, fmt) => {
+      if (!(min > 0)) return "";
+      return max > 0 && max !== min ? fmt(min) + " – " + fmt(max) : fmt(min);
+    };
+    const num = (v) => Math.round(v).toLocaleString();
+    switch (col.key) {
+      case "address": return currentMeta ? currentMeta.address : "";
+      case "size_sqft": return range(s.sizeMin, s.sizeMax, num);
+      case "price_or_rate": return range(s.priceMin, s.priceMax, (v) => formatUsd(v, { maximumFractionDigits: 0 }));
+      case "price_per_sqft": {
+        const sz = subjectRangeFromMeta("size"), pr = subjectRangeFromMeta("price");
+        if (!sz || !pr) return "";
+        const lo = pr.min / sz.max, hi = pr.max / sz.min;
+        const f = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+        return hi - lo > 0.005 ? f(lo) + " – " + f(hi) : f(lo);
+      }
+      // Distance to itself is zero and Match against itself is meaningless;
+      // both would read as data rather than as the reference point.
+      case "distance_mi": case "match": return "";
+      default:
+        // Per-type specs (clear height, units, acres...) come from the
+        // subject-details form, which is keyed to the same field names.
+        return details[col.key] != null ? String(details[col.key]) : "";
+    }
+  }
+
+  // Renders that row. Hidden entirely when the visitor has told us nothing
+  // about their building beyond its address — a row of dashes under a "Your
+  // property" label is worse than no row.
+  function renderSubjectRow() {
+    const body = document.getElementById("subjectRowBody");
+    if (!body) return;
+    body.innerHTML = "";
+    if (!currentMeta) return;
+    const values = COLUMNS.map((col) => ({ col, v: subjectCellValue(col) }));
+    const substantive = values.filter((x) => x.col.key !== "address" && x.v).length;
+    if (!substantive) return;
+
+    const tr = document.createElement("tr");
+    // Both tokens here are deliberately ones the vendored tailwind.css already
+    // ships (the row hover tint and the standard muted grey). A brand-new
+    // arbitrary colour would have needed a tailwind regen, and that artifact is
+    // shared with whatever else is mid-flight in this checkout.
+    tr.className = "bg-[#F5F4EF]";
+    values.forEach(({ col, v }) => {
+      const td = document.createElement("td");
+      td.className = "px-4 py-3 align-top " + (col.numeric ? "text-right " : "") +
+        (col.key === "notes" ? "min-w-[200px]" : "whitespace-nowrap");
+      const cell = document.createElement("div");
+      if (col.key === "address") {
+        cell.className = "font-semibold text-[#1A2433]";
+        cell.textContent = addressLines(v).street;
+        const tag = document.createElement("span");
+        tag.className = "ml-1.5 align-middle rd-chip";
+        tag.textContent = "Your property";
+        cell.appendChild(tag);
+      } else {
+        cell.className = v ? "text-[#1A2433] font-medium" : "text-[#8A93A0]";
+        cell.textContent = v || "-";
+      }
+      td.appendChild(cell);
+      tr.appendChild(td);
+    });
+    // Match the comps' trailing curation column so the grid stays aligned.
+    if (curationControlsAllowed()) tr.appendChild(document.createElement("td"));
+    body.appendChild(tr);
+  }
+
   function renderTableBody(animateIn = true) {
     renderCards(animateIn);
     renderBadgeLegend();
+    renderSubjectRow();
     const body = document.getElementById("tableBody");
     body.innerHTML = "";
     const comps = visibleComps();
@@ -8260,6 +8413,15 @@
           cell.appendChild(wrap);
         } else if (col.key === "transaction" && val) {
           cell.appendChild(transactionPill(val));
+        } else if (col.key === "match") {
+          // Derived, so there is no `val` to read — compute per row. The
+          // tooltip names the factors; the label alone would just be a verdict.
+          const m = matchQuality(comp, currentMeta, currentParsed);
+          cell.textContent = m.label;
+          cell.className = m.cls;
+          td.title = m.reasons.length
+            ? "Weighted in the valuation as " + m.label.toLowerCase() + ": " + m.reasons.join(", ") + "."
+            : "How much this comp counts toward the valuation.";
         } else {
           cell.textContent = (val === undefined || val === null || val === "") ? "-" : val;
           if (col.isDate) {
@@ -8436,7 +8598,9 @@
         const val = MONEY_KEYS.has(col.key) ? displayMoney(comp[col.key]) : comp[col.key];
         const empty = val === undefined || val === null || val === "";
         const core = ["date", "transaction", "size_sqft", "price_or_rate", "price_per_sqft"].includes(col.key);
-        if (empty && !core) return;          // omit optional empties for compactness
+        // A derived column (Match) has no stored value to be empty — it would
+        // otherwise be dropped from every card.
+        if (empty && !core && !col.derived) return;   // omit optional empties for compactness
         // Long values get a full-width row so they don't wrap awkwardly.
         const wide = col.key === "notes" || col.isLink || col.wide ||
           col.key === "price_or_rate" || col.key === "tenancy";
@@ -8459,6 +8623,12 @@
           dd.appendChild(a);
         } else if (col.key === "transaction" && !empty) {
           dd.appendChild(transactionPill(val));
+        } else if (col.key === "match") {
+          // Same derived Match value as the desktop table.
+          const m = matchQuality(comp, currentMeta, currentParsed);
+          dd.textContent = m.label;
+          dd.className = "mt-0.5 " + m.cls;
+          dd.title = m.reasons.length ? m.reasons.join(", ") : "";
         } else {
           dd.textContent = empty ? "-" : val;
           // Same recomputed-$/SF disclosure as the desktop table.
@@ -8563,6 +8733,12 @@
       if (beforeComps[i]) oldTops.set(beforeComps[i], row.getBoundingClientRect().top);
     });
     currentComps.sort((a, b) => {
+      // A derived column has nothing stored on the comp — it supplies its own
+      // accessor instead (Match sorts by the underlying weight, not by the
+      // label, so Strong/Fair/Weak never sorts alphabetically).
+      if (col.sortValue) {
+        return (col.sortValue(a) - col.sortValue(b)) * sortState.dir;
+      }
       let av = a[key], bv = b[key];
       if (col.isDate) {
         const ad = Date.parse(av), bd = Date.parse(bv);
@@ -8624,6 +8800,14 @@
     }, 1600);
   }
 
+  // One cell's exported value. A derived column (Match) has nothing stored on
+  // the comp, so both exporters have to ask for it rather than read it — miss
+  // this and the column ships as a blank stripe down every export.
+  function exportCellValue(comp, col) {
+    if (col.key === "match") return matchQuality(comp, currentMeta, currentParsed).label;
+    return MONEY_KEYS.has(col.key) ? displayMoney(comp[col.key]) : comp[col.key];
+  }
+
   function exportCsv() {
     if (!currentComps.length) return;
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -8631,7 +8815,7 @@
     // so it's appended here rather than living in COLUMNS.
     const header = [...COLUMNS.map((c) => esc(c.label)), esc("Source confidence")].join(",");
     const rows = includedComps().map((comp) =>
-      [...COLUMNS.map((c) => esc(MONEY_KEYS.has(c.key) ? displayMoney(comp[c.key]) : comp[c.key])), esc((SOURCE_TIERS[compTier(comp)] || {}).label || "")].join(","));
+      [...COLUMNS.map((c) => esc(exportCellValue(comp, c))), esc((SOURCE_TIERS[compTier(comp)] || {}).label || "")].join(","));
     // Title row so an exported file records what was searched and when.
     // Curation is called out too — an exported file travels on its own, so
     // it always says "report owner" rather than "you".
@@ -8708,7 +8892,7 @@
       const compsAoa = [
         [...COLUMNS.map((c) => c.label), "Source confidence"],
         ...includedComps().map((comp) => [
-          ...COLUMNS.map((c) => String((MONEY_KEYS.has(c.key) ? displayMoney(comp[c.key]) : comp[c.key]) ?? "")),
+          ...COLUMNS.map((c) => String(exportCellValue(comp, c) ?? "")),
           (SOURCE_TIERS[compTier(comp)] || {}).label || "",
         ]),
       ];

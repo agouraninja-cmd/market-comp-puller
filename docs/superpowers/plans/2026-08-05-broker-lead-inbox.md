@@ -520,7 +520,7 @@ In `index.html:8839-8847`, after `source: leadContext,` in the payload add:
 - [ ] **Step 5: Syntax-check and run the suite**
 
 Run: `node --check server.js` then `node --test`
-Expected: clean check; 181 pass.
+Expected: clean check; full suite passes (all tests in the repo, 0 fail).
 
 - [ ] **Step 6: Commit**
 
@@ -595,7 +595,7 @@ adopts:
 - [ ] **Step 3: Syntax-check and run the suite**
 
 Run: `node --check server.js` then `node --test`
-Expected: clean; 181 pass.
+Expected: clean; full suite passes (all tests in the repo, 0 fail).
 
 - [ ] **Step 4: Commit**
 
@@ -725,7 +725,7 @@ Insert directly after the helper (still before the vault block):
 - [ ] **Step 3: Syntax-check and run the suite**
 
 Run: `node --check server.js` then `node --test`
-Expected: clean; 181 pass.
+Expected: clean; full suite passes (all tests in the repo, 0 fail).
 
 - [ ] **Step 4: Commit**
 
@@ -865,7 +865,7 @@ git commit -m "Broker coverage: the market+type pairs a broker's inbox watches"
 - [ ] **Step 3: Syntax-check and run the suite**
 
 Run: `node --check server.js` then `node --test`
-Expected: clean; 181 pass.
+Expected: clean; full suite passes (all tests in the repo, 0 fail).
 
 - [ ] **Step 4: Commit**
 
@@ -1011,7 +1011,7 @@ grepping `tailwind.css` for `text-\[\#8A93A0\]` before assuming.)
 - [ ] **Step 4: Syntax-check, run the suite, eyeball the page**
 
 Run: `node --check server.js` then `node --test`
-Expected: clean; 181 pass.
+Expected: clean; full suite passes (all tests in the repo, 0 fail).
 If a local `.env` with Supabase creds is available, also boot the server and
 open `/vault` as a signed-in admin to see the section render.
 
@@ -1043,7 +1043,7 @@ Rebuild from `git show HEAD:devlog.json` if another session has touched it
 - [ ] **Step 2: Full verification**
 
 Run: `node --check server.js && node --check broker-leads.js && node --test`
-Expected: clean checks; 181 pass, 0 fail.
+Expected: clean checks; full suite passes, 0 fail.
 
 - [ ] **Step 3: Commit**
 

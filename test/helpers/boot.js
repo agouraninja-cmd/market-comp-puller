@@ -6,10 +6,15 @@ const path = require("node:path");
 
 const SERVER = path.join(__dirname, "..", "..", "server.js");
 
-// High ports, clear of the dev servers this repo uses (3000, 3117-3121) AND of
-// the 39140 block routes.test.js allocates from. Each test FILE is its own
-// process under `node --test`, so the two counters cannot see each other.
-let nextPort = 39160;
+// High ports, clear of the dev servers this repo uses (3000, 3117-3121). Each
+// test FILE is its own process under `node --test`, so the port counters in
+// this file and in test/routes.test.js (which starts at 39140) cannot see
+// each other and cannot coordinate — the only thing that keeps their actual
+// port NUMBERS from colliding is a wide gap between the two bases, not the
+// process isolation itself. routes.test.js boots enough servers per run to
+// approach its own base from below; 39500 leaves generous headroom on both
+// sides rather than the two blocks growing to meet each other unnoticed.
+let nextPort = 39500;
 
 // `env` REPLACES rather than extends the parent environment for the keys that
 // matter, so a developer's local .env cannot change what these tests prove.

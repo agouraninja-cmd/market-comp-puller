@@ -2,10 +2,18 @@
 //
 // Run: npm test
 //
-// Cost: zero. Nothing here calls Anthropic, Stripe or Supabase. Two tests boot
+// Cost: zero. Nothing here calls Anthropic, Stripe or Supabase. One test boots
 // with a FAKE api key so that /api/comps reaches the guest gate at all (see
 // FAKE_KEY below); the gate refuses before any upstream call, so a passing run
 // spends nothing and a failing one dies on an invalid key rather than a bill.
+//
+// Coverage gap: the wall-OFF state only proves PRESENTATION here (/api/config
+// reports no wall and the configured limit). It does not prove enforcement —
+// that a disabled wall really lets a guest search reach /api/comps — because
+// that route checks for a missing ANTHROPIC_API_KEY before it ever reaches the
+// guest gate (see the note on FAKE_KEY below), so a bare environment can't
+// observe "passed the gate" without either a real network call or reordering
+// the route. Left uncovered rather than faked.
 //
 // Spec: docs/superpowers/specs/2026-08-05-account-wall-and-how-it-works-landing-design.md
 
@@ -15,8 +23,9 @@ const { boot } = require("./helpers/boot");
 
 // --- The lever ------------------------------------------------------------
 
-// /api/comps checks for a missing ANTHROPIC_API_KEY (server.js line 7946)
-// BEFORE it reaches the guest gate (line 8025), so a bare environment answers
+// The POST /api/comps handler in server.js checks for a missing
+// ANTHROPIC_API_KEY (the `if (!API_KEY)` guard right after the address/type
+// validation) BEFORE it calls guestGateFor(), so a bare environment answers
 // 500 and the gate is never observed. A syntactically plausible fake key gets
 // past that check; the gate then returns 403 before any Anthropic call, so a
 // passing test still costs nothing and touches no network. If the gate ever

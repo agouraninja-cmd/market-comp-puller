@@ -553,6 +553,11 @@ async function guestGateFor(req) {
   if (user) return null;
   const ipHash = sha256Hex(clientIp(req));
   const cookieSpent = Boolean(parseCookies(req)[GUEST_COOKIE]);
+  // At a zero limit (the wall's default across every deployment) every
+  // visitor is already blocked no matter what the ledger says, so reading it
+  // cannot change the answer — skip the Supabase round trip entirely rather
+  // than pay it on every anonymous page load.
+  if (GUEST_SEARCH_LIMIT === 0) return { ipHash, used: 0, cookieSpent, blocked: true };
   const used = cookieSpent ? GUEST_SEARCH_LIMIT : await guestSearchesUsed(ipHash);
   return { ipHash, used, cookieSpent, blocked: cookieSpent || used >= GUEST_SEARCH_LIMIT };
 }

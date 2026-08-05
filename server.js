@@ -7168,6 +7168,25 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     </section>
 
     <section>
+      <h2>Leads in your markets</h2>
+      <p class="sub" style="margin-top:0">Property owners requesting a Broker Opinion of Value
+        in markets you cover. Details are anonymized; request an introduction and the
+        CompNinja team connects you. Removing every market re-fills the earned ones on your next visit.</p>
+      <div class="row" id="covRow"></div>
+      <div class="row" style="margin-top:var(--s4)">
+        <input id="covMarket" placeholder="City, ST" style="padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);font-family:inherit;font-size:var(--t5)"/>
+        <select id="covType"></select>
+        <button class="btn ghost" id="covAdd">Watch this market</button>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
+        <tbody id="leadRows"></tbody>
+      </table></div>
+      <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
+      <div id="leadMsg"></div>
+    </section>
+
+    <section>
       <h2>Imports</h2>
       <div id="ups"></div>
     </section>
@@ -7203,6 +7222,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
         fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
         renderUploads(o.j.uploads||[]);
+        loadLeads();
         render();
       })
       .catch(function(){ gate('<div class="msg bad">Could not reach the server. Please try again.</div>'); });
@@ -7252,6 +7272,60 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         '<button data-del="'+esc(u.id)+'">Remove</button></div>';
     }).join(""):'<p class="empty">No imports yet.</p>';
   }
+
+  var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Land","Residential"];
+  function loadLeads(){
+    fetch("/api/broker/leads",{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>"; return; }
+        $("leadMsg").innerHTML="";
+        renderCoverage(o.j.coverage||[]);
+        renderLeads(o.j.leads||[]);
+      })
+      .catch(function(){ $("leadMsg").innerHTML='<div class="msg bad">Couldn\\'t load leads. Please try again.</div>'; });
+  }
+  function renderCoverage(cov){
+    $("covRow").innerHTML=cov.length?cov.map(function(c){
+      return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
+        ' <button data-cov="'+esc(c.id)+'" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
+    }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add one below, or submit comps to earn them.</span>';
+  }
+  function renderLeads(leads){
+    $("noLeads").className=leads.length?"empty hide":"empty";
+    $("leadRows").innerHTML=leads.map(function(l){
+      var btn=l.intro_requested
+        ? '<button class="pubbtn on" disabled>Intro requested</button>'
+        : '<button class="pubbtn" data-intro="'+esc(l.id)+'">Request introduction</button>';
+      return "<tr><td>"+esc(String(l.ts||"").slice(0,10))+"</td><td>"+esc(l.market)+"</td><td>"+esc(l.type)+
+        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"")+"</td><td>"+btn+"</td></tr>";
+    }).join("");
+  }
+  $("covType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
+  $("covAdd").addEventListener("click",function(){
+    fetch("/api/broker/coverage",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({market:$("covMarket").value,property_type:$("covType").value})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't add that market.")+"</div>"; return; }
+        $("covMarket").value=""; loadLeads();
+      });
+  });
+  document.addEventListener("click",function(e){
+    var cov=e.target.getAttribute&&e.target.getAttribute("data-cov");
+    if(cov){ fetch("/api/broker/coverage?id="+encodeURIComponent(cov),{method:"DELETE",credentials:"same-origin"})
+      .then(function(){loadLeads()}); return; }
+    var intro=e.target.getAttribute&&e.target.getAttribute("data-intro");
+    if(intro){ e.target.disabled=true;
+      fetch("/api/broker/leads/intro",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify({lead_id:intro})})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          if(o.s!==200){ e.target.disabled=false; $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't send that request.")+"</div>"; return; }
+          loadLeads();
+        }); }
+  });
 
   function upload(file){
     if(!file)return;

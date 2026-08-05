@@ -68,3 +68,76 @@ test("the rollback lever restores the configured guest limit", async (t) => {
     assert.equal(cfg.guestSearch.limit, 5);
   });
 });
+
+// --- Routing --------------------------------------------------------------
+
+// The routing layer decides on cookie PRESENCE, never on a validated session:
+// getSessionUser() reads the database and this route runs on every page view.
+const FAKE_SESSION = { cookie: "cn_session=not-a-real-token" };
+
+test("the wall routes anonymous visitors to /how-it-works", async (t) => {
+  // Fake key for the same reason as above: the forged-cookie subtest below
+  // needs /api/comps to get past its missing-key check and reach the gate.
+  const srv = await boot({ ACCOUNT_WALL: "on", ANTHROPIC_API_KEY: FAKE_KEY });
+  t.after(() => srv.stop());
+
+  const get = (p, headers) =>
+    fetch(srv.base + p, { redirect: "manual", headers: headers || {} });
+
+  await t.test("the app redirects", async () => {
+    for (const p of ["/", "/index.html", "/desk", "/?utm_source=newsletter", "/desk?checkout=success"]) {
+      const r = await get(p);
+      assert.equal(r.status, 302, p + " should send an anonymous visitor away");
+      assert.equal(r.headers.get("location"), "/how-it-works", p + " should land on the front door");
+      // A cached redirect would survive the visitor signing in.
+      assert.match(r.headers.get("cache-control") || "", /no-store/, p + " redirect must not be cached");
+    }
+  });
+
+  await t.test("shared reports stay public", async () => {
+    const r = await get("/r/abc123");
+    assert.equal(r.status, 200, "a shared link is the whole point of the share feature");
+  });
+
+  await t.test("the auth door serves the app", async () => {
+    // Without this the signup buttons on /how-it-works point at a redirect
+    // back to /how-it-works, and there is no way to reach the account modal.
+    for (const p of ["/?auth=signup", "/?auth=signin"]) {
+      assert.equal((await get(p)).status, 200, p + " must serve index.html");
+    }
+    // Anything else in that parameter is not a door.
+    assert.equal((await get("/?auth=whatever")).status, 302);
+  });
+
+  await t.test("a session cookie is enough to reach the app", async () => {
+    assert.equal((await get("/", FAKE_SESSION)).status, 200);
+  });
+
+  await t.test("but a forged cookie still cannot search", async () => {
+    // Presentation versus enforcement: the routing layer is deliberately
+    // cheap and fooled by any cookie; /api/comps is where the wall is real.
+    const r = await fetch(srv.base + "/api/comps", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...FAKE_SESSION },
+      body: JSON.stringify({ address: "123 Main St, Boise, ID", type: "Industrial" }),
+    });
+    assert.equal(r.status, 403);
+    assert.equal((await r.json()).signin_required, true);
+  });
+
+  await t.test("the public pages are untouched", async () => {
+    for (const p of ["/how-it-works", "/markets", "/brokers", "/terms", "/privacy", "/healthz"]) {
+      assert.equal((await get(p)).status, 200, p + " must stay public");
+    }
+  });
+});
+
+test("with the wall off the app is open again", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "off" });
+  t.after(() => srv.stop());
+
+  await t.test("/ serves the app to an anonymous visitor", async () => {
+    const r = await fetch(srv.base + "/", { redirect: "manual" });
+    assert.equal(r.status, 200);
+  });
+});

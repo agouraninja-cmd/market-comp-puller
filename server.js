@@ -10267,6 +10267,31 @@ const server = http.createServer((req, res) => {
   // link to /?utm_source=…, which used to 404 for the same reason.
   const staticPath = req.url.split("?")[0];
   if (req.method === "GET" && (staticPath === "/" || staticPath === "/index.html" || staticPath === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath))) {
+    // Account wall: an anonymous visitor meets /how-it-works, not the app.
+    //
+    // Cookie PRESENCE only, never getSessionUser() — that helper reads the
+    // database and this route runs on every page view. A forged cookie buys
+    // the sight of a locked search form and nothing else, because
+    // GUEST_SEARCH_LIMIT is forced to 0 under the wall and /api/comps still
+    // refuses the search. Presentation here, enforcement there, as everywhere
+    // else in this codebase.
+    //
+    // Two exemptions. Shared reports are public by design — that is the whole
+    // share feature. And ?auth= has to serve the app, or the signup buttons on
+    // /how-it-works point straight back at /how-it-works and the account modal
+    // (which lives only in index.html) becomes unreachable.
+    //
+    // 302, not 301: what lives at / genuinely depends on auth state, and a
+    // permanent redirect would be cached past the point where the visitor has
+    // an account. no-store for the same reason.
+    if (ACCOUNT_WALL && !parseCookies(req)[SESSION_COOKIE]) {
+      const auth = new URLSearchParams(req.url.split("?")[1] || "").get("auth");
+      const shared = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath);
+      if (!shared && auth !== "signup" && auth !== "signin") {
+        res.writeHead(302, { location: "/how-it-works", "cache-control": "no-store" });
+        return res.end();
+      }
+    }
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
       if (err) {
         res.writeHead(500);

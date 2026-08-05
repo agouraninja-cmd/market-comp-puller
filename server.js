@@ -5518,17 +5518,37 @@ h1.h{font-size:var(--t1);line-height:1.15;margin:var(--s4) 0 0}
 .btn.mute{background:var(--ink-2)}
 .err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
 /* Tile strip — hairline grid on white, like the landing page's stat strip.
-   The 1px gaps show the container's cream background, so a partly-filled last
-   row would render as a grey block. render() emits exactly 10 tiles, hence
-   the fixed 1-2-5 column counts (all divide 10) instead of auto-fit: add or
-   drop a tile and this needs a column count that divides the new total.
-   (The type-autofill tile made it 10 while this read "9 and 3 columns", and
-   the last row showed exactly that grey block.) */
-.tiles{display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);
+   Dividers are BORDERS on the tiles, not 1px grid gaps showing the container's
+   cream through (which is how this was built until 2026-08-05). A gap is empty
+   space and its width can round to ZERO on fractional device pixels: 1fr tracks
+   land on fractions, and display scaling at 125/150% then drops individual
+   hairlines while leaving their neighbours intact, so the strip loses a line
+   here and there rather than looking uniformly gapless. A 1px border always
+   paints at least one device pixel. The nth-child rules say "not the first tile
+   in its row" per column count, which depends only on the COLUMN count, so a
+   partly-filled last row is now merely white — the old grey-block failure mode
+   is gone, and the tile count no longer has to divide the column count.
+   Same treatment as /hq; keep the two in step. */
+.tiles{display:grid;grid-template-columns:1fr;background:#fff;
   border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:var(--s6) 0}
 @media (min-width:560px){.tiles{grid-template-columns:repeat(2,1fr)}}
 @media (min-width:900px){.tiles{grid-template-columns:repeat(5,1fr)}}
-.tile{background:#fff;padding:var(--s5)}
+.tile{background:#fff;padding:var(--s5);min-width:0}
+.tile+.tile{border-top:1px solid var(--line)}
+@media (min-width:560px){
+  .tile+.tile{border-top:0}
+  .tile:not(:nth-child(2n+1)){border-left:1px solid var(--line)}
+  .tile:nth-child(n+3){border-top:1px solid var(--line)}
+}
+/* The 2-column rules above are same-specificity, so these must RESET the
+   tiles that stop being row-starts at five across (tile 6) and the top borders
+   that belong to rows 2+ only. */
+@media (min-width:900px){
+  .tile:nth-child(5n+1){border-left:0}
+  .tile:not(:nth-child(5n+1)){border-left:1px solid var(--line)}
+  .tile:nth-child(-n+5){border-top:0}
+  .tile:nth-child(n+6){border-top:1px solid var(--line)}
+}
 .tile .k{font-size:var(--t5);color:var(--ink-3);font-weight:500}
 .tile .v{font-family:var(--serif);font-weight:500;font-size:var(--t1);line-height:1.2;margin-top:var(--s2);
   color:var(--ink);font-variant-numeric:tabular-nums}

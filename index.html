@@ -1010,6 +1010,24 @@
       <!-- Plan + billing. Shown only when the deployment actually sells
            something (proConfig.billing); everything in it is rendered by
            refreshBillingUI() from /api/config, never from local state. -->
+      <!-- The broker vault, for people who have one. Sits above Plan because a
+           broker opens their vault far more often than they look at billing.
+           Visibility is refreshBillingUI()'s, off canUseVault — same rule as the
+           account-menu link, and /api/vault re-checks it server-side regardless.
+           An <a>, not a button: /vault is a real page, so middle-click and
+           open-in-new-tab should work. -->
+      <div id="vaultCard" class="hidden mt-8">
+        <span class="rd-lab">Broker vault</span>
+        <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
+          <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
+          <div id="vaultCardDetail" class="text-xs text-[#8A93A0] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <a id="vaultOpenBtn" href="/vault"
+              class="btn-live inline-flex items-center text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Open your vault</a>
+          </div>
+        </div>
+      </div>
+
       <div id="billingCard" class="hidden mt-8">
         <span class="rd-lab">Plan</span>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
@@ -7351,8 +7369,13 @@
     // anyway, so unhiding this by hand reveals a link and nothing behind it.
     // Deliberately NOT gated on `live`: comped admins get the vault on a
     // deployment with no Stripe keys, the same exception the billing card makes.
-    document.getElementById("menuVaultLink")
-      .classList.toggle("hidden", !(proConfig && proConfig.canUseVault));
+    const canVault = Boolean(proConfig && proConfig.canUseVault);
+    document.getElementById("menuVaultLink").classList.toggle("hidden", !canVault);
+    // Same entitlement drives the My Desk card. Signed-in only: the desk's
+    // account-backed areas are already hidden signed out, and a vault card
+    // there would offer a page that answers 401.
+    document.getElementById("vaultCard")
+      .classList.toggle("hidden", !(canVault && currentUser));
 
     // /api/config already carries this visitor's remaining exports, so the
     // counter can be right on first paint instead of only after an export.

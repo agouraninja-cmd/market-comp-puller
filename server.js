@@ -8474,9 +8474,19 @@ const server = http.createServer((req, res) => {
       let profile = null;
       if (DB_CONFIGURED) {
         try {
-          const rows = await sbRequest("GET",
-            `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`);
-          const p = rows && rows[0];
+          // One identity: prefer the account link, fall back to legacy
+          // email-keyed rows, and stamp user_id on first touch so an email
+          // change can no longer orphan the profile.
+          let p = ((await sbRequest("GET",
+            `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0];
+          if (!p) {
+            p = ((await sbRequest("GET",
+              `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
+            if (p && !p.user_id) {
+              await sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(p.id)}`,
+                { user_id: user.id, updated_at: new Date().toISOString() });
+            }
+          }
           if (p) {
             profile = {
               exists: true, public: Boolean(p.public), slug: p.slug,
@@ -8522,8 +8532,10 @@ const server = http.createServer((req, res) => {
         if (wantPublic && !approved.length) {
           return sendJson(res, 403, { error: "You need at least one approved comp before enabling a public profile." });
         }
-        const existing = (await sbRequest("GET",
-          `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`) || [])[0];
+        const existing = ((await sbRequest("GET",
+          `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0]
+          || ((await sbRequest("GET",
+          `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
         let row = existing;
         if (!existing) {
           // First enable creates the row; identity comes from their latest
@@ -8536,6 +8548,7 @@ const server = http.createServer((req, res) => {
             try {
               const ins = await sbRequest("POST", "broker_profiles", {
                 email: user.email,
+                user_id: user.id,
                 display_name: String(latest.broker_name || "").trim(),
                 company: String(latest.broker_company || "").trim(),
                 slug, public: wantPublic,
@@ -8551,6 +8564,7 @@ const server = http.createServer((req, res) => {
             const slug = `${base}-${crypto.randomBytes(3).toString("hex")}`;
             const ins = await sbRequest("POST", "broker_profiles", {
               email: user.email,
+              user_id: user.id,
               display_name: String(subs[0].broker_name || "").trim(),
               company: String(subs[0].broker_company || "").trim(),
               slug, public: wantPublic,
@@ -8559,8 +8573,8 @@ const server = http.createServer((req, res) => {
           }
           row = created;
         } else {
-          await sbRequest("PATCH", `broker_profiles?email=eq.${encodeURIComponent(user.email)}`,
-            { public: wantPublic, updated_at: new Date().toISOString() });
+          await sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(existing.id)}`,
+            { public: wantPublic, user_id: user.id, updated_at: new Date().toISOString() });
           row = { ...existing, public: wantPublic };
         }
         BROKER_PROFILES.fetchedAt = 0; // bust so the next refresh isn't debounced

@@ -76,6 +76,9 @@ const COLUMNS = [
   // dedupe_key and published flag are load-bearing and easy to drop by hand.
   ["broker_comps",      ["dedupe_key", "market", "published", "deal_date", "price_per_sqft"],
                                                                 "013-broker-vault.sql"],
+  // Without this column unpublish cannot reliably find the public copy, and a
+  // comp the broker believes they retracted keeps being offered to reports.
+  ["broker_comps",      ["published_submission_id"],             "014-vault-publish-link.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

@@ -8003,7 +8003,11 @@ const server = http.createServer((req, res) => {
           phone: clean(phone, 60),
           company: clean(company, 120),
           address: clean(address, 300),
-          type: clean(type, 40),
+          // Canonicalize case against the enum so an off-case lead (e.g.
+          // "industrial" from a stray client path) is not invisible to
+          // every broker's coverage match forever. Junk that matches nothing
+          // keeps its raw cleaned value — unchanged for analytics/CSV.
+          type: VAULT.PROPERTY_TYPES.find((t) => t.toLowerCase() === clean(type, 40).toLowerCase()) || clean(type, 40),
           // Optional building size for the broker-facing anonymized lead
           // card. Spread only when present: if migration 015 has not run,
           // an unknown column would 400 EVERY insert into the file fallback;
@@ -8760,9 +8764,15 @@ const server = http.createServer((req, res) => {
           `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
           `&select=id,market,property_type,source&order=market.asc&limit=500`);
         if (!cov || !cov.length) {
-          // First open: earn coverage from approved submissions.
-          const subs = (await fetchSubmissionsForEmail(user.email))
-            .filter((s) => s.status === "approved");
+          // First open: earn coverage from approved submissions. Inline, not
+          // fetchSubmissionsForEmail: that helper swallows its own errors
+          // into [] (fine for a profile page, a lie here — an empty inbox on
+          // error must 503, per the header comment), and its global
+          // limit-then-filter loses early contributors as the table grows.
+          const subs = ((await sbRequest("GET",
+            "comp_submissions?status=eq.approved&order=ts.desc&limit=500" +
+            "&select=status,broker_email,address,property_type")) || [])
+            .filter((s) => String(s.broker_email || "").trim().toLowerCase() === String(user.email).toLowerCase());
           const seeds = LEADSVC.seedCoverageFromSubmissions(
             subs.map((s) => ({ market: marketOf(s.address), property_type: s.property_type })));
           if (seeds.length) {
@@ -8775,14 +8785,23 @@ const server = http.createServer((req, res) => {
               `&select=id,market,property_type,source&order=market.asc&limit=500`);
           }
         }
+        // Nothing to match against: skip the leads + intros reads entirely
+        // rather than pay for a result that can only be empty.
+        if (!cov || !cov.length) return sendJson(res, 200, { leads: [], coverage: [] });
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
-        const leads = await sbRequest("GET",
-          `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-          `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`);
+        const [leads, intros] = await Promise.all([
+          sbRequest("GET",
+            `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
+            `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`),
+          sbRequest("GET",
+            `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&created_at=gte.${encodeURIComponent(since)}&select=lead_id&order=created_at.desc&limit=1000`),
+        ]);
+        if ((leads || []).length === 200) {
+          console.warn("broker leads: 90-day BOV window hit the 200-row cap — brokers in quiet markets may be missing leads");
+        }
         const withMarket = (leads || []).map((l) => ({ ...l, market: marketOf(l.address) }));
         const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || []);
-        const intros = await sbRequest("GET",
-          `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}&select=lead_id&limit=1000`);
         const introSet = new Set((intros || []).map((r) => String(r.lead_id)));
         return sendJson(res, 200, {
           leads: mine.map((l) => LEADSVC.anonymizeLead(l, introSet)),
@@ -8818,17 +8837,22 @@ const server = http.createServer((req, res) => {
         if (!user) return;
         const leadId = String(JSON.parse(body || "{}").lead_id || "");
         if (!leadId) return sendJson(res, 400, { error: "Missing lead_id." });
+        // leads.id is bigint; reject anything else before touching the DB.
+        if (!/^\d+$/.test(leadId)) return sendJson(res, 400, { error: "Missing lead_id." });
         const lead = ((await sbRequest("GET",
           `leads?id=eq.${encodeURIComponent(leadId)}&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
         if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
         // No requesting introductions to leads outside your coverage — the
         // same rule that decides what the inbox shows decides what you can
-        // raise a hand for.
+        // raise a hand for. Answers the SAME "no longer exists" 404 as a
+        // missing lead, not a 403: an invisible lead must be indistinguishable
+        // from a nonexistent one, or a broker could enumerate total lead
+        // volume by walking bigint ids and watching which status comes back.
         const cov = await sbRequest("GET",
           `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=market,property_type&limit=500`);
         const visible = LEADSVC.filterLeadsForCoverage(
           [{ ...lead, market: marketOf(lead.address) }], cov || []);
-        if (!visible.length) return sendJson(res, 403, { error: "That lead is outside your coverage." });
+        if (!visible.length) return sendJson(res, 404, { error: "That lead no longer exists." });
         // Read-then-insert so we can tell "new" from "already requested" (and
         // avoid double-emailing the owner); the upsert below still backstops
         // the race between the two — worst case the owner gets two emails
@@ -8844,6 +8868,9 @@ const server = http.createServer((req, res) => {
         // one exists (BROKER_PROFILES holds public rows only; that is fine,
         // the email address is the working identifier either way).
         const prof = BROKER_PROFILES.byEmail[String(user.email || "").toLowerCase()];
+        if (!RESEND_API_KEY) {
+          console.warn("Intro request stored but RESEND_API_KEY is unset — the owner will only see it in the lead_intro_requests table.");
+        }
         notifyByEmail(`Broker requested an introduction: ${marketOf(lead.address)} ${lead.type}`, [
           ["Broker", prof ? `${prof.display_name}${prof.company ? " (" + prof.company + ")" : ""}` : ""],
           ["Broker email", user.email],
@@ -8853,7 +8880,7 @@ const server = http.createServer((req, res) => {
           ["Lead company", lead.company],
           ["Property", lead.address],
           ["Property type", lead.type],
-          ["Size (SF)", lead.size_sqft],
+          ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
           ["Lead received", lead.ts],
         ]);
         logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });

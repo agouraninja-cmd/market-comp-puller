@@ -207,6 +207,8 @@ async function uncoveredMarket(base) {
   const covered = new Set(
     (await (await fetch(base + "/api/markets")).json())
       .map((m) => `${m.type}|${m.city}|${m.state}`));
+  // One candidate per EXPLORE_TYPES entry, so a market-seed.json that grows to
+  // cover one type can't exhaust the list.
   const pick = [
     { type: "Industrial", city: "Nampa", state: "ID" },
     { type: "Office", city: "Sheridan", state: "WY" },

@@ -8202,6 +8202,30 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 200, { url: `/market/${slug}`, slug, published: true, existing: true });
         }
 
+        // Guest search cap. This route runs the SAME billed getComps() pipeline
+        // as /api/comps, so it spends the SAME single free search — one free
+        // billed search per anonymous visitor, report or market page, then a
+        // free account. Until 2026-08-05 it had no check at all, which made the
+        // homepage's own Explorer the easiest way around the homepage's signup
+        // gate.
+        //
+        // Deliberately BELOW the covered-market short circuit above: serving a
+        // page that already exists is a database read, costs nothing upstream,
+        // and must stay free for everyone including crawlers.
+        //
+        // guestGateFor() is the single resolver — it already returns null for a
+        // disabled gate, any signed-in account, and an admin by header or
+        // cookie, so none of those need re-deriving here.
+        const guestGate = await guestGateFor(req);
+        if (guestGate && guestGate.blocked) {
+          logEvent("signup_gate", { prop_type: typeOk, market: `${cityOk}, ${stateOk}`, source: "explore" });
+          if (!guestGate.cookieSpent) setGuestCookie(res, req);
+          return sendJson(res, 403, {
+            error: "You've used your free search. Create a free account to explore any market. It's free, no card needed.",
+            signin_required: true,
+          });
+        }
+
         if (rateLimited("explore:" + clientIp(req), 3, 15 * 60 * 1000)) {
           return sendJson(res, 429, {
             error: "Market generation is limited to a few per visitor per 15 minutes. Try again shortly, or run a valuation for a specific property instead.",
@@ -8255,6 +8279,11 @@ const server = http.createServer((req, res) => {
           exploreInFlight.set(slug, job);
         }
         const { status, body: out } = await job;
+        // Spent only when a result was actually served — a published page or a
+        // thin-data preview, both of which cost a real search and return real
+        // content. A 422 thin market, a 429 daily cap or an upstream failure
+        // must never burn the visitor's free search.
+        if (status === 200) consumeGuestSearchFor(guestGate, req, res, false);
         return sendJson(res, status, out);
       } catch (err) {
         console.error("Error handling /api/explore-market:", err);

@@ -141,10 +141,14 @@ dependency. `.env` is git-ignored — never commit it.
   `migrations/011-guest-search-quota.sql` — already run in prod), and the httpOnly
   `cn_guest` cookie set once the quota is spent. **Cache hits count** (the
   funnel is the point); a failed search doesn't consume; admins and
-  `x-admin-key` callers bypass. Enforced in `/api/comps` (403 +
-  `signin_required: true`, which the client turns into the account modal);
-  `/api/config` carries `guestSearch: { limit, used }` for the form hint and
-  syncs the cookie the SSE exit can't set (its headers are already streaming).
+  `x-admin-key` callers bypass. Enforced in `/api/comps` **and
+  `/api/explore-market`** (403 + `signin_required: true`, which the client
+  turns into the account modal) — the Explorer runs the same billed search
+  pipeline as a report, so it spends the same single allowance; a market
+  page that already exists is still served free and ungated above the
+  check, since that's a database read, not a search. `/api/config` carries
+  `guestSearch: { limit, used }` for the form hint and syncs the cookie the
+  SSE exit can't set (its headers are already streaming).
   Fails OPEN on ledger errors — `DAILY_SEARCH_CAP` still backstops spend. Each
   block logs a PII-free `signup_gate` analytics event. The privacy policy's
   cookie section names `cn_guest` and the hashed-IP ledger; keep it in step.

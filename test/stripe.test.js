@@ -18,7 +18,12 @@ const {
 
 const SECRET = "whsec_test_secret";
 const NOW = Date.parse("2026-08-01T12:00:00Z");
-const PRICES = { monthly: "price_monthly", annualFounding: "price_founding", singleReport: "price_single" };
+const PRICES = {
+  monthly: "price_monthly",
+  annualFounding: "price_founding",
+  singleReport: "price_single",
+  brokerMonthly: "price_broker",
+};
 
 function sign(body, secret = SECRET, atMs = NOW) {
   const t = Math.floor(atMs / 1000);
@@ -119,6 +124,24 @@ test("a price we do not sell maps to nothing", () => {
   }
 });
 
+test("the broker price maps to the broker plan", () => {
+  assert.equal(planForPrice("price_broker", PRICES), "broker_monthly");
+});
+
+test("an unconfigured broker price grants nothing", () => {
+  // The shipping state until pricing is decided: STRIPE_PRICE_BROKER_MONTHLY is
+  // unset, so the price map carries "". Nothing may map onto broker_monthly
+  // through an empty slot.
+  const unset = { ...PRICES, brokerMonthly: "" };
+  assert.equal(planForPrice("price_broker", unset), null);
+  assert.equal(planForPrice("", unset), null);
+  assert.equal(planForPrice(undefined, unset), null);
+  // And a price map missing the key entirely must not throw.
+  const absent = { monthly: "price_monthly" };
+  assert.equal(planForPrice("price_broker", absent), null);
+  assert.equal(planForPrice("price_monthly", absent), "pro_monthly");
+});
+
 // --- Stripe status -> ours -------------------------------------------------
 
 test("Stripe statuses map onto ours and fail closed", () => {
@@ -155,6 +178,18 @@ test("an active subscription becomes an active row", () => {
   assert.equal(row.current_period_end, "2026-09-01T12:00:00.000Z");
   assert.equal(row.cancel_at_period_end, false);
   assert.equal(row.grace_until, null);
+});
+
+test("a broker subscription becomes a broker row", () => {
+  const row = subscriptionRowFrom(
+    stripeSub({ items: { data: [{ price: { id: "price_broker" } }] } }),
+    PRICES, { userId: "u_1", nowMs: NOW });
+  assert.equal(row.plan, "broker_monthly");
+  assert.equal(row.status, "active");
+  assert.equal(row.user_id, "u_1");
+  // The webhook path is shared with Pro, so a broker cancellation, renewal and
+  // grace window all already work — nothing broker-specific handles them.
+  assert.equal(row.current_period_end, "2026-09-01T12:00:00.000Z");
 });
 
 test("a failed payment sets a 7-day grace deadline", () => {

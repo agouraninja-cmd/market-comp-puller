@@ -779,6 +779,72 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Still unbuilt: report branding. `canBrand` is a real entitlement and
   `findBrandingProfile()` exists, but there is no UI at all, so the bullet stays
   off the pricing tile.
+- **Broker tier** (billing rails added 2026-08-05; the vault itself is NOT
+  built). Ecosystem Plan v1 — design spec and the vault contract in
+  `docs/superpowers/specs/2026-08-05-broker-tier-design.md`. One new plan,
+  `broker_monthly`, which is a **superset of Pro**: it satisfies the ordinary
+  `pro` test, so unlimited comps, the 120-month lookback, unlimited exports,
+  branding and the Address Explorer all arrive by the existing route, and the
+  tier adds exactly one capability — the private vault. It is a plan on
+  `subscriptions` rather than a role column on `users` so access **lapses with
+  the card** (a role flag would outlive a cancelled subscription and keep a
+  vault open); `subscriptions.plan` has no CHECK constraint, so this needed no
+  migration. Four things to know:
+  - **Vault routes test `ent.canUseVault`, never a plan name.** The result
+    carries `broker` (identity, mirrors `pro`) and `canUseVault` (capability,
+    mirrors `canBrand`); `/api/config` exposes both. The usual rule applies
+    with more force than usual here — this gate guards private data.
+  - **An unrecognized plan name opens no vault**, which is deliberately
+    STRICTER than `pro`, where status alone governs access and an unfamiliar
+    plan name still grants it (there is a test pinning that). Erring generous
+    is right for comps and wrong for a data store nobody can be shown to own.
+  - **`PRO_ENABLED=off` grants no vault**, even though that branch grants every
+    other capability. "Pre-Pro behavior" restores what visitors USED TO HAVE
+    free; the vault was never free, it did not exist. The opposite would open
+    an upload endpoint to every anonymous visitor on an un-launched deployment.
+  - **`STRIPE_PRICE_BROKER_MONTHLY` is unset**, so `/api/checkout` answers 503
+    for this plan and the whole path ships dark. Pricing is an open question
+    for Chuck. To launch: create the Stripe price, set the env var, THEN ship
+    the tile copy — the price lives in Stripe and the copy in `index.html`,
+    they can disagree, and nothing detects it.
+  The privacy wall is the product: no vault row may ever reach `harvestComps()`,
+  `corpusRowsForMarket()`, a market snapshot, or another account's report.
+  Enforce it with **separate tables read by separate functions**, not a
+  `private` column filtered in the corpus queries — the corpus read path
+  swallows its own errors, so one missed filter would leak silently.
+- **Broker vault** (v1 server side, 2026-08-05; no UI yet). `GET|POST|DELETE
+  /api/vault*` — the broker's private comp store. DDL in
+  `migrations/013-broker-vault.sql` (**run before deploying**); plan in
+  `docs/superpowers/plans/2026-08-05-broker-vault-v1.md`. Routes:
+  `GET /api/vault/template` (the CSV a broker fills in), `POST
+  /api/vault/upload` (JSON `{filename, csv}` — deliberately not multipart,
+  which would be hundreds of lines of hand-rolled parsing in a repo with no
+  dependencies), `GET /api/vault` (filters by `market` and `type`), and
+  `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
+  All four go through one `openVault()` helper: 401 not signed in → 403 not a
+  broker (`canUseVault`) → 503 no database.
+  - **That 503 is the opposite of the rest of the app, deliberately.**
+    Everywhere else a Supabase failure falls back to a local file so nothing is
+    lost. Here the file WOULD be the loss — Render erases its disk on every
+    deploy, so a broker's uploaded book of business would silently vanish days
+    later. The vault has **no file fallback**; it refuses instead.
+  - **`market` is attached in server.js with `marketOf()`, never in
+    `broker-vault.js`.** It has to agree byte for byte with `comp_corpus.market`
+    so a comp published in step 2 needs no translation, and a second copy of
+    that parse would be a second thing to keep in sync (the repo already has
+    one such pair — `compWeight` — and it carries a ⚠).
+  - **`dedupe_key` is an explicit column**, like `comp_corpus`'s, not a
+    multi-column unique constraint. Postgres compares NULLs as DISTINCT, so
+    `unique (user_id, address_key, deal_date, price)` would let an *unpriced*
+    comp (explicitly allowed — brokers track undisclosed deals) re-import
+    without limit on every upload.
+  - **`broker-vault.js` rejects rather than guesses.** "1.2M", a bare number as
+    a date (Excel's serial), and day-first dates are all refused with a line
+    number rather than stored as a best effort — a wrong number in a broker's
+    own records is worse than a rejected row, because nobody will notice it.
+    Pure and tested (`npm test`, ~44 cases).
+  - **Every read is scoped by `user_id`**, including the DELETE — without it,
+    knowing another broker's upload id would be enough to delete their data.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`. The same handler covers `/index.html`,

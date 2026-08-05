@@ -26,6 +26,10 @@ const GATE = require("./comp-gate");
 // Stripe over plain fetch — signature verification and the Stripe->our-row
 // mapping are pure and tested; see stripe.js.
 const STRIPE = require("./stripe");
+// Broker vault imports — reading a broker's spreadsheet into storable rows.
+// Pure and tested, for the same reason as the three above, and with more at
+// stake: a misparsed column is a wrong number in a paying broker's own records.
+const VAULT = require("./broker-vault");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -85,6 +89,13 @@ const STRIPE_PRICES = {
   monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
   annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
   singleReport: (process.env.STRIPE_PRICE_SINGLE_REPORT || "").trim(),
+  // Broker tier (Ecosystem Plan v1). Deliberately UNSET for now: the monthly
+  // price is an open question for Chuck, and this repo's rule is that the
+  // number lives in Stripe, never in our copy. Unset means /api/checkout
+  // answers 503 "That plan isn't configured" — the whole broker path ships
+  // dark and becomes buyable by creating one Stripe price and setting this,
+  // with no code change. Create the Stripe price FIRST, then write the copy.
+  brokerMonthly: (process.env.STRIPE_PRICE_BROKER_MONTHLY || "").trim(),
 };
 const STRIPE_CONFIGURED = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICES.monthly);
 // The founding-member offer closes at 50. See foundingSlotsLeft() for why the
@@ -2908,37 +2919,54 @@ async function bumpCitedCounts(ids) {
   }
 }
 
+// The Verified badge is decided here, and ONLY here.
+//
+// It used to only ADD attribution, and it returned early when no broker comps
+// had been offered — so a `verified: true` the model invented was passed
+// straight through, into the report and then into the corpus by harvestComps.
+// That is not hypothetical: on 2026-08-05 the corpus held 16 rows badged
+// verified against one broker submission ever, mostly Boise and Eagle
+// addresses nobody had ever submitted. Aggregate-shaped ones too ("Eagle, ID
+// 83616 (built 1999, 1,173-5,333 SF)").
+//
+// The rule is now absolute and lives in broker-vault.js so `npm test` covers
+// it: a comp is verified if and only if it matches a comp we offered. Same
+// principle as the source_type enforcement in normalizeSourceTypes — prompt
+// rules are requests, normalization is a guarantee — and it matters more here,
+// because the badge is what the broker tier pays brokers IN.
 function attachVerifiedAttribution(parsed, verifiedComps) {
-  if (!parsed || !Array.isArray(parsed.comps) || !verifiedComps || !verifiedComps.length) return parsed;
-  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const offered = verifiedComps
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  const offered = (verifiedComps || [])
     .map((v) => ({
-      a: norm(v.address),
+      a: VAULT.normAddr(v.address),
       by: String(v.broker_company || v.broker_name || "").trim(),
       id: Number(v.id) || null,
       email: String(v.broker_email || "").trim().toLowerCase(),
     }))
     .filter((v) => v.a && v.by);
-  if (!offered.length) return parsed;
-  const citedIds = new Set(); // two returned comps can match one submission
+
+  // Runs even when `offered` is empty — that is the case the early return used
+  // to skip, and the case that produced every bad row above.
+  const res = VAULT.enforceVerifiedFlags(parsed.comps, offered);
+
+  // Public profile → the badge becomes a link. The cache holds only
+  // public=true rows, so presence implies consent. Done here rather than in the
+  // pure module because it reads process state.
   for (const c of parsed.comps) {
     if (!c || c.verified !== true) continue;
-    const ca = norm(c.address);
-    if (!ca) continue;
-    // The model copies the address faithfully, so an exact or prefix match
-    // (either direction, guarded by length) reliably ties it to the submission.
-    const m = offered.find((v) =>
-      v.a === ca || (v.a.length >= 8 && ca.length >= 8 && (ca.startsWith(v.a) || v.a.startsWith(ca))));
-    if (m) {
-      c.verified_by = m.by;
-      if (m.id) citedIds.add(m.id);
-      // Public profile → the badge becomes a link. Cache holds only
-      // public=true rows, so presence implies consent.
-      const prof = BROKER_PROFILES.byEmail[m.email];
-      if (prof) c.verified_by_slug = prof.slug;
-    }
+    const m = VAULT.matchOffered(c.address, offered);
+    const prof = m && BROKER_PROFILES.byEmail[m.email];
+    if (prof) c.verified_by_slug = prof.slug;
   }
-  if (citedIds.size) bumpCitedCounts([...citedIds]).catch(() => {});
+
+  // The only visible signal that the prompt rule is being ignored, and how
+  // often. If this line starts appearing on every report, the prompt needs
+  // work — but the badge is already correct either way.
+  if (res.cleared) {
+    console.log(`⚠ Cleared ${res.cleared} unearned "verified" badge(s) the model claimed` +
+      `${res.kept ? ` (kept ${res.kept} real one(s))` : ""}.`);
+  }
+  if (res.citedIds.length) bumpCitedCounts(res.citedIds).catch(() => {});
   return parsed;
 }
 
@@ -3938,6 +3966,27 @@ async function refreshBrokerProfiles() {
     console.error("Broker profile refresh failed; keeping previous:", err.message);
   } finally {
     BROKER_PROFILES.refreshing = false;
+  }
+}
+
+// This broker's own profile row, public or not.
+//
+// Deliberately NOT read from BROKER_PROFILES above: that cache holds only
+// `public=true` rows, because its job is deciding whose badge becomes a link.
+// Publishing needs the name whether or not the profile PAGE is public — the
+// broker is choosing to put their name on a comp, which is a separate consent
+// from listing themselves in the directory. Reading the cache here would mean
+// a broker with a private profile silently gets no credit.
+async function findBrokerProfile(email) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!DB_CONFIGURED || !e) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `broker_profiles?email=eq.${encodeURIComponent(e)}&select=email,slug,display_name,company,public&limit=1`);
+    return (rows && rows[0]) || null;
+  } catch (err) {
+    console.error("Broker profile read failed:", err.message);
+    return null;
   }
 }
 
@@ -6941,6 +6990,344 @@ async function hqSnapshot() {
 // Desk skin as /admin (CSS deliberately duplicated — self-contained pages
 // stay independent of tailwind.css). Shares /admin's sessionStorage key so
 // unlocking any internal page unlocks all of them.
+// ---------------------------------------------------------------------------
+// GET /vault — the broker's private comp workspace.
+//
+// Server-rendered and SELF-CONTAINED, like /hq, /admin, /dev and the market
+// pages: its own inline CSS (the same token block), no dependency on the
+// purged tailwind.css, and nothing added to index.html. That last part is the
+// point — index.html is half a megabyte and the likeliest place for two
+// parallel sessions to collide, and this page shares no markup with the report
+// app anyway.
+//
+// The page itself is PUBLIC HTML with no secrets in it. Everything it shows
+// arrives from /api/vault, which is gated on canUseVault server-side, so
+// opening this URL without a broker subscription renders an empty shell and a
+// "part of the broker plan" note. There is no client-side check to bypass.
+// ---------------------------------------------------------------------------
+function renderVaultHTML() {
+  return `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Your vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
+<meta name="theme-color" content="#FBFBF9"/>
+<link rel="icon" href="/favicon.ico" sizes="48x48"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<style>
+*{box-sizing:border-box}
+:root{
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --red:#B91C1C;--red-deep:#991B1B;
+  --green:#15803D;
+  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+  --serif:Georgia,'Times New Roman',serif;
+  --r:4px;
+  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+  display:flex;flex-direction:column;font-size:var(--t4);
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
+.wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6);width:100%}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
+.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.wordmark b{color:var(--red);font-weight:600}
+.hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
+.hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
+main{flex:1;padding:var(--s7) 0 var(--s9)}
+.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var(--t1);line-height:1.15}
+.sub{color:var(--ink-2);max-width:62ch;margin:var(--s4) 0 0}
+/* The trust line. A broker does not hand over their book of business because
+   our terms promise we cannot read it — they do it because they can watch this
+   number stay at zero. It is deliberately the most prominent thing on the page
+   after the title. */
+.trust{margin:var(--s7) 0 0;padding:var(--s5) var(--s6);background:var(--wash);
+  border:1px solid var(--line);border-radius:var(--r);display:flex;flex-wrap:wrap;
+  align-items:baseline;gap:var(--s3) var(--s5);font-size:var(--t4)}
+.trust b{font-size:var(--t2);font-family:var(--serif);font-weight:500}
+.trust .pub{color:var(--green);font-weight:600}
+.trust .note{color:var(--ink-3);font-size:var(--t5)}
+section{margin-top:var(--s8)}
+section+section{border-top:1px solid var(--line);padding-top:var(--s7)}
+h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(--s5)}
+.drop{border:1px dashed var(--edge);border-radius:var(--r);padding:var(--s7);text-align:center;
+  background:#fff;transition:border-color .12s,background .12s}
+.drop.over{border-color:var(--red);background:var(--wash)}
+.drop p{margin:var(--s3) 0 0;color:var(--ink-2);font-size:var(--t5)}
+.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s3) var(--s5);
+  font-weight:600;font-size:var(--t4);font-family:inherit;cursor:pointer}
+.btn:hover{background:var(--red-deep)}
+.btn[disabled]{background:var(--ink-4);cursor:default}
+.btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--edge)}
+.btn.ghost:hover{background:var(--wash);color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
+select{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
+th{text-align:left;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer}
+th:hover{color:var(--ink)}
+th .ar{color:var(--red)}
+td{padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--hair);vertical-align:top}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tw{overflow-x:auto}
+.msg{margin-top:var(--s5);padding:var(--s4) var(--s5);border-radius:var(--r);font-size:var(--t5);border:1px solid}
+.msg.ok{background:#F0FAF3;border-color:#BFE3CB;color:#14532D}
+.msg.bad{background:#FDF2F2;border-color:#F0C7C7;color:#7F1D1D}
+.msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
+.msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
+.empty{color:var(--ink-3);padding:var(--s7) 0;text-align:center}
+.up{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);
+  padding:var(--s4) 0;border-bottom:1px solid var(--hair);font-size:var(--t5)}
+.up .meta{color:var(--ink-3)}
+.up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--t5);padding:0}
+.up button:hover{color:var(--red)}
+.pubbtn{background:none;border:1px solid var(--edge);border-radius:var(--r);padding:1px var(--s3);
+  font-family:inherit;font-size:var(--t6);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
+.pubbtn.on{border-color:#BFE3CB;background:#F0FAF3;color:var(--green);font-weight:600}
+.pubbtn[disabled]{opacity:.5;cursor:default}
+.hide{display:none}
+footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
+</style></head><body>
+<header class="hdr"><div class="wrap">
+  <a class="brand" href="/"><span class="wordmark">Comp<b>Ninja</b></span></a>
+  <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
+</div></header>
+<main><div class="wrap">
+  <p class="kicker">Broker workspace</p>
+  <h1 class="h">Your vault</h1>
+  <p class="sub">Your own comp data, private to you. Upload a spreadsheet and it comes back
+    organized &mdash; sortable and filterable by property and by market.</p>
+
+  <!-- Visible from the first paint. Everything below the title waits on
+       /api/vault (session -> entitlements -> two reads), and with both panes
+       hidden the page spent that window looking half-rendered before the
+       workspace popped in. The fetch's three outcomes each replace this:
+       success hides #gate, a refusal rewrites it, so it can never linger. -->
+  <div id="gate"><p class="empty">Loading your vault&hellip;</p></div>
+
+  <div id="app" class="hide">
+    <div class="trust">
+      <span><b id="cCount">0</b> comps</span>
+      <span class="pub"><b id="cPub">0</b> published</span>
+      <span class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
+        public records, and nothing is published unless you choose it.</span>
+    </div>
+
+    <section>
+      <h2>Add comps</h2>
+      <div class="drop" id="drop">
+        <button class="btn" id="pick">Choose a spreadsheet</button>
+        <p>or drop a .csv here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
+        <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
+      </div>
+      <div id="res"></div>
+    </section>
+
+    <section>
+      <h2>Your comps</h2>
+      <div class="row">
+        <label>Market <select id="fMarket"><option value="">All</option></select></label>
+        <label>Type <select id="fType"><option value="">All</option></select></label>
+        <span class="note" id="shown"></span>
+      </div>
+      <div class="tw"><table id="tbl">
+        <thead><tr>
+          <th data-k="address">Address</th><th data-k="market">Market</th>
+          <th data-k="property_type">Type</th><th data-k="transaction">Deal</th>
+          <th data-k="deal_date">Date</th><th data-k="price" class="num">Price</th>
+          <th data-k="size_sqft" class="num">Size</th><th data-k="price_per_sqft" class="num">$/SF</th>
+          <th data-k="published">Public</th>
+        </tr></thead><tbody id="tbody"></tbody>
+      </table></div>
+      <div class="empty hide" id="none">Nothing here yet. Upload a spreadsheet above.</div>
+    </section>
+
+    <section>
+      <h2>Imports</h2>
+      <div id="ups"></div>
+    </section>
+  </div>
+</div></main>
+<footer><div class="wrap">Private broker workspace &middot; CompNinja</div></footer>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML};
+  var comps=[],sortK="deal_date",sortAsc=false;
+
+  var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
+  var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
+  var psf=function(n){return n==null?"":"$"+Number(n).toFixed(2)};
+
+  function gate(html){ $("gate").innerHTML=html; $("gate").className=""; $("app").className="hide"; }
+
+  function load(){
+    var q=[],m=$("fMarket").value,t=$("fType").value;
+    if(m)q.push("market="+encodeURIComponent(m));
+    if(t)q.push("type="+encodeURIComponent(t));
+    fetch("/api/vault"+(q.length?"?"+q.join("&"):""),{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
+        if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
+          '<a href="/brokers">What brokers get</a></div>');
+        if(o.s!==200) return gate('<div class="msg bad">'+esc(o.j.error||"Could not load your vault.")+'</div>');
+        $("gate").className="hide"; $("app").className="";
+        comps=o.j.comps||[];
+        $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
+        $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+        fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+        renderUploads(o.j.uploads||[]);
+        render();
+      })
+      .catch(function(){ gate('<div class="msg bad">Could not reach the server. Please try again.</div>'); });
+  }
+
+  // Rebuild the options without losing what the broker had selected.
+  function fillFilter(id,vals){
+    var el=$(id),cur=el.value;
+    if(cur&&vals.indexOf(cur)<0)vals=vals.concat([cur]);
+    el.innerHTML='<option value="">All</option>'+vals.map(function(v){
+      return '<option value="'+esc(v)+'"'+(v===cur?" selected":"")+">"+esc(v)+"</option>"}).join("");
+  }
+
+  function render(){
+    var rows=comps.slice().sort(function(a,b){
+      var x=a[sortK],y=b[sortK];
+      if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
+      if(typeof x==="number"&&typeof y==="number")return sortAsc?x-y:y-x;
+      return sortAsc?String(x).localeCompare(String(y)):String(y).localeCompare(String(x));
+    });
+    $("none").className=rows.length?"empty hide":"empty";
+    $("shown").textContent=rows.length?rows.length+" shown":"";
+    $("tbody").innerHTML=rows.map(function(c){
+      // Published state is a two-way toggle, never a checkbox that could be
+      // flipped by a stray click: publishing is a one-way-ish public act, so
+      // it goes through a button and a confirm.
+      var pub=c.published
+        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
+        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
+        "</td><td>"+esc(c.transaction)+"</td><td>"+esc(c.deal_date)+
+        '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
+        '</td><td class="num">'+psf(c.price_per_sqft)+"</td><td>"+pub+"</td></tr>";
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
+      var on=th.getAttribute("data-k")===sortK;
+      th.innerHTML=th.textContent.replace(/[ \\u25b2\\u25bc]+$/,"")+(on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"");
+    });
+  }
+
+  function renderUploads(ups){
+    $("ups").innerHTML=ups.length?ups.map(function(u){
+      return '<div class="up"><span>'+esc(u.filename||"Untitled import")+
+        ' <span class="meta">&middot; '+u.row_count+" comps"+
+        (u.skipped_count?", "+u.skipped_count+" skipped":"")+
+        " &middot; "+esc(String(u.created_at||"").slice(0,10))+'</span></span>'+
+        '<button data-del="'+esc(u.id)+'">Remove</button></div>';
+    }).join(""):'<p class="empty">No imports yet.</p>';
+  }
+
+  function upload(file){
+    if(!file)return;
+    $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
+    var fr=new FileReader();
+    fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
+    fr.onload=function(){
+      fetch("/api/vault/upload",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({filename:file.name,csv:String(fr.result||"")})})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          $("pick").disabled=false;
+          var j=o.j||{};
+          // Line-numbered problems are the point: a broker fixing a spreadsheet
+          // needs to know WHICH row, in the numbering Excel shows them.
+          var errs=(j.errors&&j.errors.length)?"<ul>"+j.errors.map(function(e){
+            return "<li>"+esc(e)+"</li>"}).join("")+"</ul>":"";
+          if(o.s!==200){
+            $("res").innerHTML='<div class="msg bad">'+esc(j.error||"That file could not be imported.")+errs+"</div>";
+            return;
+          }
+          var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
+          if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
+          if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
+          $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errs+"</div>";
+          load();
+        })
+        .catch(function(){ $("pick").disabled=false;
+          $("res").innerHTML='<div class="msg bad">The upload did not reach the server. Nothing was saved.</div>'; });
+    };
+    fr.readAsText(file);
+  }
+
+  $("pick").addEventListener("click",function(){ $("file").click() });
+  $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
+  ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
+    e.preventDefault(); $("drop").classList.add("over"); })});
+  ["dragleave","drop"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
+    e.preventDefault(); $("drop").classList.remove("over"); })});
+  $("drop").addEventListener("drop",function(e){ upload(e.dataTransfer.files[0]) });
+  $("fMarket").addEventListener("change",load);
+  $("fType").addEventListener("change",load);
+  document.querySelector("thead").addEventListener("click",function(e){
+    var th=e.target.closest("th[data-k]"); if(!th)return;
+    var k=th.getAttribute("data-k");
+    if(k===sortK)sortAsc=!sortAsc; else{sortK=k;sortAsc=false;}
+    render();
+  });
+  // Publish / unpublish. The confirm text is deliberately specific about what
+  // publishing DOES and about the one thing it cannot undo: once a published
+  // comp has been served inside a report, that report is cached and the public
+  // corpus has already harvested it. Unpublishing stops future offers; it
+  // cannot reach back into reports already delivered. A broker who finds that
+  // out afterwards would be right to feel misled, so it is said up front.
+  $("tbody").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-pub]"); if(!b)return;
+    var on=b.getAttribute("data-on")==="1";
+    if(on){
+      if(!confirm("Stop publishing this comp?\\n\\nIt will no longer be offered in new reports. Reports that already included it keep it, and it stays in the public records it has already reached."))return;
+    }else{
+      if(!confirm("Publish this comp?\\n\\nIt becomes part of CompNinja's public records, credited to your firm by name in every report it appears in. Everything else in your vault stays private.\\n\\nYou can stop publishing it later, but reports that already used it will keep it."))return;
+    }
+    b.disabled=true; b.textContent=on?"Removing\\u2026":"Publishing\\u2026";
+    fetch("/api/vault/publish",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({id:b.getAttribute("data-pub"),publish:!on})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){
+          $("res").innerHTML='<div class="msg bad">'+esc(o.j.error||"That didn\\'t go through.")+"</div>";
+        }else if(o.j.published&&o.j.creditedTo){
+          $("res").innerHTML='<div class="msg ok">Published, credited to '+esc(o.j.creditedTo)+".</div>";
+        }else{
+          $("res").innerHTML="";
+        }
+        load();
+      })
+      .catch(function(){ b.disabled=false;
+        $("res").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+  });
+
+  $("ups").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-del]"); if(!b)return;
+    if(!confirm("Remove this import and all the comps that came in with it?"))return;
+    fetch("/api/vault/upload?id="+encodeURIComponent(b.getAttribute("data-del")),
+      {method:"DELETE",credentials:"same-origin"}).then(load).catch(load);
+  });
+
+  load();
+})();
+</script></body></html>`;
+}
+
 function renderHqHTML() {
   return `<!DOCTYPE html>
 <html lang="en"><head>
@@ -8197,6 +8584,330 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Broker vault (v1) ----------------------------------------------------
+  //
+  // A broker's private comp store. Plan:
+  // docs/superpowers/plans/2026-08-05-broker-vault-v1.md
+  //
+  // THE PRIVACY WALL: nothing public reads `broker_comps`. Not harvestComps(),
+  // not corpusRowsForMarket(), not maybePublishMarketSnapshot(), not
+  // /api/corpus-comps, not gen-market-seed.js. It is a separate table read only
+  // by the four routes below, and every one of them scopes by user_id. If you
+  // are about to add a "…or broker rows" branch to a corpus query, don't — see
+  // the header of migrations/013-broker-vault.sql for why that leak would be
+  // silent.
+  //
+  // Publishing (step 2) is what will eventually move a comp across, one comp at
+  // a time by explicit broker action. Nothing here writes `published`.
+  if (req.url.split("?")[0].startsWith("/api/vault")) {
+    const path = req.url.split("?")[0];
+
+    // Every vault route answers through this. Three refusals, in order:
+    // not signed in (401), not a broker (403), no database (503).
+    //
+    // The last one is deliberate and is the opposite of what the rest of the
+    // app does. Everywhere else a Supabase failure falls back to a local file
+    // so nothing is lost; here that would be the loss — Render erases its disk
+    // on every deploy, so a broker's uploaded book of business would silently
+    // disappear days later. Refusing the upload is the honest answer.
+    const openVault = async () => {
+      const user = await requireUser(req, res);
+      if (!user) return null;
+      const ent = await entitlementsFor(req);
+      if (!ent.canUseVault) {
+        sendJson(res, 403, {
+          error: "The private vault is part of the broker plan.",
+          code: "broker_required",
+        });
+        return null;
+      }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, {
+          error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+        });
+        return null;
+      }
+      return user;
+    };
+
+    // The template a broker fills in. See the plan's decision 2: we hand them
+    // our column names rather than guessing at theirs, because "Sale Price",
+    // "Price" and "$" all mean the same thing and a wrong guess puts the price
+    // in the size column.
+    if (req.method === "GET" && path === "/api/vault/template") {
+      (async () => {
+        if (!(await openVault())) return;
+        res.writeHead(200, {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": 'attachment; filename="compninja-comp-template.csv"',
+          "x-robots-tag": "noindex, nofollow",
+        });
+        res.end(VAULT.templateCsv());
+      })().catch((err) => {
+        console.error("vault template error:", err.message);
+        sendJson(res, 500, { error: "Could not build the template." });
+      });
+      return;
+    }
+
+    // Upload. The body is JSON carrying the file's text, not multipart — the
+    // browser reads the file with FileReader and posts it. Multipart would be
+    // a few hundred lines of hand-rolled parsing in a repo with no
+    // dependencies, to solve a problem we do not have.
+    if (req.method === "POST" && path === "/api/vault/upload") {
+      let body = "";
+      let tooBig = false;
+      // ~8MB of text. A 5,000-row comp sheet is well under 1MB; this is a
+      // runaway guard, not a product limit (the real cap is row-based and
+      // lives in broker-vault.js so it can be tested).
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 8e6 && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultup:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
+          }
+
+          const { filename, csv } = JSON.parse(body || "{}");
+          const parsed = VAULT.parseUpload(csv);
+          // Nothing usable: report why and write NOTHING, so a wrong-file
+          // mistake does not leave an empty batch behind.
+          if (!parsed.ok) {
+            return sendJson(res, 400, {
+              error: parsed.errors[0] || "Nothing in that file could be imported.",
+              errors: parsed.errors,
+              total: parsed.total,
+              skipped: parsed.skipped,
+            });
+          }
+
+          // The batch row first, so every comp can point at it and a bad import
+          // is one delete rather than forty.
+          const batch = await sbRequest("POST", "broker_uploads",
+            [{
+              user_id: user.id,
+              filename: String(filename || "").trim().slice(0, 200),
+              row_count: parsed.rows.length,
+              skipped_count: parsed.skipped,
+            }],
+            { prefer: "return=representation" });
+          const uploadId = batch && batch[0] && batch[0].id;
+          if (!uploadId) throw new Error("broker_uploads insert returned no id");
+
+          // `market` is attached HERE, with server.js's own marketOf() and no
+          // other parse, so broker_comps.market agrees byte for byte with
+          // comp_corpus.market. broker-vault.js deliberately does not compute
+          // it — a second copy of that parse is a second thing to keep in sync.
+          const rows = parsed.rows.map((r) => ({
+            ...r,
+            user_id: user.id,
+            upload_id: uploadId,
+            market: marketOf(r.address) || "",
+          }));
+
+          // ignore-duplicates: re-importing an overlapping spreadsheet is
+          // normal, and the second copy of a deal is a no-op rather than an
+          // error. The unique (user_id, dedupe_key) constraint is what makes
+          // this exact.
+          await sbRequest("POST", "broker_comps?on_conflict=user_id,dedupe_key",
+            rows, { prefer: "resolution=ignore-duplicates,return=minimal" });
+
+          console.log(`Vault import: ${parsed.rows.length} comp(s) for user ${user.id}` +
+            `${parsed.skipped ? `, ${parsed.skipped} skipped` : ""}` +
+            `${parsed.duplicates ? `, ${parsed.duplicates} duplicate(s) in file` : ""}`);
+
+          return sendJson(res, 200, {
+            ok: true,
+            uploadId,
+            imported: parsed.rows.length,
+            total: parsed.total,
+            skipped: parsed.skipped,
+            duplicates: parsed.duplicates,
+            errors: parsed.errors,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault upload failed:", err.message);
+          return sendJson(res, 502, {
+            error: "That import could not be saved — nothing was stored. Please try again.",
+          });
+        }
+      });
+      return;
+    }
+
+    // The dashboard's read. Filters by market and by property type are the
+    // "sortable by property and by market" promise from Ecosystem Plan §3.
+    if (req.method === "GET" && path === "/api/vault") {
+      (async () => {
+        const user = await openVault();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
+        const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
+        const market = (q.get("market") || "").trim().slice(0, 80);
+        const type = (q.get("type") || "").trim().slice(0, 40);
+
+        // Scoped by user_id FIRST and always. One broker must not see another
+        // broker's vault any more than the public may.
+        let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
+        if (market) query += `&market=eq.${encodeURIComponent(market)}`;
+        if (type && VAULT.PROPERTY_TYPES.includes(type)) {
+          query += `&property_type=eq.${encodeURIComponent(type)}`;
+        }
+        query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
+
+        const [comps, uploads] = await Promise.all([
+          sbRequest("GET", query),
+          sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&order=created_at.desc&limit=100`),
+        ]);
+        const rows = comps || [];
+
+        return sendJson(res, 200, {
+          comps: rows,
+          uploads: uploads || [],
+          // The header line: "N comps · 0 published · visible only to you".
+          // The published count is the trust proof the whole tier rests on, so
+          // it is counted from the rows rather than assumed to be zero.
+          counts: {
+            returned: rows.length,
+            published: rows.filter((r) => r.published).length,
+          },
+          markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
+          types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
+        });
+      })().catch((err) => {
+        console.error("vault read failed:", err.message);
+        sendJson(res, 502, { error: "Could not load your vault. Please try again." });
+      });
+      return;
+    }
+
+    // --- Publish / unpublish one comp ---------------------------------------
+    //
+    // Ecosystem Plan §4: the ONE sanctioned door through the privacy wall, and
+    // it opens one comp at a time, only by explicit broker action, never by
+    // default.
+    //
+    // It is a COPY, not a shared read. The comp is written into
+    // `comp_submissions` — the table fetchVerifiedComps() already reads — so it
+    // inherits the whole existing verified pipeline: offered to the model as a
+    // trusted candidate, badged "Verified · via <firm>", citation-counted, and
+    // (via findBrokersForMarket) the broker becomes someone the owner can
+    // introduce on a BOV lead in that market. No public query gains a read on
+    // broker_comps, which is why this is a copy and not a `published` filter.
+    if (req.method === "POST" && path === "/api/vault/publish") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultpub:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const { id, publish } = JSON.parse(body || "{}");
+          if (!id) return sendJson(res, 400, { error: "Which comp?" });
+
+          // user_id in the filter, always. Without it, knowing another broker's
+          // comp id would be enough to publish their private data.
+          const rows = await sbRequest("GET",
+            `broker_comps?id=eq.${encodeURIComponent(id)}` +
+            `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
+          const comp = rows && rows[0];
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+
+          // --- unpublish ---
+          if (publish === false) {
+            if (comp.published_submission_id) {
+              // Delete rather than mark rejected: fetchVerifiedComps selects on
+              // status, but a retracted comp should leave no public row at all.
+              await sbRequest("DELETE",
+                `comp_submissions?id=eq.${encodeURIComponent(comp.published_submission_id)}`,
+                undefined, { prefer: "return=minimal" });
+            }
+            await sbRequest("PATCH",
+              `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+              { published: false, published_at: null, published_submission_id: null },
+              { prefer: "return=minimal" });
+            console.log(`Vault comp ${id} unpublished by user ${user.id}`);
+            return sendJson(res, 200, { ok: true, published: false });
+          }
+
+          // --- publish ---
+          if (comp.published) return sendJson(res, 200, { ok: true, published: true });
+
+          const gate = VAULT.canPublish(comp);
+          if (!gate.ok) return sendJson(res, 400, { error: gate.reason, code: "not_publishable" });
+
+          // Credit is the compensation (Ecosystem Plan §4), so a comp with no
+          // name to credit is not worth publishing — refuse rather than post it
+          // anonymously and let the broker discover later that they got nothing.
+          const profile = await findBrokerProfile(user.email);
+          const by = VAULT.creditName(profile, user);
+          if (!by) {
+            return sendJson(res, 400, {
+              error: "Add your firm or display name before publishing — published comps are credited to it.",
+              code: "needs_credit_name",
+            });
+          }
+
+          const inserted = await sbRequest("POST", "comp_submissions",
+            [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+            { prefer: "return=representation" });
+          const subId = inserted && inserted[0] && inserted[0].id;
+          if (!subId) throw new Error("comp_submissions insert returned no id");
+
+          await sbRequest("PATCH",
+            `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+            { published: true, published_at: new Date().toISOString(), published_submission_id: subId },
+            { prefer: "return=minimal" });
+
+          // Approving a comp changes what a search is offered, so the cached
+          // report for that market+type is now stale. The cache key already
+          // hashes a signature of the offered verified comps, so this is
+          // self-correcting — noted here so nobody adds a manual bust later.
+          console.log(`📤 Vault comp published: ${comp.address} by ${by} (user ${user.id}, submission ${subId})`);
+          return sendJson(res, 200, { ok: true, published: true, creditedTo: by });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault publish failed:", err.message);
+          return sendJson(res, 502, { error: "That didn't go through. Nothing was changed." });
+        }
+      });
+      return;
+    }
+
+    // Undo one import. The comps cascade with the batch row.
+    if (req.method === "DELETE" && path === "/api/vault/upload") {
+      (async () => {
+        const user = await openVault();
+        if (!user) return;
+        const id = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which import?" });
+        // user_id in the filter, not just the id: without it, knowing another
+        // broker's upload id would be enough to delete their data.
+        await sbRequest("DELETE",
+          `broker_uploads?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+          undefined, { prefer: "return=minimal" });
+        console.log(`Vault import ${id} removed by user ${user.id}`);
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("vault delete failed:", err.message);
+        sendJson(res, 502, { error: "Could not remove that import. Please try again." });
+      });
+      return;
+    }
+
+    return sendJson(res, 404, { error: "Not found." });
+  }
+
   // --- Geocode proxy. The model's lat/lng values are block-level guesses, so
   // the front-end re-places map pins from the free US Census geocoder — which
   // has no CORS headers, hence this pass-through. Failures return {} so the
@@ -8695,6 +9406,10 @@ const server = http.createServer((req, res) => {
           pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
           pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
           single_report:       { price: STRIPE_PRICES.singleReport,   mode: "payment" },
+          // Broker tier. `chosen.price` is "" until STRIPE_PRICE_BROKER_MONTHLY
+          // is set, and the !chosen.price check below turns that into a 503 —
+          // so this entry is safe to ship before pricing is decided.
+          broker_monthly:      { price: STRIPE_PRICES.brokerMonthly,  mode: "subscription" },
         };
         const chosen = PLANS[plan];
         if (!chosen) return sendJson(res, 400, { error: "Unknown plan." });
@@ -8946,6 +9661,11 @@ const server = http.createServer((req, res) => {
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
           canExploreAddresses: ent.canExploreAddresses,
+          // Broker tier. Presentation only, exactly like every other field in
+          // this block: the vault routes re-resolve entitlements server-side,
+          // so editing this response reveals a nav link and nothing behind it.
+          broker: ent.broker === true,
+          canUseVault: ent.canUseVault === true,
           graceUntil: ent.graceUntil,
         },
       });
@@ -9586,6 +10306,18 @@ const server = http.createServer((req, res) => {
       .catch((err) => { console.error("hq snapshot failed:", err); sendJson(res, 500, { error: "Could not load the overview." }); });
     return;
   }
+  // The broker vault page. noindex like the other logged-in tooling; the HTML
+  // itself carries no data — everything comes from /api/vault, which is where
+  // the entitlement is actually enforced.
+  if (req.method === "GET" && req.url.split("?")[0] === "/vault") {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(renderVaultHTML());
+  }
+
   if (req.method === "GET" && req.url === "/hq") {
     // Same triple-noindex treatment as /admin (its own meta tag, this header,
     // and the robots.txt Disallow).

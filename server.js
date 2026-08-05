@@ -7091,12 +7091,85 @@ async function hqSnapshot() {
 // parallel sessions to collide, and this page shares no markup with the report
 // app anyway.
 //
-// The page itself is PUBLIC HTML with no secrets in it. Everything it shows
-// arrives from /api/vault, which is gated on canUseVault server-side, so
-// opening this URL without a broker subscription renders an empty shell and a
-// "part of the broker plan" note. There is no client-side check to bypass.
+// The page's DATA is resolved server-side before the HTML is sent, and baked
+// in as window.__VAULT_BOOT__, so the workspace renders in the same paint as
+// the title — the fetch-after-paint version spawned everything a beat late,
+// which the owner (rightly) read as a glitch. The gate is still canUseVault
+// server-side, applied in vaultReadPayload before any row is serialized;
+// there is no client-side check to bypass, and the page is no-store because
+// it now carries the signed-in viewer's own rows.
 // ---------------------------------------------------------------------------
-function renderVaultHTML() {
+// One answer to "what does this account's vault look like?", shaped as
+// { status, body } and never touching the response. Both readers share it:
+// GET /api/vault serializes it as JSON, GET /vault bakes it into the page.
+// Same three refusals, same order, as openVault: 401, 403, 503.
+//
+// The entitlement check and the two reads run CONCURRENTLY — the reads are
+// user-scoped and their rows leave this function only through the 200 branch
+// below the canUseVault test, so the parallelism changes latency, not what a
+// non-broker can see. allSettled keeps the refusal order honest: a Supabase
+// outage must not turn a 403 into a 502.
+async function vaultReadPayload(req, params) {
+  const user = await getSessionUser(req);
+  if (!user) return { status: 401, body: { error: "Not signed in." } };
+  const q = params || new URLSearchParams();
+  const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
+  const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
+  const market = (q.get("market") || "").trim().slice(0, 80);
+  const type = (q.get("type") || "").trim().slice(0, 40);
+
+  // Scoped by user_id FIRST and always. One broker must not see another
+  // broker's vault any more than the public may.
+  let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
+  if (market) query += `&market=eq.${encodeURIComponent(market)}`;
+  if (type && VAULT.PROPERTY_TYPES.includes(type)) {
+    query += `&property_type=eq.${encodeURIComponent(type)}`;
+  }
+  query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
+
+  const [entR, compsR, uploadsR] = await Promise.allSettled([
+    entitlementsFor(req),
+    DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
+    DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
+      `&order=created_at.desc&limit=100`) : Promise.resolve(null),
+  ]);
+  // entitlementsFor fails closed internally; if it somehow rejects, closed
+  // here too — an error must never open a vault.
+  const ent = entR.status === "fulfilled" ? entR.value : null;
+  if (!ent || !ent.canUseVault) {
+    return { status: 403, body: {
+      error: "The private vault is part of the broker plan.",
+      code: "broker_required",
+    } };
+  }
+  if (!DB_CONFIGURED) {
+    return { status: 503, body: {
+      error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+    } };
+  }
+  if (compsR.status === "rejected") throw compsR.reason;
+  if (uploadsR.status === "rejected") throw uploadsR.reason;
+  const rows = compsR.value || [];
+
+  return { status: 200, body: {
+    comps: rows,
+    uploads: uploadsR.value || [],
+    // The header line: "N comps · 0 published · visible only to you".
+    // The published count is the trust proof the whole tier rests on, so
+    // it is counted from the rows rather than assumed to be zero.
+    counts: {
+      returned: rows.length,
+      published: rows.filter((r) => r.published).length,
+    },
+    markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
+    types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
+  } };
+}
+
+function renderVaultHTML(boot) {
+  // </script> can never appear in the payload: every "<" is escaped, which is
+  // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
+  const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -7125,7 +7198,8 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
 .brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
-.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
@@ -7187,7 +7261,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="/"><span class="wordmark">Comp<b>Ninja</b></span></a>
+  <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
   <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
 </div></header>
 <main><div class="wrap">
@@ -7247,6 +7321,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   </div>
 </div></main>
 <footer><div class="wrap">Private broker workspace &middot; CompNinja</div></footer>
+<script>window.__VAULT_BOOT__=${bootJson};</script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -7259,25 +7334,27 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 
   function gate(html){ $("gate").innerHTML=html; $("gate").className=""; $("app").className="hide"; }
 
+  function apply(o){
+    if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
+    if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
+      '<a href="/brokers">What brokers get</a></div>');
+    if(o.s!==200) return gate('<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not load your vault.")+'</div>');
+    $("gate").className="hide"; $("app").className="";
+    comps=o.j.comps||[];
+    $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
+    $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+    renderUploads(o.j.uploads||[]);
+    render();
+  }
+
   function load(){
     var q=[],m=$("fMarket").value,t=$("fType").value;
     if(m)q.push("market="+encodeURIComponent(m));
     if(t)q.push("type="+encodeURIComponent(t));
     fetch("/api/vault"+(q.length?"?"+q.join("&"):""),{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
-        if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
-          '<a href="/brokers">What brokers get</a></div>');
-        if(o.s!==200) return gate('<div class="msg bad">'+esc(o.j.error||"Could not load your vault.")+'</div>');
-        $("gate").className="hide"; $("app").className="";
-        comps=o.j.comps||[];
-        $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
-        $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
-        fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
-        renderUploads(o.j.uploads||[]);
-        render();
-      })
+      .then(apply)
       .catch(function(){ gate('<div class="msg bad">Could not reach the server. Please try again.</div>'); });
   }
 
@@ -7414,7 +7491,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       {method:"DELETE",credentials:"same-origin"}).then(load).catch(load);
   });
 
-  load();
+  // The server bakes the first answer into the page (window.__VAULT_BOOT__)
+  // so the workspace renders in the same paint as the title, with no fetch
+  // and no pop-in. load() remains the path for filter changes, post-upload
+  // refreshes, and the fallback when the boot payload could not be built.
+  var boot=window.__VAULT_BOOT__;
+  if(boot&&typeof boot.s==="number"){apply(boot);}else{load();}
 })();
 </script></body></html>`;
 }
@@ -8834,45 +8916,13 @@ const server = http.createServer((req, res) => {
 
     // The dashboard's read. Filters by market and by property type are the
     // "sortable by property and by market" promise from Ecosystem Plan §3.
+    // The whole answer — gate included — comes from vaultReadPayload, the
+    // same function GET /vault bakes into the page, so the two can't drift.
     if (req.method === "GET" && path === "/api/vault") {
       (async () => {
-        const user = await openVault();
-        if (!user) return;
         const q = new URL(req.url, "http://localhost").searchParams;
-        const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
-        const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
-        const market = (q.get("market") || "").trim().slice(0, 80);
-        const type = (q.get("type") || "").trim().slice(0, 40);
-
-        // Scoped by user_id FIRST and always. One broker must not see another
-        // broker's vault any more than the public may.
-        let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
-        if (market) query += `&market=eq.${encodeURIComponent(market)}`;
-        if (type && VAULT.PROPERTY_TYPES.includes(type)) {
-          query += `&property_type=eq.${encodeURIComponent(type)}`;
-        }
-        query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
-
-        const [comps, uploads] = await Promise.all([
-          sbRequest("GET", query),
-          sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
-            `&order=created_at.desc&limit=100`),
-        ]);
-        const rows = comps || [];
-
-        return sendJson(res, 200, {
-          comps: rows,
-          uploads: uploads || [],
-          // The header line: "N comps · 0 published · visible only to you".
-          // The published count is the trust proof the whole tier rests on, so
-          // it is counted from the rows rather than assumed to be zero.
-          counts: {
-            returned: rows.length,
-            published: rows.filter((r) => r.published).length,
-          },
-          markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
-          types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
-        });
+        const p = await vaultReadPayload(req, q);
+        sendJson(res, p.status, p.body);
       })().catch((err) => {
         console.error("vault read failed:", err.message);
         sendJson(res, 502, { error: "Could not load your vault. Please try again." });
@@ -10414,16 +10464,31 @@ const server = http.createServer((req, res) => {
       .catch((err) => { console.error("hq snapshot failed:", err); sendJson(res, 500, { error: "Could not load the overview." }); });
     return;
   }
-  // The broker vault page. noindex like the other logged-in tooling; the HTML
-  // itself carries no data — everything comes from /api/vault, which is where
-  // the entitlement is actually enforced.
+  // The broker vault page. noindex like the other logged-in tooling. The
+  // viewer's vault data is resolved HERE, before the HTML goes out, and baked
+  // into the page as a boot payload — one paint, no fetch-then-pop-in (the
+  // owner reported the two-phase version as a glitch). The entitlement gate
+  // is inside vaultReadPayload; no-store matters more than it used to, since
+  // the page now carries the signed-in viewer's own rows. If the payload
+  // can't be built, the page ships without one and falls back to fetching
+  // /api/vault exactly as it did before.
   if (req.method === "GET" && req.url.split("?")[0] === "/vault") {
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderVaultHTML());
+    (async () => {
+      let boot = null;
+      try {
+        const p = await vaultReadPayload(req, null);
+        boot = { s: p.status, j: p.body };
+      } catch (err) {
+        console.error("vault boot failed:", err.message);
+      }
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(renderVaultHTML(boot));
+    })();
+    return;
   }
 
   if (req.method === "GET" && req.url === "/hq") {

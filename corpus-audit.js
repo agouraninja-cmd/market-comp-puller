@@ -129,11 +129,130 @@ function urlIdentifiesProperty(row) {
   return false;
 }
 
+// --- The assembled report ---------------------------------------------------
+
+// Measured 2026-08-05: each of these answered 403 to a browser-User-Agent
+// request, and together they cover roughly half the corpus. This is a snapshot
+// of bot policy, not a fact about the data, which is why it is reported as
+// context and NEVER scored. Scoring it would report a bot-detection rate while
+// calling it an accuracy rate.
+const BLOCKED_HOSTS = new Set([
+  "loopnet.com", "cityfeet.com", "propertyshark.com", "commercialsearch.com",
+]);
+
+const FINDING_KEYS = ["weak_citation", "badge_drift", "shared_citation", "unparseable_date", "no_price"];
+
+function normAddress(a) {
+  return String(a == null ? "" : a).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normUrl(u) {
+  return typeof u === "string" ? u.trim().toLowerCase().replace(/\/+$/, "") : "";
+}
+
+// Presence of a price, not its value. Reads the FIRST numeric run rather than
+// stripping every non-digit: real rows quote ranges ("$7.00-$12.00/SF/yr NNN"),
+// and stripping turns that into "7.0012.00", which parses as NaN and would
+// flag a perfectly good row as priceless. "Undisclosed" and "Rate Upon
+// Request" still correctly have no number at all.
+function hasPrice(row) {
+  const num = (s) => {
+    const m = /\d[\d,]*(?:\.\d+)?/.exec(String(s == null ? "" : s));
+    return !!m && Number(m[0].replace(/,/g, "")) > 0;
+  };
+  return num(row.price_or_rate) || num(row.price_per_sqft);
+}
+
+// Lower index is stronger provenance.
+function rankOf(t) {
+  const i = SOURCE_TYPES.indexOf(t);
+  return i === -1 ? SOURCE_TYPES.length : i;
+}
+
+// Report-only by design: this returns findings and NEVER mutates a row.
+// Total by design: a malformed row yields findings rather than throwing, so
+// one bad row can never take down the whole report.
+function auditCorpus(rows, opts) {
+  const list = Array.isArray(rows) ? rows : [];
+  const parseDealDate = (opts && opts.parseDealDate) || (() => null);
+
+  // Pre-pass: how many DISTINCT addresses cite each url. Two comps sharing one
+  // url is the strongest available tell that a thin market was padded from a
+  // single listing page.
+  const addressesPerUrl = new Map();
+  for (const raw of list) {
+    const r = raw || {};
+    const u = normUrl(r.source_url);
+    if (!u) continue;
+    if (!addressesPerUrl.has(u)) addressesPerUrl.set(u, new Set());
+    addressesPerUrl.get(u).add(normAddress(r.address));
+  }
+
+  const findings = {};
+  FINDING_KEYS.forEach((k) => { findings[k] = 0; });
+  const hosts = { fetchable: 0, blocked: 0, unknown: 0 };
+  const flagged = [];
+  let clean = 0;
+
+  for (const raw of list) {
+    const r = raw || {};
+    const found = [];
+
+    if (!urlIdentifiesProperty(r)) found.push("weak_citation");
+
+    // Drift: the row claims stronger provenance than today's rule would grant.
+    const stored = String(r.source_type || "").toLowerCase();
+    if (SOURCE_TYPES.includes(stored) &&
+        rankOf(stored) < rankOf(enforcedSourceType(stored, r.address))) {
+      found.push("badge_drift");
+    }
+
+    const u = normUrl(r.source_url);
+    if (u && (addressesPerUrl.get(u) || new Set()).size > 1) found.push("shared_citation");
+
+    if (parseDealDate(r.deal_date) == null) found.push("unparseable_date");
+    if (!hasPrice(r)) found.push("no_price");
+
+    const host = hostOf(r.source_url);
+    if (!host) hosts.unknown++;
+    else if (BLOCKED_HOSTS.has(host)) hosts.blocked++;
+    else hosts.fetchable++;
+
+    if (found.length === 0) { clean++; continue; }
+    found.forEach((k) => { findings[k]++; });
+    flagged.push({
+      address: String(r.address == null ? "" : r.address).slice(0, 120),
+      market: String(r.market == null ? "" : r.market).slice(0, 60),
+      property_type: String(r.property_type == null ? "" : r.property_type).slice(0, 30),
+      source_type: String(r.source_type == null ? "" : r.source_type).slice(0, 20),
+      source_url: String(r.source_url == null ? "" : r.source_url).slice(0, 160),
+      findings: found,
+    });
+  }
+
+  // Deterministic ordering: worst first, then by address, so repeated runs on
+  // unchanged data produce an identical list.
+  flagged.sort((a, b) => (b.findings.length - a.findings.length) || a.address.localeCompare(b.address));
+
+  return {
+    total: list.length,
+    clean,
+    // An empty corpus scores 1 rather than NaN: there is nothing wrong with it.
+    score: list.length ? clean / list.length : 1,
+    findings,
+    hosts,
+    worst: flagged.slice(0, 15),
+  };
+}
+
 module.exports = {
+  auditCorpus,
   enforcedSourceType,
   isAggregateAddress,
   urlIdentifiesProperty,
   hostOf,
   AGGREGATE_ADDRESS_RE,
   SOURCE_TYPES,
+  BLOCKED_HOSTS,
+  FINDING_KEYS,
 };

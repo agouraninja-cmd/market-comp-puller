@@ -779,6 +779,39 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Still unbuilt: report branding. `canBrand` is a real entitlement and
   `findBrandingProfile()` exists, but there is no UI at all, so the bullet stays
   off the pricing tile.
+- **Broker tier** (billing rails added 2026-08-05; the vault itself is NOT
+  built). Ecosystem Plan v1 — design spec and the vault contract in
+  `docs/superpowers/specs/2026-08-05-broker-tier-design.md`. One new plan,
+  `broker_monthly`, which is a **superset of Pro**: it satisfies the ordinary
+  `pro` test, so unlimited comps, the 120-month lookback, unlimited exports,
+  branding and the Address Explorer all arrive by the existing route, and the
+  tier adds exactly one capability — the private vault. It is a plan on
+  `subscriptions` rather than a role column on `users` so access **lapses with
+  the card** (a role flag would outlive a cancelled subscription and keep a
+  vault open); `subscriptions.plan` has no CHECK constraint, so this needed no
+  migration. Four things to know:
+  - **Vault routes test `ent.canUseVault`, never a plan name.** The result
+    carries `broker` (identity, mirrors `pro`) and `canUseVault` (capability,
+    mirrors `canBrand`); `/api/config` exposes both. The usual rule applies
+    with more force than usual here — this gate guards private data.
+  - **An unrecognized plan name opens no vault**, which is deliberately
+    STRICTER than `pro`, where status alone governs access and an unfamiliar
+    plan name still grants it (there is a test pinning that). Erring generous
+    is right for comps and wrong for a data store nobody can be shown to own.
+  - **`PRO_ENABLED=off` grants no vault**, even though that branch grants every
+    other capability. "Pre-Pro behavior" restores what visitors USED TO HAVE
+    free; the vault was never free, it did not exist. The opposite would open
+    an upload endpoint to every anonymous visitor on an un-launched deployment.
+  - **`STRIPE_PRICE_BROKER_MONTHLY` is unset**, so `/api/checkout` answers 503
+    for this plan and the whole path ships dark. Pricing is an open question
+    for Chuck. To launch: create the Stripe price, set the env var, THEN ship
+    the tile copy — the price lives in Stripe and the copy in `index.html`,
+    they can disagree, and nothing detects it.
+  The privacy wall is the product: no vault row may ever reach `harvestComps()`,
+  `corpusRowsForMarket()`, a market snapshot, or another account's report.
+  Enforce it with **separate tables read by separate functions**, not a
+  `private` column filtered in the corpus queries — the corpus read path
+  swallows its own errors, so one missed filter would leak silently.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`. The same handler covers `/index.html`,

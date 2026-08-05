@@ -85,6 +85,13 @@ const STRIPE_PRICES = {
   monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
   annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
   singleReport: (process.env.STRIPE_PRICE_SINGLE_REPORT || "").trim(),
+  // Broker tier (Ecosystem Plan v1). Deliberately UNSET for now: the monthly
+  // price is an open question for Chuck, and this repo's rule is that the
+  // number lives in Stripe, never in our copy. Unset means /api/checkout
+  // answers 503 "That plan isn't configured" — the whole broker path ships
+  // dark and becomes buyable by creating one Stripe price and setting this,
+  // with no code change. Create the Stripe price FIRST, then write the copy.
+  brokerMonthly: (process.env.STRIPE_PRICE_BROKER_MONTHLY || "").trim(),
 };
 const STRIPE_CONFIGURED = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICES.monthly);
 // The founding-member offer closes at 50. See foundingSlotsLeft() for why the
@@ -8633,6 +8640,10 @@ const server = http.createServer((req, res) => {
           pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
           pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
           single_report:       { price: STRIPE_PRICES.singleReport,   mode: "payment" },
+          // Broker tier. `chosen.price` is "" until STRIPE_PRICE_BROKER_MONTHLY
+          // is set, and the !chosen.price check below turns that into a 503 —
+          // so this entry is safe to ship before pricing is decided.
+          broker_monthly:      { price: STRIPE_PRICES.brokerMonthly,  mode: "subscription" },
         };
         const chosen = PLANS[plan];
         if (!chosen) return sendJson(res, 400, { error: "Unknown plan." });
@@ -8884,6 +8895,11 @@ const server = http.createServer((req, res) => {
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
           canExploreAddresses: ent.canExploreAddresses,
+          // Broker tier. Presentation only, exactly like every other field in
+          // this block: the vault routes re-resolve entitlements server-side,
+          // so editing this response reveals a nav link and nothing behind it.
+          broker: ent.broker === true,
+          canUseVault: ent.canUseVault === true,
           graceUntil: ent.graceUntil,
         },
       });

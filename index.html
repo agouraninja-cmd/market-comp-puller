@@ -4577,14 +4577,21 @@
       return out;
     }
 
-    function render(addresses, loc) {
+    // `listType` is the property type the list was BUILT for (captured at
+    // fetch time, not read back off the dropdown), because the panel can sit
+    // open while the visitor changes the type control. Clicking an address
+    // from an Industrial list with the dropdown moved to Office used to run
+    // an Office search on a warehouse — too few priced sale comps, blank
+    // value hero. The click snaps the type back to the list's before
+    // submitting, mirroring the manual-change path (recommended lookback +
+    // subject fields), so address and type always agree.
+    function render(addresses, loc, listType) {
       list.textContent = "";
       if (!addresses.length) {
         status.textContent = `No addresses found for ${loc.city}, ${loc.state}. Try a nearby larger city, or type any address above.`;
         return;
       }
-      const type = document.getElementById("propertyType").value.toLowerCase();
-      status.textContent = `${addresses.length} ${type} address${addresses.length === 1 ? "" : "es"} · click one to run a report`;
+      status.textContent = `${addresses.length} ${listType.toLowerCase()} address${addresses.length === 1 ? "" : "es"} · click one to run a report`;
       for (const a of addresses) {
         const b = document.createElement("button");
         b.type = "button";
@@ -4592,6 +4599,12 @@
         b.textContent = a.address;   // textContent on purpose: OSM data is untrusted
         b.addEventListener("click", () => {
           document.getElementById("address").value = a.address;
+          const sel = document.getElementById("propertyType");
+          if (sel.value !== listType) {
+            sel.value = listType;
+            applyRecommendedLookback();
+            syncSubjectFieldsToType();   // programmatic set fires no "change"
+          }
           panel.classList.add("hidden");
           document.getElementById("compForm").requestSubmit();
         });
@@ -4616,7 +4629,7 @@
       const cacheKey = `${loc.city.toLowerCase()}, ${loc.state}|${type}`;
       const hit = aeCache[cacheKey];
       if (hit && Date.now() - hit.ts < AE_TTL && hit.addresses.length) {
-        return render(hit.addresses, loc);
+        return render(hit.addresses, loc, type);
       }
       btn.disabled = true;
       status.textContent = "Looking up addresses…";
@@ -4644,7 +4657,7 @@
           addresses = addresses.concat(await overpassAddresses(loc.city, loc.state, type, exclude)).slice(0, 8);
         }
         if (addresses.length) aeCacheStore(cacheKey, addresses);
-        render(addresses, loc);
+        render(addresses, loc, type);
       } finally {
         btn.disabled = false;
       }

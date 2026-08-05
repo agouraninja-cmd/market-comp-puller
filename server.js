@@ -5571,6 +5571,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">View analytics</button><div id="err" class="err"></div></div>
 <div id="dash" style="display:none"></div>
+<div id="auditPanel"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -5722,6 +5723,42 @@ function renderSubs(d,key){
     });
   });
 }
+// Corpus integrity. Neutral ink even at a low score: red is reserved on this
+// page for the two outright-failure banners (upstream down, corpus not
+// persisting). This reports a standing condition, not an outage.
+var AUDIT_LABELS={weak_citation:"Citation does not name the property",
+  badge_drift:"Badge stronger than today's rule allows",
+  shared_citation:"Same source cited by different addresses",
+  unparseable_date:"Date will not parse, so retrieval cannot see it",
+  no_price:"No usable price"};
+function renderAudit(d){
+  var el=document.getElementById("auditPanel");
+  if(!d||d.error){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>Unavailable right now — the corpus could not be read. Nothing else on this page is affected.</p></div>";return;}
+  if(!d.total){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>No corpus rows yet.</p></div>";return;}
+  var f=d.findings||{},h=d.hosts||{};
+  var lines=Object.keys(AUDIT_LABELS).map(function(k){
+    return "<p class=muted>"+esc(f[k]||0)+" &middot; "+esc(AUDIT_LABELS[k])+"</p>";}).join("");
+  var rows=(d.worst||[]).map(function(w){
+    return "<p class=muted style='word-break:break-word'><b>"+esc(w.address)+"</b> ("+
+      esc(w.property_type||"?")+", badge "+esc(w.source_type||"?")+")<br>"+
+      esc((w.findings||[]).join(", "))+"<br>"+esc(w.source_url)+"</p>";}).join("");
+  el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p><b>"+Math.round(d.score*100)+"%</b> of "+esc(d.total)+" rows carry no structural finding.</p>"+
+    "<p class=muted>This measures CITATION quality, not accuracy. It checks that a comp's source link "+
+    "names the property; it never reads the page, and it is not the 90% accuracy gate.</p>"+
+    lines+
+    "<p class=muted>"+esc(h.blocked||0)+" of "+esc(d.total)+" rows cite hosts that block automated reading. "+
+    "That is context only and does not affect the score.</p>"+
+    (rows?"<h2 style='margin-top:12px'>Worst rows</h2>"+rows:"");
+}
+function loadAudit(key){
+  fetch("/api/corpus-audit",{headers:{"x-admin-key":key}})
+    .then(function(r){if(!r.ok){throw new Error("audit "+r.status);}return r.json();})
+    .then(renderAudit)
+    .catch(function(e){console.error(e);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -5736,7 +5773,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }

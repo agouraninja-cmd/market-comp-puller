@@ -2277,8 +2277,30 @@ async function harvestComps(type, searchAddress, payload) {
 const previewPagesMem = new Map(); // slug -> { payload, ts }
 const PREVIEW_TTL_MS = 30 * 60 * 1000;
 
-// Two visitors exploring the same market at once should bill one search, not two.
-const exploreInFlight = new Map(); // slug -> Promise<{status, body}>
+// Two visitors exploring the same market at once should bill one search, not
+// two — and both should still SEE it happen. The record carries the shared
+// promise, the live listener set, and a bounded replay log so a visitor who
+// joins mid-build gets a coherent stream instead of starting halfway through.
+const exploreInFlight = new Map(); // slug -> { promise, listeners:Set<fn>, log:[] }
+const EXPLORE_LOG_MAX = 300;       // a full build emits well under this; the cap is a runaway guard
+
+// Create the job for `slug`, or join the one already running. `start(emit)`
+// must return the job's promise; every event it passes to `emit` is logged and
+// fanned out to whoever is listening at that moment.
+function joinExploreJob(slug, start) {
+  let job = exploreInFlight.get(slug);
+  if (job) return job;
+  job = { listeners: new Set(), log: [] };
+  const emit = (evt) => {
+    if (job.log.length < EXPLORE_LOG_MAX) job.log.push(evt);
+    for (const fn of job.listeners) {
+      try { fn(evt); } catch (_) { /* one dead listener must not stop the others */ }
+    }
+  };
+  job.promise = start(emit).finally(() => exploreInFlight.delete(slug));
+  exploreInFlight.set(slug, job);
+  return job;
+}
 
 const EXPLORE_TYPES = ["Industrial", "Office", "Retail", "Multifamily"];
 const US_STATES = new Set([
@@ -8233,11 +8255,15 @@ const server = http.createServer((req, res) => {
       if (body.length > 1e4) req.destroy();
     });
     req.on("end", async () => {
+      // Declared outside the try so the catch below can tell whether headers
+      // are already streaming — once they are, there is no status code left.
+      let sse = null;
       try {
         if (APP_PASSWORD && !passwordMatches(req.headers["x-app-password"])) {
           return sendJson(res, 401, { error: "Unauthorized: incorrect or missing password." });
         }
         const parsed = JSON.parse(body || "{}");
+        const wantsStream = parsed.stream === true;
         // Explorer is limited to the four types the market-page format is
         // proven on; Land/Residential stay on the valuation-form path.
         const typeIn = String(parsed.type || "").trim().toLowerCase();
@@ -8290,9 +8316,7 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: "Server is missing the ANTHROPIC_API_KEY environment variable." });
         }
 
-        let job = exploreInFlight.get(slug);
-        if (!job) {
-          job = (async () => {
+        const job = joinExploreJob(slug, (emit) => (async () => {
             // Mirrors the /api/comps pipeline with EXACTLY gen-market-seed.js's
             // parameters (address "City, ST", note "", months 24, maxComps 8,
             // txFocus "both", size null) so the two share cache entries — a
@@ -8310,7 +8334,13 @@ const server = http.createServer((req, res) => {
               if (!tryConsumeDailySearch()) {
                 return { status: 429, body: { error: "This site has reached its daily search limit. Please try again after midnight UTC." } };
               }
-              result = await getComps(address, typeOk, "", 24, 8, "both", null, verifiedComps);
+              // Progress rides only the billed leg. A cache hit emits nothing,
+              // which is exactly what keeps that path answering as plain JSON
+              // (see the lazy openSse below). Arguments 9 and 10 are getComps'
+              // corpus and subjectDetails defaults, spelled out because the
+              // progress callback sits behind them.
+              result = await getComps(address, typeOk, "", 24, 8, "both", null, verifiedComps,
+                { comps: [], coverage: 0, fresh: false }, {}, emit);
               await storeCachedSearch(cacheKey, result);
             }
             logEvent("search", { prop_type: typeOk, market: address, cached, source: "explore" });
@@ -8330,19 +8360,45 @@ const server = http.createServer((req, res) => {
             }
             previewPagesMem.set(slug, { payload: snapshot, ts: Date.now() });
             return { status: 200, body: { url: `/market-preview/${slug}`, slug, published: false, pricedSaleCount } };
-          })().finally(() => exploreInFlight.delete(slug));
-          exploreInFlight.set(slug, job);
+        })());
+        // The SSE opens on the FIRST progress event, not up front. At this
+        // point the cache lookup still lives inside the shared job, so we
+        // cannot yet know whether this request is fast or slow — and a cache
+        // hit must answer as plain JSON with a real status code, like every
+        // other fast or failed exit. A job that never emits never opens a
+        // stream, so that rule is enforced by the structure rather than
+        // asserted. (With STREAM_ANTHROPIC=off nothing emits either, and the
+        // route degrades cleanly to the old single-response behavior.)
+        const onEvent = (evt) => {
+          if (!sse) sse = openSse(res);
+          sse.send("progress", evt);
+        };
+        if (wantsStream) {
+          for (const evt of job.log) onEvent(evt);   // catch a late joiner up
+          job.listeners.add(onEvent);
         }
-        const { status, body: out } = await job;
+        let status, out;
+        try {
+          ({ status, body: out } = await job.promise);
+        } finally {
+          job.listeners.delete(onEvent);
+        }
         // Spent only when a result was actually served — a published page or a
         // thin-data preview, both of which cost a real search and return real
         // content. A 422 thin market, a 429 daily cap or an upstream failure
         // must never burn the visitor's free search.
-        if (status === 200) consumeGuestSearchFor(guestGate, req, res, false);
+        if (status === 200) consumeGuestSearchFor(guestGate, req, res, Boolean(sse));
+        if (sse) return sse.finish(status === 200 ? "result" : "error",
+          status === 200 ? out : { error: out.error });
         return sendJson(res, status, out);
       } catch (err) {
         console.error("Error handling /api/explore-market:", err);
-        return sendJson(res, 502, { error: clientErrorMessage(err) });
+        // Once the SSE headers are out there is no status code left to send —
+        // deliver the SAME {error} shape as the JSON path so the client's
+        // existing failure row handles it with no new error UI.
+        const msg = clientErrorMessage(err);
+        if (sse) return sse.finish("error", { error: msg });
+        return sendJson(res, 502, { error: msg });
       }
     });
     return;

@@ -7107,7 +7107,8 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
 .brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
-.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
@@ -7169,7 +7170,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="/"><span class="wordmark">Comp<b>Ninja</b></span></a>
+  <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
   <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
 </div></header>
 <main><div class="wrap">

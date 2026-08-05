@@ -603,7 +603,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `ADMIN_KEY`-gated and returns aggregates (searches/day billed-vs-cached, cache
   hit rate, by-type, top markets, leads by source, conversion %, and
   `corpus.health` — see the corpus-health note under **Comp corpus**, which
-  renders as a red banner above the tiles). **Logging is always on**; the
+  renders as a red banner above the tiles). It also carries `introRequests`,
+  a read of the broker inbox's `lead_intro_requests` table (count + recent
+  rows with broker email and the lead's market/type — owner-facing, so that
+  PII is allowed here even though analytics EVENTS stay PII-free), rendered
+  as a "Broker intro requests" card on `/admin`; without it a dropped owner
+  email made a request invisible. Supabase-only like the route that writes
+  it (`db: false` when unconfigured), and fails safe: a read error yields
+  `null`/"Unavailable", never a broken dashboard or a fabricated zero. **Logging is always on**; the
   dashboard only renders once `ADMIN_KEY` is set (same key as the lead CSV).
   `/admin` is `noindex` + `Disallow`ed in robots (meta tag, `X-Robots-Tag`
   header, and robots.txt).

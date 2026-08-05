@@ -191,6 +191,15 @@ test("admin gating", async (t) => {
   await t.test("the header form is accepted", async () => {
     const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
     assert.equal(r.status, 200);
+    // The intro-request surface must ride along, not just the event
+    // aggregates — a dropped owner email is invisible without it. This boot
+    // has no Supabase, and the table has no file fallback, so the honest
+    // answer is db:false with nothing to show — never a fabricated zero
+    // presented as a real count, and never a missing key (which /admin
+    // reads as a stale pre-feature response and hides the card for).
+    const body = await r.json();
+    assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
+    assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
   });
 
   await t.test("the ?key= form still works for machine callers", async () => {

@@ -5421,6 +5421,10 @@ function aggregateStats(rows) {
       leads: leads.length,
       shares: rows.filter((r) => r.kind === "share").length,
       comps: rows.filter((r) => r.kind === "comp").length,
+      // Event-derived, so it inherits the 10k row cap and only counts from
+      // the inbox launch onward; the authoritative figure is the
+      // introRequests table read attached beside this in /api/stats.
+      leadIntros: rows.filter((r) => r.kind === "lead_intro").length,
     },
     conversionPct: searches.length ? Math.round((leads.length / searches.length) * 1000) / 10 : 0,
     daily,
@@ -5489,6 +5493,57 @@ function aggregateStats(rows) {
     eventCount: rows.length,
     capped: rows.length >= 10000,
   };
+}
+
+// Broker introduction requests for /admin. lead_intro_requests is written by
+// POST /api/broker/leads/intro and was read nowhere owner-facing — one owner
+// email per request was the only signal, so a dropped email made a request
+// invisible (the corpus-health lesson: a signal nobody can see back is no
+// signal). Supabase-only by design, like the route that writes it — there is
+// no file fallback to read — so an unconfigured DB answers db:false rather
+// than a misleading zero. Fails SAFE: any error returns null and /admin
+// renders "unavailable"; this panel must never be what breaks the dashboard.
+// The recent list carries broker email + lead market/type — /api/stats is
+// ADMIN_KEY-gated and the owner already receives exactly this by email, so
+// nothing here widens who sees what. Analytics EVENTS stay PII-free.
+async function readIntroRequests() {
+  if (!DB_CONFIGURED) return { db: false, count: 0, recent: [] };
+  try {
+    const reqs = (await sbRequest("GET",
+      "lead_intro_requests?select=lead_id,user_id,created_at&order=created_at.desc&limit=1000")) || [];
+    const head = reqs.slice(0, 12);
+    const uids = [...new Set(head.map((r) => String(r.user_id)))];
+    const lids = [...new Set(head.map((r) => String(r.lead_id)))];
+    // leads has no FK from lead_intro_requests (deliberate — see 015), so
+    // PostgREST can't embed it; both joins are done here. A dangling lead_id
+    // is expected and renders as "(lead deleted)".
+    const [users, leadRows] = await Promise.all([
+      uids.length ? sbRequest("GET", `users?id=in.(${uids.join(",")})&select=id,email`) : [],
+      lids.length ? sbRequest("GET", `leads?id=in.(${lids.join(",")})&select=id,address,type`) : [],
+    ]);
+    const emailBy = {};
+    (users || []).forEach((u) => { emailBy[String(u.id)] = u.email; });
+    const leadBy = {};
+    (leadRows || []).forEach((l) => { leadBy[String(l.id)] = l; });
+    return {
+      db: true,
+      count: reqs.length,
+      capped: reqs.length >= 1000,
+      recent: head.map((r) => {
+        const lead = leadBy[String(r.lead_id)];
+        return {
+          created_at: r.created_at,
+          broker_email: emailBy[String(r.user_id)] || "(deleted account)",
+          market: lead && lead.address ? marketOf(lead.address) : "(lead deleted)",
+          type: (lead && lead.type) || "",
+          address: (lead && lead.address) || "",
+        };
+      }),
+    };
+  } catch (err) {
+    console.warn("Intro-request read failed:", err && err.message);
+    return null;
+  }
 }
 
 // Self-contained admin dashboard (own inline CSS/JS). Public shell, but shows
@@ -5709,6 +5764,32 @@ function render(d){
     " read failure(s) since the last restart"+(h.lastErrorAt?" &middot; last at "+esc(h.lastErrorAt):"")+".</p>"+
     (h.lastError?"<p class=muted style='word-break:break-word'>"+esc(h.lastError)+"</p>":"")+
     "</div>") : "";
+  // Broker intro requests (2026-08-05): the lead_intro_requests table read.
+  // undefined = a stale /api/stats from before this existed (skip the card);
+  // null = the read failed (say so, break nothing); db:false = no Supabase.
+  // Broker email and lead market/type are owner-facing here — the owner
+  // already gets exactly this by email; this is the surface that survives a
+  // dropped email. Every value is broker/lead-supplied text, so esc() all.
+  var ir=d.introRequests;
+  var introRows=(ir&&ir.recent||[]).map(function(x){
+    // title is DOUBLE-quoted: esc() covers " but not ', and the address is
+    // visitor-typed text — a single-quoted attribute would be escapable.
+    return '<tr><td style="text-align:left" title="'+esc(x.address)+'">'+esc(x.market)+(x.type?" &middot; "+esc(x.type):"")+"</td>"+
+      "<td style='text-align:left'>"+esc(x.broker_email)+"</td>"+
+      "<td class=muted style='white-space:nowrap'>"+esc(String(x.created_at||"").slice(0,10))+"</td></tr>";
+  }).join("");
+  var introCard=(ir===undefined)?"":
+    "<div class=card><h2>Broker intro requests</h2>"+
+    (!ir
+      ? "<p class=muted>Unavailable right now &mdash; the intro-request table could not be read. Nothing else on this page is affected.</p>"
+      : !ir.db
+      ? "<p class=muted>Requires Supabase &mdash; intro requests are stored only there (no file fallback), so this server has none to show.</p>"
+      : !ir.count
+      ? "<p class=muted>No introduction requests yet. Each one appears here and also emails you.</p>"
+      : "<p><b>"+ir.count+(ir.capped?"+":"")+"</b> request(s) total &middot; "+ir.recent.length+" most recent below. "+
+        "Each also emailed you when it arrived; this list is the record that survives a dropped email.</p>"+
+        "<table>"+introRows+"</table>")+
+    "</div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
@@ -5748,6 +5829,7 @@ function render(d){
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
+    introCard+
     (!sp ? "" :
     "<div class=card><h2>About the cost tiles</h2><div class=muted>Estimates, not billed amounts &mdash; no invoice is read. "+
     "A comp (report) search is assumed "+money(sp.listPriceReport)+"; a corpus-assisted one runs a much smaller web-search budget, so the "+
@@ -11051,8 +11133,13 @@ const server = http.createServer((req, res) => {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     const key = new URL(req.url, "http://localhost").searchParams.get("key");
     if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
-    readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"])
-      .then((rows) => sendJson(res, 200, aggregateStats(rows)))
+    Promise.all([
+      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"]),
+      // Never rejects: readIntroRequests catches its own errors and returns
+      // null, so an intro-table outage can't take the whole dashboard down.
+      readIntroRequests(),
+    ])
+      .then(([rows, introRequests]) => sendJson(res, 200, { ...aggregateStats(rows), introRequests }))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
     return;
   }

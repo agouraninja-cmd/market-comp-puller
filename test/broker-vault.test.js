@@ -16,6 +16,7 @@ const {
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
   templateCsv, TEMPLATE_COLUMNS, MAX_ROWS_PER_UPLOAD,
   canPublish, creditName, submissionRowFrom,
+  matchOffered, enforceVerifiedFlags,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -458,4 +459,102 @@ test("empty optional fields become null, not the string 'null'", () => {
   const row = submissionRowFrom(vaultComp({ cap_rate: null, notes: "" }), { creditName: "X", email: "a@b.c" });
   assert.equal(row.cap_rate, null);
   assert.equal(row.notes, null);
+});
+
+// --- who may wear the Verified badge ---------------------------------------
+//
+// The badge means a named broker vouched for the deal. It is the most trusted
+// provenance a report shows, AND the entire currency the broker tier pays in.
+// A badge that can appear without a broker is worth nothing to the broker who
+// earned theirs — so these are the tests that protect the tier's economics,
+// not just its data.
+
+const offeredComp = (over = {}) => ({
+  a: "1234 w mission blvd ontario ca", by: "Adler Industrial", id: 7, email: "b@f.com", ...over,
+});
+
+test("a comp matching an offered one keeps the badge and gains credit", () => {
+  const comps = [{ address: "1234 W Mission Blvd, Ontario, CA", verified: true }];
+  const r = enforceVerifiedFlags(comps, [offeredComp()]);
+  assert.equal(comps[0].verified, true);
+  assert.equal(comps[0].verified_by, "Adler Industrial");
+  assert.equal(r.kept, 1);
+  assert.equal(r.cleared, 0);
+  assert.deepEqual(r.citedIds, [7]);
+});
+
+test("a badge the model invented is CLEARED", () => {
+  // The actual bug: the model marks a web-search result verified despite the
+  // prompt forbidding it, and it shipped to the corpus.
+  const comps = [{ address: "999 Nobody Ever Submitted This St, Boise, ID", verified: true }];
+  const r = enforceVerifiedFlags(comps, [offeredComp()]);
+  assert.equal(comps[0].verified, false);
+  assert.equal(r.cleared, 1);
+});
+
+test("badges are cleared even when NOTHING was offered", () => {
+  // This is the hole. The old code returned early on an empty offered list, so
+  // a search for a property type nobody has ever submitted for passed every
+  // invented badge straight through. Every bad corpus row came through here.
+  const comps = [
+    { address: "437 E Cave, Boise, ID 83702", verified: true },
+    { address: "Eagle, ID 83616 (built 1999, 1,173-5,333 SF)", verified: true },
+  ];
+  const r = enforceVerifiedFlags(comps, []);
+  assert.equal(comps[0].verified, false);
+  assert.equal(comps[1].verified, false);
+  assert.equal(r.cleared, 2);
+});
+
+test("clearing a badge also strips any attribution beside it", () => {
+  // A leftover verified_by would still render "via <firm>" next to a comp that
+  // no longer claims to be verified — crediting a broker for someone else's row.
+  const comps = [{ address: "999 Elsewhere Rd", verified: true,
+                   verified_by: "Someone Else", verified_by_slug: "someone-else" }];
+  enforceVerifiedFlags(comps, [offeredComp()]);
+  assert.equal(comps[0].verified, false);
+  assert.equal(comps[0].verified_by, undefined);
+  assert.equal(comps[0].verified_by_slug, undefined);
+});
+
+test("verified is normalized to a real boolean, never left undefined", () => {
+  // harvestComps writes Boolean(c.verified) into a NOT NULL-ish column; a
+  // missing flag should read false, not undefined.
+  const comps = [{ address: "1 A St" }, { address: "2 B St", verified: "yes" },
+                 { address: "3 C St", verified: null }];
+  enforceVerifiedFlags(comps, []);
+  for (const c of comps) assert.equal(c.verified, false, c.address);
+});
+
+test("an offered comp with no credit name cannot confer a badge", () => {
+  // attachVerifiedAttribution filters those out before calling; this pins the
+  // behaviour so a future caller that forgets cannot mint anonymous badges.
+  const comps = [{ address: "1234 W Mission Blvd, Ontario, CA", verified: true }];
+  const r = enforceVerifiedFlags(comps, [{ a: "", by: "", id: null, email: "" }]);
+  assert.equal(comps[0].verified, false);
+  assert.equal(r.cleared, 1);
+});
+
+test("two returned comps matching one submission cite it once", () => {
+  const comps = [
+    { address: "1234 W Mission Blvd, Ontario, CA", verified: true },
+    { address: "1234 W Mission Blvd, Ontario CA, Suite B", verified: true },
+  ];
+  const r = enforceVerifiedFlags(comps, [offeredComp()]);
+  assert.deepEqual(r.citedIds, [7], "one submission, one citation");
+});
+
+test("matching is punctuation-insensitive but not promiscuous", () => {
+  const offered = [offeredComp()];
+  assert.ok(matchOffered("1234 W. Mission Blvd., Ontario, CA", offered));
+  assert.equal(matchOffered("5678 Somewhere Else Rd, Ontario, CA", offered), null);
+  // Short strings must not prefix-match their way into a badge.
+  assert.equal(matchOffered("1 A", [{ a: "1 b", by: "X", id: 1, email: "" }]), null);
+});
+
+test("enforceVerifiedFlags never throws on garbage", () => {
+  for (const v of [null, undefined, 42, "x", {}]) {
+    assert.doesNotThrow(() => enforceVerifiedFlags(v, null));
+  }
+  assert.doesNotThrow(() => enforceVerifiedFlags([null, undefined, 5], [null]));
 });

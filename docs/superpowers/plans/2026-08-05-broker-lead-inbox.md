@@ -1,0 +1,1066 @@
+# Broker Lead Inbox Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Paying brokers see anonymized BOV demand in their chosen markets, get emailed when a new lead lands, and can request an owner-mediated introduction; broker identity unifies onto `user_id`.
+
+**Architecture:** One new pure module (`broker-leads.js`, tested), one migration (015), new `canUseVault`-gated routes in server.js (`/api/broker/coverage`, `/api/broker/leads`, `/api/broker/leads/intro`), a Leads section on the server-rendered `/vault` page, and two small index.html touches (BOV size in the lead payload, a lead count on the My Desk card). Spec: `docs/superpowers/specs/2026-08-05-broker-lead-inbox-design.md`.
+
+**Tech Stack:** Plain Node 18+ (zero npm deps), Supabase via PostgREST fetch, `node --test`.
+
+**Branch:** `worktree-broker-lead-inbox` (off origin/main). Worktree: `C:\dev\compninja\.claude\worktrees\broker-lead-inbox`.
+
+**Commands (owner's Windows box, node not on PATH):**
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64;" + $env:Path
+node --test            # run suite
+node --check server.js # syntax-check the entry point
+```
+
+**Rules that bind every task below:**
+- Never test a plan or subscription anywhere but `entitlements.js` outputs (`canUseVault`).
+- `market` values are written ONLY via `marketOf()` in server.js. The pure module never computes one.
+- Owner PII flows: lead PII → owner only (already true today). Broker PII → owner only. Lead PII NEVER → broker. The anonymize allowlist is pinned by a test.
+- The new tables are DB-only, no file fallback (the vault rule). Reads that fail answer 503, not an empty list.
+- No em dashes in any new user-facing copy or doc text.
+
+---
+
+## File structure
+
+| File | Role |
+|---|---|
+| `migrations/015-broker-lead-inbox.sql` (create) | `broker_profiles.user_id`, `leads.size_sqft` + PK guard, `broker_coverage`, `lead_intro_requests` |
+| `migrations/verify.js` (modify) | new tables + columns in TABLES/COLUMNS |
+| `broker-leads.js` (create) | pure rules: coverage sets, filtering, anonymization, seeding, size cleaning, notify dedupe |
+| `test/broker-leads.test.js` (create) | the module's tests |
+| `server.js` (modify) | require the module; `/api/lead` size + broker notify; broker/me + profile adoption; `requireBroker`; the three new routes; vault page Leads section |
+| `index.html` (modify) | BOV payload `size_sqft`; My Desk vault card lead count |
+| `devlog.json` (modify, last task) | feature entry |
+
+---
+
+### Task 1: Migration 015 + verify.js
+
+**Files:**
+- Create: `migrations/015-broker-lead-inbox.sql`
+- Modify: `migrations/verify.js:29-82` (TABLES and COLUMNS arrays)
+
+- [ ] **Step 1: Write the migration**
+
+```sql
+-- 015 · Broker lead inbox + one broker identity (2026-08-05)
+-- Spec: docs/superpowers/specs/2026-08-05-broker-lead-inbox-design.md
+-- Plan: docs/superpowers/plans/2026-08-05-broker-lead-inbox.md
+--
+-- RUN BEFORE DEPLOYING the inbox routes. Verify with `node migrations/verify.js`.
+
+-- ---------------------------------------------------------------------------
+-- 1. One broker identity. broker_profiles was keyed on email alone (003);
+-- the paid tier keys on user_id. This links them: profiles follow the account,
+-- not the address. `on delete set null` (not cascade): a profile is public
+-- content already cited in reports; losing the account should not vaporize it.
+-- ---------------------------------------------------------------------------
+alter table broker_profiles
+  add column if not exists user_id uuid references users(id) on delete set null;
+
+create unique index if not exists broker_profiles_user_id_uidx
+  on broker_profiles (user_id) where user_id is not null;
+
+-- Backfill: adopt every profile whose email matches an account.
+-- broker_profiles.email is stored lowercased (003); lower() the users side.
+update broker_profiles p
+   set user_id = u.id
+  from users u
+ where p.user_id is null
+   and lower(u.email) = p.email;
+
+-- ---------------------------------------------------------------------------
+-- 2. Lead size. Nullable: old leads and sizeless searches simply have none.
+-- ---------------------------------------------------------------------------
+alter table leads add column if not exists size_sqft numeric;
+
+-- The leads table predates the migrations folder (000, hand-created). The
+-- inbox needs a stable per-row id for lead_intro_requests.lead_id. Supabase
+-- dashboard tables get `id bigint identity primary key` by default; this
+-- guard only fires if this one somehow did not.
+do $$
+begin
+  if not exists (select 1 from information_schema.table_constraints
+                 where table_name = 'leads' and constraint_type = 'PRIMARY KEY') then
+    alter table leads add column if not exists id bigint generated by default as identity;
+    alter table leads add primary key (id);
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 3. Coverage: which market+type pairs a broker sees leads for.
+-- `source`: 'earned' (seeded from approved submissions) | 'chosen' (added by
+-- the broker). market is canonical marketOf() form, same as broker_comps.
+-- ---------------------------------------------------------------------------
+create table broker_coverage (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  market text not null,
+  property_type text not null,
+  source text not null default 'chosen',
+  created_at timestamptz not null default now(),
+  unique (user_id, market, property_type)
+);
+-- "Who covers this market" at lead-capture time.
+create index on broker_coverage (market, property_type);
+alter table broker_coverage enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- 4. Introduction requests. No FK to leads: its PK type is verified, not
+-- assumed (see the guard above), and a dangling id is harmless — the join is
+-- done in server.js and a missing lead simply renders nothing.
+-- unique(lead_id, user_id): a second click is a 409, answered as already:true,
+-- never a second email to the owner.
+-- ---------------------------------------------------------------------------
+create table lead_intro_requests (
+  id uuid primary key default gen_random_uuid(),
+  lead_id bigint not null,
+  user_id uuid not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (lead_id, user_id)
+);
+create index on lead_intro_requests (user_id);
+alter table lead_intro_requests enable row level security;
+
+-- Verify (zero rows = schema complete):
+--   select t from unnest(array['broker_coverage','lead_intro_requests']) as t
+--   where not exists (select 1 from information_schema.tables
+--                     where table_name = t);
+--   select c from unnest(array['user_id']) as c
+--   where not exists (select 1 from information_schema.columns
+--                     where table_name = 'broker_profiles' and column_name = c);
+--   select c from unnest(array['size_sqft']) as c
+--   where not exists (select 1 from information_schema.columns
+--                     where table_name = 'leads' and column_name = c);
+```
+
+- [ ] **Step 2: Teach verify.js the new schema**
+
+In `migrations/verify.js`, append to `TABLES` (after the `broker_comps` line):
+
+```js
+  ["broker_coverage",     "015-broker-lead-inbox.sql"],
+  ["lead_intro_requests", "015-broker-lead-inbox.sql"],
+```
+
+Append to `COLUMNS` (after the `014` line):
+
+```js
+  // 015 alters two existing tables; a table check cannot see either change.
+  // A missing broker_profiles.user_id silently re-orphans profiles on email
+  // change; a missing leads.size_sqft 400s every sized lead insert into the
+  // ephemeral file fallback (the 004 failure shape, on PII this time).
+  ["broker_profiles",   ["user_id"],                            "015-broker-lead-inbox.sql"],
+  ["leads",             ["size_sqft", "id"],                    "015-broker-lead-inbox.sql"],
+];
+```
+
+(Replace the existing closing `];` of COLUMNS.)
+
+- [ ] **Step 3: Syntax-check verify.js**
+
+Run: `node --check migrations/verify.js`
+Expected: no output, exit 0.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add migrations/015-broker-lead-inbox.sql migrations/verify.js
+git commit -m "Migration 015: broker identity user_id, lead size, coverage, intro requests"
+```
+
+---
+
+### Task 2: `broker-leads.js` pure module (TDD)
+
+**Files:**
+- Create: `broker-leads.js`
+- Test: `test/broker-leads.test.js`
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `test/broker-leads.test.js`:
+
+```js
+"use strict";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const L = require("../broker-leads");
+
+// --- coverage keys and sets -------------------------------------------------
+test("coverageKey joins market and type", () => {
+  assert.equal(L.coverageKey("Boise, ID", "Industrial"), "Boise, ID|Industrial");
+});
+
+test("buildCoverageSet dedupes and skips blank rows", () => {
+  const set = L.buildCoverageSet([
+    { market: "Boise, ID", property_type: "Industrial" },
+    { market: "Boise, ID", property_type: "Industrial" },
+    { market: "", property_type: "" },
+    null,
+  ]);
+  assert.equal(set.size, 1);
+  assert.ok(set.has("Boise, ID|Industrial"));
+});
+
+// --- filtering ---------------------------------------------------------------
+test("filterLeadsForCoverage keeps only covered market+type", () => {
+  const cov = [{ market: "Boise, ID", property_type: "Industrial" }];
+  const leads = [
+    { id: 1, market: "Boise, ID", type: "Industrial" },
+    { id: 2, market: "Boise, ID", type: "Office" },
+    { id: 3, market: "Eagle, ID", type: "Industrial" },
+    null,
+  ];
+  assert.deepEqual(L.filterLeadsForCoverage(leads, cov).map((l) => l.id), [1]);
+});
+
+test("filterLeadsForCoverage is exact on market case (canonical form is the contract)", () => {
+  const cov = [{ market: "boise, id", property_type: "Industrial" }];
+  const leads = [{ id: 1, market: "Boise, ID", type: "Industrial" }];
+  assert.equal(L.filterLeadsForCoverage(leads, cov).length, 0);
+});
+
+// --- anonymization -----------------------------------------------------------
+test("anonymizeLead emits exactly the allowlist, nothing else", () => {
+  const out = L.anonymizeLead({
+    id: 7, market: "Boise, ID", type: "Industrial", size_sqft: "42000",
+    ts: "2026-08-05T00:00:00.000Z",
+    // Everything below must be stripped. This test is the privacy wall.
+    name: "Pat Owner", email: "pat@example.com", phone: "208-555-0100",
+    company: "Owner LLC", address: "123 Main St, Boise, ID", source: "bov",
+  }, new Set());
+  assert.deepEqual(Object.keys(out).sort(),
+    ["id", "intro_requested", "market", "size_sqft", "ts", "type"]);
+  assert.equal(out.size_sqft, 42000);
+  assert.equal(out.intro_requested, false);
+});
+
+test("anonymizeLead marks intro_requested from the set and nulls bad sizes", () => {
+  const out = L.anonymizeLead({ id: 7, market: "m", type: "t", size_sqft: "n/a", ts: "" },
+    new Set(["7"]));
+  assert.equal(out.intro_requested, true);
+  assert.equal(out.size_sqft, null);
+});
+
+// --- seeding -----------------------------------------------------------------
+test("seedCoverageFromSubmissions dedupes and tags earned", () => {
+  const out = L.seedCoverageFromSubmissions([
+    { market: "Boise, ID", property_type: "Industrial" },
+    { market: "Boise, ID", property_type: "Industrial" },
+    { market: "Eagle, ID", property_type: "Industrial" },
+    { market: "", property_type: "Industrial" },
+    { market: "Boise, ID", property_type: "" },
+  ]);
+  assert.deepEqual(out, [
+    { market: "Boise, ID", property_type: "Industrial", source: "earned" },
+    { market: "Eagle, ID", property_type: "Industrial", source: "earned" },
+  ]);
+});
+
+// --- size cleaning -----------------------------------------------------------
+test("cleanSizeSqft accepts numbers and grouped strings, rejects junk", () => {
+  assert.equal(L.cleanSizeSqft(42000), 42000);
+  assert.equal(L.cleanSizeSqft("42,000"), 42000);
+  assert.equal(L.cleanSizeSqft("0"), null);
+  assert.equal(L.cleanSizeSqft(-5), null);
+  assert.equal(L.cleanSizeSqft("1.2M"), null);
+  assert.equal(L.cleanSizeSqft(""), null);
+  assert.equal(L.cleanSizeSqft(null), null);
+  assert.equal(L.cleanSizeSqft(1e10), null);
+});
+
+// --- notify dedupe -----------------------------------------------------------
+test("notifyTargets dedupes user ids and caps at MAX_NOTIFY_PER_LEAD", () => {
+  const rows = [];
+  for (let i = 0; i < 30; i++) rows.push({ user_id: "u" + (i % 25) });
+  const out = L.notifyTargets(rows);
+  assert.equal(out.length, L.MAX_NOTIFY_PER_LEAD);
+  assert.equal(new Set(out).size, out.length);
+});
+
+test("notifyTargets skips rows without a user_id", () => {
+  assert.deepEqual(L.notifyTargets([{ user_id: "" }, null, { user_id: "a" }]), ["a"]);
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `node --test test/broker-leads.test.js`
+Expected: FAIL, `Cannot find module '../broker-leads'`.
+
+- [ ] **Step 3: Write the module**
+
+Create `broker-leads.js`:
+
+```js
+"use strict";
+// ---------------------------------------------------------------------------
+// Broker lead inbox rules — PURE. No I/O, no clock reads, no requires beyond
+// this comment, same contract as entitlements.js and comp-gate.js, which is
+// what lets `npm test` cover the privacy wall with no database.
+//
+// server.js owns every read and write, and computes every `market` with
+// marketOf() before calling in. This module never parses an address.
+//
+// Spec: docs/superpowers/specs/2026-08-05-broker-lead-inbox-design.md
+// ---------------------------------------------------------------------------
+
+// One lead can fan out at most this many broker emails. A hot market with
+// hundreds of covering brokers should not turn one form submit into a
+// mail storm billed to the owner's Resend account.
+const MAX_NOTIFY_PER_LEAD = 20;
+
+// The inbox window. Leads are perishable; 90 days is already generous.
+const LEAD_WINDOW_DAYS = 90;
+
+function coverageKey(market, propertyType) {
+  return `${String(market || "").trim()}|${String(propertyType || "").trim()}`;
+}
+
+function buildCoverageSet(rows) {
+  const set = new Set();
+  for (const r of rows || []) {
+    if (!r) continue;
+    const k = coverageKey(r.market, r.property_type);
+    if (k !== "|") set.add(k);
+  }
+  return set;
+}
+
+// Leads arrive with `market` already computed by the caller (marketOf).
+// Matching is EXACT, deliberately: both sides are written in canonical form,
+// and a lenient match here would paper over a drift bug worth surfacing.
+function filterLeadsForCoverage(leads, coverageRows) {
+  const set = buildCoverageSet(coverageRows);
+  return (leads || []).filter((l) => l && set.has(coverageKey(l.market, l.type)));
+}
+
+// THE PRIVACY WALL for leads. A broker-facing lead is exactly these six
+// fields. Name, email, phone, company and street address exist on the input
+// row and must never appear on the output — there is a test pinning the exact
+// key list. Add a field here only with the same deliberation the spec gave
+// these six.
+function anonymizeLead(lead, introSet) {
+  const size = Number(lead.size_sqft);
+  return {
+    id: lead.id,
+    market: String(lead.market || ""),
+    type: String(lead.type || ""),
+    size_sqft: Number.isFinite(size) && size > 0 ? size : null,
+    ts: String(lead.ts || ""),
+    intro_requested: Boolean(introSet && introSet.has(String(lead.id))),
+  };
+}
+
+// First inbox open: coverage rows derived from approved submissions. The
+// caller supplies {market, property_type} pairs (market via marketOf).
+function seedCoverageFromSubmissions(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const r of rows || []) {
+    if (!r || !String(r.market || "").trim() || !String(r.property_type || "").trim()) continue;
+    const k = coverageKey(r.market, r.property_type);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ market: r.market, property_type: r.property_type, source: "earned" });
+  }
+  return out;
+}
+
+// A lead's size, as typed or as carried by report meta. Grouped digits are
+// fine; shorthand ("1.2M") is refused rather than guessed — same principle as
+// the vault importer. Bounded to keep nonsense out of broker emails.
+function cleanSizeSqft(v) {
+  const s = String(v == null ? "" : v).replace(/[,\s]/g, "");
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 && n < 1e9 ? n : null;
+}
+
+// Coverage rows (already filtered to the lead's market+type by the caller's
+// query) reduced to unique user ids, capped.
+function notifyTargets(coverageRows) {
+  const seen = new Set();
+  const out = [];
+  for (const r of coverageRows || []) {
+    const id = r ? String(r.user_id || "") : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= MAX_NOTIFY_PER_LEAD) break;
+  }
+  return out;
+}
+
+module.exports = {
+  coverageKey,
+  buildCoverageSet,
+  filterLeadsForCoverage,
+  anonymizeLead,
+  seedCoverageFromSubmissions,
+  cleanSizeSqft,
+  notifyTargets,
+  MAX_NOTIFY_PER_LEAD,
+  LEAD_WINDOW_DAYS,
+};
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `node --test test/broker-leads.test.js`
+Expected: PASS, 11 tests.
+
+- [ ] **Step 5: Run the whole suite**
+
+Run: `node --test`
+Expected: 181 pass (170 existing + 11 new), 0 fail.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add broker-leads.js test/broker-leads.test.js
+git commit -m "broker-leads.js: the inbox's pure rules, privacy wall pinned by test"
+```
+
+---
+
+### Task 3: Lead size capture + broker notification
+
+**Files:**
+- Modify: `server.js:32` (require), `server.js:7953-7966` (lead parse), after the BOV `notifyByEmail` call (~`server.js:8000`)
+- Modify: `index.html:8839-8847` (lead payload)
+
+- [ ] **Step 1: Require the module**
+
+At `server.js:32`, after `const VAULT = require("./broker-vault");` add:
+
+```js
+const LEADSVC = require("./broker-leads");
+```
+
+- [ ] **Step 2: Parse and store the size**
+
+At `server.js:7953`, add `size_sqft` to the destructure:
+
+```js
+const { name, email, phone, company, address, type, source, report_url, size_sqft } = JSON.parse(body || "{}");
+```
+
+In the `lead` object (after `type: clean(type, 40),`) add:
+
+```js
+          // Optional building size for the broker-facing anonymized lead
+          // card. Spread only when present: if migration 015 has not run,
+          // an unknown column would 400 EVERY insert into the file fallback;
+          // this way only sized leads are exposed to that risk, and
+          // migrations/verify.js checks the column exists.
+          ...(LEADSVC.cleanSizeSqft(size_sqft) ? { size_sqft: LEADSVC.cleanSizeSqft(size_sqft) } : {}),
+```
+
+- [ ] **Step 3: Notify covering brokers on a BOV lead**
+
+Directly after the existing `notifyByEmail(...)` call for the lead (the one
+ending `["Time", lead.ts],` `]` `);` around `server.js:8000`), add:
+
+```js
+        // Anonymized new-lead alert to brokers covering this market + type.
+        // Fire-and-forget: a DB or mail failure never breaks lead capture.
+        // Content is the same four facts the inbox shows — never the owner's
+        // name, email, phone, company, or street address.
+        if (lead.source === "bov" && DB_CONFIGURED) {
+          (async () => {
+            const market = marketOf(lead.address);
+            if (!market || !lead.type) return;
+            const cov = await sbRequest("GET",
+              `broker_coverage?market=eq.${encodeURIComponent(market)}` +
+              `&property_type=eq.${encodeURIComponent(lead.type)}&select=user_id&limit=200`);
+            const ids = LEADSVC.notifyTargets(cov);
+            if (!ids.length) return;
+            const users = await sbRequest("GET",
+              `users?id=in.(${ids.join(",")})&select=id,email`);
+            const line = [lead.type, market,
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              .filter(Boolean).join(" · ");
+            for (const u of users || []) {
+              if (!u || !u.email) continue;
+              sendOutboundEmail(u.email, `New BOV request in your market: ${line}`, [
+                `A property owner just requested a Broker Opinion of Value in a market you cover.`,
+                ``,
+                `  ${line}`,
+                ``,
+                `Open your inbox to request an introduction:`,
+                `${SITE_URL}/vault`,
+                ``,
+                `CompNinja connects owners with local brokers; introductions are made by`,
+                `the CompNinja team. Reply to this email to reach us.`,
+              ].join("\n"));
+            }
+          })().catch((err) => console.error("Broker lead notify failed:", err.message));
+        }
+```
+
+- [ ] **Step 4: Send the size from the browser**
+
+In `index.html:8839-8847`, after `source: leadContext,` in the payload add:
+
+```js
+      size_sqft: (currentMeta && currentMeta.subject && currentMeta.subject.sizeMin) || undefined,
+```
+
+- [ ] **Step 5: Syntax-check and run the suite**
+
+Run: `node --check server.js` then `node --test`
+Expected: clean check; 181 pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add server.js index.html
+git commit -m "BOV leads carry size, and covering brokers hear about them"
+```
+
+---
+
+### Task 4: One broker identity
+
+**Files:**
+- Modify: `server.js:8408-8447` (`/api/broker/me`), `server.js:8449-8518` (`/api/broker/profile`)
+
+- [ ] **Step 1: Adopt-by-user_id in `/api/broker/me`**
+
+Replace the profile read at `server.js:8416-8429` with:
+
+```js
+      if (DB_CONFIGURED) {
+        try {
+          // One identity: prefer the account link, fall back to legacy
+          // email-keyed rows, and stamp user_id on first touch so an email
+          // change can no longer orphan the profile.
+          let p = ((await sbRequest("GET",
+            `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0];
+          if (!p) {
+            p = ((await sbRequest("GET",
+              `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
+            if (p && !p.user_id) {
+              await sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(p.id)}`,
+                { user_id: user.id, updated_at: new Date().toISOString() });
+            }
+          }
+          if (p) {
+            profile = {
+              exists: true, public: Boolean(p.public), slug: p.slug,
+              display_name: p.display_name || "", company: p.company || "",
+              url: `/broker/${p.slug}`,
+            };
+          }
+        } catch (err) { console.error("broker profile read failed:", err.message); }
+      }
+```
+
+Note: `isBroker` stays "has submitted comps". That is deliberately the weaker,
+separate fact; "is a paying broker" is `canUseVault` and nothing here asks it.
+
+- [ ] **Step 2: Same adoption in `/api/broker/profile`**
+
+Replace the `existing` read at `server.js:8466-8467` with:
+
+```js
+        const existing = ((await sbRequest("GET",
+          `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0]
+          || ((await sbRequest("GET",
+          `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
+```
+
+In BOTH `sbRequest("POST", "broker_profiles", {...})` create calls (`~8478`
+and `~8493`), add `user_id: user.id,` after `email: user.email,`.
+
+Replace the PATCH at `server.js:8503-8504` with an id-keyed one that also
+adopts:
+
+```js
+          await sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(existing.id)}`,
+            { public: wantPublic, user_id: user.id, updated_at: new Date().toISOString() });
+```
+
+- [ ] **Step 3: Syntax-check and run the suite**
+
+Run: `node --check server.js` then `node --test`
+Expected: clean; 181 pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add server.js
+git commit -m "Broker profiles follow the account: user_id adopted on every touch"
+```
+
+---
+
+### Task 5: `requireBroker` + coverage routes
+
+**Files:**
+- Modify: `server.js` — new helper above the vault block comment (~`server.js:8520`), new route block just before `if (req.url.split("?")[0].startsWith("/api/vault"))` (`server.js:8535`)
+
+- [ ] **Step 1: Add the gate helper**
+
+Insert above the `// --- Broker vault (v1) ---` comment block:
+
+```js
+  // Gate for the broker lead inbox routes: signed in (401), broker plan
+  // (403), database up (503) — the same three refusals, in the same order,
+  // as the vault's openVault(). Kept as a second small copy because the
+  // vault's refusal copy names the vault; if a third broker area appears,
+  // fold both into one.
+  const requireBroker = async () => {
+    const user = await requireUser(req, res);
+    if (!user) return null;
+    const ent = await entitlementsFor(req);
+    if (!ent.canUseVault) {
+      sendJson(res, 403, {
+        error: "The lead inbox is part of the broker plan.",
+        code: "broker_required",
+      });
+      return null;
+    }
+    if (!DB_CONFIGURED) {
+      sendJson(res, 503, { error: "The lead inbox is unavailable right now. Please try again in a minute." });
+      return null;
+    }
+    return user;
+  };
+```
+
+- [ ] **Step 2: Add the coverage routes**
+
+Insert directly after the helper (still before the vault block):
+
+```js
+  // --- Broker lead inbox: coverage -----------------------------------------
+  // Which market + property-type pairs this broker sees leads for. Seeded
+  // from approved submissions on first inbox open (see /api/broker/leads),
+  // edited here. market is canonicalized with marketOf() and NOWHERE else.
+  if (req.url.split("?")[0] === "/api/broker/coverage") {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await requireBroker();
+        if (!user) return;
+        try {
+          const rows = await sbRequest("GET",
+            `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&select=id,market,property_type,source&order=market.asc&limit=500`);
+          return sendJson(res, 200, { coverage: rows || [] });
+        } catch (err) {
+          console.error("coverage read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your coverage. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage lookup failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await requireBroker();
+          if (!user) return;
+          const { market, property_type } = JSON.parse(body || "{}");
+          const canonical = marketOf(String(market || ""));
+          // marketOf falls back to echoing text with no recognizable state;
+          // require the canonical "City, ST" shape so junk cannot become a
+          // coverage key that matches nothing forever.
+          if (!/^.+, [A-Z]{2}$/.test(canonical)) {
+            return sendJson(res, 400, { error: 'Enter a market as "City, ST" (for example "Boise, ID").' });
+          }
+          if (!VAULT.PROPERTY_TYPES.includes(String(property_type || ""))) {
+            return sendJson(res, 400, { error: "Unknown property type." });
+          }
+          try {
+            await sbRequest("POST", "broker_coverage",
+              { user_id: user.id, market: canonical, property_type, source: "chosen" });
+          } catch (err) {
+            // Already covered = success, not an error.
+            if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+          }
+          return sendJson(res, 200, { ok: true, market: canonical });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("coverage add failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that market. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await requireBroker();
+        if (!user) return;
+        const id = new URL(req.url, "http://x").searchParams.get("id") || "";
+        if (!id) return sendJson(res, 400, { error: "Missing id." });
+        try {
+          // Scoped by user_id: nobody deletes another broker's coverage.
+          await sbRequest("DELETE",
+            `broker_coverage?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`);
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error("coverage delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't remove that market. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage update failed." }); });
+      return;
+    }
+  }
+```
+
+- [ ] **Step 3: Syntax-check and run the suite**
+
+Run: `node --check server.js` then `node --test`
+Expected: clean; 181 pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add server.js
+git commit -m "Broker coverage: the market+type pairs a broker's inbox watches"
+```
+
+---
+
+### Task 6: The inbox and the introduction request
+
+**Files:**
+- Modify: `server.js` — directly after the coverage block from Task 5
+
+- [ ] **Step 1: Add `GET /api/broker/leads`**
+
+```js
+  // --- Broker lead inbox: the leads ----------------------------------------
+  // Anonymized BOV demand in the caller's coverage. The identifying fields
+  // (name, email, phone, company, street address) never leave this handler:
+  // LEADSVC.anonymizeLead's allowlist is pinned by a test. DB-only: an error
+  // answers 503, because an empty inbox on error would misreport demand as
+  // zero.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/broker/leads") {
+    (async () => {
+      const user = await requireBroker();
+      if (!user) return;
+      try {
+        let cov = await sbRequest("GET",
+          `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+          `&select=id,market,property_type,source&order=market.asc&limit=500`);
+        if (!cov || !cov.length) {
+          // First open: earn coverage from approved submissions.
+          const subs = (await fetchSubmissionsForEmail(user.email))
+            .filter((s) => s.status === "approved");
+          const seeds = LEADSVC.seedCoverageFromSubmissions(
+            subs.map((s) => ({ market: marketOf(s.address), property_type: s.property_type })));
+          for (const row of seeds) {
+            try { await sbRequest("POST", "broker_coverage", { user_id: user.id, ...row }); }
+            catch (err) { if (!/409|23505|duplicate/i.test(String(err.message))) throw err; }
+          }
+          if (seeds.length) {
+            cov = await sbRequest("GET",
+              `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+              `&select=id,market,property_type,source&order=market.asc&limit=500`);
+          }
+        }
+        const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
+        const leads = await sbRequest("GET",
+          `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`);
+        const withMarket = (leads || []).map((l) => ({ ...l, market: marketOf(l.address) }));
+        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || []);
+        const intros = await sbRequest("GET",
+          `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}&select=lead_id&limit=1000`);
+        const introSet = new Set((intros || []).map((r) => String(r.lead_id)));
+        return sendJson(res, 200, {
+          leads: mine.map((l) => LEADSVC.anonymizeLead(l, introSet)),
+          coverage: cov || [],
+        });
+      } catch (err) {
+        console.error("broker leads read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load leads right now. Please try again in a minute." });
+      }
+    })().catch((err) => { console.error("broker leads error:", err); sendJson(res, 500, { error: "Lead lookup failed." }); });
+    return;
+  }
+```
+
+- [ ] **Step 2: Add `POST /api/broker/leads/intro`**
+
+```js
+  // A broker raising a hand. Emails the owner (who already holds the lead's
+  // PII) naming the broker; nothing is sent to the property owner and no
+  // broker PII goes anywhere it does not already go. Owner-mediated, same as
+  // today: the owner makes every connection by hand.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/broker/leads/intro") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("intro:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker();
+        if (!user) return;
+        const leadId = String(JSON.parse(body || "{}").lead_id || "");
+        if (!leadId) return sendJson(res, 400, { error: "Missing lead_id." });
+        const lead = ((await sbRequest("GET",
+          `leads?id=eq.${encodeURIComponent(leadId)}&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+        if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
+        // No requesting introductions to leads outside your coverage — the
+        // same rule that decides what the inbox shows decides what you can
+        // raise a hand for.
+        const cov = await sbRequest("GET",
+          `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=market,property_type&limit=500`);
+        const visible = LEADSVC.filterLeadsForCoverage(
+          [{ ...lead, market: marketOf(lead.address) }], cov || []);
+        if (!visible.length) return sendJson(res, 403, { error: "That lead is outside your coverage." });
+        try {
+          await sbRequest("POST", "lead_intro_requests", { lead_id: lead.id, user_id: user.id });
+        } catch (err) {
+          if (/409|23505|duplicate/i.test(String(err.message))) {
+            return sendJson(res, 200, { ok: true, already: true });
+          }
+          throw err;
+        }
+        // Broker identity for the owner's email: account + public profile if
+        // one exists (BROKER_PROFILES holds public rows only; that is fine,
+        // the email address is the working identifier either way).
+        const prof = BROKER_PROFILES.byEmail[String(user.email || "").toLowerCase()];
+        notifyByEmail(`Broker requested an introduction: ${marketOf(lead.address)} ${lead.type}`, [
+          ["Broker", prof ? `${prof.display_name}${prof.company ? " (" + prof.company + ")" : ""}` : ""],
+          ["Broker email", user.email],
+          ["Lead name", lead.name],
+          ["Lead email", lead.email],
+          ["Lead phone", lead.phone],
+          ["Lead company", lead.company],
+          ["Property", lead.address],
+          ["Property type", lead.type],
+          ["Size (SF)", lead.size_sqft],
+          ["Lead received", lead.ts],
+        ]);
+        logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("intro request failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't send that request. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+```
+
+- [ ] **Step 3: Syntax-check and run the suite**
+
+Run: `node --check server.js` then `node --test`
+Expected: clean; 181 pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add server.js
+git commit -m "The broker lead inbox: anonymized demand, owner-mediated introductions"
+```
+
+---
+
+### Task 7: Vault page Leads section + My Desk card count
+
+**Files:**
+- Modify: `server.js:7125-7131` (new section markup), `server.js:7134+` (page JS)
+- Modify: `index.html:1019-1027` (vault card), `index.html:7367-7380` (card wiring)
+
+- [ ] **Step 1: Add the section markup**
+
+In `renderVaultHTML()`, between the `Your comps` section closing `</section>`
+(`server.js:7125`) and the `Imports` section (`server.js:7127`), insert:
+
+```html
+    <section>
+      <h2>Leads in your markets</h2>
+      <p class="sub" style="margin-top:0">Property owners requesting a Broker Opinion of Value
+        in markets you cover. Details are anonymized; request an introduction and the
+        CompNinja team connects you.</p>
+      <div class="row" id="covRow"></div>
+      <div class="row" style="margin-top:var(--s4)">
+        <input id="covMarket" placeholder="City, ST" style="padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);font-family:inherit;font-size:var(--t5)"/>
+        <select id="covType"></select>
+        <button class="btn ghost" id="covAdd">Watch this market</button>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
+        <tbody id="leadRows"></tbody>
+      </table></div>
+      <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
+      <div id="leadMsg"></div>
+    </section>
+```
+
+- [ ] **Step 2: Add the page JS**
+
+Inside the page's IIFE (after `renderUploads`, before `function upload(file)`),
+add:
+
+```js
+  var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Land","Residential"];
+  function loadLeads(){
+    fetch("/api/broker/leads",{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>"; return; }
+        $("leadMsg").innerHTML="";
+        renderCoverage(o.j.coverage||[]);
+        renderLeads(o.j.leads||[]);
+      })
+      .catch(function(){ $("leadMsg").innerHTML='<div class="msg bad">Couldn\'t load leads. Please try again.</div>'; });
+  }
+  function renderCoverage(cov){
+    $("covRow").innerHTML=cov.length?cov.map(function(c){
+      return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" · "+esc(c.property_type)+
+        ' <button data-cov="'+esc(c.id)+'" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
+    }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add one below, or submit comps to earn them.</span>';
+  }
+  function renderLeads(leads){
+    $("noLeads").className=leads.length?"empty hide":"empty";
+    $("leadRows").innerHTML=leads.map(function(l){
+      var btn=l.intro_requested
+        ? '<button class="pubbtn on" disabled>Intro requested</button>'
+        : '<button class="pubbtn" data-intro="'+esc(l.id)+'">Request introduction</button>';
+      return "<tr><td>"+esc(String(l.ts||"").slice(0,10))+"</td><td>"+esc(l.market)+"</td><td>"+esc(l.type)+
+        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"")+"</td><td>"+btn+"</td></tr>";
+    }).join("");
+  }
+  $("covType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
+  $("covAdd").addEventListener("click",function(){
+    fetch("/api/broker/coverage",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({market:$("covMarket").value,property_type:$("covType").value})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't add that market.")+"</div>"; return; }
+        $("covMarket").value=""; loadLeads();
+      });
+  });
+  document.addEventListener("click",function(e){
+    var cov=e.target.getAttribute&&e.target.getAttribute("data-cov");
+    if(cov){ fetch("/api/broker/coverage?id="+encodeURIComponent(cov),{method:"DELETE",credentials:"same-origin"})
+      .then(function(){loadLeads()}); return; }
+    var intro=e.target.getAttribute&&e.target.getAttribute("data-intro");
+    if(intro){ e.target.disabled=true;
+      fetch("/api/broker/leads/intro",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify({lead_id:intro})})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          if(o.s!==200){ e.target.disabled=false; $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't send that request.")+"</div>"; return; }
+          loadLeads();
+        }); }
+  });
+```
+
+And inside `load()`'s success branch (after `renderUploads(o.j.uploads||[]);`),
+add:
+
+```js
+        loadLeads();
+```
+
+- [ ] **Step 3: My Desk card count**
+
+In `index.html`, inside `#vaultCard` after the `vaultCardDetail` div
+(`index.html:1023`), add:
+
+```html
+          <div id="vaultCardLeads" class="hidden text-xs text-[#8A93A0] mt-1"></div>
+```
+
+In the `refreshBillingUI` vault wiring (`index.html:7367-7380`), after the
+line that toggles `vaultCard` visibility, add:
+
+```js
+    // Lead count on the card: best-effort, silent on any failure. The server
+    // re-checks canUseVault, so this fetch simply 403s for everyone else.
+    if (proConfig && proConfig.canUseVault) {
+      fetch("/api/broker/leads").then((r) => (r.ok ? r.json() : null)).then((j) => {
+        if (!j || !Array.isArray(j.leads)) return;
+        const n = j.leads.length;
+        const el = document.getElementById("vaultCardLeads");
+        el.textContent = n
+          ? `${n} BOV lead${n === 1 ? "" : "s"} in your markets in the last 90 days.`
+          : "";
+        el.classList.toggle("hidden", !n);
+      }).catch(() => {});
+    }
+```
+
+(Existing utility classes only: `hidden`, `text-xs`, `mt-1`, and the arbitrary
+color already used on the sibling line — no tailwind regen needed. Verify by
+grepping `tailwind.css` for `text-\[\#8A93A0\]` before assuming.)
+
+- [ ] **Step 4: Syntax-check, run the suite, eyeball the page**
+
+Run: `node --check server.js` then `node --test`
+Expected: clean; 181 pass.
+If a local `.env` with Supabase creds is available, also boot the server and
+open `/vault` as a signed-in admin to see the section render.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add server.js index.html
+git commit -m "Vault page grows a lead inbox; My Desk card counts it"
+```
+
+---
+
+### Task 8: Devlog + final verification
+
+**Files:**
+- Modify: `devlog.json` (append one entry; clean UTF-8, em dashes in the file are fine and normal)
+
+- [ ] **Step 1: Append the devlog entry**
+
+Rebuild from `git show HEAD:devlog.json` if another session has touched it
+(see the shared-checkout skill). Entry:
+
+```json
+{ "date": "2026-08-05", "type": "feature",
+  "title": "Broker lead inbox: anonymized BOV demand, owner-mediated introductions",
+  "details": "Paying brokers see market/type/size/date of BOV requests in markets they cover (earned from approved comps or chosen), get emailed on new ones, and can request an introduction the owner still makes by hand. Lead PII never reaches a broker; the allowlist is pinned by a test. broker_profiles now follows user_id, so an email change no longer orphans a profile. Migration 015." }
+```
+
+- [ ] **Step 2: Full verification**
+
+Run: `node --check server.js && node --check broker-leads.js && node --test`
+Expected: clean checks; 181 pass, 0 fail.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add devlog.json
+git commit -m "Devlog: the broker lead inbox"
+```
+
+- [ ] **Step 4: Ship gate (do not skip)**
+
+Before this branch deploys (the deploy skill owns the mechanics):
+1. Run `migrations/015-broker-lead-inbox.sql` in the Supabase SQL editor.
+2. `node migrations/verify.js` → zero missing.
+3. Add 015 to `migrations/APPLIED.md` with the run date.
+4. Then push/PR per the finishing-a-development-branch skill.
+
+---
+
+## Self-review notes
+
+- Spec coverage: Part 0 → Task 1 + 4; Part 1 → Tasks 1, 5; Part 2 → Tasks 1, 3; Part 3 → Tasks 6, 7; Part 4 → Task 6; Part 5 → Task 3; testing → Task 2; rollout → Task 8. Open question (leads PK) → Task 1's DO-block guard + verify.js `["leads", ["size_sqft", "id"]]` check.
+- Names used across tasks: `LEADSVC` (require name), `requireBroker`, `broker_coverage`, `lead_intro_requests`, `size_sqft`, `intro_requested` — consistent throughout.
+- The `/api/broker/leads` route must be added BEFORE the `/api/vault` block only for tidiness; route matching is exact-path either way. `requireBroker` must be defined before both new route blocks (same function scope as the request handler, like `openVault`).

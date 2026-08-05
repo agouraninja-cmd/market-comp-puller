@@ -3986,7 +3986,11 @@ async function refreshBrokerProfiles() {
 async function findBrokerProfile(email, userId) {
   const e = String(email || "").trim().toLowerCase();
   if (!DB_CONFIGURED || !e) return null;
-  const SELECT = "select=email,slug,display_name,company,public,user_id";
+  // Pre-migration safety: user_id stays OUT of the select (PostgREST 400s on
+  // unknown SELECTed columns, which would take the email fallback down too);
+  // the user_id=eq. filter read is individually caught, so it alone may
+  // reference the column.
+  const SELECT = "select=email,slug,display_name,company,public";
   if (userId) {
     try {
       const rows = await sbRequest("GET",

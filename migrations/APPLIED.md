@@ -3,9 +3,11 @@
 One line per migration, added when it is run on the live database. A file in
 this folder that is missing from this list has NOT been run.
 
-**Full schema verified 2026-08-05:** `node migrations/verify.js` reported
-"Everything present" — every expected table and every spot-checked column
-exists in production.
+**Full schema verified 2026-08-05 (through 014):** `node migrations/verify.js`
+reported "Everything present" — every expected table and every spot-checked
+column exists in production. 015 is not yet run, so a fresh `verify.js` will
+report its tables/columns missing until then; that is the ship gate working,
+not an error.
 
 | File | Status on prod | Evidence |
 |------|----------------|----------|

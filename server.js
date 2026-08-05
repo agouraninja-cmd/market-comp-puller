@@ -8742,6 +8742,131 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 404, { error: "Not found." });
   }
 
+  // --- Broker lead inbox: the leads ----------------------------------------
+  // Anonymized BOV demand in the caller's coverage. The identifying fields
+  // (name, email, phone, company, street address) never leave this handler:
+  // LEADSVC.anonymizeLead's allowlist is pinned by a test. DB-only: an error
+  // answers 503, because an empty inbox on error would misreport demand as
+  // zero.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/broker/leads") {
+    (async () => {
+      if (rateLimited("bleads:" + clientIp(req), 60)) {
+        return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+      }
+      const user = await requireBroker(req, res);
+      if (!user) return;
+      try {
+        let cov = await sbRequest("GET",
+          `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+          `&select=id,market,property_type,source&order=market.asc&limit=500`);
+        if (!cov || !cov.length) {
+          // First open: earn coverage from approved submissions.
+          const subs = (await fetchSubmissionsForEmail(user.email))
+            .filter((s) => s.status === "approved");
+          const seeds = LEADSVC.seedCoverageFromSubmissions(
+            subs.map((s) => ({ market: marketOf(s.address), property_type: s.property_type })));
+          if (seeds.length) {
+            // ON CONFLICT DO NOTHING; also never flips an existing row's source.
+            await sbRequest("POST", "broker_coverage?on_conflict=user_id,market,property_type",
+              seeds.map((row) => ({ user_id: user.id, ...row })),
+              { prefer: "resolution=ignore-duplicates,return=minimal" });
+            cov = await sbRequest("GET",
+              `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+              `&select=id,market,property_type,source&order=market.asc&limit=500`);
+          }
+        }
+        const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
+        const leads = await sbRequest("GET",
+          `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`);
+        const withMarket = (leads || []).map((l) => ({ ...l, market: marketOf(l.address) }));
+        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || []);
+        const intros = await sbRequest("GET",
+          `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}&select=lead_id&limit=1000`);
+        const introSet = new Set((intros || []).map((r) => String(r.lead_id)));
+        return sendJson(res, 200, {
+          leads: mine.map((l) => LEADSVC.anonymizeLead(l, introSet)),
+          coverage: cov || [],
+        });
+      } catch (err) {
+        console.error("broker leads read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load leads right now. Please try again in a minute." });
+      }
+    })().catch((err) => { console.error("broker leads error:", err); sendJson(res, 500, { error: "Lead lookup failed." }); });
+    return;
+  }
+
+  // A broker raising a hand. Emails the owner (who already holds the lead's
+  // PII) naming the broker; nothing is sent to the property owner and no
+  // broker PII goes anywhere it does not already go. Owner-mediated, same as
+  // today: the owner makes every connection by hand.
+  // Note: the alert recipients in Task 3 (notifyTargets) are coverage rows
+  // with no entitlement check — a lapsed broker still gets emailed about a
+  // new lead in a market they cover. This route re-checks canUseVault via
+  // requireBroker, so that same lapsed broker cannot request an introduction.
+  // Deliberate: seeing an alert land in an inbox costs nothing; acting on it
+  // requires a live plan.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/broker/leads/intro") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("intro:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
+        if (!user) return;
+        const leadId = String(JSON.parse(body || "{}").lead_id || "");
+        if (!leadId) return sendJson(res, 400, { error: "Missing lead_id." });
+        const lead = ((await sbRequest("GET",
+          `leads?id=eq.${encodeURIComponent(leadId)}&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+        if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
+        // No requesting introductions to leads outside your coverage — the
+        // same rule that decides what the inbox shows decides what you can
+        // raise a hand for.
+        const cov = await sbRequest("GET",
+          `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=market,property_type&limit=500`);
+        const visible = LEADSVC.filterLeadsForCoverage(
+          [{ ...lead, market: marketOf(lead.address) }], cov || []);
+        if (!visible.length) return sendJson(res, 403, { error: "That lead is outside your coverage." });
+        // Read-then-insert so we can tell "new" from "already requested" (and
+        // avoid double-emailing the owner); the upsert below still backstops
+        // the race between the two — worst case the owner gets two emails
+        // once in a blue moon, never a false "duplicate" on a real failure.
+        const existing = await sbRequest("GET",
+          `lead_intro_requests?lead_id=eq.${encodeURIComponent(lead.id)}` +
+          `&user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=1`);
+        if (existing && existing.length) return sendJson(res, 200, { ok: true, already: true });
+        await sbRequest("POST", "lead_intro_requests?on_conflict=lead_id,user_id",
+          [{ lead_id: lead.id, user_id: user.id }],
+          { prefer: "resolution=ignore-duplicates,return=minimal" });
+        // Broker identity for the owner's email: account + public profile if
+        // one exists (BROKER_PROFILES holds public rows only; that is fine,
+        // the email address is the working identifier either way).
+        const prof = BROKER_PROFILES.byEmail[String(user.email || "").toLowerCase()];
+        notifyByEmail(`Broker requested an introduction: ${marketOf(lead.address)} ${lead.type}`, [
+          ["Broker", prof ? `${prof.display_name}${prof.company ? " (" + prof.company + ")" : ""}` : ""],
+          ["Broker email", user.email],
+          ["Lead name", lead.name],
+          ["Lead email", lead.email],
+          ["Lead phone", lead.phone],
+          ["Lead company", lead.company],
+          ["Property", lead.address],
+          ["Property type", lead.type],
+          ["Size (SF)", lead.size_sqft],
+          ["Lead received", lead.ts],
+        ]);
+        logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("intro request failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't send that request. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+
   // --- Broker vault (v1) ----------------------------------------------------
   //
   // A broker's private comp store. Plan:

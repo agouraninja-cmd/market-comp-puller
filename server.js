@@ -44,7 +44,14 @@ try {
   if (fs.existsSync(envPath)) {
     for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
       const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
-      if (m && !process.env[m[1]]) {
+      // `=== undefined`, not `!value`: a caller that sets a variable to the
+      // EMPTY STRING is deliberately clearing it, and must not have the .env
+      // value put back. test/routes.test.js boots the server with the keys
+      // that gate whole routes cleared exactly this way; until 2026-08-05 the
+      // falsy check silently refilled them from a developer's real .env, which
+      // handed the "bare environment" suite a live Anthropic key and billed
+      // two real searches.
+      if (m && process.env[m[1]] === undefined) {
         process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
       }
     }

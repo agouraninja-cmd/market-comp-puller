@@ -1460,6 +1460,41 @@ async function corpusRowsForMarket(market, property_type, limit) {
     .slice(0, limit);
 }
 
+// Whole-corpus read for the audit: no market or type filter, newest first,
+// hard-capped. Selects only the columns the audit reads, deliberately NOT
+// ALL_TYPE_COMP_FIELDS — a missing per-type column is exactly what froze the
+// corpus for weeks in July, and the integrity report is the last thing that
+// should go dark when that happens again.
+async function readCorpusRowsForAudit(limit) {
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        "comp_corpus?select=ts,market,property_type,address,deal_date," +
+        `price_or_rate,price_per_sqft,source_url,source_type&order=ts.desc&limit=${limit}`) || [];
+    } catch (e) { noteCorpusFailure("read", e); }
+  }
+  const fileRows = await readRowsFromFile(COMP_CORPUS_FILE);
+  return [...dbRows, ...fileRows].slice(0, limit);
+}
+
+// Memoized 60s, following /api/pricing: this is a whole-table read, and
+// /admin is refreshed by hand rather than polled.
+const CORPUS_AUDIT_LIMIT = 2000;
+let CORPUS_AUDIT_CACHE = { at: 0, data: null };
+async function corpusAuditReport() {
+  if (CORPUS_AUDIT_CACHE.data && Date.now() - CORPUS_AUDIT_CACHE.at < 60_000) {
+    return CORPUS_AUDIT_CACHE.data;
+  }
+  const rows = await readCorpusRowsForAudit(CORPUS_AUDIT_LIMIT);
+  // parseDealDate is INJECTED rather than reimplemented so the audit and
+  // corpus-first retrieval can never disagree about what counts as a usable
+  // date. A row this call flags is exactly a row retrieval cannot see.
+  const data = AUDIT.auditCorpus(rows, { now: Date.now(), parseDealDate });
+  CORPUS_AUDIT_CACHE = { at: Date.now(), data };
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Corpus-first retrieval (cost saver). On a cache miss, before paying for a
 // fresh web search, pull comps we already harvested for this market+type. When
@@ -10299,6 +10334,23 @@ const server = http.createServer((req, res) => {
     readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"])
       .then((rows) => sendJson(res, 200, aggregateStats(rows)))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
+    return;
+  }
+  // Corpus integrity, gated exactly like /api/stats. REPORT-ONLY: it reads
+  // rows and changes nothing — no badge is corrected, nothing is withheld from
+  // retrieval. Fails SAFE: any error answers "unavailable" with a 200, because
+  // /admin is the page the owner opens when something else is already wrong,
+  // and this panel must never be what breaks it.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-audit") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const key = new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    corpusAuditReport()
+      .then((data) => sendJson(res, 200, data))
+      .catch((err) => {
+        console.warn("Corpus audit failed:", err && err.message);
+        return sendJson(res, 200, { error: "unavailable" });
+      });
     return;
   }
   if (req.method === "GET" && req.url === "/admin") {

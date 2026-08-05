@@ -31,6 +31,13 @@ const STRIPE = require("./stripe");
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
 const LEADSVC = require("./broker-leads");
+// Corpus audit — the structural integrity rules for the comp corpus. It also
+// owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
+// which USED to live inline below: the audit has to detect rows that predate a
+// tightening of that rule, and a second copy would be one more mirrored pair to
+// keep in sync (this repo already carries one, compWeight, and it has a ⚠).
+const AUDIT = require("./corpus-audit");
+const { isAggregateAddress } = AUDIT;
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -1484,6 +1491,41 @@ async function corpusRowsForMarket(market, property_type, limit) {
     .slice(0, limit);
 }
 
+// Whole-corpus read for the audit: no market or type filter, newest first,
+// hard-capped. Selects only the columns the audit reads, deliberately NOT
+// ALL_TYPE_COMP_FIELDS — a missing per-type column is exactly what froze the
+// corpus for weeks in July, and the integrity report is the last thing that
+// should go dark when that happens again.
+async function readCorpusRowsForAudit(limit) {
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        "comp_corpus?select=ts,market,property_type,address,deal_date," +
+        `price_or_rate,price_per_sqft,source_url,source_type&order=ts.desc&limit=${limit}`) || [];
+    } catch (e) { noteCorpusFailure("read", e); }
+  }
+  const fileRows = await readRowsFromFile(COMP_CORPUS_FILE);
+  return [...dbRows, ...fileRows].slice(0, limit);
+}
+
+// Memoized 60s, following /api/pricing: this is a whole-table read, and
+// /admin is refreshed by hand rather than polled.
+const CORPUS_AUDIT_LIMIT = 2000;
+let CORPUS_AUDIT_CACHE = { at: 0, data: null };
+async function corpusAuditReport() {
+  if (CORPUS_AUDIT_CACHE.data && Date.now() - CORPUS_AUDIT_CACHE.at < 60_000) {
+    return CORPUS_AUDIT_CACHE.data;
+  }
+  const rows = await readCorpusRowsForAudit(CORPUS_AUDIT_LIMIT);
+  // parseDealDate is INJECTED rather than reimplemented so the audit and
+  // corpus-first retrieval can never disagree about what counts as a usable
+  // date. A row this call flags is exactly a row retrieval cannot see.
+  const data = AUDIT.auditCorpus(rows, { now: Date.now(), parseDealDate });
+  CORPUS_AUDIT_CACHE = { at: Date.now(), data };
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Corpus-first retrieval (cost saver). On a cache miss, before paying for a
 // fresh web search, pull comps we already harvested for this market+type. When
@@ -2118,18 +2160,11 @@ let corpusSeenSeeded = false;
 // the model sometimes pads the comp list with rows like "Pittsburgh Metro
 // Multifamily - Market Median Benchmark".
 //
-// Deliberately keyed on aggregate VOCABULARY, not on address shape: plenty of
-// genuine small multifamily and retail comps are listed without a street
-// number ("Highland Park Triplex, Pittsburgh, PA 15206", "Swissvale Triplex
-// (near Edgewood Town Center)"), so requiring one would discard real data.
-// Street names survive too — "123 Market St" has no aggregate word, while
-// "Market Median" does.
-const AGGREGATE_ADDRESS_RE =
-  /\b(benchmark|median|average|avg|composite|index|market (report|data|summary|stats?|statistics)|year[\s-]end (summary|report))\b/i;
-
-function isAggregateAddress(address) {
-  return AGGREGATE_ADDRESS_RE.test(String(address || ""));
-}
+// isAggregateAddress now lives in corpus-audit.js (imported at the top of this
+// file) so the live normalization and the audit share ONE copy of the rule.
+// The reasoning behind it is preserved there: it is keyed on aggregate
+// VOCABULARY rather than address shape, because genuine small multifamily and
+// retail comps are often listed without a street number.
 
 function corpusKeyOf(c) {
   const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -2784,31 +2819,22 @@ function stripEmDashes(value) {
 // source_type drives a trust badge and lands in CSV exports, so stray model
 // values are coerced onto the enum. Unknown maps to "estimate": the label may
 // under-claim a comp's provenance, never over-claim it.
-const SOURCE_TYPES = ["public_record", "listing", "news", "estimate"];
+// Both halves of the rule (coerce onto the enum, then ENFORCE the
+// individual-property requirement) live in corpus-audit.js as
+// enforcedSourceType. The enforcement matters as much as the coercion: the
+// prompt already forbids market-level rows as comps, but in thin markets the
+// model pads anyway (a Boston report shipped "Financial District (general
+// submarket estimate)" rows claiming listing provenance), and a prompt rule is
+// a request while normalization is a guarantee.
+//
+// It is shared with the audit rather than duplicated so the audit can flag
+// rows harvested BEFORE a tightening of this rule — the corpus has them, and
+// corpus-first retrieval still serves them.
 function normalizeSourceTypes(parsed) {
   if (!parsed || !Array.isArray(parsed.comps)) return parsed;
   for (const c of parsed.comps) {
     if (!c || typeof c !== "object") continue;
-    const raw = String(c.source_type || "").toLowerCase();
-    c.source_type =
-      SOURCE_TYPES.find((t) => raw === t) ||
-      (/record|assessor|deed|tax|county|public/.test(raw) ? "public_record"
-        : /list|broker|flyer|loopnet|crexi|costar/.test(raw) ? "listing"
-        : /news|article|press|announc/.test(raw) ? "news"
-        : "estimate");
-    // ENFORCEMENT, not just prompting: the prompt already forbids market-
-    // level rows as comps, but in thin markets the model pads anyway (a
-    // Boston report shipped "Financial District (general submarket
-    // estimate)" rows claiming listing provenance). A comp whose address
-    // has no leading street number, or that names a statistic, cannot be
-    // one verifiable transaction — force its badge to "estimate" so the
-    // report can never present a submarket guess as a sourced deal. Same
-    // under-claim principle as above; the Verified badge (broker-matched,
-    // separate flag) is unaffected.
-    if (c.source_type !== "estimate" &&
-        (!/^\s*\d+\s+\S/.test(String(c.address || "")) || isAggregateAddress(c.address))) {
-      c.source_type = "estimate";
-    }
+    c.source_type = AUDIT.enforcedSourceType(c.source_type, c.address);
   }
   return parsed;
 }
@@ -3894,11 +3920,17 @@ footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
 footer li a{text-decoration:none;color:#B8C0CC}
+/* Grouped link columns — the flat list had grown long enough that the footer
+   became the tallest block on the page. Wraps on narrow screens so three
+   groups never push past 375px. Mirrored in HOW_CSS and in index.html's
+   footer; keep the three in step. */
+footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
   footer .wrap{flex-direction:row}
-  footer .right{text-align:right;flex-shrink:0}
+  footer .right{flex-shrink:0}
 }
 `;
 
@@ -4209,13 +4241,19 @@ const MARKET_FOOTER =
   `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
+  `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
   `<p>&copy; 2026 CompNinja LLC</p></div>` +
-  `<div class="right"><a href="mailto:info@compninja.co">info@compninja.co</a>` +
-  `<ul><li><a href="/markets">Markets</a></li><li><a href="/brokers">Brokers</a></li>` +
+  `<div class="right"><div class="cols">` +
+  `<div><div class="ch">Explore</div>` +
+  `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
+  `<li><a href="/brokers">Brokers</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
-  `<li><a href="/how-it-works#faq">FAQ</a></li><li><a href="/">Run a report</a></li>` +
-  `<li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul></div>` +
-  `</div></footer>`;
+  `<li><a href="/how-it-works#faq">FAQ</a></li>` +
+  `<li><a href="/">Run a report</a></li></ul></div>` +
+  `<div><div class="ch">Company</div>` +
+  `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
+  `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
 // stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
@@ -4710,6 +4748,12 @@ footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
 footer li a{text-decoration:none;color:#B8C0CC}
+/* Grouped link columns — the flat list had grown long enough that the footer
+   became the tallest block on the page. Wraps on narrow screens so three
+   groups never push past 375px. Mirrored in HOW_CSS and in index.html's
+   footer; keep the three in step. */
+footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .stats{grid-template-columns:repeat(4,1fr)}
@@ -4720,7 +4764,7 @@ footer li a{text-decoration:none;color:#B8C0CC}
   .step:last-child{border-right:0}
   h1.h{font-size:42px}
   footer .wrap{flex-direction:row}
-  footer .right{text-align:right;flex-shrink:0}
+  footer .right{flex-shrink:0}
 }
 @media (min-width:1024px){
   .exrow{flex-direction:row}
@@ -5189,19 +5233,29 @@ function renderHowItWorksHTML() {
       <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
         connect you with local brokers for opinions of value. Comparables derive from publicly available data;
         verify independently before underwriting.</p>
+      <p><a href="mailto:info@compninja.co">info@compninja.co</a></p>
       <p>&copy; 2026 CompNinja LLC</p>
     </div>
     <div class="right">
-      <a href="mailto:info@compninja.co">info@compninja.co</a>
-      <ul>
-        <li><a href="/markets">Markets</a></li>
-        <li><a href="/brokers">Brokers</a></li>
-        <li><a href="/how-it-works">How it works</a></li>
-        <li><a href="/how-it-works#faq">FAQ</a></li>
-        <li><a href="/">Run a report</a></li>
-        <li><a href="/terms">Terms</a></li>
-        <li><a href="/privacy">Privacy</a></li>
-      </ul>
+      <div class="cols">
+        <div>
+          <div class="ch">Explore</div>
+          <ul aria-label="Explore">
+            <li><a href="/markets">Markets</a></li>
+            <li><a href="/brokers">Brokers</a></li>
+            <li><a href="/how-it-works">How it works</a></li>
+            <li><a href="/how-it-works#faq">FAQ</a></li>
+            <li><a href="/">Run a report</a></li>
+          </ul>
+        </div>
+        <div>
+          <div class="ch">Company</div>
+          <ul aria-label="Company">
+            <li><a href="/terms">Terms</a></li>
+            <li><a href="/privacy">Privacy</a></li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </footer>`;
@@ -5560,6 +5614,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">View analytics</button><div id="err" class="err"></div></div>
 <div id="dash" style="display:none"></div>
+<div id="auditPanel"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -5711,6 +5766,42 @@ function renderSubs(d,key){
     });
   });
 }
+// Corpus integrity. Neutral ink even at a low score: red is reserved on this
+// page for the two outright-failure banners (upstream down, corpus not
+// persisting). This reports a standing condition, not an outage.
+var AUDIT_LABELS={weak_citation:"Citation does not name the property",
+  badge_drift:"Badge stronger than today's rule allows",
+  shared_citation:"Same source cited by different addresses",
+  unparseable_date:"Date will not parse, so retrieval cannot see it",
+  no_price:"No usable price"};
+function renderAudit(d){
+  var el=document.getElementById("auditPanel");
+  if(!d||d.error){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>Unavailable right now — the corpus could not be read. Nothing else on this page is affected.</p></div>";return;}
+  if(!d.total){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>No corpus rows yet.</p></div>";return;}
+  var f=d.findings||{},h=d.hosts||{};
+  var lines=Object.keys(AUDIT_LABELS).map(function(k){
+    return "<p class=muted>"+esc(f[k]||0)+" &middot; "+esc(AUDIT_LABELS[k])+"</p>";}).join("");
+  var rows=(d.worst||[]).map(function(w){
+    return "<p class=muted style='word-break:break-word'><b>"+esc(w.address)+"</b> ("+
+      esc(w.property_type||"?")+", badge "+esc(w.source_type||"?")+")<br>"+
+      esc((w.findings||[]).join(", "))+"<br>"+esc(w.source_url)+"</p>";}).join("");
+  el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p><b>"+Math.round(d.score*100)+"%</b> of "+esc(d.total)+" rows carry no structural finding.</p>"+
+    "<p class=muted>This measures CITATION quality, not accuracy. It checks that a comp's source link "+
+    "names the property; it never reads the page, and it is not the 90% accuracy gate.</p>"+
+    lines+
+    "<p class=muted>"+esc(h.blocked||0)+" of "+esc(d.total)+" rows cite hosts that block automated reading. "+
+    "That is context only and does not affect the score.</p>"+
+    (rows?"<h2 style='margin-top:12px'>Worst rows</h2>"+rows:"");
+}
+function loadAudit(key){
+  fetch("/api/corpus-audit",{headers:{"x-admin-key":key}})
+    .then(function(r){if(!r.ok){throw new Error("audit "+r.status);}return r.json();})
+    .then(renderAudit)
+    .catch(function(e){console.error(e);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -5725,7 +5816,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -6925,19 +7016,31 @@ async function hqSnapshot() {
   const [analytics, submissions, dev, contacts, revenue] = (await Promise.allSettled([
     (async () => {
       // Same read + reducer /api/stats uses; the page shows the last-7-day
-      // slice of its 30-day series.
+      // slice of its 30-day series, plus the 7 days before it so every
+      // headline count carries a direction.
       const rows = await readRows("analytics_events", ANALYTICS_FILE,
         ["ts", "kind", "prop_type", "market", "source", "cached"]);
       const s = aggregateStats(rows);
       const last7 = s.daily.slice(-7);
-      const sum = (f) => last7.reduce((n, d) => n + d[f], 0);
+      const prev7 = s.daily.slice(-14, -7);
+      const sum = (list, f) => list.reduce((n, d) => n + d[f], 0);
       // Estimated API spend for the same 7 days: aggregateStats re-run on just
       // the week's rows, so the blended pricing (corpus-discounted reports,
       // flat market searches) can never drift from /admin's cost tiles.
       const cut = last7.length ? last7[0].date : "";
       const spend7 = aggregateStats(rows.filter((r) => String(r.ts || "").slice(0, 10) >= cut)).spend.total;
+      // Week-scoped counts the reducer doesn't break out: the signup funnel
+      // (signups, leads, and how many anonymous visitors hit the sign-in
+      // gate — the number GUEST_SEARCH_LIMIT exists to move) rides the same
+      // 7-day window as the search figure above it.
+      const day = (r) => String(r.ts || "").slice(0, 10);
+      const kind7 = (k) => rows.filter((r) => r.kind === k && day(r) >= cut).length;
       return {
-        searches7d: { billed: sum("billed"), cached: sum("cached"), total: sum("total"), cost: spend7 },
+        searches7d: {
+          billed: sum(last7, "billed"), cached: sum(last7, "cached"),
+          total: sum(last7, "total"), prevTotal: sum(prev7, "total"), cost: spend7,
+        },
+        funnel7d: { signups: kind7("signup"), gated: kind7("signup_gate"), leads: kind7("lead") },
         leads: s.totals.leads,
       };
     })(),
@@ -6973,6 +7076,8 @@ async function hqSnapshot() {
       const sl = Array.isArray(subs) ? subs : [];
       const pl = Array.isArray(purchases) ? purchases : [];
       const cut = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+      const prevCut = new Date(Date.now() - 13 * 86400000).toISOString().slice(0, 10);
+      const boughtOn = (x) => String(x.purchased_at || "").slice(0, 10);
       return {
         db: true,
         active: sl.filter((x) => x.status === "active").length,
@@ -6980,7 +7085,8 @@ async function hqSnapshot() {
         founding: sl.filter((x) => x.plan === "pro_annual_founding").length,
         foundingLimit: FOUNDING_MEMBER_LIMIT,
         purchases: pl.length,
-        purchases7d: pl.filter((x) => String(x.purchased_at || "").slice(0, 10) >= cut).length,
+        purchases7d: pl.filter((x) => boughtOn(x) >= cut).length,
+        purchasesPrev7: pl.filter((x) => boughtOn(x) >= prevCut && boughtOn(x) < cut).length,
       };
     })(),
   ])).map((r) => r.status === "fulfilled" ? r.value
@@ -7005,6 +7111,11 @@ async function hqSnapshot() {
       used: new Date().toISOString().slice(0, 10) === dailySearchDay ? dailySearchCount : 0,
       limit: DAILY_SEARCH_CAP,
     },
+    // The "live but unbuyable" trap: PRO_AUDIENCE left set after a test
+    // window keeps Pro on but unreachable for the public, and the deployment
+    // looks perfectly healthy. Startup logs it loudly, but nobody tails
+    // Render's logs — this page is what actually gets looked at.
+    audience: PRO_ENABLED && PRO_AUDIENCE.length ? PRO_AUDIENCE.length : 0,
   };
   return { analytics, submissions, dev, contacts, revenue, alerts };
 }
@@ -7023,12 +7134,85 @@ async function hqSnapshot() {
 // parallel sessions to collide, and this page shares no markup with the report
 // app anyway.
 //
-// The page itself is PUBLIC HTML with no secrets in it. Everything it shows
-// arrives from /api/vault, which is gated on canUseVault server-side, so
-// opening this URL without a broker subscription renders an empty shell and a
-// "part of the broker plan" note. There is no client-side check to bypass.
+// The page's DATA is resolved server-side before the HTML is sent, and baked
+// in as window.__VAULT_BOOT__, so the workspace renders in the same paint as
+// the title — the fetch-after-paint version spawned everything a beat late,
+// which the owner (rightly) read as a glitch. The gate is still canUseVault
+// server-side, applied in vaultReadPayload before any row is serialized;
+// there is no client-side check to bypass, and the page is no-store because
+// it now carries the signed-in viewer's own rows.
 // ---------------------------------------------------------------------------
-function renderVaultHTML() {
+// One answer to "what does this account's vault look like?", shaped as
+// { status, body } and never touching the response. Both readers share it:
+// GET /api/vault serializes it as JSON, GET /vault bakes it into the page.
+// Same three refusals, same order, as openVault: 401, 403, 503.
+//
+// The entitlement check and the two reads run CONCURRENTLY — the reads are
+// user-scoped and their rows leave this function only through the 200 branch
+// below the canUseVault test, so the parallelism changes latency, not what a
+// non-broker can see. allSettled keeps the refusal order honest: a Supabase
+// outage must not turn a 403 into a 502.
+async function vaultReadPayload(req, params) {
+  const user = await getSessionUser(req);
+  if (!user) return { status: 401, body: { error: "Not signed in." } };
+  const q = params || new URLSearchParams();
+  const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
+  const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
+  const market = (q.get("market") || "").trim().slice(0, 80);
+  const type = (q.get("type") || "").trim().slice(0, 40);
+
+  // Scoped by user_id FIRST and always. One broker must not see another
+  // broker's vault any more than the public may.
+  let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
+  if (market) query += `&market=eq.${encodeURIComponent(market)}`;
+  if (type && VAULT.PROPERTY_TYPES.includes(type)) {
+    query += `&property_type=eq.${encodeURIComponent(type)}`;
+  }
+  query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
+
+  const [entR, compsR, uploadsR] = await Promise.allSettled([
+    entitlementsFor(req),
+    DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
+    DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
+      `&order=created_at.desc&limit=100`) : Promise.resolve(null),
+  ]);
+  // entitlementsFor fails closed internally; if it somehow rejects, closed
+  // here too — an error must never open a vault.
+  const ent = entR.status === "fulfilled" ? entR.value : null;
+  if (!ent || !ent.canUseVault) {
+    return { status: 403, body: {
+      error: "The private vault is part of the broker plan.",
+      code: "broker_required",
+    } };
+  }
+  if (!DB_CONFIGURED) {
+    return { status: 503, body: {
+      error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+    } };
+  }
+  if (compsR.status === "rejected") throw compsR.reason;
+  if (uploadsR.status === "rejected") throw uploadsR.reason;
+  const rows = compsR.value || [];
+
+  return { status: 200, body: {
+    comps: rows,
+    uploads: uploadsR.value || [],
+    // The header line: "N comps · 0 published · visible only to you".
+    // The published count is the trust proof the whole tier rests on, so
+    // it is counted from the rows rather than assumed to be zero.
+    counts: {
+      returned: rows.length,
+      published: rows.filter((r) => r.published).length,
+    },
+    markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
+    types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
+  } };
+}
+
+function renderVaultHTML(boot) {
+  // </script> can never appear in the payload: every "<" is escaped, which is
+  // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
+  const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -7057,7 +7241,8 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
 .brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
-.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
@@ -7120,7 +7305,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="/"><span class="wordmark">Comp<b>Ninja</b></span></a>
+  <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
   <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
 </div></header>
 <main><div class="wrap">
@@ -7129,7 +7314,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   <p class="sub">Your own comp data, private to you. Upload a spreadsheet and it comes back
     organized &mdash; sortable and filterable by property and by market.</p>
 
-  <div id="gate" class="hide"></div>
+  <!-- Visible from the first paint. Everything below the title waits on
+       /api/vault (session -> entitlements -> two reads), and with both panes
+       hidden the page spent that window looking half-rendered before the
+       workspace popped in. The fetch's three outcomes each replace this:
+       success hides #gate, a refusal rewrites it, so it can never linger. -->
+  <div id="gate"><p class="empty">Loading your vault&hellip;</p></div>
 
   <div id="app" class="hide">
     <div class="trust">
@@ -7194,6 +7384,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   </div>
 </div></main>
 <footer><div class="wrap">Private broker workspace &middot; CompNinja</div></footer>
+<script>window.__VAULT_BOOT__=${bootJson};</script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -7212,30 +7403,34 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 
   function gate(html){ $("gate").innerHTML=html; $("gate").className=""; $("app").className="hide"; }
 
+  function apply(o){
+    if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
+    if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
+      '<a href="/brokers">What brokers get</a></div>');
+    if(o.s!==200) return gate('<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not load your vault.")+'</div>');
+    $("gate").className="hide"; $("app").className="";
+    comps=o.j.comps||[];
+    $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
+    $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+    renderUploads(o.j.uploads||[]);
+    // Loaded once per page visit, not on every filter change/publish/
+    // import-delete that re-runs load() — those all hit /api/vault, a
+    // different endpoint, and re-querying /api/broker/leads on each one
+    // would be wasted work with no new information. It lives in apply()
+    // rather than load() so the baked-in boot payload path (which never
+    // calls load()) still populates the Leads section on first paint.
+    if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
+    render();
+  }
+
   function load(){
     var q=[],m=$("fMarket").value,t=$("fType").value;
     if(m)q.push("market="+encodeURIComponent(m));
     if(t)q.push("type="+encodeURIComponent(t));
     fetch("/api/vault"+(q.length?"?"+q.join("&"):""),{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
-        if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
-          '<a href="/brokers">What brokers get</a></div>');
-        if(o.s!==200) return gate('<div class="msg bad">'+esc(o.j.error||"Could not load your vault.")+'</div>');
-        $("gate").className="hide"; $("app").className="";
-        comps=o.j.comps||[];
-        $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
-        $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
-        fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
-        renderUploads(o.j.uploads||[]);
-        // Loaded once per page visit, not on every filter change/publish/
-        // import-delete that re-runs load() — those all hit /api/vault, a
-        // different endpoint, and re-querying /api/broker/leads on each one
-        // would be wasted work with no new information.
-        if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
-        render();
-      })
+      .then(apply)
       .catch(function(){ gate('<div class="msg bad">Could not reach the server. Please try again.</div>'); });
   }
 
@@ -7477,7 +7672,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       {method:"DELETE",credentials:"same-origin"}).then(load).catch(load);
   });
 
-  load();
+  // The server bakes the first answer into the page (window.__VAULT_BOOT__)
+  // so the workspace renders in the same paint as the title, with no fetch
+  // and no pop-in. load() remains the path for filter changes, post-upload
+  // refreshes, and the fallback when the boot payload could not be built.
+  var boot=window.__VAULT_BOOT__;
+  if(boot&&typeof boot.s==="number"){apply(boot);}else{load();}
 })();
 </script></body></html>`;
 }
@@ -7533,42 +7733,58 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
   font-size:var(--t4);font-family:inherit;cursor:pointer}
 .gate button:hover{background:var(--red-deep)}
 .err{color:var(--red);font-size:var(--t5);margin-top:var(--s3)}
+/* HQ is a DASHBOARD, so it takes /admin's 1024px measure rather than /dev's
+   820px reading measure. Declared here (not at the .wrap rule above) only
+   because that rule is byte-identical to /contacts' and the later declaration
+   wins by cascade order. */
+.wrap{max-width:1024px}
 #hub{margin-top:var(--s8)}
-.card{background:none;border:0;border-radius:0;padding:0;margin:0}
-.card+.card{margin-top:var(--s8);border-top:1px solid var(--line);padding-top:var(--s7)}
+/* One card left (Downloads), so the rule that used to separate two cards is
+   folded into .card itself. */
+.card{background:none;border:0;border-radius:0;margin:var(--s8) 0 0;
+  border-top:1px solid var(--line);padding:var(--s7) 0 0}
 .card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);
-  text-transform:none;margin:0 0 var(--s6)}
-/* One tool per spined row, like /dev's dated entries: the tool's name sits in
-   the margin column, its figure in the text column. */
-.tool{display:grid;grid-template-columns:var(--spine) minmax(0,1fr);column-gap:var(--spine-gap);padding:var(--s6) 0}
-.tool+.tool{border-top:1px solid var(--hair)}
-/* Ink like /dev's spine (.day-date / .bucket-h), red only on hover — the same
-   quiet-link treatment this page's own header nav uses. Four red serif names
-   stacked in the margin out-shouted the numbers they label. --s2 (not --s1)
-   sets the name's cap height level with the 32px figure beside it. */
-.tool-name{grid-column:1;grid-row:1;font-family:var(--serif);font-size:var(--t3);color:var(--ink);
-  line-height:1.35;padding-top:var(--s2)}
-.tool-name:hover{color:var(--red)}
-.tool-body{grid-column:2;min-width:0}
-/* The figure leads the row: the numeral at figure size in serif, its unit
-   words riding the same baseline at body size. Every row therefore starts
-   with a numeral at the same x, so the four read as a column instead of as
-   four similar sentences. --t1 serif is already the house's "this is a
-   figure" treatment (/admin's .tile .v), so the two pages agree.
-   .na is the honest unknown: no orphaned 32px dash, just the reason. */
-.tool-num{font-size:var(--t4);color:var(--ink);line-height:1.2}
-.tool-num .n{font-family:var(--serif);font-size:var(--t1);color:var(--ink);
-  font-variant-numeric:tabular-nums;margin-right:var(--s3)}
-.tool-num.na{font-size:var(--t3);color:var(--ink-3)}
-/* Two supporting lines, never one dot-chain: .tool-sub is scoped to the figure
-   directly above it, .tool-note carries standing totals and anything awaiting
-   a human, so a week figure and an all-time figure never share a sentence.
-   66ch is /dev's .entry-details measure. */
-.tool-sub{color:var(--ink-2);font-size:var(--t5);line-height:1.5;margin-top:var(--s3);
-  max-width:66ch;overflow-wrap:anywhere}
-.tool-note{color:var(--ink-3);font-size:var(--t5);line-height:1.5;margin-top:var(--s1);
-  max-width:66ch;overflow-wrap:anywhere}
-#dls{font-size:var(--t4)}
+  text-transform:none;margin:0 0 var(--s5)}
+/* The sentence that answers the page's own question, above the figures: four
+   numbers in a grid still need one line tying them together, and this is what
+   the owner opens the page to read. Reading size, ink, not a caption. */
+.hubtop{display:flex;align-items:baseline;justify-content:space-between;
+  gap:var(--s4) var(--s6);flex-wrap:wrap;margin:0 0 var(--s5)}
+.lede{font-size:var(--t3);color:var(--ink);line-height:1.55;margin:0;max-width:62ch}
+.asof{color:var(--ink-3);font-size:var(--t5);margin:0;white-space:nowrap}
+/* Tiles, mirroring /admin's hairline mesh — the two dashboards now agree.
+   This page previously borrowed /dev's spined prose rows, which are built for
+   a bold title plus a full paragraph; a two-glyph number left every row's rule
+   underlining mostly empty space. Four tiles, so 1/2/4 columns all divide the
+   total and no half-empty row can appear (same constraint as /admin's grid). */
+.tiles{display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:0}
+@media (min-width:560px){.tiles{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:920px){.tiles{grid-template-columns:repeat(4,1fr)}}
+.tile{background:#fff;padding:var(--s5);min-width:0}
+/* The tool name IS the link. This page exists to send you somewhere, so the
+   four names carry an affordance at rest instead of reading as inert labels
+   while the CSV links at the bottom were the only red on the page. */
+.tile-name{display:inline-block;font-size:var(--t5);font-weight:600;color:var(--ink-2);
+  text-decoration:underline;text-decoration-color:var(--ink-4);text-underline-offset:3px}
+.tile-name:hover{color:var(--red);text-decoration-color:var(--red)}
+.tile-v{font-family:var(--serif);font-weight:500;font-size:var(--t1);line-height:1.15;
+  margin-top:var(--s4);color:var(--ink);font-variant-numeric:tabular-nums}
+/* Three distinct steps under the figure, so the supporting lines stop reading
+   as one grey mush: the unit at body size in mid ink, details a step smaller
+   and lighter. */
+.tile-u{font-size:var(--t4);color:var(--ink-2);line-height:1.4;margin-top:var(--s1)}
+.tile-n{font-size:var(--t5);color:var(--ink-3);line-height:1.5;margin-top:var(--s3);
+  overflow-wrap:anywhere}
+/* The honest unknown: a failed source says why at reading size, never a 32px
+   orphaned dash. */
+.tile-na{font-size:var(--t4);color:var(--ink-3);line-height:1.5;margin-top:var(--s4)}
+/* Demoted to match the tile names: these are the least important thing on the
+   page and used to be the only red, so the eye landed on them first. */
+#dls{font-size:var(--t5)}
+#dls a{color:var(--ink-2);text-decoration:underline;
+  text-decoration-color:var(--ink-4);text-underline-offset:3px}
+#dls a:hover{color:var(--red);text-decoration-color:var(--red)}
 .muted{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s3)}
 /* Only present when something is wrong; without it the first section heading
    sits 12px under a red alarm line. */
@@ -7579,17 +7795,16 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
 .alert{color:var(--red);font-size:var(--t4);font-weight:600;border-left:2px solid var(--red);
   padding-left:var(--s4);margin:0 0 var(--s4)}
 .alert a{text-decoration:underline}
+/* The alert's neutral sibling: work waiting on a human, not something wrong.
+   Ink, not red — red stays reserved for failures — and it renders after any
+   red lines so an alarm is never pushed down by a to-do. */
+.attn{color:var(--ink-2);font-size:var(--t4);border-left:2px solid var(--ink-4);
+  padding-left:var(--s4);margin:0 0 var(--s4)}
+.attn a{text-decoration:underline}
 footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
 footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
-/* LAST in the sheet on purpose — same specificity as .tool above, so the
-   collapse only wins by being declared later (see /dev's note). */
-@media (max-width:640px){
-  .tool{grid-template-columns:minmax(0,1fr);row-gap:var(--s2);padding:var(--s5) 0}
-  .tool-name{grid-column:1;grid-row:auto;padding-top:0}
-  .tool-body{grid-column:1}
-}
 </style></head><body>
 <header class="hdr">
   <div class="wrap">
@@ -7606,15 +7821,17 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div class="wrap">
 <div class="kicker">Internal</div>
 <h1 class="h">Headquarters</h1>
-<p class="sub">Analytics, development, contacts and revenue &mdash; each with its headline number, and anything that needs attention at the top.</p>
+<p class="sub">Everything internal in one place, with anything that needs attention at the top.</p>
 <div id="gate" class="gate"><span class="lab">Enter admin key</span>
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">Open HQ</button><div id="err" class="err"></div></div>
 <div id="hub" style="display:none">
   <div id="alerts"></div>
-  <div class="card"><h2>Tools</h2>
-    <div id="tools"></div>
+  <div class="hubtop">
+    <p class="lede" id="lede"></p>
+    <p class="asof" id="asof"></p>
   </div>
+  <div class="tiles" id="tiles"></div>
   <div class="card"><h2>Downloads</h2>
     <div id="dls"></div>
     <p class="muted">Each link carries the admin key so the browser can download directly. Treat a copied link as the key itself.</p>
@@ -7636,22 +7853,22 @@ var MOS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
 function fmtDay(d){var m=/^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(d||""));
   if(!m)return esc(d);return MOS[Number(m[2])-1]+" "+Number(m[3]);}
 function plural(n,one,many){return n+" "+(n===1?one:many);}
-// plural() returns "3 ideas"; noun() returns just "ideas", for the rows where
+// plural() returns "3 ideas"; noun() returns just "ideas", for the tiles where
 // the numeral is set separately at figure size.
 function noun(n,one,many){return n===1?one:many;}
-// One tool = one spined row: name in the margin column, figure plus up to two
-// supporting lines in the text column. o.num===null means "no figure" — then
-// o.unit is read as the plain-language reason and set small, so a source that
-// failed never renders as a giant orphaned dash.
-function toolRow(o){
-  var fig=(o.num===null||o.num===undefined)
-    ? '<div class="tool-num na">'+o.unit+'</div>'
-    : '<div class="tool-num"><span class="n">'+o.num+'</span>'+o.unit+'</div>';
-  return '<div class="tool"><a class="tool-name" href="'+o.href+'"'+(o.ext?' target="_blank" rel="noopener"':"")+'>'+o.name+'</a>'+
-    '<div class="tool-body">'+fig+
-    (o.sub?'<div class="tool-sub">'+o.sub+'</div>':"")+
-    (o.note?'<div class="tool-note">'+o.note+'</div>':"")+
-    '</div></div>';
+// One tile per tool: the name (the link) above the figure, the unit under it,
+// then up to two detail lines. o.num===null means the source failed — then
+// o.unit is read as the plain-language reason and set at reading size, so a
+// dead source never renders as a giant orphaned dash.
+function tile(o){
+  var body=(o.num===null||o.num===undefined)
+    ? '<div class="tile-na">'+o.unit+'</div>'
+    : '<div class="tile-v">'+o.num+'</div><div class="tile-u">'+o.unit+'</div>';
+  var notes=(o.notes||[]).filter(Boolean)
+    .map(function(t){return '<div class="tile-n">'+t+'</div>';}).join("");
+  return '<div class="tile">'+
+    '<a class="tile-name" href="'+o.href+'"'+(o.ext?' target="_blank" rel="noopener"':"")+'>'+o.name+'</a>'+
+    body+notes+'</div>';
 }
 function render(d){
   var a=d&&d.analytics,s=d&&d.submissions,dv=d&&d.dev,c=d&&d.contacts,r=d&&d.revenue;
@@ -7663,33 +7880,41 @@ function render(d){
   // rather than as news.
   var an={href:"/admin",name:"Analytics",num:null,unit:"Search activity is unavailable."};
   if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
-    an.num=a.searches7d.total;
-    an.unit=noun(a.searches7d.total,"search","searches")+" this week";
-    an.sub=a.searches7d.billed+" billed, "+a.searches7d.cached+" from cache";
-    if(typeof a.searches7d.cost==="number")an.sub+=" · $"+a.searches7d.cost.toFixed(2)+" estimated spend";
-    var st=[];
-    if(typeof a.leads==="number")st.push(plural(a.leads,"lead","leads")+" all time");
-    // db===false is "review needs Supabase"; a null source is a failed read and
-    // says nothing here rather than blaming the wrong thing.
-    if(s&&s.db===true&&typeof s.pending==="number")st.push(plural(s.pending,"broker comp","broker comps")+" awaiting review");
-    else if(s&&s.db===false)st.push("broker review needs Supabase");
-    if(st.length)an.note=st.join(" · ");
+    var w=a.searches7d;
+    an.num=w.total;
+    // The prior week rides the unit line in parentheses — direction without a
+    // second numeral competing at figure size.
+    an.unit=noun(w.total,"search","searches")+" this week"+
+      (typeof w.prevTotal==="number"?" ("+w.prevTotal+" last week)":"");
+    var s1=w.billed+" billed · "+w.cached+" cached";
+    if(typeof w.cost==="number")s1+=" · $"+w.cost.toFixed(2)+" est. spend";
+    // The lede carries this week's signups and leads, so the tile keeps what
+    // it doesn't: the gate hits the guest cap produced, and the standing lead
+    // total. Splitting them this way also retires the old adjacency where
+    // "0 leads" (this week) sat one line above "1 lead all time".
+    var s2=[],f=a.funnel7d;
+    if(f)s2.push(plural(f.gated,"visitor","visitors")+" hit the sign-in gate");
+    if(typeof a.leads==="number")s2.push(plural(a.leads,"lead","leads")+" all time");
+    // A null source is a failed read and says nothing rather than blaming the
+    // wrong thing; db===false is specifically "review needs Supabase".
+    if(s&&s.db===false)s2.push("broker review needs Supabase");
+    an.notes=[s1,s2.join(" · ")];
   }
-  rows.push(toolRow(an));
+  rows.push(tile(an));
   var de={href:"/dev",name:"Dev hub",num:null,unit:"The ideas queue is unavailable."};
   if(dv&&typeof dv.openIdeas==="number"){
     de.num=dv.openIdeas;
     de.unit=noun(dv.openIdeas,"open idea","open ideas");
-    if(dv.latest&&dv.latest.date)de.sub="Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"");
+    if(dv.latest&&dv.latest.date)de.notes=["Last shipped "+fmtDay(dv.latest.date)+": "+esc(dv.latest.title||"")];
   }
-  rows.push(toolRow(de));
+  rows.push(tile(de));
   var co={href:"/contacts",name:"Contacts",num:null,unit:"The shared book is unavailable."};
   if(c&&typeof c.count==="number"){
     co.num=c.count;
     co.unit=noun(c.count,"contact","contacts");
-    co.sub="Leads, brokers, owners and vendors in the shared book.";
+    co.notes=["Leads, brokers, owners and vendors in the shared book."];
   }
-  rows.push(toolRow(co));
+  rows.push(tile(co));
   // Stripe is the only off-site tool, hence ext. The billing tables have no
   // file fallback by design, so "no Supabase" is a different unknown from
   // "the read failed" and says so.
@@ -7698,19 +7923,56 @@ function render(d){
   if(r&&r.db===true&&typeof r.active==="number"){
     rv.num=r.active;
     rv.unit=noun(r.active,"active subscription","active subscriptions");
-    rv.sub=r.founding+" of "+r.foundingLimit+" founding seats taken";
-    var rn=[plural(r.purchases,"report unlock","report unlocks")+(r.purchases7d?" ("+r.purchases7d+" this week)":"")];
+    var rn=[plural(r.purchases,"report unlock","report unlocks")+
+      ((r.purchases7d||r.purchasesPrev7)?" ("+r.purchases7d+" this week, "+r.purchasesPrev7+" last)":"")];
     if(r.atRisk)rn.push(plural(r.atRisk,"subscription","subscriptions")+" in payment grace");
-    rv.note=rn.join(" · ");
+    rv.notes=[r.founding+" of "+r.foundingLimit+" founding seats taken",rn.join(" · ")];
   } else if(r&&r.db===false){
     rv.unit="Billing counts need Supabase — those tables have no file fallback.";
   }
-  rows.push(toolRow(rv));
-  el("tools").innerHTML=rows.join("");
+  rows.push(tile(rv));
+  el("tiles").innerHTML=rows.join("");
+}
+// The one sentence the page exists to answer, above the grid: demand and its
+// direction, what that converted into, and whether anything sold. Assembled
+// from whatever resolved — a failed source drops its clause instead of
+// blanking the line — and deliberately NOT a restatement of the tiles: spend
+// and the billed/cached split stay down in Analytics, sales counts in Revenue.
+function renderLede(d){
+  var a=d&&d.analytics,r=d&&d.revenue,parts=[];
+  if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
+    var w=a.searches7d,t=plural(w.total,"search","searches")+" this week";
+    if(typeof w.prevTotal==="number"&&w.prevTotal!==w.total){
+      t+=", "+(w.total>w.prevTotal?"up":"down")+" from "+w.prevTotal;
+    }
+    parts.push(t);
+  }
+  var f=a&&a.funnel7d;
+  if(f){
+    parts.push(plural(f.signups,"signup","signups")+" and "+
+      (f.leads?plural(f.leads,"lead","leads"):"no new leads"));
+  }
+  // Money only when the billing tables actually answered: "nothing sold yet"
+  // is a claim, and an unreadable database must never be allowed to make it.
+  if(r&&r.db===true&&typeof r.active==="number"){
+    parts.push(r.purchases7d ? plural(r.purchases7d,"report sold","reports sold")+" this week"
+      : (r.active||r.purchases) ? "nothing new sold this week"
+      : "nothing sold yet");
+  }
+  // Short sentences, not comma-joined clauses: "up from 28, 7 signups" puts two
+  // unrelated numerals either side of a comma and reads as one figure.
+  // textContent, not innerHTML: the line is assembled from numbers and fixed
+  // words, and keeping it text means it can never become an injection path.
+  el("lede").textContent=parts.length
+    ? parts.map(function(p){return p.charAt(0).toUpperCase()+p.slice(1)+".";}).join(" ")
+    : "";
 }
 // One red line per firing alarm, nothing when healthy. Wording mirrors
-// /admin's banners, which hold the detail and the fix.
-function renderAlerts(al){
+// /admin's banners, which hold the detail and the fix. Takes the whole
+// snapshot, not just d.alerts: the neutral attention line (work awaiting a
+// human) reads from d.submissions and renders after every red line.
+function renderAlerts(d){
+  var al=d&&d.alerts,s=d&&d.submissions;
   var out=[];
   var up=al&&al.upstream,co=al&&al.corpus;
   if(up&&up.failures){
@@ -7727,7 +7989,18 @@ function renderAlerts(al){
       ? 'The daily search cap is exhausted ('+cap.limit+'): visitors get a 429 until midnight UTC. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Raise DAILY_SEARCH_CAP on Render</a>'
       : cap.used+' of '+cap.limit+' billed searches used today; at the cap visitors get a 429 until midnight UTC. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Raise DAILY_SEARCH_CAP on Render</a>');
   }
-  el("alerts").innerHTML=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
+  // Pro switched on but audience-restricted: live yet unbuyable, and nothing
+  // else on any page looks unhealthy. Red because it IS a wrong state in
+  // production — during a deliberate test window the owner knows why.
+  if(al&&al.audience){
+    out.push('Pro is limited to '+plural(al.audience,"allowlisted account","allowlisted accounts")+
+      ' &mdash; the public cannot reach checkout. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Unset PRO_AUDIENCE on Render to go live</a>');
+  }
+  var html=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
+  if(s&&s.db===true&&s.pending){
+    html+='<div class="attn">'+plural(s.pending,"broker comp is","broker comps are")+' awaiting review. <a href="/admin">Review on Analytics</a></div>';
+  }
+  el("alerts").innerHTML=html;
 }
 // Built AFTER the gate passes. In a cookie-unlocked session the links are
 // plain hrefs — the cn_admin cookie rides along with the click and no key
@@ -7747,7 +8020,14 @@ function load(key){
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
   }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){}
-    grantAdminAccess(key);}render(d);renderAlerts(d.alerts);renderDls(key);
+    grantAdminAccess(key);}render(d);renderLede(d);renderAlerts(d);renderDls(key);
+    // A tab left open shows stale numbers; the stamp says so and the link
+    // re-fetches in place (same key or cookie session as this load). It sits
+    // beside the lede rather than under the Downloads caveat, where it used to
+    // read as a caption for the "treat a copied link as the key" warning.
+    el("asof").innerHTML="Updated "+esc(new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))+
+      ' &middot; <a href="#" id="rf">Refresh</a>';
+    el("rf").addEventListener("click",function(e){e.preventDefault();load(key);});
     el("err").textContent="";el("gate").style.display="none";el("hub").style.display="block";})
   .catch(function(e){el("err").textContent=e.message;
     el("gate").style.display="block";el("hub").style.display="none";});
@@ -9216,45 +9496,13 @@ const server = http.createServer((req, res) => {
 
     // The dashboard's read. Filters by market and by property type are the
     // "sortable by property and by market" promise from Ecosystem Plan §3.
+    // The whole answer — gate included — comes from vaultReadPayload, the
+    // same function GET /vault bakes into the page, so the two can't drift.
     if (req.method === "GET" && path === "/api/vault") {
       (async () => {
-        const user = await openVault();
-        if (!user) return;
         const q = new URL(req.url, "http://localhost").searchParams;
-        const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
-        const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
-        const market = (q.get("market") || "").trim().slice(0, 80);
-        const type = (q.get("type") || "").trim().slice(0, 40);
-
-        // Scoped by user_id FIRST and always. One broker must not see another
-        // broker's vault any more than the public may.
-        let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
-        if (market) query += `&market=eq.${encodeURIComponent(market)}`;
-        if (type && VAULT.PROPERTY_TYPES.includes(type)) {
-          query += `&property_type=eq.${encodeURIComponent(type)}`;
-        }
-        query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
-
-        const [comps, uploads] = await Promise.all([
-          sbRequest("GET", query),
-          sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
-            `&order=created_at.desc&limit=100`),
-        ]);
-        const rows = comps || [];
-
-        return sendJson(res, 200, {
-          comps: rows,
-          uploads: uploads || [],
-          // The header line: "N comps · 0 published · visible only to you".
-          // The published count is the trust proof the whole tier rests on, so
-          // it is counted from the rows rather than assumed to be zero.
-          counts: {
-            returned: rows.length,
-            published: rows.filter((r) => r.published).length,
-          },
-          markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
-          types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
-        });
+        const p = await vaultReadPayload(req, q);
+        sendJson(res, p.status, p.body);
       })().catch((err) => {
         console.error("vault read failed:", err.message);
         sendJson(res, 502, { error: "Could not load your vault. Please try again." });
@@ -10755,6 +11003,23 @@ const server = http.createServer((req, res) => {
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
     return;
   }
+  // Corpus integrity, gated exactly like /api/stats. REPORT-ONLY: it reads
+  // rows and changes nothing — no badge is corrected, nothing is withheld from
+  // retrieval. Fails SAFE: any error answers "unavailable" with a 200, because
+  // /admin is the page the owner opens when something else is already wrong,
+  // and this panel must never be what breaks it.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-audit") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const key = new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    corpusAuditReport()
+      .then((data) => sendJson(res, 200, data))
+      .catch((err) => {
+        console.warn("Corpus audit failed:", err && err.message);
+        return sendJson(res, 200, { error: "unavailable" });
+      });
+    return;
+  }
   if (req.method === "GET" && req.url === "/admin") {
     // Third noindex layer alongside the page's own meta tag and the
     // robots.txt Disallow — belt-and-suspenders against a crawler that
@@ -10779,16 +11044,31 @@ const server = http.createServer((req, res) => {
       .catch((err) => { console.error("hq snapshot failed:", err); sendJson(res, 500, { error: "Could not load the overview." }); });
     return;
   }
-  // The broker vault page. noindex like the other logged-in tooling; the HTML
-  // itself carries no data — everything comes from /api/vault, which is where
-  // the entitlement is actually enforced.
+  // The broker vault page. noindex like the other logged-in tooling. The
+  // viewer's vault data is resolved HERE, before the HTML goes out, and baked
+  // into the page as a boot payload — one paint, no fetch-then-pop-in (the
+  // owner reported the two-phase version as a glitch). The entitlement gate
+  // is inside vaultReadPayload; no-store matters more than it used to, since
+  // the page now carries the signed-in viewer's own rows. If the payload
+  // can't be built, the page ships without one and falls back to fetching
+  // /api/vault exactly as it did before.
   if (req.method === "GET" && req.url.split("?")[0] === "/vault") {
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderVaultHTML());
+    (async () => {
+      let boot = null;
+      try {
+        const p = await vaultReadPayload(req, null);
+        boot = { s: p.status, j: p.body };
+      } catch (err) {
+        console.error("vault boot failed:", err.message);
+      }
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(renderVaultHTML(boot));
+    })();
+    return;
   }
 
   if (req.method === "GET" && req.url === "/hq") {

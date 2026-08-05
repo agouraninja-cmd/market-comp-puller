@@ -30,6 +30,13 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+// Corpus audit — the structural integrity rules for the comp corpus. It also
+// owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
+// which USED to live inline below: the audit has to detect rows that predate a
+// tightening of that rule, and a second copy would be one more mirrored pair to
+// keep in sync (this repo already carries one, compWeight, and it has a ⚠).
+const AUDIT = require("./corpus-audit");
+const { isAggregateAddress } = AUDIT;
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -2087,18 +2094,11 @@ let corpusSeenSeeded = false;
 // the model sometimes pads the comp list with rows like "Pittsburgh Metro
 // Multifamily - Market Median Benchmark".
 //
-// Deliberately keyed on aggregate VOCABULARY, not on address shape: plenty of
-// genuine small multifamily and retail comps are listed without a street
-// number ("Highland Park Triplex, Pittsburgh, PA 15206", "Swissvale Triplex
-// (near Edgewood Town Center)"), so requiring one would discard real data.
-// Street names survive too — "123 Market St" has no aggregate word, while
-// "Market Median" does.
-const AGGREGATE_ADDRESS_RE =
-  /\b(benchmark|median|average|avg|composite|index|market (report|data|summary|stats?|statistics)|year[\s-]end (summary|report))\b/i;
-
-function isAggregateAddress(address) {
-  return AGGREGATE_ADDRESS_RE.test(String(address || ""));
-}
+// isAggregateAddress now lives in corpus-audit.js (imported at the top of this
+// file) so the live normalization and the audit share ONE copy of the rule.
+// The reasoning behind it is preserved there: it is keyed on aggregate
+// VOCABULARY rather than address shape, because genuine small multifamily and
+// retail comps are often listed without a street number.
 
 function corpusKeyOf(c) {
   const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -2753,31 +2753,22 @@ function stripEmDashes(value) {
 // source_type drives a trust badge and lands in CSV exports, so stray model
 // values are coerced onto the enum. Unknown maps to "estimate": the label may
 // under-claim a comp's provenance, never over-claim it.
-const SOURCE_TYPES = ["public_record", "listing", "news", "estimate"];
+// Both halves of the rule (coerce onto the enum, then ENFORCE the
+// individual-property requirement) live in corpus-audit.js as
+// enforcedSourceType. The enforcement matters as much as the coercion: the
+// prompt already forbids market-level rows as comps, but in thin markets the
+// model pads anyway (a Boston report shipped "Financial District (general
+// submarket estimate)" rows claiming listing provenance), and a prompt rule is
+// a request while normalization is a guarantee.
+//
+// It is shared with the audit rather than duplicated so the audit can flag
+// rows harvested BEFORE a tightening of this rule — the corpus has them, and
+// corpus-first retrieval still serves them.
 function normalizeSourceTypes(parsed) {
   if (!parsed || !Array.isArray(parsed.comps)) return parsed;
   for (const c of parsed.comps) {
     if (!c || typeof c !== "object") continue;
-    const raw = String(c.source_type || "").toLowerCase();
-    c.source_type =
-      SOURCE_TYPES.find((t) => raw === t) ||
-      (/record|assessor|deed|tax|county|public/.test(raw) ? "public_record"
-        : /list|broker|flyer|loopnet|crexi|costar/.test(raw) ? "listing"
-        : /news|article|press|announc/.test(raw) ? "news"
-        : "estimate");
-    // ENFORCEMENT, not just prompting: the prompt already forbids market-
-    // level rows as comps, but in thin markets the model pads anyway (a
-    // Boston report shipped "Financial District (general submarket
-    // estimate)" rows claiming listing provenance). A comp whose address
-    // has no leading street number, or that names a statistic, cannot be
-    // one verifiable transaction — force its badge to "estimate" so the
-    // report can never present a submarket guess as a sourced deal. Same
-    // under-claim principle as above; the Verified badge (broker-matched,
-    // separate flag) is unaffected.
-    if (c.source_type !== "estimate" &&
-        (!/^\s*\d+\s+\S/.test(String(c.address || "")) || isAggregateAddress(c.address))) {
-      c.source_type = "estimate";
-    }
+    c.source_type = AUDIT.enforcedSourceType(c.source_type, c.address);
   }
   return parsed;
 }

@@ -7757,11 +7757,29 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
    a bold title plus a full paragraph; a two-glyph number left every row's rule
    underlining mostly empty space. Four tiles, so 1/2/4 columns all divide the
    total and no half-empty row can appear (same constraint as /admin's grid). */
-.tiles{display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);
+.tiles{display:grid;grid-template-columns:1fr;background:#fff;
   border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:0}
 @media (min-width:560px){.tiles{grid-template-columns:repeat(2,1fr)}}
 @media (min-width:920px){.tiles{grid-template-columns:repeat(4,1fr)}}
 .tile{background:#fff;padding:var(--s5);min-width:0}
+/* Dividers are BORDERS on the tiles, not a 1px grid gap letting a background
+   show through (which is how /admin's mesh is built). A gap is empty space,
+   and its width can round to ZERO on fractional device pixels — 1fr tracks
+   land on fractions like 242.75px, and Windows display scaling at 125/150%
+   then drops individual hairlines while leaving their neighbours intact, so
+   the grid loses one line and looks broken rather than uniformly gapless.
+   A 1px border always paints at least one device pixel. The nth-child rules
+   below say "not the first tile in its row", per column count. */
+.tile+.tile{border-top:1px solid var(--line)}
+@media (min-width:560px){
+  .tile+.tile{border-top:0}
+  .tile:not(:nth-child(2n+1)){border-left:1px solid var(--line)}
+  .tile:nth-child(n+3){border-top:1px solid var(--line)}
+}
+@media (min-width:920px){
+  .tile:nth-child(n+3){border-top:0}
+  .tile:not(:nth-child(4n+1)){border-left:1px solid var(--line)}
+}
 /* The tool name IS the link. This page exists to send you somewhere, so the
    four names carry an affordance at rest instead of reading as inert labels
    while the CSV links at the bottom were the only red on the page. */

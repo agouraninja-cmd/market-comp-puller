@@ -16,9 +16,18 @@ with the code?**
 3. Add a line to `APPLIED.md` with the date.
 4. Commit both files together with the code change that needs them.
 
-**To check whether prod is current:** compare this folder against `APPLIED.md`.
-Any file not listed there has not been run. That is the whole system; there is
-no tooling, no runner, no framework.
+**To check whether prod is current:**
+
+```bash
+node migrations/verify.js
+```
+
+Read-only — it asks the live database which expected tables and columns are
+actually there, and exits non-zero listing what is missing, grouped by the
+migration that creates it. There is still no runner and no framework: applying
+a migration is you, the SQL editor, and a line in `APPLIED.md`. This only
+checks that the record is true, because `APPLIED.md` is a claim and 004 is the
+proof that claims can be wrong.
 
 ## Why this exists
 

@@ -3,9 +3,9 @@
 One line per migration, added when it is run on the live database. A file in
 this folder that is missing from this list has NOT been run.
 
-**Full schema verified 2026-08-04:** the query below was run in the Supabase
-SQL editor and returned zero rows, confirming every table and every
-spot-checked column exists in production.
+**Full schema verified 2026-08-05:** `node migrations/verify.js` reported
+"Everything present" — every expected table and every spot-checked column
+exists in production.
 
 | File | Status on prod | Evidence |
 |------|----------------|----------|
@@ -21,12 +21,34 @@ spot-checked column exists in production.
 | 009-subject-sizes.sql | applied 2026-08-01 | run + verified via Chrome, RLS on |
 | 010-market-pages.sql | live (created by hand) | Address Explorer pages persist since 2026-08-03 |
 | 011-guest-search-quota.sql | applied 2026-08-03 | "already run in prod" per server.js/CLAUDE.md |
-| 012-search-timings.sql | applied 2026-08-04 | run + verified via Chrome (information_schema returned all 4 columns) |
+| 012-search-timings.sql | applied 2026-08-04 | run + verified via Chrome (information_schema returned all 4 columns); re-confirmed 2026-08-05 by `verify.js` |
+| 013-broker-vault.sql | applied 2026-08-05 | run in the SQL editor by the owner; `verify.js` reports the full schema present, and a probe insert confirmed all 28 columns and types are accepted by the live table |
 
-## Verification query
+## Verification
 
-Last run 2026-08-04: zero rows. Re-run any time schema drift is suspected;
-**zero rows returned means the schema is complete**:
+```bash
+node migrations/verify.js
+```
+
+Read-only, zero dependencies, needs `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` in
+`.env`. It asks PostgREST for zero rows from every expected table **and every
+spot-checked column**, and exits non-zero listing whatever is absent, grouped
+by the migration that creates it.
+
+**Check columns, not just tables.** The 004 outage is invisible to a
+table-existence check: `comp_corpus` existed throughout, ten *columns* were
+missing, every insert 400'd for weeks. `verify.js` asks about both.
+
+Last run 2026-08-05: everything through 012 present; only 013 outstanding.
+
+Not in CI, deliberately — CI holds no secrets, by design, so that a fork PR
+cannot exfiltrate one. This is a local command run around a schema deploy.
+
+<details>
+<summary>The hand-run SQL this replaced (still valid in the Supabase editor)</summary>
+
+Last run 2026-08-04: zero rows. **Zero rows returned means the schema is
+complete**:
 
 ```sql
 select t as missing_table
@@ -48,5 +70,7 @@ from (values
 where not exists (select 1 from information_schema.columns
                   where table_name = tc and column_name = c);
 ```
+
+</details>
 
 After a re-run, update the date on the "Full schema verified" line above.

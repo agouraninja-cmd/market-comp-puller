@@ -228,6 +228,137 @@ test("a Pro subscription ignores the export tally entirely", () => {
   assert.equal(e.exportsRemaining, "unlimited");
 });
 
+// --- the broker tier (Ecosystem Plan v1) -----------------------------------
+//
+// The tier's whole promise is a private vault that CompNinja provably cannot
+// leak. These cases pin the two halves of that: who may OPEN a vault, and —
+// more important — who may not.
+
+const brokerSub = (over = {}) => activeSub({ plan: "broker_monthly", ...over });
+
+test("a broker subscription is Pro PLUS the vault, not a separate lane", () => {
+  const e = ent({ user: USER, subscription: brokerSub() });
+  assert.equal(e.plan, "broker_monthly");
+  assert.equal(e.broker, true);
+  assert.equal(e.canUseVault, true);
+  // Ecosystem Plan §2: "everything a user gets, plus a private workspace".
+  // A broker who lost Pro's comps by paying MORE would be an obvious bug.
+  assert.equal(e.pro, true, "a broker plan must carry every Pro capability");
+  assert.equal(e.maxComps, "all");
+  assert.equal(e.canBrand, true);
+  assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+  assert.equal(e.exportsRemaining, "unlimited");
+  assert.equal(e.canExploreAddresses, true);
+});
+
+test("Pro is NOT a broker: the vault is the one thing a Pro plan does not buy", () => {
+  for (const plan of ["pro_monthly", "pro_annual_founding"]) {
+    const e = ent({ user: USER, subscription: activeSub({ plan }) });
+    assert.equal(e.pro, true);
+    assert.equal(e.broker, false, `${plan} must not open a vault`);
+    assert.equal(e.canUseVault, false, `${plan} must not open a vault`);
+  }
+});
+
+test("free and anonymous visitors have no vault", () => {
+  for (const user of [null, USER]) {
+    const e = ent({ user });
+    assert.equal(e.broker, false);
+    assert.equal(e.canUseVault, false);
+  }
+});
+
+test("a single-report purchase does not buy a vault", () => {
+  // Same reasoning as the Address Explorer: the vault is a workspace, not a
+  // property, so there is nothing for a per-report unlock to scope it to.
+  const e = ent({
+    user: USER,
+    reportId: "r_1",
+    purchase: { report_id: "r_1" },
+  });
+  assert.equal(e.reportUnlocked, true);
+  assert.equal(e.maxComps, "all", "the purchase still unlocks the report itself");
+  assert.equal(e.broker, false);
+  assert.equal(e.canUseVault, false);
+});
+
+test("the vault closes when the broker subscription lapses", () => {
+  const expired = ent({
+    user: USER,
+    subscription: brokerSub({ current_period_end: iso(NOW - 60 * DAY) }),
+  });
+  assert.equal(expired.status, "expired");
+  assert.equal(expired.broker, false, "an expired broker plan opens nothing");
+  assert.equal(expired.canUseVault, false);
+});
+
+test("a cancelling or grace-period broker keeps the vault to the end of what they paid for", () => {
+  const cancelling = ent({
+    user: USER,
+    subscription: brokerSub({ cancel_at_period_end: true }),
+  });
+  assert.equal(cancelling.status, "cancelling");
+  assert.equal(cancelling.canUseVault, true, "they paid through the period end");
+
+  const grace = ent({
+    user: USER,
+    subscription: brokerSub({ status: "past_due", grace_until: iso(NOW + 3 * DAY) }),
+  });
+  assert.equal(grace.status, "grace");
+  assert.equal(grace.canUseVault, true, "a failed card must not lock a broker out of their own data mid-pitch");
+});
+
+test("an unrecognized plan name never opens a vault, even on a live subscription", () => {
+  // Deliberately STRICTER than `pro`, which is governed by status alone (see
+  // "a plan name we do not sell does not become a Pro plan label"). Erring
+  // generous is right for comps; it is wrong for a private data store, because
+  // the failure is an unowned vault rather than a few extra rows.
+  for (const plan of ["broker", "broker_enterprise_unicorn", "", null, undefined]) {
+    const e = ent({ user: USER, subscription: activeSub({ plan }) });
+    assert.equal(e.pro, true, "unchanged: status still governs Pro access");
+    assert.equal(e.broker, false, `"${plan}" must not open a vault`);
+    assert.equal(e.canUseVault, false, `"${plan}" must not open a vault`);
+  }
+});
+
+test("a dark deployment grants no vault, even though it grants everything else", () => {
+  // The asymmetry that is easiest to get wrong. PRO_ENABLED=off restores
+  // PRE-Pro behavior, and the vault has no pre-Pro state to restore: it never
+  // existed. Handing one to every anonymous visitor on an un-launched
+  // deployment would be the opposite of failing closed.
+  for (const user of [null, USER]) {
+    const e = computeEntitlements({ user, now: NOW, enabled: false });
+    assert.equal(e.maxComps, "all", "everything that WAS free is still free");
+    assert.equal(e.canExploreAddresses, true);
+    assert.equal(e.broker, false, "but the vault was never free");
+    assert.equal(e.canUseVault, false, "but the vault was never free");
+  }
+});
+
+test("a comped admin gets the vault, so the team can render the broker UI at all", () => {
+  const e = ent({ user: USER, admin: true });
+  assert.equal(e.canUseVault, true);
+  assert.equal(e.admin, true, "and the UI reads this to label it comped, not sold");
+  assert.equal(e.status, "admin", "never a Stripe status — there is no customer record");
+});
+
+test("an admin on a dark deployment still gets no vault", () => {
+  // getEntitlements() guards this with proEnabledFor() too, but the rule lives
+  // here so `npm test` covers it: possession of ADMIN_KEY must never be able to
+  // switch a dark deployment on.
+  const e = computeEntitlements({ user: USER, admin: true, now: NOW, enabled: false });
+  assert.equal(e.canUseVault, false);
+  assert.equal(e.broker, false);
+});
+
+test("an anonymous request holding ADMIN_KEY gets no vault", () => {
+  // A key identifies a machine, not a person. Admin capabilities require a
+  // signed-in account — the same rule that already governs comped Pro.
+  const e = ent({ user: null, admin: true });
+  assert.equal(e.canUseVault, false);
+  assert.equal(e.broker, false);
+});
+
 // --- cancellation ----------------------------------------------------------
 
 test("cancels mid-month: keeps Pro until the period ends", () => {

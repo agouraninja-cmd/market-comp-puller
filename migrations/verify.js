@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+// ---------------------------------------------------------------------------
+// Does the live database actually have every table the code expects?
+//
+//   node migrations/verify.js
+//
+// Zero dependencies, READ-ONLY. It cannot create, alter or drop anything — it
+// asks PostgREST for zero rows from each table and reports which ones answer
+// 404. Running DDL still means the Supabase SQL editor; see README.md.
+//
+// WHY THIS EXISTS: this folder's whole cautionary tale is a migration that was
+// written, committed, and never run. The ALTER in 004 shipped in code in July
+// 2026 and sat unapplied for weeks while every corpus insert silently failed
+// and the logs looked healthy. APPLIED.md is the written record of what was
+// run; this is the way to check that the record is TRUE, in ten seconds,
+// without pasting SQL into a web UI and reading the result by eye.
+//
+// It replaces the hand-run verification query APPLIED.md used to carry, so the
+// list of expected tables lives in exactly one place: TABLES, below.
+//
+// Not part of CI, deliberately: CI holds no secrets (a fork PR could
+// exfiltrate them), and this needs the service key. It is a local command, run
+// before or after a deploy that changes the schema.
+// ---------------------------------------------------------------------------
+
+const fs = require("fs");
+const path = require("path");
+
+// Every table the application expects to exist, with the migration that
+// creates it. KEEP IN STEP WITH APPLIED.md — a new migration adds a line here.
+const TABLES = [
+  ["leads",               "000-baseline-hand-created.sql"],
+  ["search_cache",        "000-baseline-hand-created.sql"],
+  ["shared_reports",      "000-baseline-hand-created.sql"],
+  ["analytics_events",    "000-baseline-hand-created.sql"],
+  ["comp_submissions",    "000-baseline-hand-created.sql"],
+  ["comp_corpus",         "001-comp-corpus.sql"],
+  ["users",               "002-accounts.sql"],
+  ["sessions",            "002-accounts.sql"],
+  ["portfolio_items",     "002-accounts.sql"],
+  ["watchlist_items",     "002-accounts.sql"],
+  ["password_resets",     "002-accounts.sql"],
+  ["broker_profiles",     "003-broker-network.sql"],
+  ["dev_ideas",           "005-dev-ideas.sql"],
+  ["devlog_overrides",    "006-devlog-overrides.sql"],
+  ["contacts",            "007-contacts.sql"],
+  ["subscriptions",       "008-pro-billing.sql"],
+  ["branding_profiles",   "008-pro-billing.sql"],
+  ["report_purchases",    "008-pro-billing.sql"],
+  ["export_usage",        "008-pro-billing.sql"],
+  ["stripe_events",       "008-pro-billing.sql"],
+  ["subject_sizes",       "009-subject-sizes.sql"],
+  ["market_pages",        "010-market-pages.sql"],
+  ["guest_search_quota",  "011-guest-search-quota.sql"],
+  ["broker_uploads",      "013-broker-vault.sql"],
+  ["broker_comps",        "013-broker-vault.sql"],
+];
+
+// Migrations that ALTER an existing table are the dangerous ones, and a
+// table-existence check cannot see them at all: `comp_corpus` existed
+// throughout the 004 outage — ten COLUMNS were missing, every insert 400'd,
+// and the table check would have reported everything fine.
+//
+// PostgREST answers a select for an unknown column with 400/PGRST204, which is
+// the same signal the app itself trips over, so this asks the same question the
+// broken code would.
+const COLUMNS = [
+  ["comp_submissions",  ["cited_count"],                        "003-broker-network.sql"],
+  ["comp_corpus",       ["building_class", "floor_plate", "center_type", "anchor_tenant",
+                         "units", "price_per_unit", "lot_acres", "price_per_acre",
+                         "zoning", "beds_baths"],               "004-comp-corpus-per-type-columns.sql"],
+  ["users",             ["stripe_customer_id"],                 "008-pro-billing.sql"],
+  ["analytics_events",  ["duration_ms", "searches", "out_tokens", "rescue"],
+                                                                "012-search-timings.sql"],
+  // 013's own columns, so a partially-applied file is caught too — the vault's
+  // dedupe_key and published flag are load-bearing and easy to drop by hand.
+  ["broker_comps",      ["dedupe_key", "market", "published", "deal_date", "price_per_sqft"],
+                                                                "013-broker-vault.sql"],
+];
+
+// Same tiny .env reader server.js uses, so this works the same way locally.
+function loadEnv() {
+  const file = path.join(__dirname, "..", ".env");
+  const out = { ...process.env };
+  try {
+    for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      const eq = t.indexOf("=");
+      if (eq < 1) continue;
+      const k = t.slice(0, eq).trim();
+      if (!out[k]) out[k] = t.slice(eq + 1).trim();
+    }
+  } catch (_) { /* no .env is fine if the vars are already exported */ }
+  return out;
+}
+
+async function main() {
+  const env = loadEnv();
+  const url = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const key = String(env.SUPABASE_SERVICE_KEY || "");
+  if (!url || !key) {
+    console.error("SUPABASE_URL and SUPABASE_SERVICE_KEY are required (put them in .env).");
+    process.exit(2);
+  }
+  // Never print the key, and print only enough of the host to prove which
+  // project was checked — this output gets pasted into chats and issues.
+  const columnChecks = COLUMNS.reduce((n, c) => n + c[1].length, 0);
+  console.log(`Checking ${url.replace(/^https?:\/\//, "").slice(0, 12)}… — ` +
+    `${TABLES.length} tables, ${columnChecks} columns\n`);
+
+  const missing = [];
+  const failed = [];
+  const present = new Set();
+
+  const ask = async (query) => {
+    const r = await fetch(`${url}/rest/v1/${query}`, {
+      headers: { apikey: key, authorization: `Bearer ${key}` },
+    });
+    return { ok: r.ok, status: r.status, body: r.ok ? "" : await r.text() };
+  };
+
+  for (const [table, migration] of TABLES) {
+    try {
+      const r = await ask(`${table}?select=*&limit=0`);
+      if (r.ok) { present.add(table); continue; }
+      // PGRST205 is specifically "table not found in the schema cache".
+      if (r.status === 404 || /PGRST205/.test(r.body)) missing.push([`${table}`, migration]);
+      else failed.push([table, `${r.status} ${r.body.slice(0, 80)}`]);
+    } catch (err) {
+      failed.push([table, err.message.slice(0, 80)]);
+    }
+  }
+
+  for (const [table, cols, migration] of COLUMNS) {
+    // A missing table is already reported; asking about its columns would just
+    // repeat the same failure in a more confusing way.
+    if (!present.has(table)) continue;
+    for (const col of cols) {
+      try {
+        const r = await ask(`${table}?select=${encodeURIComponent(col)}&limit=0`);
+        if (r.ok) continue;
+        if (r.status === 400 || /PGRST204|does not exist/i.test(r.body)) {
+          missing.push([`${table}.${col}`, migration]);
+        } else {
+          failed.push([`${table}.${col}`, `${r.status} ${r.body.slice(0, 80)}`]);
+        }
+      } catch (err) {
+        failed.push([`${table}.${col}`, err.message.slice(0, 80)]);
+      }
+    }
+  }
+
+  if (failed.length) {
+    console.log("Could not check (network or permissions, NOT proof of absence):");
+    for (const [t, why] of failed) console.log(`  ?  ${t.padEnd(20)} ${why}`);
+    console.log("");
+  }
+
+  if (!missing.length && !failed.length) {
+    console.log("Everything present — the live schema matches the code.");
+    process.exit(0);
+  }
+  if (missing.length) {
+    console.log("MISSING from the live database:");
+    const byMigration = new Map();
+    for (const [t, m] of missing) {
+      if (!byMigration.has(m)) byMigration.set(m, []);
+      byMigration.get(m).push(t);
+    }
+    for (const [m, ts] of byMigration) {
+      console.log(`\n  ${m}  has not been run`);
+      for (const t of ts) console.log(`     - ${t}`);
+    }
+    console.log(`\nRun the file(s) above in the Supabase SQL editor, then re-run this.`);
+    console.log(`Until then, anything reading those tables fails.`);
+  }
+  process.exit(1);
+}
+
+main().catch((err) => {
+  console.error("verify failed:", err.message);
+  process.exit(2);
+});

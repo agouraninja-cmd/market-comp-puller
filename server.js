@@ -5493,7 +5493,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .wrap{max-width:1024px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -6079,7 +6082,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:820px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -6654,7 +6660,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -7197,7 +7206,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6);width:100%}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -7533,7 +7545,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:820px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}

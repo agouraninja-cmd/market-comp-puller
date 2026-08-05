@@ -199,8 +199,9 @@ dependency. `.env` is git-ignored — never commit it.
   There is also a `STREAM_IDLE_MS` (30s) per-chunk watchdog, which only becomes
   possible once the response is streamed.
 - **Live search progress** (no env var — always on for the browser). `POST
-  /api/comps` takes an optional `stream: true` in the body; when set, and only
-  once the slow leg is actually about to run, the response switches to
+  /api/comps` **and `POST /api/explore-market`** take an optional `stream:
+  true` in the body; when set, and only once the slow leg is actually about
+  to run, the response switches to
   `text/event-stream` (`openSse` in server.js) emitting `progress` events then
   a final `result` (or `error`) event. **Everything fast or failed stays plain
   JSON with a real status code** — the password gate, both rate limiters,
@@ -254,6 +255,12 @@ dependency. `.env` is git-ignored — never commit it.
   preserved and promoted. Keep `max_tokens` generous — the cap is a quality
   instruction, and a low `max_tokens` would truncate the JSON mid-array
   instead.
+  The Explorer reaches the same rule from the other side: its cache lookup
+  lives inside the shared in-flight job, so it cannot decide up front whether
+  the request is fast. Its SSE opens on the FIRST progress event instead, and
+  a cache hit (which emits nothing) therefore answers as plain JSON with no
+  special-casing. `exploreInFlight` carries a listener set and a bounded
+  replay log so two visitors sharing one billed search both see it.
 - `PARALLEL_SEARCH` — optional `on`/`off`, **default OFF**. When on, a report
   search that would run a 6+ search budget is split into two CONCURRENT
   Anthropic calls (`LANE_GUIDANCE` in server.js): a `primary` lane that starts

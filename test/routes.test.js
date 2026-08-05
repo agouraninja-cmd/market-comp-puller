@@ -185,3 +185,65 @@ test("admin gating", async (t) => {
     assert.notEqual(cfg.pro.isPro, true, "an anonymous key-holder must not resolve to Pro");
   });
 });
+
+// --- The Market Explorer spends the same free search as a report ------------
+//
+// /api/explore-market runs the same billed getComps() pipeline as /api/comps.
+// It carried no guest-cap check at all until 2026-08-05, so an anonymous
+// visitor who had spent their free report could keep triggering billed
+// searches from the homepage. These prove the gate is WIRED to the route, and
+// that it did not swallow the free covered-market path on its way in.
+//
+// No Anthropic call is possible here: the bare environment has no API key, so
+// a request that clears the gate stops at the missing-key 500. That distinct
+// status is exactly how "got past the gate" is observed.
+test("market explorer guest cap", async (t) => {
+  // limit 0 = every anonymous visitor is blocked before any search, which
+  // makes the gate observable without having to spend a quota first.
+  const { base, stop } = await boot({ GUEST_SEARCH_LIMIT: "0" });
+  t.after(stop);
+
+  const explore = (body) => fetch(base + "/api/explore-market", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  await t.test("an anonymous visitor cannot bill a new market search", async () => {
+    const r = await explore({ type: "Industrial", city: "Nampa", state: "ID" });
+    assert.equal(r.status, 403);
+    const j = await r.json();
+    // The client keys off this flag, never off the status code — it decides
+    // account modal vs red error row.
+    assert.equal(j.signin_required, true);
+  });
+
+  await t.test("browsing a market page that already exists stays free", async () => {
+    // industrial-ontario-ca is the first entry in the committed market-seed.json.
+    // The covered-market short circuit must stay ABOVE the gate: it is a DB
+    // read, it costs nothing upstream, and gating it would wall off the SEO
+    // surface and every crawler.
+    const r = await explore({ type: "Industrial", city: "Ontario", state: "CA" });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.url, "/market/industrial-ontario-ca");
+    assert.equal(j.existing, true);
+  });
+});
+
+test("market explorer with the guest gate disabled", async (t) => {
+  const { base, stop } = await boot({ GUEST_SEARCH_LIMIT: "off" });
+  t.after(stop);
+
+  await t.test("the rollback lever really disables the gate", async () => {
+    const r = await fetch(base + "/api/explore-market", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "Industrial", city: "Nampa", state: "ID" }),
+    });
+    // Past the gate, stopped by the absent API key — never 403.
+    assert.equal(r.status, 500);
+    const j = await r.json();
+    assert.match(j.error, /ANTHROPIC_API_KEY/);
+  });
+});

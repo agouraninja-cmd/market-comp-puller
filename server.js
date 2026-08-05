@@ -30,6 +30,7 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+const LEADSVC = require("./broker-leads");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -7950,7 +7951,7 @@ const server = http.createServer((req, res) => {
         if (rateLimited("lead:" + clientIp(req))) {
           return sendJson(res, 429, { error: "Too many submissions. Please try again later." });
         }
-        const { name, email, phone, company, address, type, source, report_url } = JSON.parse(body || "{}");
+        const { name, email, phone, company, address, type, source, report_url, size_sqft } = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
         const lead = {
           ts: new Date().toISOString(),
@@ -7960,6 +7961,12 @@ const server = http.createServer((req, res) => {
           company: clean(company, 120),
           address: clean(address, 300),
           type: clean(type, 40),
+          // Optional building size for the broker-facing anonymized lead
+          // card. Spread only when present: if migration 015 has not run,
+          // an unknown column would 400 EVERY insert into the file fallback;
+          // this way only sized leads are exposed to that risk, and
+          // migrations/verify.js checks the column exists.
+          ...(LEADSVC.cleanSizeSqft(size_sqft) ? { size_sqft: LEADSVC.cleanSizeSqft(size_sqft) } : {}),
           // "bov" = the owner-mode Broker Opinion of Value request; anything
           // else is the export-unlock form.
           source: ["export", "bov"].includes(source) ? source : "export",
@@ -8008,6 +8015,40 @@ const server = http.createServer((req, res) => {
             ["Time", lead.ts],
           ]
         );
+        // Anonymized new-lead alert to brokers covering this market + type.
+        // Fire-and-forget: a DB or mail failure never breaks lead capture.
+        // Content is the same four facts the inbox shows — never the owner's
+        // name, email, phone, company, or street address.
+        if (lead.source === "bov" && DB_CONFIGURED) {
+          (async () => {
+            const market = marketOf(lead.address);
+            if (!market || !lead.type) return;
+            const cov = await sbRequest("GET",
+              `broker_coverage?market=eq.${encodeURIComponent(market)}` +
+              `&property_type=eq.${encodeURIComponent(lead.type)}&select=user_id&limit=200`);
+            const ids = LEADSVC.notifyTargets(cov);
+            if (!ids.length) return;
+            const users = await sbRequest("GET",
+              `users?id=in.(${ids.join(",")})&select=id,email`);
+            const line = [lead.type, market,
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              .filter(Boolean).join(" · ");
+            for (const u of users || []) {
+              if (!u || !u.email) continue;
+              sendOutboundEmail(u.email, `New BOV request in your market: ${line}`, [
+                `A property owner just requested a Broker Opinion of Value in a market you cover.`,
+                ``,
+                `  ${line}`,
+                ``,
+                `Open your inbox to request an introduction:`,
+                `${SITE_URL}/vault`,
+                ``,
+                `CompNinja connects owners with local brokers; introductions are made by`,
+                `the CompNinja team. Reply to this email to reach us.`,
+              ].join("\n"));
+            }
+          })().catch((err) => console.error("Broker lead notify failed:", err.message));
+        }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
         if (lead.source === "bov") {

@@ -8844,6 +8844,7 @@
       address: (currentMeta && currentMeta.address) || "",
       type: (currentMeta && currentMeta.type) || "",
       source: leadContext,
+      size_sqft: (currentMeta && currentMeta.subject && currentMeta.subject.sizeMin) || undefined,
     };
     if (!payload.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
       errEl.textContent = "Please enter your name and a valid email.";

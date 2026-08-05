@@ -29,10 +29,13 @@ There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 
 There is one small test suite: `npm test` (`node --test`, no dependencies)
-covers the three pure modules — **`entitlements.js`** (the Pro tier's decision
-table), **`comp-gate.js`**, and **`stripe.js`** (~90 tests). It needs no
-database and no running server, and it finishes in well under a second, so
-there is no excuse for not running it after touching any of those rules.
+covers the four pure modules — **`entitlements.js`** (the Pro tier's decision
+table), **`comp-gate.js`**, **`stripe.js`**, and **`broker-vault.js`** (170
+tests on 2026-08-05). The count moves whenever a module is added, and this
+line has already lagged twice, so trust `npm test`'s own summary over the
+number written here. It needs no database and no running server, and it
+finishes in well under a second, so there is no excuse for not running it
+after touching any of those rules.
 Nothing else in the repo is tested; do not assume a green suite means the app
 works. CI (`.github/workflows/ci.yml`) runs on every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
@@ -842,7 +845,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     a date (Excel's serial), and day-first dates are all refused with a line
     number rather than stored as a best effort — a wrong number in a broker's
     own records is worse than a rejected row, because nobody will notice it.
-    Pure and tested (`npm test`, ~44 cases).
+    Pure and tested (`npm test`, 64 cases).
   - **Every read is scoped by `user_id`**, including the DELETE — without it,
     knowing another broker's upload id would be enough to delete their data.
 - `GET /healthz` — health check for hosting platforms.

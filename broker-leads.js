@@ -7,6 +7,9 @@
 // server.js owns every read and write, and computes every `market` with
 // marketOf() before calling in. This module never parses an address.
 //
+// Property-type validation deliberately lives with VAULT.PROPERTY_TYPES in
+// server.js, not here, so nobody grows a second enum that can drift from it.
+//
 // Spec: docs/superpowers/specs/2026-08-05-broker-lead-inbox-design.md
 // ---------------------------------------------------------------------------
 
@@ -16,8 +19,25 @@
 const MAX_NOTIFY_PER_LEAD = 20;
 
 // The inbox window. Leads are perishable; 90 days is already generous.
+// The number is repeated as prose in the vault page's empty state and the
+// My Desk card copy (server.js / index.html, Task 7) — keep all three in step.
 const LEAD_WINDOW_DAYS = 90;
 
+// A market is "City, ST" or it is not a market. marketOf() falls back to
+// echoing address text when it finds no state (see server.js marketOf), which
+// once put a street address in an analytics market column in production
+// (2026-07-31). The same fallback must never key coverage, and must never
+// render to a broker.
+const MARKET_SHAPE = /^[^,]+,\s[A-Z]{2}$/;
+function isCanonicalMarket(v) {
+  return MARKET_SHAPE.test(String(v == null ? "" : v).trim());
+}
+
+// The "|" delimiter can't collide: property_type always comes from a closed
+// enum (VAULT.PROPERTY_TYPES, none of which contain "|"), and every caller of
+// this key requires market to already be canonical "City, ST" shape
+// (isCanonicalMarket) before it gets here. The safety is those two
+// constraints, not the choice of separator.
 function coverageKey(market, propertyType) {
   return `${String(market || "").trim()}|${String(propertyType || "").trim()}`;
 }
@@ -26,8 +46,8 @@ function buildCoverageSet(rows) {
   const set = new Set();
   for (const r of rows || []) {
     if (!r) continue;
-    const k = coverageKey(r.market, r.property_type);
-    if (k !== "|") set.add(k);
+    if (!String(r.market || "").trim() || !String(r.property_type || "").trim()) continue;
+    set.add(coverageKey(r.market, r.property_type));
   }
   return set;
 }
@@ -46,24 +66,27 @@ function filterLeadsForCoverage(leads, coverageRows) {
 // key list. Add a field here only with the same deliberation the spec gave
 // these six.
 function anonymizeLead(lead, introSet) {
-  const size = Number(lead.size_sqft);
+  const l = lead || {};
   return {
-    id: lead.id,
-    market: String(lead.market || ""),
-    type: String(lead.type || ""),
-    size_sqft: Number.isFinite(size) && size > 0 ? size : null,
-    ts: String(lead.ts || ""),
-    intro_requested: Boolean(introSet && introSet.has(String(lead.id))),
+    id: l.id,
+    market: isCanonicalMarket(l.market) ? String(l.market).trim() : "",
+    type: String(l.type || ""),
+    size_sqft: cleanSizeSqft(l.size_sqft),
+    ts: String(l.ts || ""),
+    intro_requested: Boolean(
+      introSet && typeof introSet.has === "function" && introSet.has(String(l.id))),
   };
 }
 
 // First inbox open: coverage rows derived from approved submissions. The
-// caller supplies {market, property_type} pairs (market via marketOf).
+// caller supplies {market, property_type} pairs (market via marketOf). A
+// non-canonical market (marketOf's no-state fallback) is dropped rather than
+// seeded, so it can never become a coverage key that matches nothing forever.
 function seedCoverageFromSubmissions(rows) {
   const seen = new Set();
   const out = [];
   for (const r of rows || []) {
-    if (!r || !String(r.market || "").trim() || !String(r.property_type || "").trim()) continue;
+    if (!r || !isCanonicalMarket(r.market) || !String(r.property_type || "").trim()) continue;
     const k = coverageKey(r.market, r.property_type);
     if (seen.has(k)) continue;
     seen.add(k);
@@ -83,13 +106,15 @@ function cleanSizeSqft(v) {
 }
 
 // Coverage rows (already filtered to the lead's market+type by the caller's
-// query) reduced to unique user ids, capped.
+// query) reduced to unique user ids, capped. The output is interpolated
+// directly into a PostgREST `id=in.(...)` filter (server.js), so anything not
+// UUID-shaped is dropped here rather than trusted downstream.
 function notifyTargets(coverageRows) {
   const seen = new Set();
   const out = [];
   for (const r of coverageRows || []) {
     const id = r ? String(r.user_id || "") : "";
-    if (!id || seen.has(id)) continue;
+    if (!/^[0-9a-f-]{36}$/i.test(id) || seen.has(id)) continue;
     seen.add(id);
     out.push(id);
     if (out.length >= MAX_NOTIFY_PER_LEAD) break;
@@ -105,6 +130,7 @@ module.exports = {
   seedCoverageFromSubmissions,
   cleanSizeSqft,
   notifyTargets,
+  isCanonicalMarket,
   MAX_NOTIFY_PER_LEAD,
   LEAD_WINDOW_DAYS,
 };

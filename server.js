@@ -3983,12 +3983,20 @@ async function refreshBrokerProfiles() {
 // broker is choosing to put their name on a comp, which is a separate consent
 // from listing themselves in the directory. Reading the cache here would mean
 // a broker with a private profile silently gets no credit.
-async function findBrokerProfile(email) {
+async function findBrokerProfile(email, userId) {
   const e = String(email || "").trim().toLowerCase();
   if (!DB_CONFIGURED || !e) return null;
+  const SELECT = "select=email,slug,display_name,company,public,user_id";
+  if (userId) {
+    try {
+      const rows = await sbRequest("GET",
+        `broker_profiles?user_id=eq.${encodeURIComponent(userId)}&${SELECT}&limit=1`);
+      if (rows && rows[0]) return rows[0];
+    } catch (err) { console.error("Broker profile user_id read failed:", err.message); }
+  }
   try {
     const rows = await sbRequest("GET",
-      `broker_profiles?email=eq.${encodeURIComponent(e)}&select=email,slug,display_name,company,public&limit=1`);
+      `broker_profiles?email=eq.${encodeURIComponent(e)}&${SELECT}&limit=1`);
     return (rows && rows[0]) || null;
   } catch (err) {
     console.error("Broker profile read failed:", err.message);
@@ -8476,15 +8484,23 @@ const server = http.createServer((req, res) => {
         try {
           // One identity: prefer the account link, fall back to legacy
           // email-keyed rows, and stamp user_id on first touch so an email
-          // change can no longer orphan the profile.
-          let p = ((await sbRequest("GET",
-            `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0];
+          // change can no longer orphan the profile. The user_id read is
+          // isolated so a 400 (column absent pre-migration, or any blip)
+          // can never take down the email fallback, and the adoption PATCH
+          // is fire-and-forget so a failed stamp never costs the broker
+          // their profile card.
+          let p = null;
+          try {
+            p = ((await sbRequest("GET",
+              `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0];
+          } catch (err) { console.error("broker profile user_id read failed:", err.message); }
           if (!p) {
             p = ((await sbRequest("GET",
               `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
             if (p && !p.user_id) {
-              await sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(p.id)}`,
-                { user_id: user.id, updated_at: new Date().toISOString() });
+              sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(p.id)}`,
+                { user_id: user.id, updated_at: new Date().toISOString() })
+                .catch((err) => console.error("broker profile user_id stamp failed:", err.message));
             }
           }
           if (p) {
@@ -8532,10 +8548,17 @@ const server = http.createServer((req, res) => {
         if (wantPublic && !approved.length) {
           return sendJson(res, 403, { error: "You need at least one approved comp before enabling a public profile." });
         }
-        const existing = ((await sbRequest("GET",
-          `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0]
-          || ((await sbRequest("GET",
-          `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
+        // The user_id read is isolated so a 400 (column absent pre-migration,
+        // or any blip) can never take down the email fallback.
+        let existing = null;
+        try {
+          existing = ((await sbRequest("GET",
+            `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0];
+        } catch (err) { console.error("broker profile user_id read failed:", err.message); }
+        if (!existing) {
+          existing = ((await sbRequest("GET",
+            `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
+        }
         let row = existing;
         if (!existing) {
           // First enable creates the row; identity comes from their latest
@@ -8557,6 +8580,9 @@ const server = http.createServer((req, res) => {
             } catch (err) {
               // Unique-slug collision → try the next suffix; anything else rethrows.
               if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+              // A user_id collision cannot be fixed by a new slug; do not
+              // burn 20 retries on it.
+              if (/user_id/i.test(String(err.message))) throw err;
             }
           }
           if (!created) {
@@ -8855,7 +8881,7 @@ const server = http.createServer((req, res) => {
           // Credit is the compensation (Ecosystem Plan §4), so a comp with no
           // name to credit is not worth publishing — refuse rather than post it
           // anonymously and let the broker discover later that they got nothing.
-          const profile = await findBrokerProfile(user.email);
+          const profile = await findBrokerProfile(user.email, user.id);
           const by = VAULT.creditName(profile, user);
           if (!by) {
             return sendJson(res, 400, {

@@ -23,6 +23,12 @@ create unique index if not exists broker_profiles_user_id_uidx
 -- Backfill: adopt every profile whose email matches an account.
 -- broker_profiles.email is stored lowercased (003); lower() both sides so a
 -- users.email stored with mixed case still matches.
+--
+-- Pre-check before running: the backfill joins on lower(email), so two
+-- broker_profiles rows differing only in case would both match one user and
+-- abort on the unique index. Must return zero rows:
+--   select lower(email), count(*) from broker_profiles
+--   group by 1 having count(*) > 1;
 update broker_profiles p
    set user_id = u.id
   from users u

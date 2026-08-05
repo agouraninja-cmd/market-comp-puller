@@ -764,6 +764,31 @@ async function requireUser(req, res) {
   return user;
 }
 
+// Gate for the broker lead inbox routes: signed in (401), broker plan (403),
+// database up (503) — the same three refusals, in the same order, as the
+// vault's openVault() further down. This is that gate's sibling, kept as a
+// second small copy because each names its own area in the 403 copy; fold
+// them together if a third broker area appears. Hoisted to module scope
+// (not a closure inside the request handler) so routes above the vault's old
+// position can call it without a TDZ trap.
+async function requireBroker(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  const ent = await entitlementsFor(req);
+  if (!ent.canUseVault) {
+    sendJson(res, 403, {
+      error: "The lead inbox is part of the broker plan.",
+      code: "broker_required",
+    });
+    return null;
+  }
+  if (!DB_CONFIGURED) {
+    sendJson(res, 503, { error: "The lead inbox is unavailable right now. Please try again in a minute." });
+    return null;
+  }
+  return user;
+}
+
 // --- password resets (memory + best-effort DB, 1-hour tokens) ---
 const resetCache = new Map(); // token_hash -> { user_id, expires_at, used }
 async function createPasswordReset(userId) {
@@ -8620,29 +8645,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Gate for the broker lead inbox routes: signed in (401), broker plan
-  // (403), database up (503) — the same three refusals, in the same order,
-  // as the vault's openVault(). Kept as a second small copy because the
-  // vault's refusal copy names the vault; if a third broker area appears,
-  // fold both into one.
-  const requireBroker = async () => {
-    const user = await requireUser(req, res);
-    if (!user) return null;
-    const ent = await entitlementsFor(req);
-    if (!ent.canUseVault) {
-      sendJson(res, 403, {
-        error: "The lead inbox is part of the broker plan.",
-        code: "broker_required",
-      });
-      return null;
-    }
-    if (!DB_CONFIGURED) {
-      sendJson(res, 503, { error: "The lead inbox is unavailable right now. Please try again in a minute." });
-      return null;
-    }
-    return user;
-  };
-
   // --- Broker lead inbox: coverage -----------------------------------------
   // Which market + property-type pairs this broker sees leads for. Seeded
   // from approved submissions on first inbox open (see /api/broker/leads),
@@ -8650,7 +8652,7 @@ const server = http.createServer((req, res) => {
   if (req.url.split("?")[0] === "/api/broker/coverage") {
     if (req.method === "GET") {
       (async () => {
-        const user = await requireBroker();
+        const user = await requireBroker(req, res);
         if (!user) return;
         try {
           const rows = await sbRequest("GET",
@@ -8659,6 +8661,8 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 200, { coverage: rows || [] });
         } catch (err) {
           console.error("coverage read failed:", err.message);
+          // Deliberately 503, not the vault's 502: there is no upstream call
+          // to blame here, just our own database being unreachable.
           return sendJson(res, 503, { error: "Couldn't load your coverage. Please try again in a minute." });
         }
       })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage lookup failed." }); });
@@ -8669,7 +8673,10 @@ const server = http.createServer((req, res) => {
       req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
       req.on("end", async () => {
         try {
-          const user = await requireBroker();
+          if (rateLimited("bcov:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
+          const user = await requireBroker(req, res);
           if (!user) return;
           const { market, property_type } = JSON.parse(body || "{}");
           const canonical = marketOf(String(market || ""));
@@ -8680,21 +8687,28 @@ const server = http.createServer((req, res) => {
           if (!LEADSVC.isCanonicalMarket(canonical)) {
             return sendJson(res, 400, { error: 'Enter a market as "City, ST" (for example "Boise, ID").' });
           }
-          if (!VAULT.PROPERTY_TYPES.includes(String(property_type || ""))) {
+          // Bind once: String(["Industrial"]) still passes the .includes()
+          // check below, but inserting the raw array would 503 at Postgres
+          // instead of at this 400. Case-insensitive matching is skipped —
+          // the UI <select> is the only sanctioned caller and always sends
+          // an exact value.
+          const type = String(property_type || "");
+          if (!VAULT.PROPERTY_TYPES.includes(type)) {
             return sendJson(res, 400, { error: "Unknown property type." });
           }
-          try {
-            // Plain insert, not an upsert with merge-duplicates: if this
-            // market was already 'earned' from an approved submission, a
-            // re-add here must never flip its source to 'chosen'. A 409 on
-            // an existing row is treated as success and the row is left as
-            // it was found.
-            await sbRequest("POST", "broker_coverage",
-              { user_id: user.id, market: canonical, property_type, source: "chosen" });
-          } catch (err) {
-            // Already covered = success, not an error.
-            if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+          // Cap far below the GET's 500-row read so a broker can never own
+          // rows the list (and Task 6's matcher) silently truncates away.
+          const count = ((await sbRequest("GET",
+            `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=201`)) || []).length;
+          if (count > 200) {
+            return sendJson(res, 400, { error: "Coverage is capped at 200 markets. Remove one to add another." });
           }
+          // ON CONFLICT DO NOTHING: a duplicate keeps the row as found, which
+          // also preserves an existing 'earned' source — the stated intent,
+          // expressed directly instead of via a fragile 409-string test.
+          await sbRequest("POST", "broker_coverage?on_conflict=user_id,market,property_type",
+            [{ user_id: user.id, market: canonical, property_type: type, source: "chosen" }],
+            { prefer: "resolution=ignore-duplicates,return=minimal" });
           return sendJson(res, 200, { ok: true, market: canonical });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -8706,10 +8720,13 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === "DELETE") {
       (async () => {
-        const user = await requireBroker();
+        if (rateLimited("bcov:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
         if (!user) return;
-        const id = new URL(req.url, "http://x").searchParams.get("id") || "";
-        if (!id) return sendJson(res, 400, { error: "Missing id." });
+        const id = String(new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        if (!/^[0-9a-f-]{36}$/i.test(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
         try {
           // Scoped by user_id: nobody deletes another broker's coverage.
           await sbRequest("DELETE",
@@ -8722,6 +8739,7 @@ const server = http.createServer((req, res) => {
       })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage update failed." }); });
       return;
     }
+    return sendJson(res, 404, { error: "Not found." });
   }
 
   // --- Broker vault (v1) ----------------------------------------------------

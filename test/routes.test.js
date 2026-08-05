@@ -46,6 +46,10 @@ async function boot(env) {
       SUPABASE_SERVICE_KEY: "",
       STRIPE_SECRET_KEY: "",
       PRO_ENABLED: "",
+      // Off by default here: this file's SPA-routing tests prove that / and
+      // /desk MATCH on path, which needs a server that is not walling them.
+      // The wall's own routing lives in test/account-wall.test.js.
+      ACCOUNT_WALL: "off",
       ...env,
     },
     stdio: "ignore",

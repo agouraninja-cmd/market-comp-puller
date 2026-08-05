@@ -3,9 +3,9 @@
 One line per migration, added when it is run on the live database. A file in
 this folder that is missing from this list has NOT been run.
 
-**Full schema verified 2026-08-04:** the query below was run in the Supabase
-SQL editor and returned zero rows, confirming every table and every
-spot-checked column exists in production.
+**Full schema verified 2026-08-05:** `node migrations/verify.js` reported
+"Everything present" — every expected table and every spot-checked column
+exists in production.
 
 | File | Status on prod | Evidence |
 |------|----------------|----------|
@@ -22,7 +22,7 @@ spot-checked column exists in production.
 | 010-market-pages.sql | live (created by hand) | Address Explorer pages persist since 2026-08-03 |
 | 011-guest-search-quota.sql | applied 2026-08-03 | "already run in prod" per server.js/CLAUDE.md |
 | 012-search-timings.sql | applied 2026-08-04 | run + verified via Chrome (information_schema returned all 4 columns); re-confirmed 2026-08-05 by `verify.js` |
-| 013-broker-vault.sql | **NOT RUN — outstanding** | written 2026-08-05; `verify.js` reports `broker_uploads` and `broker_comps` missing |
+| 013-broker-vault.sql | applied 2026-08-05 | run in the SQL editor by the owner; `verify.js` reports the full schema present, and a probe insert confirmed all 28 columns and types are accepted by the live table |
 
 ## Verification
 

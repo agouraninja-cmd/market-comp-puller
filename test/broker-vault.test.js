@@ -15,6 +15,7 @@ const {
   parseCsv, normalizeHeader, parseMoney, parseNumber, parsePercent, parseDate,
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
   templateCsv, TEMPLATE_COLUMNS, MAX_ROWS_PER_UPLOAD,
+  canPublish, creditName, submissionRowFrom,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -353,4 +354,108 @@ test("parseUpload never throws on garbage", () => {
   for (const v of [null, undefined, 42, " ", "]]]"]) {
     assert.doesNotThrow(() => parseUpload(v));
   }
+});
+
+// --- publishing ------------------------------------------------------------
+//
+// The one door through the privacy wall. A mistake here is either a broker's
+// private comp made public, or a published comp that never actually reaches a
+// report — and both fail silently.
+
+const vaultComp = (over = {}) => ({
+  address: "1234 W Mission Blvd, Ontario, CA",
+  property_type: "Industrial",
+  transaction: "sale",
+  deal_date: "2025-03-14",
+  price: 12500000,
+  size_sqft: 84000,
+  cap_rate: 5.75,
+  notes: "Sold to an owner-user.",
+  ...over,
+});
+
+test("a good comp may be published", () => {
+  assert.equal(canPublish(vaultComp()).ok, true);
+});
+
+test("an unpriced comp may be KEPT but not published", () => {
+  // Deliberately asymmetric. Brokers track deals whose price was never
+  // disclosed, so the vault accepts them. Crediting a broker publicly for a
+  // row that cannot support anyone's valuation is a different question.
+  const r = canPublish(vaultComp({ price: null }));
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /needs a price/);
+});
+
+test("a comp with no size cannot be published", () => {
+  const r = canPublish(vaultComp({ size_sqft: null }));
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /needs a size/);
+});
+
+test("an area estimate cannot be published as a property", () => {
+  const r = canPublish(vaultComp({ address: "Inland Empire West submarket" }));
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /street number/);
+});
+
+test("canPublish never throws on garbage", () => {
+  for (const v of [null, undefined, {}, 42, "x"]) {
+    assert.doesNotThrow(() => canPublish(v));
+    assert.equal(canPublish(v).ok, false);
+  }
+});
+
+test("credit prefers the firm name, then a personal name", () => {
+  assert.equal(creditName({ company: "Adler Industrial", display_name: "O K" }, { name: "Owen" }), "Adler Industrial");
+  assert.equal(creditName({ display_name: "O Kleene" }, { name: "Owen" }), "O Kleene");
+  assert.equal(creditName({}, { name: "Owen" }), "Owen");
+  assert.equal(creditName(null, null), "", "no name at all is empty, not a crash");
+});
+
+test("publishing capitalises the transaction, or the comp is never offered", () => {
+  // fetchVerifiedComps filters `transaction=eq.Sale` / `eq.Lease`. The vault
+  // stores lowercase. Copied verbatim, a sales-focused search would silently
+  // never see the comp — no error, it simply never appears.
+  const cred = { creditName: "X", email: "a@b.c" };
+  assert.equal(submissionRowFrom(vaultComp(), cred).transaction, "Sale");
+  assert.equal(submissionRowFrom(vaultComp({ transaction: "lease" }), cred).transaction, "Lease");
+  assert.equal(submissionRowFrom(vaultComp({ transaction: "weird" }), cred).transaction, null);
+});
+
+test("publishing stringifies the numbers comp_submissions stores as text", () => {
+  const row = submissionRowFrom(vaultComp(), { creditName: "Adler Industrial", email: "b@c.com" });
+  assert.equal(typeof row.price_or_rate, "string");
+  assert.equal(typeof row.size_sqft, "string");
+  assert.equal(typeof row.cap_rate, "string");
+  assert.equal(row.price_or_rate, "12500000");
+  assert.equal(row.size_sqft, "84000");
+});
+
+test("a published row lands approved, credited, and lower-cased by email", () => {
+  const row = submissionRowFrom(vaultComp(), { creditName: "Adler Industrial", email: "  Broker@Firm.COM " });
+  assert.equal(row.status, "approved", "the owner chose immediate publication");
+  assert.equal(row.broker_company, "Adler Industrial");
+  assert.equal(row.broker_name, "Adler Industrial");
+  // attachVerifiedAttribution looks a profile up by lowercased email; a stray
+  // capital would silently cost the broker the link on their badge.
+  assert.equal(row.broker_email, "broker@firm.com");
+});
+
+test("a published row carries no vault-only fields", () => {
+  // comp_submissions is public-facing. Anything the vault knows that the
+  // public form would not — the owning account, the import batch, the dedupe
+  // key — must not ride along.
+  const row = submissionRowFrom(
+    { ...vaultComp(), user_id: "u_1", upload_id: "up_1", dedupe_key: "k", id: "c_1", published: true },
+    { creditName: "X", email: "a@b.c" });
+  for (const leak of ["user_id", "upload_id", "dedupe_key", "id", "published"]) {
+    assert.equal(row[leak], undefined, leak + " must not reach comp_submissions");
+  }
+});
+
+test("empty optional fields become null, not the string 'null'", () => {
+  const row = submissionRowFrom(vaultComp({ cap_rate: null, notes: "" }), { creditName: "X", email: "a@b.c" });
+  assert.equal(row.cap_rate, null);
+  assert.equal(row.notes, null);
 });

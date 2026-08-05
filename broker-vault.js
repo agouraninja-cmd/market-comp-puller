@@ -477,7 +477,90 @@ function templateCsv() {
   ].join("\n") + "\n";
 }
 
+// --- publishing: the one sanctioned door through the privacy wall ------------
+//
+// Ecosystem Plan §4. A broker flips one of their own comps to public and gets
+// visible credit for it in every report it appears in. Credit is the
+// compensation — there is no payment for data.
+//
+// The mechanism is a COPY, not a shared read: publishing writes a row into
+// `comp_submissions`, the table the verified-comp pipeline already reads
+// (fetchVerifiedComps -> the prompt -> attachVerifiedAttribution -> the green
+// "Verified · via <firm>" badge). Nothing public ever gains a read on
+// `broker_comps`, so the wall is unchanged by this feature — which is the
+// whole reason to copy rather than to add a `published` filter to a public
+// query.
+
+// A comp has to be worth publishing before it is worth crediting. These mirror
+// what the public corpus already demands of a comp it will show a customer.
+function canPublish(comp) {
+  const c = comp || {};
+  if (!c.address || !/^\s*\d/.test(String(c.address))) {
+    return { ok: false, reason: "Only individual properties can be published — this address has no street number." };
+  }
+  if (!c.deal_date) return { ok: false, reason: "A published comp needs a deal date." };
+  // An unpriced comp is fine to KEEP (brokers track undisclosed deals) but
+  // publishing one credits a broker for a row that cannot support anyone's
+  // valuation, which is the only thing the public corpus is for.
+  if (c.price == null || Number(c.price) <= 0) {
+    return { ok: false, reason: "A published comp needs a price — an unpriced comp cannot support a valuation." };
+  }
+  if (c.size_sqft == null || Number(c.size_sqft) <= 0) {
+    return { ok: false, reason: "A published comp needs a size, or its price per square foot cannot be checked." };
+  }
+  if (!c.property_type) return { ok: false, reason: "A published comp needs a property type." };
+  return { ok: true };
+}
+
+// The name a published comp is credited to. Company first: "Verified · via
+// Adler Industrial" is what a broker is publishing FOR, and a firm name is
+// what a property owner recognizes. Falls back to a personal name.
+function creditName(profile, user) {
+  const p = profile || {}, u = user || {};
+  return text(p.company, MAX_SHORT_TEXT)
+    || text(p.display_name, MAX_SHORT_TEXT)
+    || text(u.name, MAX_SHORT_TEXT)
+    || "";
+}
+
+/**
+ * A vault comp -> the `comp_submissions` row that publishes it.
+ *
+ * Two conversions here are easy to get wrong and silent when wrong:
+ *
+ *  1. **`transaction` must be capitalised.** fetchVerifiedComps filters with
+ *     `transaction=eq.Sale` / `eq.Lease`. The vault stores lowercase, so a
+ *     verbatim copy would never match a sales- or lease-focused search — the
+ *     comp would simply never be offered, with no error anywhere.
+ *
+ *  2. **`comp_submissions` columns are all text**, because they were filled by
+ *     a human form. The vault holds real numbers. Numbers must be stringified,
+ *     not passed through, or PostgREST coerces inconsistently.
+ */
+function submissionRowFrom(comp, { creditName: by, email }) {
+  const c = comp || {};
+  const str = (v) => (v == null || v === "" ? null : String(v));
+  return {
+    status: "approved",
+    broker_name: by || null,
+    broker_company: by || null,
+    broker_email: String(email || "").trim().toLowerCase() || null,
+    address: c.address,
+    property_type: c.property_type,
+    // Capitalised — see note 1 above.
+    transaction: c.transaction === "sale" ? "Sale" : c.transaction === "lease" ? "Lease" : null,
+    deal_date: str(c.deal_date),
+    size_sqft: str(c.size_sqft),
+    price_or_rate: str(c.price),
+    cap_rate: str(c.cap_rate),
+    notes: c.notes || null,
+  };
+}
+
 module.exports = {
+  canPublish,
+  creditName,
+  submissionRowFrom,
   parseCsv,
   normalizeHeader,
   parseMoney,

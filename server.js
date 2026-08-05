@@ -3952,6 +3952,27 @@ async function refreshBrokerProfiles() {
   }
 }
 
+// This broker's own profile row, public or not.
+//
+// Deliberately NOT read from BROKER_PROFILES above: that cache holds only
+// `public=true` rows, because its job is deciding whose badge becomes a link.
+// Publishing needs the name whether or not the profile PAGE is public — the
+// broker is choosing to put their name on a comp, which is a separate consent
+// from listing themselves in the directory. Reading the cache here would mean
+// a broker with a private profile silently gets no credit.
+async function findBrokerProfile(email) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!DB_CONFIGURED || !e) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `broker_profiles?email=eq.${encodeURIComponent(e)}&select=email,slug,display_name,company,public&limit=1`);
+    return (rows && rows[0]) || null;
+  } catch (err) {
+    console.error("Broker profile read failed:", err.message);
+    return null;
+  }
+}
+
 // Same char rules as the market-page slugs; source is firm-first.
 function brokerSlugOf(company, name) {
   let s = String(company || name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -7029,6 +7050,11 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .up .meta{color:var(--ink-3)}
 .up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--t5);padding:0}
 .up button:hover{color:var(--red)}
+.pubbtn{background:none;border:1px solid var(--edge);border-radius:var(--r);padding:1px var(--s3);
+  font-family:inherit;font-size:var(--t6);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
+.pubbtn.on{border-color:#BFE3CB;background:#F0FAF3;color:var(--green);font-weight:600}
+.pubbtn[disabled]{opacity:.5;cursor:default}
 .hide{display:none}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
@@ -7075,6 +7101,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
           <th data-k="property_type">Type</th><th data-k="transaction">Deal</th>
           <th data-k="deal_date">Date</th><th data-k="price" class="num">Price</th>
           <th data-k="size_sqft" class="num">Size</th><th data-k="price_per_sqft" class="num">$/SF</th>
+          <th data-k="published">Public</th>
         </tr></thead><tbody id="tbody"></tbody>
       </table></div>
       <div class="empty hide" id="none">Nothing here yet. Upload a spreadsheet above.</div>
@@ -7139,10 +7166,16 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("none").className=rows.length?"empty hide":"empty";
     $("shown").textContent=rows.length?rows.length+" shown":"";
     $("tbody").innerHTML=rows.map(function(c){
+      // Published state is a two-way toggle, never a checkbox that could be
+      // flipped by a stray click: publishing is a one-way-ish public act, so
+      // it goes through a button and a confirm.
+      var pub=c.published
+        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
+        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
       return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
         "</td><td>"+esc(c.transaction)+"</td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
-        '</td><td class="num">'+psf(c.price_per_sqft)+"</td></tr>";
+        '</td><td class="num">'+psf(c.price_per_sqft)+"</td><td>"+pub+"</td></tr>";
     }).join("");
     Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
       var on=th.getAttribute("data-k")===sortK;
@@ -7208,6 +7241,39 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     if(k===sortK)sortAsc=!sortAsc; else{sortK=k;sortAsc=false;}
     render();
   });
+  // Publish / unpublish. The confirm text is deliberately specific about what
+  // publishing DOES and about the one thing it cannot undo: once a published
+  // comp has been served inside a report, that report is cached and the public
+  // corpus has already harvested it. Unpublishing stops future offers; it
+  // cannot reach back into reports already delivered. A broker who finds that
+  // out afterwards would be right to feel misled, so it is said up front.
+  $("tbody").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-pub]"); if(!b)return;
+    var on=b.getAttribute("data-on")==="1";
+    if(on){
+      if(!confirm("Stop publishing this comp?\\n\\nIt will no longer be offered in new reports. Reports that already included it keep it, and it stays in the public records it has already reached."))return;
+    }else{
+      if(!confirm("Publish this comp?\\n\\nIt becomes part of CompNinja's public records, credited to your firm by name in every report it appears in. Everything else in your vault stays private.\\n\\nYou can stop publishing it later, but reports that already used it will keep it."))return;
+    }
+    b.disabled=true; b.textContent=on?"Removing\\u2026":"Publishing\\u2026";
+    fetch("/api/vault/publish",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({id:b.getAttribute("data-pub"),publish:!on})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){
+          $("res").innerHTML='<div class="msg bad">'+esc(o.j.error||"That didn\\'t go through.")+"</div>";
+        }else if(o.j.published&&o.j.creditedTo){
+          $("res").innerHTML='<div class="msg ok">Published, credited to '+esc(o.j.creditedTo)+".</div>";
+        }else{
+          $("res").innerHTML="";
+        }
+        load();
+      })
+      .catch(function(){ b.disabled=false;
+        $("res").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+  });
+
   $("ups").addEventListener("click",function(e){
     var b=e.target.closest("button[data-del]"); if(!b)return;
     if(!confirm("Remove this import and all the comps that came in with it?"))return;
@@ -8635,6 +8701,101 @@ const server = http.createServer((req, res) => {
       })().catch((err) => {
         console.error("vault read failed:", err.message);
         sendJson(res, 502, { error: "Could not load your vault. Please try again." });
+      });
+      return;
+    }
+
+    // --- Publish / unpublish one comp ---------------------------------------
+    //
+    // Ecosystem Plan §4: the ONE sanctioned door through the privacy wall, and
+    // it opens one comp at a time, only by explicit broker action, never by
+    // default.
+    //
+    // It is a COPY, not a shared read. The comp is written into
+    // `comp_submissions` — the table fetchVerifiedComps() already reads — so it
+    // inherits the whole existing verified pipeline: offered to the model as a
+    // trusted candidate, badged "Verified · via <firm>", citation-counted, and
+    // (via findBrokersForMarket) the broker becomes someone the owner can
+    // introduce on a BOV lead in that market. No public query gains a read on
+    // broker_comps, which is why this is a copy and not a `published` filter.
+    if (req.method === "POST" && path === "/api/vault/publish") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultpub:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const { id, publish } = JSON.parse(body || "{}");
+          if (!id) return sendJson(res, 400, { error: "Which comp?" });
+
+          // user_id in the filter, always. Without it, knowing another broker's
+          // comp id would be enough to publish their private data.
+          const rows = await sbRequest("GET",
+            `broker_comps?id=eq.${encodeURIComponent(id)}` +
+            `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
+          const comp = rows && rows[0];
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+
+          // --- unpublish ---
+          if (publish === false) {
+            if (comp.published_submission_id) {
+              // Delete rather than mark rejected: fetchVerifiedComps selects on
+              // status, but a retracted comp should leave no public row at all.
+              await sbRequest("DELETE",
+                `comp_submissions?id=eq.${encodeURIComponent(comp.published_submission_id)}`,
+                undefined, { prefer: "return=minimal" });
+            }
+            await sbRequest("PATCH",
+              `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+              { published: false, published_at: null, published_submission_id: null },
+              { prefer: "return=minimal" });
+            console.log(`Vault comp ${id} unpublished by user ${user.id}`);
+            return sendJson(res, 200, { ok: true, published: false });
+          }
+
+          // --- publish ---
+          if (comp.published) return sendJson(res, 200, { ok: true, published: true });
+
+          const gate = VAULT.canPublish(comp);
+          if (!gate.ok) return sendJson(res, 400, { error: gate.reason, code: "not_publishable" });
+
+          // Credit is the compensation (Ecosystem Plan §4), so a comp with no
+          // name to credit is not worth publishing — refuse rather than post it
+          // anonymously and let the broker discover later that they got nothing.
+          const profile = await findBrokerProfile(user.email);
+          const by = VAULT.creditName(profile, user);
+          if (!by) {
+            return sendJson(res, 400, {
+              error: "Add your firm or display name before publishing — published comps are credited to it.",
+              code: "needs_credit_name",
+            });
+          }
+
+          const inserted = await sbRequest("POST", "comp_submissions",
+            [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+            { prefer: "return=representation" });
+          const subId = inserted && inserted[0] && inserted[0].id;
+          if (!subId) throw new Error("comp_submissions insert returned no id");
+
+          await sbRequest("PATCH",
+            `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+            { published: true, published_at: new Date().toISOString(), published_submission_id: subId },
+            { prefer: "return=minimal" });
+
+          // Approving a comp changes what a search is offered, so the cached
+          // report for that market+type is now stale. The cache key already
+          // hashes a signature of the offered verified comps, so this is
+          // self-correcting — noted here so nobody adds a manual bust later.
+          console.log(`📤 Vault comp published: ${comp.address} by ${by} (user ${user.id}, submission ${subId})`);
+          return sendJson(res, 200, { ok: true, published: true, creditedTo: by });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault publish failed:", err.message);
+          return sendJson(res, 502, { error: "That didn't go through. Nothing was changed." });
+        }
       });
       return;
     }

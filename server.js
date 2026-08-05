@@ -7085,7 +7085,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   <p class="sub">Your own comp data, private to you. Upload a spreadsheet and it comes back
     organized &mdash; sortable and filterable by property and by market.</p>
 
-  <div id="gate" class="hide"></div>
+  <!-- Visible from the first paint. Everything below the title waits on
+       /api/vault (session -> entitlements -> two reads), and with both panes
+       hidden the page spent that window looking half-rendered before the
+       workspace popped in. The fetch's three outcomes each replace this:
+       success hides #gate, a refusal rewrites it, so it can never linger. -->
+  <div id="gate"><p class="empty">Loading your vault&hellip;</p></div>
 
   <div id="app" class="hide">
     <div class="trust">

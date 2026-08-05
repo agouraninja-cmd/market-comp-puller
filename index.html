@@ -1599,6 +1599,10 @@
           <!-- Breadth framing: how many transactions were weighed vs. how many were
                kept as the most comparable. Hidden unless the model returns a count. -->
           <p id="reviewedNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
+          <!-- How tight the comp set is geographically. Written by
+               renderDistanceNote() once pins geocode, so it appears a beat
+               after the first paint on a fresh report. -->
+          <p id="distanceNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
           <!-- Curation audit trail: what the user changed about the comp set.
                Deliberately NOT no-print — it must travel in print/PNG so a
                curated report says so. Hidden on shared reports with no edits. -->
@@ -1779,6 +1783,9 @@
   // ----------------------------------------------------------------------------
   const BASE_COLUMNS = [
     { key: "address",        label: "Address",        numeric: false },
+    // Filled in the browser once pins geocode (applyCompDistances), so it
+    // prunes itself away on reports where nothing resolved.
+    { key: "distance_mi",    label: "Distance",       numeric: true  },
     { key: "date",           label: "Date",           numeric: false, isDate: true },
     { key: "transaction",    label: "Type",           numeric: false },
     { key: "size_sqft",      label: "Size (SF)",      numeric: true  },
@@ -1846,6 +1853,18 @@
       if (idx !== -1) cols.splice(idx + 1, 0, ...group);
     });
     return cols;
+  }
+
+  // Sparse columns hide when empty: most comp sources never publish NOI, so
+  // cap rate (and on thin markets the per-type specs) can come back blank on
+  // every comp, and a full column of dashes earns its width on nothing. The
+  // core identity columns always render so the table never loses its shape.
+  // Everything that maps over COLUMNS — phone cards, CSV/PNG/print exports,
+  // locked-row placeholders — inherits the pruning automatically.
+  const ALWAYS_COLUMNS = new Set(["address", "date", "transaction", "price_or_rate", "source_url"]);
+  function pruneEmptyColumns(cols, comps) {
+    return cols.filter((col) => ALWAYS_COLUMNS.has(col.key) ||
+      comps.some((c) => String(c[col.key] ?? "").trim() !== ""));
   }
 
   // Subject-property detail inputs, mirroring TYPE_COMP_FIELDS in server.js
@@ -2084,6 +2103,86 @@
     }
     const csf = numericValue(comp.size_sqft);
     return subj > 0 && csf > 0 && Math.abs(Math.log2(csf / subj)) > 1;
+  }
+
+  // --------------------------------------------------------------------------
+  // Distance from the subject. Location is the largest price driver in real
+  // estate and the report used to convey it only as dots on a map you had to
+  // eyeball. Every pin is already geocoded in the browser, so this costs one
+  // haversine per comp and no network call at all.
+  //
+  // DISPLAY ONLY, deliberately: compWeight is mirrored in comp-gate.js so a
+  // free report's range matches a Pro one, and the server has no comp
+  // coordinates to mirror with (the model stopped returning per-comp lat/lng
+  // on 2026-07-31). A distance term in the weight would silently desync the
+  // two copies. Distance-weighting is a separate decision, not a side effect
+  // of showing the number.
+  // --------------------------------------------------------------------------
+  function milesBetween(a, b) {
+    const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+    return 3959 * 2 * Math.asin(Math.sqrt(h));
+  }
+
+  function fmtMiles(mi) {
+    if (!(mi >= 0)) return "";
+    // Precision that matches the pin's: a geocoded rooftop is good to a
+    // fraction of a mile, never to three decimals.
+    if (mi < 0.1) return "< 0.1 mi";
+    return (mi < 10 ? mi.toFixed(1) : String(Math.round(mi))) + " mi";
+  }
+
+  // Writes `distance_mi` onto every comp whose pin has resolved. Returns true
+  // when anything changed, which is the caller's cue to re-render the table —
+  // on a fresh report the coordinates arrive a beat after the first paint.
+  function applyCompDistances(parsed, comps) {
+    if (!parsed) return false;
+    const sLat = parseFloat(parsed.subject_lat), sLng = parseFloat(parsed.subject_lng);
+    if (!isFinite(sLat) || !isFinite(sLng)) return false;
+    const subj = { lat: sLat, lng: sLng };
+    let changed = false;
+    (comps || []).forEach((c) => {
+      const lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+      // Basis rows and un-geocoded comps simply have no distance; the column
+      // prunes itself away if that turns out to be all of them.
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      const next = fmtMiles(milesBetween(subj, { lat, lng }));
+      if (next && next !== c.distance_mi) { c.distance_mi = next; changed = true; }
+    });
+    return changed;
+  }
+
+  // The one-line summary above the table: how tight this comp set is
+  // geographically. Reads the same distances the column shows.
+  function renderDistanceNote() {
+    const el = document.getElementById("distanceNote");
+    if (!el) return;
+    // includedComps(), not currentComps: the map only geocodes what's included,
+    // so an excluded comp's distance is whatever it was before it was dropped.
+    const mi = (includedComps() || [])
+      .map((c) => numericValue(c.distance_mi))
+      .filter((v) => isFinite(v) && v >= 0)
+      .sort((a, b) => a - b);
+    // Below three it is a list of facts, not a spread worth summarizing.
+    if (mi.length < 3) { el.classList.add("hidden"); el.textContent = ""; return; }
+    const far = mi[mi.length - 1];
+    el.textContent = far < 0.1
+      ? `All ${mi.length} located comps sit within a tenth of a mile of your property.`
+      : `Located comps sit ${fmtMiles(mi[0]).replace("< ", "under ")} to ${fmtMiles(far)} from your property.`;
+    el.classList.remove("hidden");
+  }
+
+  // Called once the map's geocoding pass settles. Re-prunes the columns first:
+  // on a fresh report Distance was empty at the initial paint and pruned away,
+  // and this is what brings it back. No-ops when nothing resolved, so a report
+  // whose comps never geocode never re-renders its table for nothing.
+  function refreshDistances() {
+    if (!currentParsed || !currentMeta) return;
+    if (!applyCompDistances(currentParsed, currentComps)) return;
+    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type), currentComps);
+    renderTableHead();
+    renderTableBody(false);   // no entrance cascade — the rows are already on screen
+    renderDistanceNote();
   }
   // Named for its original life as a plain USD formatter; now the single
   // formatting choke point for every client-computed money figure. All call
@@ -2787,7 +2886,9 @@
   // --------------------------------------------------------------------------
   // Comp weighting + time adjustment. Applied ONLY inside the valuation math —
   // the table, chart, and stat tiles always show each comp's raw reported
-  // figures, so the audit trail never moves. Three quiet factors, multiplied:
+  // figures, so the audit trail never moves. Where the time adjustment makes
+  // the raw figure differ from the one the math used, the table's $/SF cell
+  // discloses both (§ — see indexedPsfNote). Three quiet factors, multiplied:
   //   recency      2-year half-life on the comp's age at the report date
   //   size match   free pass within 0.5×–2× of the subject, halving per
   //                further doubling (a 5k SF building shouldn't be priced by
@@ -2834,6 +2935,25 @@
     const age = compAgeYears(c, meta);
     if (!age) return 1;
     return Math.pow(1 + pct / 100, Math.min(age, 3));
+  }
+
+  // Disclosure for that time adjustment. The table deliberately shows each
+  // comp's RAW reported $/SF so the audit trail never moves, but the valuation
+  // uses the indexed figure — which means the number on screen and the number
+  // in the math can differ with nothing saying so. Where they do, the cell
+  // wears a § carrying both figures. Sales only: leases are never indexed.
+  function indexedPsfNote(comp, meta, parsed) {
+    if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return "";
+    const raw = salePsfOf(comp);
+    if (!(raw > 0)) return "";
+    const f = trendFactor(comp, meta, parsed);
+    // Under half a percent rounds to the same displayed figure; a marker for a
+    // difference nobody can see is noise, not disclosure.
+    if (!isFinite(f) || Math.abs(f - 1) < 0.005) return "";
+    const pct = Number(parsed && parsed.annual_price_trend_pct);
+    const psf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
+    return `Counts as ${psf(raw * f)} in the valuation: indexed from ${psf(raw)} to the report date `
+      + `at the market's ${pct > 0 ? "+" : ""}${pct}%/yr trend.`;
   }
 
   // Value hero — the headline of every report. Sales-comparison range from the
@@ -2952,7 +3072,8 @@
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
     const weighNote = " Recent, similar-size, well-sourced comps count more"
       + (Number.isFinite(trendPct)
-        ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend.`
+        ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
+          + `(§ in the table shows each indexed figure).`
         : ".");
     // Honest-uncertainty notes. Name the comps of a wholly different size
     // class (down-weighted, never hidden), and say plainly when only 2-3
@@ -3468,8 +3589,14 @@
     renderAnalysisCluster(currentParsed, currentMeta, false);
     renderMarketChart();
     renderStatTiles(currentParsed, currentMeta);
+    // Curation can change which sparse columns hold any data — a corpus-added
+    // comp may carry the report's only cap rate, and removing it takes the
+    // column back out — so re-prune before the head renders.
+    applyCompDistances(currentParsed, currentComps);
+    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type), currentComps);
     renderTableHead();
     renderTableBody(false);
+    renderDistanceNote();
     updateCompCount();
     updateCurationNote();
     renderCorpusOffer();
@@ -5564,11 +5691,6 @@
         (isFinite(parseFloat(parsed.subject_lat)) && isFinite(parseFloat(parsed.subject_lng))
           ? { lat: parseFloat(parsed.subject_lat), lng: parseFloat(parsed.subject_lng) } : null);
       const MAX_COMP_MILES = 300;   // generous even for rural wide-radius reports
-      const milesBetween = (a, b) => {
-        const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
-        const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
-        return 3959 * 2 * Math.asin(Math.sqrt(h));
-      };
       // Pins are now final — find each one's building for the popup photo.
       // Fire-and-forget: the map never waits on Overpass.
       const allMarkers = () => [subjMarker, ...Object.values(compMarkersByNum)].filter(Boolean);
@@ -5596,6 +5718,10 @@
         }
       });
       snapMarkersToBuildings(allMarkers());
+      // The pins that just settled are the same coordinates the Distance
+      // column reads, so fill it in now rather than leaving the table a beat
+      // behind the map.
+      refreshDistances();
       if (!moved) return;
       const refined = [];
       if (subjMarker) refined.push(subjMarker.getLatLng());
@@ -5732,7 +5858,13 @@
     currentMeta = meta;
     currentParsed = parsed;
     sortState = { key: null, dir: 1 };
-    COLUMNS = columnsForType(meta.type);   // Industrial adds Clear Height + Dock Doors
+    // Saved and shared reports arrive with their pins already resolved, so
+    // distances exist before the first paint. A fresh report has only the
+    // subject's coordinates here; refreshDistances() fills the rest in once
+    // geocoding lands.
+    applyCompDistances(parsed, currentComps);
+    // Industrial adds Clear Height + Dock Doors; then columns no comp populates drop.
+    COLUMNS = pruneEmptyColumns(columnsForType(meta.type), currentComps);
 
     // Sale/Lease filter — reset per report; only shown when comps carry a transaction type.
     txFilter = "all";
@@ -5800,6 +5932,7 @@
     renderMarketChart();
     renderTableHead();
     renderTableBody();
+    renderDistanceNote();
     updateCurationNote();
     if (!meta.sample && !meta.fromHistory && !meta.shared) {
       saveHistory(meta, parsed);
@@ -8131,6 +8264,19 @@
             sup.className = "text-[#8A93A0]";
             cell.appendChild(sup);
           }
+          // Time-adjusted: the raw figure stays on screen, the § carries the
+          // one the valuation actually used. Appends to any † already set, so
+          // a recomputed AND indexed cell explains both.
+          if (col.key === "price_per_sqft" && val) {
+            const note = indexedPsfNote(comp, currentMeta, currentParsed);
+            if (note) {
+              td.title = td.title ? td.title + " · " + note : note;
+              const sup = document.createElement("sup");
+              sup.textContent = "§";
+              sup.className = "text-[#8A93A0]";
+              cell.appendChild(sup);
+            }
+          }
         }
         td.appendChild(cell);
         tr.appendChild(td);
@@ -8310,6 +8456,17 @@
             sup.textContent = "‡";
             sup.className = "text-[#8A93A0]";
             dd.appendChild(sup);
+          }
+          // Same time-adjustment disclosure as the desktop table.
+          if (col.key === "price_per_sqft" && !empty) {
+            const note = indexedPsfNote(comp, currentMeta, currentParsed);
+            if (note) {
+              dd.title = dd.title ? dd.title + " · " + note : note;
+              const sup = document.createElement("sup");
+              sup.textContent = "§";
+              sup.className = "text-[#8A93A0]";
+              dd.appendChild(sup);
+            }
           }
         }
         row.appendChild(dt);

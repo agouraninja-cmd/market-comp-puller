@@ -543,6 +543,17 @@ async function guestGateFor(req) {
   const used = cookieSpent ? GUEST_SEARCH_LIMIT : await guestSearchesUsed(ipHash);
   return { ipHash, used, cookieSpent, blocked: cookieSpent || used >= GUEST_SEARCH_LIMIT };
 }
+// Spend one guest search. Call ONLY at an exit that actually served a result:
+// a failed or refused search must never burn the visitor's free one.
+// `headersOpen` is true on an SSE exit, where the headers are already
+// streaming and no cookie can be set — /api/config syncs it on the next page
+// load, and the sha256(IP) ledger is the durable half regardless.
+function consumeGuestSearchFor(gate, req, res, headersOpen) {
+  if (!gate) return;
+  const used = gate.used + 1;
+  recordGuestSearch(gate.ipHash, used);
+  if (!headersOpen && used >= GUEST_SEARCH_LIMIT) setGuestCookie(res, req);
+}
 
 // ---------------------------------------------------------------------------
 // Accounts — email+password users, hashed session tokens, portfolio +
@@ -8038,15 +8049,10 @@ const server = http.createServer((req, res) => {
             signin_required: true,
           });
         }
-        // Runs on every serve exit below. The cookie is set only once the
-        // quota is now spent, and never on the SSE exit — those headers are
-        // already streaming, so /api/config sets it on the next page load.
-        const consumeGuestSearch = (headersOpen) => {
-          if (!guestGate) return;
-          const used = guestGate.used + 1;
-          recordGuestSearch(guestGate.ipHash, used);
-          if (!headersOpen && used >= GUEST_SEARCH_LIMIT) setGuestCookie(res, req);
-        };
+        // Runs on every serve exit below (see consumeGuestSearchFor — shared
+        // with the Market Explorer, which spends the same single allowance).
+        const consumeGuestSearch = (headersOpen) =>
+          consumeGuestSearchFor(guestGate, req, res, headersOpen);
 
         const cached = await getCachedSearch(cacheKey);
         if (cached) {

@@ -610,7 +610,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   as a "Broker intro requests" card on `/admin`; without it a dropped owner
   email made a request invisible. Supabase-only like the route that writes
   it (`db: false` when unconfigured), and fails safe: a read error yields
-  `null`/"Unavailable", never a broken dashboard or a fabricated zero. **Logging is always on**; the
+  `null`/"Unavailable", never a broken dashboard or a fabricated zero.
+  **Logging is always on**; the
   dashboard only renders once `ADMIN_KEY` is set (same key as the lead CSV).
   `/admin` is `noindex` + `Disallow`ed in robots (meta tag, `X-Robots-Tag`
   header, and robots.txt).

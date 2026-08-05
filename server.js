@@ -460,11 +460,24 @@ function rateLimited(ip, max = RATE_MAX, windowMs = RATE_WINDOW_MS) {
 // ---------------------------------------------------------------------------
 const GUEST_COOKIE = "cn_guest";
 const GUEST_COOKIE_MAX_AGE_SEC = 2 * 365 * 24 * 60 * 60;
+// Account wall — ACCOUNT_WALL=on (the default) makes CompNinja account-only:
+// an anonymous visitor is sent to /how-it-works, which is the front door and
+// carries the signup controls. "off" is the instant rollback lever on Render
+// (an env edit, no deploy) and restores the pre-wall app exactly, including
+// GUEST_SEARCH_LIMIT's own configured value.
+// Spec: docs/superpowers/specs/2026-08-05-account-wall-and-how-it-works-landing-design.md
+const ACCOUNT_WALL = String(process.env.ACCOUNT_WALL ?? "on").trim().toLowerCase() !== "off";
 // GUEST_SEARCH_LIMIT: unset/1 = one free search per visitor; any integer N =
 // N free; 0 = sign-in required before any search; "off" = gate disabled
 // entirely, the app behaves exactly as it did before the gate existed. "off"
 // is the instant rollback lever on Render — an env edit, no deploy.
-const GUEST_LIMIT_RAW = String(process.env.GUEST_SEARCH_LIMIT ?? "1").trim().toLowerCase();
+// Under the wall the limit is 0, whatever GUEST_SEARCH_LIMIT says. The two are
+// not allowed to disagree: a wall that is up while /api/comps still hands out
+// a free search is the one inconsistent state worth designing out, and it
+// would be invisible in testing because both halves look correct alone.
+const GUEST_LIMIT_RAW = ACCOUNT_WALL
+  ? "0"
+  : String(process.env.GUEST_SEARCH_LIMIT ?? "1").trim().toLowerCase();
 const GUEST_SEARCH_LIMIT =
   GUEST_LIMIT_RAW === "off" ? Infinity
     : Number.isInteger(Number(GUEST_LIMIT_RAW)) && Number(GUEST_LIMIT_RAW) >= 0 ? Number(GUEST_LIMIT_RAW)
@@ -9897,6 +9910,7 @@ const server = http.createServer((req, res) => {
       }
       sendJson(res, 200, {
         authRequired: Boolean(APP_PASSWORD),
+        accountWall: ACCOUNT_WALL,
         guestSearch,
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),

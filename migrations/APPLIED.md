@@ -23,6 +23,7 @@ exists in production.
 | 011-guest-search-quota.sql | applied 2026-08-03 | "already run in prod" per server.js/CLAUDE.md |
 | 012-search-timings.sql | applied 2026-08-04 | run + verified via Chrome (information_schema returned all 4 columns); re-confirmed 2026-08-05 by `verify.js` |
 | 013-broker-vault.sql | applied 2026-08-05 | run in the SQL editor by the owner; `verify.js` reports the full schema present, and a probe insert confirmed all 28 columns and types are accepted by the live table |
+| 014-vault-publish-link.sql | applied 2026-08-05 (logged after the fact) | verified via Chrome in the SQL editor: `published_submission_id` exists in `broker_comps` and `broker_comps_published_submission_idx` is in `pg_indexes` — both halves of the file |
 
 ## Verification
 
@@ -40,6 +41,8 @@ table-existence check: `comp_corpus` existed throughout, ten *columns* were
 missing, every insert 400'd for weeks. `verify.js` asks about both.
 
 Last run 2026-08-05: everything through 012 present; only 013 outstanding.
+(013 and 014 were confirmed applied later that day via the SQL editor — see
+the table above.)
 
 Not in CI, deliberately — CI holds no secrets, by design, so that a fork PR
 cannot exfiltrate one. This is a local command run around a schema deploy.

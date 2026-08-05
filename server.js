@@ -6833,19 +6833,31 @@ async function hqSnapshot() {
   const [analytics, submissions, dev, contacts, revenue] = (await Promise.allSettled([
     (async () => {
       // Same read + reducer /api/stats uses; the page shows the last-7-day
-      // slice of its 30-day series.
+      // slice of its 30-day series, plus the 7 days before it so every
+      // headline count carries a direction.
       const rows = await readRows("analytics_events", ANALYTICS_FILE,
         ["ts", "kind", "prop_type", "market", "source", "cached"]);
       const s = aggregateStats(rows);
       const last7 = s.daily.slice(-7);
-      const sum = (f) => last7.reduce((n, d) => n + d[f], 0);
+      const prev7 = s.daily.slice(-14, -7);
+      const sum = (list, f) => list.reduce((n, d) => n + d[f], 0);
       // Estimated API spend for the same 7 days: aggregateStats re-run on just
       // the week's rows, so the blended pricing (corpus-discounted reports,
       // flat market searches) can never drift from /admin's cost tiles.
       const cut = last7.length ? last7[0].date : "";
       const spend7 = aggregateStats(rows.filter((r) => String(r.ts || "").slice(0, 10) >= cut)).spend.total;
+      // Week-scoped counts the reducer doesn't break out: the signup funnel
+      // (signups, leads, and how many anonymous visitors hit the sign-in
+      // gate — the number GUEST_SEARCH_LIMIT exists to move) rides the same
+      // 7-day window as the search figure above it.
+      const day = (r) => String(r.ts || "").slice(0, 10);
+      const kind7 = (k) => rows.filter((r) => r.kind === k && day(r) >= cut).length;
       return {
-        searches7d: { billed: sum("billed"), cached: sum("cached"), total: sum("total"), cost: spend7 },
+        searches7d: {
+          billed: sum(last7, "billed"), cached: sum(last7, "cached"),
+          total: sum(last7, "total"), prevTotal: sum(prev7, "total"), cost: spend7,
+        },
+        funnel7d: { signups: kind7("signup"), gated: kind7("signup_gate"), leads: kind7("lead") },
         leads: s.totals.leads,
       };
     })(),
@@ -6881,6 +6893,8 @@ async function hqSnapshot() {
       const sl = Array.isArray(subs) ? subs : [];
       const pl = Array.isArray(purchases) ? purchases : [];
       const cut = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+      const prevCut = new Date(Date.now() - 13 * 86400000).toISOString().slice(0, 10);
+      const boughtOn = (x) => String(x.purchased_at || "").slice(0, 10);
       return {
         db: true,
         active: sl.filter((x) => x.status === "active").length,
@@ -6888,7 +6902,8 @@ async function hqSnapshot() {
         founding: sl.filter((x) => x.plan === "pro_annual_founding").length,
         foundingLimit: FOUNDING_MEMBER_LIMIT,
         purchases: pl.length,
-        purchases7d: pl.filter((x) => String(x.purchased_at || "").slice(0, 10) >= cut).length,
+        purchases7d: pl.filter((x) => boughtOn(x) >= cut).length,
+        purchasesPrev7: pl.filter((x) => boughtOn(x) >= prevCut && boughtOn(x) < cut).length,
       };
     })(),
   ])).map((r) => r.status === "fulfilled" ? r.value
@@ -6913,6 +6928,11 @@ async function hqSnapshot() {
       used: new Date().toISOString().slice(0, 10) === dailySearchDay ? dailySearchCount : 0,
       limit: DAILY_SEARCH_CAP,
     },
+    // The "live but unbuyable" trap: PRO_AUDIENCE left set after a test
+    // window keeps Pro on but unreachable for the public, and the deployment
+    // looks perfectly healthy. Startup logs it loudly, but nobody tails
+    // Render's logs — this page is what actually gets looked at.
+    audience: PRO_ENABLED && PRO_AUDIENCE.length ? PRO_AUDIENCE.length : 0,
   };
   return { analytics, submissions, dev, contacts, revenue, alerts };
 }
@@ -7018,6 +7038,12 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
 .alert{color:var(--red);font-size:var(--t4);font-weight:600;border-left:2px solid var(--red);
   padding-left:var(--s4);margin:0 0 var(--s4)}
 .alert a{text-decoration:underline}
+/* The alert's neutral sibling: work waiting on a human, not something wrong.
+   Ink, not red — red stays reserved for failures — and it renders after any
+   red lines so an alarm is never pushed down by a to-do. */
+.attn{color:var(--ink-2);font-size:var(--t4);border-left:2px solid var(--ink-4);
+  padding-left:var(--s4);margin:0 0 var(--s4)}
+.attn a{text-decoration:underline}
 footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
 footer .wordmark{color:#fff}
@@ -7058,6 +7084,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
     <div id="dls"></div>
     <p class="muted">Each link carries the admin key so the browser can download directly. Treat a copied link as the key itself.</p>
   </div>
+  <p class="muted" id="asof"></p>
 </div>
 </div>
 </main>
@@ -7086,9 +7113,13 @@ function toolRow(o){
   var fig=(o.num===null||o.num===undefined)
     ? '<div class="tool-num na">'+o.unit+'</div>'
     : '<div class="tool-num"><span class="n">'+o.num+'</span>'+o.unit+'</div>';
+  // o.sub takes a string or an array: each entry is its own week-scoped line
+  // (the funnel line under Analytics is the second), while o.note stays the
+  // single standing-totals line.
+  var subs=o.sub?(Array.isArray(o.sub)?o.sub:[o.sub]):[];
   return '<div class="tool"><a class="tool-name" href="'+o.href+'"'+(o.ext?' target="_blank" rel="noopener"':"")+'>'+o.name+'</a>'+
     '<div class="tool-body">'+fig+
-    (o.sub?'<div class="tool-sub">'+o.sub+'</div>':"")+
+    subs.map(function(t){return '<div class="tool-sub">'+t+'</div>';}).join("")+
     (o.note?'<div class="tool-note">'+o.note+'</div>':"")+
     '</div></div>';
 }
@@ -7102,16 +7133,27 @@ function render(d){
   // rather than as news.
   var an={href:"/admin",name:"Analytics",num:null,unit:"Search activity is unavailable."};
   if(a&&a.searches7d&&typeof a.searches7d.total==="number"){
-    an.num=a.searches7d.total;
-    an.unit=noun(a.searches7d.total,"search","searches")+" this week";
-    an.sub=a.searches7d.billed+" billed, "+a.searches7d.cached+" from cache";
-    if(typeof a.searches7d.cost==="number")an.sub+=" · $"+a.searches7d.cost.toFixed(2)+" estimated spend";
+    var w=a.searches7d;
+    an.num=w.total;
+    // The prior week rides the figure line in parentheses — direction without
+    // a second numeral competing at figure size.
+    an.unit=noun(w.total,"search","searches")+" this week"+
+      (typeof w.prevTotal==="number"?" ("+w.prevTotal+" last week)":"");
+    var s1=w.billed+" billed, "+w.cached+" from cache";
+    if(typeof w.cost==="number")s1+=" · $"+w.cost.toFixed(2)+" estimated spend";
+    an.sub=[s1];
+    // The signup funnel, same 7-day window: this is the number the guest
+    // gate exists to move, and the page couldn't answer it before.
+    var f=a.funnel7d;
+    if(f)an.sub.push(plural(f.signups,"signup","signups")+" · "+plural(f.leads,"lead","leads")+" · "+
+      plural(f.gated,"visitor hit","visitors hit")+" the sign-in gate");
     var st=[];
     if(typeof a.leads==="number")st.push(plural(a.leads,"lead","leads")+" all time");
-    // db===false is "review needs Supabase"; a null source is a failed read and
-    // says nothing here rather than blaming the wrong thing.
-    if(s&&s.db===true&&typeof s.pending==="number")st.push(plural(s.pending,"broker comp","broker comps")+" awaiting review");
-    else if(s&&s.db===false)st.push("broker review needs Supabase");
+    // Pending broker comps moved up to the attention line (renderAlerts) —
+    // they're work awaiting a human, not a footnote. Only the can't-review
+    // state stays here. A null source is a failed read and says nothing
+    // rather than blaming the wrong thing.
+    if(s&&s.db===false)st.push("broker review needs Supabase");
     if(st.length)an.note=st.join(" · ");
   }
   rows.push(toolRow(an));
@@ -7138,7 +7180,8 @@ function render(d){
     rv.num=r.active;
     rv.unit=noun(r.active,"active subscription","active subscriptions");
     rv.sub=r.founding+" of "+r.foundingLimit+" founding seats taken";
-    var rn=[plural(r.purchases,"report unlock","report unlocks")+(r.purchases7d?" ("+r.purchases7d+" this week)":"")];
+    var rn=[plural(r.purchases,"report unlock","report unlocks")+
+      ((r.purchases7d||r.purchasesPrev7)?" ("+r.purchases7d+" this week, "+r.purchasesPrev7+" last)":"")];
     if(r.atRisk)rn.push(plural(r.atRisk,"subscription","subscriptions")+" in payment grace");
     rv.note=rn.join(" · ");
   } else if(r&&r.db===false){
@@ -7148,8 +7191,11 @@ function render(d){
   el("tools").innerHTML=rows.join("");
 }
 // One red line per firing alarm, nothing when healthy. Wording mirrors
-// /admin's banners, which hold the detail and the fix.
-function renderAlerts(al){
+// /admin's banners, which hold the detail and the fix. Takes the whole
+// snapshot, not just d.alerts: the neutral attention line (work awaiting a
+// human) reads from d.submissions and renders after every red line.
+function renderAlerts(d){
+  var al=d&&d.alerts,s=d&&d.submissions;
   var out=[];
   var up=al&&al.upstream,co=al&&al.corpus;
   if(up&&up.failures){
@@ -7166,7 +7212,18 @@ function renderAlerts(al){
       ? 'The daily search cap is exhausted ('+cap.limit+'): visitors get a 429 until midnight UTC. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Raise DAILY_SEARCH_CAP on Render</a>'
       : cap.used+' of '+cap.limit+' billed searches used today; at the cap visitors get a 429 until midnight UTC. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Raise DAILY_SEARCH_CAP on Render</a>');
   }
-  el("alerts").innerHTML=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
+  // Pro switched on but audience-restricted: live yet unbuyable, and nothing
+  // else on any page looks unhealthy. Red because it IS a wrong state in
+  // production — during a deliberate test window the owner knows why.
+  if(al&&al.audience){
+    out.push('Pro is limited to '+plural(al.audience,"allowlisted account","allowlisted accounts")+
+      ' &mdash; the public cannot reach checkout. <a href="https://dashboard.render.com" target="_blank" rel="noopener">Unset PRO_AUDIENCE on Render to go live</a>');
+  }
+  var html=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
+  if(s&&s.db===true&&s.pending){
+    html+='<div class="attn">'+plural(s.pending,"broker comp is","broker comps are")+' awaiting review. <a href="/admin">Review on Analytics</a></div>';
+  }
+  el("alerts").innerHTML=html;
 }
 // Built AFTER the gate passes. In a cookie-unlocked session the links are
 // plain hrefs — the cn_admin cookie rides along with the click and no key
@@ -7186,7 +7243,12 @@ function load(key){
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
   }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){}
-    grantAdminAccess(key);}render(d);renderAlerts(d.alerts);renderDls(key);
+    grantAdminAccess(key);}render(d);renderAlerts(d);renderDls(key);
+    // A tab left open shows stale numbers; the stamp says so and the link
+    // re-fetches in place (same key or cookie session as this load).
+    el("asof").innerHTML="Updated "+esc(new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))+
+      ' &middot; <a href="#" id="rf">Refresh</a>';
+    el("rf").addEventListener("click",function(e){e.preventDefault();load(key);});
     el("err").textContent="";el("gate").style.display="none";el("hub").style.display="block";})
   .catch(function(e){el("err").textContent=e.message;
     el("gate").style.display="block";el("hub").style.display="none";});

@@ -416,12 +416,14 @@ module.exports = {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node --test test/broker-leads.test.js`
-Expected: PASS, 11 tests.
+Expected: PASS (all tests in the file).
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `node --test`
-Expected: 181 pass (170 existing + 11 new), 0 fail.
+Expected: 170 existing + the new file's tests, 0 fail. (Post-review the module
+also exports `isCanonicalMarket`, `anonymizeLead` routes sizes through
+`cleanSizeSqft`, and `notifyTargets` only returns UUID-shaped ids.)
 
 - [ ] **Step 6: Commit**
 
@@ -675,8 +677,9 @@ Insert directly after the helper (still before the vault block):
           const canonical = marketOf(String(market || ""));
           // marketOf falls back to echoing text with no recognizable state;
           // require the canonical "City, ST" shape so junk cannot become a
-          // coverage key that matches nothing forever.
-          if (!/^.+, [A-Z]{2}$/.test(canonical)) {
+          // coverage key that matches nothing forever. One tested rule
+          // (broker-leads.js) governs every writer.
+          if (!LEADSVC.isCanonicalMarket(canonical)) {
             return sendJson(res, 400, { error: 'Enter a market as "City, ST" (for example "Boise, ID").' });
           }
           if (!VAULT.PROPERTY_TYPES.includes(String(property_type || ""))) {

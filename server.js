@@ -3435,8 +3435,25 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // NOT be cleared right after the await, or the whole read loop would run
   // unguarded and a wedged upstream would hang forever. It is cleared in the
   // finally that wraps the reading, further down.
-  const timer = setTimeout(() => controller.abort(), searchTimeoutMsFor(searchUses, body.max_tokens));
-  const timedOut = () => new Error("The search took too long and was stopped. Please try again.");
+  const callDeadlineMs = searchTimeoutMsFor(searchUses, body.max_tokens);
+  const timer = setTimeout(() => controller.abort(), callDeadlineMs);
+  // Two very different failures used to raise the SAME error with no way to
+  // tell them apart, in the message OR in the log:
+  //   deadline — the call really did run past its whole derived budget
+  //   idle     — upstream went silent for STREAM_IDLE_MS mid-call
+  // They have opposite fixes (a budget too small vs a watchdog too twitchy),
+  // and a customer-visible report search that dies is ALREADY BILLED, so
+  // guessing wrong is expensive. The visitor still reads one plain sentence;
+  // the cause goes to the log and rides on .timeoutCause for the analytics.
+  const timedOut = (cause) => {
+    const waited = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.error(cause === "idle"
+      ? `Anthropic call [${lane}] ABORTED: no data for ${STREAM_IDLE_MS / 1000}s (idle watchdog) after ${waited}s. The call may have been alive and billed.`
+      : `Anthropic call [${lane}] ABORTED: exceeded its ${(callDeadlineMs / 1000).toFixed(0)}s deadline after ${waited}s.`);
+    const e = new Error("The search took too long and was stopped. Please try again.");
+    e.timeoutCause = cause;
+    return e;
+  };
   let r;
   try {
     r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -3451,7 +3468,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     });
   } catch (err) {
     clearTimeout(timer);
-    if (err && err.name === "AbortError") throw timedOut();
+    if (err && err.name === "AbortError") throw timedOut("deadline");
     throw err;
   }
 
@@ -3558,7 +3575,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
         }
       }
     } catch (err) {
-      if ((err && err.name === "AbortError") || (err && err.message === "__idle__")) throw timedOut();
+      if (err && err.message === "__idle__") throw timedOut("idle");
+      if (err && err.name === "AbortError") throw timedOut("deadline");
       throw err;
     } finally {
       clearTimeout(timer);
@@ -8167,6 +8185,25 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, gate(result));
       } catch (err) {
         console.error("Error handling /api/comps:", err);
+        // A failed search used to leave NO trace: logEvent fires on the success
+        // and cache-hit paths only, so a visitor hitting an error was invisible
+        // in /admin and the failure RATE was unknowable. "How often does this
+        // happen?" is the first question asked when one is reported, and it
+        // could not be answered. PII-free like every other event; `source`
+        // carries the timeout cause so the two aborts stay distinguishable
+        // here too, not just in the Render log.
+        // Re-read from the raw body: addressOk/typeOk are declared INSIDE the
+        // try above, so they are not in scope here. Wrapped, because a failure
+        // to describe a failure must never become a second failure.
+        try {
+          const failed = JSON.parse(body || "{}");
+          logEvent("search_failed", {
+            prop_type: String(failed.type || ""),
+            market: marketOf(String(failed.address || "")),   // logEvent shapes this to "City, ST" or drops it
+            cached: false,
+            source: (err && err.timeoutCause) || "error",
+          });
+        } catch (_) { /* unparseable body, or the logger is down; the response below still goes out */ }
         // The log above keeps the full upstream detail; the browser gets only
         // what clientErrorMessage() allows (see the upstream-health note).
         const msg = clientErrorMessage(err);

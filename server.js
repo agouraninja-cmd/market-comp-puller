@@ -7312,7 +7312,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("covRow").innerHTML=cov.length?cov.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
       return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
-        ' <button data-cov="'+esc(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        ' <button data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
         '" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
     }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add one below, or submit comps to earn them.</span>';
   }
@@ -7326,9 +7326,9 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("leadRows").innerHTML=leads.map(function(l){
       var btn=l.intro_requested
         ? '<button class="pubbtn on" disabled>Intro requested</button>'
-        : '<button class="pubbtn" data-intro="'+esc(l.id)+'">Request introduction</button>';
+        : '<button class="pubbtn" data-intro="'+escA(l.id)+'">Request introduction</button>';
       return "<tr><td>"+esc(String(l.ts||"").slice(0,10))+"</td><td>"+esc(l.market)+"</td><td>"+esc(l.type)+
-        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"\\u2014")+"</td><td>"+btn+"</td></tr>";
+        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"")+"</td><td>"+btn+"</td></tr>";
     }).join("");
   }
   $("covType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
@@ -8231,6 +8231,11 @@ const server = http.createServer((req, res) => {
               const suppressKey = `${u.id}|${market}|${lead.type}`;
               if (now - (BROKER_ALERT_SUPPRESS.get(suppressKey) || 0) < BROKER_ALERT_WINDOW_MS) continue;
               BROKER_ALERT_SUPPRESS.set(suppressKey, now);
+              if (BROKER_ALERT_SUPPRESS.size > 1000) {
+                for (const [k, v] of BROKER_ALERT_SUPPRESS) {
+                  if (now - v >= BROKER_ALERT_WINDOW_MS) BROKER_ALERT_SUPPRESS.delete(k);
+                }
+              }
               sendOutboundEmail(u.email, `New BOV request in your market: ${line}`, [
                 `A property owner just requested a Broker Opinion of Value in a market you cover.`,
                 ``,
@@ -8793,6 +8798,9 @@ const server = http.createServer((req, res) => {
   if (req.url.split("?")[0] === "/api/broker/coverage") {
     if (req.method === "GET") {
       (async () => {
+        if (rateLimited("bcov:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
         const user = await requireBroker(req, res);
         if (!user) return;
         try {
@@ -8989,8 +8997,13 @@ const server = http.createServer((req, res) => {
         // touching the DB — the regex already fails on "", so a separate
         // emptiness check is dead code.
         if (!/^\d+$/.test(leadId)) return sendJson(res, 400, { error: "Missing lead_id." });
+        // The intro gate accepts exactly what the inbox shows: same source,
+        // same window — so a sequential-id probe can't fire owner emails for
+        // leads outside the product's own contract.
+        const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const lead = ((await sbRequest("GET",
-          `leads?id=eq.${encodeURIComponent(leadId)}&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+          `leads?id=eq.${encodeURIComponent(leadId)}&source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
         if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
         // No requesting introductions to leads outside your coverage — the
         // same rule that decides what the inbox shows decides what you can

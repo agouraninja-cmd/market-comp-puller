@@ -8700,7 +8700,7 @@ const server = http.createServer((req, res) => {
           // rows the list (and Task 6's matcher) silently truncates away.
           const count = ((await sbRequest("GET",
             `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=201`)) || []).length;
-          if (count > 200) {
+          if (count >= 200) {
             return sendJson(res, 400, { error: "Coverage is capped at 200 markets. Remove one to add another." });
           }
           // ON CONFLICT DO NOTHING: a duplicate keeps the row as found, which

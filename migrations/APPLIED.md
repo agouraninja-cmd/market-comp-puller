@@ -23,6 +23,7 @@ exists in production.
 | 011-guest-search-quota.sql | applied 2026-08-03 | "already run in prod" per server.js/CLAUDE.md |
 | 012-search-timings.sql | applied 2026-08-04 | run + verified via Chrome (information_schema returned all 4 columns); re-confirmed 2026-08-05 by `verify.js` |
 | 013-broker-vault.sql | applied 2026-08-05 | run in the SQL editor by the owner; `verify.js` reports the full schema present, and a probe insert confirmed all 28 columns and types are accepted by the live table |
+| 014-vault-publish-link.sql | applied 2026-08-05 | run with 013 during broker-vault v1; `verify.js` checks broker_comps.published_submission_id and reported it present (HANDOFF-2026-08-05-broker-tier) |
 
 ## Verification
 
@@ -39,7 +40,7 @@ by the migration that creates it.
 table-existence check: `comp_corpus` existed throughout, ten *columns* were
 missing, every insert 400'd for weeks. `verify.js` asks about both.
 
-Last run 2026-08-05: everything through 012 present; only 013 outstanding.
+Last run 2026-08-05: everything through 014 present; 015 is written but NOT yet run.
 
 Not in CI, deliberately — CI holds no secrets, by design, so that a fork PR
 cannot exfiltrate one. This is a local command run around a schema deploy.

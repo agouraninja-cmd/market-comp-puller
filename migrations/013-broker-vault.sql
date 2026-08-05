@@ -29,6 +29,19 @@
 -- gen-market-seed.js, not /api/corpus-comps.
 --
 -- ---------------------------------------------------------------------------
+-- SCOPE: this is v1 STORAGE, not the analytics model
+-- ---------------------------------------------------------------------------
+-- Two plain tables, flat, with no dimension tables and no joins. The broker
+-- data model proper — the star schema in Ecosystem Plan §6 — is Jacob and
+-- Chuck's, and nothing here is meant to pre-empt it. This exists only so the
+-- upload feature has somewhere to put a row.
+--
+-- WHAT THAT MEANS FOR THAT WORK: the vault writes to `broker_comps` with the
+-- columns below. Their design can adopt this table, read from it, or replace
+-- it — replacing it is cheap while the row count is small, which is the whole
+-- reason to say so here rather than let it be discovered later.
+--
+-- ---------------------------------------------------------------------------
 -- WHY REAL TYPES HERE, WHEN comp_corpus IS ALL text
 -- ---------------------------------------------------------------------------
 -- comp_corpus stores everything as text because it arrives from a language
@@ -37,12 +50,9 @@
 -- they do not parse, so this table can hold real numeric/date types.
 --
 -- That is not tidiness, it is the dashboard: sorting a text column puts
--- "1,000,000" before "900,000", and "median $/SF by market by quarter" is a
--- one-line query against numeric+date and a data-cleaning project against text.
--- Ecosystem Plan §6 asked for the broker layer to be designed star-style from
--- day one; clean dimension keys and real measures are the part of that which
--- genuinely costs nothing today. Dimension TABLES can be added later without
--- touching this fact table.
+-- "1,000,000" before "900,000". Storing a price as numeric and a date as date
+-- is the minimum for the table to sort correctly, and it is independent of
+-- whatever shape the analytics layer eventually takes.
 
 -- One row per import, so a broker who uploads the wrong file undoes it in one
 -- action instead of forty. Deleting the batch cascades to its comps.
@@ -56,7 +66,7 @@ create table broker_uploads (
 );
 create index on broker_uploads (user_id, created_at desc);
 
--- The fact table. One row per comp transaction.
+-- One row per comp a broker has uploaded.
 create table broker_comps (
   id uuid primary key default gen_random_uuid(),
   -- The owning broker. Every read is scoped by this; a broker must not see
@@ -64,7 +74,7 @@ create table broker_comps (
   user_id uuid not null references users(id) on delete cascade,
   upload_id uuid references broker_uploads(id) on delete cascade,
 
-  -- --- dimension keys ------------------------------------------------------
+  -- --- what the comp is about ----------------------------------------------
   -- `market` MUST be written with server.js's own marketOf() and no other
   -- parse. It is deliberately the same canonical form the public corpus uses
   -- ("Ontario, CA" — title-case city, uppercase state) so that a comp

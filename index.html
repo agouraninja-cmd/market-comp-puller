@@ -2735,7 +2735,14 @@
   // Read an SSE body. Returns the final report, or throws with the same
   // {error} message shape the plain-JSON path produces, so the caller's
   // existing error card handles both identically.
-  async function readProgressStream(res, ctx) {
+  // Parses the SSE frames from a streaming endpoint and returns the final
+  // `result` payload. Both optional arguments are defaulted to the report
+  // path's behavior, so /api/comps' call site is untouched; the Market
+  // Explorer passes its own compact applier and its own drop message. One
+  // parser, two callers — a second copy would be a third hand-synced pair in
+  // a file that already carries two.
+  async function readProgressStream(res, ctx, onProgress = applyProgress,
+    dropMessage = "The connection dropped before the report finished. Please try again.") {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -2759,7 +2766,7 @@
         if (event === "progress") {
           if (!ctx.sawProgress) { ctx.sawProgress = true; stopFakeProgress(); }
           ctx.lastAt = Date.now();
-          applyProgress(payload, ctx);
+          onProgress(payload, ctx);
         } else if (event === "result") {
           result = payload;
         } else if (event === "error") {
@@ -2769,7 +2776,7 @@
     }
     // A stream that ends with neither result nor error means the connection
     // dropped; without this the loading card would sit there forever.
-    if (!result) throw new Error("The connection dropped before the report finished. Please try again.");
+    if (!result) throw new Error(dropMessage);
     return result;
   }
 
@@ -7118,6 +7125,54 @@
       resultsEl.classList.add("hidden");
       resultsEl.innerHTML = "";
     };
+    // Live build progress, rendered into the dropdown itself rather than the
+    // report loading card: this is a small surface and the owner's standing
+    // preference is against busy UI. A headline, one detail line, a hairline
+    // bar. No per-comp rows.
+    const exploreProgressHtml = (type, city, state) =>
+      `<div class="fade-in px-3 py-2">` +
+      `<div id="exploreProgHead" class="text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot…</div>` +
+      `<div id="exploreProgDetail" class="mt-0.5 truncate text-[12.5px] text-[#8A93A0]">Usually 30–60 seconds.</div>` +
+      `<div class="mt-2 h-0.5 overflow-hidden rounded bg-slate-200">` +
+      `<div id="exploreProgBar" class="h-full bg-[#B91C1C] transition-all duration-700" style="width:6%"></div></div>` +
+      `</div>`;
+    // The Explorer asks for 8 comps over 24 months, a shorter payload than the
+    // report path's 12, so the bar is scaled to its own draft size.
+    const EXPLORE_DRAFT_CHARS = 7500;
+    let exploreComps = 0;
+    const applyExploreProgress = (evt) => {
+      if (!evt || !evt.phase) return;
+      const head = document.getElementById("exploreProgHead");
+      const detail = document.getElementById("exploreProgDetail");
+      const bar = document.getElementById("exploreProgBar");
+      if (!head || !detail) return;   // dropdown was replaced mid-stream
+      const aim = (pct) => { if (bar) bar.style.width = Math.max(6, Math.min(97, pct)) + "%"; };
+      if (evt.phase === "start") {
+        head.textContent = "Searching recent sales…";
+        aim(12);
+      } else if (evt.phase === "search") {
+        head.textContent = "Searching recent sales…";
+        // Model-written text: textContent only, never innerHTML.
+        detail.textContent = String(evt.query || "").replace(/\s+/g, " ").trim().slice(0, 70) || `search ${evt.n}`;
+        aim(20 + evt.n * 5);
+      } else if (evt.phase === "results") {
+        if (evt.count) detail.textContent = `${evt.count} results to review`;
+        aim(48);
+      } else if (evt.phase === "writing") {
+        head.textContent = "Building the page…";
+        detail.textContent = "Reading sale prices and sizes";
+        aim(55);
+      } else if (evt.phase === "drafting") {
+        aim(50 + Math.min(45, (evt.chars / EXPLORE_DRAFT_CHARS) * 45));
+      } else if (evt.phase === "comp") {
+        exploreComps++;
+        detail.textContent = `${exploreComps} recent sale${exploreComps === 1 ? "" : "s"} found`;
+      } else if (evt.phase === "retry") {
+        head.textContent = "The results came back oddly, rechecking…";
+        detail.textContent = "";
+        exploreComps = 0;   // attempt 2 finds its own comps
+      }
+    };
     // "industrial Boise ID" -> {type, city, state}; otherwise {reason} for a hint row.
     const parseExploreQuery = (q) => {
       let tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
@@ -7132,33 +7187,71 @@
       if (!type) return { reason: "no-type", city, state };
       return { type: cap(type), city, state };
     };
-    const explore = ({ type, city, state }) => {
-      exploring = false; // allow the swap below, then lock
+    // Re-shown on every failure, so the visitor always has a worked example.
+    const exploreHintRow =
+      `<div class="px-3 py-1.5 text-[#8A93A0]">Adjust the search and try again, e.g. “industrial Boise ID”</div>`;
+    const exploreFail = (msg) => {
+      exploring = false;
+      input.readOnly = false;
+      resultsEl.removeAttribute("aria-busy");
       resultsEl.innerHTML =
-        `<div class="fade-in px-3 py-2 text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot, ` +
-        `checking recent sales. Usually 30–60 seconds.</div>`;
+        `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">${escq(msg)}</div>` + exploreHintRow;
+    };
+    const explore = async ({ type, city, state }) => {
+      exploring = false; // allow the swap below, then lock
+      exploreComps = 0;
+      resultsEl.innerHTML = exploreProgressHtml(type, city, state);
       resultsEl.classList.remove("hidden");
+      resultsEl.setAttribute("aria-busy", "true");
       exploring = true;
-      input.disabled = true;
-      fetch("/api/explore-market", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-app-password": getStoredPassword() },
-        body: JSON.stringify({ type, city, state }),
-      })
-        .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
-        .then(({ ok, data }) => {
-          if (ok && data.url) { window.location.href = data.url; return; }
-          exploring = false;
-          input.disabled = false;
-          resultsEl.innerHTML =
-            `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">${escq(data.error || "Something went wrong. Please try again.")}</div>` +
-            `<div class="px-3 py-1.5 text-[#8A93A0]">Adjust the search and try again, e.g. “industrial Boise ID”</div>`;
-        })
-        .catch(() => {
-          exploring = false;
-          input.disabled = false;
-          resultsEl.innerHTML = `<div class="fade-in px-3 py-1.5 text-[#B91C1C]">Connection lost. Please try again.</div>`;
+      // readOnly, not disabled: a disabled element loses focus mid-flow and
+      // drops the screen reader's place. This keeps both while still refusing
+      // edits that the `exploring` guard would silently swallow anyway.
+      input.readOnly = true;
+      try {
+        const res = await fetch("/api/explore-market", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-app-password": getStoredPassword() },
+          body: JSON.stringify({ type, city, state, stream: true }),
         });
+        if (!res.ok) {
+          let payload = null;
+          try { payload = await res.json(); } catch (_) {}
+          // The guest cap answers signin_required — an ask, not an error, so it
+          // gets the account modal rather than the red row (same as /api/comps).
+          if (payload && payload.signin_required) {
+            exploring = false;
+            input.readOnly = false;
+            // hide() empties the dropdown but leaves attributes behind, and a
+            // stale aria-busy would mute every later match list to a reader.
+            resultsEl.removeAttribute("aria-busy");
+            guestSearch = guestSearch || { limit: 1, used: 1 };
+            guestSearch.used = guestSearch.limit;
+            renderGuestSearchHint();
+            hide();
+            openAcctModal("signup",
+              "You've used your free search. Create a free account to explore any market. It's free, no card needed.");
+            return;
+          }
+          throw new Error((payload && payload.error) || `Request failed (${res.status}).`);
+        }
+        // Read the body off the response's content-type, NEVER off the fact we
+        // asked to stream: a cache hit answers as plain JSON on purpose.
+        const ct = res.headers.get("content-type") || "";
+        const data = ct.includes("text/event-stream") && res.body && res.body.getReader
+          ? await readProgressStream(res, { sawProgress: false, lastAt: Date.now() }, applyExploreProgress,
+              "The connection dropped before the market page finished. Please try again.")
+          : await res.json();
+        if (data && data.url) { window.location.href = data.url; return; }
+        throw new Error("Something went wrong. Please try again.");
+      } catch (err) {
+        console.error(err);
+        // A dropped connection surfaces as a TypeError from fetch, whose
+        // message ("Failed to fetch") is browser jargon — keep the old copy.
+        exploreFail(err instanceof TypeError
+          ? "Connection lost. Please try again."
+          : (err.message || "Something went wrong. Please try again."));
+      }
     };
     const render = () => {
       if (exploring) return;

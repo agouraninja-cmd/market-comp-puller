@@ -30,6 +30,13 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+// Corpus audit — the structural integrity rules for the comp corpus. It also
+// owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
+// which USED to live inline below: the audit has to detect rows that predate a
+// tightening of that rule, and a second copy would be one more mirrored pair to
+// keep in sync (this repo already carries one, compWeight, and it has a ⚠).
+const AUDIT = require("./corpus-audit");
+const { isAggregateAddress } = AUDIT;
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -1453,6 +1460,41 @@ async function corpusRowsForMarket(market, property_type, limit) {
     .slice(0, limit);
 }
 
+// Whole-corpus read for the audit: no market or type filter, newest first,
+// hard-capped. Selects only the columns the audit reads, deliberately NOT
+// ALL_TYPE_COMP_FIELDS — a missing per-type column is exactly what froze the
+// corpus for weeks in July, and the integrity report is the last thing that
+// should go dark when that happens again.
+async function readCorpusRowsForAudit(limit) {
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        "comp_corpus?select=ts,market,property_type,address,deal_date," +
+        `price_or_rate,price_per_sqft,source_url,source_type&order=ts.desc&limit=${limit}`) || [];
+    } catch (e) { noteCorpusFailure("read", e); }
+  }
+  const fileRows = await readRowsFromFile(COMP_CORPUS_FILE);
+  return [...dbRows, ...fileRows].slice(0, limit);
+}
+
+// Memoized 60s, following /api/pricing: this is a whole-table read, and
+// /admin is refreshed by hand rather than polled.
+const CORPUS_AUDIT_LIMIT = 2000;
+let CORPUS_AUDIT_CACHE = { at: 0, data: null };
+async function corpusAuditReport() {
+  if (CORPUS_AUDIT_CACHE.data && Date.now() - CORPUS_AUDIT_CACHE.at < 60_000) {
+    return CORPUS_AUDIT_CACHE.data;
+  }
+  const rows = await readCorpusRowsForAudit(CORPUS_AUDIT_LIMIT);
+  // parseDealDate is INJECTED rather than reimplemented so the audit and
+  // corpus-first retrieval can never disagree about what counts as a usable
+  // date. A row this call flags is exactly a row retrieval cannot see.
+  const data = AUDIT.auditCorpus(rows, { now: Date.now(), parseDealDate });
+  CORPUS_AUDIT_CACHE = { at: Date.now(), data };
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Corpus-first retrieval (cost saver). On a cache miss, before paying for a
 // fresh web search, pull comps we already harvested for this market+type. When
@@ -2087,18 +2129,11 @@ let corpusSeenSeeded = false;
 // the model sometimes pads the comp list with rows like "Pittsburgh Metro
 // Multifamily - Market Median Benchmark".
 //
-// Deliberately keyed on aggregate VOCABULARY, not on address shape: plenty of
-// genuine small multifamily and retail comps are listed without a street
-// number ("Highland Park Triplex, Pittsburgh, PA 15206", "Swissvale Triplex
-// (near Edgewood Town Center)"), so requiring one would discard real data.
-// Street names survive too — "123 Market St" has no aggregate word, while
-// "Market Median" does.
-const AGGREGATE_ADDRESS_RE =
-  /\b(benchmark|median|average|avg|composite|index|market (report|data|summary|stats?|statistics)|year[\s-]end (summary|report))\b/i;
-
-function isAggregateAddress(address) {
-  return AGGREGATE_ADDRESS_RE.test(String(address || ""));
-}
+// isAggregateAddress now lives in corpus-audit.js (imported at the top of this
+// file) so the live normalization and the audit share ONE copy of the rule.
+// The reasoning behind it is preserved there: it is keyed on aggregate
+// VOCABULARY rather than address shape, because genuine small multifamily and
+// retail comps are often listed without a street number.
 
 function corpusKeyOf(c) {
   const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -2753,31 +2788,22 @@ function stripEmDashes(value) {
 // source_type drives a trust badge and lands in CSV exports, so stray model
 // values are coerced onto the enum. Unknown maps to "estimate": the label may
 // under-claim a comp's provenance, never over-claim it.
-const SOURCE_TYPES = ["public_record", "listing", "news", "estimate"];
+// Both halves of the rule (coerce onto the enum, then ENFORCE the
+// individual-property requirement) live in corpus-audit.js as
+// enforcedSourceType. The enforcement matters as much as the coercion: the
+// prompt already forbids market-level rows as comps, but in thin markets the
+// model pads anyway (a Boston report shipped "Financial District (general
+// submarket estimate)" rows claiming listing provenance), and a prompt rule is
+// a request while normalization is a guarantee.
+//
+// It is shared with the audit rather than duplicated so the audit can flag
+// rows harvested BEFORE a tightening of this rule — the corpus has them, and
+// corpus-first retrieval still serves them.
 function normalizeSourceTypes(parsed) {
   if (!parsed || !Array.isArray(parsed.comps)) return parsed;
   for (const c of parsed.comps) {
     if (!c || typeof c !== "object") continue;
-    const raw = String(c.source_type || "").toLowerCase();
-    c.source_type =
-      SOURCE_TYPES.find((t) => raw === t) ||
-      (/record|assessor|deed|tax|county|public/.test(raw) ? "public_record"
-        : /list|broker|flyer|loopnet|crexi|costar/.test(raw) ? "listing"
-        : /news|article|press|announc/.test(raw) ? "news"
-        : "estimate");
-    // ENFORCEMENT, not just prompting: the prompt already forbids market-
-    // level rows as comps, but in thin markets the model pads anyway (a
-    // Boston report shipped "Financial District (general submarket
-    // estimate)" rows claiming listing provenance). A comp whose address
-    // has no leading street number, or that names a statistic, cannot be
-    // one verifiable transaction — force its badge to "estimate" so the
-    // report can never present a submarket guess as a sourced deal. Same
-    // under-claim principle as above; the Verified badge (broker-matched,
-    // separate flag) is unaffected.
-    if (c.source_type !== "estimate" &&
-        (!/^\s*\d+\s+\S/.test(String(c.address || "")) || isAggregateAddress(c.address))) {
-      c.source_type = "estimate";
-    }
+    c.source_type = AUDIT.enforcedSourceType(c.source_type, c.address);
   }
   return parsed;
 }
@@ -5545,6 +5571,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">View analytics</button><div id="err" class="err"></div></div>
 <div id="dash" style="display:none"></div>
+<div id="auditPanel"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -5696,6 +5723,42 @@ function renderSubs(d,key){
     });
   });
 }
+// Corpus integrity. Neutral ink even at a low score: red is reserved on this
+// page for the two outright-failure banners (upstream down, corpus not
+// persisting). This reports a standing condition, not an outage.
+var AUDIT_LABELS={weak_citation:"Citation does not name the property",
+  badge_drift:"Badge stronger than today's rule allows",
+  shared_citation:"Same source cited by different addresses",
+  unparseable_date:"Date will not parse, so retrieval cannot see it",
+  no_price:"No usable price"};
+function renderAudit(d){
+  var el=document.getElementById("auditPanel");
+  if(!d||d.error){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>Unavailable right now — the corpus could not be read. Nothing else on this page is affected.</p></div>";return;}
+  if(!d.total){el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p class=muted>No corpus rows yet.</p></div>";return;}
+  var f=d.findings||{},h=d.hosts||{};
+  var lines=Object.keys(AUDIT_LABELS).map(function(k){
+    return "<p class=muted>"+esc(f[k]||0)+" &middot; "+esc(AUDIT_LABELS[k])+"</p>";}).join("");
+  var rows=(d.worst||[]).map(function(w){
+    return "<p class=muted style='word-break:break-word'><b>"+esc(w.address)+"</b> ("+
+      esc(w.property_type||"?")+", badge "+esc(w.source_type||"?")+")<br>"+
+      esc((w.findings||[]).join(", "))+"<br>"+esc(w.source_url)+"</p>";}).join("");
+  el.innerHTML="<div class=card><h2>Corpus integrity</h2>"+
+    "<p><b>"+Math.round(d.score*100)+"%</b> of "+esc(d.total)+" rows carry no structural finding.</p>"+
+    "<p class=muted>This measures CITATION quality, not accuracy. It checks that a comp's source link "+
+    "names the property; it never reads the page, and it is not the 90% accuracy gate.</p>"+
+    lines+
+    "<p class=muted>"+esc(h.blocked||0)+" of "+esc(d.total)+" rows cite hosts that block automated reading. "+
+    "That is context only and does not affect the score.</p>"+
+    (rows?"<h2 style='margin-top:12px'>Worst rows</h2>"+rows:"");
+}
+function loadAudit(key){
+  fetch("/api/corpus-audit",{headers:{"x-admin-key":key}})
+    .then(function(r){if(!r.ok){throw new Error("audit "+r.status);}return r.json();})
+    .then(renderAudit)
+    .catch(function(e){console.error(e);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -5710,7 +5773,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -7028,12 +7091,85 @@ async function hqSnapshot() {
 // parallel sessions to collide, and this page shares no markup with the report
 // app anyway.
 //
-// The page itself is PUBLIC HTML with no secrets in it. Everything it shows
-// arrives from /api/vault, which is gated on canUseVault server-side, so
-// opening this URL without a broker subscription renders an empty shell and a
-// "part of the broker plan" note. There is no client-side check to bypass.
+// The page's DATA is resolved server-side before the HTML is sent, and baked
+// in as window.__VAULT_BOOT__, so the workspace renders in the same paint as
+// the title — the fetch-after-paint version spawned everything a beat late,
+// which the owner (rightly) read as a glitch. The gate is still canUseVault
+// server-side, applied in vaultReadPayload before any row is serialized;
+// there is no client-side check to bypass, and the page is no-store because
+// it now carries the signed-in viewer's own rows.
 // ---------------------------------------------------------------------------
-function renderVaultHTML() {
+// One answer to "what does this account's vault look like?", shaped as
+// { status, body } and never touching the response. Both readers share it:
+// GET /api/vault serializes it as JSON, GET /vault bakes it into the page.
+// Same three refusals, same order, as openVault: 401, 403, 503.
+//
+// The entitlement check and the two reads run CONCURRENTLY — the reads are
+// user-scoped and their rows leave this function only through the 200 branch
+// below the canUseVault test, so the parallelism changes latency, not what a
+// non-broker can see. allSettled keeps the refusal order honest: a Supabase
+// outage must not turn a 403 into a 502.
+async function vaultReadPayload(req, params) {
+  const user = await getSessionUser(req);
+  if (!user) return { status: 401, body: { error: "Not signed in." } };
+  const q = params || new URLSearchParams();
+  const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
+  const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
+  const market = (q.get("market") || "").trim().slice(0, 80);
+  const type = (q.get("type") || "").trim().slice(0, 40);
+
+  // Scoped by user_id FIRST and always. One broker must not see another
+  // broker's vault any more than the public may.
+  let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
+  if (market) query += `&market=eq.${encodeURIComponent(market)}`;
+  if (type && VAULT.PROPERTY_TYPES.includes(type)) {
+    query += `&property_type=eq.${encodeURIComponent(type)}`;
+  }
+  query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
+
+  const [entR, compsR, uploadsR] = await Promise.allSettled([
+    entitlementsFor(req),
+    DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
+    DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
+      `&order=created_at.desc&limit=100`) : Promise.resolve(null),
+  ]);
+  // entitlementsFor fails closed internally; if it somehow rejects, closed
+  // here too — an error must never open a vault.
+  const ent = entR.status === "fulfilled" ? entR.value : null;
+  if (!ent || !ent.canUseVault) {
+    return { status: 403, body: {
+      error: "The private vault is part of the broker plan.",
+      code: "broker_required",
+    } };
+  }
+  if (!DB_CONFIGURED) {
+    return { status: 503, body: {
+      error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+    } };
+  }
+  if (compsR.status === "rejected") throw compsR.reason;
+  if (uploadsR.status === "rejected") throw uploadsR.reason;
+  const rows = compsR.value || [];
+
+  return { status: 200, body: {
+    comps: rows,
+    uploads: uploadsR.value || [],
+    // The header line: "N comps · 0 published · visible only to you".
+    // The published count is the trust proof the whole tier rests on, so
+    // it is counted from the rows rather than assumed to be zero.
+    counts: {
+      returned: rows.length,
+      published: rows.filter((r) => r.published).length,
+    },
+    markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
+    types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
+  } };
+}
+
+function renderVaultHTML(boot) {
+  // </script> can never appear in the payload: every "<" is escaped, which is
+  // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
+  const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -7062,7 +7198,8 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
 .brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
-.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.brand svg{height:28px;width:28px;flex-shrink:0}
+.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
@@ -7124,7 +7261,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="/"><span class="wordmark">Comp<b>Ninja</b></span></a>
+  <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
   <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
 </div></header>
 <main><div class="wrap">
@@ -7184,6 +7321,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   </div>
 </div></main>
 <footer><div class="wrap">Private broker workspace &middot; CompNinja</div></footer>
+<script>window.__VAULT_BOOT__=${bootJson};</script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -7196,25 +7334,27 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 
   function gate(html){ $("gate").innerHTML=html; $("gate").className=""; $("app").className="hide"; }
 
+  function apply(o){
+    if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
+    if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
+      '<a href="/brokers">What brokers get</a></div>');
+    if(o.s!==200) return gate('<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not load your vault.")+'</div>');
+    $("gate").className="hide"; $("app").className="";
+    comps=o.j.comps||[];
+    $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
+    $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+    renderUploads(o.j.uploads||[]);
+    render();
+  }
+
   function load(){
     var q=[],m=$("fMarket").value,t=$("fType").value;
     if(m)q.push("market="+encodeURIComponent(m));
     if(t)q.push("type="+encodeURIComponent(t));
     fetch("/api/vault"+(q.length?"?"+q.join("&"):""),{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
-        if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
-          '<a href="/brokers">What brokers get</a></div>');
-        if(o.s!==200) return gate('<div class="msg bad">'+esc(o.j.error||"Could not load your vault.")+'</div>');
-        $("gate").className="hide"; $("app").className="";
-        comps=o.j.comps||[];
-        $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
-        $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
-        fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
-        renderUploads(o.j.uploads||[]);
-        render();
-      })
+      .then(apply)
       .catch(function(){ gate('<div class="msg bad">Could not reach the server. Please try again.</div>'); });
   }
 
@@ -7351,7 +7491,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       {method:"DELETE",credentials:"same-origin"}).then(load).catch(load);
   });
 
-  load();
+  // The server bakes the first answer into the page (window.__VAULT_BOOT__)
+  // so the workspace renders in the same paint as the title, with no fetch
+  // and no pop-in. load() remains the path for filter changes, post-upload
+  // refreshes, and the fallback when the boot payload could not be built.
+  var boot=window.__VAULT_BOOT__;
+  if(boot&&typeof boot.s==="number"){apply(boot);}else{load();}
 })();
 </script></body></html>`;
 }
@@ -8809,45 +8954,13 @@ const server = http.createServer((req, res) => {
 
     // The dashboard's read. Filters by market and by property type are the
     // "sortable by property and by market" promise from Ecosystem Plan §3.
+    // The whole answer — gate included — comes from vaultReadPayload, the
+    // same function GET /vault bakes into the page, so the two can't drift.
     if (req.method === "GET" && path === "/api/vault") {
       (async () => {
-        const user = await openVault();
-        if (!user) return;
         const q = new URL(req.url, "http://localhost").searchParams;
-        const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
-        const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
-        const market = (q.get("market") || "").trim().slice(0, 80);
-        const type = (q.get("type") || "").trim().slice(0, 40);
-
-        // Scoped by user_id FIRST and always. One broker must not see another
-        // broker's vault any more than the public may.
-        let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
-        if (market) query += `&market=eq.${encodeURIComponent(market)}`;
-        if (type && VAULT.PROPERTY_TYPES.includes(type)) {
-          query += `&property_type=eq.${encodeURIComponent(type)}`;
-        }
-        query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
-
-        const [comps, uploads] = await Promise.all([
-          sbRequest("GET", query),
-          sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
-            `&order=created_at.desc&limit=100`),
-        ]);
-        const rows = comps || [];
-
-        return sendJson(res, 200, {
-          comps: rows,
-          uploads: uploads || [],
-          // The header line: "N comps · 0 published · visible only to you".
-          // The published count is the trust proof the whole tier rests on, so
-          // it is counted from the rows rather than assumed to be zero.
-          counts: {
-            returned: rows.length,
-            published: rows.filter((r) => r.published).length,
-          },
-          markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
-          types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
-        });
+        const p = await vaultReadPayload(req, q);
+        sendJson(res, p.status, p.body);
       })().catch((err) => {
         console.error("vault read failed:", err.message);
         sendJson(res, 502, { error: "Could not load your vault. Please try again." });
@@ -10348,6 +10461,23 @@ const server = http.createServer((req, res) => {
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
     return;
   }
+  // Corpus integrity, gated exactly like /api/stats. REPORT-ONLY: it reads
+  // rows and changes nothing — no badge is corrected, nothing is withheld from
+  // retrieval. Fails SAFE: any error answers "unavailable" with a 200, because
+  // /admin is the page the owner opens when something else is already wrong,
+  // and this panel must never be what breaks it.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/corpus-audit") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const key = new URL(req.url, "http://localhost").searchParams.get("key");
+    if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
+    corpusAuditReport()
+      .then((data) => sendJson(res, 200, data))
+      .catch((err) => {
+        console.warn("Corpus audit failed:", err && err.message);
+        return sendJson(res, 200, { error: "unavailable" });
+      });
+    return;
+  }
   if (req.method === "GET" && req.url === "/admin") {
     // Third noindex layer alongside the page's own meta tag and the
     // robots.txt Disallow — belt-and-suspenders against a crawler that
@@ -10372,16 +10502,31 @@ const server = http.createServer((req, res) => {
       .catch((err) => { console.error("hq snapshot failed:", err); sendJson(res, 500, { error: "Could not load the overview." }); });
     return;
   }
-  // The broker vault page. noindex like the other logged-in tooling; the HTML
-  // itself carries no data — everything comes from /api/vault, which is where
-  // the entitlement is actually enforced.
+  // The broker vault page. noindex like the other logged-in tooling. The
+  // viewer's vault data is resolved HERE, before the HTML goes out, and baked
+  // into the page as a boot payload — one paint, no fetch-then-pop-in (the
+  // owner reported the two-phase version as a glitch). The entitlement gate
+  // is inside vaultReadPayload; no-store matters more than it used to, since
+  // the page now carries the signed-in viewer's own rows. If the payload
+  // can't be built, the page ships without one and falls back to fetching
+  // /api/vault exactly as it did before.
   if (req.method === "GET" && req.url.split("?")[0] === "/vault") {
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderVaultHTML());
+    (async () => {
+      let boot = null;
+      try {
+        const p = await vaultReadPayload(req, null);
+        boot = { s: p.status, j: p.body };
+      } catch (err) {
+        console.error("vault boot failed:", err.message);
+      }
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(renderVaultHTML(boot));
+    })();
+    return;
   }
 
   if (req.method === "GET" && req.url === "/hq") {

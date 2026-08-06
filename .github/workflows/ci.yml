@@ -67,6 +67,14 @@ jobs:
             sleep 0.5
           done
           curl -sf http://localhost:3199/healthz
-          # The home page must render, not just the health probe.
-          curl -sf http://localhost:3199/ | grep -qi "compninja" || { echo "home page did not render"; exit 1; }
+          # The landing page must render, not just the health probe.
+          #
+          # -L (follow redirects) is load-bearing since the account wall shipped:
+          # with ACCOUNT_WALL on (the default) an anonymous GET / answers 302 to
+          # /how-it-works, so an unfollowed request returns an empty body and
+          # this grep fails even though the app is perfectly healthy. That broke
+          # CI on main. Following the redirect asserts what actually matters —
+          # an anonymous visitor lands on a rendered CompNinja page — and holds
+          # whether the wall is on or off.
+          curl -sfL http://localhost:3199/ | grep -qi "compninja" || { echo "landing page did not render"; exit 1; }
           kill $SERVER_PID

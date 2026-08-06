@@ -98,7 +98,7 @@ test("bare environment", async (t) => {
   });
 
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
-    for (const p of ["/api/stats", "/api/leads"]) {
+    for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
       const r = await fetch(srv.base + p);
       assert.equal(r.status, 404, p + " should be disabled, not merely unauthorized");
     }
@@ -262,6 +262,43 @@ test("admin gating", async (t) => {
     const r = await fetch(srv.base + "/api/config", { headers: { "x-admin-key": ADMIN } });
     const cfg = await r.json();
     assert.notEqual(cfg.pro.isPro, true, "an anonymous key-holder must not resolve to Pro");
+  });
+
+  await t.test("/api/accuracy refuses without the admin key", async () => {
+    const r = await fetch(srv.base + "/api/accuracy");
+    assert.equal(r.status, 401);
+  });
+
+  await t.test("/api/accuracy accepts the admin key header", async () => {
+    const r = await fetch(srv.base + "/api/accuracy", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    // No Supabase in this test environment, so the corpus read falls back to
+    // comp-corpus.jsonl (git-ignored) — which on a fresh checkout is empty
+    // (belowFloor true, medianAbsError null) but on a dev machine that has
+    // run real searches may already hold enough rows to clear the floor.
+    // Either way the SHAPE must be sound, so this pins the one invariant that
+    // must hold regardless: the figure is withheld exactly when, and only
+    // when, the report says it is below the scoring floor — never invented.
+    assert.equal(typeof body.scored, "number");
+    assert.equal(typeof body.belowFloor, "boolean");
+    assert.equal(body.medianAbsError === null, body.belowFloor,
+      "medianAbsError must be null exactly when belowFloor is true");
+  });
+
+  // The cookie is how a browser carries the key across tabs. isAdminRequest
+  // accepts both forms, and this file exists to prove the wiring, not the rule.
+  await t.test("/api/accuracy accepts the admin cookie too", async () => {
+    const grant = await fetch(srv.base + "/api/admin-access", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: ADMIN }),
+    });
+    assert.equal(grant.status, 200);
+    const cookie = String(grant.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_admin="), "expected a cn_admin cookie, got " + cookie);
+    const r = await fetch(srv.base + "/api/accuracy", { headers: { cookie } });
+    assert.equal(r.status, 200);
   });
 });
 

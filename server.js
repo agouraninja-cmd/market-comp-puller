@@ -42,6 +42,10 @@ const LEADSVC = require("./broker-leads");
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
 const { isAggregateAddress } = AUDIT;
+// Valuation backtest — hold-one-out accuracy scoring over the comp corpus.
+// Pure and tested, like the three modules above; server.js owns the database
+// read, the memo and the route (GET /api/accuracy).
+const BACKTEST = require("./backtest");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -1598,6 +1602,45 @@ async function corpusAuditReport() {
   // date. A row this call flags is exactly a row retrieval cannot see.
   const data = AUDIT.auditCorpus(rows, { now: Date.now(), parseDealDate });
   CORPUS_AUDIT_CACHE = { at: Date.now(), data };
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Accuracy backtest. Whole-corpus read, so it is memoized and lives on its own
+// route rather than inside /api/stats, which runs on every /admin load.
+//
+// The column list is deliberately narrow and does NOT include
+// ALL_TYPE_COMP_FIELDS: a missing per-type column is what froze the corpus for
+// weeks in July, and the accuracy report is among the last things that should
+// go dark when that happens again.
+// ---------------------------------------------------------------------------
+const BACKTEST_LIMIT = 5000;
+let BACKTEST_CACHE = { at: 0, data: null };
+
+async function readCorpusRowsForBacktest(limit) {
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        "comp_corpus?select=ts,market,property_type,address,transaction,deal_date," +
+        `size_sqft,price_or_rate,price_per_sqft,source_type,verified&order=ts.desc&limit=${limit}`) || [];
+    } catch (e) { noteCorpusFailure("read", e); }
+  }
+  const fileRows = await readRowsFromFile(COMP_CORPUS_FILE);
+  return [...dbRows, ...fileRows].slice(0, limit);
+}
+
+async function accuracyReport(force) {
+  if (!force && BACKTEST_CACHE.data && Date.now() - BACKTEST_CACHE.at < 15 * 60_000) {
+    return BACKTEST_CACHE.data;
+  }
+  const rows = await readCorpusRowsForBacktest(BACKTEST_LIMIT);
+  // parseDealDate is INJECTED rather than reimplemented, exactly as the corpus
+  // audit injects it: a row this cannot date is a row retrieval cannot see.
+  const data = BACKTEST.score(rows, { now: Date.now(), parseDealDate });
+  data.rowsRead = rows.length;
+  data.generatedAt = new Date().toISOString();
+  BACKTEST_CACHE = { at: Date.now(), data };
   return data;
 }
 
@@ -11126,6 +11169,24 @@ const server = http.createServer((req, res) => {
       .then((data) => sendJson(res, 200, data))
       .catch((err) => {
         console.warn("Corpus audit failed:", err && err.message);
+        return sendJson(res, 200, { error: "unavailable" });
+      });
+    return;
+  }
+  // Accuracy backtest for /admin. Same shape as /api/corpus-audit: admin-gated,
+  // memoized, and it fails SAFE with a 200, because /admin is the page the
+  // owner opens when something else is already wrong and this panel must never
+  // be what breaks it. `?refresh=1` busts the memo.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/accuracy") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const params = new URL(req.url, "http://localhost").searchParams;
+    if (!isAdminRequest(req) && !secretMatches(params.get("key"), ADMIN_KEY)) {
+      return sendJson(res, 401, { error: "Unauthorized." });
+    }
+    accuracyReport(params.get("refresh") === "1")
+      .then((data) => sendJson(res, 200, data))
+      .catch((err) => {
+        console.warn("Accuracy backtest failed:", err && err.message);
         return sendJson(res, 200, { error: "unavailable" });
       });
     return;

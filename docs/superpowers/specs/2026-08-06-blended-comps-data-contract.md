@@ -28,10 +28,10 @@ one extra field:
   "address": "1450 Mission Ave",
   "date": "2026-03-14",
   "transaction": "sale",
-  "price": 4250000,
+  "price_or_rate": 4250000,   // NOT "price" — this is the report's key
   "size_sqft": 31000,
   "price_per_sqft": 137,
-  "source_type": "verified",
+  "source_type": "broker_vault",
   "notes": "…",
 
   "private": true          // <- the only new field
@@ -138,8 +138,8 @@ A stand-in that needs no server work — take any report and append:
 ```js
 report.comps.push({
   address: "1450 Mission Ave", date: "2026-03-14", transaction: "sale",
-  price: 4250000, size_sqft: 31000, price_per_sqft: 137,
-  source_type: "verified", private: true
+  price_or_rate: 4250000, size_sqft: 31000, price_per_sqft: 137,
+  source_type: "broker_vault", private: true
 });
 report.private_count = 1;
 ```
@@ -164,6 +164,22 @@ against the real thing.
 4. **Empty state: byte-identical.** An empty vault yields `private_count: 0`
    and a report indistinguishable from today's. The feature is invisible until
    there is something to show, which is also what makes it testable.
+5. **Provenance: `source_type: "broker_vault"`, which is neither of the
+   obvious options.** Not `verified` — that is a PUBLIC claim, earned by
+   vouching for a comp in the public records and taking visible credit, and a
+   private row has earned none of it. Not the enum default either: anything
+   unrecognised normalizes to `estimate`, which would stamp a broker's real,
+   closed transaction as guesswork in their own report. So it carries a value
+   outside the public enum, and the badge renders from that. Normalization runs
+   at PARSE time and blending at serialization, so the value is never rewritten
+   on the way out.
+
+### One field name that is easy to get wrong
+
+The report's price key is **`price_or_rate`**, not `price`. `broker_comps.price`
+is the database column; `blend-comps.js` maps one to the other. A mismatch here
+renders as a BLANK PRICE rather than as an error, so it fails quietly in the
+one place a broker is most likely to look.
 
 ---
 

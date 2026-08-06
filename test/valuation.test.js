@@ -143,3 +143,62 @@ test("tierOf reads the verified flag first, then the source type", () => {
   assert.equal(V.tierOf(comp({ source_type: "listing" })), "listing");
   assert.equal(V.tierOf(comp({ source_type: "who knows" })), null);
 });
+
+test("valueFromComps composes the weighted, trimmed range and the totals", () => {
+  // Four same-day, same-size, public-record comps: equal weights, so the
+  // quartiles are exact and independent of the weighting.
+  const comps = [100, 200, 300, 400].map((psf) =>
+    comp({ price_per_sqft: String(psf), address: psf + " Main St" }));
+  const v = V.valueFromComps(comps, { subjectSF: 10000, asOf: AS_OF, trendPct: null });
+  assert.equal(v.psfLow, 150);
+  assert.equal(v.psfMid, 250);
+  assert.equal(v.psfHigh, 350);
+  assert.equal(v.low, 1500000);
+  assert.equal(v.mid, 2500000);
+  assert.equal(v.high, 3500000);
+  assert.equal(v.n, 4);
+  assert.equal(v.trimmed, true);
+});
+
+test("valueFromComps spans a size RANGE the way the hero does", () => {
+  const comps = [100, 200, 300, 400].map((psf) =>
+    comp({ price_per_sqft: String(psf), address: psf + " Main St" }));
+  const v = V.valueFromComps(comps, {
+    subjectSF: { min: 8000, max: 12000 }, asOf: AS_OF, trendPct: null,
+  });
+  assert.equal(v.low, 150 * 8000);    // low $/SF x the SMALLEST size
+  assert.equal(v.mid, 250 * 10000);   // mid $/SF x the MIDPOINT size
+  assert.equal(v.high, 350 * 12000);  // high $/SF x the LARGEST size
+});
+
+test("valueFromComps drops leases, which are a different unit", () => {
+  const comps = [
+    comp({ price_per_sqft: "100", address: "1 Main St" }),
+    comp({ price_per_sqft: "200", address: "2 Main St" }),
+    comp({ price_per_sqft: "9", address: "3 Main St", transaction: "Lease" }),
+  ];
+  const v = V.valueFromComps(comps, { subjectSF: 10000, asOf: AS_OF, trendPct: null });
+  assert.equal(v.n, 2);
+  assert.equal(v.psfLow, 100);
+  assert.equal(v.psfHigh, 200);
+});
+
+test("valueFromComps takes an alternate value extractor for $/unit bases", () => {
+  const comps = [100000, 200000, 300000, 400000].map((ppu) =>
+    comp({ price_per_unit: String(ppu), address: ppu + " Main St" }));
+  const v = V.valueFromComps(comps, {
+    subjectSF: 0, asOf: AS_OF, trendPct: null,
+    valueOf: (c) => V.numericValue(c.price_per_unit),
+  });
+  assert.equal(v.psfLow, 150000);
+  assert.equal(v.psfMid, 250000);
+  assert.equal(v.psfHigh, 350000);
+});
+
+test("valueFromComps returns null when nothing carries a usable value", () => {
+  assert.equal(V.valueFromComps([], { subjectSF: 10000, asOf: AS_OF }), null);
+  assert.equal(
+    V.valueFromComps([comp({ price_per_sqft: "", price_or_rate: "", size_sqft: "" })],
+      { subjectSF: 10000, asOf: AS_OF }),
+    null);
+});

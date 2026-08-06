@@ -1823,7 +1823,7 @@
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, robustPpsfRange, heroRound,
-          compAgeYears, compWeight, trendFactor } = VALUATION;
+          compAgeYears, compWeight, trendFactor, valueFromComps } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -3064,10 +3064,17 @@
     // The weighted, trend-indexed view the range math actually uses (see
     // compWeight/trendFactor). ppsfs stays the raw view for counts and copy.
     const subjSFMid = sizeR ? (sizeR.min + sizeR.max) / 2 : 0;
-    const wItems = saleComps.map((x) => ({
-      v: x.v * trendFactor(x.comp, asOfOf(meta), trendPctOf(parsed)),
-      w: compWeight(x.comp, asOfOf(meta), subjSFMid),
-    }));
+    // One weighted band for the whole hero. All three branches below read it:
+    // the $/SF headline, the per-unit branch's $/SF cross-check, and the
+    // no-size fallback that shows the band on its own.
+    // `sizeR || 0` reproduces the old subjSFMid exactly: a size range weights
+    // by its midpoint, and no size at all means no size penalty.
+    const val = valueFromComps(saleComps.map((x) => x.comp), {
+      subjectSF: sizeR || 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+    });
+    const psfBand = val
+      ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
+      : null;
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
     const weighNote = " Recent, similar-size, well-sourced comps count more"
@@ -3190,7 +3197,7 @@
 
     if (sfUsable && !leadWithAlt) {
       // Outlier-resistant $/SF band (see robustPpsfRange) instead of raw min/max.
-      const rr = robustPpsfRange(wItems);
+      const rr = psfBand;
       const midSize = (sizeR.min + sizeR.max) / 2;
       const sizeLabel = sizeR.min === sizeR.max
         ? `${sizeR.min.toLocaleString()} SF`
@@ -3198,12 +3205,12 @@
       animateValue(lowEl, rr.low * sizeR.min, fmtTotal);
       animateValue(midEl, rr.mid * midSize, fmtTotal);
       animateValue(highEl, rr.high * sizeR.max, fmtTotal);
+      // val already rounded these against the same sizeR, so this can just
+      // read the totals off it instead of re-applying heroRound.
       lastValuation = {
-        // heroRound so every downstream reader (XLSX valuation sheet, CSV
-        // subject line, LTV, snapshot analytics) agrees with the hero display.
-        low: heroRound(rr.low * sizeR.min),
-        likely: heroRound(rr.mid * midSize),
-        high: heroRound(rr.high * sizeR.max),
+        low: val.low,
+        likely: val.mid,
+        high: val.high,
         median_psf: Math.round(rr.mid * 100) / 100,
       };
       const ppsf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });   // $/SF reads as whole dollars
@@ -3296,7 +3303,7 @@
       // range is also computable, show it rather than dropping the view
       // entirely just because it didn't lead.
       if (sfUsable) {
-        const rrSf = robustPpsfRange(wItems);
+        const rrSf = psfBand;
         entries.push({
           label: "Price per square foot cross-check",
           text: `${fmtTotal(rrSf.low * sizeR.min)} – ${fmtTotal(rrSf.high * sizeR.max)}, the same comps on a `
@@ -3337,7 +3344,7 @@
       // answer; bare dashes read as a broken report. Reached only when the
       // income approach can't lead either, so incomeApproachEntry below always
       // returns its muted "enter your NOI" pitch (arguments unused).
-      const rr = robustPpsfRange(wItems);
+      const rr = psfBand;
       const fmtPsf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
       animateValue(lowEl, rr.low, fmtPsf);
       animateValue(midEl, rr.mid, fmtPsf);

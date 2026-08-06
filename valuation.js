@@ -46,9 +46,20 @@
     return NaN;
   }
 
-  // Weighted percentile band. Four or more comps get an outlier-resistant
-  // interquartile band; below that there is nothing to trim, so the raw spread
-  // stands and `trimmed` says so.
+  // Robust $/SF range for the value hero. A single freak comp (a trophy sale,
+  // a distressed flip) used to blow the Low/High wide open because they were
+  // the literal min and max. With 4+ comps this instead takes the
+  // interquartile band (25th-75th percentile) around the median, so outliers
+  // can't dominate the headline; below that there is nothing to trust as an
+  // outlier, so the full observed spread stands instead, and `trimmed` says
+  // which case fired.
+  //
+  // Accepts plain numbers (each weighs 1) or {v, w} items: the percentiles
+  // are weighted, so a stale, off-size, or weakly-sourced comp pulls the band
+  // less than a fresh well-documented one (see compWeight). Each item sits at
+  // the center of its weight span on the cumulative scale, with linear
+  // interpolation between neighbors, so equal weights reproduce the familiar
+  // evenly-spaced percentile positions.
   function robustPpsfRange(vals) {
     const items = vals
       .map((x) => (typeof x === "number" ? { v: x, w: 1 } : x))
@@ -134,8 +145,55 @@
     return Math.pow(1 + pct / 100, Math.min(age, 3));
   }
 
+  // The whole sequence, in one place: filter to sales, read each comp's value,
+  // index it to the report date, weight it, take the band, and apply the
+  // subject's size. index.html wrote this out three times and the harness in
+  // backtest.js would have been a fourth. It is the composition, not the
+  // leaves, that has to be shared: leaves alone still let two callers disagree
+  // about the ORDER of operations, which is exactly what an accuracy harness
+  // must not do.
+  //
+  // `subjectSF` is a number or { min, max }. The range form is what the hero
+  // uses: low $/SF against the smallest size, high against the largest.
+  function valueFromComps(comps, opts) {
+    const o = opts || {};
+    // NOT `o.valueOf || salePsfOf`: every plain object inherits a `valueOf`
+    // from Object.prototype, so that check is always truthy and the default
+    // never fires. The own-property test is what lets an explicit override
+    // (altBasisRange's $/unit extractor) win while an absent one still falls
+    // through to salePsfOf.
+    const valueOf = Object.prototype.hasOwnProperty.call(o, "valueOf") ? o.valueOf : salePsfOf;
+    const sf = o.subjectSF;
+    const isRange = sf && typeof sf === "object";
+    const sizeMin = Number(isRange ? sf.min : sf) || 0;
+    const sizeMax = Number(isRange ? sf.max : sf) || 0;
+    const sizeMid = (sizeMin + sizeMax) / 2;
+
+    const items = (comps || [])
+      .filter((c) => c && !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => ({ comp: c, v: valueOf(c) }))
+      .filter((x) => x.v > 0);
+    if (!items.length) return null;
+
+    const rr = robustPpsfRange(items.map((x) => ({
+      v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
+      w: compWeight(x.comp, o.asOf, sizeMid),
+    })));
+
+    return {
+      psfLow: rr.low, psfMid: rr.mid, psfHigh: rr.high,
+      low: heroRound(rr.low * sizeMin),
+      mid: heroRound(rr.mid * sizeMid),
+      high: heroRound(rr.high * sizeMax),
+      n: items.length,
+      trimmed: rr.trimmed,
+      raw: items.map((x) => x.v),
+    };
+  }
+
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, compWeight, trendFactor,
+    valueFromComps,
   };
 });

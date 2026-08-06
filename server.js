@@ -30,6 +30,11 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+// Blended comps — a broker's own vault comps inside their own report. Pure and
+// tested for the same reason entitlements.js is: the privacy wall is the whole
+// broker product, so it has to be PROVABLE rather than reviewed. This module
+// only shapes and merges; the read below is scoped by user_id here.
+const BLEND = require("./blend-comps");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
@@ -7568,6 +7573,58 @@ async function vaultReadPayload(req, params) {
   } };
 }
 
+// ---------------------------------------------------------------------------
+// Blended comps — the READ half. The shaping and merging live in the pure
+// blend-comps.js; this is the part that has to touch the database, so it is
+// the part that has to be careful.
+//
+// Spec: docs/superpowers/specs/2026-08-06-blended-comps-data-contract.md
+//
+// Four things hold the wall up here, and all four are load-bearing:
+//
+//   1. `user_id=eq.` comes FIRST and unconditionally. A broker sees their own
+//      vault and nobody else's, exactly as in vaultReadPayload.
+//   2. `canUseVault` is tested, not `pro`. Same rule as every other vault
+//      route: the capability, never a plan name.
+//   3. It returns [] on ANY failure. A vault read is an enrichment, never a
+//      reason to fail a search someone is waiting on — and an error must never
+//      widen what comes back.
+//   4. It is called at SERIALIZATION, so what it returns never reaches the
+//      cache, the corpus harvest, or a market snapshot. See blend-comps.js.
+//
+// The lookback filter matters for honesty as much as relevance: a report says
+// it covers N months, so a private comp older than that would quietly widen
+// the window the valuation is drawn from.
+async function vaultCompsForReport(req, ent, { market, type, months }) {
+  try {
+    if (!DB_CONFIGURED) return [];
+    if (!ent || !ent.canUseVault) return [];
+    if (!market || !type) return [];
+    const user = await getSessionUser(req);
+    if (!user) return [];
+
+    const cutoff = new Date(Date.now() - Math.max(1, Number(months) || 12) * 31 * 24 * 3600 * 1000)
+      .toISOString().slice(0, 10);
+
+    // Scoped by user_id FIRST and always.
+    let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
+    query += `&market=eq.${encodeURIComponent(market)}`;
+    query += `&property_type=eq.${encodeURIComponent(type)}`;
+    query += `&deal_date=gte.${cutoff}`;
+    // Capped: a broker with a thousand comps in one market would otherwise
+    // bury the public evidence and bloat the response.
+    query += `&order=deal_date.desc&limit=50`;
+
+    const rows = await sbRequest("GET", query);
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    // Deliberately quiet about the rows and loud about the failure: the
+    // message may name a column, never a comp.
+    console.error("vault blend read failed:", err.message);
+    return [];
+  }
+}
+
 function renderHqHTML() {
   return `<!DOCTYPE html>
 <html lang="en"><head>
@@ -8032,6 +8089,18 @@ const server = http.createServer((req, res) => {
         // corpus harvest, and the market-snapshot publisher all keep seeing
         // whole reports, so one cached search serves free and Pro visitors
         // alike and the corpus never starves on free traffic.
+        // The broker's own vault comps for this market + type, read once,
+        // outside the gate closure because the closure is synchronous and this
+        // is a database call. [] for everyone who is not a broker with rows
+        // here, which is almost every request — and an empty list makes the
+        // blend below return the very same report object, so a non-broker's
+        // response is byte-identical to what it was before this feature.
+        const vaultRows = internal
+          ? []
+          : await vaultCompsForReport(req, ent, {
+              market: marketOf(addressOk), type: typeOk, months: monthsOk,
+            });
+
         const gate = (rep) => {
           if (internal) return rep;
           const subjectSqft = sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0;
@@ -8044,7 +8113,16 @@ const server = http.createServer((req, res) => {
           // tally ("4 exports left this month") on a report they own outright.
           // Spread rather than assign: `rep` may be the CACHED object, and the
           // cache must never carry one visitor's entitlement to the next.
-          return { ...gated, exports_remaining: ent.exportsRemaining };
+          const withExports = { ...gated, exports_remaining: ent.exportsRemaining };
+          // LAST, and only here. Every caller of gate() is an exit — the cache
+          // hit, the derived-window hit, the SSE result and the plain JSON
+          // result — so this is the one place a private comp can enter, and it
+          // is downstream of the cache write, harvestComps() and the market
+          // snapshot, all of which keep seeing the public report. Blending any
+          // earlier serves one broker's private book to the next visitor who
+          // searches that address, because the cache is keyed by property and
+          // not by user.
+          return BLEND.blendPrivateComps(withExports, vaultRows);
         };
 
         // The gate's principle applied to live progress: a limited visitor
@@ -10619,8 +10697,14 @@ const server = http.createServer((req, res) => {
         delete safeMeta.portfolioId;
         safeMeta.shared = true;
         safeMeta.generatedAt = meta.generatedAt || Date.now();
+        // The broker's private comps are the same class of secret as the NOI
+        // above, with a sharper edge: this route takes the report FROM THE
+        // BROWSER, and a broker's browser is holding a BLENDED one. A shared
+        // report is public by design and has no viewer check to fall back on,
+        // so the server strips rather than trusting what it was handed.
+        const safeReport = BLEND.stripPrivateComps(report);
         const id = newShareId();
-        await storeSharedReport(id, { data: report, meta: safeMeta });
+        await storeSharedReport(id, { data: safeReport, meta: safeMeta });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address) });
         return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}` });
       } catch (err) {

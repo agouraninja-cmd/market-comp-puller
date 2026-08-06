@@ -613,6 +613,23 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   modal and then clearing the hash — deliberately one form, not a second copy
   of it on this page. Do not confuse this with `GET /broker/<slug>`, the
   per-contributor public profile.
+- **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
+  online-only, so it is **not eligible for a Google Business Profile** (Google
+  requires face-to-face customer contact and video-verifies it against a real
+  address; a listing filed anyway is suspended, not merely rejected). The
+  structured-data brand entity is the substitute. `brandGraph()` returns one
+  canonical `Organization` node (`@id` `<SITE_URL>/#organization`, legalName
+  "CompNinja LLC", logo, public contact point) plus a `WebSite` node, spread
+  into the `@graph` of every server-rendered page: `/market/<slug>`,
+  `/markets`, `/brokers`, `/broker/<slug>`, `/how-it-works`. Those pages
+  reference it via `ORG_ID` / `WEBSITE_ID` instead of restating it — **a new
+  server-rendered page should do the same, never inline its own Organization
+  or WebSite**. Two standing rules: the email is the public
+  `info@compninja.co`, **never `LEAD_NOTIFY_EMAIL`** (the owner's personal
+  inbox, and this is public output); and `sameAs` is deliberately absent
+  because it means profiles the business actually controls, so add real URLs
+  only when they exist. `index.html` needs no copy — `ACCOUNT_WALL` keeps
+  crawlers off `/`.
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
   (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do

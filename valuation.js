@@ -157,12 +157,14 @@
   // uses: low $/SF against the smallest size, high against the largest.
   function valueFromComps(comps, opts) {
     const o = opts || {};
-    // NOT `o.valueOf || salePsfOf`: every plain object inherits a `valueOf`
-    // from Object.prototype, so that check is always truthy and the default
-    // never fires. The own-property test is what lets an explicit override
-    // (altBasisRange's $/unit extractor) win while an absent one still falls
-    // through to salePsfOf.
-    const valueOf = Object.prototype.hasOwnProperty.call(o, "valueOf") ? o.valueOf : salePsfOf;
+    // Named `readValue`, not `valueOf`: every JS object inherits a `valueOf`
+    // from Object.prototype, so `o.valueOf || salePsfOf` could never reach
+    // the default (o.valueOf is always a truthy function, even when the
+    // caller never set it) and even an own-property check only closes the
+    // "key absent" case, not `{ valueOf: undefined }` from a conditional
+    // spread. The typeof guard treats absent, explicitly-undefined, and
+    // explicitly-non-function all the same way: fall back to salePsfOf.
+    const readValue = typeof o.readValue === "function" ? o.readValue : salePsfOf;
     const sf = o.subjectSF;
     const isRange = sf && typeof sf === "object";
     const sizeMin = Number(isRange ? sf.min : sf) || 0;
@@ -171,7 +173,7 @@
 
     const items = (comps || [])
       .filter((c) => c && !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => ({ comp: c, v: valueOf(c) }))
+      .map((c) => ({ comp: c, v: readValue(c) }))
       .filter((x) => x.v > 0);
     if (!items.length) return null;
 

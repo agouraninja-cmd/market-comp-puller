@@ -188,7 +188,7 @@ test("valueFromComps takes an alternate value extractor for $/unit bases", () =>
     comp({ price_per_unit: String(ppu), address: ppu + " Main St" }));
   const v = V.valueFromComps(comps, {
     subjectSF: 0, asOf: AS_OF, trendPct: null,
-    valueOf: (c) => V.numericValue(c.price_per_unit),
+    readValue: (c) => V.numericValue(c.price_per_unit),
   });
   assert.equal(v.psfLow, 150000);
   assert.equal(v.psfMid, 250000);
@@ -201,4 +201,19 @@ test("valueFromComps returns null when nothing carries a usable value", () => {
     V.valueFromComps([comp({ price_per_sqft: "", price_or_rate: "", size_sqft: "" })],
       { subjectSF: 10000, asOf: AS_OF }),
     null);
+});
+
+test("valueFromComps falls back to salePsfOf when readValue is not a function", () => {
+  // Guards against `{ ...opts, readValue: cond ? extractor : undefined }`,
+  // which sets the key without supplying a function. Should behave exactly
+  // as if `readValue` had been omitted entirely.
+  const comps = [100, 200, 300, 400].map((psf) =>
+    comp({ price_per_sqft: String(psf), address: psf + " Main St" }));
+  const withUndefined = V.valueFromComps(comps,
+    { subjectSF: 10000, asOf: AS_OF, trendPct: null, readValue: undefined });
+  const omitted = V.valueFromComps(comps, { subjectSF: 10000, asOf: AS_OF, trendPct: null });
+  assert.deepEqual(withUndefined, omitted);
+  assert.equal(withUndefined.psfLow, 150);
+  assert.equal(withUndefined.psfMid, 250);
+  assert.equal(withUndefined.psfHigh, 350);
 });

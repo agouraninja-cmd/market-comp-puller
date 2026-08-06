@@ -9,6 +9,14 @@
 -- Run this in the Supabase SQL editor, then add a line to APPLIED.md. There is
 -- no runner; see migrations/README.md.
 --
+-- ⚠ THIS FILE IS NOT IDEMPOTENT, unlike 016. The four ADD COLUMNs are
+-- `if not exists`, but Postgres has no `add constraint if not exists`, so a
+-- SECOND run aborts on broker_properties_latlng_range already existing and
+-- rolls the whole transaction back. That is harmless — nothing is half-applied,
+-- because of the begin/commit — but it is not the safe no-op the other files
+-- in this folder are. To re-run after a partial failure, drop the three
+-- constraints first (they are named in the rollback at the bottom).
+--
 -- ---------------------------------------------------------------------------
 -- WHAT PROBLEM THIS IS HALF OF
 -- ---------------------------------------------------------------------------

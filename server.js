@@ -4326,7 +4326,19 @@ function renderBrokerProfileHTML(profile, subs) {
 
   return marketShell({
     title, description, canonical, body,
-    jsonLd: JSON.stringify({ "@context": "https://schema.org", "@type": "ProfilePage", name: title, url: canonical }),
+    jsonLd: JSON.stringify({
+      "@context": "https://schema.org",
+      "@graph": [
+        ...brandGraph(),
+        {
+          "@type": "ProfilePage",
+          name: title,
+          url: canonical,
+          isPartOf: { "@id": WEBSITE_ID },
+          publisher: { "@id": ORG_ID },
+        },
+      ],
+    }),
   });
 }
 
@@ -4519,6 +4531,70 @@ const MARKET_MAP_JS = `(function(){
     });
   });
 })();`;
+
+// ---------------------------------------------------------------------------
+// Brand entity — the one Organization node every server-rendered page points
+// at by @id. CompNinja is online-only, so it is NOT eligible for a Google
+// Business Profile (that needs face-to-face customer contact at a real
+// address); this graph is the substitute, and it is how the name, the logo,
+// the LLC and the contact address get attached to a single entity instead of
+// being re-guessed per page. Two rules:
+//   - the contact email is the PUBLIC one (info@compninja.co), never
+//     LEAD_NOTIFY_EMAIL, which is the owner's personal inbox.
+//   - `sameAs` is deliberately absent. It lists profiles the business
+//     actually controls; inventing one is a fabricated claim in public
+//     structured data. Add real URLs here when they exist.
+// Both ids are fragments on SITE_URL, so a custom-domain move carries them.
+// ---------------------------------------------------------------------------
+const ORG_ID = `${SITE_URL}/#organization`;
+const WEBSITE_ID = `${SITE_URL}/#website`;
+const LOGO_ID = `${SITE_URL}/#logo`;
+const PUBLIC_CONTACT_EMAIL = "info@compninja.co";
+
+// Spread into a page's @graph. Repeating the nodes per page is correct: each
+// document is a standalone graph, and the shared @id is what tells a crawler
+// they describe one organization.
+function brandGraph() {
+  return [
+    {
+      "@type": "Organization",
+      "@id": ORG_ID,
+      name: "CompNinja",
+      legalName: "CompNinja LLC",
+      url: `${SITE_URL}/`,
+      email: PUBLIC_CONTACT_EMAIL,
+      description:
+        "CompNinja produces instant commercial real estate valuations and comparable sale " +
+        "and lease reports for any property address, built from public records, listings, " +
+        "and broker-verified comps.",
+      logo: {
+        "@type": "ImageObject",
+        "@id": LOGO_ID,
+        url: `${SITE_URL}/apple-touch-icon.png`,
+        contentUrl: `${SITE_URL}/apple-touch-icon.png`,
+        width: 180,
+        height: 180,
+        caption: "CompNinja",
+      },
+      image: { "@id": LOGO_ID },
+      contactPoint: {
+        "@type": "ContactPoint",
+        contactType: "customer support",
+        email: PUBLIC_CONTACT_EMAIL,
+        areaServed: "US",
+        availableLanguage: "English",
+      },
+    },
+    {
+      "@type": "WebSite",
+      "@id": WEBSITE_ID,
+      name: "CompNinja",
+      url: `${SITE_URL}/`,
+      publisher: { "@id": ORG_ID },
+      inLanguage: "en-US",
+    },
+  ];
+}
 
 function marketShell({ title, description, canonical, body, jsonLd, noindex, head }) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
@@ -4732,12 +4808,14 @@ function renderMarketPageHTML(slug, p, opts = {}) {
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
+      ...brandGraph(),
       {
         "@type": "WebPage",
         name: title,
         description,
         url: canonical,
-        isPartOf: { "@type": "WebSite", name: "CompNinja", url: `${SITE_URL}/` },
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
         breadcrumb: {
           "@type": "BreadcrumbList",
           itemListElement: [
@@ -4811,11 +4889,18 @@ function renderMarketDirectoryHTML() {
   }).join("");
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "CollectionPage",
-    name: title,
-    description,
-    url: canonical,
-    hasPart: slugs.map((s) => ({ "@type": "WebPage", name: marketTitle(merged[s]), url: marketUrl(s) })),
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "CollectionPage",
+        name: title,
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        hasPart: slugs.map((s) => ({ "@type": "WebPage", name: marketTitle(merged[s]), url: marketUrl(s) })),
+      },
+    ],
   });
   // Filter, not search: every card is already in the HTML, so this narrows
   // what is on screen and never calls the server. It costs nothing, needs no
@@ -5041,18 +5126,24 @@ function renderBrokersPageHTML() {
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "WebPage",
-    name: "Brokers",
-    description,
-    url: canonical,
-    isPartOf: { "@type": "WebSite", name: "CompNinja", url: `${SITE_URL}/` },
-    breadcrumb: {
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
-        { "@type": "ListItem", position: 2, name: "Brokers", item: canonical },
-      ],
-    },
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "Brokers",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Brokers", item: canonical },
+          ],
+        },
+      },
+    ],
   });
 
   const body =
@@ -5324,12 +5415,14 @@ function renderHowItWorksHTML() {
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
+      ...brandGraph(),
       {
         "@type": "WebPage",
         name: title,
         description,
         url: canonical,
-        isPartOf: { "@type": "WebSite", name: "CompNinja", url: `${SITE_URL}/` },
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
         breadcrumb: {
           "@type": "BreadcrumbList",
           itemListElement: [
@@ -5355,7 +5448,8 @@ function renderHowItWorksHTML() {
         description: "Free reports of recent comparable sales and lease transactions for any commercial property, " +
           "with maps, price per square foot, and PDF export.",
         offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-        provider: { "@type": "Organization", name: "CompNinja" },
+        provider: { "@id": ORG_ID },
+        publisher: { "@id": ORG_ID },
       },
     ],
   });

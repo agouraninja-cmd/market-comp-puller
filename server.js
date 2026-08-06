@@ -226,6 +226,34 @@ const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 const DEFAULT_SITE_URL = "https://market-comp-puller.onrender.com";
 const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 
+// Google Search Console verification, by the HTML-FILE method.
+//
+// Why the file and not the meta tag: meta-tag verification fetches the
+// property ROOT, and under ACCOUNT_WALL `/` is a 302 to /how-it-works, so
+// Google never sees a tag placed there and verification fails without ever
+// saying why. The file lives at its own path, which the wall does not touch
+// (the static handler is an allowlist, so this route is reached untouched).
+//
+// Set GOOGLE_SITE_VERIFICATION to what Search Console hands you — the whole
+// `google<token>.html` filename or the bare token, both work, because the one
+// place this is ever typed is a Render env field and a pasted `.html` should
+// not cost a deploy to discover. Unset = the route does not exist at all.
+//
+// Stripping a leading "google" cannot eat a real token: Search Console tokens
+// are hex, and "google" is not.
+//
+// A DNS TXT record is the other route to the same place, and is strictly
+// better where you have registrar access — it verifies every subdomain and
+// protocol at once and survives any redirect rule. Nothing here conflicts
+// with it; this exists because it needs no registrar access.
+const GOOGLE_VERIFY_TOKEN = String(process.env.GOOGLE_SITE_VERIFICATION || "")
+  .trim()
+  .replace(/\.html$/i, "")
+  .replace(/^google/i, "");
+const GOOGLE_VERIFY_PATH = /^[A-Za-z0-9_-]{8,128}$/.test(GOOGLE_VERIFY_TOKEN)
+  ? `/google${GOOGLE_VERIFY_TOKEN}.html`
+  : "";
+
 // Where a Stripe checkout should return this BUYER — which is not always
 // SITE_URL.
 //
@@ -11205,6 +11233,15 @@ const server = http.createServer((req, res) => {
 
   // --- SEO: robots.txt + sitemap (homepage + market directory + every market
   // page) so crawlers discover and index the whole landing-page set ---
+  // Search Console's verification file. Exact-match on a path we built
+  // ourselves from a validated token, so there is nothing here to inject into.
+  // Google re-fetches this periodically and UNVERIFIES the property if it
+  // stops answering — so the env var is not a one-time setup step to be
+  // cleared once the green check appears; it stays set for good.
+  if (req.method === "GET" && GOOGLE_VERIFY_PATH && req.url === GOOGLE_VERIFY_PATH) {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return res.end(`google-site-verification: google${GOOGLE_VERIFY_TOKEN}.html\n`);
+  }
   if (req.method === "GET" && req.url === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
@@ -11275,6 +11312,13 @@ server.listen(PORT, () => {
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`
     : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);
+  // Loud on purpose: an unverified property means no crawl or impression data
+  // for the market pages at all, and the failure is silent from inside the app.
+  console.log(GOOGLE_VERIFY_PATH
+    ? `🔎 Search Console verification file live at ${GOOGLE_VERIFY_PATH}`
+    : process.env.GOOGLE_SITE_VERIFICATION
+      ? "⚠  GOOGLE_SITE_VERIFICATION is set but unusable — expected google<token>.html or the bare token."
+      : "🔎 Search Console not verified by file — set GOOGLE_SITE_VERIFICATION to see indexing data (or use a DNS TXT record).");
   if (PRO_ENABLED) {
     console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
       `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);

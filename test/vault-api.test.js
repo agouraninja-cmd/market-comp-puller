@@ -16,22 +16,39 @@ const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS } = require("../
 // Parse the columns the migrations actually declare, rather than restating
 // them here — a second hand-written list would be a second thing to keep in
 // sync, and this repo already carries one such pair with a ⚠ on it.
+//
+// Scans EVERY migration rather than naming the ones that exist today. The
+// first version of this named 013 and 014 explicitly, which meant migration
+// 016 added a column and this test happily reported the contract complete —
+// the exact failure it was written to prevent, in its own implementation.
 function migrationColumns() {
   const root = path.join(__dirname, "..", "migrations");
-  const create = fs.readFileSync(path.join(root, "013-broker-vault.sql"), "utf8");
-  const body = /create table broker_comps\s*\(([\s\S]*?)\n\);/.exec(create)[1];
+  const files = fs.readdirSync(root).filter((f) => f.endsWith(".sql")).sort();
   const cols = [];
-  for (const rawLine of body.split("\n")) {
-    const line = rawLine.split("--")[0].trim();
-    if (!line) continue;
-    if (/^(unique|primary key|constraint|foreign key|check)\b/i.test(line)) continue;
-    for (const part of line.split(",")) {
-      const m = /^([a-z_]+)\s+(uuid|text|numeric|date|boolean|timestamptz|bigint|int)\b/.exec(part.trim());
-      if (m) cols.push(m[1]);
+  for (const f of files) {
+    const sql = fs.readFileSync(path.join(root, f), "utf8");
+    // Strip comments first, so a column named only in prose is not counted.
+    const live = sql.split("\n").map((l) => l.split("--")[0]).join("\n");
+
+    const create = /create table (?:if not exists )?broker_comps\s*\(([\s\S]*?)\n\);/i.exec(live);
+    if (create) {
+      for (const rawLine of create[1].split("\n")) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        if (/^(unique|primary key|constraint|foreign key|check)\b/i.test(line)) continue;
+        for (const part of line.split(",")) {
+          const m = /^([a-z_]+)\s+(uuid|text|numeric|date|boolean|timestamptz|bigint|int)\b/.exec(part.trim());
+          if (m) cols.push(m[1]);
+        }
+      }
+    }
+    // ALTER TABLE broker_comps ... ADD COLUMN [IF NOT EXISTS] <name>
+    for (const alter of live.matchAll(/alter table\s+broker_comps\b([\s\S]*?);/gi)) {
+      for (const m of alter[1].matchAll(/add column\s+(?:if not exists\s+)?([a-z_]+)/gi)) {
+        cols.push(m[1]);
+      }
     }
   }
-  const alter = fs.readFileSync(path.join(root, "014-vault-publish-link.sql"), "utf8");
-  for (const m of alter.matchAll(/add column if not exists ([a-z_]+)/g)) cols.push(m[1]);
   return [...new Set(cols)];
 }
 
@@ -81,14 +98,49 @@ function storedRow() {
   };
 }
 
-test("THE RESPONSE IS BYTE-IDENTICAL TO BEFORE THIS FILE EXISTED", () => {
-  // The load-bearing one. The dashboard is being written right now against the
-  // current JSON by someone who has not pushed. Step one must be incapable of
-  // breaking it, whatever they have already written.
-  const row = storedRow();
-  assert.equal(JSON.stringify(toApiComp(row)), JSON.stringify(row));
-  const rows = [storedRow(), storedRow()];
-  assert.equal(JSON.stringify(toApiComps(rows)), JSON.stringify(rows));
+// The ten fields the dashboard actually reads, taken from vault-page.js — the
+// page the broker dashboard is being built on top of. These are the contract
+// that matters: everything else in the response is currently decoration, and
+// breaking one of these breaks a screen a broker is looking at.
+const DASHBOARD_FIELDS = [
+  "address", "deal_date", "id", "market", "price",
+  "price_per_sqft", "property_type", "published", "size_sqft", "transaction",
+];
+
+test("EVERY FIELD THE DASHBOARD READS SURVIVES THE RESTRUCTURE", () => {
+  // The load-bearing one now. Migration 016 may move storage however it likes;
+  // these ten must come out of the API unchanged, or a screen breaks.
+  const out = toApiComp(storedRow());
+  for (const f of DASHBOARD_FIELDS) {
+    assert.ok(f in out, `${f} vanished from the vault API response`);
+  }
+  assert.equal(out.address, "1450 Mission Ave");
+  assert.equal(out.price, 4250000);
+  assert.equal(out.published, false);
+});
+
+test("the plumbing fields are omitted", () => {
+  // Deliberately NOT byte-identical any more. Jacob confirmed nothing reads
+  // these; 016 added property_id to them. This is the shape change that
+  // belongs to the restructure rather than to introducing the seam.
+  const out = toApiComp({ ...storedRow(), property_id: "p-1" });
+  for (const f of INTERNAL_FIELDS) {
+    assert.equal(f in out, false, `${f} is internal plumbing and must not reach the browser`);
+  }
+});
+
+test("A NEW STORAGE COLUMN CANNOT REACH THE BROWSER BY DEFAULT", () => {
+  // The allowlist's whole purpose. On a table holding brokers' private books
+  // the safe failure is a missing field somebody notices, not a leaked one
+  // nobody does.
+  const out = toApiComp({ ...storedRow(), some_future_private_column: "SECRET" });
+  assert.equal("some_future_private_column" in out, false);
+  assert.equal(JSON.stringify(out).includes("SECRET"), false);
+});
+
+test("a sparse row does not gain null keys it never had", () => {
+  const out = toApiComp({ id: "c-1", address: "1 Main St", market: "Boise, ID" });
+  assert.deepEqual(Object.keys(out).sort(), ["address", "id", "market"]);
 });
 
 test("the mapper copies rather than handing back the stored object", () => {

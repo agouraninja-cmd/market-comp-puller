@@ -40,6 +40,9 @@ const { renderVaultHTML } = require("./vault-page");
 // purpose: introducing the seam must not change a byte of the response while
 // the dashboard is being written against it.
 const VAULTAPI = require("./vault-api");
+// The property dimension — one row per building per broker (migration 016).
+// Pure and tested; server.js owns the upsert and the user_id scoping.
+const PROPS = require("./broker-properties");
 const LEADSVC = require("./broker-leads");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
@@ -7611,6 +7614,59 @@ async function hqSnapshot() {
 // below the canUseVault test, so the parallelism changes latency, not what a
 // non-broker can see. allSettled keeps the refusal order honest: a Supabase
 // outage must not turn a 403 into a 502.
+// Upsert the property dimension for a set of just-imported comps and stamp
+// each comp with its property_id (migration 016).
+//
+// NEVER THROWS. Every caller is on the upload path, and the rule there is that
+// a broker's comps are stored or the request fails — the dimension is an index
+// onto their book, not part of it. A failure here leaves property_id null,
+// which 016's view already reads as "not linked yet" and falls back to the
+// comp's own denormalized address; the migration's backfill is idempotent and
+// repairs it on its next run. Losing the link costs a join. Failing the upload
+// costs a broker their spreadsheet.
+//
+// Scoped by user_id throughout, like every other vault read and write. Two
+// brokers who transacted on the same building get their own property row each:
+// that is the privacy wall, not a duplicate.
+async function linkVaultProperties(userId, comps) {
+  try {
+    if (!DB_CONFIGURED || !userId) return;
+    const wanted = PROPS.propertyRowsFrom(comps);
+    if (!wanted.length) return;
+
+    // on_conflict on the natural key, returning representation so the ids come
+    // back in one round trip rather than a second read.
+    const saved = await sbRequest("POST", "broker_properties?on_conflict=user_id,address_key",
+      wanted, { prefer: "resolution=merge-duplicates,return=representation" });
+
+    let index = PROPS.indexById(saved);
+    if (!index.size) {
+      // An upsert where every row already existed can answer with nothing.
+      // Read the ids back rather than leaving the comps unlinked.
+      const keys = wanted
+        .map((w) => `"${String(w.address_key).replace(/"/g, '""')}"`).join(",");
+      const rows = await sbRequest("GET",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=in.(${encodeURIComponent(keys)})&select=id,address_key`);
+      index = PROPS.indexById(rows);
+    }
+
+    // One PATCH per building rather than per comp: a broker re-importing a
+    // year of deals across ten buildings is ten requests, not four hundred.
+    // `property_id=is.null` keeps it idempotent and stops a re-import
+    // rewriting links that are already correct.
+    for (const [addressKey, propertyId] of index) {
+      await sbRequest("PATCH",
+        `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=eq.${encodeURIComponent(addressKey)}&property_id=is.null`,
+        { property_id: propertyId }, { prefer: "return=minimal" });
+    }
+  } catch (err) {
+    // Loud in the log, invisible to the broker.
+    console.error("vault property link failed (comps are stored; link deferred):", err.message);
+  }
+}
+
 async function vaultReadPayload(req, params) {
   const user = await getSessionUser(req);
   if (!user) return { status: 401, body: { error: "Not signed in." } };
@@ -7673,6 +7729,7 @@ async function vaultReadPayload(req, params) {
     types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
   } };
 }
+
 
 function renderHqHTML() {
   return `<!DOCTYPE html>
@@ -9559,6 +9616,15 @@ const server = http.createServer((req, res) => {
           // this exact.
           await sbRequest("POST", "broker_comps?on_conflict=user_id,dedupe_key",
             rows, { prefer: "resolution=ignore-duplicates,return=minimal" });
+
+          // Link each comp to its building (migration 016). Deliberately AFTER
+          // the comps are safely stored and deliberately unable to fail the
+          // import: the dimension is an index onto the broker's book, not part
+          // of it, and a broker must never be told their upload failed because
+          // a reporting nicety did. An unlinked comp still carries its own
+          // address, market and type — 016's view falls back to them — and the
+          // migration's backfill repairs the link on its next run.
+          await linkVaultProperties(user.id, rows);
 
           console.log(`Vault import: ${parsed.rows.length} comp(s) for user ${user.id}` +
             `${parsed.skipped ? `, ${parsed.skipped} skipped` : ""}` +

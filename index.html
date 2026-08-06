@@ -535,10 +535,22 @@
                qualified "as many as the search finds" rather than promising a
                number we don't control. Drop that qualifier only if the ask
                ceiling and searchBudgetFor() are actually raised. -->
+          <!-- The vault bullet is the ONE-SUBSCRIPTION decision made visible
+               (2026-08-06). The vault shipped as a second product, priced
+               separately, and then the owner decided there is one
+               subscription and the vault is a capability of it — so
+               entitlements.js now reads `const broker = pro`, and every Pro
+               member has one. A tile that does not say so is selling the
+               smaller half of what it charges for, and leaves the site still
+               describing two products in the one place it matters most.
+               It passes the sell-only-what-ships test that keeps report
+               branding off this list: /vault is live, it has a UI, and a
+               broker's own comps really do appear in their own reports. -->
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
             <li>Look back up to 10 years, not 3</li>
             <li>Unlimited comps — every comparable the search finds, itemized</li>
             <li>Unlimited CSV, image, PDF and Excel exports</li>
+            <li>A private vault for your own comps — they appear in your reports, and only you can see them</li>
             <li>Address Explorer: real addresses to value in any market</li>
           </ul>
           <button type="button" data-plan="pro_monthly"
@@ -751,10 +763,12 @@
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
           <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
-            <!-- The broker vault's only entrance. Shown from /api/config's
-                 canUseVault, so it appears for a broker subscription (and for
-                 comped admins) and for nobody else. A plain link, not a button:
-                 /vault is its own server-rendered page, not a view in here. -->
+            <!-- The vault's only entrance. Shown from /api/config's
+                 canUseVault, so it appears for any Pro member (and for comped
+                 admins) and for nobody else. There is no separate broker
+                 subscription to gate it on: one subscription since 2026-08-05,
+                 and entitlements.js reads `const broker = pro`. A plain link,
+                 not a button: /vault is its own server-rendered page. -->
             <a id="menuVaultLink" href="/vault" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-slate-50">Your vault</a>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
@@ -7771,11 +7785,22 @@
         // is granted by entitlements.js but has no UI, so it is not claimed
         // here; promising it to someone who has just paid is worse than
         // promising it to a prospect. Restore it with the feature.
-        detail: "Unlimited comps, a lookback of up to 10 years, and unlimited exports.",
+        //
+        // The vault IS named, for the opposite reason: it ships, every Pro
+        // member has one (`const broker = pro` in entitlements.js), and a
+        // paying member who never learns they have it is the clearest way to
+        // still be running two products after deciding to run one.
+        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, and your own private comp vault.",
       };
     }
     if (p.status === "expired") {
-      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 3-year lookback." };
+      // The vault closes with the subscription (canUseVault tracks `broker`,
+      // which tracks `pro`), and a broker who uploaded their book of business
+      // and then finds the door shut deserves to be told what happened to it.
+      // Nothing deletes vault rows on lapse — the only delete paths are the
+      // broker's own "remove this import" and account deletion — so saying so
+      // is a statement of fact, not a reassurance we cannot keep.
+      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
     }
     return { title: "Free", detail: "Reports itemize 4 comps and look back 3 years. The valuation still uses every comp we find." };
   }

@@ -971,6 +971,34 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     which owns the entitlement gate**; `vault-page.js` only decides how that
     data is drawn. Keep it that way — a read that happened there would be a
     read outside the gate.
+  - **The vault DASHBOARD** (2026-08-06). `/vault` leads with a market rollup —
+    one card per `market` + `property_type`, the same pair the lead coverage
+    below it is keyed on — then a median-$/SF-by-year chart and a
+    repeat-property list, all three scoped by one filter row. Four rules:
+    - **The page fetches `?limit=1000` and filters in the BROWSER.** It used to
+      re-query with `market=`/`type=` params, which cannot work now: the rollup
+      counts the whole book, and server-side filtering leaves the browser
+      holding only the current slice. It also fixes a real bug — the route
+      defaults to `limit=200`, so a broker with 400 comps was shown half their
+      vault with nothing saying so. Past 1,000 the page says it is truncated
+      rather than under-reporting silently.
+    - **Every $/SF figure comes from the stored `price_per_sqft`, never derived
+      here.** `broker-vault.js` writes that column for **sales only** and
+      leaves it null on a lease, because an annual rent ÷ size is $/SF/yr and
+      would corrupt any median it entered. A card with no priced sales shows
+      its comp count instead of a fabricated number.
+    - **Repeat properties group on `market` + address, never address alone.**
+      Street names repeat across a metro; on the first test book that merged a
+      Boise building and a Meridian building at the same house number into one
+      property with three deals.
+    - **It reads none of `vault-api.js`'s `INTERNAL_FIELDS`** (`user_id`,
+      `address_key`, `dedupe_key`) — it keeps its own copy of `addressKey`
+      instead — so those can be dropped from the response whenever Owen wants.
+      `test/vault-page.test.js` pins that, and pins the thing this file is
+      uniquely able to break: the whole page, including ~550 lines of browser
+      JS, is one template literal, so a stray `${` or a single-backslash escape
+      emits broken JavaScript and a blank workspace rather than failing loudly.
+      That test compiles what the page actually emits.
   - **The FIRST RUN is a different page** (2026-08-06). When a broker has no
     comps *and* no imports, `applyFirstRun()` hides the trust line, the "Add
     comps" section, the comps table and the imports list, and shows

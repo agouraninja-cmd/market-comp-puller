@@ -48,6 +48,11 @@ const VAULTAPI = require("./vault-api");
 // The property dimension — one row per building per broker (migration 016).
 // Pure and tested; server.js owns the upsert and the user_id scoping.
 const PROPS = require("./broker-properties");
+// Which brokers cover which markets — the public directory rules. Pure and
+// tested: the consent gate (broker_profiles.public, not coverage) and the
+// no-contact-details allowlist are both rules about a real person, so they are
+// proved by npm test rather than reviewed.
+const DIRECTORY = require("./broker-directory");
 const LEADSVC = require("./broker-leads");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
@@ -3204,6 +3209,85 @@ function attachVerifiedAttribution(parsed, verifiedComps) {
   return parsed;
 }
 
+// ---------------------------------------------------------------------------
+// Which brokers cover which markets — the public directory (docs/ROADMAP.md,
+// the connection hub). So a property owner in Boise can see who works Boise
+// industrial.
+//
+// NOT to be confused with findBrokersForMarket() below, which is the
+// OWNER-facing one and carries broker email and phone. This one is read by
+// strangers. The two must never be swapped.
+//
+// Cached in-process with stale-while-revalidate, exactly like MARKET_CREDIT
+// above and for the same reason: market pages are cached SEO pages that render
+// synchronously and must never wait on a database call.
+//
+// Three rules hold this up:
+//
+//   1. TWO CONSENTS, NOT ONE. broker_coverage records which markets a broker
+//      wants LEADS from (migration 015). That is a working preference, not
+//      permission to publish them. broker_profiles.public is the opt-in, and
+//      it is false by default. `public=is.true` is in the query AND the rule
+//      is re-tested in broker-directory.js, so a bug in either one alone
+//      cannot put somebody on a public page.
+//   2. EXPLICIT COLUMN LIST, never `*`. A public page must not widen because
+//      somebody added a column to broker_profiles.
+//   3. FAILS TO EMPTY. Any error leaves the previous map in place and the
+//      section simply does not render. A market page must never fail because
+//      of an addition to it.
+// ---------------------------------------------------------------------------
+const BROKER_DIRECTORY = { byKey: {}, fetchedAt: 0, refreshing: false };
+const BROKER_DIRECTORY_TTL_MS = 10 * 60 * 1000;
+
+// "Boise, ID" + "Industrial" -> the map key. Lowercased so a page's seed data
+// and a broker's stored coverage cannot miss each other on capitalisation.
+function brokerDirectoryKey(market, propertyType) {
+  return `${String(market || "").trim().toLowerCase()}|${String(propertyType || "").trim().toLowerCase()}`;
+}
+
+async function refreshBrokerDirectory() {
+  if (!DB_CONFIGURED || BROKER_DIRECTORY.refreshing) return;
+  BROKER_DIRECTORY.refreshing = true;
+  try {
+    const coverage = await sbRequest("GET",
+      "broker_coverage?select=user_id,market,property_type&limit=2000");
+    const ids = [...new Set((coverage || []).map((c) => c && c.user_id).filter(Boolean))];
+
+    const byKey = {};
+    if (ids.length) {
+      const profiles = await sbRequest("GET",
+        `broker_profiles?user_id=in.(${ids.map(encodeURIComponent).join(",")})` +
+        "&public=is.true&select=user_id,slug,display_name,company,public&limit=1000");
+      const byUser = new Map();
+      for (const p of profiles || []) if (p && p.user_id) byUser.set(p.user_id, p);
+
+      const rowsByKey = {};
+      for (const c of coverage || []) {
+        if (!c || !c.user_id) continue;
+        const k = brokerDirectoryKey(c.market, c.property_type);
+        (rowsByKey[k] = rowsByKey[k] || []).push(c);
+      }
+      for (const [k, rows] of Object.entries(rowsByKey)) {
+        const listed = DIRECTORY.brokersForMarket(rows, byUser);
+        if (listed.length) byKey[k] = listed;
+      }
+    }
+    BROKER_DIRECTORY.byKey = byKey;
+    BROKER_DIRECTORY.fetchedAt = Date.now();
+  } catch (err) {
+    console.error("Broker directory refresh failed; keeping previous:", err.message);
+  } finally {
+    BROKER_DIRECTORY.refreshing = false;
+  }
+}
+
+// Synchronous read for the page renderer. Empty until the first refresh lands,
+// and empty forever if Supabase is unconfigured — in both cases the section
+// simply does not render.
+function brokersCoveringMarket(market, propertyType) {
+  return BROKER_DIRECTORY.byKey[brokerDirectoryKey(market, propertyType)] || [];
+}
+
 // Brokers who have contributed approved comps in a given market ("City, ST"),
 // for owner-mediated lead routing. Owner PII is never sent to brokers — the
 // owner sees who covers the market and connects them.
@@ -4054,6 +4138,14 @@ const CN_LOGO_LIGHT =
 // looks like the app they are being sent to. Self-contained by design: no
 // dependency on the purged tailwind.css.
 const MARKET_CSS = `
+/* Broker directory list on a market page. Plain list, no cards: this is a
+   directory, not a ranking, and boxes imply a hierarchy the data cannot back. */
+.brokers{list-style:none;padding:0;margin:12px 0 0}
+.brokers li{padding:8px 0;border-top:1px solid #E7E3DA}
+.brokers li:first-child{border-top:0}
+.brokers a{font-weight:600}
+.brokers .sub{margin-left:8px}
+
 *{box-sizing:border-box}
 /* Flex column so the ink footer sits at the bottom of a short page. */
 body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
@@ -4909,6 +5001,31 @@ function renderMarketPageHTML(slug, p, opts = {}) {
       `For a specific property, <a href="/">run a free valuation</a> instead.</p></div>`
     : "";
 
+  // Brokers who cover this exact (market, property type) — the first step of
+  // the connection hub. A market page slug IS that pair ("industrial-boise-id"),
+  // which is why this belongs here rather than on a directory page of its own.
+  //
+  // Every broker in this list opted in via broker_profiles.public; covering a
+  // market is a LEAD preference and is not consent to be listed. The rules and
+  // the field allowlist live in broker-directory.js, where npm test can prove
+  // them. Name, company and a link to their own page — never contact details,
+  // because routing here is owner-mediated and a directory is the reverse.
+  //
+  // Renders nothing at all when the list is empty, which is every market today.
+  // A "no brokers yet" placeholder would advertise an empty network on a page
+  // whose job is to look like a market that is worth being in.
+  const brokerList = Array.isArray(opts.brokers) ? opts.brokers : [];
+  const brokersCard = brokerList.length
+    ? `<div class="card"><h2>Brokers who cover ${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())}</h2>` +
+      `<p>These brokers work this market and have chosen to be listed. CompNinja makes the introduction; ` +
+      `we do not pass your details to anyone without asking you first.</p><ul class="brokers">` +
+      brokerList.map((b) =>
+        `<li><a href="${escHtml(b.url)}">${escHtml(b.display_name || b.company)}</a>` +
+        (b.display_name && b.company ? ` <span class="sub">${escHtml(b.company)}</span>` : "") +
+        `</li>`).join("") +
+      `</ul></div>`
+    : "";
+
   const body =
     `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
     `<h1>${escHtml(title)}</h1>` +
@@ -4921,6 +5038,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     mapCard +
     compsTable +
     creditLine +
+    brokersCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
     `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>` +
@@ -11113,8 +11231,14 @@ const server = http.createServer((req, res) => {
     // Stale-while-revalidate: serve from the current credit cache and kick a
     // background refresh when it's old — the response never waits on the DB.
     if (Date.now() - MARKET_CREDIT.fetchedAt > MARKET_CREDIT_TTL_MS) refreshMarketCredit();
+    // Same stale-while-revalidate deal for the broker directory: kick a
+    // background refresh when it is old, render from whatever is cached now.
+    // The response never waits, and an empty map simply renders no section.
+    if (Date.now() - BROKER_DIRECTORY.fetchedAt > BROKER_DIRECTORY_TTL_MS) refreshBrokerDirectory();
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderMarketPageHTML(marketMatch[1], page));
+    return res.end(renderMarketPageHTML(marketMatch[1], page, {
+      brokers: brokersCoveringMarket(`${page.city}, ${page.state}`, page.type),
+    }));
   }
 
   // --- Public broker profiles — opt-in pages for verified contributors ---

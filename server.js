@@ -7614,6 +7614,59 @@ async function hqSnapshot() {
 // below the canUseVault test, so the parallelism changes latency, not what a
 // non-broker can see. allSettled keeps the refusal order honest: a Supabase
 // outage must not turn a 403 into a 502.
+// Upsert the property dimension for a set of just-imported comps and stamp
+// each comp with its property_id (migration 016).
+//
+// NEVER THROWS. Every caller is on the upload path, and the rule there is that
+// a broker's comps are stored or the request fails — the dimension is an index
+// onto their book, not part of it. A failure here leaves property_id null,
+// which 016's view already reads as "not linked yet" and falls back to the
+// comp's own denormalized address; the migration's backfill is idempotent and
+// repairs it on its next run. Losing the link costs a join. Failing the upload
+// costs a broker their spreadsheet.
+//
+// Scoped by user_id throughout, like every other vault read and write. Two
+// brokers who transacted on the same building get their own property row each:
+// that is the privacy wall, not a duplicate.
+async function linkVaultProperties(userId, comps) {
+  try {
+    if (!DB_CONFIGURED || !userId) return;
+    const wanted = PROPS.propertyRowsFrom(comps);
+    if (!wanted.length) return;
+
+    // on_conflict on the natural key, returning representation so the ids come
+    // back in one round trip rather than a second read.
+    const saved = await sbRequest("POST", "broker_properties?on_conflict=user_id,address_key",
+      wanted, { prefer: "resolution=merge-duplicates,return=representation" });
+
+    let index = PROPS.indexById(saved);
+    if (!index.size) {
+      // An upsert where every row already existed can answer with nothing.
+      // Read the ids back rather than leaving the comps unlinked.
+      const keys = wanted
+        .map((w) => `"${String(w.address_key).replace(/"/g, '""')}"`).join(",");
+      const rows = await sbRequest("GET",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=in.(${encodeURIComponent(keys)})&select=id,address_key`);
+      index = PROPS.indexById(rows);
+    }
+
+    // One PATCH per building rather than per comp: a broker re-importing a
+    // year of deals across ten buildings is ten requests, not four hundred.
+    // `property_id=is.null` keeps it idempotent and stops a re-import
+    // rewriting links that are already correct.
+    for (const [addressKey, propertyId] of index) {
+      await sbRequest("PATCH",
+        `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=eq.${encodeURIComponent(addressKey)}&property_id=is.null`,
+        { property_id: propertyId }, { prefer: "return=minimal" });
+    }
+  } catch (err) {
+    // Loud in the log, invisible to the broker.
+    console.error("vault property link failed (comps are stored; link deferred):", err.message);
+  }
+}
+
 async function vaultReadPayload(req, params) {
   const user = await getSessionUser(req);
   if (!user) return { status: 401, body: { error: "Not signed in." } };
@@ -7677,58 +7730,6 @@ async function vaultReadPayload(req, params) {
   } };
 }
 
-// Upsert the property dimension for a set of just-imported comps and stamp
-// each comp with its property_id (migration 016).
-//
-// NEVER THROWS. Every caller is on the upload path, and the rule there is that
-// a broker's comps are stored or the request fails — the dimension is an index
-// onto their book, not part of it. A failure here leaves property_id null,
-// which 016's view already reads as "not linked yet" and falls back to the
-// comp's own denormalized address; the migration's backfill is idempotent and
-// repairs it on its next run. Losing the link costs a join. Failing the upload
-// costs a broker their spreadsheet.
-//
-// Scoped by user_id throughout, like every other vault read and write. Two
-// brokers who transacted on the same building get their own property row each:
-// that is the privacy wall, not a duplicate.
-async function linkVaultProperties(userId, comps) {
-  try {
-    if (!DB_CONFIGURED || !userId) return;
-    const wanted = PROPS.propertyRowsFrom(comps);
-    if (!wanted.length) return;
-
-    // on_conflict on the natural key, returning representation so the ids come
-    // back in one round trip rather than a second read.
-    const saved = await sbRequest("POST", "broker_properties?on_conflict=user_id,address_key",
-      wanted, { prefer: "resolution=merge-duplicates,return=representation" });
-
-    let index = PROPS.indexById(saved);
-    if (!index.size) {
-      // An upsert where every row already existed can answer with nothing.
-      // Read the ids back rather than leaving the comps unlinked.
-      const keys = wanted
-        .map((w) => `"${String(w.address_key).replace(/"/g, '""')}"`).join(",");
-      const rows = await sbRequest("GET",
-        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
-        `&address_key=in.(${encodeURIComponent(keys)})&select=id,address_key`);
-      index = PROPS.indexById(rows);
-    }
-
-    // One PATCH per building rather than per comp: a broker re-importing a
-    // year of deals across ten buildings is ten requests, not four hundred.
-    // `property_id=is.null` keeps it idempotent and stops a re-import
-    // rewriting links that are already correct.
-    for (const [addressKey, propertyId] of index) {
-      await sbRequest("PATCH",
-        `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
-        `&address_key=eq.${encodeURIComponent(addressKey)}&property_id=is.null`,
-        { property_id: propertyId }, { prefer: "return=minimal" });
-    }
-  } catch (err) {
-    // Loud in the log, invisible to the broker.
-    console.error("vault property link failed (comps are stored; link deferred):", err.message);
-  }
-}
 
 function renderHqHTML() {
   return `<!DOCTYPE html>

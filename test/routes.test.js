@@ -175,6 +175,45 @@ test("bare environment", async (t) => {
   });
 });
 
+// --- A key stored with stray whitespace -------------------------------------
+//
+// 2026-08-05: ADMIN_KEY was saved in Render's UI with a trailing NEWLINE
+// (Enter in that textarea inserts a character rather than submitting), and it
+// was the one secret server.js never trimmed. That locked every dashboard for
+// an hour and was undiagnosable from the outside: the stored value is
+// unreadable in Render's UI, an HTTP header cannot carry a newline at all, so
+// the login box could never match no matter what was typed, and the failure is
+// identical to simply typing the wrong key.
+//
+// Deliberately boots ONE server per whitespace form rather than asserting on
+// the pure function, because trimming at the constant is only half the fix —
+// what has to hold is that the ROUTE authenticates a caller sending the clean
+// key. A test against a trim() helper would have passed all along.
+test("an ADMIN_KEY stored with stray whitespace still authenticates", async (t) => {
+  const CLEAN = "test-admin-key-whitespace";
+  for (const [label, stored] of [
+    ["trailing newline (the real incident)", CLEAN + "\n"],
+    ["trailing space", CLEAN + " "],
+    ["leading space", " " + CLEAN],
+    ["trailing carriage return", CLEAN + "\r"],
+  ]) {
+    await t.test(label, async () => {
+      const srv = await boot({ ADMIN_KEY: stored });
+      try {
+        // The header form is what the /admin login box uses, and is the form a
+        // newline makes structurally impossible to satisfy without the trim.
+        const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": CLEAN } });
+        assert.equal(r.status, 200, "the clean key must authenticate when the stored value has " + label);
+        // Still a real gate: trimming must not turn into accepting anything.
+        const bad = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": CLEAN + "x" } });
+        assert.equal(bad.status, 401, "a genuinely wrong key must still be refused");
+      } finally {
+        srv.stop();
+      }
+    });
+  }
+});
+
 // --- With an admin key configured -------------------------------------------
 
 test("admin gating", async (t) => {

@@ -10803,6 +10803,7 @@ const server = http.createServer((req, res) => {
   // images are stable and can cache for a day.
   const STATIC_FILES = {
     "/tailwind.css": { file: "tailwind.css", type: "text/css; charset=utf-8", maxAge: 300 },
+    "/valuation.js": { file: "valuation.js", type: "text/javascript; charset=utf-8", maxAge: 300 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },

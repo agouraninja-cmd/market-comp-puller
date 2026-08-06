@@ -39,6 +39,7 @@
        After adding NEW utility classes to this file, regenerate it or they
        won't style — see tailwind.config.js for the one-line command. -->
   <link rel="stylesheet" href="/tailwind.css" />
+  <script src="/valuation.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1818,6 +1819,12 @@
   </footer>
 
   <script>
+  // The valuation core lives in /valuation.js so the accuracy harness on
+  // /admin runs the same math this page does. Aliased into the original names
+  // so every call site below reads exactly as it did when these were local.
+  const { numericValue, salePsfOf, robustPpsfRange, heroRound,
+          compAgeYears, compWeight, trendFactor } = VALUATION;
+
   // ----------------------------------------------------------------------------
   // Table columns
   // ----------------------------------------------------------------------------
@@ -2112,27 +2119,6 @@
     return new Date(base.getFullYear(), base.getMonth() - currentMeta.months, 1);
   }
 
-  function numericValue(str) {
-    if (str == null) return NaN;
-    const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
-    return m ? parseFloat(m[0]) : NaN;
-  }
-  // A sale comp's $/SF for the valuation math. Fresh reports arrive with the
-  // server's reconciled figure, but saved/shared reports from before that
-  // change never re-touch the server — derive price ÷ size at read time so
-  // their unpriced comps stop silently dropping out of the range. Read-only:
-  // never mutates the comp (parsed.comps is what saves and shares). The sane
-  // per-SF band guards against numericValue's shorthand hazard ("$1.2M" → 1.2).
-  function salePsfOf(c) {
-    const v = numericValue(c.price_per_sqft);
-    if (v > 0) return v;
-    const p = numericValue(c.price_or_rate), s = numericValue(c.size_sqft);
-    if (p > 0 && s > 0) {
-      const d = p / s;
-      if (d >= 1 && d <= 100000) return d;
-    }
-    return NaN;
-  }
   // True when this sale comp's building is a wholly different size class than
   // the subject (more than 2x off in either direction). Such comps stay in
   // the table and the range - compWeight just halves them per further
@@ -2893,107 +2879,6 @@
     card.classList.remove("hidden");
   }
 
-  // ----------------------------------------------------------------------------
-  // Robust $/SF range for the value hero. A single freak comp (a trophy sale, a
-  // distressed flip) used to blow the Low/High wide open because they were the
-  // literal min and max. With 4+ comps we instead take the interquartile band
-  // (25th–75th percentile) around the median, so outliers can't dominate the
-  // headline; with fewer comps there's nothing to trust as an outlier, so we
-  // show the full observed spread.
-  // Accepts plain numbers (each weighs 1) or {v, w} items: the percentiles are
-  // weighted, so a stale, off-size, or weakly-sourced comp pulls the band less
-  // than a fresh well-documented one (see compWeight). Each item sits at the
-  // center of its weight span on the cumulative scale, with linear
-  // interpolation between neighbors — equal weights reproduce the familiar
-  // evenly-spaced percentile positions.
-  function robustPpsfRange(vals) {
-    const items = vals
-      .map((x) => (typeof x === "number" ? { v: x, w: 1 } : x))
-      .sort((a, b) => a.v - b.v);
-    const n = items.length;
-    const total = items.reduce((sum, x) => sum + x.w, 0);
-    let cum = 0;
-    const pos = items.map((x) => { const p = (cum + x.w / 2) / total; cum += x.w; return p; });
-    const q = (p) => {
-      if (p <= pos[0]) return items[0].v;
-      if (p >= pos[n - 1]) return items[n - 1].v;
-      let i = 0;
-      while (pos[i + 1] < p) i++;
-      const t = (p - pos[i]) / (pos[i + 1] - pos[i]);
-      return items[i].v + t * (items[i + 1].v - items[i].v);
-    };
-    if (n >= 4) return { low: q(0.25), mid: q(0.5), high: q(0.75), trimmed: true };
-    return { low: items[0].v, mid: q(0.5), high: items[n - 1].v, trimmed: false };
-  }
-
-  // Display rounding for the hero's TOTAL dollar figures. "$926,987" projects
-  // dollar precision the math doesn't have — it's an interpolated percentile
-  // of a handful of comps times a size range — and a to-the-dollar number
-  // reads as a lie the moment an owner knows their real value. Round to a
-  // step matched to the number's magnitude so the range reads as the estimate
-  // it is. Never applied to $/SF or per-unit rates (those are genuinely
-  // observed figures) — only to totals derived from them.
-  function heroRound(v) {
-    if (!isFinite(v) || v === 0) return v;
-    const a = Math.abs(v);
-    const step = a >= 10e6 ? 100000 : a >= 1e6 ? 25000 : a >= 100000 ? 5000 : 1000;
-    return Math.round(v / step) * step;
-  }
-
-  // --------------------------------------------------------------------------
-  // Comp weighting + time adjustment. Applied ONLY inside the valuation math —
-  // the table, chart, and stat tiles always show each comp's raw reported
-  // figures, so the audit trail never moves. Where the time adjustment makes
-  // the raw figure differ from the one the math used, the table's $/SF cell
-  // discloses both (§ — see indexedPsfNote). Three quiet factors, multiplied:
-  //   recency      2-year half-life on the comp's age at the report date
-  //   size match   free pass within 0.5×–2× of the subject, halving per
-  //                further doubling (a 5k SF building shouldn't be priced by
-  //                a 100k SF warehouse — big buildings trade at lower $/SF)
-  //   source       Verified/public-record full weight, down to half for
-  //                model estimates (mirrors the badge tiers)
-  // Floored at 0.15 so no comp silently vanishes from a range it visibly
-  // sits in. Missing data (no date, no size, legacy pre-badge reports) is
-  // neutral, never a penalty.
-  // --------------------------------------------------------------------------
-  const TIER_WEIGHT = { verified: 1, user: 1, public_record: 1, listing: 0.85, news: 0.7, estimate: 0.5 };
-
-  function compAgeYears(c, meta) {
-    const d = Date.parse(c.date);           // same parse outsideWindowBadge uses
-    if (isNaN(d)) return null;
-    const asOf = meta && meta.generatedAt ? new Date(meta.generatedAt).getTime() : Date.now();
-    const yrs = (asOf - d) / (365.25 * 24 * 3600 * 1000);
-    return yrs > 0 ? Math.min(yrs, 5) : 0;
-  }
-
-  function compWeight(c, meta, subjSF) {
-    let w = 1;
-    const age = compAgeYears(c, meta);
-    if (age !== null) w *= Math.pow(0.5, age / 2);
-    const compSF = numericValue(c.size_sqft);
-    if (subjSF > 0 && compSF > 0) {
-      const octaves = Math.abs(Math.log2(compSF / subjSF));
-      if (octaves > 1) w *= Math.pow(0.5, octaves - 1);
-    }
-    const tier = compTier(c);
-    if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
-    return Math.max(0.15, w);
-  }
-
-  // Index an older comp's price to the report date using the model's
-  // market-level annual trend (server-bounded to ±30%/yr, null when the
-  // model's searches showed no clear trend). Compounded over the comp's age,
-  // capped at 3 years so an out-of-window straggler is never extrapolated
-  // into fiction. Anchored to meta.generatedAt, not the wall clock, so a
-  // saved report's numbers don't drift as it ages.
-  function trendFactor(c, meta, parsed) {
-    const pct = parsed ? Number(parsed.annual_price_trend_pct) : NaN;
-    if (!Number.isFinite(pct) || pct === 0 || Math.abs(pct) > 30) return 1;
-    const age = compAgeYears(c, meta);
-    if (!age) return 1;
-    return Math.pow(1 + pct / 100, Math.min(age, 3));
-  }
-
   // --------------------------------------------------------------------------
   // The comp ranking, made visible. compWeight already decides which comps a
   // free visitor sees and how much each one moves the range, but the only part
@@ -3021,13 +2906,23 @@
     return f > 0 ? f : 0;
   }
 
+  // The report date the weighting measures ages against. Anchored to the
+  // report, not the wall clock, so a saved report's numbers do not drift as
+  // it ages (the old compAgeYears read this out of meta itself).
+  function asOfOf(meta) {
+    return meta && meta.generatedAt ? new Date(meta.generatedAt).getTime() : Date.now();
+  }
+  function trendPctOf(parsed) {
+    return parsed ? parsed.annual_price_trend_pct : null;
+  }
+
   function matchQuality(comp, meta, parsed) {
-    const w = compWeight(comp, meta, subjectSizeForMatch(parsed));
+    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed));
     const tier = MATCH_TIERS.find((t) => w >= t.min) || MATCH_TIERS[MATCH_TIERS.length - 1];
     // Reasons in the same order compWeight multiplies them, so the label can
     // always be traced back to the three factors that produced it.
     const reasons = [];
-    const age = compAgeYears(comp, meta);
+    const age = compAgeYears(comp, asOfOf(meta));
     if (age !== null) {
       reasons.push(age < 0.5 ? "sold in the last 6 months"
         : age < 1.5 ? "about a year old"
@@ -3051,7 +2946,7 @@
     if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return "";
     const raw = salePsfOf(comp);
     if (!(raw > 0)) return "";
-    const f = trendFactor(comp, meta, parsed);
+    const f = trendFactor(comp, asOfOf(meta), trendPctOf(parsed));
     // Under half a percent rounds to the same displayed figure; a marker for a
     // difference nobody can see is noise, not disclosure.
     if (!isFinite(f) || Math.abs(f - 1) < 0.005) return "";
@@ -3098,8 +2993,8 @@
     // Same weighting/indexing as the $/SF headline (size neutral here — this
     // basis exists precisely because SF often isn't known for these types).
     const items = carriers.map((x) => ({
-      v: x.v * trendFactor(x.comp, meta, parsed),
-      w: compWeight(x.comp, meta, 0),
+      v: x.v * trendFactor(x.comp, asOfOf(meta), trendPctOf(parsed)),
+      w: compWeight(x.comp, asOfOf(meta), 0),
     }));
     return { spec, qty, per, rr: robustPpsfRange(items) };
   }
@@ -3170,8 +3065,8 @@
     // compWeight/trendFactor). ppsfs stays the raw view for counts and copy.
     const subjSFMid = sizeR ? (sizeR.min + sizeR.max) / 2 : 0;
     const wItems = saleComps.map((x) => ({
-      v: x.v * trendFactor(x.comp, meta, parsed),
-      w: compWeight(x.comp, meta, subjSFMid),
+      v: x.v * trendFactor(x.comp, asOfOf(meta), trendPctOf(parsed)),
+      w: compWeight(x.comp, asOfOf(meta), subjSFMid),
     }));
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
@@ -3546,8 +3441,8 @@
     if (sizeR && saleItems.length >= 2) {
       const subjSFMid = (sizeR.min + sizeR.max) / 2;
       const rr = robustPpsfRange(saleItems.map((x) => ({
-        v: x.v * trendFactor(x.comp, meta, parsed),
-        w: compWeight(x.comp, meta, subjSFMid),
+        v: x.v * trendFactor(x.comp, asOfOf(meta), trendPctOf(parsed)),
+        w: compWeight(x.comp, asOfOf(meta), subjSFMid),
       })));
       return { value: rr.mid * subjSFMid, source: "comp-based likely value" };
     }
@@ -5887,7 +5782,7 @@
     // months is a weak report, and nothing else on the page discloses that.
     // Reads the full set (locked rows included) like the tiles either side.
     const ages = valuationComps()
-      .map((c) => compAgeYears(c, meta))
+      .map((c) => compAgeYears(c, asOfOf(meta)))
       .filter((v) => v !== null)
       .sort((a, b) => a - b);
     const medAge = ages.length
@@ -8113,9 +8008,11 @@
     estimate:      { label: "Estimate",      cls: "e",  legend: "not tied to a single source; verify before relying on it" },
     user:          { label: "Added by you",  cls: "u",  legend: "entered manually; not from CompNinja's sources" },
   };
+  // One source of truth for a comp's tier: valuation.js owns the vocabulary
+  // (it has to, since compWeight keys off it). SOURCE_TIERS above keeps only
+  // the badge label and CSS class for each of those same keys.
   function compTier(comp) {
-    if (isVerifiedComp(comp)) return "verified";
-    return SOURCE_TIERS[comp.source_type] ? comp.source_type : null;
+    return VALUATION.tierOf(comp);
   }
   function sourceBadge(comp) {
     const tier = compTier(comp);

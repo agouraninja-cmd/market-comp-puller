@@ -46,7 +46,15 @@ green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
 every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
 `/healthz` — advisory only, since Render deploys main regardless; a red X on
-GitHub Actions means fix or revert now.
+GitHub Actions means fix or revert now. **No result at all is not the same as
+green**, and it happens: during a 7-hour Actions incident on 2026-08-06 GitHub
+throttled webhooks to ~15% and four branches merged with no CI run ever
+created. So the workflow also carries **`workflow_dispatch`** — a "Run
+workflow" button on any branch, which is a direct API call rather than a
+webhook delivery and therefore still works when pushes are being dropped. Use
+it to get a verdict on a commit already on main without pushing an empty commit
+to manufacture a webhook. The four checks can also be run locally in about two
+seconds; that is what to do when Actions is down, rather than assuming.
 
 The one build-*ish* artifact is **`tailwind.css`**: a vendored, pre-generated
 Tailwind build (checked in, served by `server.js`) that replaced the Play CDN.

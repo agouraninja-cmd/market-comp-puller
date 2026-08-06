@@ -30,16 +30,16 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+// The /vault page itself. A web page, so it is Jacob's file, which is exactly
+// why it is no longer inline here: it used to be a 475-line block in the
+// middle of server.js, and editing it meant editing this file.
+const { renderVaultHTML } = require("./vault-page");
 // The vault API's comp shape — the seam between how comps are STORED and how
 // the dashboard READS them. It exists so broker_comps can be restructured into
 // the star schema without the dashboard moving. A pass-through today, on
 // purpose: introducing the seam must not change a byte of the response while
 // the dashboard is being written against it.
 const VAULTAPI = require("./vault-api");
-// The /vault page itself. A web page, so it is Jacob's file, which is exactly
-// why it is no longer inline here: it used to be a 475-line block in the
-// middle of server.js, and editing it meant editing this file.
-const { renderVaultHTML } = require("./vault-page");
 const LEADSVC = require("./broker-leads");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),

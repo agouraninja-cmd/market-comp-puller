@@ -67,6 +67,16 @@ jobs:
             sleep 0.5
           done
           curl -sf http://localhost:3199/healthz
-          # The home page must render, not just the health probe.
-          curl -sf http://localhost:3199/ | grep -qi "compninja" || { echo "home page did not render"; exit 1; }
+          # ACCOUNT_WALL defaults ON, so an anonymous / is a 302 to the front
+          # door and carries no body. Assert the redirect itself: `curl -sf`
+          # without -L prints nothing and still exits 0 on a 3xx, so grepping /
+          # for HTML would have failed here for the right reason but read like
+          # the server was broken.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3199/)
+          [ "$code" = "302" ] || { echo "anonymous / should redirect to the front door, got $code"; exit 1; }
+          # The page it points at must actually render...
+          curl -sf http://localhost:3199/how-it-works | grep -qi "compninja" || { echo "front door did not render"; exit 1; }
+          # ...and so must the app, for a visitor carrying a session cookie.
+          # Presence is all the routing layer checks; the value is never read.
+          curl -sf -H 'Cookie: cn_session=ci-smoke' http://localhost:3199/ | grep -qi "compninja" || { echo "home page did not render"; exit 1; }
           kill $SERVER_PID

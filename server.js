@@ -3109,7 +3109,23 @@ function searchTimeoutMsFor(maxUses, maxTokens) {
 // No chunk at all for this long means a wedged upstream. Streaming is what
 // makes an idle timeout possible in the first place (the non-streaming call
 // has nothing to measure between "sent" and "done"), so take it.
-const STREAM_IDLE_MS = 30_000;
+//
+// RAISED 30s -> 90s on 2026-08-05. 30s was too tight to be safe. A quiet
+// stretch is NORMAL mid-call: a report runs ~7 web searches, and while
+// Anthropic executes them there can be a long gap with no frame, so a healthy
+// search was being killed. The asymmetry is what settles the number:
+//   too tight -> abort a call that is ALIVE and ALREADY BILLED. The visitor
+//                sees "took too long", and the search is paid for anyway.
+//   too loose -> a genuinely wedged call takes longer to fail, and is still
+//                capped by searchTimeoutMsFor's derived deadline (~260s for a
+//                full search), which never stopped guarding it.
+// So the downside of loose is bounded and cheap; the downside of tight is a
+// failed customer search plus the bill. This is the same class of fixed
+// constant that was outgrown twice as a whole-call deadline (100s, then 150s),
+// each time turning live calls into "took too long" errors.
+// Env-tunable so it can be moved on Render without a deploy, the way
+// GUEST_SEARCH_LIMIT can.
+const STREAM_IDLE_MS = Math.max(5_000, Number(process.env.STREAM_IDLE_MS) || 90_000);
 // Escape hatch. Streaming changes nothing the caller sees — same parsed report,
 // same timing log — so this exists only to rule it out if something odd shows up.
 const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));

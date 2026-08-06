@@ -10776,7 +10776,9 @@ const server = http.createServer((req, res) => {
     return res.end(
       `<?xml version="1.0" encoding="UTF-8"?>\n` +
       `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      `  <url><loc>${SITE_URL}/</loc></url>\n` +
+      // Under the wall / is a 302 to /how-it-works, and listing a redirecting
+      // URL is a soft error in Search Console. ACCOUNT_WALL=off restores it.
+      (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
       `  <url><loc>${SITE_URL}/terms</loc></url>\n` +

@@ -130,6 +130,12 @@ test("the wall routes anonymous visitors to /how-it-works", async (t) => {
       assert.equal((await get(p)).status, 200, p + " must stay public");
     }
   });
+
+  await t.test("the sitemap does not advertise a redirect", async () => {
+    const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
+    assert.ok(!/<loc>[^<]*\/<\/loc>/.test(xml), "the bare / redirects under the wall; do not list it");
+    assert.match(xml, /how-it-works/, "the front door must still be listed");
+  });
 });
 
 test("with the wall off the app is open again", async (t) => {
@@ -139,5 +145,10 @@ test("with the wall off the app is open again", async (t) => {
   await t.test("/ serves the app to an anonymous visitor", async () => {
     const r = await fetch(srv.base + "/", { redirect: "manual" });
     assert.equal(r.status, 200);
+  });
+
+  await t.test("the sitemap lists / again", async () => {
+    const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
+    assert.match(xml, /<loc>[^<]*\/<\/loc>/, "with no wall, / is the landing page again");
   });
 });

@@ -601,6 +601,24 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   moved off `index.html`'s `<head>` with the copy it describes), and the sample
   exhibit's illustrative figures. The home page keeps only a one-line pointer
   strip linking here. Listed in `sitemap.xml`.
+- **Broker directory on market pages** (2026-08-06). A market page slug IS a
+  (market, property type) pair — `industrial-boise-id` — the identical key
+  `broker_coverage` uses, so "who covers Boise industrial" renders on
+  `/market/<slug>` rather than on a directory page of its own. Rules in the
+  pure, tested **`broker-directory.js`**; the cached read is
+  `BROKER_DIRECTORY` / `refreshBrokerDirectory()` / `brokersCoveringMarket()`
+  in server.js, stale-while-revalidate like `MARKET_CREDIT` and for the same
+  reason — market pages render synchronously and must never wait on the DB.
+  **TWO CONSENTS, NOT ONE.** `broker_coverage` is which markets a broker wants
+  *leads* from (015) — a working preference, **not** permission to publish
+  them. `broker_profiles.public` is the opt-in and is false by default. It is
+  enforced **twice**, in the query (`public=is.true`) and again in the module,
+  so a bug in either alone cannot publish somebody; only a literal `true`
+  counts. **NO CONTACT DETAILS EVER** — name, company, and a link to the
+  profile they opted into. Do not confuse `brokersCoveringMarket()` with
+  `findBrokersForMarket()`: the latter carries broker email and phone and is
+  OWNER-facing only. Routing is owner-mediated; a public directory is the
+  reverse of that.
 - `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
   **"Brokers"**. Holds the contribute-for-credit pitch, the owner-introduction
   offer, and what the Verified badge means — content that used to be a

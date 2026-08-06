@@ -64,8 +64,14 @@ fallback if fees are barred is lead visibility as a subscription benefit.
 
 ## Open business questions (not code)
 
-For the attorney: referral fees, MLS re-share terms, broker-data privacy
-policy. For Chuck: the gut-check benchmark, pricing, day-one dashboard
+For the attorney: referral fees, MLS re-share terms, and broker-data
+privacy — processing limits, deletion rights, and liability for data a
+broker was not licensed to hold. **The last of these gates launch, not
+development.** As of 2026-08-06 it is no longer hypothetical: brokers'
+private comps are live in storage (`broker_comps`, `broker_properties`)
+and flow into that broker's own valuation reports.
+
+For Chuck: the gut-check benchmark, pricing, day-one dashboard
 views. Details in Section 8 of the Ecosystem Plan docx.
 
 ## Parked (decided, not forgotten)

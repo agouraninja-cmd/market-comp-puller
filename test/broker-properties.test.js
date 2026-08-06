@@ -162,6 +162,30 @@ test("the migration is additive: it drops and renames nothing", () => {
   }
 });
 
+test("EVERY TABLE 016 CREATES HAS ROW LEVEL SECURITY ENABLED", () => {
+  // A table in the public schema without this is reachable through PostgREST
+  // by the anon role. broker_properties holds every broker's buildings and
+  // markets keyed by user_id — without RLS it would be a public index of the
+  // exact book of business the vault promises to keep private, and it would
+  // look perfectly healthy while doing it.
+  //
+  // 013 enables RLS on broker_uploads and broker_comps. 016 shipped without it
+  // on broker_properties and it was caught by hand, which is why this exists.
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "migrations", "016-broker-comps-star.sql"), "utf8");
+  const live = sql.split("\n").map((l) => l.split("--")[0]).join("\n");
+
+  const created = [...live.matchAll(/create table (?:if not exists )?([a-z_]+)/gi)].map((m) => m[1]);
+  assert.ok(created.length, "expected 016 to create at least one table");
+
+  for (const table of created) {
+    const rls = new RegExp(`alter table\\s+${table}\\s+enable row level security`, "i");
+    assert.ok(rls.test(live),
+      `016 creates ${table} but never enables row level security on it — ` +
+      `the anon role would be able to read it through PostgREST`);
+  }
+});
+
 test("the migration keeps property_id nullable", () => {
   // NOT NULL would break every upload in the window between applying the
   // migration by hand and deploying the code that populates it.

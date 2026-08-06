@@ -144,10 +144,17 @@ update broker_comps c
 -- it first and always. An index that did not would be an index the privacy
 -- wall cannot use.
 --
--- 013 shipped with the unique constraint on (user_id, dedupe_key) and nothing
--- else, so "my Boise industrial deals" has been a scan since day one. It has
--- not mattered yet because the table is new. It would matter exactly when a
--- broker uploads a real book, which is the worst moment to find out.
+-- 013 already created (user_id, market), (user_id, property_type) and
+-- (user_id, created_at desc). The ones below SUPERSEDE the first two by
+-- carrying deal_date desc as a trailing column, which is the order every vault
+-- read actually asks for — so the sort comes off the index instead of being
+-- done afterwards.
+--
+-- 013's originals are deliberately NOT dropped. This migration is additive,
+-- and a redundant index on an empty table costs nothing measurable; dropping
+-- them is a separate, easily-reverted cleanup once there is real data to
+-- measure against. Noted here so the duplication is a recorded decision rather
+-- than an oversight.
 create index if not exists broker_comps_user_market_idx
   on broker_comps (user_id, market, deal_date desc);
 
@@ -167,6 +174,26 @@ create index if not exists broker_comps_blend_idx
 
 create index if not exists broker_properties_user_market_idx
   on broker_properties (user_id, market, property_type);
+
+-- ---------------------------------------------------------------------------
+-- 4b. Row level security
+-- ---------------------------------------------------------------------------
+-- MATCHES 013, WHICH ENABLES RLS ON broker_uploads AND broker_comps.
+--
+-- A table in the `public` schema WITHOUT this is reachable through PostgREST
+-- by the anon role. broker_properties holds every broker's buildings, markets
+-- and property types keyed by user_id, so without RLS the dimension would be a
+-- public index of exactly the book of business the vault promises to keep
+-- private — and it would look completely healthy while doing it.
+--
+-- Enabled with NO policies, deliberately, exactly as 013 does it: that denies
+-- anon and authenticated outright. The application reaches these tables with
+-- the service key, which bypasses RLS, and does its own user_id scoping on
+-- every single query. Adding a policy here would be a second, weaker copy of a
+-- rule the application already enforces.
+--
+-- Idempotent: enabling RLS on a table that already has it is a no-op.
+alter table broker_properties enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- 5. The reporting view
@@ -229,5 +256,5 @@ commit;
 --   drop index if exists broker_comps_blend_idx;
 --   drop index if exists broker_properties_user_market_idx;
 --   alter table broker_comps drop column if exists property_id;
---   drop table if exists broker_properties;
+--   drop table if exists broker_properties;   -- takes its RLS with it
 --   commit;

@@ -4771,6 +4771,12 @@ details.q p{font-size:14px;color:#5A6473;margin:8px 0 0;max-width:80ch}
 .cta p{color:#4C5665;font-size:14px;margin:8px auto 20px;max-width:52ch}
 .btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:#991B1B;color:#fff}
+/* Header signup control. .hdr nav a already sets a colour and out-specifies
+   .btn, so the white has to be restated at that specificity. */
+.hdr nav a.btn,.hdr nav a.btn:hover{color:#fff}
+.btn.sm{padding:7px 14px;font-size:13px}
+.heroCta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:24px}
+.heroCta .alt{font-size:13.5px;color:#5A6473}
 /* Footer — the navy ink footer from the home page */
 footer{background:#1A2433;color:#B8C0CC;font-size:13px}
 footer .wrap{padding:40px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:32px}
@@ -5166,6 +5172,8 @@ function renderHowItWorksHTML() {
           <a href="/how-it-works" class="on" aria-current="page">How it works</a>
         </div>
       </details>
+      <a href="/?auth=signin">Log in</a>
+      <a class="btn sm" href="/?auth=signup">Create account</a>
     </nav>
   </div>
 </header>
@@ -5193,10 +5201,13 @@ function renderHowItWorksHTML() {
 <main>
   <div class="wrap">
     <section style="padding-bottom:32px">
-      <div class="kicker">How it works</div>
       <h1 class="h">A report you can hand to someone who will argue with it.</h1>
       <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
         subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
+      <div class="heroCta">
+        <a class="btn" href="/?auth=signup">Create a free account</a>
+        <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>
+      </div>
     </section>
     <div class="stats">${stats}</div>
   </div>
@@ -5253,8 +5264,8 @@ function renderHowItWorksHTML() {
 
     <div class="cta">
       <h2 class="h" style="font-size:22px">See it on your own building.</h2>
-      <p>Enter an address and property type; the report takes about a minute and costs nothing.</p>
-      <a class="btn" href="/">Run a free report &rarr;</a>
+      <p>Reports are free and take about a minute. Create an account and run one on your own building.</p>
+      <a class="btn" href="/?auth=signup">Create a free account &rarr;</a>
     </div>
   </div>
 </main>

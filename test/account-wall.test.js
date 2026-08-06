@@ -152,3 +152,30 @@ test("with the wall off the app is open again", async (t) => {
     assert.match(xml, /<loc>[^<]*\/<\/loc>/, "with no wall, / is the landing page again");
   });
 });
+
+// --- The front door -------------------------------------------------------
+
+test("/how-it-works carries the signup controls", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  await t.test("both auth doors are linked", async () => {
+    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    assert.match(html, /href="\/\?auth=signup"/, "a visitor sent here must be able to create an account");
+    assert.match(html, /href="\/\?auth=signin"/, "and an existing customer must be able to log in");
+  });
+
+  await t.test("nothing on the page links back into a redirect", async () => {
+    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    // The closing CTA used to point at "/", which under the wall bounces the
+    // visitor straight back to the page they are standing on.
+    assert.ok(!/class="btn"\s+href="\/"/.test(html), "no button may point at the walled app root");
+    assert.ok(!/Run a free report/.test(html), "the old CTA copy is gone with it");
+  });
+
+  await t.test("the redundant top kicker is gone", async () => {
+    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    assert.ok(!/class="kicker">How it works</.test(html), "the page IS the front door; it need not label itself");
+    assert.match(html, /class="kicker">Method</, "the other section kickers stay");
+  });
+});

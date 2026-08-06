@@ -80,27 +80,30 @@ const RENEWAL_SLACK_MS = 24 * 60 * 60 * 1000;
 const PRO_PLANS = ["pro_monthly", "pro_annual_founding"];
 
 // ---------------------------------------------------------------------------
-// The broker tier (Ecosystem Plan v1) — a SUPERSET of Pro, not a sibling.
+// ONE SUBSCRIPTION (owner's decision, 2026-08-05). There is no separate broker
+// plan any more: the private vault is a capability of Pro, not of a second
+// tier sold beside it.
 //
-// "Everything a user gets, plus a private workspace built on their own comp
-// data" (Ecosystem Plan §2). So a broker subscription grants every Pro
-// capability by the ordinary route below — it is a paid plan in a Pro state —
-// and adds exactly one thing on top: the private vault.
+// The Ecosystem Plan (§2, §3) modelled two account types with `broker_monthly`
+// as a superset of Pro. That shipped as billing rails on 2026-08-05 and was
+// never sold — `STRIPE_PRICE_BROKER_MONTHLY` was never set, so checkout 503'd
+// for it and no subscription row in the wild can carry that plan. Collapsing
+// it therefore strips access from nobody, which is why this is a clean delete
+// rather than a migration.
 //
-// Modelled as its own plan list rather than a column on `users` for the same
-// reason Pro is: access must expire when payment does. A role flag would
-// survive a cancelled card and quietly keep a vault open; a subscription row
-// runs through subscriptionState() and lapses like everything else.
+// What this changes: every paid Pro subscriber can open a private vault.
+// What it does NOT change: the privacy wall. Whether a vault may be opened is
+// an entitlement question; what may be read out of one is enforced by separate
+// tables read by separate functions, and is untouched by this.
 //
-// The one-off report unlock does NOT reach the vault, for the same reason it
-// does not reach the Address Explorer: the vault is a workspace, not a
-// property, so scoping it to a single report is meaningless.
+// The one-off report unlock still does NOT reach the vault, for the same
+// reason it does not reach the Address Explorer: the vault is a workspace, not
+// a property, so scoping it to a single report is meaningless.
 // ---------------------------------------------------------------------------
-const BROKER_PLANS = ["broker_monthly"];
 
 // Every plan we actually sell. Used only for the `plan` LABEL — access itself
 // is governed by subscription status (see the note in computeEntitlements).
-const PAID_PLANS = [...PRO_PLANS, ...BROKER_PLANS];
+const PAID_PLANS = [...PRO_PLANS];
 
 // Plans that keep Pro alive. `cancelling` = cancelled but inside the paid
 // period; `grace` = payment failed, still inside the 7 days.
@@ -296,11 +299,13 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
   //   pinning that: "status still governs access"). Erring generous is right
   //   when the alternative is stripping comps from someone whose card cleared.
   //
-  //   The vault holds a broker's private book of business under a promise that
-  //   CompNinja cannot leak it. Opening one for a subscription we cannot name
-  //   is not generosity, it is an unowned data store — so this errs the other
-  //   way and fails closed on anything that is not literally a broker plan.
-  const broker = pro && BROKER_PLANS.includes(planName);
+  //   The vault now rides that same rule. Under one subscription there is no
+  //   separate plan name to test, so `broker` IS `pro`: any paid-up
+  //   subscription opens a vault, and the moment it lapses the vault closes
+  //   with everything else. The old fail-closed-on-unknown-plan rule existed
+  //   only to stop a subscription we could not name from opening a private
+  //   data store; with a single product there is nothing left to disambiguate.
+  const broker = pro;
 
   // A single-report purchase only ever unlocks the report it was bought for.
   // Guard on the id rather than trusting the caller looked it up correctly.
@@ -343,8 +348,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // simply being Pro at a one-off price.
     canExploreAddresses: pro,
     broker,
-    // The one capability a Pro subscription does not carry. A broker plan is a
-    // superset of Pro; Pro is not a subset of broker.
+    // Now simply Pro. Under one subscription the vault is a Pro capability,
+    // not a second tier's, so this tracks `pro` exactly.
     //
     // Note it rides the SAME lapse rules as everything else — `broker` is false
     // the moment subscriptionState() stops returning a Pro state, including at
@@ -363,7 +368,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
 function reasonFor({ state, pro, broker, reportUnlocked, user }) {
   if (pro && state === "grace") return "Pro access continues during the payment grace period.";
   if (pro && state === "cancelling") return "Pro access continues until the end of the paid period.";
-  if (broker) return "Active broker subscription — Pro, plus the private vault.";
+  if (pro) return "Active subscription — every Pro capability, including the private vault.";
   if (pro) return "Active Pro subscription.";
   if (reportUnlocked) return "This report was unlocked with a single-report purchase.";
   if (state === "expired") return "Pro access has ended.";
@@ -405,6 +410,5 @@ module.exports = {
   GRACE_DAYS,
   RENEWAL_SLACK_MS,
   PRO_PLANS,
-  BROKER_PLANS,
   PAID_PLANS,
 };

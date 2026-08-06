@@ -1078,6 +1078,44 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     storage column cannot reach the browser by default and a dropped one fails
     the build. `user_id`, `address_key`, `dedupe_key` and `property_id` are
     omitted as plumbing. Do not go back to answering `comps: rows`.
+    `PROPERTY_FIELDS` is the second list: fields a comp inherits from its
+    **building** rather than from `broker_comps` (`lat`/`lng`/`geo_source`).
+    They are separate because the contract tests check `API_COMP_FIELDS`
+    against the `broker_comps` schema **both ways**, and a `lat` in there would
+    correctly fail — the fix was a second checked list against
+    `broker_properties`, never loosening the first.
+  - **Private-comp coordinates**
+    (`migrations/017-broker-property-coordinates.sql`; spec
+    `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`, AGREED
+    2026-08-06). A broker's private comp used to be geocoded **by address, from
+    their own browser**, on every report — so an off-market address left in a
+    URL to the US Census geocoder and, on a miss, to OpenStreetMap with the
+    broker's IP. `lat`/`lng`/`geo_source`/`geocoded_at` now live on
+    `broker_properties`, filled from optional `lat`,`lng` columns in the vault
+    CSV. Five things to know:
+    - **This is only the STORAGE half. It fixes nothing on its own.**
+      `renderMap()` in index.html still geocodes every comp unconditionally
+      with no check for coordinates it already carries, so until the display
+      guards land these columns are stored and ignored. Stated in §2 of the
+      spec; it is why the work was contracted in two halves.
+    - **`parseCoord()`, NOT `parseNumber()`.** The spec said to reuse
+      `parseNumber`, which **rejects negatives** — it would refuse every US
+      longitude, including the spec's own Boise example. Refuses DMS and
+      bearings too: reject rather than guess, because a wrong coordinate puts
+      a building on the wrong continent and nobody will recognise it as wrong.
+    - **Coordinates ride on `_lat`/`_lng`, which are NOT columns.**
+      `broker_comps` has no coordinate columns and PostgREST 400s on an unknown
+      one, which on the upload path refuses the broker's whole spreadsheet.
+      `PROPS.stripCarriedKeys()` removes them before the comp insert.
+    - **They are written by a separate, guarded PATCH, never the property
+      upsert.** That upsert is `resolution=merge-duplicates`, which replaces
+      the columns in its payload — coordinates travelling in it would mean a
+      later upload that omitted them **wiped** the ones already stored. The
+      PATCH filters `lat=is.null`, so a located building is never rewritten.
+    - **`geo_source` is only ever `'broker'`.** `'census'` is import-time
+      geocoding — step 2, deferred by the owner's §7 decision (zero real vault
+      uploads exist, so the question it answers cannot be measured yet, and it
+      is where the rate limit and retry policy would live). A test pins this.
 - **Broker lead inbox** (v1, 2026-08-05). DDL in
   `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead

@@ -7857,6 +7857,27 @@ async function linkVaultProperties(userId, comps) {
         `&address_key=eq.${encodeURIComponent(addressKey)}&property_id=is.null`,
         { property_id: propertyId }, { prefer: "return=minimal" });
     }
+
+    // Coordinates the broker supplied for their buildings (migration 017).
+    //
+    // A SEPARATE, GUARDED WRITE rather than columns on the upsert above, and
+    // the reason is `resolution=merge-duplicates`: it replaces the columns in
+    // its payload, so a second upload that omitted lat/lng would carry nulls
+    // and WIPE the coordinates the first one supplied. Every re-import would
+    // quietly un-locate the broker's book.
+    //
+    // `lat=is.null` is the same idempotence guard the property_id PATCH above
+    // uses, and it delivers the spec's §6 rule directly: a building that
+    // already has coordinates is never rewritten, however many times its comps
+    // are re-uploaded. It also means a later, better source cannot silently
+    // downgrade a location — changing one is a deliberate act, not a re-import.
+    for (const coord of PROPS.propertyCoordsFrom(comps)) {
+      await sbRequest("PATCH",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=eq.${encodeURIComponent(coord.address_key)}&lat=is.null`,
+        { lat: coord.lat, lng: coord.lng, geo_source: coord.geo_source },
+        { prefer: "return=minimal" });
+    }
   } catch (err) {
     // Loud in the log, invisible to the broker.
     console.error("vault property link failed (comps are stored; link deferred):", err.message);
@@ -7969,12 +7990,68 @@ async function vaultCompsForReport(req, ent, { market, type, months }) {
     query += `&order=deal_date.desc&limit=50`;
 
     const rows = await sbRequest("GET", query);
-    return Array.isArray(rows) ? rows : [];
+    if (!Array.isArray(rows) || !rows.length) return [];
+    return await attachPropertyCoords(user.id, rows);
   } catch (err) {
     // Deliberately quiet about the rows and loud about the failure: the
     // message may name a column, never a comp.
     console.error("vault blend read failed:", err.message);
     return [];
+  }
+}
+
+// Stitch each comp's building coordinates onto it (migration 017).
+//
+// A SECOND QUERY rather than a PostgREST embedded join, which is this repo's
+// standing pattern — see 016's note on the reporting view: "this codebase has
+// no ORM and never uses PostgREST's embedded-resource joins; where it needs a
+// join it runs two queries and stitches them in JS."
+//
+// Why the coordinates have to travel this far at all: they are what lets the
+// browser place a private comp's pin WITHOUT sending its address out to be
+// geocoded. Stored on the property and never delivered to the report, they
+// would be a column nothing reads.
+//
+// NEVER THROWS AND NEVER FAILS THE READ. Coordinates are an enrichment; a comp
+// without them still renders, and still gets its pin the old way. Losing them
+// costs privacy on that one comp, which is bad — but failing here would cost
+// the broker the blended comps entirely, which is worse and is also the stance
+// vaultCompsForReport already takes about its own failures.
+async function attachPropertyCoords(userId, comps) {
+  try {
+    const ids = [...new Set(comps.map((c) => c && c.property_id).filter(Boolean))];
+    // Comps whose property link has not been backfilled yet (property_id is
+    // nullable by design in 016) simply have no building to inherit from.
+    if (!ids.length) return comps;
+
+    const list = ids.map((id) => `"${String(id).replace(/"/g, '""')}"`).join(",");
+    const props = await sbRequest("GET",
+      // Scoped by user_id as well as by id. The ids came from this user's own
+      // comps so the filter is redundant today — and it stays, because every
+      // vault read in this file is user-scoped and an unscoped one is the
+      // shape of the next mistake.
+      `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source`);
+
+    const byId = new Map();
+    for (const p of Array.isArray(props) ? props : []) {
+      // Both or neither, checked once more at the point of use. A half-located
+      // building would put a pin on the equator, and by here the value has
+      // passed through a spreadsheet, a parser and a database.
+      const lat = Number(p && p.lat);
+      const lng = Number(p && p.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      byId.set(p.id, { lat, lng, geo_source: p.geo_source || null });
+    }
+    if (!byId.size) return comps;
+
+    return comps.map((c) => {
+      const hit = c && c.property_id ? byId.get(c.property_id) : null;
+      return hit ? { ...c, ...hit } : c;
+    });
+  } catch (err) {
+    console.error("vault coordinate stitch failed (comps still blend):", err.message);
+    return comps;
   }
 }
 
@@ -9882,8 +9959,14 @@ const server = http.createServer((req, res) => {
           // normal, and the second copy of a deal is a no-op rather than an
           // error. The unique (user_id, dedupe_key) constraint is what makes
           // this exact.
+          // `_lat`/`_lng` are carried between functions and are NOT columns on
+          // broker_comps — they belong to the building (migration 017), and
+          // PostgREST 400s the whole insert on an unknown column, which here
+          // would mean refusing a broker's entire spreadsheet. Stripped for
+          // the comp insert; `rows` keeps them for the property write below.
           await sbRequest("POST", "broker_comps?on_conflict=user_id,dedupe_key",
-            rows, { prefer: "resolution=ignore-duplicates,return=minimal" });
+            rows.map(PROPS.stripCarriedKeys),
+            { prefer: "resolution=ignore-duplicates,return=minimal" });
 
           // Link each comp to its building (migration 016). Deliberately AFTER
           // the comps are safely stored and deliberately unable to fail the

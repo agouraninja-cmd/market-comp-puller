@@ -87,6 +87,13 @@ const COLUMNS = [
   // nothing looks broken and the dimension just stays empty. Exactly the
   // silent-failure shape 004 taught this folder to check for.
   ["broker_comps",      ["property_id"],                         "016-broker-comps-star.sql"],
+  // 017 puts the building's location on the dimension so a private comp can be
+  // mapped without its address being geocoded. Same silent shape as the rest
+  // of this list: the coordinate PATCH is inside linkVaultProperties(), which
+  // swallows its own errors by design, so a missing column means every upload
+  // looks perfectly healthy and no building is ever located.
+  ["broker_properties", ["lat", "lng", "geo_source", "geocoded_at"],
+                                                                "017-broker-property-coordinates.sql"],
   // 015 alters two existing tables; a table check cannot see either change.
   // A missing broker_profiles.user_id silently re-orphans profiles on email
   // change; a missing leads.size_sqft 400s every sized lead insert into the

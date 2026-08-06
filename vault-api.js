@@ -105,9 +105,31 @@ const API_COMP_FIELDS = Object.freeze([
   "property_id",
 ]);
 
-// The fields a dashboard actually receives: the contract, minus the plumbing.
+// Fields that reach a comp from the PROPERTY DIMENSION rather than from
+// broker_comps. Migration 017; spec
+// docs/superpowers/specs/2026-08-06-private-comp-geocoding.md §3.
+//
+// These are the first fields the contract carries that are not broker_comps
+// columns, and they are declared separately rather than dropped into
+// API_COMP_FIELDS because the tests check that list against the broker_comps
+// schema in BOTH directions. Adding them there would have made
+// "the contract claims no field the schema does not have" fail — correctly,
+// since broker_comps has no `lat`. Widening that test to shrug at unknown
+// fields would have removed the tripwire for every future column.
+//
+// So the tripwire is kept and a SECOND one is added beside it: the tests check
+// this list against broker_properties the same way. Both tables stay honest,
+// and a coordinate column renamed in a later migration still breaks the build.
+//
+// This is the seam doing what its header promises — "the table may change and
+// the API will not". A comp's location physically lives one join away, and
+// nothing downstream needs to know that.
+const PROPERTY_FIELDS = Object.freeze(["lat", "lng", "geo_source"]);
+
+// The fields a dashboard actually receives: the contract, minus the plumbing,
+// plus what the property dimension contributes.
 const PUBLIC_COMP_FIELDS = Object.freeze(
-  API_COMP_FIELDS.filter((f) => !INTERNAL_FIELDS.includes(f))
+  API_COMP_FIELDS.filter((f) => !INTERNAL_FIELDS.includes(f)).concat(PROPERTY_FIELDS)
 );
 
 // One stored row, as the API presents it.
@@ -133,4 +155,7 @@ function toApiComps(rows) {
   return Array.isArray(rows) ? rows.map(toApiComp) : [];
 }
 
-module.exports = { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS, PUBLIC_COMP_FIELDS };
+module.exports = {
+  toApiComp, toApiComps,
+  API_COMP_FIELDS, INTERNAL_FIELDS, PUBLIC_COMP_FIELDS, PROPERTY_FIELDS,
+};

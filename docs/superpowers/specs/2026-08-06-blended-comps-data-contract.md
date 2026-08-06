@@ -1,7 +1,7 @@
 # Blended comps — the data contract
 
 **Date:** 2026-08-06
-**Status:** PROPOSAL — needs ten minutes of agreement between Owen and Jacob before either half is built.
+**Status:** AGREED (2026-08-06, by Owen). The four open questions below are decided; the shape is settled and both halves can be built against it. Jacob owns how the badge is rendered — the wording is recorded here, not the styling.
 **Owner of the server half:** Owen · **Owner of the display half:** Jacob
 
 This is the "agree what the blended-comps data looks like" step. It exists so
@@ -147,18 +147,23 @@ report.private_count = 1;
 That is the whole contract. If the display half works against this, it works
 against the real thing.
 
-### Open questions for the ten minutes
+### Decided (2026-08-06)
 
-1. **Badge wording.** "Your comp"? "From your vault"? It must not read as a
-   provenance claim like the Verified badge — it is an ownership statement.
-2. **Does a private comp outrank a public one in the table's default sort?**
-   Proposal: no. Sort stays as-is; the flag is styling, not ranking.
-3. **What if a private comp duplicates a public one at the same address?**
-   Proposal: show both, flag the private one. Silently dropping either is a
-   broker seeing their own deal vanish, which reads as data loss.
-4. **Empty state.** A broker with an empty vault gets `private_count: 0` and no
-   change to the report. Confirm that is what the first-five-minutes work
-   expects.
+1. **Badge wording: "From your vault."** It states where the row came from, so
+   it reads as ownership rather than as a provenance claim. That keeps it
+   clearly distinct from the green Verified badge, which IS a provenance claim
+   and is earned a different way.
+2. **Sort order: unchanged.** A private comp does not outrank a public one. The
+   flag is styling, not ranking — pinning them to the top would imply a
+   broker's own deals are better evidence than the public ones, which is not
+   something we can claim.
+3. **Duplicates: show both, flag the private one.** A broker watching their own
+   uploaded deal vanish from their report reads as data loss, and they will
+   notice. Silently dropping the public row instead would change the valuation
+   with no explanation.
+4. **Empty state: byte-identical.** An empty vault yields `private_count: 0`
+   and a report indistinguishable from today's. The feature is invisible until
+   there is something to show, which is also what makes it testable.
 
 ---
 

@@ -104,6 +104,33 @@ test("bare environment", async (t) => {
     }
   });
 
+  // requireBroker (server.js) is a deliberate second copy of the vault's
+  // openVault gate — same three refusals in the same order (401 not signed
+  // in, 403 not a broker, 503 no database). These tests exist to catch DRIFT
+  // between the two copies, not to re-prove the decision (comp-gate-style
+  // logic like this belongs to a pure module; requireBroker's own rules are
+  // covered by intent in broker-leads.test.js — this file only proves the
+  // routes actually call it).
+  //
+  // No signed-in fixture exists in this harness (booting a server with no
+  // database means there is nowhere to create an account), so the 403
+  // "signed in but not a broker" case is not practical to assert here and is
+  // skipped; the 401 anonymous case below is what this file can prove.
+  await t.test("the broker lead inbox refuses an anonymous caller", async () => {
+    const r1 = await fetch(srv.base + "/api/broker/coverage");
+    assert.equal(r1.status, 401);
+
+    const r2 = await fetch(srv.base + "/api/broker/leads");
+    assert.equal(r2.status, 401);
+
+    const r3 = await fetch(srv.base + "/api/broker/leads/intro", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ lead_id: "1" }),
+    });
+    assert.equal(r3.status, 401);
+  });
+
   await t.test("/api/config is public and advertises no entitlement it cannot enforce", async () => {
     const r = await fetch(srv.base + "/api/config");
     assert.equal(r.status, 200);
@@ -168,6 +195,15 @@ test("admin gating", async (t) => {
   await t.test("the header form is accepted", async () => {
     const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
     assert.equal(r.status, 200);
+    // The intro-request surface must ride along, not just the event
+    // aggregates — a dropped owner email is invisible without it. This boot
+    // has no Supabase, and the table has no file fallback, so the honest
+    // answer is db:false with nothing to show — never a fabricated zero
+    // presented as a real count, and never a missing key (which /admin
+    // reads as a stale pre-feature response and hides the card for).
+    const body = await r.json();
+    assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
+    assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
   });
 
   await t.test("the ?key= form still works for machine callers", async () => {

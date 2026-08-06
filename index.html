@@ -1009,6 +1009,7 @@
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
           <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
           <div id="vaultCardDetail" class="text-xs text-[#8A93A0] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
+          <div id="vaultCardLeads" class="hidden text-xs text-[#8A93A0] mt-1"></div>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <a id="vaultOpenBtn" href="/vault"
               class="btn-live inline-flex items-center text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Open your vault</a>
@@ -6348,6 +6349,7 @@
   // automatically on same-origin fetches.
   // ----------------------------------------------------------------------------
   let currentUser = null;           // { email, name } | null
+  let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
   let acctMode = "signin";          // signin | signup | forgot | reset
   let resetToken = "";
@@ -7700,6 +7702,34 @@
     // there would offer a page that answers 401.
     document.getElementById("vaultCard")
       .classList.toggle("hidden", !(canVault && currentUser));
+
+    // Lead count on the card: fetched once per sign-in, not on every
+    // refreshBillingUI call — the checkout-return flow polls this function
+    // roughly six times, and /api/broker/leads has nothing new to say between
+    // those polls. Reset to empty/hidden right here, the same place the card
+    // itself is hidden, and re-arm the once-guard so a later sign-in (a
+    // different broker, or the same one again) fetches fresh instead of
+    // showing whatever the previous session left behind.
+    const vaultLeadsEl = document.getElementById("vaultCardLeads");
+    if (!(canVault && currentUser)) {
+      vaultLeadsFetched = false;
+      vaultLeadsEl.textContent = "";
+      vaultLeadsEl.classList.add("hidden");
+    } else if (!vaultLeadsFetched) {
+      vaultLeadsFetched = true;
+      vaultLeadsEl.textContent = "";
+      vaultLeadsEl.classList.add("hidden");
+      // Best-effort, silent on any failure. The server re-checks
+      // canUseVault, so this fetch simply 403s for everyone else.
+      fetch("/api/broker/leads").then((r) => (r.ok ? r.json() : null)).then((j) => {
+        if (!j || !Array.isArray(j.leads)) return;
+        const n = j.leads.length;
+        vaultLeadsEl.textContent = n
+          ? `${n} valuation lead${n === 1 ? "" : "s"} in your markets in the last 90 days.`
+          : "";
+        vaultLeadsEl.classList.toggle("hidden", !n);
+      }).catch(() => {});
+    }
 
     // /api/config already carries this visitor's remaining exports, so the
     // counter can be right on first paint instead of only after an export.
@@ -9299,6 +9329,9 @@
       address: (currentMeta && currentMeta.address) || "",
       type: (currentMeta && currentMeta.type) || "",
       source: leadContext,
+      size_sqft: leadContext === "bov" && currentMeta && currentMeta.subject && currentMeta.subject.sizeMin
+        ? (currentMeta.subject.sizeMax ? (currentMeta.subject.sizeMin + currentMeta.subject.sizeMax) / 2 : currentMeta.subject.sizeMin)
+        : undefined,
     };
     if (!payload.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
       errEl.textContent = "Please enter your name and a valid email.";

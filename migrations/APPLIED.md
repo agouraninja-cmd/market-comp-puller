@@ -3,9 +3,10 @@
 One line per migration, added when it is run on the live database. A file in
 this folder that is missing from this list has NOT been run.
 
-**Full schema verified 2026-08-05:** `node migrations/verify.js` reported
-"Everything present" — every expected table and every spot-checked column
-exists in production.
+**Full schema verified 2026-08-05 (through 015):** everything through 014 was
+confirmed by `node migrations/verify.js`; 015 was run and verified directly in
+the SQL editor against `information_schema` and `pg_indexes` (see its row
+below), because this machine's `.env` holds no Supabase credentials.
 
 | File | Status on prod | Evidence |
 |------|----------------|----------|
@@ -24,6 +25,7 @@ exists in production.
 | 012-search-timings.sql | applied 2026-08-04 | run + verified via Chrome (information_schema returned all 4 columns); re-confirmed 2026-08-05 by `verify.js` |
 | 013-broker-vault.sql | applied 2026-08-05 | run in the SQL editor by the owner; `verify.js` reports the full schema present, and a probe insert confirmed all 28 columns and types are accepted by the live table |
 | 014-vault-publish-link.sql | applied 2026-08-05 (logged after the fact) | verified via Chrome in the SQL editor: `published_submission_id` exists in `broker_comps` and `broker_comps_published_submission_idx` is in `pg_indexes` — both halves of the file |
+| 015-broker-lead-inbox.sql | applied 2026-08-05 | pre-check (duplicate lowercased emails in `broker_profiles`) returned zero rows first; whole file pasted byte-identical (checksum-matched against the committed file) and run in the SQL editor, "Success. No rows returned", so the `leads.id` type guard did not raise. Verified by one `information_schema`/`pg_indexes` query returning all ten objects: tables `broker_coverage` + `lead_intro_requests`, columns `broker_profiles.user_id` (uuid), `leads.size_sqft` (numeric), `leads.id` (bigint), and indexes `broker_profiles_user_id_uidx`, `broker_coverage_market_type_idx`, `lead_intro_requests_user_id_idx`. Backfill matched 0 profiles because `broker_profiles` is still empty |
 
 ## Verification
 
@@ -40,9 +42,10 @@ by the migration that creates it.
 table-existence check: `comp_corpus` existed throughout, ten *columns* were
 missing, every insert 400'd for weeks. `verify.js` asks about both.
 
-Last run 2026-08-05: everything through 012 present; only 013 outstanding.
-(013 and 014 were confirmed applied later that day via the SQL editor — see
-the table above.)
+Last run 2026-08-05: everything through 014 present. 015 was applied after that
+run and verified in the SQL editor instead, so the next `verify.js` (on a
+machine that has the Supabase credentials) should report everything present
+through 015.
 
 Not in CI, deliberately — CI holds no secrets, by design, so that a fork PR
 cannot exfiltrate one. This is a local command run around a schema deploy.

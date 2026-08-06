@@ -131,7 +131,26 @@ dependency. `.env` is git-ignored — never commit it.
   same Resend notifier). An in-memory counter reset at UTC midnight and on
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
-- `GUEST_SEARCH_LIMIT` — optional (default 1, LIVE since 2026-08-03). Free
+- `ACCOUNT_WALL` — optional `on`/`off`, **default ON** (live since 2026-08-05).
+  Makes the app account-only: `GET /` and `/desk` 302 to `/how-it-works` for a
+  visitor with no `cn_session` cookie, and `index.html` swaps the search form
+  for a signup card (`applySearchLock()`, driven by `/api/config`'s
+  `accountWall`). It decides on cookie **presence**, never `getSessionUser()`,
+  because that reads the database and this route runs on every page load; the
+  real gate is that the wall **forces `GUEST_SEARCH_LIMIT` to 0**, so
+  `/api/comps` refuses an anonymous search whatever the browser does. The two
+  settings are deliberately not allowed to disagree. Two exemptions:
+  `/r/<id>` (shared reports are public by design, and now render with the
+  signup card above them) and `/?auth=signup|signin` (the account modal lives
+  only in `index.html`, so the signup buttons on `/how-it-works` need a door
+  that is not a redirect loop). While it is on, `sitemap.xml` drops `/` and the
+  `WebApplication` JSON-LD lives on `/how-it-works` rather than `index.html`,
+  which no crawler reaches. `off` is the instant rollback lever and restores
+  the pre-wall app exactly, including `GUEST_SEARCH_LIMIT`'s own configured
+  value; the startup banner says which state it is in. Spec in
+  `docs/superpowers/specs/2026-08-05-account-wall-and-how-it-works-landing-design.md`.
+- `GUEST_SEARCH_LIMIT` — optional (default 1, LIVE since 2026-08-03; forced to
+  0 while `ACCOUNT_WALL` is on). Free
   report searches per **anonymous** visitor before a free sign-in is required —
   a signup funnel, not a paywall (any account clears it; spec in
   `docs/superpowers/specs/2026-08-03-guest-search-cap-design.md`). `0` = sign-in

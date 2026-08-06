@@ -83,6 +83,22 @@ const FIELD_MAP = {
   price_per_acre: "price_per_acre",
   zoning: "zoning",
   beds_baths: "beds_baths",
+
+  // From the PROPERTY, not the comp — stitched on by vaultCompsForReport
+  // before this runs (migration 017; spec
+  // docs/superpowers/specs/2026-08-06-private-comp-geocoding.md).
+  //
+  // `lat`/`lng` are names index.html already understands, so a private comp
+  // carrying them needs no new rendering path — only the guard that stops
+  // renderMap() geocoding it anyway, which is the display half.
+  //
+  // These are the fields that keep an off-market address from leaving the
+  // browser to place a pin, so they are the point of the whole change rather
+  // than another column. Absent values are dropped by toReportComp below, so a
+  // building with no coordinates produces exactly the comp shape it does today.
+  lat: "lat",
+  lng: "lng",
+  geo_source: "geo_source",
 };
 
 // A vault row, shaped as a report comp. Empty values are dropped rather than

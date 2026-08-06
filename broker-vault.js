@@ -46,6 +46,13 @@ const TEMPLATE_COLUMNS = [
   "tenancy",
   "year_built",
   "notes",
+  // Optional, and last on purpose: the four required columns lead, and a
+  // broker skimming the header should not meet two fields they may not have
+  // before they meet the ones they must. Many CRM and MLS exports carry these
+  // already. Supplying them means the property's address is never sent out to
+  // be geocoded — see migration 017 and the spec it names.
+  "lat",
+  "lng",
 ];
 
 // Per-type spec columns a broker may optionally include. Same names as
@@ -175,6 +182,45 @@ function parseNumber(v) {
   const n = Number(cleaned);
   if (!Number.isFinite(n)) return { ok: false, error: `"${raw}" is not a number` };
   if (n < 0) return { ok: false, error: `"${raw}" is negative` };
+  return { ok: true, value: n };
+}
+
+/**
+ * One half of a coordinate pair, in decimal degrees.
+ *
+ * NOT parseNumber(), and this is the one place the spec's letter could not be
+ * followed. `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md` §3
+ * says "reuse parseNumber()", but parseNumber REJECTS NEGATIVE NUMBERS — and
+ * every longitude in the United States is negative. It would have refused the
+ * spec's own worked example (`lng: -116.2023`, Boise) and every comp any US
+ * broker will ever upload. Flagged back to Jacob rather than quietly worked
+ * around, since the display half reads what this produces.
+ *
+ * Rejects rather than guesses, matching this module's stance everywhere else:
+ * a wrong coordinate puts a broker's building on the wrong continent, and
+ * unlike a wrong price nobody will recognise it as wrong.
+ *
+ * `bound` is the absolute limit for this axis: 90 for latitude, 180 for
+ * longitude.
+ */
+function parseCoord(v, label, bound) {
+  const raw = String(v == null ? "" : v).trim();
+  if (!raw) return { ok: true, value: null };
+  // Degrees-minutes-seconds and the N/S/E/W suffixes are refused rather than
+  // converted. They are unambiguous to a human and ambiguous to a parser
+  // (which of 116°12'8" W and -116.2023 did the spreadsheet mean by "116 12
+  // 8"?), and a broker who sees the refusal can paste decimal degrees.
+  const cleaned = raw.replace(/[,\s]/g, "");
+  if (!/^[+-]?\d*\.?\d+$/.test(cleaned)) {
+    return { ok: false, error: `${label}: "${raw}" is not a decimal-degrees number` };
+  }
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) {
+    return { ok: false, error: `${label}: "${raw}" is not a decimal-degrees number` };
+  }
+  if (n < -bound || n > bound) {
+    return { ok: false, error: `${label}: ${n} is outside ${-bound} to ${bound}` };
+  }
   return { ok: true, value: n };
 }
 
@@ -362,6 +408,48 @@ function normalizeRow(raw) {
     row[key] = text(src[key], MAX_SHORT_TEXT) || null;
   }
 
+  // Coordinates, if the broker's export carried them.
+  //
+  // NOT added to OPTIONAL_SPEC_COLUMNS, which is where §3 of the spec put
+  // them. Two reasons, both structural:
+  //
+  //   1. Those columns are written verbatim onto the broker_comps row (the
+  //      loop above), and there is no `lat` column on broker_comps. PostgREST
+  //      400s on an unknown column, which on this path means the whole
+  //      upload fails — the exact silent-schema-mismatch failure CLAUDE.md
+  //      warns about under Comp corpus.
+  //   2. They are attributes of the BUILDING, not of the deal. §3 of the same
+  //      spec says so and builds migration 017 on broker_properties for it.
+  //      Storing them per-comp would put the same pair on every deal for a
+  //      building and let the copies disagree.
+  //
+  // So they ride on underscore-prefixed keys, which are this repo's existing
+  // convention for "carried between functions, never a column" (see `_newest`
+  // in broker-properties.js). server.js strips them before the comp insert and
+  // hands them to the property upsert.
+  //
+  // BOTH OR NEITHER, checked here rather than left to the database: a lone
+  // latitude is a mistake, not a partial answer, and telling the broker which
+  // line it was on is worth more than a constraint violation they never see.
+  const lat = parseCoord(src.lat, "lat", 90);
+  const lng = parseCoord(src.lng, "lng", 180);
+  if (!lat.ok) errors.push(lat.error);
+  if (!lng.ok) errors.push(lng.error);
+  if (lat.ok && lng.ok) {
+    const have = (lat.value != null) + (lng.value != null);
+    if (have === 1) {
+      errors.push("lat and lng must be given together — one on its own places a pin on the equator");
+    } else if (have === 2 && lat.value === 0 && lng.value === 0) {
+      // Null Island. Overwhelmingly a failed spreadsheet lookup rather than a
+      // building in the Gulf of Guinea, and a confidently wrong pin is worse
+      // than an obviously missing one.
+      errors.push("lat and lng are both 0 — that is Null Island, not a location");
+    } else if (have === 2) {
+      row._lat = lat.value;
+      row._lng = lng.value;
+    }
+  }
+
   return errors.length ? { ok: false, errors } : { ok: true, row };
 }
 
@@ -470,6 +558,11 @@ function templateCsv() {
     tenancy: "Single tenant",
     year_built: "1998",
     notes: "Dates are YYYY-MM-DD. Prices are plain numbers - no $ signs, no 1.2M.",
+    // Decimal degrees, and both or neither. Shown filled in because a blank
+    // example column reads as "leave this alone", and these are the two that
+    // keep a private address from being sent out to place its map pin.
+    lat: "34.0709",
+    lng: "-117.6509",
   };
   return [
     TEMPLATE_COLUMNS.map(csvCell).join(","),
@@ -641,6 +734,7 @@ module.exports = {
   normalizeHeader,
   parseMoney,
   parseNumber,
+  parseCoord,
   parsePercent,
   parseDate,
   parseTransaction,

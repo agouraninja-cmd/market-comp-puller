@@ -107,16 +107,16 @@ function verifyWebhookSignature(rawBody, sigHeader, secret, nowMs = Date.now()) 
 function planForPrice(priceId, priceMap) {
   if (!priceId) return null;
   const map = priceMap || {};
-  // An UNSET price env var is "", and the broker price genuinely ships unset
-  // until pricing is decided — so a third entry here is a third chance for a
-  // configured-vs-empty mismatch. The early `!priceId` return already makes
-  // ""-matches-"" unreachable; this keeps that true if the guard above is ever
-  // relaxed, since the cost of getting it wrong is granting a plan nobody paid
-  // for.
+  // An UNSET price env var is "". The early `!priceId` return already makes
+  // ""-matches-"" unreachable; the Boolean() here keeps that true if the guard
+  // above is ever relaxed, since the cost of getting it wrong is granting a
+  // plan nobody paid for.
   const is = (candidate) => Boolean(candidate) && priceId === candidate;
   if (is(map.monthly)) return "pro_monthly";
   if (is(map.annualFounding)) return "pro_annual_founding";
-  if (is(map.brokerMonthly)) return "broker_monthly";
+  // No broker price: one subscription (2026-08-05). A webhook carrying a price
+  // we do not sell still resolves to null and writes no row, which is the same
+  // fail-closed behaviour as before.
   return null;
 }
 

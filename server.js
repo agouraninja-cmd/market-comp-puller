@@ -3993,6 +3993,37 @@ function escHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 }
 function marketTitle(p) { return `${p.type} Property Values in ${p.city}, ${p.state}`; }
+
+// The <title> a market page shows IN SEARCH RESULTS, which is a different job
+// from marketTitle() and has a hard budget: Google renders about 60 characters
+// and truncates the rest mid-phrase.
+//
+// Measured 2026-08-06 against the live site: all 38 market pages ran 68-82
+// characters, so every one of them was cut off — and the two longest pieces
+// were the two doing the least work. The date range "(Dec 2024 – Jul 2026)"
+// spent ~22 characters on something nobody searches for, and "| CompNinja"
+// spends 12 on a brand with no search demand yet. What got truncated was the
+// end of the part carrying the actual query terms.
+//
+// So the words are chosen for what owners and brokers type: "comps", "$/SF",
+// "cap rates". "Property values" is not a phrase people search, which is why
+// marketTitle() keeps it only for on-page headings and link text, where there
+// is no length budget and the plainer wording reads better.
+//
+// Dropping the brand is a deliberate trade, not an oversight: 20% of the
+// budget for a name nobody looks up yet, on pages whose whole job is to be
+// found by strangers. Revisit once brand searches actually show up in Search
+// Console — at that point the suffix starts earning its characters.
+//
+// Trimmed by dropping a WHOLE clause, never by cutting mid-word: the Explorer
+// generates these pages on demand, so a city name longer than any in today's
+// seed has to degrade gracefully instead of blowing the budget.
+const TITLE_MAX = 60;
+function marketPageTitle(p) {
+  const base = `${p.type} Comps in ${p.city}, ${p.state}`;
+  const full = `${base} | $/SF & Cap Rates`;
+  return full.length <= TITLE_MAX ? full : base;
+}
 function marketUrl(slug) { return `${SITE_URL}/market/${slug}`; }
 function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
 
@@ -4889,7 +4920,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
   return marketShell({
-    title: `${title} (${p.date_range || "recent comps"}) | CompNinja`,
+    title: marketPageTitle(p),
     description, canonical, body,
     jsonLd: opts.preview ? null : jsonLd,
     noindex: Boolean(opts.preview),
@@ -4907,8 +4938,9 @@ function renderMarketDirectoryHTML() {
   ];
   const title = "Commercial Real Estate Market Snapshots by City";
   const canonical = `${SITE_URL}/markets`;
+  // Trimmed to the ~160 characters Google renders; it was 169.
   const description =
-    "Recent commercial real estate price-per-square-foot snapshots by city and property type (industrial, office, retail, and multifamily) with a free instant valuation tool.";
+    "Price-per-square-foot and cap-rate snapshots by city and property type — industrial, office, retail, and multifamily — built from real comparable sales.";
   const cards = slugs.map((s) => {
     const p = merged[s];
     // Everything a visitor might reasonably type for this card, flattened into
@@ -5154,9 +5186,10 @@ const HOW_FAQ = [
 function renderBrokersPageHTML() {
   const title = "For Commercial Real Estate Brokers | CompNinja";
   const canonical = `${SITE_URL}/brokers`;
+  // Trimmed to the ~160 characters Google renders; it was 180.
   const description =
-    "Submit a comp to CompNinja and it carries your firm's name on every report that uses it. " +
-    "Contributing brokers also get introduced to owners asking what their building is worth.";
+    "Submit a comp and it carries your firm's name on every report that uses it. " +
+    "Contributing brokers also get introduced to owners weighing a sale.";
   const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent("Broker introduction: CompNinja")}`;
 
   const jsonLd = JSON.stringify({
@@ -5411,11 +5444,18 @@ function renderPrivacyPageHTML() {
 }
 
 function renderHowItWorksHTML() {
-  const title = "How CompNinja Works";
+  // Under ACCOUNT_WALL this page is the front door — `/` 302s here, so it
+  // catches both brand searches and every anonymous arrival. The old title,
+  // "How CompNinja Works", was addressed to people who already knew the name,
+  // which is nobody yet. This one still describes the page honestly and also
+  // matches a question people actually type. Description trimmed to the ~160
+  // characters Google renders (it was 199, so the last line never showed).
+  // No brand suffix here — this page's own shell appends " | CompNinja".
+  const title = "How Commercial Property Valuation Works";
   const canonical = `${SITE_URL}/how-it-works`;
   const description =
-    "How a CompNinja report is built: live searches of public records and listings, a source-confidence badge on every comp, " +
-    "and a value range for your building. Plus answers to the most common questions.";
+    "How a CompNinja report is built: live searches of public records and listings, " +
+    "a source badge on every comp, and a value range for your building.";
 
   const stats = [
     ["Free", "Every report"],

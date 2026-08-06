@@ -893,7 +893,7 @@ async function requireUser(req, res) {
   return user;
 }
 
-// Gate for the broker lead inbox routes: signed in (401), broker plan (403),
+// Gate for the broker lead inbox routes: signed in (401), Pro (403),
 // database up (503) — the same three refusals, in the same order, as the
 // vault's openVault() further down. This is that gate's sibling, kept as a
 // second small copy because each names its own area in the 403 copy; fold
@@ -906,7 +906,12 @@ async function requireBroker(req, res) {
   const ent = await entitlementsFor(req);
   if (!ent.canUseVault) {
     sendJson(res, 403, {
-      error: "The lead inbox is part of the broker plan.",
+      // This string REACHES THE SCREEN verbatim — vault-page.js renders
+      // `o.j.error` straight into the leads panel, with no 403 branch of its
+      // own like the vault gate has. So it is product copy, not developer
+      // text: it must name Pro, the one subscription, and never a "broker
+      // plan", which has not been buyable since 2026-08-05.
+      error: "The lead inbox is part of Pro.",
       code: "broker_required",
     });
     return null;
@@ -7887,7 +7892,7 @@ async function vaultReadPayload(req, params) {
   const ent = entR.status === "fulfilled" ? entR.value : null;
   if (!ent || !ent.canUseVault) {
     return { status: 403, body: {
-      error: "The private vault is part of the broker plan.",
+      error: "The private vault is part of Pro.",
       code: "broker_required",
     } };
   }
@@ -9779,7 +9784,7 @@ const server = http.createServer((req, res) => {
       const ent = await entitlementsFor(req);
       if (!ent.canUseVault) {
         sendJson(res, 403, {
-          error: "The private vault is part of the broker plan.",
+          error: "The private vault is part of Pro.",
           code: "broker_required",
         });
         return null;

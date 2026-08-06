@@ -884,34 +884,43 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Still unbuilt: report branding. `canBrand` is a real entitlement and
   `findBrandingProfile()` exists, but there is no UI at all, so the bullet stays
   off the pricing tile.
-- **Broker tier** (billing rails added 2026-08-05; the vault itself is NOT
-  built). Ecosystem Plan v1 — design spec and the vault contract in
-  `docs/superpowers/specs/2026-08-05-broker-tier-design.md`. One new plan,
-  `broker_monthly`, which is a **superset of Pro**: it satisfies the ordinary
-  `pro` test, so unlimited comps, the 120-month lookback, unlimited exports,
-  branding and the Address Explorer all arrive by the existing route, and the
-  tier adds exactly one capability — the private vault. It is a plan on
-  `subscriptions` rather than a role column on `users` so access **lapses with
-  the card** (a role flag would outlive a cancelled subscription and keep a
-  vault open); `subscriptions.plan` has no CHECK constraint, so this needed no
-  migration. Four things to know:
+- **The vault is part of Pro. There is ONE subscription** (decided and shipped
+  2026-08-05; the vault itself is live). Ecosystem Plan v1 — design spec and
+  the vault contract in
+  `docs/superpowers/specs/2026-08-05-broker-tier-design.md`, which predates the
+  decision and still describes two products; read it for the vault's design,
+  not for how it is sold. The tier briefly existed as a second plan,
+  `broker_monthly`, modelled as a superset of Pro. It was **removed rather than
+  left unset**: it is gone from `/api/checkout`'s `PLANS` map,
+  `STRIPE_PRICE_BROKER_MONTHLY` is deleted, and `entitlements.js` now reads
+  `const broker = pro`. Nobody lost access, because that plan was never
+  sellable — its Stripe price was never set, so checkout always 503'd for it
+  and no subscription row in the wild can carry it. Four things to know:
   - **Vault routes test `ent.canUseVault`, never a plan name.** The result
     carries `broker` (identity, mirrors `pro`) and `canUseVault` (capability,
     mirrors `canBrand`); `/api/config` exposes both. The usual rule applies
     with more force than usual here — this gate guards private data.
-  - **An unrecognized plan name opens no vault**, which is deliberately
-    STRICTER than `pro`, where status alone governs access and an unfamiliar
-    plan name still grants it (there is a test pinning that). Erring generous
-    is right for comps and wrong for a data store nobody can be shown to own.
+  - **An unrecognized plan name now DOES open a vault**, matching `pro`, where
+    status governs access and an unfamiliar plan on a paid row is treated
+    generously. This reversed on 2026-08-05 and the test that pinned the old
+    rule now pins the opposite. Failing closed on the name was right when an
+    unnameable plan might have been a second product; with one product it would
+    withhold half of what a paying customer bought.
+  - **Access still lapses with the card.** `canUseVault` tracks `broker`, which
+    tracks `pro`, so it goes false at the end of a cancelling period and at the
+    end of the grace window. Nothing DELETES a lapsed vault — the only delete
+    paths are the broker's own "remove this import" and account deletion — and
+    the plan card says so, because a broker who uploaded their book and then
+    finds the door shut will assume the worst otherwise.
   - **`PRO_ENABLED=off` grants no vault**, even though that branch grants every
     other capability. "Pre-Pro behavior" restores what visitors USED TO HAVE
     free; the vault was never free, it did not exist. The opposite would open
     an upload endpoint to every anonymous visitor on an un-launched deployment.
-  - **`STRIPE_PRICE_BROKER_MONTHLY` is unset**, so `/api/checkout` answers 503
-    for this plan and the whole path ships dark. Pricing is an open question
-    for Chuck. To launch: create the Stripe price, set the env var, THEN ship
-    the tile copy — the price lives in Stripe and the copy in `index.html`,
-    they can disagree, and nothing detects it.
+  **Selling it is copy, in three places, and they must agree**: the Pro tile's
+  bullet list and the plan-card strings in `index.html`, and the vault page's
+  own 403 in `vault-page.js`. All three say "Pro" and none of them may name a
+  broker plan — a visitor sent looking for one finds a product that cannot be
+  bought.
   The privacy wall is the product: no vault row may ever reach `harvestComps()`,
   `corpusRowsForMarket()`, a market snapshot, or another account's report.
   Enforce it with **separate tables read by separate functions**, not a
@@ -962,6 +971,58 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     which owns the entitlement gate**; `vault-page.js` only decides how that
     data is drawn. Keep it that way — a read that happened there would be a
     read outside the gate.
+  - **The vault DASHBOARD** (2026-08-06). `/vault` leads with a market rollup —
+    one card per `market` + `property_type`, the same pair the lead coverage
+    below it is keyed on — then a median-$/SF-by-year chart and a
+    repeat-property list, all three scoped by one filter row. Four rules:
+    - **The page fetches `?limit=1000` and filters in the BROWSER.** It used to
+      re-query with `market=`/`type=` params, which cannot work now: the rollup
+      counts the whole book, and server-side filtering leaves the browser
+      holding only the current slice. It also fixes a real bug — the route
+      defaults to `limit=200`, so a broker with 400 comps was shown half their
+      vault with nothing saying so. Past 1,000 the page says it is truncated
+      rather than under-reporting silently.
+    - **Every $/SF figure comes from the stored `price_per_sqft`, never derived
+      here.** `broker-vault.js` writes that column for **sales only** and
+      leaves it null on a lease, because an annual rent ÷ size is $/SF/yr and
+      would corrupt any median it entered. A card with no priced sales shows
+      its comp count instead of a fabricated number.
+    - **Repeat properties group on `market` + address, never address alone.**
+      Street names repeat across a metro; on the first test book that merged a
+      Boise building and a Meridian building at the same house number into one
+      property with three deals.
+    - **It reads none of `vault-api.js`'s `INTERNAL_FIELDS`** (`user_id`,
+      `address_key`, `dedupe_key`) — it keeps its own copy of `addressKey`
+      instead — so those can be dropped from the response whenever Owen wants.
+      `test/vault-page.test.js` pins that, and pins the thing this file is
+      uniquely able to break: the whole page, including ~550 lines of browser
+      JS, is one template literal, so a stray `${` or a single-backslash escape
+      emits broken JavaScript and a blank workspace rather than failing loudly.
+      That test compiles what the page actually emits.
+  - **The FIRST RUN is a different page** (2026-08-06). When a broker has no
+    comps *and* no imports, `applyFirstRun()` hides the trust line, the "Add
+    comps" section, the comps table and the imports list, and shows
+    `#firstRun`: two numbered steps, one to upload and one to add markets to
+    watch. Four rules:
+    - **It keys on comps AND uploads, never comps alone.** A broker whose
+      import was entirely rejected, or who deleted every comp out of one, has
+      been through the door already; showing "Start here" again reads as their
+      work having been thrown away.
+    - **The trust line is hidden, not deleted, and its promise moves into the
+      panel's prose.** That line exists to let a broker watch "0 published"
+      stay at zero, which only means anything once there is something it could
+      have counted. On day one it is a 0-0 scoreboard over an empty page.
+    - **There is exactly ONE `<input type=file>`.** Step 1's button and the
+      ordinary "Add comps" button both call `$("file").click()`. Two inputs
+      would mean two values and two change handlers, and an upload started
+      from one would be invisible to the other's result message. A test pins
+      this.
+    - **Step 2 does not duplicate the coverage form**, it scrolls to the real
+      one and focuses it. A second copy would be a second thing to keep in
+      step with the coverage rules in `broker-leads.js`.
+    Empty tables are hidden throughout rather than shown with a header row and
+    a "nothing here yet" line — three of those stacked up was the thing that
+    made a new vault read as broken rather than new.
   - **That 503 is the opposite of the rest of the app, deliberately.**
     Everywhere else a Supabase failure falls back to a local file so nothing is
     lost. Here the file WOULD be the loss — Render erases its disk on every
@@ -1051,6 +1112,27 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
 CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
+
+**Private comps in the front end** (the display half of blended comps, 2026-08-06;
+server half and spec are under the broker vault above). A comp the server flags
+`private: true` renders as an ordinary comp everywhere — table, cards, map,
+chart, tiles, curation and the valuation all read it without special-casing,
+which is exactly what the one-flagged-array contract bought. It carries the
+`broker_vault` tier in `SOURCE_TIERS`, badged **"From your vault"**: an
+ownership statement, never the green Verified badge, which is a public claim a
+private row has not earned. Two rules matter when editing anything down here:
+- **Exports read `exportableComps()`, never `includedComps()`.** That is the
+  only difference between the two, and it is the difference between a broker's
+  private book staying private and being emailed to a client. Rows and cards
+  also carry `no-print no-capture`, which drops them from the printed page and
+  from the html2canvas PNG. `/api/share` strips them **server-side** and does
+  not trust this file.
+- **The valuation still counts them, so every export discloses the gap.** The
+  file is short by N rows while the value above it is not, and an unexplained
+  difference reads as lost data. `renderPrivateNotice()` says so on screen (and
+  is deliberately NOT `no-print`/`no-capture`, so it survives into the very
+  exports that dropped the rows); the CSV title row and the XLSX Valuation
+  sheet repeat it. Change the filter and you have to change all four.
 
 ### Non-obvious flows to know before editing
 

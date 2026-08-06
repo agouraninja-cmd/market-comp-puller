@@ -105,4 +105,28 @@ function distillMarketSnapshot(t, data) {
   return { snapshot, pricedSaleCount: ppsfVals.length };
 }
 
-module.exports = { MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot };
+// Should `candidate` replace the snapshot a market page is serving today?
+//
+// Market pages were write-once in practice. The 27 curated seed pages were all
+// stamped 2026-07-14 and could never move: the piggyback publisher skipped any
+// slug a seed owned, and reads preferred the seed unconditionally. Since
+// `generatedAt` is also the sitemap's `lastmod`, they aged in public.
+//
+// The rule is deliberately conservative, because these are the public SEO
+// surface and a bad swap is worse than a stale page: replace ONLY when the
+// candidate is strictly better on BOTH axes it is judged on — genuinely newer,
+// and not built on fewer priced sales. "At least as good, and fresher" can
+// only improve a page; anything looser could trade a twelve-comp snapshot for
+// a three-comp one and call it an update.
+//
+// Pure and dateless on purpose (it compares the two stamps rather than reading
+// a clock) so `npm test` can exercise it with no server and no database.
+function isBetterSnapshot(candidate, current) {
+  if (!candidate || !candidate.generatedAt) return false;
+  if (!current || !current.generatedAt) return true;   // nothing to lose
+  if (String(candidate.generatedAt) <= String(current.generatedAt)) return false;
+  const n = (s) => (s && s.ppsf && Number(s.ppsf.count)) || 0;
+  return n(candidate) >= n(current);
+}
+
+module.exports = { MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot, isBetterSnapshot };

@@ -884,34 +884,43 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Still unbuilt: report branding. `canBrand` is a real entitlement and
   `findBrandingProfile()` exists, but there is no UI at all, so the bullet stays
   off the pricing tile.
-- **Broker tier** (billing rails added 2026-08-05; the vault itself is NOT
-  built). Ecosystem Plan v1 — design spec and the vault contract in
-  `docs/superpowers/specs/2026-08-05-broker-tier-design.md`. One new plan,
-  `broker_monthly`, which is a **superset of Pro**: it satisfies the ordinary
-  `pro` test, so unlimited comps, the 120-month lookback, unlimited exports,
-  branding and the Address Explorer all arrive by the existing route, and the
-  tier adds exactly one capability — the private vault. It is a plan on
-  `subscriptions` rather than a role column on `users` so access **lapses with
-  the card** (a role flag would outlive a cancelled subscription and keep a
-  vault open); `subscriptions.plan` has no CHECK constraint, so this needed no
-  migration. Four things to know:
+- **The vault is part of Pro. There is ONE subscription** (decided and shipped
+  2026-08-05; the vault itself is live). Ecosystem Plan v1 — design spec and
+  the vault contract in
+  `docs/superpowers/specs/2026-08-05-broker-tier-design.md`, which predates the
+  decision and still describes two products; read it for the vault's design,
+  not for how it is sold. The tier briefly existed as a second plan,
+  `broker_monthly`, modelled as a superset of Pro. It was **removed rather than
+  left unset**: it is gone from `/api/checkout`'s `PLANS` map,
+  `STRIPE_PRICE_BROKER_MONTHLY` is deleted, and `entitlements.js` now reads
+  `const broker = pro`. Nobody lost access, because that plan was never
+  sellable — its Stripe price was never set, so checkout always 503'd for it
+  and no subscription row in the wild can carry it. Four things to know:
   - **Vault routes test `ent.canUseVault`, never a plan name.** The result
     carries `broker` (identity, mirrors `pro`) and `canUseVault` (capability,
     mirrors `canBrand`); `/api/config` exposes both. The usual rule applies
     with more force than usual here — this gate guards private data.
-  - **An unrecognized plan name opens no vault**, which is deliberately
-    STRICTER than `pro`, where status alone governs access and an unfamiliar
-    plan name still grants it (there is a test pinning that). Erring generous
-    is right for comps and wrong for a data store nobody can be shown to own.
+  - **An unrecognized plan name now DOES open a vault**, matching `pro`, where
+    status governs access and an unfamiliar plan on a paid row is treated
+    generously. This reversed on 2026-08-05 and the test that pinned the old
+    rule now pins the opposite. Failing closed on the name was right when an
+    unnameable plan might have been a second product; with one product it would
+    withhold half of what a paying customer bought.
+  - **Access still lapses with the card.** `canUseVault` tracks `broker`, which
+    tracks `pro`, so it goes false at the end of a cancelling period and at the
+    end of the grace window. Nothing DELETES a lapsed vault — the only delete
+    paths are the broker's own "remove this import" and account deletion — and
+    the plan card says so, because a broker who uploaded their book and then
+    finds the door shut will assume the worst otherwise.
   - **`PRO_ENABLED=off` grants no vault**, even though that branch grants every
     other capability. "Pre-Pro behavior" restores what visitors USED TO HAVE
     free; the vault was never free, it did not exist. The opposite would open
     an upload endpoint to every anonymous visitor on an un-launched deployment.
-  - **`STRIPE_PRICE_BROKER_MONTHLY` is unset**, so `/api/checkout` answers 503
-    for this plan and the whole path ships dark. Pricing is an open question
-    for Chuck. To launch: create the Stripe price, set the env var, THEN ship
-    the tile copy — the price lives in Stripe and the copy in `index.html`,
-    they can disagree, and nothing detects it.
+  **Selling it is copy, in three places, and they must agree**: the Pro tile's
+  bullet list and the plan-card strings in `index.html`, and the vault page's
+  own 403 in `vault-page.js`. All three say "Pro" and none of them may name a
+  broker plan — a visitor sent looking for one finds a product that cannot be
+  bought.
   The privacy wall is the product: no vault row may ever reach `harvestComps()`,
   `corpusRowsForMarket()`, a market snapshot, or another account's report.
   Enforce it with **separate tables read by separate functions**, not a

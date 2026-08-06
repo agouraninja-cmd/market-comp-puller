@@ -15,7 +15,7 @@ const path = require("path");
 const crypto = require("crypto");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
-const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot } = require("./market-snapshot");
+const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot } = require("./market-snapshot");
 // Pro-tier entitlement rules. Pure and dependency-free so `npm test` can
 // exercise the whole decision table without a database — see the Pro section
 // below for the reads that feed it.
@@ -153,14 +153,32 @@ try {
 
 // Visitor-generated market pages (the Market Explorer). Same payload shape as
 // MARKET_PAGES entries; persisted to the Supabase `market_pages` table (file
-// fallback when unconfigured) and loaded at startup. Seeded pages win slug
-// collisions everywhere.
+// fallback when unconfigured) and loaded at startup.
+//
+// A seeded page NO LONGER wins unconditionally. It used to, which combined
+// with the publisher's seed skip to make all 27 curated pages permanently
+// unrefreshable — every one still stamped 2026-07-14, and that stamp is the
+// sitemap's `lastmod`, so they aged in public with no way out. Now the freshest
+// snapshot wins, and `isBetterSnapshot` only ever stores one that is newer AND
+// not thinner, so "freshest" cannot mean "worse".
 let DYNAMIC_MARKET_PAGES = {};
 function getMarketPage(slug) {
-  return MARKET_PAGES[slug] || DYNAMIC_MARKET_PAGES[slug] || null;
+  const seed = MARKET_PAGES[slug] || null;
+  const dyn = DYNAMIC_MARKET_PAGES[slug] || null;
+  if (seed && dyn) return isBetterSnapshot(dyn, seed) ? dyn : seed;
+  return seed || dyn;
 }
+// Every slug, resolved through getMarketPage so the directory cards and the
+// sitemap's lastmod can never disagree with the page they point at. Spelling
+// the merge out again with its own precedence is exactly how they diverged:
+// the page served the refreshed snapshot while the card still showed the old
+// median and the sitemap still advertised the old date.
 function allMarketPages() {
-  return { ...DYNAMIC_MARKET_PAGES, ...MARKET_PAGES };
+  const out = {};
+  for (const slug of new Set([...Object.keys(DYNAMIC_MARKET_PAGES), ...Object.keys(MARKET_PAGES)])) {
+    out[slug] = getMarketPage(slug);
+  }
+  return out;
 }
 
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
@@ -2163,13 +2181,25 @@ function maybePublishMarketSnapshot(type, address, data) {
     const city = cityRaw.toLowerCase().replace(/(^|[\s.'\-])[a-z]/g, (ch) => ch.toUpperCase());
 
     const slug = slugifyMarket(typeOk, city, state.toUpperCase());
-    if (MARKET_PAGES[slug]) return; // curated seed page wins — don't write shadowed rows
     const { snapshot, pricedSaleCount } = distillMarketSnapshot(
       { type: typeOk, city, state: state.toUpperCase() }, data);
     if (!snapshot || pricedSaleCount < MIN_PRICED_SALE_COMPS) return;
 
-    const isNew = !DYNAMIC_MARKET_PAGES[slug];
+    // Refresh, not just publish. This used to `return` outright when a seed
+    // page owned the slug, which is what froze all 27 of them at their
+    // generation date forever. Now a seed is simply the page to beat, and
+    // isBetterSnapshot only lets a NEWER and NOT-THINNER snapshot through — so
+    // a quiet market returning three comps can never overwrite a twelve-comp
+    // page, and a repeat search on the same day rewrites nothing at all.
+    const current = getMarketPage(slug);
+    if (!isBetterSnapshot(snapshot, current)) return;
+
+    const isNew = !current;
     storeDynamicMarketPage(slug, snapshot).then(() => {
+      if (!isNew) {
+        console.log(`🧭 Market page refreshed from a report search: ${slug} ` +
+          `(${pricedSaleCount} priced sale comps, was ${(current.ppsf && current.ppsf.count) || 0} on ${current.generatedAt})`);
+      }
       if (isNew) {
         console.log(`🧭 Market page published from a report search: ${slug} (${pricedSaleCount} priced sale comps)`);
         notifyByEmail(`New market page published from a report search: ${typeOk} — ${city}, ${state.toUpperCase()}`, [

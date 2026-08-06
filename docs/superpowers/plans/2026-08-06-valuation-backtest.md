@@ -829,7 +829,8 @@ git commit -m "Retire the last two hand-written copies of the valuation sequence
 - Consumes: `valuation.js` via `require`. It requires the module directly rather than taking it as an argument, because running the real math is the entire point.
 - Produces:
   - `score(rows, { now, parseDealDate, minPeers, minSubjects }) -> report`
-  - `report` is `{ scored, minSubjects, belowFloor, skipped: { unusable, notGroundTruth, thinPeers }, medianAbsError, bandCoverage, medianBandWidth, byType }`
+  - `report` is `{ scored, minSubjects, belowFloor, skipped: { unusable, notGroundTruth, thinPeers, duplicateAddress }, medianAbsError, bandCoverage, medianBandWidth, byType }`
+  - `skipped.duplicateAddress` counts rows skipped because another harvest of the same building already scored, so the four skip counters plus `scored` account for every usable pool row.
   - `medianAbsError`, `bandCoverage` and `medianBandWidth` are fractions (0.18 means 18%) and are `null` when `belowFloor` is true.
   - `byType` is `Array<{ type, scored, medianAbsError, bandCoverage, medianBandWidth }>`, empty when `belowFloor`.
 

@@ -34,6 +34,12 @@ const VAULT = require("./broker-vault");
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
 const { renderVaultHTML } = require("./vault-page");
+// The vault API's comp shape — the seam between how comps are STORED and how
+// the dashboard READS them. It exists so broker_comps can be restructured into
+// the star schema without the dashboard moving. A pass-through today, on
+// purpose: introducing the seam must not change a byte of the response while
+// the dashboard is being written against it.
+const VAULTAPI = require("./vault-api");
 const LEADSVC = require("./broker-leads");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
@@ -7648,7 +7654,13 @@ async function vaultReadPayload(req, params) {
   const rows = compsR.value || [];
 
   return { status: 200, body: {
-    comps: rows,
+    // Through the API's own shape, never the raw storage rows. This is the
+    // seam that lets broker_comps be restructured (Ecosystem Plan §6) without
+    // the dashboard moving: it reads this shape, storage moves underneath, and
+    // vault-api.js absorbs the difference. Today it is a pass-through and the
+    // response is byte-identical — the shape change belongs to the restructure,
+    // not to introducing the seam.
+    comps: VAULTAPI.toApiComps(rows),
     uploads: uploadsR.value || [],
     // The header line: "N comps · 0 published · visible only to you".
     // The published count is the trust proof the whole tier rests on, so

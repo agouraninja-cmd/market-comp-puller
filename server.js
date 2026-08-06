@@ -572,6 +572,17 @@ async function guestGateFor(req) {
 // `headersOpen` is true on an SSE exit, where the headers are already
 // streaming and no cookie can be set — /api/config syncs it on the next page
 // load, and the sha256(IP) ledger is the durable half regardless.
+// The copy a blocked anonymous visitor reads. It MUST branch on the limit:
+// at 0 — which is what ACCOUNT_WALL forces, and therefore what every
+// deployment with the wall up serves — the visitor never had a free search,
+// so "you've used your free search" is simply false, and it was being told to
+// 100% of anonymous traffic. `what` completes "...to <what>".
+function guestGateMessage(what) {
+  return GUEST_SEARCH_LIMIT === 0
+    ? `Create a free account to ${what}. It's free, no card needed.`
+    : `You've used your free search. Create a free account to ${what}. It's free, no card needed.`;
+}
+
 function consumeGuestSearchFor(gate, req, res, headersOpen) {
   if (!gate) return;
   const used = gate.used + 1;
@@ -8419,7 +8430,7 @@ const server = http.createServer((req, res) => {
           logEvent("signup_gate", { prop_type: typeOk, market: marketOf(addressOk) });
           if (!guestGate.cookieSpent) setGuestCookie(res, req);
           return sendJson(res, 403, {
-            error: "You've used your free search. Create a free account to keep searching. It's free, no card needed.",
+            error: guestGateMessage("keep searching"),
             signin_required: true,
           });
         }
@@ -8618,7 +8629,7 @@ const server = http.createServer((req, res) => {
           logEvent("signup_gate", { prop_type: typeOk, market: `${cityOk}, ${stateOk}`, source: "explore" });
           if (!guestGate.cookieSpent) setGuestCookie(res, req);
           return sendJson(res, 403, {
-            error: "You've used your free search. Create a free account to explore any market. It's free, no card needed.",
+            error: guestGateMessage("explore any market"),
             signin_required: true,
           });
         }

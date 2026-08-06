@@ -278,6 +278,12 @@ test("market explorer guest cap", async (t) => {
     // The client keys off this flag, never off the status code — it decides
     // account modal vs red error row.
     assert.equal(j.signin_required, true);
+    // At a ZERO limit the visitor never had a free search, so the message must
+    // not claim they spent one. This shipped wrong: ACCOUNT_WALL forces the
+    // limit to 0, so every anonymous visitor on the live site was told they
+    // had used something they were never given.
+    assert.doesNotMatch(j.error, /used your free search/i);
+    assert.match(j.error, /free account/i, "it must still ask for the account");
   });
 
   await t.test("browsing a market page that already exists stays free", async () => {
@@ -290,6 +296,25 @@ test("market explorer guest cap", async (t) => {
     const j = await r.json();
     assert.equal(j.url, "/market/industrial-ontario-ca");
     assert.equal(j.existing, true);
+  });
+});
+
+// The other half of the rule: where a free search DID exist and was spent,
+// saying so is correct and should survive. A limit of 1 with the cookie
+// already set is the cheapest way to reach a blocked-but-had-one visitor.
+test("a visitor who really did spend a free search is told so", async (t) => {
+  const { base, stop } = await boot({ GUEST_SEARCH_LIMIT: "1" });
+  t.after(stop);
+
+  await t.test("the spent-search wording returns at a non-zero limit", async () => {
+    const r = await fetch(base + "/api/explore-market", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: "cn_guest=1" },
+      body: JSON.stringify(await uncoveredMarket(base)),
+    });
+    assert.equal(r.status, 403);
+    const j = await r.json();
+    assert.match(j.error, /used your free search/i);
   });
 });
 

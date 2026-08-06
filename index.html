@@ -900,10 +900,13 @@
         </div>
       </form>
       <div class="text-[12.5px] text-[#8A8577] mt-3">First report free · Free account for more · An automated estimate, not an appraisal</div>
-      <!-- Shown only once /api/config says this signed-out visitor's free
-           search is spent; sign-in/refreshProConfig hides it again. -->
+      <!-- Shown only once /api/config says this signed-out visitor is out of
+           free searches; sign-in/refreshProConfig hides it again. The lead-in
+           sentence is written by renderGuestSearchHint, because at a limit of
+           0 (what ACCOUNT_WALL forces) the visitor never had a free search and
+           must not be told they used one. -->
       <div id="guestSearchHint" class="hidden text-[12.5px] text-[#5A6473] mt-1">
-        You've used your free search.
+        <span id="guestSearchHintLead">You've used your free search.</span>
         <button id="guestHintSignIn" type="button" class="underline hover:text-[#1A2433]">Sign in free</button>
         to keep searching.
       </div>
@@ -7219,8 +7222,11 @@
             guestSearch.used = guestSearch.limit;
             renderGuestSearchHint();
             hide();
-            openAcctModal("signup",
-              "You've used your free search. Create a free account to explore any market. It's free, no card needed.");
+            // Use the SERVER's sentence, not a copy of it: it is the only side
+            // that knows the configured limit, and a hardcoded twin here told
+            // visitors they had spent a free search the wall never gave them.
+            openAcctModal("signup", payload.error
+              || "Create a free account to explore any market. It's free, no card needed.");
             return;
           }
           throw new Error((payload && payload.error) || `Request failed (${res.status}).`);
@@ -9177,6 +9183,15 @@
     const el = document.getElementById("guestSearchHint");
     if (!el) return;
     el.classList.toggle("hidden", !(guestSearch && guestSearch.used >= guestSearch.limit));
+    // A limit of 0 means sign-in comes BEFORE any search — which is what
+    // ACCOUNT_WALL forces, so it is the live configuration, not an edge case.
+    // Such a visitor never had a free search, and `used >= limit` is 0 >= 0,
+    // so the unconditional copy claimed they had spent one before they had
+    // done anything at all.
+    const lead = document.getElementById("guestSearchHintLead");
+    if (lead && guestSearch) {
+      lead.textContent = guestSearch.limit === 0 ? "" : "You've used your free search.";
+    }
   }
   let pendingExport = null;         // export action to run after the form submits
   let leadContext = "export";       // which ask the modal is making: "export" unlock or "bov" request
@@ -9730,7 +9745,10 @@
           guestSearch = guestSearch || { limit: 1, used: 1 };
           guestSearch.used = guestSearch.limit;
           renderGuestSearchHint();
-          openAcctModal("signup", "You've used your free search. Create a free account to keep searching. It's free, no card needed.");
+          // Server's sentence, not a copy — see the matching note in the
+          // Market Explorer's handler.
+          openAcctModal("signup", payload.error
+            || "Create a free account to keep searching. It's free, no card needed.");
           return;
         }
         throw new Error((payload && payload.error) || `Request failed (${res.status}).`);

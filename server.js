@@ -183,7 +183,16 @@ function allMarketPages() {
 
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
-const ADMIN_KEY = process.env.ADMIN_KEY || "";
+//
+// TRIMMED, like every other secret here. This was the one that wasn't, and on
+// 2026-08-05 it locked the owner out of every dashboard for an hour: the value
+// was saved in Render's UI with a trailing NEWLINE (pressing Enter in that
+// textarea inserts a character rather than submitting), so the stored key was
+// `secret\n`. secretMatches compares exact bytes, and an HTTP header cannot
+// carry a newline at all, so the /admin login box was structurally incapable
+// of ever matching it. Invisible in Render's UI, invisible in the login form,
+// and indistinguishable from simply typing the wrong key.
+const ADMIN_KEY = (process.env.ADMIN_KEY || "").trim();
 
 // Optional Google Maps key powering the Street View photos in map pin
 // popups (served through GET /api/streetview so the key never reaches the

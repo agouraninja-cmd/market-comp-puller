@@ -10823,6 +10823,9 @@ server.listen(PORT, () => {
     : "📈 Analytics logging on; the /admin dashboard needs ADMIN_KEY set to view it.");
   console.log(`🗄  Search cache: ${DB_CONFIGURED ? "Supabase" : path.basename(SEARCH_CACHE_FILE) + " (EPHEMERAL on most hosts)"}, ${SEARCH_CACHE_TTL_MS / 3600000}h TTL.`);
   console.log(`💵 Daily search cap: ${DAILY_SEARCH_CAP} billed searches/day (set DAILY_SEARCH_CAP to change).`);
+  console.log(ACCOUNT_WALL
+    ? "🔐 Account wall ON — anonymous visitors are sent to /how-it-works, and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
+    : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`
     : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);

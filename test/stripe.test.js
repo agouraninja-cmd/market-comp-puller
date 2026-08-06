@@ -124,14 +124,18 @@ test("a price we do not sell maps to nothing", () => {
   }
 });
 
-test("the broker price maps to the broker plan", () => {
-  assert.equal(planForPrice("price_broker", PRICES), "broker_monthly");
+test("a retired broker price maps to NOTHING under one subscription", () => {
+  // The separate broker plan was retired on 2026-08-05. It was never sold —
+  // its Stripe price was never set, so checkout 503'd for it — which is why
+  // removing it strips access from nobody. A webhook quoting an old or foreign
+  // price must resolve to null and write no row, the same fail-closed
+  // behaviour every unknown price has always had.
+  assert.equal(planForPrice("price_broker", PRICES), null);
 });
 
-test("an unconfigured broker price grants nothing", () => {
-  // The shipping state until pricing is decided: STRIPE_PRICE_BROKER_MONTHLY is
-  // unset, so the price map carries "". Nothing may map onto broker_monthly
-  // through an empty slot.
+test("an unconfigured price grants nothing", () => {
+  // An unset env var is "", and nothing may map onto a plan through an empty
+  // slot.
   const unset = { ...PRICES, brokerMonthly: "" };
   assert.equal(planForPrice("price_broker", unset), null);
   assert.equal(planForPrice("", unset), null);
@@ -180,16 +184,15 @@ test("an active subscription becomes an active row", () => {
   assert.equal(row.grace_until, null);
 });
 
-test("a broker subscription becomes a broker row", () => {
+test("a subscription for the retired broker price produces no row at all", () => {
+  // Retiring the plan must not silently write a row with a null plan. The
+  // whole point of the fail-closed price map is that a price we do not sell
+  // grants nothing, and that has to keep holding for a price we USED to
+  // recognize.
   const row = subscriptionRowFrom(
     stripeSub({ items: { data: [{ price: { id: "price_broker" } }] } }),
     PRICES, { userId: "u_1", nowMs: NOW });
-  assert.equal(row.plan, "broker_monthly");
-  assert.equal(row.status, "active");
-  assert.equal(row.user_id, "u_1");
-  // The webhook path is shared with Pro, so a broker cancellation, renewal and
-  // grace window all already work — nothing broker-specific handles them.
-  assert.equal(row.current_period_end, "2026-09-01T12:00:00.000Z");
+  assert.equal(row, null);
 });
 
 test("a failed payment sets a 7-day grace deadline", () => {

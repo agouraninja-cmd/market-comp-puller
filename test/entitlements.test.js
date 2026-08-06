@@ -228,36 +228,46 @@ test("a Pro subscription ignores the export tally entirely", () => {
   assert.equal(e.exportsRemaining, "unlimited");
 });
 
-// --- the broker tier (Ecosystem Plan v1) -----------------------------------
+// --- the vault under ONE SUBSCRIPTION ---------------------------------------
 //
-// The tier's whole promise is a private vault that CompNinja provably cannot
-// leak. These cases pin the two halves of that: who may OPEN a vault, and —
-// more important — who may not.
+// Owner's decision 2026-08-05: there is no separate broker plan. The private
+// vault is a capability of Pro. `broker_monthly` was billing rails that were
+// never sold (its Stripe price was never set, so checkout 503'd for it), so
+// collapsing it stripped access from nobody.
+//
+// These cases pin the two halves that still matter: who may OPEN a vault, and
+// who may not.
 
-const brokerSub = (over = {}) => activeSub({ plan: "broker_monthly", ...over });
-
-test("a broker subscription is Pro PLUS the vault, not a separate lane", () => {
-  const e = ent({ user: USER, subscription: brokerSub() });
-  assert.equal(e.plan, "broker_monthly");
-  assert.equal(e.broker, true);
-  assert.equal(e.canUseVault, true);
-  // Ecosystem Plan §2: "everything a user gets, plus a private workspace".
-  // A broker who lost Pro's comps by paying MORE would be an obvious bug.
-  assert.equal(e.pro, true, "a broker plan must carry every Pro capability");
-  assert.equal(e.maxComps, "all");
-  assert.equal(e.canBrand, true);
-  assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
-  assert.equal(e.exportsRemaining, "unlimited");
-  assert.equal(e.canExploreAddresses, true);
-});
-
-test("Pro is NOT a broker: the vault is the one thing a Pro plan does not buy", () => {
+test("every paid Pro subscription opens a vault", () => {
   for (const plan of ["pro_monthly", "pro_annual_founding"]) {
     const e = ent({ user: USER, subscription: activeSub({ plan }) });
     assert.equal(e.pro, true);
-    assert.equal(e.broker, false, `${plan} must not open a vault`);
-    assert.equal(e.canUseVault, false, `${plan} must not open a vault`);
+    assert.equal(e.broker, true, `${plan} must open a vault under one subscription`);
+    assert.equal(e.canUseVault, true, `${plan} must open a vault under one subscription`);
+    // The vault is additive: it must not cost a subscriber anything else.
+    assert.equal(e.maxComps, "all");
+    assert.equal(e.canBrand, true);
+    assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+    assert.equal(e.exportsRemaining, "unlimited");
+    assert.equal(e.canExploreAddresses, true);
   }
+});
+
+test("an unrecognized plan name still gets the access its paid-up row bought", () => {
+  // `pro` has always been governed by status rather than plan name, so an
+  // unfamiliar plan on a paid row is treated generously. With one product the
+  // vault now rides that same rule instead of failing closed on the name.
+  const e = ent({ user: USER, subscription: activeSub({ plan: "some_future_plan" }) });
+  assert.equal(e.pro, true);
+  assert.equal(e.canUseVault, true);
+});
+
+test("the retired broker plan is no longer a thing we sell", () => {
+  // A legacy row could in principle exist; it must behave as an ordinary paid
+  // subscription, never as a special lane with extra rights.
+  const e = ent({ user: USER, subscription: activeSub({ plan: "broker_monthly" }) });
+  assert.equal(e.pro, true);
+  assert.equal(e.canUseVault, true, "it is simply Pro now");
 });
 
 test("free and anonymous visitors have no vault", () => {
@@ -282,42 +292,45 @@ test("a single-report purchase does not buy a vault", () => {
   assert.equal(e.canUseVault, false);
 });
 
-test("the vault closes when the broker subscription lapses", () => {
+test("the vault closes when the subscription lapses", () => {
   const expired = ent({
     user: USER,
-    subscription: brokerSub({ current_period_end: iso(NOW - 60 * DAY) }),
+    subscription: activeSub({ current_period_end: iso(NOW - 60 * DAY) }),
   });
   assert.equal(expired.status, "expired");
-  assert.equal(expired.broker, false, "an expired broker plan opens nothing");
+  assert.equal(expired.broker, false, "an expired subscription opens nothing");
   assert.equal(expired.canUseVault, false);
 });
 
-test("a cancelling or grace-period broker keeps the vault to the end of what they paid for", () => {
+test("a cancelling or grace-period subscriber keeps the vault to the end of what they paid for", () => {
   const cancelling = ent({
     user: USER,
-    subscription: brokerSub({ cancel_at_period_end: true }),
+    subscription: activeSub({ cancel_at_period_end: true }),
   });
   assert.equal(cancelling.status, "cancelling");
   assert.equal(cancelling.canUseVault, true, "they paid through the period end");
 
   const grace = ent({
     user: USER,
-    subscription: brokerSub({ status: "past_due", grace_until: iso(NOW + 3 * DAY) }),
+    subscription: activeSub({ status: "past_due", grace_until: iso(NOW + 3 * DAY) }),
   });
   assert.equal(grace.status, "grace");
-  assert.equal(grace.canUseVault, true, "a failed card must not lock a broker out of their own data mid-pitch");
+  assert.equal(grace.canUseVault, true, "a failed card must not lock a subscriber out of their own data mid-pitch");
 });
 
-test("an unrecognized plan name never opens a vault, even on a live subscription", () => {
-  // Deliberately STRICTER than `pro`, which is governed by status alone (see
-  // "a plan name we do not sell does not become a Pro plan label"). Erring
-  // generous is right for comps; it is wrong for a private data store, because
-  // the failure is an unowned vault rather than a few extra rows.
+test("under one subscription, a paid-up row opens a vault whatever its plan is called", () => {
+  // This REVERSED on 2026-08-05 and the reversal is deliberate. It used to be
+  // stricter than `pro`: an unnameable plan got comps but no vault, because
+  // opening a private data store for a subscription we could not identify
+  // risked an unowned vault. With a single product there is no second plan to
+  // disambiguate from, so the vault now rides the same status-governs-access
+  // rule as everything else, and a paying customer cannot be left holding a
+  // subscription that silently withholds half of what it sells.
   for (const plan of ["broker", "broker_enterprise_unicorn", "", null, undefined]) {
     const e = ent({ user: USER, subscription: activeSub({ plan }) });
     assert.equal(e.pro, true, "unchanged: status still governs Pro access");
-    assert.equal(e.broker, false, `"${plan}" must not open a vault`);
-    assert.equal(e.canUseVault, false, `"${plan}" must not open a vault`);
+    assert.equal(e.broker, true, `"${plan}" is paid up, so it opens a vault`);
+    assert.equal(e.canUseVault, true, `"${plan}" is paid up, so it opens a vault`);
   }
 });
 

@@ -23,15 +23,95 @@
 
 const VALUATION = require("./valuation");
 
-// Ground truth needs provenance better than a model guess. This is the same
-// standard corpus-first retrieval calls "usable".
+// Ground truth needs provenance better than a model guess. This is
+// DELIBERATELY STRICTER than what corpusRowsForMarket / retrieveCorpusComps
+// (server.js) call "usable" for a live search: that path is a DENYLIST -- it
+// excludes only "estimate" and "news", admitting everything else, including
+// "user" and an unrecognized or empty source_type. This is an ALLOWLIST of
+// the three tiers trusted to stand in as a known, priced sale, which also
+// excludes "user" (someone's own typed entry, not an independent
+// transaction) and anything unfamiliar. The two lists are not the same
+// standard and are not meant to be: scoring predictions against whatever a
+// live search would accept is a different, weaker claim than scoring them
+// against comps good enough to be the answer key.
 const GROUND_TRUTH_TIERS = ["verified", "public_record", "listing"];
 
-// Mirrors the `norm` inside corpusKeyOf (server.js:2256), which is what the
-// corpus dedupes addresses with. Kept byte-identical on purpose: if the two
-// drift, a building harvested twice could help value itself.
+// Address-key used ONLY to decide whether two corpus rows are the same real
+// building, so a peer-exclusion test can fire across the spelling variants
+// the model actually produces across separate searches.
+//
+// This deliberately DIVERGES from corpusKeyOf (server.js:2299), which is
+// what the corpus dedupes WRITES with. corpusKeyOf compares two HARVESTS OF
+// THE SAME MODEL OUTPUT -- the address string is byte-identical by
+// construction there, and the key is paired with date and price precisely
+// because the address contributes nothing on its own. Reused here as a
+// cross-search identity test, that byte-identity assumption is false: the
+// model wrote "19127 Red Label Lane, Caldwell, ID 83607" one search and
+// "19127 Red Label Ln, Caldwell, ID 83605" (wrong zip, abbreviated suffix)
+// the next, for the same warehouse. Plain lowercase-and-collapse-whitespace
+// treats those as different buildings, so the peer-exclusion filter below
+// (`p.key !== subj.key`) never fired: the harness scored three spelling
+// variants of ONE building as three independent subjects, each valued from
+// the others, each landing at 0.0% error -- and that inflated the published
+// headline (verified 2026-08-06: median error 15.6% -> 19.3%, Industrial
+// 3.4% -> 9.4%, both errors in the flattering direction on the one number
+// meant to be trusted).
+//
+// The fix: key on the STREET LINE (the text before the first comma, where a
+// zip typo can't reach) with trailing punctuation stripped and common
+// suffixes/directionals folded to one spelling. This is a dedupe heuristic,
+// not an address parser -- it will never catch everything, which is why
+// isSameProperty below also checks size + price as a second, independent
+// line of defense.
+const STREET_SUFFIXES = {
+  lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd",
+  boulevard: "blvd", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy",
+};
+const DIRECTIONALS = { north: "n", south: "s", east: "e", west: "w" };
+
 function normAddress(s) {
-  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const streetLine = String(s || "").split(",")[0] || "";
+  return streetLine
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => STREET_SUFFIXES[w] || DIRECTIONALS[w] || w)
+    .join(" ");
+}
+
+// Belt and braces: suffix folding will never catch every spelling variant
+// (a transposed street number, "Building A" appended on only one harvest,
+// two towns' worth of ZIP typos), so also treat two rows as the same
+// property when their size AND price match EXACTLY -- a coincidence real
+// distinct buildings essentially never share, and precisely what the four
+// Red Label Lane rows above have in common besides the address.
+function isSameProperty(a, b) {
+  if (a.key === b.key) return true;
+  const asz = VALUATION.numericValue(a.row.size_sqft);
+  const bsz = VALUATION.numericValue(b.row.size_sqft);
+  if (!(asz > 0) || asz !== bsz) return false;
+  const ap = VALUATION.numericValue(a.row.price_or_rate);
+  const bp = VALUATION.numericValue(b.row.price_or_rate);
+  return ap > 0 && ap === bp;
+}
+
+// A subject's peer set can otherwise hold the same OTHER building twice (it
+// was harvested more than once), which pulls the weighted band toward that
+// one building's price twice over. Keep one row per key, the one closest to
+// the subject's own deal date -- the most relevant copy of that building's
+// price for valuing something sold around then.
+function dedupePeers(peers, subjDy) {
+  const byKey = new Map();
+  peers.forEach((p) => {
+    const existing = byKey.get(p.key);
+    if (!existing || Math.abs(p.dy - subjDy) < Math.abs(existing.dy - subjDy)) {
+      byKey.set(p.key, p);
+    }
+  });
+  return Array.from(byKey.values());
 }
 
 // parseDealDate returns a decimal year; compAgeYears needs something
@@ -123,27 +203,36 @@ function score(rows, opts) {
   const results = [];
 
   buckets.forEach((group) => {
-    // A building harvested more than once (same normalized address, a
-    // different date or price each time) is not independent ground truth:
-    // scoring every copy against the same peer pool would let one
-    // repeatedly-harvested building count several times in the aggregate.
-    // The key is claimed only once a row ACTUALLY scores (below, right
-    // before it is pushed to `results`) -- never on a bare attempt. Claiming
-    // on attempt would let whichever copy happens to sort first permanently
-    // block a later, perfectly scoreable copy of the same building just for
-    // being thin-peered or the wrong tier; corpusRowsForMarket returns
+    // A building harvested more than once (the same real property, a
+    // different date, price, or spelling each time -- see isSameProperty) is
+    // not independent ground truth: scoring every copy against the same peer
+    // pool would let one repeatedly-harvested building count several times
+    // in the aggregate. `claimed` holds the prepared subjects that have
+    // ACTUALLY scored so far in this bucket, checked with the same
+    // same-property test the peer filter uses below, so a spelling variant
+    // or a size/price twin of an already-scored building is caught even when
+    // its key differs.
+    //
+    // Claimed only once a row ACTUALLY scores (right before it is pushed to
+    // `results`) -- never on a bare attempt. Claiming on attempt would let
+    // whichever copy happens to sort first permanently block a later,
+    // perfectly scoreable copy of the same building just for being
+    // thin-peered or the wrong tier; corpusRowsForMarket returns
     // newest-harvest-first, so that would have been a systematic bias
     // against older harvests, not a rare accident.
-    const claimed = new Set();
+    const claimed = [];
     group.forEach((subj) => {
-      if (claimed.has(subj.key)) { duplicateAddress += 1; return; }
+      if (claimed.some((c) => isSameProperty(c, subj))) { duplicateAddress += 1; return; }
 
       if (!isGroundTruth(subj)) { notGroundTruth += 1; return; }
       // On or before: parseDealDate has only month granularity, so a peer
       // recorded in the same month as the subject is legitimate known
       // history, not a look-ahead. (Design spec 2026-08-06: "dated on or
       // before the subject's deal_date".)
-      const peers = group.filter((p) => p.key !== subj.key && p.dy <= subj.dy);
+      let peers = group.filter((p) => !isSameProperty(subj, p) && p.dy <= subj.dy);
+      // Collapse a building that itself was harvested more than once down to
+      // its single date-nearest row, so it enters the weighted band once.
+      peers = dedupePeers(peers, subj.dy);
       if (peers.length < minPeers) { thinPeers += 1; return; }
       const v = VALUATION.valueFromComps(peers.map((p) => p.comp), {
         subjectSF: VALUATION.numericValue(subj.row.size_sqft),
@@ -151,7 +240,7 @@ function score(rows, opts) {
         trendPct: null,
       });
       if (!v || !(v.psfMid > 0)) { thinPeers += 1; return; }
-      claimed.add(subj.key);
+      claimed.push(subj);
       results.push({
         type: subj.row.property_type,
         absError: Math.abs(v.psfMid - subj.psf) / subj.psf,
@@ -182,4 +271,4 @@ function score(rows, opts) {
   };
 }
 
-module.exports = { score, normAddress, isoFromDecimalYear, GROUND_TRUTH_TIERS };
+module.exports = { score, normAddress, isSameProperty, isoFromDecimalYear, GROUND_TRUTH_TIERS };

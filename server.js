@@ -6300,7 +6300,8 @@ function loadAudit(key){
 function renderAccuracy(d){
   var el=document.getElementById("accuracy");
   var LIMITS="<p class=muted>Each scored sale is held out of the corpus and valued from the comps "+
-    "that sold before it in the same market and property type. This measures the valuation MATH, "+
+    "that sold before it in the same market and property type, using ground truth of verified, "+
+    "public-record, or listing provenance only. This measures the valuation MATH, "+
     "not whether the model finds good comps, and it runs without the market-trend adjustment "+
     "(corpus rows do not store it).</p>";
   if(!d||d.error){el.innerHTML="<div class=card><h2>Valuation accuracy</h2>"+
@@ -6325,11 +6326,15 @@ function renderAccuracy(d){
     return "<tr><td>"+esc(t.type)+"</td><td>"+esc(t.scored)+"</td><td>"+pct(t.medianAbsError)+
       "</td><td>"+pct(t.bandCoverage)+"</td></tr>";
   }).join("");
+  var sk=d.skipped||{};
   el.innerHTML="<div class=card><h2>Valuation accuracy</h2>"+head+
     (rows?"<table><tr><th>Type</th><th>Scored</th><th>Median error</th><th>In range</th></tr>"+rows+"</table>":"")+
     LIMITS+
-    "<p class=muted>Read from "+esc(d.rowsRead||0)+" corpus rows; "+
-    esc((d.skipped&&d.skipped.thinPeers)||0)+" sales had too few earlier comps to score.</p>"+
+    "<p class=muted>Read from "+esc(d.rowsRead||0)+" corpus rows. Skipped: "+
+    esc(sk.unusable||0)+" not usable (no date, price, or size), "+
+    esc(sk.notGroundTruth||0)+" below ground-truth provenance, "+
+    esc(sk.thinPeers||0)+" too few earlier peers, "+
+    esc(sk.duplicateAddress||0)+" duplicate of an already-scored building.</p>"+
     "<p><button onclick='loadAccuracy(sessionStorage.getItem(KEYK),true)'>Recompute</button></p></div>";
 }
 function loadAccuracy(key,force){
@@ -10893,15 +10898,27 @@ const server = http.createServer((req, res) => {
   // images are stable and can cache for a day.
   const STATIC_FILES = {
     "/tailwind.css": { file: "tailwind.css", type: "text/css; charset=utf-8", maxAge: 300 },
-    "/valuation.js": { file: "valuation.js", type: "text/javascript; charset=utf-8", maxAge: 300 },
+    // maxAge: 0, unlike everything else here. index.html is served no-store,
+    // and its one inline <script> destructures VALUATION as its very first
+    // statement — if this file is ever stale relative to that HTML (a
+    // 5-minute cache would open exactly that window on every deploy that
+    // touches both), the destructure throws and the WHOLE front end aborts:
+    // no search form, no modals, no report rendering, while the page still
+    // renders its HTML/CSS and looks fine. Nothing else on this allowlist
+    // has that single-point-of-failure shape, so nothing else needs this.
+    "/valuation.js": { file: "valuation.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
     "/favicon.svg": { file: "favicon.svg", type: "image/svg+xml", maxAge: 86400 },
     "/favicon.png": { file: "favicon.png", type: "image/png", maxAge: 86400 },
   };
-  if (req.method === "GET" && STATIC_FILES[req.url]) {
-    const { file, type, maxAge } = STATIC_FILES[req.url];
+  // Query-string tolerant (reuses `staticPath`, already split above) so the
+  // obvious cache-bust "/valuation.js?v=…" resolves instead of 404ing — an
+  // exact STATIC_FILES[req.url] match would miss it, the same trap every
+  // other route in this file avoids by matching on req.url.split("?")[0].
+  if (req.method === "GET" && STATIC_FILES[staticPath]) {
+    const { file, type, maxAge } = STATIC_FILES[staticPath];
     fs.readFile(path.join(__dirname, file), (err, data) => {
       if (err) {
         res.writeHead(404, { "content-type": "text/plain" });

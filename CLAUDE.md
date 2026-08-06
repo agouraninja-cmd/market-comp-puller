@@ -19,8 +19,11 @@ comps-mode split was merged (commit 87095aa); `#owner` survives only as a
 deep link that pre-opens the property-details section. The hero carries a
 "Get a free Broker Opinion of Value" button — the site's lead funnel; those
 leads are stored with `source: "bov"` (vs `"export"` for export unlocks).
-The front-end is a single HTML file; a small Node proxy holds the API key so
-the browser never sees it. The public contact email across the site is
+The front-end is a single HTML file plus one shared script it depends on at
+runtime, **`valuation.js`** (the value-range math, extracted so the browser
+and the accuracy backtest run one copy of it — see "Non-obvious flows" and
+the Restart rule below); a small Node proxy holds the API key so the browser
+never sees it. The public contact email across the site is
 info@compninja.co. The owner is not a licensed broker: site copy must say
 we "connect you with a local broker", never that we are one, and every
 valuation is labeled an automated estimate, never an appraisal.
@@ -29,13 +32,17 @@ There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 
 There is one small test suite: `npm test` (`node --test`, no dependencies)
-covers the six pure modules — **`entitlements.js`** (the Pro tier's decision
-table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`**,
-**`corpus-audit.js`** and **`broker-leads.js`** (the broker lead inbox's
+covers the eight pure modules — **`entitlements.js`** (the Pro tier's
+decision table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`**,
+**`corpus-audit.js`**, **`broker-leads.js`** (the broker lead inbox's
 rules: coverage matching, lead anonymization allowlist, coverage seeding,
-notify dedupe) — plus **`test/routes.test.js`**, which boots a real
+notify dedupe), **`valuation.js`** (the value-range math shared by the
+browser and the accuracy backtest — the one pure module here that loads in a
+browser too, via a dual Node/global export) and **`backtest.js`** (the
+hold-one-out accuracy scorer built on it, requiring nothing but
+`valuation.js`) — plus **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
-routes and not merely correct in isolation (231 tests on 2026-08-05). The
+routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
 twice, so trust `npm test`'s own summary over the number written here.
 Nothing needs a database, only the routes file starts a server and it calls
@@ -71,7 +78,15 @@ a **portable (no-admin) copy**, so it's launched by full path instead:
 ### Restart rule (important)
 
 - Editing **`index.html`** needs no restart — `server.js` reads it from disk on
-  every request, so just refresh the browser.
+  every request, so just refresh the browser. That page's one inline
+  `<script>` block has a hard runtime dependency on **`/valuation.js`**: its
+  very first statement destructures `VALUATION`, so if that file fails to
+  load, the destructure throws and the whole front end aborts — no search
+  form, no modals, no report rendering — while the page still renders its
+  HTML and CSS, so it looks fine and does nothing. `/valuation.js` must never
+  be cached stale relative to the HTML that depends on it, which is why it is
+  served with `max-age: 0` while every other static asset in `STATIC_FILES`
+  caches normally; do not add caching back to it.
 - Editing **`server.js`** (e.g. the prompt) **requires restarting the process** —
   it's loaded once at startup. Kill the process listening on port 3000 and
   relaunch.
@@ -671,6 +686,30 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (harvest skips them), so heavy international use slightly deflates the tile.
   `analytics_events` is queryable directly in
   Supabase when the dashboard is unavailable: `source = 'corpus'` marks a hit.
+- `GET /api/accuracy` — the valuation-accuracy backtest card on `/admin`
+  (added 2026-08-06; spec in
+  `docs/superpowers/specs/2026-08-06-valuation-backtest-design.md`). Gated
+  exactly like `/api/stats` (`isAdminRequest`: the `x-admin-key` header or the
+  `cn_admin` cookie), and it is a full-corpus read, so it is kept OFF
+  `/api/stats`'s critical path and memoized 15 minutes in-process
+  (`?refresh=1` busts the memo). It hold-one-out scores every usable,
+  ground-truth-provenance corpus sale against its own market+type peers using
+  `valuation.js`'s real math (`backtest.js` — pure, requires nothing but
+  `valuation.js`, so the harness can never quietly drift from what a customer's
+  report actually computes) and reports median absolute error, band coverage,
+  band width, and a per-type breakdown, with a skip-reason breakdown
+  (`unusable`, `notGroundTruth`, `thinPeers`, `duplicateAddress`) so the
+  figure is never read as more solid than its sample. Below a floor of 20
+  scored subjects the card shows progress toward the floor instead of a
+  number — a median over a handful of subjects swings too much to trust.
+  **Fails safe with a 200** on any error or a missing corpus, same as
+  `/api/corpus-audit`: `/admin` is the page opened when something else is
+  already wrong, and this panel must never be what breaks it further. It
+  measures the reconciliation MATH only (comps already in the corpus, not a
+  fresh search) and runs untrended (corpus rows do not store the market trend
+  a live search used), and the card says both of those things next to the
+  numbers. Not a public accuracy claim — nothing from this ships to a
+  marketing surface.
 - **Accounts + My Desk** (added 2026-07-19; spec/plan in `docs/superpowers/`):
   email+password accounts with a server-synced property **portfolio**
   (value-snapshot history per re-run) and an in-app market **watchlist** whose

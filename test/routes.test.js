@@ -97,6 +97,20 @@ test("bare environment", async (t) => {
     }
   });
 
+  // index.html's one inline <script> destructures VALUATION as its first
+  // statement, so a broken /valuation.js aborts the entire front end while
+  // the page still renders — no syntax check or /healthz boot smoke catches
+  // that this file is unreachable. The query-string case is the regression:
+  // STATIC_FILES used to key on the exact req.url, so the obvious cache-bust
+  // "/valuation.js?v=…" 404'd instead of serving the file.
+  await t.test("/valuation.js is reachable, with or without a cache-busting query string", async () => {
+    for (const p of ["/valuation.js", "/valuation.js?v=1"]) {
+      const r = await fetch(srv.base + p);
+      assert.equal(r.status, 200, p + " should serve the file");
+      assert.match(r.headers.get("content-type") || "", /javascript/, p);
+    }
+  });
+
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
     for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
       const r = await fetch(srv.base + p);

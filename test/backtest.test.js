@@ -22,7 +22,7 @@ function parseDealDate(s) {
 }
 
 function row(over) {
-  return Object.assign({
+  const merged = Object.assign({
     market: "Boise, ID",
     property_type: "Industrial",
     address: "100 Main St, Boise, ID",
@@ -33,6 +33,19 @@ function row(over) {
     price_per_sqft: "100",
     source_type: "public_record",
   }, over || {});
+  // Keep price_or_rate internally consistent (size x $/SF) whenever the
+  // caller varies size_sqft or price_per_sqft without saying otherwise.
+  // isSameProperty's belt-and-brace check (backtest.js) compares size_sqft
+  // AND price_or_rate; every fixture below used to share the SAME default
+  // total price regardless of $/SF, which meant otherwise-unrelated fixture
+  // rows collided as "the same property" the moment that check existed. A
+  // caller that wants a genuine collision (or an explicitly unpriced row)
+  // still overrides price_or_rate directly, which this leaves alone.
+  if (!over || !("price_or_rate" in over)) {
+    const sz = Number(merged.size_sqft), psf = Number(merged.price_per_sqft);
+    if (sz > 0 && psf > 0) merged.price_or_rate = "$" + String(Math.round(sz * psf));
+  }
+  return merged;
 }
 
 // Four peers at 100/200/300/400 dated 2026-01, and one subject at 250 dated
@@ -134,6 +147,87 @@ test("a disqualified first copy of a building does not block a scoreable second 
   assert.equal(r.skipped.notGroundTruth, 1);
   assert.equal(r.scored, 1);
   assert.equal(r.medianAbsError, 0);
+});
+
+// Regression for the 2026-08-06 whole-branch review finding: normAddress
+// used to just lowercase and collapse whitespace over the FULL address, so
+// a building the model wrote down two different ways across two searches
+// keyed as two different properties. The real corpus held exactly this --
+// "19127 Red Label Lane, Caldwell, ID 83605" and "19127 Red Label Ln,
+// Caldwell, ID 83607" (abbreviated suffix, wrong zip), same size, same
+// price -- and the old key let each score as an independent subject valued
+// in part from the OTHER's own price, at 0.0% error apiece. This fixture
+// fails against that old normAddress; it must pass against the fixed one.
+test("a spelling-variant duplicate of the subject cannot peer with or duplicate-score itself", () => {
+  const peers = [
+    row({ market: "Caldwell, ID", address: "1 Warehouse Row", deal_date: "2026-01", price_per_sqft: "100" }),
+    row({ market: "Caldwell, ID", address: "2 Warehouse Row", deal_date: "2026-01", price_per_sqft: "200" }),
+    row({ market: "Caldwell, ID", address: "3 Warehouse Row", deal_date: "2026-01", price_per_sqft: "300" }),
+    row({ market: "Caldwell, ID", address: "4 Warehouse Row", deal_date: "2026-01", price_per_sqft: "400" }),
+  ];
+  const variants = [
+    row({
+      market: "Caldwell, ID", address: "19127 Red Label Lane, Caldwell, ID 83605",
+      deal_date: "2026-06", size_sqft: "56000", price_or_rate: "$14,000,000", price_per_sqft: "250",
+    }),
+    row({
+      market: "Caldwell, ID", address: "19127 Red Label Ln, Caldwell, ID 83607",
+      deal_date: "2026-06", size_sqft: "56000", price_or_rate: "$14,000,000", price_per_sqft: "250",
+    }),
+  ];
+  const r = BT.score(peers.concat(variants), OPTS);
+  // Exactly one spelling variant of the same building may score -- never
+  // both, and the one that does must be valued from the four genuine peers
+  // only, never in part from its own other spelling.
+  assert.equal(r.scored, 1, "only one spelling variant of the same building may score");
+  assert.equal(r.medianAbsError, 0, "the scored variant must be valued from the four genuine peers only");
+  assert.equal(r.skipped.duplicateAddress, 1, "the second variant must be skipped as a duplicate, not scored independently");
+});
+
+test("normAddress keys on the street line and folds common suffixes/directionals", () => {
+  assert.equal(
+    BT.normAddress("19127 Red Label Lane, Caldwell, ID 83605"),
+    BT.normAddress("19127 Red Label Ln, Caldwell, ID 83607"),
+    "suffix folding plus dropping everything after the first comma must equate these"
+  );
+  assert.equal(BT.normAddress("100 North Main Street, Boise, ID"), "100 n main st");
+});
+
+test("isSameProperty treats an exact size+price match as the same building even when the key differs", () => {
+  const a = { key: "a", row: { size_sqft: "56,000", price_or_rate: "$11,088,000" } };
+  const b = { key: "b", row: { size_sqft: "56000", price_or_rate: "$11,088,000" } };
+  const c = { key: "c", row: { size_sqft: "56000", price_or_rate: "$11,999,999" } };
+  assert.equal(BT.isSameProperty(a, b), true, "same size and price, different key, must still count as the same property");
+  assert.equal(BT.isSameProperty(a, c), false, "a different price must not be treated as a coincidence");
+});
+
+// Regression for Finding 2 of the same review: `claimed` deduped SUBJECTS,
+// but nothing deduped a subject's PEER SET. A building harvested twice (same
+// key, two different harvests) entered the weighted band as two separate
+// comps and pulled it twice. Built so the fix reproduces an EXACT clean
+// prediction: the kept (nearer-date) copy of the duplicated peer completes
+// the same 100/200/300/400 quartile the other equal-weight fixtures use, so
+// any leftover influence from the un-deduped, wrongly-priced farther copy
+// would show up as a nonzero medianAbsError.
+test("a peer harvested twice counts once, as its date-nearest copy", () => {
+  const rows = [
+    row({ market: "Nampa, ID", address: "1 Anchor Row", deal_date: "2026-01", price_per_sqft: "100" }),
+    row({ market: "Nampa, ID", address: "2 Anchor Row", deal_date: "2026-01", price_per_sqft: "200" }),
+    row({ market: "Nampa, ID", address: "3 Anchor Row", deal_date: "2026-01", price_per_sqft: "400" }),
+    // Same building ("5 Dup Row"), harvested twice. The Jan copy is nearer to
+    // the subject's June deal date and carries the price that completes the
+    // clean quartile; the 2025 copy is farther and wildly mispriced. Only the
+    // nearer copy must survive dedup.
+    row({ market: "Nampa, ID", address: "5 Dup Row", deal_date: "2026-01", price_per_sqft: "300" }),
+    row({ market: "Nampa, ID", address: "5 Dup Row", deal_date: "2025-06", price_per_sqft: "9999" }),
+    row({ market: "Nampa, ID", address: "9 Subject Way", deal_date: "2026-06", price_per_sqft: "250" }),
+  ];
+  const r = BT.score(rows, OPTS);
+  assert.equal(r.scored, 1, "only the June subject has enough peers once the duplicate collapses to one row");
+  // 100/200/300/400 median 250 against an actual of 250 -- any leftover
+  // influence from the un-deduped 9999 copy would move this off zero.
+  assert.equal(r.medianAbsError, 0, "the duplicated peer's farther, mispriced copy must not also enter the band");
+  assert.equal(r.bandCoverage, 1);
 });
 
 test("score never mixes markets or property types", () => {

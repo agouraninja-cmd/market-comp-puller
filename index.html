@@ -8022,6 +8022,7 @@
     const tier = compTier(comp);
     if (!tier) return null;
     const t = SOURCE_TIERS[tier];
+    if (!t) return null;
     const badge = document.createElement("span");
     badge.className = "ml-1.5 align-middle rd-badge " + t.cls;
     badge.textContent = t.label;

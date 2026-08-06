@@ -22,22 +22,10 @@
   <meta name="twitter:title" content="Commercial Real Estate Comps" />
   <meta name="twitter:description" content="Recent comparable sales and lease comps for any commercial property. Free, in under a minute." />
   <meta name="twitter:image" content="https://market-comp-puller.onrender.com/og-image.png" />
-  <!-- Structured data for search engines -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebApplication",
-    "name": "CompNinja",
-    "url": "https://market-comp-puller.onrender.com/",
-    "applicationCategory": "BusinessApplication",
-    "operatingSystem": "Web",
-    "description": "Free reports of recent comparable sales and lease transactions for any commercial property, with maps, price per square foot, and PDF export.",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "provider": { "@type": "Organization", "name": "CompNinja" }
-  }
-  </script>
-  <!-- The FAQPage structured data lives on /how-it-works, alongside the visible
-       FAQ copy it describes (Google flags markup whose answers aren't on the page). -->
+  <!-- The FAQPage and WebApplication structured data live on /how-it-works.
+       Under the account wall no crawler reaches this file: / 302s to that page
+       for anyone without a session, so it is the one indexable description of
+       the product. -->
   <!-- Favicon: CompNinja cut-card mark (navy comp card, red diagonal slice).
        Real files, not data: URIs — Google only shows a favicon it can crawl. -->
   <link rel="icon" href="/favicon.ico" sizes="48x48" />

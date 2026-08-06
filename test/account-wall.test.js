@@ -178,4 +178,11 @@ test("/how-it-works carries the signup controls", async (t) => {
     assert.ok(!/class="kicker">How it works</.test(html), "the page IS the front door; it need not label itself");
     assert.match(html, /class="kicker">Method</, "the other section kickers stay");
   });
+
+  await t.test("it carries the product's structured data", async () => {
+    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    // It moved off index.html, which no crawler reaches under the wall.
+    assert.match(html, /"@type":"WebApplication"/);
+    assert.match(html, /"@type":"FAQPage"/, "the FAQ markup that was already here must survive");
+  });
 });

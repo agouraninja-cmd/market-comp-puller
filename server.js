@@ -5154,6 +5154,17 @@ function renderHowItWorksHTML() {
           acceptedAnswer: { "@type": "Answer", text: a },
         })),
       },
+      {
+        "@type": "WebApplication",
+        name: "CompNinja",
+        url: `${SITE_URL}/`,
+        applicationCategory: "BusinessApplication",
+        operatingSystem: "Web",
+        description: "Free reports of recent comparable sales and lease transactions for any commercial property, " +
+          "with maps, price per square foot, and PDF export.",
+        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        provider: { "@type": "Organization", name: "CompNinja" },
+      },
     ],
   });
 

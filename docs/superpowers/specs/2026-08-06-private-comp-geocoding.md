@@ -1,7 +1,10 @@
 # Private comps must stop being geocoded by address
 
 **Date:** 2026-08-06
-**Status:** PROPOSED. Needs Owen's agreement on section 3 before either half is built.
+**Status:** AGREED 2026-08-06. Section 3's shape stands; section 7 is answered
+in favour of step 1 plus the two display guards, with import-time geocoding
+deferred. Both halves can be built against this. Scoped OUT of v2, which closed
+2026-08-06 — this is the first piece of work after it.
 **Owner of the storage + ingest half:** Owen · **Owner of the display half:** Jacob
 
 This is the same shape as the blended-comps data contract: agree the seam, then
@@ -262,3 +265,43 @@ add step 2 only if real vault uploads turn out to arrive without coordinates
 often enough to matter. Step 1 plus guard 2 already removes the worst hop (a
 private address going browser-direct to a third party with the broker's IP
 attached), which is the part that is hardest to defend if anyone ever asks.
+
+### ANSWERED 2026-08-06 (Owen): step 1 and the two guards. Step 2 is deferred.
+
+Agreed with Jacob's read. Four reasons, recorded so the deferral is not
+re-litigated from memory later:
+
+1. **Almost the whole privacy win is in step 1 plus guard 2.** The worst hop is
+   a private address going browser-direct to Nominatim with the broker's IP
+   attached, and guard 2 removes it outright. What step 2 additionally buys is
+   the address reaching Census from our server rather than from the broker's
+   browser — real, but second-order, and not the claim this change exists to
+   make.
+2. **Section 7's own premise cannot be answered yet.** "We do not know what
+   fraction of exports carry coordinates" is not resolvable today, because
+   there are **no real vault uploads at all** — zero broker profiles, zero
+   subscriptions as of 2026-08-06. The first genuine upload will say more than
+   any estimate, and step 2 is exactly the kind of work that should be bought
+   with evidence.
+3. **Step 2 is where the operational cost lives.** A Census call per building
+   at import means a rate limit, a retry policy, and a new failure path on the
+   one action a paying broker is watching happen. Section 6 already requires
+   that a geocoder outage must not fail an import; that is a real obligation to
+   own, and it should be owned when it is earning something.
+4. **Nothing is wasted by waiting.** `geo_source` is already
+   `'broker' | 'census' | null` in migration 017, so step 2 lands later as a
+   pure addition — no migration change, no rework, no renegotiating this
+   contract.
+
+**Higher priority than step 2 when this is revisited:** moving `/api/geocode`
+to POST, which section 4 deliberately scopes out. It removes addresses from
+URLs for *every* comp rather than only private ones, it has a precedent in
+`POST /api/report-access` (which is POST for exactly this reason), and it is
+the same class of fix at a wider blast radius. Put it above step 2 on the
+roadmap, not below it.
+
+**So the build list is:** Owen — migration 017, `lat`/`lng` in the CSV
+template + `parseUpload` validation, `toApiComp()` lifting the property's
+coordinates, `blend-comps.js` carrying the fields through. Jacob — the two
+display guards. Import-time geocoding (row 3 of section 5) is **not** in this
+piece of work.

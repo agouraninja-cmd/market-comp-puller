@@ -954,6 +954,27 @@ html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
 CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
 
+**Private comps in the front end** (the display half of blended comps, 2026-08-06;
+server half and spec are under the broker vault above). A comp the server flags
+`private: true` renders as an ordinary comp everywhere — table, cards, map,
+chart, tiles, curation and the valuation all read it without special-casing,
+which is exactly what the one-flagged-array contract bought. It carries the
+`broker_vault` tier in `SOURCE_TIERS`, badged **"From your vault"**: an
+ownership statement, never the green Verified badge, which is a public claim a
+private row has not earned. Two rules matter when editing anything down here:
+- **Exports read `exportableComps()`, never `includedComps()`.** That is the
+  only difference between the two, and it is the difference between a broker's
+  private book staying private and being emailed to a client. Rows and cards
+  also carry `no-print no-capture`, which drops them from the printed page and
+  from the html2canvas PNG. `/api/share` strips them **server-side** and does
+  not trust this file.
+- **The valuation still counts them, so every export discloses the gap.** The
+  file is short by N rows while the value above it is not, and an unexplained
+  difference reads as lost data. `renderPrivateNotice()` says so on screen (and
+  is deliberately NOT `no-print`/`no-capture`, so it survives into the very
+  exports that dropped the rows); the CSV title row and the XLSX Valuation
+  sheet repeat it. Change the filter and you have to change all four.
+
 ### Non-obvious flows to know before editing
 
 1. **Web-search response parsing (`server.js`).** A web-search response is a mix

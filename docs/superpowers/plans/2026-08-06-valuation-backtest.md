@@ -524,9 +524,9 @@ The leaves are shared now, but the *sequence* that turns comps into a range is s
 
 **Interfaces:**
 - Consumes: everything from Task 1.
-- Produces: `valueFromComps(comps, { subjectSF, asOf, trendPct, valueOf }) -> { psfLow, psfMid, psfHigh, low, mid, high, n, trimmed, raw } | null`
+- Produces: `valueFromComps(comps, { subjectSF, asOf, trendPct, readValue }) -> { psfLow, psfMid, psfHigh, low, mid, high, n, trimmed, raw } | null`
   - `subjectSF` is a number **or** `{ min, max }`. The range form is load-bearing: the hero multiplies low by `sizeR.min` and high by `sizeR.max`, so a scalar could not reproduce it for an owner who enters a size range. A number is treated as `min === max`.
-  - `valueOf` defaults to `salePsfOf`; `altBasisRange` passes its own extractor in Task 4.
+  - `readValue` defaults to `salePsfOf`; `altBasisRange` passes its own extractor in Task 4. **Do not name this option `valueOf`.** Every object inherits `valueOf` from `Object.prototype`, so `o.valueOf || salePsfOf` can never fall through to the default, and a `typeof === "function"` guard is what makes absent / `undefined` / non-function all fall back correctly.
   - Lease comps are filtered out inside, always. Leases are quoted per SF per year and would skew the range, and `trendFactor` never indexes them.
   - Returns `null` when no comp yields a usable value.
 
@@ -579,7 +579,7 @@ test("valueFromComps takes an alternate value extractor for $/unit bases", () =>
     comp({ price_per_unit: String(ppu), address: ppu + " Main St" }));
   const v = V.valueFromComps(comps, {
     subjectSF: 0, asOf: AS_OF, trendPct: null,
-    valueOf: (c) => V.numericValue(c.price_per_unit),
+    readValue: (c) => V.numericValue(c.price_per_unit),
   });
   assert.equal(v.psfLow, 150000);
   assert.equal(v.psfMid, 250000);
@@ -617,7 +617,10 @@ Insert before the `return { ... }` at the bottom of the factory, and add `valueF
   // uses: low $/SF against the smallest size, high against the largest.
   function valueFromComps(comps, opts) {
     const o = opts || {};
-    const valueOf = o.valueOf || salePsfOf;
+    // NOT named `valueOf`: every object inherits Object.prototype.valueOf, so
+    // `o.valueOf || salePsfOf` can never reach the default. typeof-guarded so
+    // absent, undefined and non-function all fall back the same way.
+    const readValue = typeof o.readValue === "function" ? o.readValue : salePsfOf;
     const sf = o.subjectSF;
     const isRange = sf && typeof sf === "object";
     const sizeMin = Number(isRange ? sf.min : sf) || 0;
@@ -626,7 +629,7 @@ Insert before the `return { ... }` at the bottom of the factory, and add `valueF
 
     const items = (comps || [])
       .filter((c) => c && !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => ({ comp: c, v: valueOf(c) }))
+      .map((c) => ({ comp: c, v: readValue(c) }))
       .filter((x) => x.v > 0);
     if (!items.length) return null;
 
@@ -763,7 +766,7 @@ Replace the body's `items` construction and `robustPpsfRange` call:
     // because SF often is not known for these types.
     const val = valueFromComps(carriers.map((x) => x.comp), {
       subjectSF: 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
-      valueOf: (c) => numericValue(c[spec.compKey]),
+      readValue: (c) => numericValue(c[spec.compKey]),
     });
     if (!val) return null;
     return { spec, qty, per, rr: { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed } };

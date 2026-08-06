@@ -2351,6 +2351,32 @@ const US_STATES = new Set([
   "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 ]);
 
+// Search vocabulary for the /markets directory filter. Both maps exist so a
+// visitor can type what they actually say ("warehouse Boise", "california
+// office") instead of the exact words on the card. They are used ONLY to build
+// each card's `data-q` haystack server-side, which is why the filter script
+// itself carries no vocabulary and there is no second copy to keep in sync.
+const TYPE_SYNONYMS = {
+  Industrial: "warehouse warehouses distribution logistics flex manufacturing",
+  Office: "offices workplace medical",
+  Retail: "shop shops shopping strip center centre mall storefront",
+  Multifamily: "apartment apartments units multi-family multi family rental",
+};
+const STATE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", DC: "Washington DC",
+  FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
+  IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
+  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan",
+  MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota",
+  OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee",
+  TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+};
+
 // ---------------------------------------------------------------------------
 // Email via Resend — all sends are fire-and-forget so a slow or failing email
 // provider never delays or breaks the request that triggered them.
@@ -4003,6 +4029,20 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .mcard:hover{border-color:#8A93A0}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
 .mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
+/* /markets directory filter. .vh hides the label from sight but not from a
+   screen reader: a bare search box with only a placeholder has no accessible
+   name once the visitor starts typing.
+   NOTE no backticks anywhere in this block — MARKET_CSS is a template
+   literal, so one would end the string and turn the next line into a tagged
+   template call. node --check still passes when that happens; the server dies
+   at startup instead. */
+.vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.mfilter{margin-top:24px;max-width:420px}
+.mfilter input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #D8D4C9;border-radius:6px;
+  padding:10px 12px;font-family:inherit;font-size:14px;color:#1A2433}
+.mfilter input::placeholder{color:#8A93A0}
+.mfilter input:focus{outline:none;border-color:#B91C1C;box-shadow:0 0 0 1px #B91C1C}
+.mcount{color:#5A6473;font-size:13px;margin-top:10px;min-height:1.2em}
 .disc{color:#8A93A0;font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
@@ -4719,7 +4759,15 @@ function renderMarketDirectoryHTML() {
     "Recent commercial real estate price-per-square-foot snapshots by city and property type (industrial, office, retail, and multifamily) with a free instant valuation tool.";
   const cards = slugs.map((s) => {
     const p = merged[s];
-    return `<a class="mcard" href="/market/${s}"><div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
+    // Everything a visitor might reasonably type for this card, flattened into
+    // one lowercase haystack: the words on the card, the full state name, and
+    // that type's synonyms. Baking it here is what keeps the filter script
+    // free of any vocabulary of its own.
+    const haystack = [
+      p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "",
+    ].join(" ").toLowerCase();
+    return `<a class="mcard" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+      `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
       `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div></a>`;
   }).join("");
   const jsonLd = JSON.stringify({
@@ -4730,10 +4778,45 @@ function renderMarketDirectoryHTML() {
     url: canonical,
     hasPart: slugs.map((s) => ({ "@type": "WebPage", name: marketTitle(merged[s]), url: marketUrl(s) })),
   });
+  // Filter, not search: every card is already in the HTML, so this narrows
+  // what is on screen and never calls the server. It costs nothing, needs no
+  // account, and works on the one market-finding surface an anonymous visitor
+  // can still reach. Progressive enhancement — with JS off the full grid is
+  // rendered and simply is not filtered.
+  const filterUi = slugs.length > 8
+    ? `<div class="mfilter">` +
+      `<label class="vh" for="mq">Filter markets</label>` +
+      `<input id="mq" type="search" autocomplete="off" placeholder="Filter by city, state, or type, e.g. warehouse Texas"/>` +
+      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>`
+    : "";
+  const filterJs = slugs.length > 8
+    ? `<script>(function(){` +
+      `var q=document.getElementById('mq'),c=document.getElementById('mcount');` +
+      `if(!q||!c)return;` +
+      `var cards=[].slice.call(document.querySelectorAll('.mcard'));` +
+      `var total=cards.length;` +
+      // Every term must match, so "warehouse texas" narrows rather than widens.
+      `function run(){` +
+      `var terms=q.value.toLowerCase().split(/[\\s,]+/).filter(Boolean),n=0;` +
+      `cards.forEach(function(el){` +
+      `var hay=el.getAttribute('data-q')||'';` +
+      `var hit=terms.every(function(t){return hay.indexOf(t)!==-1});` +
+      `el.style.display=hit?'':'none';if(hit)n++;});` +
+      `c.textContent=!terms.length?'':(n?n+' of '+total+' markets':'No markets match. Try a city, a state, or a property type.');}` +
+      `q.addEventListener('input',run);` +
+      // Enter opens the first match, so a filtered-to-one list needs no mouse.
+      `q.addEventListener('keydown',function(e){` +
+      `if(e.key!=='Enter')return;e.preventDefault();` +
+      `var first=cards.filter(function(el){return el.style.display!=='none'})[0];` +
+      `if(first)window.location.href=first.getAttribute('href');});` +
+      `run();})();</script>`
+    : "";
   const body =
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
+    filterUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
+    filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
   return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd });

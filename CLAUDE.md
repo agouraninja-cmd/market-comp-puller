@@ -305,6 +305,21 @@ dependency. `.env` is git-ignored — never commit it.
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
   moving to a custom domain is a single env change — no HTML edits.
+- `GOOGLE_SITE_VERIFICATION` — optional. The token from Google Search Console's
+  **HTML file** verification method; accepts the whole `google<token>.html`
+  filename or the bare token. Set, the server answers that exact path with the
+  line Google expects and logs the live path at startup; unset, the route does
+  not exist. **The file method, not the meta tag, on purpose**: meta-tag
+  verification fetches the property root, and under `ACCOUNT_WALL` `/` is a 302
+  to `/how-it-works`, so a tag placed there is never seen and verification fails
+  with no stated reason. This path is its own route and the wall never touches
+  it (the static handler is an allowlist). A DNS TXT record reaches the same
+  place and is better where there is registrar access — it covers every
+  subdomain and survives any redirect; the two do not conflict. **Keep the var
+  set for good** — Google re-fetches the file and unverifies the property if it
+  stops answering. Search Console is the only view of whether the ~38 market
+  pages in `sitemap.xml` are indexed at all; `analytics_events` only ever sees
+  people who already arrived.
 - `PRO_ENABLED` — optional `on`/`off`, **default OFF**. Master switch for the
   paid Pro tier. Off means the app behaves exactly as it did before the tier
   existed: no comp gating, no export cap, no lookback limit

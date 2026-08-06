@@ -12,14 +12,14 @@ intent, the devlog states history.
 
 ## Now
 
-- **Broker tier v1: private data vault + dashboard** (from the 2026-07-31
-  Chuck plan; read "CompNinja Ecosystem Plan.docx" in OneDrive Documents
-  before designing). CSV/PDF comp upload into a private vault plus a
-  sortable dashboard by property/market. The privacy wall is the product:
-  broker private data is never read into the public corpus; the only door
-  is per-comp opt-in publishing for Verified credit. Brokers bring their
-  own MLS-sourced data under their own license. New tables get the star
-  schema; existing tables are not rebuilt.
+- **Private comps must stop being geocoded by address** — the first piece of
+  work after v2. Spec AGREED 2026-08-06 in
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; section 7 is
+  answered (ship step 1 plus Jacob's two display guards, defer import-time
+  geocoding). Owen owns migration 017, `lat`/`lng` in the CSV template with
+  validation, `toApiComp()` lifting the property's coordinates, and
+  `blend-comps.js` carrying them through. Until it lands, a private comp's
+  address still leaves the broker's browser to place a map pin.
 - **Report branding UI.** The last unbuilt Pro entitlement: `canBrand` and
   `findBrandingProfile()` exist server-side with no UI at all. Shipping it
   lets the pricing tile finally advertise branded reports.
@@ -108,6 +108,15 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 "analyst-grade" before the comp audit scores 90%+.
 
 ## Shipped log (roadmap-level items only)
+
+- **2026-08-06: v2 closed.** Broker tier v1 is done and live — the private
+  vault, the star schema behind it (migration 016), blended private comps in a
+  broker's own reports (server half #28, display half #30), the vault
+  dashboard's market rollup + price trend + repeat properties (#34), the
+  empty-vault first run (#40), the broker lead inbox, and one product rather
+  than two in every place that described it (#39, #41). Live schema verified
+  against the code the same day. Organic acquisition also went from invisible
+  to measurable (#32, #36) — see `docs/SEO.md`.
 
 - 2026-08-06: organic acquisition made legible (PR #32) — all 38 market
   page titles were 68–82 chars against Google's ~60 and were being

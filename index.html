@@ -774,6 +774,26 @@
 
   <div class="max-w-5xl mx-auto px-4 pb-8">
 
+    <!-- Account wall: the signed-out stand-in for the search form. Shown by
+         applySearchLock() when /api/config reports accountWall and there is no
+         session. Presentation only, like everything else driven by that
+         response: GUEST_SEARCH_LIMIT is 0 under the wall, so /api/comps
+         refuses an anonymous search whatever this file does. A shared report
+         still renders below this card, which turns a shared link into a signup
+         funnel rather than a leak. -->
+    <div id="searchLock" class="hidden relative z-10 mt-4 no-print rd-exhibit p-6">
+      <h2 class="rd-h text-xl">Create a free account to run a report</h2>
+      <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]">Reports are free and take about a minute. An account keeps
+        your searches, your portfolio and your watchlist in one place.</p>
+      <div class="mt-4 flex flex-wrap items-center gap-4">
+        <button id="lockSignUpBtn" type="button"
+          class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Create a free account</button>
+        <button id="lockSignInBtn" type="button"
+          class="text-sm text-[#5A6473] hover:text-[#1A2433] underline">Already have an account? Log in</button>
+      </div>
+      <p class="text-[12.5px] text-[#8A8577] mt-4">An automated estimate, not an appraisal.</p>
+    </div>
+
     <!-- Search form — one bordered unit -->
     <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
       <form id="compForm" class="rd-form">
@@ -899,7 +919,7 @@
           </button>
         </div>
       </form>
-      <div class="text-[12.5px] text-[#8A8577] mt-3">First report free · Free account for more · An automated estimate, not an appraisal</div>
+      <div class="text-[12.5px] text-[#8A8577] mt-3">Reports are free · An automated estimate, not an appraisal</div>
       <!-- Shown only once /api/config says this signed-out visitor's free
            search is spent; sign-in/refreshProConfig hides it again. -->
       <div id="guestSearchHint" class="hidden text-[12.5px] text-[#5A6473] mt-1">
@@ -2368,12 +2388,14 @@
     streetviewEnabled = Boolean(cfg.streetview);
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
+    accountWall = Boolean(cfg.accountWall);
     renderGuestSearchHint();
     applyLookbackGating();
     // Safe here despite initGate() being called near the top of the script:
     // the await above yields, so `currentUser` and every billing control have
     // been initialized by the time this line runs.
     refreshBillingUI();
+    applySearchLock();
 
     if (!cfg.authRequired) return;            // no password configured
 
@@ -6347,6 +6369,7 @@
   // Account state — cookie-backed session; the browser sends cn_session
   // automatically on same-origin fetches.
   // ----------------------------------------------------------------------------
+  let accountWall = false;          // from /api/config; drives applySearchLock()
   let currentUser = null;           // { email, name } | null
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
   let acctMode = "signin";          // signin | signup | forgot | reset
@@ -6363,7 +6386,25 @@
     return data;
   }
 
+  // One owner of the search form's existence, called from the three places
+  // that change it: the config load, sign-in/out, and the desk/home swap.
+  //
+  // Reads deskView's class rather than calling onDesk(): that helper is a
+  // `const` arrow declared hundreds of lines below, and this runs from
+  // initGate() near the top of the script, which would hit its temporal dead
+  // zone. (The same trap the proConfig comment warns about.)
+  function applySearchLock() {
+    const lock = document.getElementById("searchLock");
+    if (!lock) return;
+    const onDeskView = !document.getElementById("deskView").classList.contains("hidden");
+    if (onDeskView) { lock.classList.add("hidden"); return; }
+    const locked = accountWall && !currentUser;
+    lock.classList.toggle("hidden", !locked);
+    document.getElementById("searchSection").classList.toggle("hidden", locked);
+  }
+
   function refreshAccountUI() {
+    applySearchLock();
     const on = Boolean(currentUser);
     document.getElementById("signInLink").classList.toggle("hidden", on);
     document.getElementById("acctMenuWrap").classList.toggle("hidden", !on);
@@ -6428,6 +6469,9 @@
   }
 
   document.getElementById("signInLink").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("lockSignUpBtn").addEventListener("click", () =>
+    openAcctModal("signup", "Create a free account to run a report. It's free, no card needed."));
+  document.getElementById("lockSignInBtn").addEventListener("click", () => openAcctModal("signin"));
   document.getElementById("guestHintSignIn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to keep searching. It's free, no card needed."));
   document.getElementById("acctTabIn").addEventListener("click", () => setAcctMode("signin"));
@@ -6554,6 +6598,14 @@
     if (currentUser && location.pathname === "/desk") renderWatchFeed({ markSeen: true });
     const m = location.hash.match(/^#reset=([A-Za-z0-9_-]{20,})$/);
     if (m) { resetToken = m[1]; openAcctModal("reset"); }
+    // The auth door from /how-it-works. Skipped for a signed-in visitor, who
+    // followed a static link from a page that is cached for everyone.
+    const authParam = new URLSearchParams(location.search).get("auth");
+    if (!currentUser && (authParam === "signup" || authParam === "signin")) {
+      openAcctModal(authParam, authParam === "signup"
+        ? "Create a free account to run a report. It's free, no card needed."
+        : "");
+    }
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off
     // different query params (?checkout= vs ?purchase=), so at most one acts.
@@ -6731,6 +6783,7 @@
     renderHistory();
     document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
     renderMyDesk();
+    applySearchLock();
   }
   function showHomeView() {
     document.getElementById("deskView").classList.add("hidden");
@@ -6741,6 +6794,7 @@
       el.classList.remove("hidden");
       el.classList.add("fade-in");
     });
+    applySearchLock();
   }
   const onDesk = () => !document.getElementById("deskView").classList.contains("hidden");
   function enterDesk({ markSeen } = {}) {

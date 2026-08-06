@@ -1179,6 +1179,29 @@ private row has not earned. Two rules matter when editing anything down here:
   is deliberately NOT `no-print`/`no-capture`, so it survives into the very
   exports that dropped the rows); the CSV title row and the XLSX Valuation
   sheet repeat it. Change the filter and you have to change all four.
+- **A private comp's ADDRESS is never sent to a third party** (2026-08-06; spec
+  and Owen's §7 decision in
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`). Two guards,
+  both in `renderMap()`'s geocoding, and both applied in **two** places — the
+  main pass and the no-coordinates rescue loop above it, which is otherwise a
+  second door straight past them:
+  - **Skip.** A private comp with finite `lat`/`lng` is not geocoded at all.
+    That pass otherwise geocodes EVERY comp unconditionally, treating supplied
+    coordinates as a first-paint guess for the geocoder to refine — right for a
+    public comp, wrong for a vault one. Without this guard, coordinates in a
+    broker's upload would buy nothing.
+  - **No third party.** `geocodeAddress(addr, { noThirdParty: true })` stops at
+    our own `/api/geocode` proxy (US Census behind it) and never falls through
+    to Nominatim, which is browser-direct and so would receive the address
+    **and the broker's IP**. On a miss the comp gets no pin, deliberately —
+    same rule as Street View's "the actual property or nothing".
+  A refused lookup is **not cached**: `geoCache` is keyed by address alone, so
+  storing that miss would deny the Nominatim fallback to the public callers
+  still entitled to it. Public comps are untouched by all of this.
+  Owen owns the other half (migration 017, `lat`/`lng` in the vault CSV,
+  `toApiComp` lifting them onto the comp); **import-time geocoding is
+  deliberately deferred**, and moving `/api/geocode` to POST ranks above it
+  when this is picked up again.
 
 ### Non-obvious flows to know before editing
 

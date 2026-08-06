@@ -4674,7 +4674,25 @@
     return result;
   }
 
-  async function geocodeAddress(address) {
+  // `opts.noThirdParty` is GUARD 2 of the private-comp geocoding contract
+  // (docs/superpowers/specs/2026-08-06-private-comp-geocoding.md, agreed
+  // 2026-08-06). It stops after our own /api/geocode proxy and never falls
+  // through to Nominatim.
+  //
+  // Why only that hop: the proxy forwards to the US Census geocoder, a
+  // government service with no account and no commercial profile behind it.
+  // Nominatim is a third party that receives the address AND the broker's own
+  // IP, because that call is browser-direct rather than proxied. For a comp
+  // out of a broker's private vault — an off-market deal nobody else knows
+  // about — that is the hop that is hardest to defend.
+  //
+  // The cost is real and accepted: a private comp whose Census lookup misses
+  // gets no pin at all rather than an approximate one. That is the same call
+  // already made for Street View photos, where the rule is "the actual
+  // property or nothing", and a broker can settle it outright by putting
+  // lat/lng in their upload once the vault template carries them.
+  async function geocodeAddress(address, opts) {
+    const noThirdParty = Boolean(opts && opts.noThirdParty);
     const key = String(address || "").trim().toLowerCase();
     if (!key) return null;
     if (key in geoCache) {
@@ -4686,8 +4704,12 @@
       const j = await geoFetch("/api/geocode?address=" + encodeURIComponent(address));
       if (j && isFinite(j.lat) && isFinite(j.lng)) found = { lat: j.lat, lng: j.lng, label: j.matchedAddress || undefined };
     } catch (_) { /* proxy down — try the fallback */ }
-    if (!found) found = await nominatimGeocode(address);
-    geoCacheStore(key, found);   // null is cached too: a known miss
+    if (!found && !noThirdParty) found = await nominatimGeocode(address);
+    // Deliberately NOT cached when the third party was skipped: a miss here
+    // means "Census alone could not place it", not "this address cannot be
+    // placed". Storing it would poison the shared address-keyed cache for the
+    // public lookups that are still allowed to use the fallback.
+    if (!noThirdParty || found) geoCacheStore(key, found);   // null is cached too: a known miss
     return found;
   }
 
@@ -5494,7 +5516,12 @@
           if (subj) { parsed.subject_lat = String(subj.lat); parsed.subject_lng = String(subj.lng); found = true; }
           for (const c of includedComps() || []) {
             if (!c.address) continue;
-            const ll = await geocodeAddress(c.address);
+            // The same two guards as the main pass below. This rescue loop runs
+            // when a report arrives with no coordinates at all, and it would
+            // otherwise be a second door straight past both of them.
+            const priv = isPrivateComp(c);
+            if (priv && isFinite(parseFloat(c.lat)) && isFinite(parseFloat(c.lng))) continue;
+            const ll = await geocodeAddress(c.address, { noThirdParty: priv });
             if (ll) { c.lat = String(ll.lat); c.lng = String(ll.lng); found = true; }
           }
           if (found && gen === mapGeneration) renderMap(parsed, meta, true);
@@ -5845,7 +5872,22 @@
       const compQuery = (a) => (ST_RE.test(a) || !subjTail) ? a : a.trim().replace(/,+$/, "") + subjTail;
       const jobs = [geocodeAddress(meta.address).then((ll) => ({ subject: true, ll }))];
       (includedComps() || []).forEach((c) => {
-        if (c.address) jobs.push(geocodeAddress(compQuery(String(c.address))).then((ll) => ({ c, ll })));
+        if (!c.address) return;
+        // GUARD 1: a private comp that already knows where it is never gets
+        // geocoded at all. This pass otherwise geocodes EVERY comp
+        // unconditionally — coordinates a comp arrives with are treated as a
+        // first-paint approximation for the geocoder to refine, which is right
+        // for a public comp and wrong for one out of a broker's vault. Without
+        // this the coordinates in the upload would buy nothing, because the
+        // address would still be sent on every report.
+        //
+        // Scoped to private comps on purpose: refining a public comp's
+        // model-supplied guess is a real accuracy win and nothing about it is
+        // sensitive.
+        const priv = isPrivateComp(c);
+        if (priv && isFinite(parseFloat(c.lat)) && isFinite(parseFloat(c.lng))) return;
+        jobs.push(geocodeAddress(compQuery(String(c.address)), { noThirdParty: priv })
+          .then((ll) => ({ c, ll })));
       });
       const results = await Promise.all(jobs);
       if (gen !== mapGeneration || !mapInstance) return;   // a newer report took over

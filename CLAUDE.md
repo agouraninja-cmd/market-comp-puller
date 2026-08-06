@@ -962,6 +962,30 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     which owns the entitlement gate**; `vault-page.js` only decides how that
     data is drawn. Keep it that way — a read that happened there would be a
     read outside the gate.
+  - **The FIRST RUN is a different page** (2026-08-06). When a broker has no
+    comps *and* no imports, `applyFirstRun()` hides the trust line, the "Add
+    comps" section, the comps table and the imports list, and shows
+    `#firstRun`: two numbered steps, one to upload and one to add markets to
+    watch. Four rules:
+    - **It keys on comps AND uploads, never comps alone.** A broker whose
+      import was entirely rejected, or who deleted every comp out of one, has
+      been through the door already; showing "Start here" again reads as their
+      work having been thrown away.
+    - **The trust line is hidden, not deleted, and its promise moves into the
+      panel's prose.** That line exists to let a broker watch "0 published"
+      stay at zero, which only means anything once there is something it could
+      have counted. On day one it is a 0-0 scoreboard over an empty page.
+    - **There is exactly ONE `<input type=file>`.** Step 1's button and the
+      ordinary "Add comps" button both call `$("file").click()`. Two inputs
+      would mean two values and two change handlers, and an upload started
+      from one would be invisible to the other's result message. A test pins
+      this.
+    - **Step 2 does not duplicate the coverage form**, it scrolls to the real
+      one and focuses it. A second copy would be a second thing to keep in
+      step with the coverage rules in `broker-leads.js`.
+    Empty tables are hidden throughout rather than shown with a header row and
+    a "nothing here yet" line — three of those stacked up was the thing that
+    made a new vault read as broken rather than new.
   - **That 503 is the opposite of the rest of the app, deliberately.**
     Everywhere else a Supabase failure falls back to a local file so nothing is
     lost. Here the file WOULD be the loss — Render erases its disk on every

@@ -878,6 +878,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
   All four go through one `openVault()` helper: 401 not signed in → 403 not a
   broker (`canUseVault`) → 503 no database.
+  - **The `/vault` PAGE lives in `vault-page.js`, not `server.js`** (moved
+    2026-08-06). It is a web page, so it belongs to whoever owns the front end;
+    as a 475-line block inside `server.js` it could not be edited without
+    editing the server file, which made front-end and server work collide by
+    accident. `renderVaultHTML(boot, { CN_LOGO, MARKET_CSS })` takes the site's
+    shared chrome as an argument rather than copying it — a second copy would
+    drift, and `server.js` already carries a keep-the-two-in-step ⚠ about that
+    hazard. **The DATA is still resolved in `server.js` by `vaultReadPayload`,
+    which owns the entitlement gate**; `vault-page.js` only decides how that
+    data is drawn. Keep it that way — a read that happened there would be a
+    read outside the gate.
   - **That 503 is the opposite of the rest of the app, deliberately.**
     Everywhere else a Supabase failure falls back to a local file so nothing is
     lost. Here the file WOULD be the loss — Render erases its disk on every

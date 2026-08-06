@@ -30,6 +30,7 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+const LEADSVC = require("./broker-leads");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
 // which USED to live inline below: the audit has to detect rows that predate a
@@ -424,6 +425,11 @@ const RATE_WINDOW_MAX_MS = 15 * 60 * 1000; // longest window any caller uses —
 const RATE_MAX = 10; // searches per IP per window
 const rateHits = new Map();
 
+// One alert per broker per market+type per hour. In-memory: a restart
+// forgiving the window is fine, a mail storm is not.
+const BROKER_ALERT_SUPPRESS = new Map(); // "userId|market|type" -> lastSentMs
+const BROKER_ALERT_WINDOW_MS = 60 * 60 * 1000;
+
 function clientIp(req) {
   // Hosts like Render sit behind a proxy; the proxy APPENDS the real client to
   // x-forwarded-for, so the last entry is the trustworthy one (earlier entries
@@ -566,6 +572,17 @@ async function guestGateFor(req) {
 // `headersOpen` is true on an SSE exit, where the headers are already
 // streaming and no cookie can be set — /api/config syncs it on the next page
 // load, and the sha256(IP) ledger is the durable half regardless.
+// The copy a blocked anonymous visitor reads. It MUST branch on the limit:
+// at 0 — which is what ACCOUNT_WALL forces, and therefore what every
+// deployment with the wall up serves — the visitor never had a free search,
+// so "you've used your free search" is simply false, and it was being told to
+// 100% of anonymous traffic. `what` completes "...to <what>".
+function guestGateMessage(what) {
+  return GUEST_SEARCH_LIMIT === 0
+    ? `Create a free account to ${what}. It's free, no card needed.`
+    : `You've used your free search. Create a free account to ${what}. It's free, no card needed.`;
+}
+
 function consumeGuestSearchFor(gate, req, res, headersOpen) {
   if (!gate) return;
   const used = gate.used + 1;
@@ -798,6 +815,31 @@ async function getSessionUser(req) {
 async function requireUser(req, res) {
   const user = await getSessionUser(req);
   if (!user) { sendJson(res, 401, { error: "Not signed in." }); return null; }
+  return user;
+}
+
+// Gate for the broker lead inbox routes: signed in (401), broker plan (403),
+// database up (503) — the same three refusals, in the same order, as the
+// vault's openVault() further down. This is that gate's sibling, kept as a
+// second small copy because each names its own area in the 403 copy; fold
+// them together if a third broker area appears. Hoisted to module scope
+// (not a closure inside the request handler) so routes above the vault's old
+// position can call it without a TDZ trap.
+async function requireBroker(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  const ent = await entitlementsFor(req);
+  if (!ent.canUseVault) {
+    sendJson(res, 403, {
+      error: "The lead inbox is part of the broker plan.",
+      code: "broker_required",
+    });
+    return null;
+  }
+  if (!DB_CONFIGURED) {
+    sendJson(res, 503, { error: "The lead inbox is unavailable right now. Please try again in a minute." });
+    return null;
+  }
   return user;
 }
 
@@ -2308,6 +2350,32 @@ const US_STATES = new Set([
   "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC",
   "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 ]);
+
+// Search vocabulary for the /markets directory filter. Both maps exist so a
+// visitor can type what they actually say ("warehouse Boise", "california
+// office") instead of the exact words on the card. They are used ONLY to build
+// each card's `data-q` haystack server-side, which is why the filter script
+// itself carries no vocabulary and there is no second copy to keep in sync.
+const TYPE_SYNONYMS = {
+  Industrial: "warehouse warehouses distribution logistics flex manufacturing",
+  Office: "offices workplace medical",
+  Retail: "shop shops shopping strip center centre mall storefront",
+  Multifamily: "apartment apartments units multi-family multi family rental",
+};
+const STATE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", DC: "Washington DC",
+  FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
+  IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
+  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan",
+  MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota",
+  OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee",
+  TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+};
 
 // ---------------------------------------------------------------------------
 // Email via Resend — all sends are fire-and-forget so a slow or failing email
@@ -3961,6 +4029,20 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .mcard:hover{border-color:#8A93A0}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
 .mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
+/* /markets directory filter. .vh hides the label from sight but not from a
+   screen reader: a bare search box with only a placeholder has no accessible
+   name once the visitor starts typing.
+   NOTE no backticks anywhere in this block — MARKET_CSS is a template
+   literal, so one would end the string and turn the next line into a tagged
+   template call. node --check still passes when that happens; the server dies
+   at startup instead. */
+.vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.mfilter{margin-top:24px;max-width:420px}
+.mfilter input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #D8D4C9;border-radius:6px;
+  padding:10px 12px;font-family:inherit;font-size:14px;color:#1A2433}
+.mfilter input::placeholder{color:#8A93A0}
+.mfilter input:focus{outline:none;border-color:#B91C1C;box-shadow:0 0 0 1px #B91C1C}
+.mcount{color:#5A6473;font-size:13px;margin-top:10px;min-height:1.2em}
 .disc{color:#8A93A0;font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
@@ -4101,12 +4183,24 @@ async function refreshBrokerProfiles() {
 // broker is choosing to put their name on a comp, which is a separate consent
 // from listing themselves in the directory. Reading the cache here would mean
 // a broker with a private profile silently gets no credit.
-async function findBrokerProfile(email) {
+async function findBrokerProfile(email, userId) {
   const e = String(email || "").trim().toLowerCase();
   if (!DB_CONFIGURED || !e) return null;
+  // Pre-migration safety: user_id stays OUT of the select (PostgREST 400s on
+  // unknown SELECTed columns, which would take the email fallback down too);
+  // the user_id=eq. filter read is individually caught, so it alone may
+  // reference the column.
+  const SELECT = "select=email,slug,display_name,company,public";
+  if (userId) {
+    try {
+      const rows = await sbRequest("GET",
+        `broker_profiles?user_id=eq.${encodeURIComponent(userId)}&${SELECT}&limit=1`);
+      if (rows && rows[0]) return rows[0];
+    } catch (err) { console.error("Broker profile user_id read failed:", err.message); }
+  }
   try {
     const rows = await sbRequest("GET",
-      `broker_profiles?email=eq.${encodeURIComponent(e)}&select=email,slug,display_name,company,public&limit=1`);
+      `broker_profiles?email=eq.${encodeURIComponent(e)}&${SELECT}&limit=1`);
     return (rows && rows[0]) || null;
   } catch (err) {
     console.error("Broker profile read failed:", err.message);
@@ -4665,7 +4759,15 @@ function renderMarketDirectoryHTML() {
     "Recent commercial real estate price-per-square-foot snapshots by city and property type (industrial, office, retail, and multifamily) with a free instant valuation tool.";
   const cards = slugs.map((s) => {
     const p = merged[s];
-    return `<a class="mcard" href="/market/${s}"><div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
+    // Everything a visitor might reasonably type for this card, flattened into
+    // one lowercase haystack: the words on the card, the full state name, and
+    // that type's synonyms. Baking it here is what keeps the filter script
+    // free of any vocabulary of its own.
+    const haystack = [
+      p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "",
+    ].join(" ").toLowerCase();
+    return `<a class="mcard" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+      `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
       `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div></a>`;
   }).join("");
   const jsonLd = JSON.stringify({
@@ -4676,10 +4778,45 @@ function renderMarketDirectoryHTML() {
     url: canonical,
     hasPart: slugs.map((s) => ({ "@type": "WebPage", name: marketTitle(merged[s]), url: marketUrl(s) })),
   });
+  // Filter, not search: every card is already in the HTML, so this narrows
+  // what is on screen and never calls the server. It costs nothing, needs no
+  // account, and works on the one market-finding surface an anonymous visitor
+  // can still reach. Progressive enhancement — with JS off the full grid is
+  // rendered and simply is not filtered.
+  const filterUi = slugs.length > 8
+    ? `<div class="mfilter">` +
+      `<label class="vh" for="mq">Filter markets</label>` +
+      `<input id="mq" type="search" autocomplete="off" placeholder="Filter by city, state, or type, e.g. warehouse Texas"/>` +
+      `</div><div class="mcount" id="mcount" role="status" aria-live="polite"></div>`
+    : "";
+  const filterJs = slugs.length > 8
+    ? `<script>(function(){` +
+      `var q=document.getElementById('mq'),c=document.getElementById('mcount');` +
+      `if(!q||!c)return;` +
+      `var cards=[].slice.call(document.querySelectorAll('.mcard'));` +
+      `var total=cards.length;` +
+      // Every term must match, so "warehouse texas" narrows rather than widens.
+      `function run(){` +
+      `var terms=q.value.toLowerCase().split(/[\\s,]+/).filter(Boolean),n=0;` +
+      `cards.forEach(function(el){` +
+      `var hay=el.getAttribute('data-q')||'';` +
+      `var hit=terms.every(function(t){return hay.indexOf(t)!==-1});` +
+      `el.style.display=hit?'':'none';if(hit)n++;});` +
+      `c.textContent=!terms.length?'':(n?n+' of '+total+' markets':'No markets match. Try a city, a state, or a property type.');}` +
+      `q.addEventListener('input',run);` +
+      // Enter opens the first match, so a filtered-to-one list needs no mouse.
+      `q.addEventListener('keydown',function(e){` +
+      `if(e.key!=='Enter')return;e.preventDefault();` +
+      `var first=cards.filter(function(el){return el.style.display!=='none'})[0];` +
+      `if(first)window.location.href=first.getAttribute('href');});` +
+      `run();})();</script>`
+    : "";
   const body =
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
+    filterUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
+    filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
   return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd });
@@ -5492,6 +5629,10 @@ function aggregateStats(rows) {
       leads: leads.length,
       shares: rows.filter((r) => r.kind === "share").length,
       comps: rows.filter((r) => r.kind === "comp").length,
+      // Event-derived, so it inherits the 10k row cap and only counts from
+      // the inbox launch onward; the authoritative figure is the
+      // introRequests table read attached beside this in /api/stats.
+      leadIntros: rows.filter((r) => r.kind === "lead_intro").length,
     },
     conversionPct: searches.length ? Math.round((leads.length / searches.length) * 1000) / 10 : 0,
     daily,
@@ -5562,6 +5703,57 @@ function aggregateStats(rows) {
   };
 }
 
+// Broker introduction requests for /admin. lead_intro_requests is written by
+// POST /api/broker/leads/intro and was read nowhere owner-facing — one owner
+// email per request was the only signal, so a dropped email made a request
+// invisible (the corpus-health lesson: a signal nobody can see back is no
+// signal). Supabase-only by design, like the route that writes it — there is
+// no file fallback to read — so an unconfigured DB answers db:false rather
+// than a misleading zero. Fails SAFE: any error returns null and /admin
+// renders "unavailable"; this panel must never be what breaks the dashboard.
+// The recent list carries broker email + lead market/type — /api/stats is
+// ADMIN_KEY-gated and the owner already receives exactly this by email, so
+// nothing here widens who sees what. Analytics EVENTS stay PII-free.
+async function readIntroRequests() {
+  if (!DB_CONFIGURED) return { db: false, count: 0, recent: [] };
+  try {
+    const reqs = (await sbRequest("GET",
+      "lead_intro_requests?select=lead_id,user_id,created_at&order=created_at.desc&limit=1000")) || [];
+    const head = reqs.slice(0, 12);
+    const uids = [...new Set(head.map((r) => String(r.user_id)))];
+    const lids = [...new Set(head.map((r) => String(r.lead_id)))];
+    // leads has no FK from lead_intro_requests (deliberate — see 015), so
+    // PostgREST can't embed it; both joins are done here. A dangling lead_id
+    // is expected and renders as "(lead deleted)".
+    const [users, leadRows] = await Promise.all([
+      uids.length ? sbRequest("GET", `users?id=in.(${uids.join(",")})&select=id,email`) : [],
+      lids.length ? sbRequest("GET", `leads?id=in.(${lids.join(",")})&select=id,address,type`) : [],
+    ]);
+    const emailBy = {};
+    (users || []).forEach((u) => { emailBy[String(u.id)] = u.email; });
+    const leadBy = {};
+    (leadRows || []).forEach((l) => { leadBy[String(l.id)] = l; });
+    return {
+      db: true,
+      count: reqs.length,
+      capped: reqs.length >= 1000,
+      recent: head.map((r) => {
+        const lead = leadBy[String(r.lead_id)];
+        return {
+          created_at: r.created_at,
+          broker_email: emailBy[String(r.user_id)] || "(deleted account)",
+          market: lead && lead.address ? marketOf(lead.address) : "(lead deleted)",
+          type: (lead && lead.type) || "",
+          address: (lead && lead.address) || "",
+        };
+      }),
+    };
+  } catch (err) {
+    console.warn("Intro-request read failed:", err && err.message);
+    return null;
+  }
+}
+
 // Self-contained admin dashboard (own inline CSS/JS). Public shell, but shows
 // nothing until a valid ADMIN_KEY is entered; the key is sent as a header to
 // /api/stats (kept out of the URL) and remembered in sessionStorage.
@@ -5607,7 +5799,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .wrap{max-width:1024px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -5777,6 +5972,32 @@ function render(d){
     " read failure(s) since the last restart"+(h.lastErrorAt?" &middot; last at "+esc(h.lastErrorAt):"")+".</p>"+
     (h.lastError?"<p class=muted style='word-break:break-word'>"+esc(h.lastError)+"</p>":"")+
     "</div>") : "";
+  // Broker intro requests (2026-08-05): the lead_intro_requests table read.
+  // undefined = a stale /api/stats from before this existed (skip the card);
+  // null = the read failed (say so, break nothing); db:false = no Supabase.
+  // Broker email and lead market/type are owner-facing here — the owner
+  // already gets exactly this by email; this is the surface that survives a
+  // dropped email. Every value is broker/lead-supplied text, so esc() all.
+  var ir=d.introRequests;
+  var introRows=(ir&&ir.recent||[]).map(function(x){
+    // title is DOUBLE-quoted: esc() covers " but not ', and the address is
+    // visitor-typed text — a single-quoted attribute would be escapable.
+    return '<tr><td style="text-align:left" title="'+esc(x.address)+'">'+esc(x.market)+(x.type?" &middot; "+esc(x.type):"")+"</td>"+
+      "<td style='text-align:left'>"+esc(x.broker_email)+"</td>"+
+      "<td class=muted style='white-space:nowrap'>"+esc(String(x.created_at||"").slice(0,10))+"</td></tr>";
+  }).join("");
+  var introCard=(ir===undefined)?"":
+    "<div class=card><h2>Broker intro requests</h2>"+
+    (!ir
+      ? "<p class=muted>Unavailable right now &mdash; the intro-request table could not be read. Nothing else on this page is affected.</p>"
+      : !ir.db
+      ? "<p class=muted>Requires Supabase &mdash; intro requests are stored only there (no file fallback), so this server has none to show.</p>"
+      : !ir.count
+      ? "<p class=muted>No introduction requests yet. Each one appears here and also emails you.</p>"
+      : "<p><b>"+ir.count+(ir.capped?"+":"")+"</b> request(s) total &middot; "+ir.recent.length+" most recent below. "+
+        "Each also emailed you when it arrived; this list is the record that survives a dropped email.</p>"+
+        "<table>"+introRows+"</table>")+
+    "</div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
@@ -5816,6 +6037,7 @@ function render(d){
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
+    introCard+
     (!sp ? "" :
     "<div class=card><h2>About the cost tiles</h2><div class=muted>Estimates, not billed amounts &mdash; no invoice is read. "+
     "A comp (report) search is assumed "+money(sp.listPriceReport)+"; a corpus-assisted one runs a much smaller web-search budget, so the "+
@@ -6213,7 +6435,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:820px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -6788,7 +7013,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -7331,7 +7559,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6);width:100%}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -7365,12 +7596,13 @@ h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(-
 .btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--edge)}
 .btn.ghost:hover{background:var(--wash);color:var(--ink)}
 .row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
-select{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
+select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink)}
 table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
 th{text-align:left;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer}
-th:hover{color:var(--ink)}
+  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--line);white-space:nowrap}
+th[data-k]{cursor:pointer}
+th[data-k]:hover{color:var(--ink)}
 th .ar{color:var(--red)}
 td{padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--hair);vertical-align:top}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -7448,6 +7680,25 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <div class="empty hide" id="none">Nothing here yet. Upload a spreadsheet above.</div>
     </section>
 
+    <section id="leads">
+      <h2>Leads in your markets</h2>
+      <p class="sub" style="margin-top:0">Property owners requesting a Broker Opinion of Value
+        in markets you cover. Details are anonymized; request an introduction and the
+        CompNinja team connects you. Removing every market re-fills the earned ones on your next visit.</p>
+      <div class="row" id="covRow"></div>
+      <div class="row" style="margin-top:var(--s4)">
+        <label>Market <input id="covMarket" type="text" placeholder="City, ST"/></label>
+        <label>Type <select id="covType"></select></label>
+        <button class="btn ghost" id="covAdd">Watch this market</button>
+      </div>
+      <div id="leadMsg"></div>
+      <div class="tw"><table>
+        <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
+        <tbody id="leadRows"></tbody>
+      </table></div>
+      <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
+    </section>
+
     <section>
       <h2>Imports</h2>
       <div id="ups"></div>
@@ -7460,7 +7711,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 (function(){
   var $=function(id){return document.getElementById(id)};
   var esc=function(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML};
-  var comps=[],sortK="deal_date",sortAsc=false;
+  // esc() is only innerHTML-safe: it leaves a literal " untouched, which
+  // breaks out of a quoted attribute. Attribute values built from free text
+  // (the coverage chip's aria-label/title) must go through this instead.
+  // Order matters: esc() first (so a literal & in the text becomes &amp;),
+  // then &quot; the remaining bare double quotes.
+  var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
+  var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -7479,6 +7736,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
     renderUploads(o.j.uploads||[]);
+    // Loaded once per page visit, not on every filter change/publish/
+    // import-delete that re-runs load() — those all hit /api/vault, a
+    // different endpoint, and re-querying /api/broker/leads on each one
+    // would be wasted work with no new information. It lives in apply()
+    // rather than load() so the baked-in boot payload path (which never
+    // calls load()) still populates the Leads section on first paint.
+    if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
     render();
   }
 
@@ -7537,6 +7801,111 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     }).join(""):'<p class="empty">No imports yet.</p>';
   }
 
+  var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Land","Residential"];
+  // noseed=true after a delete: that call must NOT re-earn the market the
+  // broker just removed. A plain page visit (no arg) always reseeds, which is
+  // what the section's own copy promises.
+  function loadLeads(noseed){
+    fetch("/api/broker/leads"+(noseed?"?noseed=1":""),{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){
+          // No stale rows left on screen under an error message.
+          $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+          $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>";
+          return;
+        }
+        $("leadMsg").innerHTML="";
+        var cov=o.j.coverage||[];
+        renderCoverage(cov);
+        renderLeads(o.j.leads||[],cov.length);
+      })
+      .catch(function(){
+        $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+        $("leadMsg").innerHTML='<div class="msg bad">Couldn\\'t load leads. Please try again.</div>';
+      });
+  }
+  function renderCoverage(cov){
+    $("covRow").innerHTML=cov.length?cov.map(function(c){
+      var label=escA(c.market)+" "+escA(c.property_type);
+      return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
+        ' <button data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        '" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
+    }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add one below, or submit comps to earn them.</span>';
+  }
+  // covCount lets an empty inbox tell two situations apart: nothing to show
+  // because there is no coverage yet (the covRow hint above already says so,
+  // so #noLeads stays hidden) vs. coverage exists but nothing has come in
+  // (that's the case #noLeads is for).
+  function renderLeads(leads,covCount){
+    var showEmpty=leads.length===0&&covCount>0;
+    $("noLeads").className=showEmpty?"empty":"empty hide";
+    $("leadRows").innerHTML=leads.map(function(l){
+      var btn=l.intro_requested
+        ? '<button class="pubbtn on" disabled>Intro requested</button>'
+        : '<button class="pubbtn" data-intro="'+escA(l.id)+'">Request introduction</button>';
+      return "<tr><td>"+esc(String(l.ts||"").slice(0,10))+"</td><td>"+esc(l.market)+"</td><td>"+esc(l.type)+
+        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"")+"</td><td>"+btn+"</td></tr>";
+    }).join("");
+  }
+  $("covType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
+  $("covMarket").addEventListener("keydown",function(e){
+    if(e.key==="Enter"){ e.preventDefault(); $("covAdd").click(); }
+  });
+  $("covAdd").addEventListener("click",function(){
+    var b=$("covAdd");
+    b.disabled=true;
+    fetch("/api/broker/coverage",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({market:$("covMarket").value,property_type:$("covType").value})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        b.disabled=false;
+        if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't add that market.")+"</div>"; return; }
+        $("covMarket").value=""; loadLeads();
+      })
+      .catch(function(){ b.disabled=false;
+        $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was added.</div>'; });
+  });
+  document.addEventListener("click",function(e){
+    var cov=e.target.getAttribute&&e.target.getAttribute("data-cov");
+    if(cov){
+      fetch("/api/broker/coverage?id="+encodeURIComponent(cov),{method:"DELETE",credentials:"same-origin"})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that market.")+"</div>"; return; }
+          // noseed: the market just removed must not be re-earned by this
+          // same reload. A full page visit still reseeds it.
+          loadLeads(true);
+        })
+        .catch(function(){ $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+      return;
+    }
+    var intro=e.target.getAttribute&&e.target.getAttribute("data-intro");
+    if(intro){
+      e.target.disabled=true; e.target.textContent="Sending\\u2026";
+      fetch("/api/broker/leads/intro",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify({lead_id:intro})})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          if(o.s!==200){
+            // Re-query by selector: loadLeads may have re-rendered this row
+            // (a concurrent click elsewhere) and detached the captured node.
+            var again=document.querySelector('[data-intro="'+intro+'"]');
+            if(again){ again.disabled=false; again.textContent="Request introduction"; }
+            $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't send that request.")+"</div>";
+            return;
+          }
+          loadLeads();
+        })
+        .catch(function(){
+          var again=document.querySelector('[data-intro="'+intro+'"]');
+          if(again){ again.disabled=false; again.textContent="Request introduction"; }
+          $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was sent.</div>';
+        });
+    }
+  });
+
   function upload(file){
     if(!file)return;
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
@@ -7579,7 +7948,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   $("drop").addEventListener("drop",function(e){ upload(e.dataTransfer.files[0]) });
   $("fMarket").addEventListener("change",load);
   $("fType").addEventListener("change",load);
-  document.querySelector("thead").addEventListener("click",function(e){
+  document.querySelector("#tbl thead").addEventListener("click",function(e){
     var th=e.target.closest("th[data-k]"); if(!th)return;
     var k=th.getAttribute("data-k");
     if(k===sortK)sortAsc=!sortAsc; else{sortK=k;sortAsc=false;}
@@ -7667,7 +8036,10 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:820px;margin:0 auto;padding:0 var(--s6)}
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding-top:var(--s5);padding-bottom:var(--s5)}
-.brand{display:flex;align-items:center;gap:var(--s4);color:var(--ink)}
+/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
+   relationship shared with index.html's header and MARKET_CSS, not this
+   page's spacing scale, so it stays literal and identical everywhere. */
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
@@ -8141,7 +8513,7 @@ const server = http.createServer((req, res) => {
           logEvent("signup_gate", { prop_type: typeOk, market: marketOf(addressOk) });
           if (!guestGate.cookieSpent) setGuestCookie(res, req);
           return sendJson(res, 403, {
-            error: "You've used your free search. Create a free account to keep searching. It's free, no card needed.",
+            error: guestGateMessage("keep searching"),
             signin_required: true,
           });
         }
@@ -8340,7 +8712,7 @@ const server = http.createServer((req, res) => {
           logEvent("signup_gate", { prop_type: typeOk, market: `${cityOk}, ${stateOk}`, source: "explore" });
           if (!guestGate.cookieSpent) setGuestCookie(res, req);
           return sendJson(res, 403, {
-            error: "You've used your free search. Create a free account to explore any market. It's free, no card needed.",
+            error: guestGateMessage("explore any market"),
             signin_required: true,
           });
         }
@@ -8457,8 +8829,10 @@ const server = http.createServer((req, res) => {
         if (rateLimited("lead:" + clientIp(req))) {
           return sendJson(res, 429, { error: "Too many submissions. Please try again later." });
         }
-        const { name, email, phone, company, address, type, source, report_url } = JSON.parse(body || "{}");
+        const { name, email, phone, company, address, type, source, report_url, size_sqft } = JSON.parse(body || "{}");
         const clean = (v, max) => String(v || "").trim().slice(0, max);
+        const sizeClean = LEADSVC.cleanSizeSqft(size_sqft);
+        const typeClean = clean(type, 40);
         const lead = {
           ts: new Date().toISOString(),
           name: clean(name, 120),
@@ -8466,7 +8840,17 @@ const server = http.createServer((req, res) => {
           phone: clean(phone, 60),
           company: clean(company, 120),
           address: clean(address, 300),
-          type: clean(type, 40),
+          // Canonicalize case against the enum so an off-case lead (e.g.
+          // "industrial" from a stray client path) is not invisible to
+          // every broker's coverage match forever. Junk that matches nothing
+          // keeps its raw cleaned value — unchanged for analytics/CSV.
+          type: VAULT.PROPERTY_TYPES.find((t) => t.toLowerCase() === typeClean.toLowerCase()) || typeClean,
+          // Optional building size for the broker-facing anonymized lead
+          // card. Spread only when present: if migration 015 has not run,
+          // an unknown column would 400 EVERY insert into the file fallback;
+          // this way only sized leads are exposed to that risk, and
+          // migrations/verify.js checks the column exists.
+          ...(sizeClean ? { size_sqft: sizeClean } : {}),
           // "bov" = the owner-mode Broker Opinion of Value request; anything
           // else is the export-unlock form.
           source: ["export", "bov"].includes(source) ? source : "export",
@@ -8487,13 +8871,14 @@ const server = http.createServer((req, res) => {
         }
         const dest = await storeRow("leads", LEADS_FILE, lead);
         console.log(`Lead captured (${dest}): ${lead.name} <${lead.email}>${lead.address ? " — " + lead.address : ""}`);
-        logEvent("lead", { source: lead.source, prop_type: lead.type, market: marketOf(lead.address) });
+        const market = marketOf(lead.address);
+        logEvent("lead", { source: lead.source, prop_type: lead.type, market });
         // For a BOV request, surface any brokers who've contributed comps in
         // this market so the owner can connect them — the loop's payoff for the
         // broker. Owner-mediated: the broker isn't contacted automatically.
         let brokerField = [];
         if (lead.source === "bov") {
-          const brokers = await findBrokersForMarket(marketOf(lead.address));
+          const brokers = await findBrokersForMarket(market);
           if (brokers.length) {
             brokerField = [["Brokers active in this market", brokers.map((b) =>
               `${b.broker_name}${b.broker_company ? " (" + b.broker_company + ")" : ""} — ${b.broker_email}${b.broker_phone ? ", " + b.broker_phone : ""}`).join("; ")]];
@@ -8515,6 +8900,56 @@ const server = http.createServer((req, res) => {
             ["Time", lead.ts],
           ]
         );
+        // Anonymized new-lead alert to brokers covering this market + type.
+        // Fire-and-forget: a DB or mail failure never breaks lead capture.
+        // Content is the same four facts the inbox shows — never the owner's
+        // name, email, phone, company, or street address.
+        // Gated on dest === "db": the inbox is DB-only, so a lead that fell
+        // back to the local file is invisible there, and mailing brokers
+        // about a lead they can never see would be worse than saying nothing.
+        if (lead.source === "bov" && DB_CONFIGURED && dest === "db") {
+          (async () => {
+            // A non-canonical market (marketOf's no-state fallback) can never
+            // match a coverage row, so skip the round trip entirely.
+            if (!LEADSVC.isCanonicalMarket(market) || !lead.type) return;
+            const cov = await sbRequest("GET",
+              `broker_coverage?market=eq.${encodeURIComponent(market)}` +
+              `&property_type=eq.${encodeURIComponent(lead.type)}&select=user_id&limit=200`);
+            const ids = LEADSVC.notifyTargets(cov);
+            if (!ids.length) return;
+            // Not entitlement-checked: a lapsed broker still gets this
+            // anonymized alert and hits the inbox paywall on click-through.
+            // Accepted for v1 as harmless re-subscribe pressure.
+            const users = await sbRequest("GET",
+              `users?id=in.(${ids.join(",")})&select=id,email`);
+            const line = [lead.type, market,
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              .filter(Boolean).join(" · ");
+            const now = Date.now();
+            for (const u of users || []) {
+              if (!u || !u.email) continue;
+              const suppressKey = `${u.id}|${market}|${lead.type}`;
+              if (now - (BROKER_ALERT_SUPPRESS.get(suppressKey) || 0) < BROKER_ALERT_WINDOW_MS) continue;
+              BROKER_ALERT_SUPPRESS.set(suppressKey, now);
+              if (BROKER_ALERT_SUPPRESS.size > 1000) {
+                for (const [k, v] of BROKER_ALERT_SUPPRESS) {
+                  if (now - v >= BROKER_ALERT_WINDOW_MS) BROKER_ALERT_SUPPRESS.delete(k);
+                }
+              }
+              sendOutboundEmail(u.email, `New BOV request in your market: ${line}`, [
+                `A property owner just requested a Broker Opinion of Value in a market you cover.`,
+                ``,
+                `  ${line}`,
+                ``,
+                `Open your inbox to request an introduction:`,
+                `${SITE_URL}/vault`,
+                ``,
+                `CompNinja connects owners with local brokers; introductions are made by`,
+                `the CompNinja team. Reply to this email to reach us.`,
+              ].join("\n"));
+            }
+          })().catch((err) => console.error("Broker lead notify failed:", err.message));
+        }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
         if (lead.source === "bov") {
@@ -8922,9 +9357,27 @@ const server = http.createServer((req, res) => {
       let profile = null;
       if (DB_CONFIGURED) {
         try {
-          const rows = await sbRequest("GET",
-            `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`);
-          const p = rows && rows[0];
+          // One identity: prefer the account link, fall back to legacy
+          // email-keyed rows, and stamp user_id on first touch so an email
+          // change can no longer orphan the profile. The user_id read is
+          // isolated so a 400 (column absent pre-migration, or any blip)
+          // can never take down the email fallback, and the adoption PATCH
+          // is fire-and-forget so a failed stamp never costs the broker
+          // their profile card.
+          let p = null;
+          try {
+            p = ((await sbRequest("GET",
+              `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0];
+          } catch (err) { console.error("broker profile user_id read failed:", err.message); }
+          if (!p) {
+            p = ((await sbRequest("GET",
+              `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
+            if (p && !p.user_id) {
+              sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(p.id)}`,
+                { user_id: user.id, updated_at: new Date().toISOString() })
+                .catch((err) => console.error("broker profile user_id stamp failed:", err.message));
+            }
+          }
           if (p) {
             profile = {
               exists: true, public: Boolean(p.public), slug: p.slug,
@@ -8970,8 +9423,17 @@ const server = http.createServer((req, res) => {
         if (wantPublic && !approved.length) {
           return sendJson(res, 403, { error: "You need at least one approved comp before enabling a public profile." });
         }
-        const existing = (await sbRequest("GET",
-          `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`) || [])[0];
+        // The user_id read is isolated so a 400 (column absent pre-migration,
+        // or any blip) can never take down the email fallback.
+        let existing = null;
+        try {
+          existing = ((await sbRequest("GET",
+            `broker_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`)) || [])[0];
+        } catch (err) { console.error("broker profile user_id read failed:", err.message); }
+        if (!existing) {
+          existing = ((await sbRequest("GET",
+            `broker_profiles?email=eq.${encodeURIComponent(user.email)}&limit=1`)) || [])[0];
+        }
         let row = existing;
         if (!existing) {
           // First enable creates the row; identity comes from their latest
@@ -8984,6 +9446,7 @@ const server = http.createServer((req, res) => {
             try {
               const ins = await sbRequest("POST", "broker_profiles", {
                 email: user.email,
+                user_id: user.id,
                 display_name: String(latest.broker_name || "").trim(),
                 company: String(latest.broker_company || "").trim(),
                 slug, public: wantPublic,
@@ -8992,6 +9455,9 @@ const server = http.createServer((req, res) => {
             } catch (err) {
               // Unique-slug collision → try the next suffix; anything else rethrows.
               if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+              // A user_id collision cannot be fixed by a new slug; do not
+              // burn 20 retries on it.
+              if (/user_id/i.test(String(err.message))) throw err;
             }
           }
           if (!created) {
@@ -8999,6 +9465,7 @@ const server = http.createServer((req, res) => {
             const slug = `${base}-${crypto.randomBytes(3).toString("hex")}`;
             const ins = await sbRequest("POST", "broker_profiles", {
               email: user.email,
+              user_id: user.id,
               display_name: String(subs[0].broker_name || "").trim(),
               company: String(subs[0].broker_company || "").trim(),
               slug, public: wantPublic,
@@ -9007,8 +9474,8 @@ const server = http.createServer((req, res) => {
           }
           row = created;
         } else {
-          await sbRequest("PATCH", `broker_profiles?email=eq.${encodeURIComponent(user.email)}`,
-            { public: wantPublic, updated_at: new Date().toISOString() });
+          await sbRequest("PATCH", `broker_profiles?id=eq.${encodeURIComponent(existing.id)}`,
+            { public: wantPublic, user_id: user.id, updated_at: new Date().toISOString() });
           row = { ...existing, public: wantPublic };
         }
         BROKER_PROFILES.fetchedAt = 0; // bust so the next refresh isn't debounced
@@ -9019,6 +9486,272 @@ const server = http.createServer((req, res) => {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("broker profile error:", err);
         return sendJson(res, 500, { error: "Could not update the profile." });
+      }
+    });
+    return;
+  }
+
+  // --- Broker lead inbox: coverage -----------------------------------------
+  // Which market + property-type pairs this broker sees leads for. Seeded
+  // from approved submissions on first inbox open (see /api/broker/leads),
+  // edited here. market is canonicalized with marketOf() and NOWHERE else.
+  if (req.url.split("?")[0] === "/api/broker/coverage") {
+    if (req.method === "GET") {
+      (async () => {
+        if (rateLimited("bcov:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
+        if (!user) return;
+        try {
+          const rows = await sbRequest("GET",
+            `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&select=id,market,property_type,source&order=market.asc&limit=500`);
+          return sendJson(res, 200, { coverage: rows || [] });
+        } catch (err) {
+          console.error("coverage read failed:", err.message);
+          // Deliberately 503, not the vault's 502: there is no upstream call
+          // to blame here, just our own database being unreachable.
+          return sendJson(res, 503, { error: "Couldn't load your coverage. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage lookup failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (rateLimited("bcov:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
+          const user = await requireBroker(req, res);
+          if (!user) return;
+          const { market, property_type } = JSON.parse(body || "{}");
+          const canonical = marketOf(String(market || ""));
+          // marketOf falls back to echoing text with no recognizable state;
+          // require the canonical "City, ST" shape so junk cannot become a
+          // coverage key that matches nothing forever. One tested rule
+          // (broker-leads.js) governs every writer.
+          if (!LEADSVC.isCanonicalMarket(canonical)) {
+            return sendJson(res, 400, { error: 'Enter a market as "City, ST" (for example "Boise, ID").' });
+          }
+          // Bind once: String(["Industrial"]) still passes the .includes()
+          // check below, but inserting the raw array would 503 at Postgres
+          // instead of at this 400. Case-insensitive matching is skipped —
+          // the UI <select> is the only sanctioned caller and always sends
+          // an exact value.
+          const type = String(property_type || "");
+          if (!VAULT.PROPERTY_TYPES.includes(type)) {
+            return sendJson(res, 400, { error: "Unknown property type." });
+          }
+          // Cap far below the GET's 500-row read so a broker can never own
+          // rows the list (and Task 6's matcher) silently truncates away.
+          const count = ((await sbRequest("GET",
+            `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=201`)) || []).length;
+          if (count >= 200) {
+            return sendJson(res, 400, { error: "Coverage is capped at 200 markets. Remove one to add another." });
+          }
+          // ON CONFLICT DO NOTHING: a duplicate keeps the row as found, which
+          // also preserves an existing 'earned' source — the stated intent,
+          // expressed directly instead of via a fragile 409-string test.
+          await sbRequest("POST", "broker_coverage?on_conflict=user_id,market,property_type",
+            [{ user_id: user.id, market: canonical, property_type: type, source: "chosen" }],
+            { prefer: "resolution=ignore-duplicates,return=minimal" });
+          return sendJson(res, 200, { ok: true, market: canonical });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("coverage add failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that market. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        if (rateLimited("bcov:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
+        if (!user) return;
+        const id = String(new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        if (!/^[0-9a-f-]{36}$/i.test(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
+        try {
+          // Scoped by user_id: nobody deletes another broker's coverage.
+          await sbRequest("DELETE",
+            `broker_coverage?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`);
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error("coverage delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't remove that market. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("coverage error:", err); sendJson(res, 500, { error: "Coverage update failed." }); });
+      return;
+    }
+    return sendJson(res, 404, { error: "Not found." });
+  }
+
+  // --- Broker lead inbox: the leads ----------------------------------------
+  // Anonymized BOV demand in the caller's coverage. The identifying fields
+  // (name, email, phone, company, street address) never leave this handler:
+  // LEADSVC.anonymizeLead's allowlist is pinned by a test. DB-only: an error
+  // answers 503, because an empty inbox on error would misreport demand as
+  // zero.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/broker/leads") {
+    (async () => {
+      if (rateLimited("bleads:" + clientIp(req), 60)) {
+        return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+      }
+      const user = await requireBroker(req, res);
+      if (!user) return;
+      // noseed=1: skip the earn-from-submissions reseed for this call only.
+      // The page's post-delete reload passes it so a market a broker just
+      // removed stays removed for the rest of the session; the vault page's
+      // own copy promises a full visit (a plain reload of /vault, no query
+      // string) re-fills the earned ones, which only the default path does.
+      const noseed = new URL(req.url, "http://localhost").searchParams.get("noseed") === "1";
+      try {
+        let cov = await sbRequest("GET",
+          `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+          `&select=id,market,property_type,source&order=market.asc&limit=500`);
+        if (!noseed && (!cov || !cov.length)) {
+          // First open: earn coverage from approved submissions. Inline, not
+          // fetchSubmissionsForEmail: that helper swallows its own errors
+          // into [] (fine for a profile page, a lie here — an empty inbox on
+          // error must 503, per the header comment). Querying status=eq.approved
+          // directly also narrows the population to approved-only up front and
+          // gains its own tripwire below — it does NOT fully fix the
+          // limit-then-filter shape: server-side eq/ilike matching on
+          // broker_email is unsafe here (the column is stored as typed, and
+          // ilike wildcards on "_"), so the email filter still runs client-side
+          // over whatever page the limit returns.
+          const subs0 = (await sbRequest("GET",
+            "comp_submissions?status=eq.approved&order=ts.desc&limit=500" +
+            "&select=status,broker_email,address,property_type")) || [];
+          if (subs0.length === 500) console.warn("broker coverage seeding: hit the 500-row approved-submissions cap — early contributors may seed no coverage");
+          const subs = subs0.filter((s) => String(s.broker_email || "").trim().toLowerCase() === String(user.email).toLowerCase());
+          const seeds = LEADSVC.seedCoverageFromSubmissions(
+            subs.map((s) => ({ market: marketOf(s.address), property_type: s.property_type })));
+          if (seeds.length) {
+            // ON CONFLICT DO NOTHING; also never flips an existing row's source.
+            await sbRequest("POST", "broker_coverage?on_conflict=user_id,market,property_type",
+              seeds.map((row) => ({ user_id: user.id, ...row })),
+              { prefer: "resolution=ignore-duplicates,return=minimal" });
+            cov = await sbRequest("GET",
+              `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}` +
+              `&select=id,market,property_type,source&order=market.asc&limit=500`);
+          }
+        }
+        // Nothing to match against: skip the leads + intros reads entirely
+        // rather than pay for a result that can only be empty.
+        if (!cov || !cov.length) return sendJson(res, 200, { leads: [], coverage: [] });
+        const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
+        const [leads, intros] = await Promise.all([
+          sbRequest("GET",
+            `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
+            `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`),
+          sbRequest("GET",
+            `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&created_at=gte.${encodeURIComponent(since)}&select=lead_id&order=created_at.desc&limit=1000`),
+        ]);
+        if ((leads || []).length === 200) {
+          console.warn("broker leads: 90-day BOV window hit the 200-row cap — brokers in quiet markets may be missing leads");
+        }
+        const withMarket = (leads || []).map((l) => ({ ...l, market: marketOf(l.address) }));
+        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || []);
+        const introSet = new Set((intros || []).map((r) => String(r.lead_id)));
+        return sendJson(res, 200, {
+          leads: mine.map((l) => LEADSVC.anonymizeLead(l, introSet)),
+          coverage: cov || [],
+        });
+      } catch (err) {
+        console.error("broker leads read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load leads right now. Please try again in a minute." });
+      }
+    })().catch((err) => { console.error("broker leads error:", err); sendJson(res, 500, { error: "Lead lookup failed." }); });
+    return;
+  }
+
+  // A broker raising a hand. Emails the owner (who already holds the lead's
+  // PII) naming the broker; nothing is sent to the property owner and no
+  // broker PII goes anywhere it does not already go. Owner-mediated, same as
+  // today: the owner makes every connection by hand.
+  // Note: the alert recipients in Task 3 (notifyTargets) are coverage rows
+  // with no entitlement check — a lapsed broker still gets emailed about a
+  // new lead in a market they cover. This route re-checks canUseVault via
+  // requireBroker, so that same lapsed broker cannot request an introduction.
+  // Deliberate: seeing an alert land in an inbox costs nothing; acting on it
+  // requires a live plan.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/broker/leads/intro") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("intro:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
+        if (!user) return;
+        const leadId = String(JSON.parse(body || "{}").lead_id || "");
+        // leads.id is bigint; reject anything else (including empty) before
+        // touching the DB — the regex already fails on "", so a separate
+        // emptiness check is dead code.
+        if (!/^\d+$/.test(leadId)) return sendJson(res, 400, { error: "Missing lead_id." });
+        // The intro gate accepts exactly what the inbox shows: same source,
+        // same window — so a sequential-id probe can't fire owner emails for
+        // leads outside the product's own contract.
+        const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
+        const lead = ((await sbRequest("GET",
+          `leads?id=eq.${encodeURIComponent(leadId)}&source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+        if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
+        // No requesting introductions to leads outside your coverage — the
+        // same rule that decides what the inbox shows decides what you can
+        // raise a hand for. Answers the SAME "no longer exists" 404 as a
+        // missing lead, not a 403: an invisible lead must be indistinguishable
+        // from a nonexistent one, or a broker could enumerate total lead
+        // volume by walking bigint ids and watching which status comes back.
+        const cov = await sbRequest("GET",
+          `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=market,property_type&limit=500`);
+        const visible = LEADSVC.filterLeadsForCoverage(
+          [{ ...lead, market: marketOf(lead.address) }], cov || []);
+        if (!visible.length) return sendJson(res, 404, { error: "That lead no longer exists." });
+        // Read-then-insert so we can tell "new" from "already requested" (and
+        // avoid double-emailing the owner); the upsert below still backstops
+        // the race between the two — worst case the owner gets two emails
+        // once in a blue moon, never a false "duplicate" on a real failure.
+        const existing = await sbRequest("GET",
+          `lead_intro_requests?lead_id=eq.${encodeURIComponent(lead.id)}` +
+          `&user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=1`);
+        if (existing && existing.length) return sendJson(res, 200, { ok: true, already: true });
+        await sbRequest("POST", "lead_intro_requests?on_conflict=lead_id,user_id",
+          [{ lead_id: lead.id, user_id: user.id }],
+          { prefer: "resolution=ignore-duplicates,return=minimal" });
+        // Broker identity for the owner's email: account + public profile if
+        // one exists (BROKER_PROFILES holds public rows only; that is fine,
+        // the email address is the working identifier either way).
+        const prof = BROKER_PROFILES.byEmail[String(user.email || "").toLowerCase()];
+        if (!RESEND_API_KEY) {
+          console.warn("Intro request stored but RESEND_API_KEY is unset — the owner will only see it in the lead_intro_requests table.");
+        }
+        notifyByEmail(`Broker requested an introduction: ${marketOf(lead.address)} ${lead.type}`, [
+          ["Broker", prof ? `${prof.display_name}${prof.company ? " (" + prof.company + ")" : ""}` : ""],
+          ["Broker email", user.email],
+          ["Lead name", lead.name],
+          ["Lead email", lead.email],
+          ["Lead phone", lead.phone],
+          ["Lead company", lead.company],
+          ["Property", lead.address],
+          ["Property type", lead.type],
+          ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
+          ["Lead received", lead.ts],
+        ]);
+        logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("intro request failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't send that request. Please try again in a minute." });
       }
     });
     return;
@@ -9257,7 +9990,7 @@ const server = http.createServer((req, res) => {
           // Credit is the compensation (Ecosystem Plan §4), so a comp with no
           // name to credit is not worth publishing — refuse rather than post it
           // anonymously and let the broker discover later that they got nothing.
-          const profile = await findBrokerProfile(user.email);
+          const profile = await findBrokerProfile(user.email, user.id);
           const by = VAULT.creditName(profile, user);
           if (!by) {
             return sendJson(res, 400, {
@@ -10711,8 +11444,13 @@ const server = http.createServer((req, res) => {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     const key = new URL(req.url, "http://localhost").searchParams.get("key");
     if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
-    readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"])
-      .then((rows) => sendJson(res, 200, aggregateStats(rows)))
+    Promise.all([
+      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"]),
+      // Never rejects: readIntroRequests catches its own errors and returns
+      // null, so an intro-table outage can't take the whole dashboard down.
+      readIntroRequests(),
+    ])
+      .then(([rows, introRequests]) => sendJson(res, 200, { ...aggregateStats(rows), introRequests }))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
     return;
   }

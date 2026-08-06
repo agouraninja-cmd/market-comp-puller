@@ -54,6 +54,8 @@ const TABLES = [
   ["guest_search_quota",  "011-guest-search-quota.sql"],
   ["broker_uploads",      "013-broker-vault.sql"],
   ["broker_comps",        "013-broker-vault.sql"],
+  ["broker_coverage",     "015-broker-lead-inbox.sql"],
+  ["lead_intro_requests", "015-broker-lead-inbox.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -79,6 +81,12 @@ const COLUMNS = [
   // Without this column unpublish cannot reliably find the public copy, and a
   // comp the broker believes they retracted keeps being offered to reports.
   ["broker_comps",      ["published_submission_id"],             "014-vault-publish-link.sql"],
+  // 015 alters two existing tables; a table check cannot see either change.
+  // A missing broker_profiles.user_id silently re-orphans profiles on email
+  // change; a missing leads.size_sqft 400s every sized lead insert into the
+  // ephemeral file fallback (the 004 failure shape, on PII this time).
+  ["broker_profiles",   ["user_id"],                            "015-broker-lead-inbox.sql"],
+  ["leads",             ["size_sqft", "id"],                    "015-broker-lead-inbox.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

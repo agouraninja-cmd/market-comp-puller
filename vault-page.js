@@ -224,8 +224,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 
   function apply(o){
     if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
-    if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
-      '<a href="/brokers">What brokers get</a></div>');
+    // "Part of Pro", not "part of the broker plan". There is one subscription
+    // as of 2026-08-05 and the vault is a capability of it, so naming a broker
+    // plan sends someone off to look for a product that cannot be bought.
+    // The link goes to the plan card on /desk rather than /brokers: /brokers
+    // explains contributing comps for a Verified badge, which is a different
+    // thing entirely and is free.
+    if(o.s===403) return gate('<div class="msg bad">The private vault is part of Pro. '+
+      '<a href="/desk">See your plan</a></div>');
     if(o.s!==200) return gate('<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not load your vault.")+'</div>');
     $("gate").className="hide"; $("app").className="";
     comps=o.j.comps||[];

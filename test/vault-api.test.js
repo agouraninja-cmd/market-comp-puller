@@ -11,7 +11,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS } = require("../vault-api");
+const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS , PROPERTY_FIELDS } = require("../vault-api");
 
 // Parse the columns the migrations actually declare, rather than restating
 // them here — a second hand-written list would be a second thing to keep in
@@ -21,7 +21,7 @@ const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS } = require("../
 // first version of this named 013 and 014 explicitly, which meant migration
 // 016 added a column and this test happily reported the contract complete —
 // the exact failure it was written to prevent, in its own implementation.
-function migrationColumns() {
+function migrationColumns(table = "broker_comps") {
   const root = path.join(__dirname, "..", "migrations");
   const files = fs.readdirSync(root).filter((f) => f.endsWith(".sql")).sort();
   const cols = [];
@@ -30,7 +30,8 @@ function migrationColumns() {
     // Strip comments first, so a column named only in prose is not counted.
     const live = sql.split("\n").map((l) => l.split("--")[0]).join("\n");
 
-    const create = /create table (?:if not exists )?broker_comps\s*\(([\s\S]*?)\n\);/i.exec(live);
+    const create = new RegExp(
+      `create table (?:if not exists )?${table}\\s*\\(([\\s\\S]*?)\\n\\);`, "i").exec(live);
     if (create) {
       for (const rawLine of create[1].split("\n")) {
         const line = rawLine.trim();
@@ -42,8 +43,8 @@ function migrationColumns() {
         }
       }
     }
-    // ALTER TABLE broker_comps ... ADD COLUMN [IF NOT EXISTS] <name>
-    for (const alter of live.matchAll(/alter table\s+broker_comps\b([\s\S]*?);/gi)) {
+    // ALTER TABLE <table> ... ADD COLUMN [IF NOT EXISTS] <name>
+    for (const alter of live.matchAll(new RegExp(`alter table\\s+${table}\\b([\\s\\S]*?);`, "gi"))) {
       for (const m of alter[1].matchAll(/add column\s+(?:if not exists\s+)?([a-z_]+)/gi)) {
         cols.push(m[1]);
       }
@@ -73,6 +74,36 @@ test("the contract claims no field the schema does not have", () => {
   assert.deepEqual(phantom, [],
     `The API promises field(s) broker_comps no longer has: ${phantom.join(", ")}. ` +
     `toApiComp must map them from the new storage shape before this can pass.`);
+});
+
+// The same guarantee, pointed at the other table.
+//
+// PROPERTY_FIELDS carries what a comp inherits from its building (migration
+// 017): the coordinates that let a private comp be mapped without its address
+// being sent anywhere. Those are NOT broker_comps columns, so they cannot live
+// in API_COMP_FIELDS without breaking the two tests above — correctly, since
+// broker_comps really does not have a `lat`.
+//
+// The wrong fix would have been to loosen those tests until the new fields
+// slipped through, which would have retired the tripwire for every future
+// column. This is the right one: a second checked list, so BOTH tables stay
+// honest and neither can drift silently.
+test("every property-derived field is a real broker_properties column", () => {
+  const cols = migrationColumns("broker_properties");
+  const phantom = PROPERTY_FIELDS.filter((f) => !cols.includes(f));
+  assert.deepEqual(phantom, [],
+    `The API promises property field(s) broker_properties does not have: ${phantom.join(", ")}. ` +
+    `Add them in a migration, or stop claiming them.`);
+});
+
+test("property fields and comp fields do not collide", () => {
+  // If broker_comps ever gained its own `lat`, two different values would be
+  // claiming one key on the comp shape and whichever list ran last would win
+  // silently. That is precisely the per-deal duplication migration 017 exists
+  // to avoid, so it should fail the build rather than pick a winner.
+  const overlap = PROPERTY_FIELDS.filter((f) => API_COMP_FIELDS.includes(f));
+  assert.deepEqual(overlap, [],
+    `field(s) claimed by both broker_comps and broker_properties: ${overlap.join(", ")}`);
 });
 
 test("the internal fields are part of the contract, not stray strings", () => {

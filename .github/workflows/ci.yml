@@ -13,6 +13,24 @@ name: CI
 on:
   push:
   pull_request:
+  # A manual "Run workflow" button, on any branch. Added 2026-08-06 after a
+  # GitHub Actions incident (15:22 UTC, ~7 hours) in which webhook triggers
+  # were throttled to about 15%: pushes and pull requests simply stopped
+  # creating workflow runs. Four branches were merged to main that day with no
+  # CI result at all, and Render deploys main on every push, so unverified code
+  # shipped — not because a check failed, but because no check was ever made.
+  #
+  # push/pull_request arrive as WEBHOOK DELIVERIES and are the first thing shed
+  # when Actions is shedding load. workflow_dispatch is a direct API call from
+  # the Actions tab instead, so it is the one trigger that still works when
+  # those are being dropped. It is also the way to re-run CI for a commit
+  # already on main without pushing an empty commit to get a webhook.
+  #
+  # Purely additive: it changes nothing about what CI checks or when it fires
+  # normally, and it cannot be used to SKIP a check, only to start one. Safe to
+  # expose because this workflow deliberately holds no secrets (see the note at
+  # the top of this file), so a manually started run has nothing to leak.
+  workflow_dispatch:
 
 jobs:
   test:

@@ -1077,3 +1077,26 @@ git commit -m "Document ACCOUNT_WALL"
 2. Verify on the live URL without a query string, in a signed-out browser: `https://compninja.co/` must land on `/how-it-works`.
 3. Watch `signup_gate` events and search volume on `/admin` over the following days.
 4. If the trade lands badly, set `ACCOUNT_WALL=off` in the Render dashboard. No redeploy and no code change; the sitemap and the guest cap both return to their previous behaviour on restart.
+
+---
+
+## Outcome (executed 2026-08-05)
+
+All eleven tasks shipped on `dev-hub`, pushed at `c8c5f29`. Suite went 217 → 238 tests, all passing. CI run #113 green on the tip. **Not merged to `main`**, so the wall is not live: the branch also carries a concurrent session's Market Explorer work, whose own plan records it as "part 1 shipped, part 2 paused," and that is the owner's call to ship.
+
+Commits: `ef42691`, `90f8d7d`, `39d7540`, `989919a`, `bd0c3ed`, `30ad913`, `b39cc02`, `4071525`, `4a0b18b`, `e242427`, `081d337`, `c8c5f29`.
+
+### What this plan got wrong
+
+Worth reading before trusting a future plan of mine in this repo.
+
+1. **It never considered CI.** `.github/workflows/ci.yml` boots a bare server and runs `curl -sf / | grep -qi compninja`. Under the wall `/` is a 302 with an empty body, and `curl -sf` without `-L` prints nothing while still exiting 0 on a 3xx, so the step failed reading "home page did not render". CI runs **#104 and #105 went red during execution** for exactly this. Caught only by the final whole-feature review, because every task-level review looked at the diff and the test suite and neither reaches outside the repo's runtime. Fixed in `c8c5f29`, which now asserts the redirect, the front door rendering, and the app rendering with a session cookie.
+2. **Task 6's CTA assertion could never fail.** `/href="\/"[^>]*class="btn"/` does not match `<a class="btn" href="/">` — the real markup puts `class` first. Replaced with a check on `class="btn"\s+href="\/"` plus the old copy string.
+3. **Task 9's Tailwind check gives a false negative.** `grep -c "max-w-\[52ch\]"` returns 0 because compiled Tailwind escapes the brackets (`.max-w-\[52ch\]`), and the pattern's `\[` is consumed as regex escaping. The class was present the whole time. Use a fixed-string search or verify a computed style instead.
+
+### Still open
+
+- **`test/routes.test.js` keeps its own copy of `boot()`.** The deferral condition (that file's tree being clean) is now met, so the dedupe is unblocked. Lower value than when written: the port ranges are 39140 and 39500 apart after a review fix, so the collision risk that motivated it is already gone. Tidiness only.
+- **The Market Explorer widget is not covered by `applySearchLock()`.** A walled-out visitor who reaches `index.html` via `?auth=` and dismisses the modal sees a locked search form beside a live-looking Explorer input. `/api/explore-market` refuses them server-side and the client reopens the account modal, so it funnels rather than leaks, but the two surfaces disagree visually.
+- **The search form flashes before `/api/config` resolves**, then swaps to the signup card. Fixing it properly means server-rendering the initial locked state.
+- **The Explorer's own guest gate** was built by the concurrent session during this work, closing the spend hole this plan listed as a non-goal.

@@ -1822,7 +1822,7 @@
   // The valuation core lives in /valuation.js so the accuracy harness on
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
-  const { numericValue, salePsfOf, robustPpsfRange, heroRound,
+  const { numericValue, salePsfOf, heroRound,
           compAgeYears, compWeight, trendFactor, valueFromComps } = VALUATION;
 
   // ----------------------------------------------------------------------------
@@ -2990,13 +2990,15 @@
       .filter((x) => x.v > 0);
     if (carriers.length < 3) return null;
     const per = carriers.map((x) => x.v);
-    // Same weighting/indexing as the $/SF headline (size neutral here — this
-    // basis exists precisely because SF often isn't known for these types).
-    const items = carriers.map((x) => ({
-      v: x.v * trendFactor(x.comp, asOfOf(meta), trendPctOf(parsed)),
-      w: compWeight(x.comp, asOfOf(meta), 0),
-    }));
-    return { spec, qty, per, rr: robustPpsfRange(items) };
+    // Same weighting and indexing as the $/SF headline, through the same
+    // function. Size-neutral (subjectSF 0): this basis exists precisely
+    // because SF often is not known for these types.
+    const val = valueFromComps(carriers.map((x) => x.comp), {
+      subjectSF: 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      readValue: (c) => numericValue(c[spec.compKey]),
+    });
+    if (!val) return null;
+    return { spec, qty, per, rr: { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed } };
   }
 
   function altBasisEntry(meta, subject, saleComps, parsed) {
@@ -3440,18 +3442,13 @@
       const found = numericValue(parsed.subject_size_sqft);
       if (found > 0) sizeR = { min: found, max: found };
     }
-    // Same weighting/indexing as the hero, so this can never disagree with it.
-    const saleItems = valuationComps()
-      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
-      .map((c) => ({ comp: c, v: salePsfOf(c) }))
-      .filter((x) => x.v > 0);
-    if (sizeR && saleItems.length >= 2) {
-      const subjSFMid = (sizeR.min + sizeR.max) / 2;
-      const rr = robustPpsfRange(saleItems.map((x) => ({
-        v: x.v * trendFactor(x.comp, asOfOf(meta), trendPctOf(parsed)),
-        w: compWeight(x.comp, asOfOf(meta), subjSFMid),
-      })));
-      return { value: rr.mid * subjSFMid, source: "comp-based likely value" };
+    // Same weighting and indexing as the hero, through the same function, so
+    // this can never disagree with it.
+    const val = sizeR ? valueFromComps(valuationComps(), {
+      subjectSF: sizeR, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+    }) : null;
+    if (val && val.n >= 2) {
+      return { value: val.psfMid * ((sizeR.min + sizeR.max) / 2), source: "comp-based likely value" };
     }
     const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
     const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;

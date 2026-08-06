@@ -82,14 +82,20 @@ test("score never uses a peer that sold after the subject", () => {
 });
 
 test("score DOES use an estimate-tier peer, because production does", () => {
-  const rows = fixture().concat([
+  // A differential, not a count: adding a sixth, earlier-dated row can
+  // legitimately change WHICH rows clear minPeers (the four Jan peers can
+  // now see each other through it too), so asserting r.scored is fixture-
+  // specific. What this test actually claims -- that an estimate-tier row
+  // is USED as a peer, just down-weighted, rather than excluded outright --
+  // is proven by the aggregate prediction moving at all. If the tier bar
+  // were wrongly applied to peers, the estimate row would never enter any
+  // peer set and this number would be identical to the base run.
+  const base = BT.score(fixture(), OPTS);
+  const withEstimatePeer = BT.score(fixture().concat([
     row({ address: "98 Earlier Ave", deal_date: "2025-12", price_per_sqft: "9999",
           source_type: "estimate" }),
-  ]);
-  const r = BT.score(rows, OPTS);
-  assert.equal(r.scored, 1);
-  // The outlier is down-weighted, not ignored, so the prediction moves.
-  assert.ok(r.medianAbsError > 0, "estimate-tier peer should have moved the prediction");
+  ]), OPTS);
+  assert.notEqual(withEstimatePeer.medianAbsError, base.medianAbsError);
 });
 
 test("score refuses an estimate-tier row as ground truth", () => {
@@ -107,6 +113,25 @@ test("score excludes a same-address duplicate from its own peer set", () => {
     row({ address: "9 SUBJECT WAY  ", deal_date: "2026-05", price_per_sqft: "250" }),
   ]);
   const r = BT.score(rows, OPTS);
+  assert.equal(r.scored, 1);
+  assert.equal(r.medianAbsError, 0);
+});
+
+test("a disqualified first copy of a building does not block a scoreable second copy", () => {
+  // Same building harvested twice. The FIRST copy in array order is
+  // estimate-tier, so it can never be ground truth; the SECOND is
+  // public_record with a full peer set. The second copy must still get its
+  // turn: claiming the address key on the first ATTEMPT (rather than on a
+  // first SUCCESS) would silently and permanently block it, and since
+  // corpusRowsForMarket returns newest-harvest-first, that bias would hit
+  // whichever harvest happens to be older every time.
+  const rows = fixture().slice(0, 4).concat([
+    row({ address: "9 Subject Way", deal_date: "2026-06", price_per_sqft: "250",
+          source_type: "estimate" }),
+    row({ address: "9 SUBJECT WAY  ", deal_date: "2026-06", price_per_sqft: "250" }),
+  ]);
+  const r = BT.score(rows, OPTS);
+  assert.equal(r.skipped.notGroundTruth, 1);
   assert.equal(r.scored, 1);
   assert.equal(r.medianAbsError, 0);
 });

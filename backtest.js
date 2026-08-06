@@ -119,28 +119,31 @@ function score(rows, opts) {
 
   let notGroundTruth = 0;
   let thinPeers = 0;
+  let duplicateAddress = 0;
   const results = [];
 
   buckets.forEach((group) => {
     // A building harvested more than once (same normalized address, a
     // different date or price each time) is not independent ground truth:
-    // holding out EVERY copy and scoring each against the same peer pool
-    // would let one repeatedly-harvested building count several times in
-    // the aggregate. Each address gets at most one turn as the held-out
-    // subject; later copies are skipped outright (not counted as thin-peer
-    // or not-ground-truth, since neither is why they were skipped).
+    // scoring every copy against the same peer pool would let one
+    // repeatedly-harvested building count several times in the aggregate.
+    // The key is claimed only once a row ACTUALLY scores (below, right
+    // before it is pushed to `results`) -- never on a bare attempt. Claiming
+    // on attempt would let whichever copy happens to sort first permanently
+    // block a later, perfectly scoreable copy of the same building just for
+    // being thin-peered or the wrong tier; corpusRowsForMarket returns
+    // newest-harvest-first, so that would have been a systematic bias
+    // against older harvests, not a rare accident.
     const claimed = new Set();
     group.forEach((subj) => {
-      if (claimed.has(subj.key)) return;
-      claimed.add(subj.key);
+      if (claimed.has(subj.key)) { duplicateAddress += 1; return; }
 
       if (!isGroundTruth(subj)) { notGroundTruth += 1; return; }
-      // Strictly earlier, not on-or-before: a same-dated row is not known
-      // history as of the subject's own sale, so it can never be one of the
-      // subject's peers. This also means two same-dated rows can never
-      // score each other, categorically, not just in the calibrated case the
-      // base fixture relies on.
-      const peers = group.filter((p) => p.key !== subj.key && p.dy < subj.dy);
+      // On or before: parseDealDate has only month granularity, so a peer
+      // recorded in the same month as the subject is legitimate known
+      // history, not a look-ahead. (Design spec 2026-08-06: "dated on or
+      // before the subject's deal_date".)
+      const peers = group.filter((p) => p.key !== subj.key && p.dy <= subj.dy);
       if (peers.length < minPeers) { thinPeers += 1; return; }
       const v = VALUATION.valueFromComps(peers.map((p) => p.comp), {
         subjectSF: VALUATION.numericValue(subj.row.size_sqft),
@@ -148,6 +151,7 @@ function score(rows, opts) {
         trendPct: null,
       });
       if (!v || !(v.psfMid > 0)) { thinPeers += 1; return; }
+      claimed.add(subj.key);
       results.push({
         type: subj.row.property_type,
         absError: Math.abs(v.psfMid - subj.psf) / subj.psf,
@@ -168,7 +172,7 @@ function score(rows, opts) {
     scored: results.length,
     minSubjects,
     belowFloor,
-    skipped: { unusable, notGroundTruth, thinPeers },
+    skipped: { unusable, notGroundTruth, thinPeers, duplicateAddress },
     // Withheld below the floor: a median over a handful of subjects swings
     // enough that tuning against it would be tuning against noise.
     medianAbsError: belowFloor ? null : overall.medianAbsError,

@@ -30,6 +30,11 @@ const STRIPE = require("./stripe");
 // Pure and tested, for the same reason as the three above, and with more at
 // stake: a misparsed column is a wrong number in a paying broker's own records.
 const VAULT = require("./broker-vault");
+// Blended comps — a broker's own vault comps inside their own report. Pure and
+// tested for the same reason entitlements.js is: the privacy wall is the whole
+// broker product, so it has to be PROVABLE rather than reviewed. This module
+// only shapes and merges; the read below is scoped by user_id here.
+const BLEND = require("./blend-comps");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
@@ -40,6 +45,9 @@ const { renderVaultHTML } = require("./vault-page");
 // purpose: introducing the seam must not change a byte of the response while
 // the dashboard is being written against it.
 const VAULTAPI = require("./vault-api");
+// The property dimension — one row per building per broker (migration 016).
+// Pure and tested; server.js owns the upsert and the user_id scoping.
+const PROPS = require("./broker-properties");
 const LEADSVC = require("./broker-leads");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
@@ -225,6 +233,34 @@ const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 // SITE_URL at serve time, so moving to a custom domain is a single env change.
 const DEFAULT_SITE_URL = "https://market-comp-puller.onrender.com";
 const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
+
+// Google Search Console verification, by the HTML-FILE method.
+//
+// Why the file and not the meta tag: meta-tag verification fetches the
+// property ROOT, and under ACCOUNT_WALL `/` is a 302 to /how-it-works, so
+// Google never sees a tag placed there and verification fails without ever
+// saying why. The file lives at its own path, which the wall does not touch
+// (the static handler is an allowlist, so this route is reached untouched).
+//
+// Set GOOGLE_SITE_VERIFICATION to what Search Console hands you — the whole
+// `google<token>.html` filename or the bare token, both work, because the one
+// place this is ever typed is a Render env field and a pasted `.html` should
+// not cost a deploy to discover. Unset = the route does not exist at all.
+//
+// Stripping a leading "google" cannot eat a real token: Search Console tokens
+// are hex, and "google" is not.
+//
+// A DNS TXT record is the other route to the same place, and is strictly
+// better where you have registrar access — it verifies every subdomain and
+// protocol at once and survives any redirect rule. Nothing here conflicts
+// with it; this exists because it needs no registrar access.
+const GOOGLE_VERIFY_TOKEN = String(process.env.GOOGLE_SITE_VERIFICATION || "")
+  .trim()
+  .replace(/\.html$/i, "")
+  .replace(/^google/i, "");
+const GOOGLE_VERIFY_PATH = /^[A-Za-z0-9_-]{8,128}$/.test(GOOGLE_VERIFY_TOKEN)
+  ? `/google${GOOGLE_VERIFY_TOKEN}.html`
+  : "";
 
 // Where a Stripe checkout should return this BUYER — which is not always
 // SITE_URL.
@@ -3965,6 +4001,37 @@ function escHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 }
 function marketTitle(p) { return `${p.type} Property Values in ${p.city}, ${p.state}`; }
+
+// The <title> a market page shows IN SEARCH RESULTS, which is a different job
+// from marketTitle() and has a hard budget: Google renders about 60 characters
+// and truncates the rest mid-phrase.
+//
+// Measured 2026-08-06 against the live site: all 38 market pages ran 68-82
+// characters, so every one of them was cut off — and the two longest pieces
+// were the two doing the least work. The date range "(Dec 2024 – Jul 2026)"
+// spent ~22 characters on something nobody searches for, and "| CompNinja"
+// spends 12 on a brand with no search demand yet. What got truncated was the
+// end of the part carrying the actual query terms.
+//
+// So the words are chosen for what owners and brokers type: "comps", "$/SF",
+// "cap rates". "Property values" is not a phrase people search, which is why
+// marketTitle() keeps it only for on-page headings and link text, where there
+// is no length budget and the plainer wording reads better.
+//
+// Dropping the brand is a deliberate trade, not an oversight: 20% of the
+// budget for a name nobody looks up yet, on pages whose whole job is to be
+// found by strangers. Revisit once brand searches actually show up in Search
+// Console — at that point the suffix starts earning its characters.
+//
+// Trimmed by dropping a WHOLE clause, never by cutting mid-word: the Explorer
+// generates these pages on demand, so a city name longer than any in today's
+// seed has to degrade gracefully instead of blowing the budget.
+const TITLE_MAX = 60;
+function marketPageTitle(p) {
+  const base = `${p.type} Comps in ${p.city}, ${p.state}`;
+  const full = `${base} | $/SF & Cap Rates`;
+  return full.length <= TITLE_MAX ? full : base;
+}
 function marketUrl(slug) { return `${SITE_URL}/market/${slug}`; }
 function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
 
@@ -4861,7 +4928,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
   return marketShell({
-    title: `${title} (${p.date_range || "recent comps"}) | CompNinja`,
+    title: marketPageTitle(p),
     description, canonical, body,
     jsonLd: opts.preview ? null : jsonLd,
     noindex: Boolean(opts.preview),
@@ -4879,8 +4946,9 @@ function renderMarketDirectoryHTML() {
   ];
   const title = "Commercial Real Estate Market Snapshots by City";
   const canonical = `${SITE_URL}/markets`;
+  // Trimmed to the ~160 characters Google renders; it was 169.
   const description =
-    "Recent commercial real estate price-per-square-foot snapshots by city and property type (industrial, office, retail, and multifamily) with a free instant valuation tool.";
+    "Price-per-square-foot and cap-rate snapshots by city and property type — industrial, office, retail, and multifamily — built from real comparable sales.";
   const cards = slugs.map((s) => {
     const p = merged[s];
     // Everything a visitor might reasonably type for this card, flattened into
@@ -5126,9 +5194,10 @@ const HOW_FAQ = [
 function renderBrokersPageHTML() {
   const title = "For Commercial Real Estate Brokers | CompNinja";
   const canonical = `${SITE_URL}/brokers`;
+  // Trimmed to the ~160 characters Google renders; it was 180.
   const description =
-    "Submit a comp to CompNinja and it carries your firm's name on every report that uses it. " +
-    "Contributing brokers also get introduced to owners asking what their building is worth.";
+    "Submit a comp and it carries your firm's name on every report that uses it. " +
+    "Contributing brokers also get introduced to owners weighing a sale.";
   const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent("Broker introduction: CompNinja")}`;
 
   const jsonLd = JSON.stringify({
@@ -5383,11 +5452,18 @@ function renderPrivacyPageHTML() {
 }
 
 function renderHowItWorksHTML() {
-  const title = "How CompNinja Works";
+  // Under ACCOUNT_WALL this page is the front door — `/` 302s here, so it
+  // catches both brand searches and every anonymous arrival. The old title,
+  // "How CompNinja Works", was addressed to people who already knew the name,
+  // which is nobody yet. This one still describes the page honestly and also
+  // matches a question people actually type. Description trimmed to the ~160
+  // characters Google renders (it was 199, so the last line never showed).
+  // No brand suffix here — this page's own shell appends " | CompNinja".
+  const title = "How Commercial Property Valuation Works";
   const canonical = `${SITE_URL}/how-it-works`;
   const description =
-    "How a CompNinja report is built: live searches of public records and listings, a source-confidence badge on every comp, " +
-    "and a value range for your building. Plus answers to the most common questions.";
+    "How a CompNinja report is built: live searches of public records and listings, " +
+    "a source badge on every comp, and a value range for your building.";
 
   const stats = [
     ["Free", "Every report"],
@@ -7611,6 +7687,59 @@ async function hqSnapshot() {
 // below the canUseVault test, so the parallelism changes latency, not what a
 // non-broker can see. allSettled keeps the refusal order honest: a Supabase
 // outage must not turn a 403 into a 502.
+// Upsert the property dimension for a set of just-imported comps and stamp
+// each comp with its property_id (migration 016).
+//
+// NEVER THROWS. Every caller is on the upload path, and the rule there is that
+// a broker's comps are stored or the request fails — the dimension is an index
+// onto their book, not part of it. A failure here leaves property_id null,
+// which 016's view already reads as "not linked yet" and falls back to the
+// comp's own denormalized address; the migration's backfill is idempotent and
+// repairs it on its next run. Losing the link costs a join. Failing the upload
+// costs a broker their spreadsheet.
+//
+// Scoped by user_id throughout, like every other vault read and write. Two
+// brokers who transacted on the same building get their own property row each:
+// that is the privacy wall, not a duplicate.
+async function linkVaultProperties(userId, comps) {
+  try {
+    if (!DB_CONFIGURED || !userId) return;
+    const wanted = PROPS.propertyRowsFrom(comps);
+    if (!wanted.length) return;
+
+    // on_conflict on the natural key, returning representation so the ids come
+    // back in one round trip rather than a second read.
+    const saved = await sbRequest("POST", "broker_properties?on_conflict=user_id,address_key",
+      wanted, { prefer: "resolution=merge-duplicates,return=representation" });
+
+    let index = PROPS.indexById(saved);
+    if (!index.size) {
+      // An upsert where every row already existed can answer with nothing.
+      // Read the ids back rather than leaving the comps unlinked.
+      const keys = wanted
+        .map((w) => `"${String(w.address_key).replace(/"/g, '""')}"`).join(",");
+      const rows = await sbRequest("GET",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=in.(${encodeURIComponent(keys)})&select=id,address_key`);
+      index = PROPS.indexById(rows);
+    }
+
+    // One PATCH per building rather than per comp: a broker re-importing a
+    // year of deals across ten buildings is ten requests, not four hundred.
+    // `property_id=is.null` keeps it idempotent and stops a re-import
+    // rewriting links that are already correct.
+    for (const [addressKey, propertyId] of index) {
+      await sbRequest("PATCH",
+        `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=eq.${encodeURIComponent(addressKey)}&property_id=is.null`,
+        { property_id: propertyId }, { prefer: "return=minimal" });
+    }
+  } catch (err) {
+    // Loud in the log, invisible to the broker.
+    console.error("vault property link failed (comps are stored; link deferred):", err.message);
+  }
+}
+
 async function vaultReadPayload(req, params) {
   const user = await getSessionUser(req);
   if (!user) return { status: 401, body: { error: "Not signed in." } };
@@ -7672,6 +7801,58 @@ async function vaultReadPayload(req, params) {
     markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
     types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
   } };
+}
+
+// ---------------------------------------------------------------------------
+// Blended comps — the READ half. The shaping and merging live in the pure
+// blend-comps.js; this is the part that has to touch the database, so it is
+// the part that has to be careful.
+//
+// Spec: docs/superpowers/specs/2026-08-06-blended-comps-data-contract.md
+//
+// Four things hold the wall up here, and all four are load-bearing:
+//
+//   1. `user_id=eq.` comes FIRST and unconditionally. A broker sees their own
+//      vault and nobody else's, exactly as in vaultReadPayload.
+//   2. `canUseVault` is tested, not `pro`. Same rule as every other vault
+//      route: the capability, never a plan name.
+//   3. It returns [] on ANY failure. A vault read is an enrichment, never a
+//      reason to fail a search someone is waiting on — and an error must never
+//      widen what comes back.
+//   4. It is called at SERIALIZATION, so what it returns never reaches the
+//      cache, the corpus harvest, or a market snapshot. See blend-comps.js.
+//
+// The lookback filter matters for honesty as much as relevance: a report says
+// it covers N months, so a private comp older than that would quietly widen
+// the window the valuation is drawn from.
+async function vaultCompsForReport(req, ent, { market, type, months }) {
+  try {
+    if (!DB_CONFIGURED) return [];
+    if (!ent || !ent.canUseVault) return [];
+    if (!market || !type) return [];
+    const user = await getSessionUser(req);
+    if (!user) return [];
+
+    const cutoff = new Date(Date.now() - Math.max(1, Number(months) || 12) * 31 * 24 * 3600 * 1000)
+      .toISOString().slice(0, 10);
+
+    // Scoped by user_id FIRST and always.
+    let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
+    query += `&market=eq.${encodeURIComponent(market)}`;
+    query += `&property_type=eq.${encodeURIComponent(type)}`;
+    query += `&deal_date=gte.${cutoff}`;
+    // Capped: a broker with a thousand comps in one market would otherwise
+    // bury the public evidence and bloat the response.
+    query += `&order=deal_date.desc&limit=50`;
+
+    const rows = await sbRequest("GET", query);
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    // Deliberately quiet about the rows and loud about the failure: the
+    // message may name a column, never a comp.
+    console.error("vault blend read failed:", err.message);
+    return [];
+  }
 }
 
 function renderHqHTML() {
@@ -8138,6 +8319,18 @@ const server = http.createServer((req, res) => {
         // corpus harvest, and the market-snapshot publisher all keep seeing
         // whole reports, so one cached search serves free and Pro visitors
         // alike and the corpus never starves on free traffic.
+        // The broker's own vault comps for this market + type, read once,
+        // outside the gate closure because the closure is synchronous and this
+        // is a database call. [] for everyone who is not a broker with rows
+        // here, which is almost every request — and an empty list makes the
+        // blend below return the very same report object, so a non-broker's
+        // response is byte-identical to what it was before this feature.
+        const vaultRows = internal
+          ? []
+          : await vaultCompsForReport(req, ent, {
+              market: marketOf(addressOk), type: typeOk, months: monthsOk,
+            });
+
         const gate = (rep) => {
           if (internal) return rep;
           const subjectSqft = sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0;
@@ -8150,7 +8343,16 @@ const server = http.createServer((req, res) => {
           // tally ("4 exports left this month") on a report they own outright.
           // Spread rather than assign: `rep` may be the CACHED object, and the
           // cache must never carry one visitor's entitlement to the next.
-          return { ...gated, exports_remaining: ent.exportsRemaining };
+          const withExports = { ...gated, exports_remaining: ent.exportsRemaining };
+          // LAST, and only here. Every caller of gate() is an exit — the cache
+          // hit, the derived-window hit, the SSE result and the plain JSON
+          // result — so this is the one place a private comp can enter, and it
+          // is downstream of the cache write, harvestComps() and the market
+          // snapshot, all of which keep seeing the public report. Blending any
+          // earlier serves one broker's private book to the next visitor who
+          // searches that address, because the cache is keyed by property and
+          // not by user.
+          return BLEND.blendPrivateComps(withExports, vaultRows);
         };
 
         // The gate's principle applied to live progress: a limited visitor
@@ -9560,6 +9762,15 @@ const server = http.createServer((req, res) => {
           await sbRequest("POST", "broker_comps?on_conflict=user_id,dedupe_key",
             rows, { prefer: "resolution=ignore-duplicates,return=minimal" });
 
+          // Link each comp to its building (migration 016). Deliberately AFTER
+          // the comps are safely stored and deliberately unable to fail the
+          // import: the dimension is an index onto the broker's book, not part
+          // of it, and a broker must never be told their upload failed because
+          // a reporting nicety did. An unlinked comp still carries its own
+          // address, market and type — 016's view falls back to them — and the
+          // migration's backfill repairs the link on its next run.
+          await linkVaultProperties(user.id, rows);
+
           console.log(`Vault import: ${parsed.rows.length} comp(s) for user ${user.id}` +
             `${parsed.skipped ? `, ${parsed.skipped} skipped` : ""}` +
             `${parsed.duplicates ? `, ${parsed.duplicates} duplicate(s) in file` : ""}`);
@@ -10725,8 +10936,14 @@ const server = http.createServer((req, res) => {
         delete safeMeta.portfolioId;
         safeMeta.shared = true;
         safeMeta.generatedAt = meta.generatedAt || Date.now();
+        // The broker's private comps are the same class of secret as the NOI
+        // above, with a sharper edge: this route takes the report FROM THE
+        // BROWSER, and a broker's browser is holding a BLENDED one. A shared
+        // report is public by design and has no viewer check to fall back on,
+        // so the server strips rather than trusting what it was handed.
+        const safeReport = BLEND.stripPrivateComps(report);
         const id = newShareId();
-        await storeSharedReport(id, { data: report, meta: safeMeta });
+        await storeSharedReport(id, { data: safeReport, meta: safeMeta });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address) });
         return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}` });
       } catch (err) {
@@ -11205,6 +11422,15 @@ const server = http.createServer((req, res) => {
 
   // --- SEO: robots.txt + sitemap (homepage + market directory + every market
   // page) so crawlers discover and index the whole landing-page set ---
+  // Search Console's verification file. Exact-match on a path we built
+  // ourselves from a validated token, so there is nothing here to inject into.
+  // Google re-fetches this periodically and UNVERIFIES the property if it
+  // stops answering — so the env var is not a one-time setup step to be
+  // cleared once the green check appears; it stays set for good.
+  if (req.method === "GET" && GOOGLE_VERIFY_PATH && req.url === GOOGLE_VERIFY_PATH) {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return res.end(`google-site-verification: google${GOOGLE_VERIFY_TOKEN}.html\n`);
+  }
   if (req.method === "GET" && req.url === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
@@ -11275,6 +11501,13 @@ server.listen(PORT, () => {
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`
     : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);
+  // Loud on purpose: an unverified property means no crawl or impression data
+  // for the market pages at all, and the failure is silent from inside the app.
+  console.log(GOOGLE_VERIFY_PATH
+    ? `🔎 Search Console verification file live at ${GOOGLE_VERIFY_PATH}`
+    : process.env.GOOGLE_SITE_VERIFICATION
+      ? "⚠  GOOGLE_SITE_VERIFICATION is set but unusable — expected google<token>.html or the bare token."
+      : "🔎 Search Console not verified by file — set GOOGLE_SITE_VERIFICATION to see indexing data (or use a DNS TXT record).");
   if (PRO_ENABLED) {
     console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
       `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);

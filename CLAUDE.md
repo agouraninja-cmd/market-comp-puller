@@ -895,6 +895,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
   All four go through one `openVault()` helper: 401 not signed in → 403 not a
   broker (`canUseVault`) → 503 no database.
+  - **Blended comps** (server half, 2026-08-06). A broker's own vault comps
+    appear inside **their own** reports, flagged `private: true` with
+    `source_type: "broker_vault"`, plus a top-level `private_count`. Rules in
+    the pure, tested **`blend-comps.js`**; the `user_id`-scoped read is
+    `vaultCompsForReport()` in server.js. Spec:
+    `docs/superpowers/specs/2026-08-06-blended-comps-data-contract.md`.
+    **Blending happens at SERIALIZATION only** — the exact mirror of
+    `gateReport()`'s rule. It runs inside the `gate()` closure in `/api/comps`,
+    which is the single funnel all four exits route through, and therefore
+    downstream of `storeCachedSearch()`, `harvestComps()` and
+    `maybePublishMarketSnapshot()`, all of which keep seeing the **public**
+    report. Blend earlier and it fails silently twice over: before the cache
+    write, one broker's private book is served to the next visitor who searches
+    that address (`search_cache` is keyed by property, not by user); before the
+    harvest, the rows enter the public corpus permanently with nothing alerting
+    anyone, because that path swallows its own errors. **`POST /api/share`
+    strips them** — it takes the report FROM the browser, and a broker's
+    browser holds a blended one. A vault comp claims no public provenance: not
+    `verified` (a public claim, earned by vouching in the public records) and
+    not the enum default (which normalizes to `estimate` and would stamp a real
+    closed transaction as guesswork). An empty vault returns the **same report
+    object**, with no `private_count` key at all, so a non-broker's response is
+    byte-identical to before the feature existed.
   - **The `/vault` PAGE lives in `vault-page.js`, not `server.js`** (moved
     2026-08-06). It is a web page, so it belongs to whoever owns the front end;
     as a 475-line block inside `server.js` it could not be edited without

@@ -53,3 +53,7 @@ CompNinja*.xlsx
 ledger/manual-entries.csv
 ledger/recurring.csv
 compninja-ai-costs.csv
+
+# macOS Finder metadata. Committed once by accident on 2026-08-06 in the
+# PR #40 merge; ignored so it cannot happen again.
+.DS_Store

@@ -153,6 +153,34 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rep .addr{font-weight:600}
 .rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums}
 .note{color:var(--ink-3);font-size:var(--t5)}
+/* ---- First run ----------------------------------------------------------
+   Deliberately quiet: two numbered steps on the page's own type scale, no
+   illustration, no coloured callout box. A broker arriving here has just paid
+   for something, and a loud empty state reads as a product apologising for
+   itself. The numbers carry the sequence; everything else is ordinary text. */
+.steps{display:grid;gap:var(--s6);margin-top:var(--s6)}
+@media (min-width:760px){.steps{grid-template-columns:1fr 1fr;gap:var(--s7)}}
+.step{display:flex;gap:var(--s4);align-items:flex-start}
+.stepn{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--wash);
+  border:1px solid var(--edge);color:var(--ink-2);font-size:var(--t5);font-weight:600;
+  display:flex;align-items:center;justify-content:center;margin-top:2px}
+.step h3{font-family:var(--serif);font-weight:500;font-size:var(--t3);margin:0 0 var(--s3)}
+.step p{margin:0 0 var(--s3);color:var(--ink-2)}
+.step .fine{color:var(--ink-3);font-size:var(--t5)}
+/* The template link is an <a> styled as a button, so it needs the same box the
+   <button>s get — .btn alone leaves it inline and underlined. */
+a.btn{display:inline-block;text-decoration:none;color:#fff}
+a.btn:hover{color:#fff}
+/* The section+section divider is drawn from DOM adjacency, which does not know
+   about display:none. With #firstRun hidden, #addSec became "a section after a
+   section" for the first time and picked up a rule above it — a stray line
+   across the top of a returning broker's workspace. Scoped to this one pair on
+   purpose: a blanket hidden-sibling rule would also strip the divider above
+   Leads on first run, where two hidden sections sit between it and #firstRun
+   and the divider is correct.
+   (No backticks in this file's comments: the whole page is one template
+   literal, so a backtick here ends it and the module stops parsing.) */
+#firstRun.hide + #addSec{border-top:0;padding-top:0}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
@@ -173,7 +201,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   <div id="gate"><p class="empty">Loading your vault&hellip;</p></div>
 
   <div id="app" class="hide">
-    <div class="trust">
+    <!-- The trust line's job is to prove a number stays at zero, which only
+         works once there is something it could have counted. On day one it is
+         a scoreboard reading 0-0 above an empty page, so it is hidden until
+         the first import lands and #firstRun carries the privacy promise in
+         words instead. See applyFirstRun(). -->
+    <div class="trust hide" id="trustLine">
       <span><b id="cCount">0</b> comps</span>
       <span class="pub"><b id="cPub">0</b> published</span>
       <span class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
@@ -191,7 +224,68 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <div class="cards" id="rollup"></div>
     </section>
 
-    <section>
+    <!-- ------------------------------------------------------------------
+         First run. Shown only when the vault is genuinely empty (no comps
+         AND no imports), and replaced by the real workspace the moment
+         anything lands.
+
+         What it is fixing: the empty vault used to be a count of zero, an
+         uploader, and three empty tables. The only route forward was
+         "download a template, map your book into it, come back", which is
+         homework with no visible payoff, and the one thing a broker could
+         do immediately was at the bottom of the page under a heading about
+         something else. This is where people quietly give up.
+
+         So it says what the payoff is, states the effort honestly, and
+         offers the ten-second path as a real alternative rather than a
+         consolation prize.
+         ------------------------------------------------------------------ -->
+    <section id="firstRun" class="hide">
+      <h2>Start here</h2>
+      <p class="sub" style="margin-top:0">Two ways to get something out of this today. The
+        second one takes about ten seconds and needs no spreadsheet.</p>
+
+      <div class="steps">
+        <div class="step">
+          <span class="stepn">1</span>
+          <div>
+            <h3>Bring your own comps</h3>
+            <p>Your closed deals become a private comp set that only you can see. They
+              appear inside your own valuation reports, badged &ldquo;From your vault&rdquo;,
+              and they count toward the number at the top of the report. They are never
+              read into CompNinja&rsquo;s public records, never included in an export or a
+              shared link, and never shown to another broker.</p>
+            <!-- The friction this removes is fear, not typing: a broker looking at a
+                 ten-column template assumes all ten are mandatory and that a deal with
+                 an undisclosed price cannot go in. Neither is true, and saying so is
+                 what makes the first upload feel possible. -->
+            <p class="fine">Four columns are required: address, property type, sale or
+              lease, and the date. Everything else is optional, so undisclosed deals
+              still count.</p>
+            <div class="row" style="margin-top:var(--s4)">
+              <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
+              <button class="btn ghost" id="frPick">Choose a spreadsheet</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="stepn">2</span>
+          <div>
+            <h3>Or just tell us where you work</h3>
+            <p>Add the markets you cover and you will start seeing property owners in them
+              who have asked for a valuation. Their details stay anonymous until you ask
+              for an introduction, and CompNinja makes the introduction by hand.</p>
+            <p class="fine">Nothing to upload. This works on an empty vault.</p>
+            <div class="row" style="margin-top:var(--s4)">
+              <button class="btn ghost" id="frCoverage">Choose your markets</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="addSec">
       <h2>Add comps</h2>
       <div class="drop" id="drop">
         <button class="btn" id="pick">Choose a spreadsheet</button>
@@ -201,7 +295,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <div id="res"></div>
     </section>
 
-    <section>
+    <section id="compsSec">
       <h2>Your comps</h2>
       <!-- One filter row above everything it scopes: the chart, the repeat-
            property list and the table all read the same slice, so they can
@@ -244,14 +338,17 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <button class="btn ghost" id="covAdd">Watch this market</button>
       </div>
       <div id="leadMsg"></div>
-      <div class="tw"><table>
+      <!-- Hidden while there are no rows: a header row with nothing under it is
+           the same "is this broken?" signal the empty comps table gave, and a
+           broker sent here by step 1 of the first run lands on it directly. -->
+      <div class="tw hide" id="leadTableWrap"><table>
         <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
         <tbody id="leadRows"></tbody>
       </table></div>
       <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
     </section>
 
-    <section>
+    <section id="importsSec">
       <h2>Imports</h2>
       <div id="ups"></div>
     </section>
@@ -333,8 +430,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 
   function apply(o){
     if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
-    if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
-      '<a href="/brokers">What brokers get</a></div>');
+    // "Part of Pro", not "part of the broker plan". There is one subscription
+    // as of 2026-08-05 and the vault is a capability of it, so naming a broker
+    // plan sends someone off to look for a product that cannot be bought.
+    // The link goes to the plan card on /desk rather than /brokers: /brokers
+    // explains contributing comps for a Verified badge, which is a different
+    // thing entirely and is free.
+    if(o.s===403) return gate('<div class="msg bad">The private vault is part of Pro. '+
+      '<a href="/desk">See your plan</a></div>');
     if(o.s!==200) return gate('<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not load your vault.")+'</div>');
     $("gate").className="hide"; $("app").className="";
     comps=o.j.comps||[];
@@ -347,6 +450,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // deserves to know it might be more. Said out loud rather than absorbed.
     $("trunc").className=comps.length>=1000?"note":"note hide";
     renderUploads(o.j.uploads||[]);
+    applyFirstRun(comps.length,(o.j.uploads||[]).length);
     // Loaded once per page visit, not on every filter change/publish/
     // import-delete that re-runs load() — those all hit /api/vault, a
     // different endpoint, and re-querying /api/broker/leads on each one
@@ -584,6 +688,27 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     }).join("")+(reps.length>10?'<p class="note">'+(reps.length-10)+" more not shown.</p>":"");
   }
 
+  // ---- First run vs the real workspace --------------------------------------
+  // Keyed on comps AND uploads, not comps alone. A broker whose only import was
+  // entirely rejected, or who has deleted every comp out of an import, has
+  // already been through the door once — showing them "Start here" again would
+  // read as their work having been thrown away.
+  //
+  // Everything hidden here is hidden because it is EMPTY, not because it is
+  // unimportant: an empty table with a header row and a "nothing here yet" line
+  // reads as a broken page, and the vault had three of them stacked up.
+  function applyFirstRun(compCount,uploadCount){
+    var first=compCount===0&&uploadCount===0;
+    $("firstRun").className=first?"":"hide";
+    // The uploader lives in both places on first run, so the plain "Add comps"
+    // section stands down and step 1 owns it. Both buttons drive the same
+    // <input type=file>, so there is still only one upload path.
+    $("addSec").className=first?"hide":"";
+    $("trustLine").className=first?"trust hide":"trust";
+    $("compsSec").className=first?"hide":"";
+    $("importsSec").className=first?"hide":"";
+  }
+
   function renderUploads(ups){
     $("ups").innerHTML=ups.length?ups.map(function(u){
       return '<div class="up"><span>'+esc(u.filename||"Untitled import")+
@@ -604,7 +729,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .then(function(o){
         if(o.s!==200){
           // No stale rows left on screen under an error message.
-          $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+          $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("leadTableWrap").className="tw hide"; $("noLeads").className="empty hide";
           $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>";
           return;
         }
@@ -614,7 +739,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         renderLeads(o.j.leads||[],cov.length);
       })
       .catch(function(){
-        $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+        $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("leadTableWrap").className="tw hide"; $("noLeads").className="empty hide";
         $("leadMsg").innerHTML='<div class="msg bad">Couldn\\'t load leads. Please try again.</div>';
       });
   }
@@ -633,6 +758,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   function renderLeads(leads,covCount){
     var showEmpty=leads.length===0&&covCount>0;
     $("noLeads").className=showEmpty?"empty":"empty hide";
+    $("leadTableWrap").className=leads.length?"tw":"tw hide";
     $("leadRows").innerHTML=leads.map(function(l){
       var btn=l.intro_requested
         ? '<button class="pubbtn on" disabled>Intro requested</button>'
@@ -733,6 +859,17 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   }
 
   $("pick").addEventListener("click",function(){ $("file").click() });
+  // Step 1's button is the same door as #pick — one <input type=file>, so an
+  // upload started here lands in the same handler and the same result message.
+  $("frPick").addEventListener("click",function(){ $("file").click() });
+  // Step 2 does not duplicate the coverage form; it takes the broker to the one
+  // that already exists and puts the cursor in it. A second copy of that input
+  // would be a second thing to keep in step with the coverage rules.
+  $("frCoverage").addEventListener("click",function(){
+    $("leads").scrollIntoView({behavior:"smooth",block:"start"});
+    // After the scroll settles, so focus does not fight the animation.
+    setTimeout(function(){ $("covMarket").focus(); },420);
+  });
   $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.add("over"); })});

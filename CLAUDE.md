@@ -910,6 +910,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
   All four go through one `openVault()` helper: 401 not signed in → 403 not a
   broker (`canUseVault`) → 503 no database.
+  - **Blended comps** (server half, 2026-08-06). A broker's own vault comps
+    appear inside **their own** reports, flagged `private: true` with
+    `source_type: "broker_vault"`, plus a top-level `private_count`. Rules in
+    the pure, tested **`blend-comps.js`**; the `user_id`-scoped read is
+    `vaultCompsForReport()` in server.js. Spec:
+    `docs/superpowers/specs/2026-08-06-blended-comps-data-contract.md`.
+    **Blending happens at SERIALIZATION only** — the exact mirror of
+    `gateReport()`'s rule. It runs inside the `gate()` closure in `/api/comps`,
+    which is the single funnel all four exits route through, and therefore
+    downstream of `storeCachedSearch()`, `harvestComps()` and
+    `maybePublishMarketSnapshot()`, all of which keep seeing the **public**
+    report. Blend earlier and it fails silently twice over: before the cache
+    write, one broker's private book is served to the next visitor who searches
+    that address (`search_cache` is keyed by property, not by user); before the
+    harvest, the rows enter the public corpus permanently with nothing alerting
+    anyone, because that path swallows its own errors. **`POST /api/share`
+    strips them** — it takes the report FROM the browser, and a broker's
+    browser holds a blended one. A vault comp claims no public provenance: not
+    `verified` (a public claim, earned by vouching in the public records) and
+    not the enum default (which normalizes to `estimate` and would stamp a real
+    closed transaction as guesswork). An empty vault returns the **same report
+    object**, with no `private_count` key at all, so a non-broker's response is
+    byte-identical to before the feature existed.
   - **The `/vault` PAGE lives in `vault-page.js`, not `server.js`** (moved
     2026-08-06). It is a web page, so it belongs to whoever owns the front end;
     as a 475-line block inside `server.js` it could not be edited without
@@ -943,6 +966,31 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     Pure and tested (`npm test`, 64 cases).
   - **Every read is scoped by `user_id`**, including the DELETE — without it,
     knowing another broker's upload id would be enough to delete their data.
+  - **The property dimension** (`migrations/016-broker-comps-star.sql`, **run
+    before deploying**). `broker_properties` holds one row per building per
+    broker; `broker_comps.property_id` links to it. It exists because
+    `address_key` was written on every row since 013 and read by **nothing** —
+    no index, no table, no FK — and it is the one dimension a broker slices by.
+    There is deliberately **no market dimension** (it would duplicate the
+    corpus vocabulary and become a second thing to keep in sync) and **no date
+    dimension** (`date_trunc()` answers everything without a fiscal calendar).
+    Three rules: the migration is **purely additive** and a test fails the
+    build if a destructive statement appears in it, because there is no staging
+    database to rehearse against; `property_id` is **nullable on purpose**, so
+    migrate-then-deploy and deploy-then-migrate both work with no window where
+    an upload fails; and `linkVaultProperties()` **never throws** — the
+    dimension is an index onto a broker's book, not part of it, so a failed
+    link costs a join while a failed upload costs a broker their spreadsheet.
+    Two brokers on the same building get **separate** property rows; sharing
+    one would make each one's activity inferable from the other's.
+    `broker_comps_reporting` is a view for the service role and direct SQL
+    ONLY — it carries `user_id` and every private measure with no per-caller
+    scoping, so it must never be exposed to the anon or authenticated roles.
+  - **The vault API's shape is a contract, not the table's shape.**
+    `vault-api.js` owns it and `toApiComp` is an **allowlist**, so a new
+    storage column cannot reach the browser by default and a dropped one fails
+    the build. `user_id`, `address_key`, `dedupe_key` and `property_id` are
+    omitted as plumbing. Do not go back to answering `comps: rows`.
 - **Broker lead inbox** (v1, 2026-08-05). DDL in
   `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead

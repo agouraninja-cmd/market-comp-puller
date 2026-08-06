@@ -17,39 +17,53 @@
 // function absorbs the difference.
 //
 // ---------------------------------------------------------------------------
-// TODAY IT IS A PASS-THROUGH, ON PURPOSE
+// IT WAS A PASS-THROUGH FOR EXACTLY ONE STEP, ON PURPOSE
 // ---------------------------------------------------------------------------
-// `toApiComp` is a shallow copy and nothing more, so the response is BYTE-
-// IDENTICAL to what it was before this file existed. That is deliberate: the
-// dashboard is being written right now, against the current JSON, by someone
-// who has not pushed yet. A shape change today — even an obviously-good one
-// like dropping the internal `dedupe_key` — could break code that is already
-// written and that nobody can see yet.
+// When the seam was introduced it was a shallow copy and nothing else, so the
+// response stayed byte-identical. That mattered for one reason: the dashboard
+// was being written at that moment, against the old response, by someone who
+// had not pushed. A shape change then — even an obviously good one — could
+// have broken code that already existed and that nobody could see.
 //
-// So step one introduces the seam and changes nothing. Step two restructures
-// the table and teaches this function to translate. The dashboard never moves.
+// Migration 016 is the step where the shape may change, and it does: the
+// plumbing fields below are now omitted, and toApiComp is a real allowlist.
 //
 // ---------------------------------------------------------------------------
 // WHAT THE FIELD LIST IS FOR
 // ---------------------------------------------------------------------------
-// API_COMP_FIELDS is the frozen contract: the fields a dashboard may rely on.
-// It is not applied as a filter today (that would change the response); it is
-// asserted by the tests against the migration, so that a restructure which
-// drops or renames a column FAILS THE BUILD until this function supplies the
-// field again. That is the whole protection — the guarantee is not "the table
-// will not change", it is "the table may change and the API will not".
+// API_COMP_FIELDS is the contract: every column the vault may answer with.
+// The tests check it BOTH WAYS against every migration in migrations/, so
 //
-// Three fields are deliberately in the list but marked internal below. They go
-// out today only because they always have; once the dashboard's author
-// confirms nothing reads them, they can be dropped here in a single edit and
-// no storage change is needed.
+//   * a column exists that the contract does not mention -> the build fails,
+//     and "may the dashboard see this?" can never be answered by accident;
+//   * the contract promises a field the schema no longer has -> the build
+//     fails, and stays failing until toApiComp maps it from wherever it now
+//     lives.
+//
+// The guarantee is not "the table will not change". It is "the table may
+// change and the API will not".
 // ---------------------------------------------------------------------------
 
-// Internal plumbing. Reaches the browser today only for backwards
-// compatibility; safe to drop from the response once the dashboard confirms it
-// does not read them. Not secrets — a broker's own user id and the dedupe keys
-// of their own rows — but they are storage detail, not product surface.
-const INTERNAL_FIELDS = Object.freeze(["user_id", "address_key", "dedupe_key"]);
+// Internal plumbing — storage detail, not product surface. These are now
+// OMITTED from the response.
+//
+// They went out until 2026-08-06 only because `comps: rows` handed back
+// whatever the table happened to hold. Jacob confirmed on the day that nothing
+// in the dashboard reads any of them: user_id is a query filter and is never
+// rendered, dedupe_key is a write-path conflict target that nothing reads
+// back, and address_key is read by nothing at all.
+//
+// property_id joined them with migration 016. It is a foreign key into
+// broker_properties; a dashboard that wants the building has the address,
+// market and type on the comp itself.
+//
+// Dropping them is the shape change that BELONGS to the restructure. It was
+// deliberately not made when the seam was introduced, because at that moment
+// the dashboard was being written against the old response by someone who had
+// not pushed.
+const INTERNAL_FIELDS = Object.freeze([
+  "user_id", "address_key", "dedupe_key", "property_id",
+]);
 
 // Every field `GET /api/vault` currently answers with, and therefore every
 // field a dashboard may already be reading. Kept in the same order the table
@@ -88,21 +102,35 @@ const API_COMP_FIELDS = Object.freeze([
   "created_at",
   "dedupe_key",
   "published_submission_id",
+  "property_id",
 ]);
+
+// The fields a dashboard actually receives: the contract, minus the plumbing.
+const PUBLIC_COMP_FIELDS = Object.freeze(
+  API_COMP_FIELDS.filter((f) => !INTERNAL_FIELDS.includes(f))
+);
 
 // One stored row, as the API presents it.
 //
-// A shallow copy rather than the row itself: identical to serialize, but it
-// means a later caller cannot mutate what came out of the database, and it
-// gives the restructure a place to land that is already threaded through the
-// route.
+// An ALLOWLIST, not a copy-and-delete. A new storage column therefore cannot
+// reach the browser by default — it has to be added to the contract on
+// purpose, and the tests fail until someone does. That is the direction of
+// safety worth having on a table holding brokers' private books: the failure
+// mode is a missing field somebody notices, not a leaked one nobody does.
+//
+// Undefined values are skipped rather than emitted as nulls, so a sparse row
+// serializes the same way it always has.
 function toApiComp(row) {
   if (!row || typeof row !== "object" || Array.isArray(row)) return row;
-  return { ...row };
+  const out = {};
+  for (const f of PUBLIC_COMP_FIELDS) {
+    if (f in row) out[f] = row[f];
+  }
+  return out;
 }
 
 function toApiComps(rows) {
   return Array.isArray(rows) ? rows.map(toApiComp) : [];
 }
 
-module.exports = { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS };
+module.exports = { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS, PUBLIC_COMP_FIELDS };

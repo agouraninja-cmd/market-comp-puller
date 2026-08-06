@@ -6035,6 +6035,7 @@ h1.h{font-size:var(--t1);line-height:1.15;margin:var(--s4) 0 0}
 .tile .k{font-size:var(--t5);color:var(--ink-3);font-weight:500}
 .tile .v{font-family:var(--serif);font-weight:500;font-size:var(--t1);line-height:1.2;margin-top:var(--s2);
   color:var(--ink);font-variant-numeric:tabular-nums}
+.tile .n{font-size:var(--t5);color:var(--ink-3);margin-top:var(--s1)}
 .card{background:#fff;border:1px solid var(--edge);border-radius:var(--r);padding:var(--s5) var(--s6);margin:var(--s5) 0}
 .card h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);letter-spacing:-.005em;color:var(--ink);margin:0 0 var(--s4)}
 .card p{margin:0 0 var(--s3);font-size:var(--t4);color:var(--ink-2)}
@@ -6078,6 +6079,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <button id="go">View analytics</button><div id="err" class="err"></div></div>
 <div id="dash" style="display:none"></div>
 <div id="auditPanel"></div>
+<div id="accuracy"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -6292,6 +6294,51 @@ function loadAudit(key){
     .then(renderAudit)
     .catch(function(e){console.error(e);});
 }
+// Valuation accuracy: hold-one-out backtest over the comp corpus. Same
+// fail-safe posture as renderAudit above -- an error or a below-floor corpus
+// must never show a number that was not measured.
+function renderAccuracy(d){
+  var el=document.getElementById("accuracy");
+  var LIMITS="<p class=muted>Each scored sale is held out of the corpus and valued from the comps "+
+    "that sold before it in the same market and property type. This measures the valuation MATH, "+
+    "not whether the model finds good comps, and it runs without the market-trend adjustment "+
+    "(corpus rows do not store it).</p>";
+  if(!d||d.error){el.innerHTML="<div class=card><h2>Valuation accuracy</h2>"+
+    "<p class=muted>Unavailable right now &mdash; the corpus could not be read. Nothing else on this page is affected.</p></div>";return;}
+  var pct=function(v){return v==null?"n/a":(v*100).toFixed(1)+"%";};
+  var tile=function(k,v,n){return "<div class=tile><div class=k>"+k+"</div><div class=v>"+v+"</div>"+
+    (n?"<div class=n>"+n+"</div>":"")+"</div>";};
+  var head;
+  if(d.belowFloor){
+    head="<p class=muted>Not enough scoreable history yet: "+esc(d.scored)+" of "+esc(d.minSubjects)+
+      " sales. A median over a handful of subjects swings too much to tune against, so the figures "+
+      "appear once the corpus reaches the floor.</p>";
+  }else{
+    head="<div class=tiles>"+
+      tile("Median error",pct(d.medianAbsError),"vs actual $/SF")+
+      tile("In range",pct(d.bandCoverage),"actual inside low-high")+
+      tile("Range width",pct(d.medianBandWidth),"median, as % of likely")+
+      tile("Scored",esc(d.scored),"held-out sales")+
+    "</div>";
+  }
+  var rows=(d.byType||[]).map(function(t){
+    return "<tr><td>"+esc(t.type)+"</td><td>"+esc(t.scored)+"</td><td>"+pct(t.medianAbsError)+
+      "</td><td>"+pct(t.bandCoverage)+"</td></tr>";
+  }).join("");
+  el.innerHTML="<div class=card><h2>Valuation accuracy</h2>"+head+
+    (rows?"<table><tr><th>Type</th><th>Scored</th><th>Median error</th><th>In range</th></tr>"+rows+"</table>":"")+
+    LIMITS+
+    "<p class=muted>Read from "+esc(d.rowsRead||0)+" corpus rows; "+
+    esc((d.skipped&&d.skipped.thinPeers)||0)+" sales had too few earlier comps to score.</p>"+
+    "<p><button onclick='loadAccuracy(sessionStorage.getItem(KEYK),true)'>Recompute</button></p></div>";
+}
+function loadAccuracy(key,force){
+  var h=key?{"x-admin-key":key}:{};
+  fetch("/api/accuracy"+(force?"?refresh=1":""),{headers:h})
+    .then(function(r){if(!r.ok){throw new Error("accuracy "+r.status);}return r.json();})
+    .then(renderAccuracy)
+    .catch(function(e){console.error(e);renderAccuracy({error:1});});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -6306,7 +6353,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key);})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }

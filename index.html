@@ -2537,43 +2537,44 @@
   (async function loadSharedReport() {
     const m = location.pathname.match(/^\/r\/([A-Za-z0-9_-]{6,32})$/);
     if (!m) return;
-    let r;
+    // ONE try/catch for the whole load-and-render (2026-08-06 review, item
+    // 6): this used to be a .then/.catch chain where the .catch covered a
+    // render-time throw too, not just the fetch. Turning it into an async
+    // IIFE without a matching try/catch left a payload that parses fine but
+    // breaks while rendering (renderResults() or anything else below) as an
+    // unhandled rejection — a blank page instead of the friendly message.
+    // The 403 and !r.ok branches below are expected, handled outcomes, not
+    // failures, so they still return their own specific copy; this catch is
+    // only for the unexpected kind.
     try {
-      r = await fetch("/api/shared?id=" + encodeURIComponent(m[1]));
-    } catch (e) {
-      showStatus("That shared report link is invalid or is no longer available.", "error");
-      return;
-    }
-    if (r.status === 403) {
-      const body = await r.json().catch(() => ({}));
-      showSharedNotice(body.error || "This report is private.", { offerSignIn: body.signin_required === true });
-      return;
-    }
-    if (!r.ok) {
-      showStatus("That shared report link is invalid or is no longer available.", "error");
-      return;
-    }
-    let payload;
-    try {
-      payload = await r.json();
+      const r = await fetch("/api/shared?id=" + encodeURIComponent(m[1]));
+      if (r.status === 403) {
+        const body = await r.json().catch(() => ({}));
+        showSharedNotice(body.error || "This report is private.", { offerSignIn: body.signin_required === true });
+        return;
+      }
+      if (!r.ok) {
+        showStatus("That shared report link is invalid or is no longer available.", "error");
+        return;
+      }
+      const payload = await r.json();
       if (!payload || !payload.data || !payload.meta) throw new Error("bad payload");
+      const meta = payload.meta;
+      // Pre-fill the search form from the shared report's context.
+      if (meta.address) document.getElementById("address").value = meta.address;
+      if (meta.type) document.getElementById("propertyType").value = meta.type;
+      const s = meta.subject || {};
+      syncSubjectFieldsToType();
+      writeSubjectDetails(s.details);
+      if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
+      if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
+      if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
+      if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
+      renderResults(payload.data, meta);
+      showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
     } catch (e) {
       showStatus("That shared report link is invalid or is no longer available.", "error");
-      return;
     }
-    const meta = payload.meta;
-    // Pre-fill the search form from the shared report's context.
-    if (meta.address) document.getElementById("address").value = meta.address;
-    if (meta.type) document.getElementById("propertyType").value = meta.type;
-    const s = meta.subject || {};
-    syncSubjectFieldsToType();
-    writeSubjectDetails(s.details);
-    if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
-    if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
-    if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
-    if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
-    renderResults(payload.data, meta);
-    showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
   })();
 
   // ----------------------------------------------------------------------------
@@ -8555,7 +8556,17 @@
       chip.textContent = t.label;
       const text = document.createElement("span");
       text.className = "mr-3" + screenOnly;
-      text.textContent = "= " + t.legend + ".";
+      // SOURCE_TIERS.broker_vault's legend says "visible only to you", which
+      // is only true for the report's own owner. A client reading an invited
+      // share with includePrivate: true whole-comps opt-in sees this exact
+      // legend next to a row sitting right there in their own table — so on
+      // a shared report it must say what's true for THEM instead (same
+      // reader-vs-owner split as renderPrivateNotice(), 2026-08-06 review
+      // item 4).
+      const legendText = tier === "broker_vault" && currentMeta && currentMeta.shared
+        ? "the sender's own comp, from their private records, not from CompNinja's public research"
+        : t.legend;
+      text.textContent = "= " + legendText + ".";
       legend.appendChild(chip);
       legend.appendChild(text);
     });
@@ -9454,7 +9465,14 @@
     // a mistake, so the file says which way it goes.
     const privOut = privateIncludedCount();
     if (privOut > 0) {
-      curationBits.push(`${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, visible only to the report owner`);
+      // "visible only to the report owner" is false for a client reading an
+      // invited share with the whole-comps includePrivate opt-in — they can
+      // see these rows right in the table, they just aren't in THIS export.
+      // Same reader-vs-owner split as renderPrivateNotice() (2026-08-06
+      // review, item 4).
+      curationBits.push(currentMeta && currentMeta.shared
+        ? `${privOut} comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, from the sender's own records`
+        : `${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, visible only to the report owner`);
     }
     const title = currentMeta
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
@@ -9561,10 +9579,16 @@
           (cc.added ? `, ${cc.added} added by report owner` : ""),
         ]] : []),
         // Same disclosure the CSV title row carries: the Comps sheet is short
-        // by this many rows, and the value above is not.
+        // by this many rows, and the value above is not. "visible only to
+        // the report owner" is false for a client reading an invited share
+        // with the whole-comps includePrivate opt-in, who can see these rows
+        // in the table on screen — same reader-vs-owner split as
+        // renderPrivateNotice() (2026-08-06 review, item 4).
         ...(privateIncludedCount() > 0 ? [[
-          "Private vault comps",
-          `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (visible only to the report owner)`,
+          currentMeta && currentMeta.shared ? "Sender's private comps" : "Private vault comps",
+          currentMeta && currentMeta.shared
+            ? `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (from the sender's own records)`
+            : `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (visible only to the report owner)`,
         ]] : []),
         ...(s.noi > 0 ? [["NOI (yours)", xlsxMoney(s.noi)]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
@@ -9966,7 +9990,25 @@
     // A viewer already on their own published report's page: the URL IS the
     // share, nothing to create. `invited` is unknown here (this path never
     // asks the server), so callers must treat it as "don't know", not zero.
-    if (currentMeta.shared && /^\/r\/[A-Za-z0-9_-]+$/.test(location.pathname)) {
+    //
+    // Gated on `opts.visibility === undefined` (2026-08-06 review, item 2):
+    // this used to fire unconditionally, so choosing "Only people I invite"
+    // on a shared-report page returned the page's own URL with "Link
+    // copied" and never touched the server — no share row, no viewer list,
+    // no invitation email. If the underlying link was public, the member
+    // walked away believing they had just restricted it. The shortcut is
+    // only ever correct for the one caller that asks for nothing at all
+    // (the BOV flow's `publishCurrentReport()` above, which just wants
+    // whatever link is already current) — a plain re-copy of the link
+    // already on screen. Any call that names a visibility, INCLUDING an
+    // explicit "public" from the Create link button, is a real audience
+    // request and must reach the server: the front end has no way to know
+    // whether the share currently on screen was originally public or
+    // invited (GET /api/shared never sends that back in `meta`), so only
+    // the server can say whether "public" here means "same as before" or
+    // "widen an invited link."
+    if (opts.visibility === undefined
+      && currentMeta.shared && /^\/r\/[A-Za-z0-9_-]+$/.test(location.pathname)) {
       return { url: location.href, invited: null, visibility: null };
     }
     // The memo exists so Share-then-BOV does not publish twice. It must key on

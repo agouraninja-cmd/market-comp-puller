@@ -266,6 +266,50 @@ test("bare environment", async (t) => {
   // an external service. They rest on report-access.js plus one manual check
   // against the deployment.
 
+  // Branding's gate, wired.
+  //
+  // branding.js proves the DECISION. This proves it is ATTACHED: that all three
+  // routes exist and refuse an anonymous caller with 401 BEFORE the 503 this
+  // database-less server would otherwise give — the ordering rule openVault
+  // established, so a stranger never learns whether the database is up.
+  await t.test("every branding route refuses an anonymous caller, 401 before 503", async () => {
+    const routes = [
+      ["GET", "/api/branding", null],
+      ["PUT", "/api/branding", { firmName: "Adler Industrial" }],
+      ["DELETE", "/api/branding", null],
+    ];
+    for (const [method, p, body] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      assert.notEqual(r.status, 404, `${method} ${p} should exist and refuse, not be absent`);
+    }
+  });
+
+  await t.test("a share from an anonymous visitor cannot carry a brand it supplied", async () => {
+    // The browser hands /api/share its own meta. Without the server-side strip
+    // a visitor could publish a report under someone else's firm name.
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { comps: [{ address: "1 A St" }] },
+        meta: { address: "1 A St", type: "Industrial", branding: { firmName: "Not My Firm" } },
+      }),
+    });
+    assert.equal(r.status, 200);
+    const { id } = await r.json();
+    const got = await (await fetch(srv.base + "/api/shared?id=" + encodeURIComponent(id))).json();
+    assert.equal(got.meta.branding, undefined, "an unentitled share must carry no branding");
+  });
+
+  // NOT COVERED HERE, deliberately, for the reason the vault and sharing blocks
+  // already give: a saved profile actually appearing on a rendered report needs
+  // a real session and database, and nothing in this file may touch an external
+  // service. That rests on branding.js plus a manual check against the
+  // deployment.
+
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
     for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
       const r = await fetch(srv.base + p);

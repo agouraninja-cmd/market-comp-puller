@@ -9668,7 +9668,17 @@ const server = http.createServer((req, res) => {
         const user = await getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: "Please sign in." });
         if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Branding is unavailable right now." });
-        const row = await findBrandingProfile(user.id);
+        // Read directly with sbRequest rather than calling findBrandingProfile:
+        // that helper swallows its own errors and returns null on failure,
+        // which is the right behavior for Task 4's share path (a branding
+        // lookup must never fail a share) but wrong here — a swallowed read
+        // failure would look identical to "no profile yet" and answer 200,
+        // and the PUT's merge-duplicates upsert would then blank out a real
+        // saved profile on the member's next save. A throw here reaches the
+        // .catch() below and becomes the 503 that copy was written for.
+        const rows = await sbRequest("GET",
+          `branding_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
+        const row = (rows && rows[0]) || null;
         // Answer the API shape, not the table shape, so the column names stay
         // ours to change. An absent profile is {}, not 404: "you have no
         // branding yet" is a normal state, not an error.
@@ -9682,10 +9692,14 @@ const server = http.createServer((req, res) => {
 
     if (req.method === "PUT") {
       let body = "";
+      req.setEncoding("utf8"); // decode per chunk — += on raw buffers mangles a multibyte char split across chunks
       // 300KB: a 150KB logo is ~200KB as base64 inside JSON, plus the fields.
       req.on("data", (c) => { body += c; if (body.length > 3e5) req.destroy(); });
       req.on("end", async () => {
         try {
+          if (rateLimited("brand:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
           const user = await getSessionUser(req);
           if (!user) return sendJson(res, 401, { error: "Please sign in." });
           if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Branding is unavailable right now." });

@@ -1083,6 +1083,22 @@
         <p class="text-xs text-[#8A93A0] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
       </div>
 
+      <!-- Client sharing — two lists, one GET (/api/shares) covers both. A 401
+           (signed out) hides both silently, since the sign-in card above
+           already covers that case; a 503 shows this one line instead and
+           leaves the rest of the desk working. See renderShares(). -->
+      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports.</p>
+      <div id="deskShares" class="hidden mt-8">
+        <span class="rd-lab">Reports you have shared</span>
+        <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet. Open a report and use Share to invite someone or copy a link.</p>
+        <div id="sharesRows" class="mt-2 space-y-3"></div>
+      </div>
+      <div id="deskSharedWithMe" class="hidden mt-8">
+        <span class="rd-lab">Shared with you</span>
+        <p id="deskSharedWithMeEmpty" class="hidden text-sm text-[#5A6473] mt-2">No one has shared a report with you yet.</p>
+        <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
+      </div>
+
       <!-- Plan + billing. Shown only when the deployment actually sells
            something (proConfig.billing); everything in it is rendered by
            refreshBillingUI() from /api/config, never from local state. -->
@@ -6880,6 +6896,7 @@
     });
     renderWatchFeed();
     renderBrokerDesk();
+    renderShares();
   }
 
   // ----------------------------------------------------------------------------
@@ -7137,6 +7154,219 @@
       toggle.disabled = false;
     }
   });
+
+  // ----------------------------------------------------------------------------
+  // Client sharing — My Desk's two lists: reports this member has shared, and
+  // reports shared with them. One GET (/api/shares) answers both, matching how
+  // portfolio/watchlist load. Everything renders via createElement/textContent
+  // (address and viewer email are user-authored text), never innerHTML with an
+  // interpolated value — same rule the rest of this desk already follows.
+  //
+  // Failure states (mirrors the brief): a 401 means signed out, and the
+  // deskSignIn card already covers that, so both sections just hide with no
+  // message. A 503 (or any other failure — a network error, a bad body) shows
+  // one line and leaves the rest of the desk alone; it never fabricates a
+  // "0 shares" empty state, which would misreport a database blip as "you
+  // haven't shared anything."
+  // ----------------------------------------------------------------------------
+  function fmtShareDate(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  async function renderShares() {
+    const sharesBox = document.getElementById("deskShares");
+    const sharedWithMeBox = document.getElementById("deskSharedWithMe");
+    const errEl = document.getElementById("deskSharesLoadError");
+    errEl.classList.add("hidden");
+    const hideAll = () => { sharesBox.classList.add("hidden"); sharedWithMeBox.classList.add("hidden"); };
+    if (!currentUser) { hideAll(); return; }
+    let res;
+    try {
+      res = await fetch("/api/shares");
+    } catch (_) {
+      hideAll();
+      errEl.classList.remove("hidden");
+      return;
+    }
+    if (res.status === 401) { hideAll(); return; } // sign-in card already covers this
+    if (!res.ok) { hideAll(); errEl.classList.remove("hidden"); return; }
+    const data = await res.json().catch(() => null);
+    if (!data) { hideAll(); errEl.classList.remove("hidden"); return; }
+    sharesBox.classList.remove("hidden");
+    sharedWithMeBox.classList.remove("hidden");
+    renderMyShares(Array.isArray(data.mine) ? data.mine : []);
+    renderSharedWithMe(Array.isArray(data.sharedWithMe) ? data.sharedWithMe : []);
+  }
+
+  function renderMyShares(rows) {
+    const wrap = document.getElementById("sharesRows");
+    wrap.innerHTML = "";
+    document.getElementById("deskSharesEmpty").classList.toggle("hidden", rows.length > 0);
+    rows.forEach((r) => addMyShareRow(wrap, r));
+  }
+
+  function addMyShareRow(wrap, r) {
+    const revoked = Boolean(r.revokedAt);
+    const invited = r.visibility === "invited";
+    const viewers = Array.isArray(r.viewers) ? r.viewers : [];
+
+    const card = document.createElement("div");
+    card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3";
+
+    const head = document.createElement("div");
+    head.className = "flex flex-wrap items-baseline gap-x-2 gap-y-0.5";
+    const addr = document.createElement("span");
+    addr.className = "text-sm font-medium text-[#1A2433]";
+    addr.textContent = r.address;
+    head.appendChild(addr);
+    const type = document.createElement("span");
+    type.className = "text-xs text-[#8A93A0]";
+    type.textContent = r.type;
+    head.appendChild(type);
+    card.appendChild(head);
+
+    // Status line: revoked wins over visibility — a report can be "invited"
+    // AND turned off, and "Link turned off" is the more useful thing to say.
+    const status = document.createElement("div");
+    status.className = "text-xs mt-1 " + (revoked ? "text-[#8A93A0]" : "text-[#4C5665]");
+    status.textContent = revoked
+      ? "Link turned off"
+      : (invited ? `${viewers.length} invited` : "Anyone with the link");
+    card.appendChild(status);
+
+    if (!revoked && invited && viewers.length) {
+      const ul = document.createElement("ul");
+      ul.className = "mt-1.5 space-y-1";
+      viewers.forEach((v) => {
+        const li = document.createElement("li");
+        li.className = "text-xs text-[#4C5665]";
+        li.textContent = `${v.email} — ${v.firstViewedAt ? "opened " + fmtShareDate(v.firstViewedAt) : "not opened yet"}`;
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+    }
+
+    if (!revoked) {
+      // A public link has no viewer list — the server refuses the PUT with a
+      // 400 for exactly this reason (see the comment on that route), so the
+      // control is never offered here rather than offered and failing.
+      const editWrap = document.createElement("div");
+      editWrap.className = "hidden mt-2";
+      const ta = document.createElement("textarea");
+      ta.rows = 2;
+      ta.setAttribute("aria-label", "Edit invited emails");
+      ta.placeholder = "client@company.com, partner@company.com";
+      ta.className = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none";
+      // Pre-filled with the CURRENT list — replacing is wholesale, so a saved
+      // textarea that only ADDED one address must still carry everyone else.
+      const currentEmails = viewers.map((v) => v.email).join(", ");
+      ta.value = currentEmails;
+      editWrap.appendChild(ta);
+      const editErr = document.createElement("p");
+      editErr.className = "hidden text-xs text-red-600 mt-1";
+      editWrap.appendChild(editErr);
+      const editActions = document.createElement("div");
+      editActions.className = "mt-1.5 flex items-center gap-3 text-xs";
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium";
+      saveBtn.textContent = "Save";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "text-[#8A93A0] hover:text-[#1A2433]";
+      cancelBtn.textContent = "Cancel";
+      editActions.appendChild(saveBtn); editActions.appendChild(cancelBtn);
+      editWrap.appendChild(editActions);
+      card.appendChild(editWrap);
+
+      const rowErr = document.createElement("p");
+      rowErr.className = "hidden text-xs text-red-600 mt-1.5";
+      card.appendChild(rowErr);
+
+      const actions = document.createElement("div");
+      actions.className = "mt-2 flex items-center gap-3 text-xs";
+      if (invited) {
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "text-[#5A6473] hover:text-[#1A2433] underline";
+        editBtn.textContent = "Edit people";
+        editBtn.addEventListener("click", () => editWrap.classList.toggle("hidden"));
+        actions.appendChild(editBtn);
+      }
+      const offBtn = document.createElement("button");
+      offBtn.type = "button";
+      offBtn.className = "text-[#8A93A0] hover:text-red-700";
+      offBtn.textContent = "Turn off link";
+      offBtn.addEventListener("click", async () => {
+        rowErr.classList.add("hidden");
+        if (!confirm(`Turn off the shared link for ${r.address}? It will stop working immediately, for everyone it was sent to, and cannot be turned back on.`)) return;
+        offBtn.disabled = true;
+        try {
+          await acctApi("POST", "/api/shares/revoke", { id: r.id });
+          renderShares();
+        } catch (ex) {
+          offBtn.disabled = false;
+          rowErr.textContent = ex.message;
+          rowErr.classList.remove("hidden");
+        }
+      });
+      actions.appendChild(offBtn);
+      card.appendChild(actions);
+
+      saveBtn.addEventListener("click", async () => {
+        editErr.classList.add("hidden");
+        const emails = ta.value.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+        saveBtn.disabled = true;
+        try {
+          await acctApi("PUT", "/api/shares/viewers", { id: r.id, emails });
+          renderShares();
+        } catch (ex) {
+          // The server's own copy already warns the list may now be empty on
+          // a failed save (setShareViewers clears before it writes) — show
+          // exactly what it said rather than a made-up reassurance.
+          editErr.textContent = ex.message;
+          editErr.classList.remove("hidden");
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+      cancelBtn.addEventListener("click", () => {
+        ta.value = currentEmails;
+        editErr.classList.add("hidden");
+        editWrap.classList.add("hidden");
+      });
+    }
+
+    wrap.appendChild(card);
+  }
+
+  function renderSharedWithMe(rows) {
+    const wrap = document.getElementById("sharedWithMeRows");
+    wrap.innerHTML = "";
+    document.getElementById("deskSharedWithMeEmpty").classList.toggle("hidden", rows.length > 0);
+    rows.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const addr = document.createElement("a");
+      addr.href = r.url;
+      addr.target = "_blank";
+      addr.rel = "noopener noreferrer";
+      addr.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      addr.textContent = r.address;
+      row.appendChild(addr);
+      const bits = [r.type];
+      // Who invited them, when the server sends it — today's /api/shares
+      // contract doesn't carry an inviter identity on this side, so this
+      // stays a graceful no-op rather than a fabricated "someone shared this."
+      if (r.invitedBy) bits.push(`from ${r.invitedBy}`);
+      if (r.invitedAt) bits.push(`shared ${fmtShareDate(r.invitedAt)}`);
+      const meta = document.createElement("span");
+      meta.className = "text-xs text-[#8A93A0]";
+      meta.textContent = bits.filter(Boolean).join(" · ");
+      row.appendChild(meta);
+      wrap.appendChild(row);
+    });
+  }
 
   // Direct load / hard refresh on /desk. Runs after `let currentUser` executes;
   // renderMyDesk early-returns until the auth bootstrap fills the portfolio in.

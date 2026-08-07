@@ -533,7 +533,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   newly-added addresses), and `POST /api/shares/revoke` (one-way — there is
   no un-revoke, matching the vault's stance that access lapsing is safer
   than access silently returning).
-  **Two rules a future editor will otherwise break:**
+  **Three rules a future editor will otherwise break:**
   - **The ACL is never cached.** `sharedReportsMem` caches a share's
     *payload* for the life of the process — right for a report body, and
     catastrophic for an access rule. `getShareRecord()` re-reads
@@ -547,6 +547,25 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     check). A typo in a database column, or a new visibility value added
     later without updating this function, must fail toward *less* access, not
     publish a report to the whole internet.
+  - **A public share may never carry a private comp, and `storeSharedReport`
+    enforces that itself** rather than trusting the route to have checked.
+    With no database configured, storing a share whose visibility is not
+    `"public"` **throws** instead of falling back to the
+    `shared-reports.json` file store — the file has no column for
+    `visibility`, `user_id`, or viewers, so an invited share written there
+    would come back out of `getShareRecord` as `{ visibility: "public" }`,
+    publishing exactly what the member asked to restrict. This is the same
+    rule the broker vault's 503 already carries (see "Broker vault" below):
+    everywhere else in this app a Supabase failure falls back to a local
+    file so nothing is lost, but here the file WOULD be the loss, so the
+    write refuses instead. A **public** share keeps the fallback it has
+    always had — the file store still holds its body and the link still
+    works through a database blip, exactly as before this feature shipped;
+    the asymmetry between the two visibilities is the point. `POST
+    /api/share` also refuses this case at the route level (503, before
+    storage is ever reached), but that check protects one caller — this one
+    protects every future caller of `storeSharedReport`, which is why it
+    stays even though the route should make it unreachable in practice.
 - `GET /api/shared?id=` — returns a published report's `{ data, meta }`.
   For a public share, anyone with the link can view it (the original
   behavior, unchanged for every pre-v3 link already in the world). For an

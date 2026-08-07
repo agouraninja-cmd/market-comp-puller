@@ -8781,7 +8781,15 @@ const server = http.createServer((req, res) => {
           // tally ("4 exports left this month") on a report they own outright.
           // Spread rather than assign: `rep` may be the CACHED object, and the
           // cache must never carry one visitor's entitlement to the next.
-          const withExports = { ...gated, exports_remaining: ent.exportsRemaining };
+          // Per-visitor and per-REPORT, for the same reason exports_remaining is:
+          // `ent` was resolved with this report's id, so it knows a $20
+          // single-report unlock carries branding for this property. The
+          // browser cannot work this out for itself — /api/config's canBrand
+          // takes no report id, and lockedCount() === 0 is also true for a free
+          // visitor whose thin market simply returned fewer comps than the gate.
+          // Serialization-time like everything else here, so the cached object
+          // never carries one visitor's entitlement to the next.
+          const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
           // LAST, and only here. Every caller of gate() is an exit — the cache
           // hit, the derived-window hit, the SSE result and the plain JSON
           // result — so this is the one place a private comp can enter, and it

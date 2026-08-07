@@ -69,6 +69,10 @@ const { isAggregateAddress } = AUDIT;
 // Pure and tested, like the three modules above; server.js owns the database
 // read, the memo and the route (GET /api/accuracy).
 const BACKTEST = require("./backtest");
+// Report branding — the member's mark (logo, firm name, contact info,
+// disclaimer) that can be applied to a report they hold an entitlement for.
+// Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
+const BRANDING = require("./branding.js");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -9648,6 +9652,76 @@ const server = http.createServer((req, res) => {
       }
     });
     return;
+  }
+
+  // --- Report branding: the member's own mark -------------------------------
+  //
+  // Saving is deliberately NOT gated on canBrand. That entitlement is
+  // per-report (`pro || reportUnlocked`), so a $20 single-report buyer holds it
+  // only for the report they bought — gating this editor on Pro would make the
+  // $20 tile's own branding promise unfulfillable. A saved profile with no
+  // entitlement is inert: brandForRender returns null for it, and POST
+  // /api/share refuses to snapshot it. The gate is on APPLYING, not on saving.
+  if (req.url.split("?")[0] === "/api/branding") {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Branding is unavailable right now." });
+        const row = await findBrandingProfile(user.id);
+        // Answer the API shape, not the table shape, so the column names stay
+        // ours to change. An absent profile is {}, not 404: "you have no
+        // branding yet" is a normal state, not an error.
+        return sendJson(res, 200, { branding: BRANDING.normalizeBrand(row) || {} });
+      })().catch((err) => {
+        console.error("Branding read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (req.method === "PUT") {
+      let body = "";
+      // 300KB: a 150KB logo is ~200KB as base64 inside JSON, plus the fields.
+      req.on("data", (c) => { body += c; if (body.length > 3e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await getSessionUser(req);
+          if (!user) return sendJson(res, 401, { error: "Please sign in." });
+          if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Branding is unavailable right now." });
+          const parsed = JSON.parse(body || "{}");
+          const checked = BRANDING.validateForSave(parsed);
+          if (checked.error) return sendJson(res, 400, { error: checked.error });
+          await sbRequest("POST", "branding_profiles?on_conflict=user_id",
+            [{ ...checked.row, user_id: user.id, updated_at: new Date().toISOString() }],
+            { prefer: "resolution=merge-duplicates,return=minimal" });
+          return sendJson(res, 200, { branding: BRANDING.normalizeBrand(checked.row) || {} });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Branding save failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save your branding. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Branding is unavailable right now." });
+        // Scoped by user_id in the QUERY, never checked afterwards — the same
+        // rule every vault, share and coverage route follows.
+        await sbRequest("DELETE",
+          `branding_profiles?user_id=eq.${encodeURIComponent(user.id)}`, undefined,
+          { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("Branding delete failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't remove your branding. Please try again in a minute." });
+      });
+      return;
+    }
   }
 
   // --- Broker dashboard: the signed-in view of a contributor's submissions.

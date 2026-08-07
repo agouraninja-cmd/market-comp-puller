@@ -536,22 +536,39 @@ async function storeSharedReport(id, payload, opts = {}) {
       id, payload, created_at: new Date().toISOString(),
       user_id: userId, visibility, include_private: includePrivate,
     };
-    await sbRequest("POST", "shared_reports", [row], { prefer: "return=minimal" });
-    if (viewers.length) {
-      await sbRequest("POST", "report_viewers?on_conflict=share_id,email",
-        viewers.map((email) => ({ share_id: id, email })),
-        { prefer: "resolution=ignore-duplicates,return=minimal" });
+    try {
+      await sbRequest("POST", "shared_reports", [row], { prefer: "return=minimal" });
+      if (viewers.length) {
+        await sbRequest("POST", "report_viewers?on_conflict=share_id,email",
+          viewers.map((email) => ({ share_id: id, email })),
+          { prefer: "resolution=ignore-duplicates,return=minimal" });
+      }
+      return;
+    } catch (err) {
+      // The two visibilities need OPPOSITE failure behaviour, which is why
+      // this catch exists rather than a bare await.
+      //
+      // A PUBLIC share keeps the fallback it has always had: the file store
+      // holds the body, the link works, and a database blip costs nothing.
+      // Removing that would turn a working feature into a 500.
+      //
+      // An INVITED share must NOT fall back. The file store has nowhere to
+      // put a viewer list, so a fallback would write a report that
+      // getShareRecord later reads back as PUBLIC — publishing the exact
+      // thing the member asked to restrict. Fail loudly instead.
+      if (visibility !== "public") throw err;
+      console.error(`Shared report DB write failed (${err.message}) — falling back to file.`);
     }
-    return;
   }
-  // File fallback, PUBLIC shares only (Task 5 refuses invited without a DB).
+  // File fallback, PUBLIC shares only, by the rule above and by Task 5, which
+  // refuses to create an invited share when DB_CONFIGURED is false.
   const fileStore = await loadSharedReportsFile();
   fileStore[id] = payload;
   await fs.promises.writeFile(SHARED_REPORTS_FILE, JSON.stringify(fileStore));
 }
 ```
 
-Note the change of stance: the DB write no longer falls back to the file on error, it throws. A share that silently became file-only would lose its viewer list.
+The asymmetry above is the point of the task: public sharing keeps working through a database outage exactly as it does today, and permissioned sharing refuses rather than silently downgrading itself to a public link.
 
 - [ ] **Step 4: Add the four small helpers**
 

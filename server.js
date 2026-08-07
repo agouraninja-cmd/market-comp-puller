@@ -11403,6 +11403,40 @@ const server = http.createServer((req, res) => {
           ? BLEND.stripPrivateComps(report)
           : canPrivate ? report : BLEND.anonymizePrivateComps(report);
 
+        // SECOND LEAK OF THIS CLASS (the first was NOI, above): meta.curation
+        // rides through untouched, and curation.excluded is a list of
+        // address|date|price keys (compKeyOf() in index.html) offered on
+        // EVERY comp the owner sees, private ones included. A broker who
+        // excludes one of their own vault comps as an outlier and then
+        // shares still had that key sitting in meta.curation.excluded —
+        // stripPrivateComps/anonymizePrivateComps only touch data.comps, so
+        // the off-market address and exact sale price rode along in the
+        // meta the browser never renders as a table row but does keep in
+        // memory and could surface (and did, verbatim, in the raw payload
+        // GET /api/shared serves to anyone with the link — including on the
+        // invited+anonymized path, the one place the design promises no
+        // address or price travels). Fix: an excluded key only survives into
+        // a share if a comp with that exact key is still present in
+        // safeReport.comps; a key pointing at a comp that stripping/
+        // anonymizing just removed is dropped with it. corpusKeyOf() below
+        // is server.js's own copy of index.html's compKeyOf() (same fields,
+        // same normalization) — read from there rather than reinvented here,
+        // and if the two ever drift this filter silently stops matching, so
+        // keep them byte-identical. curation.added is the owner's own typed
+        // content, never vault data, and is left untouched. This is
+        // share-serialization only: safeMeta is a fresh object and the
+        // owner's own meta.curation (their saved report / portfolio) is
+        // never touched.
+        if (safeMeta.curation && Array.isArray(safeMeta.curation.excluded)) {
+          const survivingKeys = new Set(
+            (Array.isArray(safeReport.comps) ? safeReport.comps : []).map(corpusKeyOf)
+          );
+          safeMeta.curation = {
+            ...safeMeta.curation,
+            excluded: safeMeta.curation.excluded.filter((k) => survivingKeys.has(k)),
+          };
+        }
+
         const id = newShareId();
         await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
           userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers,

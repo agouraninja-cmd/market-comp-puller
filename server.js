@@ -11477,6 +11477,25 @@ const server = http.createServer((req, res) => {
         // decision below. Never cached across requests: entitlements are
         // per-user and lapse with a card.
         const ent = await entitlementsFor(req);
+
+        // The sender's mark travels with the report, as a SNAPSHOT rather than
+        // a lookup: the report should look the way it looked when it was sent,
+        // and a share outlives its owner's subscription and even their account.
+        //
+        // This is the real gate on branding. Saving a profile is open to any
+        // signed-in member because an unapplied profile is inert; this is the
+        // moment a brand leaves the account and reaches other people, so it is
+        // checked server-side and never trusted from the browser.
+        if (user && ent.canBrand) {
+          const brandRow = await findBrandingProfile(user.id);
+          const brand = BRANDING.normalizeBrand(brandRow);
+          if (brand) safeMeta.branding = brand;
+        } else {
+          // Never let a browser hand us one. A visitor could otherwise publish
+          // a report under someone else's firm name.
+          delete safeMeta.branding;
+        }
+
         const visibility = parsed.visibility === "invited" ? "invited" : "public";
         const includePrivate = parsed.includePrivate === true;
 

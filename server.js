@@ -2221,8 +2221,21 @@ async function storeSharedReport(id, payload, opts = {}) {
       console.error(`Shared report DB write failed (${err.message}) — falling back to file.`);
     }
   }
-  // File fallback, PUBLIC shares only, by the rule above and by Task 5, which
-  // refuses to create an invited share when DB_CONFIGURED is false.
+  // File fallback, PUBLIC shares only. This function enforces that itself —
+  // do not rely on Task 5's route-level check alone. The `if (DB_CONFIGURED)`
+  // block above only asymmetry-guards a database WRITE FAILURE; when there is
+  // no database at all, execution skips that block entirely and would
+  // otherwise land here with an invited share's payload and no visibility
+  // check. The file store has no column for visibility, user_id or viewers,
+  // so writing an invited share here would silently store it as an ordinary
+  // entry, and getShareRecord's own no-DB path later hands it back as
+  // `{ visibility: "public", revoked_at: null }` — publishing the exact
+  // thing the member asked to restrict, through a second door. Same rule as
+  // the vault's `openVault`: "no database, no permissioned write," enforced
+  // at the boundary that owns the data, not trusted to every caller.
+  if (visibility !== "public") {
+    throw new Error("Cannot store an invited share without a database — refusing to fall back to the public file store.");
+  }
   const fileStore = await loadSharedReportsFile();
   fileStore[id] = payload;
   await fs.promises.writeFile(SHARED_REPORTS_FILE, JSON.stringify(fileStore));

@@ -35,6 +35,10 @@ const VAULT = require("./broker-vault");
 // broker product, so it has to be PROVABLE rather than reviewed. This module
 // only shapes and merges; the read below is scoped by user_id here.
 const BLEND = require("./blend-comps");
+// Who may read a shared report. Pure and tested for the same reason as the
+// modules above it: this gate protects a broker's private comps, not a comp
+// count, so it has to be provable rather than reviewed.
+const SHAREACCESS = require("./report-access.js");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
@@ -2142,56 +2146,169 @@ async function loadSharedReportsFile() {
   }
 }
 
-async function getSharedReport(id) {
-  const mem = sharedReportsMem.get(id);
-  if (mem) return mem;
+// The PAYLOAD may cache; the ACL may NOT.
+//
+// sharedReportsMem holds a report body for the life of the process, which is
+// right for a body and catastrophic for an access rule: a revoked share would
+// keep serving out of memory until the next deploy, and the broker would have
+// been told it was off. So visibility, revoked_at and the viewer list are read
+// every single time, and only the payload is remembered.
+async function getShareRecord(id) {
   if (DB_CONFIGURED) {
     try {
-      const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/shared_reports?id=eq.${encodeURIComponent(id)}&select=payload&limit=1`,
-        { headers: supabaseHeaders() }
-      );
-      if (r.ok) {
-        const rows = await r.json();
-        if (rows[0]) {
-          sharedReportsMem.set(id, rows[0].payload);
-          return rows[0].payload;
-        }
+      const rows = await sbRequest("GET",
+        `shared_reports?id=eq.${encodeURIComponent(id)}` +
+        `&select=id,payload,user_id,visibility,include_private,revoked_at,created_at&limit=1`);
+      const row = rows && rows[0];
+      if (!row) return null;
+      const share = {
+        id: row.id, user_id: row.user_id, visibility: row.visibility,
+        include_private: row.include_private, revoked_at: row.revoked_at,
+        created_at: row.created_at,
+      };
+      // Only an invited share needs its viewer list, and only then is the
+      // extra round trip worth paying on a page load.
+      let viewers = [];
+      if (share.visibility !== "public") {
+        viewers = (await sbRequest("GET",
+          `report_viewers?share_id=eq.${encodeURIComponent(id)}&select=email`)) || [];
       }
+      sharedReportsMem.set(id, row.payload);
+      return { payload: row.payload, share, viewers };
     } catch (err) {
       console.error("Shared report DB read failed:", err.message);
+      // FAIL CLOSED. The old code fell through to the file here; that is now a
+      // refusal, because falling through would answer an invited share out of
+      // a store that has no idea who was invited.
+      throw err;
     }
   }
-  const fileStore = await loadSharedReportsFile();
-  if (fileStore[id]) {
-    sharedReportsMem.set(id, fileStore[id]);
-    return fileStore[id];
-  }
-  return null;
+  // No database configured: the file fallback holds legacy PUBLIC shares only.
+  // Task 5 refuses to CREATE an invited share without a database, so nothing
+  // permissioned can ever be in here.
+  const mem = sharedReportsMem.get(id);
+  const payload = mem || (await loadSharedReportsFile())[id];
+  if (!payload) return null;
+  sharedReportsMem.set(id, payload);
+  return { payload, share: { id, user_id: null, visibility: "public", revoked_at: null }, viewers: [] };
 }
 
-async function storeSharedReport(id, payload) {
-  sharedReportsMem.set(id, payload);
+async function storeSharedReport(id, payload, opts = {}) {
+  const { userId = null, visibility = "public", includePrivate = false, viewers = [] } = opts;
   if (DB_CONFIGURED) {
+    const row = {
+      id, payload, created_at: new Date().toISOString(),
+      user_id: userId, visibility, include_private: includePrivate,
+    };
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/shared_reports`, {
-        method: "POST",
-        headers: { ...supabaseHeaders(), prefer: "return=minimal" },
-        body: JSON.stringify({ id, payload, created_at: new Date().toISOString() }),
-      });
-      if (r.ok) return;
-      console.error(`Shared report DB write failed (${r.status}) — falling back to file.`);
+      await sbRequest("POST", "shared_reports", [row], { prefer: "return=minimal" });
+      if (viewers.length) {
+        await sbRequest("POST", "report_viewers?on_conflict=share_id,email",
+          viewers.map((email) => ({ share_id: id, email })),
+          { prefer: "resolution=ignore-duplicates,return=minimal" });
+      }
+      // Below the write, not above it: caching the payload only means
+      // anything once it is actually stored.
+      sharedReportsMem.set(id, payload);
+      return;
     } catch (err) {
-      console.error("Shared report DB write failed — falling back to file:", err.message);
+      // The two visibilities need OPPOSITE failure behaviour, which is why
+      // this catch exists rather than a bare await.
+      //
+      // A PUBLIC share keeps the fallback it has always had: the file store
+      // holds the body, the link works, and a database blip costs nothing.
+      // Removing that would turn a working feature into a 500.
+      //
+      // An INVITED share must NOT fall back. The file store has nowhere to
+      // put a viewer list, so a fallback would write a report that
+      // getShareRecord later reads back as PUBLIC — publishing the exact
+      // thing the member asked to restrict. Fail loudly instead.
+      if (visibility !== "public") throw err;
+      console.error(`Shared report DB write failed (${err.message}) — falling back to file.`);
     }
   }
-  try {
-    const fileStore = await loadSharedReportsFile();
-    fileStore[id] = payload;
-    await fs.promises.writeFile(SHARED_REPORTS_FILE, JSON.stringify(fileStore));
-  } catch (err) {
-    console.error("Shared report file write failed:", err.message);
+  // File fallback, PUBLIC shares only. This function enforces that itself —
+  // do not rely on Task 5's route-level check alone. The `if (DB_CONFIGURED)`
+  // block above only asymmetry-guards a database WRITE FAILURE; when there is
+  // no database at all, execution skips that block entirely and would
+  // otherwise land here with an invited share's payload and no visibility
+  // check. The file store has no column for visibility, user_id or viewers,
+  // so writing an invited share here would silently store it as an ordinary
+  // entry, and getShareRecord's own no-DB path later hands it back as
+  // `{ visibility: "public", revoked_at: null }` — publishing the exact
+  // thing the member asked to restrict, through a second door. Same rule as
+  // the vault's `openVault`: "no database, no permissioned write," enforced
+  // at the boundary that owns the data, not trusted to every caller.
+  if (visibility !== "public") {
+    throw new Error("Cannot store an invited share without a database — refusing to fall back to the public file store.");
   }
+  const fileStore = await loadSharedReportsFile();
+  fileStore[id] = payload;
+  await fs.promises.writeFile(SHARED_REPORTS_FILE, JSON.stringify(fileStore));
+  // Below the guard above, on purpose (Item 5, 2026-08-06 review): this used
+  // to run unconditionally at the top of the function, seeding the
+  // in-process cache with an invited share's payload before the guard had a
+  // chance to refuse it. getShareRecord's own no-DB path answers a cache hit
+  // as `{ visibility: "public" }`, so a future caller of storeSharedReport
+  // that reached this function without going through the route's own 503
+  // check would have quietly published a permissioned share. Unreachable
+  // today (the route 503s first), but the cache write has no business
+  // happening before the write it is caching.
+  sharedReportsMem.set(id, payload);
+}
+
+// Fire and forget: a failed stamp must never cost the client their report.
+function stampShareView(shareId, email) {
+  if (!DB_CONFIGURED || !email) return;
+  const now = new Date().toISOString();
+  (async () => {
+    const q = `report_viewers?share_id=eq.${encodeURIComponent(shareId)}&email=eq.${encodeURIComponent(email)}`;
+    await sbRequest("PATCH", q, { last_viewed_at: now }, { prefer: "return=minimal" });
+    // first_viewed_at only when it is still null, so it keeps meaning "first".
+    await sbRequest("PATCH", `${q}&first_viewed_at=is.null`, { first_viewed_at: now }, { prefer: "return=minimal" });
+  })().catch((err) => console.error("Share view stamp failed:", err.message));
+}
+
+// Whole-list replace, mirroring PUT /api/dev-ideas: one state to reason about
+// instead of three. Callers pass already-normalized emails.
+async function setShareViewers(shareId, emails) {
+  // DELETE before INSERT, deliberately, even though that order can leave the
+  // list empty if the insert below fails: a removed viewer is a security
+  // decision, and a half-completed replace must fail toward LESS access
+  // (nobody can read it) rather than MORE (a removed viewer keeps reading it,
+  // which insert-first would risk). The cost of that choice is a share that
+  // can be left with zero viewers on a mid-write failure — the caller in
+  // PUT /api/shares/viewers tells the member so, rather than implying nothing
+  // changed.
+  await sbRequest("DELETE", `report_viewers?share_id=eq.${encodeURIComponent(shareId)}`, undefined,
+    { prefer: "return=minimal" });
+  if (emails.length) {
+    await sbRequest("POST", "report_viewers?on_conflict=share_id,email",
+      emails.map((email) => ({ share_id: shareId, email })),
+      { prefer: "resolution=ignore-duplicates,return=minimal" });
+  }
+}
+
+async function revokeShare(shareId, userId) {
+  // Scoped by user_id in the QUERY, not checked after the fact: knowing an id
+  // must never be enough to touch a row. Same rule every vault read follows.
+  return sbRequest("PATCH",
+    `shared_reports?id=eq.${encodeURIComponent(shareId)}&user_id=eq.${encodeURIComponent(userId)}`,
+    { revoked_at: new Date().toISOString() }, { prefer: "return=representation" });
+}
+
+async function listSharesForOwner(userId) {
+  return (await sbRequest("GET",
+    `shared_reports?user_id=eq.${encodeURIComponent(userId)}` +
+    `&select=id,payload,visibility,include_private,revoked_at,created_at,report_viewers(email,invited_at,first_viewed_at,last_viewed_at)` +
+    `&order=created_at.desc&limit=200`)) || [];
+}
+
+async function listSharesForViewer(email) {
+  return (await sbRequest("GET",
+    `report_viewers?email=eq.${encodeURIComponent(email)}` +
+    `&select=share_id,invited_at,shared_reports(id,payload,visibility,revoked_at,created_at)` +
+    `&order=invited_at.desc&limit=200`)) || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -2560,6 +2677,24 @@ function sendOutboundEmail(to, subject, text) {
     return;
   }
   sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL });
+}
+
+// The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
+// unverified it logs "Outbound email skipped" and the sharer copies the link
+// by hand — exactly how password reset behaves today.
+//
+// Fire and forget, ALWAYS: the share row is already written when this runs. A
+// mail provider having a bad minute must never mean the link does not exist.
+function sendShareInvites(emails, { url, address, fromName }) {
+  for (const to of emails) {
+    const who = fromName ? `${fromName} has` : "Someone has";
+    sendOutboundEmail(to, `A property valuation was shared with you`,
+      `${who} shared a CompNinja valuation for ${address} with you.\n\n` +
+      `View it here: ${url}\n\n` +
+      `This report was shared with specific people. Sign in with this email address (${to}) to open it. ` +
+      `A free account is all it takes.\n\n` +
+      `Every CompNinja valuation is an automated estimate, not an appraisal.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -11237,16 +11372,103 @@ const server = http.createServer((req, res) => {
         delete safeMeta.portfolioId;
         safeMeta.shared = true;
         safeMeta.generatedAt = meta.generatedAt || Date.now();
-        // The broker's private comps are the same class of secret as the NOI
-        // above, with a sharper edge: this route takes the report FROM THE
-        // BROWSER, and a broker's browser is holding a BLENDED one. A shared
-        // report is public by design and has no viewer check to fall back on,
-        // so the server strips rather than trusting what it was handed.
-        const safeReport = BLEND.stripPrivateComps(report);
+        const user = await getSessionUser(req);
+        // Read once, used by both the invited gate and the private-comp
+        // decision below. Never cached across requests: entitlements are
+        // per-user and lapse with a card.
+        const ent = await entitlementsFor(req);
+        const visibility = parsed.visibility === "invited" ? "invited" : "public";
+        const includePrivate = parsed.includePrivate === true;
+
+        // A public link that carries private comps is the one mistake this
+        // route must never make quietly. 400, not a silent strip: a client bug
+        // should be loud on the first attempt rather than correct on every
+        // attempt by luck.
+        if (visibility === "public" && includePrivate) {
+          return sendJson(res, 400, { error: "A public link cannot include private comps." });
+        }
+
+        let viewers = [];
+        if (visibility === "invited") {
+          if (!user) return sendJson(res, 401, { error: "Please sign in to share a report with named people." });
+          if (!ent.pro) {
+            return sendJson(res, 403, { error: "Sharing with named clients is part of the paid plan.", upgrade: true });
+          }
+          if (!DB_CONFIGURED) {
+            // The vault's refusal, for the vault's reason: an access-control
+            // list in a JSON file on an ephemeral disk is not one.
+            return sendJson(res, 503, { error: "Private sharing is unavailable right now. Please try again in a minute." });
+          }
+          const asked = Array.isArray(parsed.viewers) ? parsed.viewers : [];
+          if (asked.length > 20) return sendJson(res, 400, { error: "Up to 20 people per report." });
+          viewers = [...new Set(asked.map(SHAREACCESS.normalizeEmail).filter(Boolean))];
+          if (asked.length && !viewers.length) {
+            return sendJson(res, 400, { error: "Those email addresses could not be read. Check them and try again." });
+          }
+        }
+
+        // Private comps: stripped for a public link; anonymized into the
+        // valuation basis for an invited one; carried whole only when the
+        // owner explicitly asked and may. Never trusted from the browser.
+        const canPrivate = includePrivate && visibility === "invited" && ent.canUseVault;
+        const safeReport = visibility === "public"
+          ? BLEND.stripPrivateComps(report)
+          : canPrivate ? report : BLEND.anonymizePrivateComps(report);
+
+        // SECOND LEAK OF THIS CLASS (the first was NOI, above): meta.curation
+        // rides through untouched, and curation.excluded is a list of
+        // address|date|price keys (compKeyOf() in index.html) offered on
+        // EVERY comp the owner sees, private ones included. A broker who
+        // excludes one of their own vault comps as an outlier and then
+        // shares still had that key sitting in meta.curation.excluded —
+        // stripPrivateComps/anonymizePrivateComps only touch data.comps, so
+        // the off-market address and exact sale price rode along in the
+        // meta the browser never renders as a table row but does keep in
+        // memory and could surface (and did, verbatim, in the raw payload
+        // GET /api/shared serves to anyone with the link — including on the
+        // invited+anonymized path, the one place the design promises no
+        // address or price travels). Fix: an excluded key only survives into
+        // a share if a comp with that exact key is still present in
+        // safeReport.comps; a key pointing at a comp that stripping/
+        // anonymizing just removed is dropped with it. corpusKeyOf() below
+        // is server.js's own copy of index.html's compKeyOf() (same fields,
+        // same normalization) — read from there rather than reinvented here,
+        // and if the two ever drift this filter silently stops matching, so
+        // keep them byte-identical. curation.added is the owner's own typed
+        // content, never vault data, and is left untouched. This is
+        // share-serialization only: safeMeta is a fresh object and the
+        // owner's own meta.curation (their saved report / portfolio) is
+        // never touched.
+        if (safeMeta.curation && Array.isArray(safeMeta.curation.excluded)) {
+          const survivingKeys = new Set(
+            (Array.isArray(safeReport.comps) ? safeReport.comps : []).map(corpusKeyOf)
+          );
+          safeMeta.curation = {
+            ...safeMeta.curation,
+            excluded: safeMeta.curation.excluded.filter((k) => survivingKeys.has(k)),
+          };
+        }
+
         const id = newShareId();
-        await storeSharedReport(id, { data: safeReport, meta: safeMeta });
-        logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address) });
-        return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}` });
+        await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
+          userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers,
+        });
+        logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
+        // The share row is already written. A mail send must never turn this
+        // success into an error, so guard even a synchronous throw here.
+        if (visibility === "invited" && viewers.length) {
+          try {
+            sendShareInvites(viewers, { url: `${SITE_URL}/r/${id}`, address: safeMeta.address, fromName: user.name || "" });
+          } catch (err) {
+            console.error("Share invite send failed:", err.message);
+          }
+        }
+        // `invited` is the FINAL normalized/deduped count actually stored and
+        // mailed (viewers.length), not the count of what the browser typed —
+        // the browser's own success message must read this, never recompute
+        // it, or a duplicate/typo makes it claim more people got the link
+        // than actually did.
+        return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}`, visibility, invited: viewers.length });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Failed to store shared report:", err);
@@ -11256,18 +11478,175 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Fetch a published report by id (public: anyone with the link) ---
+  // --- Fetch a published report by id (public: anyone with the link;
+  // invited: only the owner or a viewer on the list) ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/shared") {
     const id = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
     if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
       return sendJson(res, 400, { error: "Invalid share id." });
     }
-    getSharedReport(id).then((payload) => {
-      if (!payload) return sendJson(res, 404, { error: "This shared report was not found." });
-      return sendJson(res, 200, payload);
-    }).catch((err) => {
-      console.error("Shared report lookup failed:", err);
-      return sendJson(res, 500, { error: "Could not load the shared report." });
+    (async () => {
+      const user = await getSessionUser(req);
+      const rec = await getShareRecord(id);
+      if (!rec) return sendJson(res, 404, { error: "This shared report was not found." });
+      const decision = SHAREACCESS.canReadShare({ share: rec.share, viewers: rec.viewers, user });
+      if (!decision.ok) {
+        if (decision.reason === "revoked") {
+          // NOT 404 (a client would hunt for a typo in a link that was
+          // correct) and NOT signin_required (signing in cannot help, and the
+          // card would loop them).
+          return sendJson(res, 403, { error: "This report link was turned off by the person who sent it." });
+        }
+        if (decision.reason === "signin_required") {
+          return sendJson(res, 403, {
+            error: "This report was shared with specific people. Please sign in to view it.",
+            signin_required: true,
+          });
+        }
+        return sendJson(res, 403, { error: "This report was shared with specific people, and this account is not one of them." });
+      }
+      if (decision.reason === "invited") stampShareView(id, SHAREACCESS.normalizeEmail(user.email));
+      return sendJson(res, 200, rec.payload);
+    })().catch((err) => {
+      console.error("Shared report lookup failed:", err.message);
+      // Fails CLOSED: an error resolving the audience refuses the read. The
+      // opposite would serve a permissioned report during a database blip.
+      return sendJson(res, 503, { error: "Could not load the shared report. Please try again in a minute." });
+    });
+    return;
+  }
+
+  // --- The member's own shares, and the ones shared with them -------------
+  // Both halves in ONE call: /desk needs both and it is a page-load path.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/shares") {
+    (async () => {
+      const user = await getSessionUser(req);
+      if (!user) return sendJson(res, 401, { error: "Please sign in." });
+      if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
+      const [owned, invited] = await Promise.all([
+        listSharesForOwner(user.id),
+        listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
+      ]);
+      const brief = (payload) => ({
+        address: (payload && payload.meta && payload.meta.address) || "",
+        type: (payload && payload.meta && payload.meta.type) || "",
+      });
+      return sendJson(res, 200, {
+        mine: owned.map((r) => ({
+          id: r.id, ...brief(r.payload), visibility: r.visibility,
+          includePrivate: r.include_private, revokedAt: r.revoked_at, createdAt: r.created_at,
+          url: `${SITE_URL}/r/${r.id}`,
+          viewers: (r.report_viewers || []).map((v) => ({
+            email: v.email, invitedAt: v.invited_at,
+            firstViewedAt: v.first_viewed_at, lastViewedAt: v.last_viewed_at,
+          })),
+        })),
+        sharedWithMe: invited
+          .filter((r) => r.shared_reports && !r.shared_reports.revoked_at)
+          .map((r) => ({
+            id: r.share_id, ...brief(r.shared_reports.payload),
+            invitedAt: r.invited_at, url: `${SITE_URL}/r/${r.share_id}`,
+          })),
+      });
+    })().catch((err) => {
+      console.error("Shares list failed:", err.message);
+      return sendJson(res, 503, { error: "Couldn't load your shared reports. Please try again in a minute." });
+    });
+    return;
+  }
+
+  // --- Replace a share's viewer list wholesale ----------------------------
+  if (req.method === "PUT" && req.url.split("?")[0] === "/api/shares/viewers") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
+        const { id, emails } = JSON.parse(body || "{}");
+        if (!/^[A-Za-z0-9_-]{6,32}$/.test(String(id || ""))) return sendJson(res, 400, { error: "Invalid share id." });
+        const asked = Array.isArray(emails) ? emails : [];
+        if (asked.length > 20) return sendJson(res, 400, { error: "Up to 20 people per report." });
+        const clean = [...new Set(asked.map(SHAREACCESS.normalizeEmail).filter(Boolean))];
+        // Ownership proven by a scoped READ before any write: a stranger with
+        // an id must not be able to add themselves as a viewer. Pulls the
+        // CURRENT viewer list, visibility, and the report's address in the
+        // same query, because setShareViewers deletes the old list before
+        // writing the new one — this is the only chance to see who was
+        // already invited.
+        const owned = await sbRequest("GET",
+          `shared_reports?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}` +
+          `&select=id,visibility,revoked_at,payload,report_viewers(email)&limit=1`);
+        if (!owned || !owned[0]) return sendJson(res, 404, { error: "That shared report was not found." });
+        // A revoked link is permanently dead — checked before the visibility
+        // check below, in the same scoped read, so this never mails an
+        // invitation for a link that no longer opens for anyone. The UI
+        // already hides this control on a revoked row; this is the API-only
+        // door that leaves open otherwise (2026-08-06 review, item 7).
+        if (owned[0].revoked_at) {
+          return sendJson(res, 400, { error: "This link has been turned off and cannot be reopened." });
+        }
+        // A public link has no viewer list to edit — refused here, not merely
+        // because the rows would go unused. sendShareInvites' copy tells the
+        // recipient the report is identity-bound and to sign in with the
+        // exact address it was sent to; both statements are false for a
+        // public link, which canReadShare serves to anyone with the URL,
+        // signed in or not. Adding rows here would send that false promise.
+        if (owned[0].visibility !== "invited") {
+          return sendJson(res, 400, { error: "This is a public link. Anyone with it can already open it, so there is no viewer list to edit." });
+        }
+        const before = new Set((owned[0].report_viewers || []).map((v) => v.email));
+        // Only the NEWLY added addresses get mailed — re-saving an unchanged
+        // list (or only removing people) must email nobody.
+        const added = clean.filter((email) => !before.has(email));
+        await setShareViewers(id, clean);
+        if (added.length) {
+          try {
+            const address = (owned[0].payload && owned[0].payload.meta && owned[0].payload.meta.address) || "";
+            sendShareInvites(added, { url: `${SITE_URL}/r/${id}`, address, fromName: user.name || "" });
+          } catch (err) {
+            console.error("Share invite send failed:", err.message);
+          }
+        }
+        return sendJson(res, 200, { ok: true, viewers: clean });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Viewer update failed:", err.message);
+        // setShareViewers clears the old list before writing the new one, so a
+        // failure here can leave the share with no viewers at all, not the old
+        // list unchanged. Say so, rather than imply nothing happened.
+        return sendJson(res, 503, { error: "Couldn't update that list, and it may now be empty. Please set it again." });
+      }
+    });
+    return;
+  }
+
+  // --- Turn a link off. One way, on purpose ------------------------------
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/shares/revoke") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
+        const { id } = JSON.parse(body || "{}");
+        if (!/^[A-Za-z0-9_-]{6,32}$/.test(String(id || ""))) return sendJson(res, 400, { error: "Invalid share id." });
+        const rows = await revokeShare(id, user.id);
+        if (!rows || !rows.length) return sendJson(res, 404, { error: "That shared report was not found." });
+        // NOT what stops this process from serving the revoked link — that is
+        // getShareRecord() re-reading visibility/revoked_at from the database
+        // on every call; sharedReportsMem is only ever consulted on the
+        // no-database file-fallback path, which a revoked share cannot reach.
+        // This just drops a payload this process can no longer serve anyway.
+        sharedReportsMem.delete(id);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Share revoke failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't turn that link off. Please try again in a minute." });
+      }
     });
     return;
   }

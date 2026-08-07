@@ -50,11 +50,10 @@ intent, the devlog states history.
 
 ## Later (broker-tier phases, in order)
 
-v2 blended reports (private comps enrich the broker's own valuations
-only) → v3 client sharing with per-report viewer lists → v4 gut-check vs
-market data, BOV tracking, 1031 workflow education → hub ratings last.
-Hub monetization is gated on the attorney's referral-fee answer; the
-fallback if fees are barred is lead visibility as a subscription benefit.
+v4 gut-check vs market data, BOV tracking, 1031 workflow education → hub
+ratings last. Hub monetization is gated on the attorney's referral-fee
+answer; the fallback if fees are barred is lead visibility as a
+subscription benefit.
 
 ## Engineering track (no product decisions needed)
 
@@ -109,6 +108,16 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-06: v3 client sharing.** A share now carries an owner, an
+  audience and an off switch instead of only a public link: invited
+  visibility with a per-report viewer list keyed by email
+  (`report_viewers`, migration 018), revocation, and a broker's private
+  vault comps traveling as anonymized `locked_basis` rows so an invited
+  client's valuation matches the broker's to the dollar without an
+  off-market address ever leaving the vault. Full private detail is a
+  per-share opt-in gated on `canUseVault`. Rules live in the pure, tested
+  `report-access.js`. Not yet deployed — migration 018 has not run in
+  production.
 - **2026-08-06: v2 closed.** Broker tier v1 is done and live — the private
   vault, the star schema behind it (migration 016), blended private comps in a
   broker's own reports (server half #28, display half #30), the vault

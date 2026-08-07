@@ -708,6 +708,51 @@
     </div>
   </div>
 
+  <!-- Share panel — who this report link is for. Public (default) reuses the
+       existing zero-friction share flow; "Only people I invite" is the paid
+       client-sharing feature and is the only path that can ever carry
+       includePrivate. Follows the comp-submission modal's markup/classes. -->
+  <div id="shareModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-8">
+      <h2 class="text-lg font-semibold text-slate-900">Share this report</h2>
+      <p class="text-sm text-slate-500 mt-1 mb-4">Choose who can open the link.</p>
+      <div class="space-y-3">
+        <label class="flex items-start gap-2 text-sm text-slate-700">
+          <input type="radio" name="shareVisibility" value="public" checked class="accent-[#B91C1C] mt-0.5" />
+          <span>
+            <span class="block font-medium text-slate-900">Anyone with the link</span>
+            <span class="block text-slate-500">A public link. Works for anyone it reaches.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-slate-700">
+          <input type="radio" name="shareVisibility" value="invited" class="accent-[#B91C1C] mt-0.5" />
+          <span>
+            <span class="block font-medium text-slate-900">Only people I invite</span>
+            <span class="block text-slate-500">Named clients or partners, by email. Part of the paid plan.</span>
+          </span>
+        </label>
+      </div>
+      <div id="shareEmailsWrap" class="hidden mt-3">
+        <textarea id="shareEmails" rows="2" placeholder="client@company.com, partner@company.com" aria-label="Emails to invite"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+      </div>
+      <!-- Shown only for a signed-in vault-entitled member on a report that
+           actually has private comps blended in (private_count > 0). Nested
+           beside, not inside, shareEmailsWrap so its own visibility rule
+           (canUseVault + private_count) stays independently readable. -->
+      <label id="shareIncludePrivateWrap" class="hidden mt-2 flex items-center gap-2 text-sm text-slate-700">
+        <input id="shareIncludePrivate" type="checkbox" class="accent-[#B91C1C]" />
+        <span>Include my private comps in full</span>
+      </label>
+      <p id="shareResult" class="text-sm text-slate-500 mt-3"></p>
+      <button id="shareCreateBtn" type="button"
+        class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60 mt-4">
+        Create link
+      </button>
+      <button id="shareCancelBtn" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-1">Cancel</button>
+    </div>
+  </div>
+
   <!-- Property confirmation — free geocode check before the billed comp search -->
   <div id="confirmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
@@ -1036,6 +1081,22 @@
           <span id="brokerProfileErr" class="hidden text-red-600 text-xs"></span>
         </div>
         <p class="text-xs text-[#8A93A0] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
+      </div>
+
+      <!-- Client sharing — two lists, one GET (/api/shares) covers both. A 401
+           (signed out) hides both silently, since the sign-in card above
+           already covers that case; a 503 shows this one line instead and
+           leaves the rest of the desk working. See renderShares(). -->
+      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports.</p>
+      <div id="deskShares" class="hidden mt-8">
+        <span class="rd-lab">Reports you have shared</span>
+        <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet. Open a report and use Share to invite someone or copy a link.</p>
+        <div id="sharesRows" class="mt-2 space-y-3"></div>
+      </div>
+      <div id="deskSharedWithMe" class="hidden mt-8">
+        <span class="rd-lab">Shared with you</span>
+        <p id="deskSharedWithMeEmpty" class="hidden text-sm text-[#5A6473] mt-2">No one has shared a report with you yet.</p>
+        <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
       </div>
 
       <!-- Plan + billing. Shown only when the deployment actually sells
@@ -2463,30 +2524,57 @@
   // A /r/<id> share link: load the published report and render it read-only-ish
   // (it doesn't save into the viewer's history). The form above is pre-filled
   // with the property so the viewer can run their own fresh search in a click.
-  (function loadSharedReport() {
+  //
+  // A non-200 is not one outcome, it's three, and only one of them is fixable
+  // by signing in:
+  //   - 403 signin_required: true  -> the share is invited and this reader is
+  //     anonymous. Signing in can help, so offer the account modal.
+  //   - 403 with no signin_required -> either a signed-in reader who isn't on
+  //     the viewer list, or a revoked link. Neither is fixed by signing in
+  //     (the first is already signed in; the second stays off however many
+  //     accounts try it), so a sign-in button here would loop the reader.
+  //   - anything else (404/503/a malformed body) -> the existing generic copy.
+  (async function loadSharedReport() {
     const m = location.pathname.match(/^\/r\/([A-Za-z0-9_-]{6,32})$/);
     if (!m) return;
-    fetch("/api/shared?id=" + encodeURIComponent(m[1]))
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("not found"))))
-      .then((payload) => {
-        if (!payload || !payload.data || !payload.meta) throw new Error("bad payload");
-        const meta = payload.meta;
-        // Pre-fill the search form from the shared report's context.
-        if (meta.address) document.getElementById("address").value = meta.address;
-        if (meta.type) document.getElementById("propertyType").value = meta.type;
-        const s = meta.subject || {};
-        syncSubjectFieldsToType();
-        writeSubjectDetails(s.details);
-        if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
-        if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
-        if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
-        if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
-        renderResults(payload.data, meta);
-        showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
-      })
-      .catch(() => {
+    // ONE try/catch for the whole load-and-render (2026-08-06 review, item
+    // 6): this used to be a .then/.catch chain where the .catch covered a
+    // render-time throw too, not just the fetch. Turning it into an async
+    // IIFE without a matching try/catch left a payload that parses fine but
+    // breaks while rendering (renderResults() or anything else below) as an
+    // unhandled rejection — a blank page instead of the friendly message.
+    // The 403 and !r.ok branches below are expected, handled outcomes, not
+    // failures, so they still return their own specific copy; this catch is
+    // only for the unexpected kind.
+    try {
+      const r = await fetch("/api/shared?id=" + encodeURIComponent(m[1]));
+      if (r.status === 403) {
+        const body = await r.json().catch(() => ({}));
+        showSharedNotice(body.error || "This report is private.", { offerSignIn: body.signin_required === true });
+        return;
+      }
+      if (!r.ok) {
         showStatus("That shared report link is invalid or is no longer available.", "error");
-      });
+        return;
+      }
+      const payload = await r.json();
+      if (!payload || !payload.data || !payload.meta) throw new Error("bad payload");
+      const meta = payload.meta;
+      // Pre-fill the search form from the shared report's context.
+      if (meta.address) document.getElementById("address").value = meta.address;
+      if (meta.type) document.getElementById("propertyType").value = meta.type;
+      const s = meta.subject || {};
+      syncSubjectFieldsToType();
+      writeSubjectDetails(s.details);
+      if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
+      if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
+      if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
+      if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
+      renderResults(payload.data, meta);
+      showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
+    } catch (e) {
+      showStatus("That shared report link is invalid or is no longer available.", "error");
+    }
   })();
 
   // ----------------------------------------------------------------------------
@@ -2518,6 +2606,36 @@
     box.classList.remove("hidden");
   }
   function hideStatus() { document.getElementById("statusBox").classList.add("hidden"); }
+
+  // A /r/<id> refusal (private report, wrong account, or a revoked link)
+  // renders a card in place of the report, in the same statusBox a broken
+  // link already used. Only `offerSignIn` gets a button: canReadShare's other
+  // two 403 reasons cannot be fixed by signing in, and a button there would
+  // loop the reader forever. Builds nodes rather than interpolating the
+  // message into innerHTML, since it comes straight from the API response.
+  function showSharedNotice(message, { offerSignIn = false } = {}) {
+    const box = document.getElementById("statusBox");
+    box.className = "mt-6 rounded-lg border px-4 py-3 text-sm no-print bg-slate-50 border-slate-200 text-slate-700";
+    box.innerHTML = "";
+    const p = document.createElement("p");
+    p.textContent = message;
+    box.appendChild(p);
+    if (offerSignIn) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5";
+      btn.textContent = "Sign in or create account";
+      btn.addEventListener("click", () => {
+        // The account modal has no generic "on success" hook; reloading this
+        // same /r/<id> URL is the documented way to land on the report once
+        // the new session cookie makes canReadShare see it.
+        pendingSharedReload = true;
+        openAcctModal("signin", "Sign in to view this report.");
+      });
+      box.appendChild(btn);
+    }
+    box.classList.remove("hidden");
+  }
 
   // ----------------------------------------------------------------------------
   // Animated loading card — cycles through generation stages during the wait.
@@ -3649,7 +3767,7 @@
     // A curated report is a different document: force the next Share to
     // publish fresh rather than reuse the pre-curation URL (the memo keys on
     // object identity, which in-place curation edits don't change).
-    lastPublished = { parsed: null, url: "" };
+    lastPublished = { parsed: null, key: "", result: null };
     renderOwnerHero(currentParsed, currentMeta);
     renderAnalysisCluster(currentParsed, currentMeta, false);
     renderMarketChart();
@@ -6380,6 +6498,7 @@
   let currentUser = null;           // { email, name } | null
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
+  let pendingSharedReload = false;  // signin_required on /r/<id>: reload this URL once signed in
   let acctMode = "signin";          // signin | signup | forgot | reset
   let resetToken = "";
 
@@ -6473,6 +6592,7 @@
   function closeAcctModal() {
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
     pendingCheckoutPlan = null;   // ...and must not open Stripe Checkout later either
+    pendingSharedReload = false;  // ...and a cancelled sign-in must not reload the page later
     document.getElementById("acctModal").classList.add("hidden");
   }
 
@@ -6541,6 +6661,16 @@
       // Whose entitlements these are just changed — re-read them before any
       // billing control is acted on.
       refreshProConfig();
+      // A /r/<id> that answered signin_required: the modal has no generic
+      // "on success" hook, and a reload of this same URL is the documented
+      // way to land on a now-readable report (canReadShare re-evaluates with
+      // the fresh session cookie). Do this before the import-prompt branch
+      // below, which would otherwise flash on screen for an instant that a
+      // reload immediately discards.
+      if (pendingSharedReload) {
+        location.reload();
+        return;
+      }
       // Capture the pending flags BEFORE closing: closeAcctModal clears them
       // (so a cancelled nudge can't fire a surprise save, or a surprise
       // checkout, after a later sign-in).
@@ -6767,6 +6897,7 @@
     });
     renderWatchFeed();
     renderBrokerDesk();
+    renderShares();
   }
 
   // ----------------------------------------------------------------------------
@@ -7024,6 +7155,219 @@
       toggle.disabled = false;
     }
   });
+
+  // ----------------------------------------------------------------------------
+  // Client sharing — My Desk's two lists: reports this member has shared, and
+  // reports shared with them. One GET (/api/shares) answers both, matching how
+  // portfolio/watchlist load. Everything renders via createElement/textContent
+  // (address and viewer email are user-authored text), never innerHTML with an
+  // interpolated value — same rule the rest of this desk already follows.
+  //
+  // Failure states (mirrors the brief): a 401 means signed out, and the
+  // deskSignIn card already covers that, so both sections just hide with no
+  // message. A 503 (or any other failure — a network error, a bad body) shows
+  // one line and leaves the rest of the desk alone; it never fabricates a
+  // "0 shares" empty state, which would misreport a database blip as "you
+  // haven't shared anything."
+  // ----------------------------------------------------------------------------
+  function fmtShareDate(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  async function renderShares() {
+    const sharesBox = document.getElementById("deskShares");
+    const sharedWithMeBox = document.getElementById("deskSharedWithMe");
+    const errEl = document.getElementById("deskSharesLoadError");
+    errEl.classList.add("hidden");
+    const hideAll = () => { sharesBox.classList.add("hidden"); sharedWithMeBox.classList.add("hidden"); };
+    if (!currentUser) { hideAll(); return; }
+    let res;
+    try {
+      res = await fetch("/api/shares");
+    } catch (_) {
+      hideAll();
+      errEl.classList.remove("hidden");
+      return;
+    }
+    if (res.status === 401) { hideAll(); return; } // sign-in card already covers this
+    if (!res.ok) { hideAll(); errEl.classList.remove("hidden"); return; }
+    const data = await res.json().catch(() => null);
+    if (!data) { hideAll(); errEl.classList.remove("hidden"); return; }
+    sharesBox.classList.remove("hidden");
+    sharedWithMeBox.classList.remove("hidden");
+    renderMyShares(Array.isArray(data.mine) ? data.mine : []);
+    renderSharedWithMe(Array.isArray(data.sharedWithMe) ? data.sharedWithMe : []);
+  }
+
+  function renderMyShares(rows) {
+    const wrap = document.getElementById("sharesRows");
+    wrap.innerHTML = "";
+    document.getElementById("deskSharesEmpty").classList.toggle("hidden", rows.length > 0);
+    rows.forEach((r) => addMyShareRow(wrap, r));
+  }
+
+  function addMyShareRow(wrap, r) {
+    const revoked = Boolean(r.revokedAt);
+    const invited = r.visibility === "invited";
+    const viewers = Array.isArray(r.viewers) ? r.viewers : [];
+
+    const card = document.createElement("div");
+    card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3";
+
+    const head = document.createElement("div");
+    head.className = "flex flex-wrap items-baseline gap-x-2 gap-y-0.5";
+    const addr = document.createElement("span");
+    addr.className = "text-sm font-medium text-[#1A2433]";
+    addr.textContent = r.address;
+    head.appendChild(addr);
+    const type = document.createElement("span");
+    type.className = "text-xs text-[#8A93A0]";
+    type.textContent = r.type;
+    head.appendChild(type);
+    card.appendChild(head);
+
+    // Status line: revoked wins over visibility — a report can be "invited"
+    // AND turned off, and "Link turned off" is the more useful thing to say.
+    const status = document.createElement("div");
+    status.className = "text-xs mt-1 " + (revoked ? "text-[#8A93A0]" : "text-[#4C5665]");
+    status.textContent = revoked
+      ? "Link turned off"
+      : (invited ? `${viewers.length} invited` : "Anyone with the link");
+    card.appendChild(status);
+
+    if (!revoked && invited && viewers.length) {
+      const ul = document.createElement("ul");
+      ul.className = "mt-1.5 space-y-1";
+      viewers.forEach((v) => {
+        const li = document.createElement("li");
+        li.className = "text-xs text-[#4C5665]";
+        li.textContent = `${v.email} — ${v.firstViewedAt ? "opened " + fmtShareDate(v.firstViewedAt) : "not opened yet"}`;
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+    }
+
+    if (!revoked) {
+      // A public link has no viewer list — the server refuses the PUT with a
+      // 400 for exactly this reason (see the comment on that route), so the
+      // control is never offered here rather than offered and failing.
+      const editWrap = document.createElement("div");
+      editWrap.className = "hidden mt-2";
+      const ta = document.createElement("textarea");
+      ta.rows = 2;
+      ta.setAttribute("aria-label", "Edit invited emails");
+      ta.placeholder = "client@company.com, partner@company.com";
+      ta.className = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none";
+      // Pre-filled with the CURRENT list — replacing is wholesale, so a saved
+      // textarea that only ADDED one address must still carry everyone else.
+      const currentEmails = viewers.map((v) => v.email).join(", ");
+      ta.value = currentEmails;
+      editWrap.appendChild(ta);
+      const editErr = document.createElement("p");
+      editErr.className = "hidden text-xs text-red-600 mt-1";
+      editWrap.appendChild(editErr);
+      const editActions = document.createElement("div");
+      editActions.className = "mt-1.5 flex items-center gap-3 text-xs";
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium";
+      saveBtn.textContent = "Save";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "text-[#8A93A0] hover:text-[#1A2433]";
+      cancelBtn.textContent = "Cancel";
+      editActions.appendChild(saveBtn); editActions.appendChild(cancelBtn);
+      editWrap.appendChild(editActions);
+      card.appendChild(editWrap);
+
+      const rowErr = document.createElement("p");
+      rowErr.className = "hidden text-xs text-red-600 mt-1.5";
+      card.appendChild(rowErr);
+
+      const actions = document.createElement("div");
+      actions.className = "mt-2 flex items-center gap-3 text-xs";
+      if (invited) {
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "text-[#5A6473] hover:text-[#1A2433] underline";
+        editBtn.textContent = "Edit people";
+        editBtn.addEventListener("click", () => editWrap.classList.toggle("hidden"));
+        actions.appendChild(editBtn);
+      }
+      const offBtn = document.createElement("button");
+      offBtn.type = "button";
+      offBtn.className = "text-[#8A93A0] hover:text-red-700";
+      offBtn.textContent = "Turn off link";
+      offBtn.addEventListener("click", async () => {
+        rowErr.classList.add("hidden");
+        if (!confirm(`Turn off the shared link for ${r.address}? It will stop working immediately, for everyone it was sent to, and cannot be turned back on.`)) return;
+        offBtn.disabled = true;
+        try {
+          await acctApi("POST", "/api/shares/revoke", { id: r.id });
+          renderShares();
+        } catch (ex) {
+          offBtn.disabled = false;
+          rowErr.textContent = ex.message;
+          rowErr.classList.remove("hidden");
+        }
+      });
+      actions.appendChild(offBtn);
+      card.appendChild(actions);
+
+      saveBtn.addEventListener("click", async () => {
+        editErr.classList.add("hidden");
+        const emails = ta.value.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+        saveBtn.disabled = true;
+        try {
+          await acctApi("PUT", "/api/shares/viewers", { id: r.id, emails });
+          renderShares();
+        } catch (ex) {
+          // The server's own copy already warns the list may now be empty on
+          // a failed save (setShareViewers clears before it writes) — show
+          // exactly what it said rather than a made-up reassurance.
+          editErr.textContent = ex.message;
+          editErr.classList.remove("hidden");
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+      cancelBtn.addEventListener("click", () => {
+        ta.value = currentEmails;
+        editErr.classList.add("hidden");
+        editWrap.classList.add("hidden");
+      });
+    }
+
+    wrap.appendChild(card);
+  }
+
+  function renderSharedWithMe(rows) {
+    const wrap = document.getElementById("sharedWithMeRows");
+    wrap.innerHTML = "";
+    document.getElementById("deskSharedWithMeEmpty").classList.toggle("hidden", rows.length > 0);
+    rows.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const addr = document.createElement("a");
+      addr.href = r.url;
+      addr.target = "_blank";
+      addr.rel = "noopener noreferrer";
+      addr.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      addr.textContent = r.address;
+      row.appendChild(addr);
+      const bits = [r.type];
+      // Who invited them, when the server sends it — today's /api/shares
+      // contract doesn't carry an inviter identity on this side, so this
+      // stays a graceful no-op rather than a fabricated "someone shared this."
+      if (r.invitedBy) bits.push(`from ${r.invitedBy}`);
+      if (r.invitedAt) bits.push(`shared ${fmtShareDate(r.invitedAt)}`);
+      const meta = document.createElement("span");
+      meta.className = "text-xs text-[#8A93A0]";
+      meta.textContent = bits.filter(Boolean).join(" · ");
+      row.appendChild(meta);
+      wrap.appendChild(row);
+    });
+  }
 
   // Direct load / hard refresh on /desk. Runs after `let currentUser` executes;
   // renderMyDesk early-returns until the auth bootstrap fills the portfolio in.
@@ -8212,7 +8556,17 @@
       chip.textContent = t.label;
       const text = document.createElement("span");
       text.className = "mr-3" + screenOnly;
-      text.textContent = "= " + t.legend + ".";
+      // SOURCE_TIERS.broker_vault's legend says "visible only to you", which
+      // is only true for the report's own owner. A client reading an invited
+      // share with includePrivate: true whole-comps opt-in sees this exact
+      // legend next to a row sitting right there in their own table — so on
+      // a shared report it must say what's true for THEM instead (same
+      // reader-vs-owner split as renderPrivateNotice(), 2026-08-06 review
+      // item 4).
+      const legendText = tier === "broker_vault" && currentMeta && currentMeta.shared
+        ? "the sender's own comp, from their private records, not from CompNinja's public research"
+        : t.legend;
+      text.textContent = "= " + legendText + ".";
       legend.appendChild(chip);
       legend.appendChild(text);
     });
@@ -8235,13 +8589,53 @@
     const el = document.getElementById("privateNotice");
     if (!el) return;
     const n = privateIncludedCount();
-    if (n <= 0) { el.classList.add("hidden"); el.textContent = ""; return; }
-    el.classList.remove("hidden");
-    const one = n === 1;
-    el.textContent =
-      `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
-      `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
-      `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+    if (n > 0) {
+      el.classList.remove("hidden");
+      const one = n === 1;
+      // Two readers can land on this branch, and they need DIFFERENT copy.
+      // The default (currentMeta.shared is falsy) is the report's own owner
+      // looking at their own blended vault comps: the "left out of downloads/
+      // shared links" line is true and load-bearing there, it is the reason
+      // an export comes up short of rows the valuation still counted.
+      // But a shared report can ALSO reach this branch: an invited share
+      // made with the full-detail includePrivate: true opt-in keeps private
+      // comps whole (server.js's `canPrivate` path), so a client can be
+      // looking at a vault comp sitting right there in the table. Telling
+      // THAT reader the row is "visible only to you" and "left out of shared
+      // links" would be false on every clause -- they are reading it on a
+      // shared link right now. They just need to know where it came from.
+      if (currentMeta && currentMeta.shared) {
+        el.textContent = `${n} comp${one ? "" : "s"} in this report ` +
+          `${one ? "comes" : "come"} from the sender's own records, ` +
+          `not from CompNinja's public research.`;
+      } else {
+        el.textContent =
+          `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
+          `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
+          `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+      }
+      return;
+    }
+    // A shared report can carry its owner's private comps as anonymized
+    // locked_basis rows instead of table rows (an invited share's default,
+    // see anonymizePrivateComps in blend-comps.js): private_count > 0 but no
+    // comp in currentComps is flagged private, so privateIncludedCount() above
+    // reads 0 even though the valuation counted them. Say so, or a client
+    // reasonably asks why the range cites more evidence than the table shows.
+    // This never implies CompNinja withheld anything — the sender's own
+    // records are included, just not shown — and it is not an appraisal claim.
+    const basisCount = currentMeta && currentMeta.shared
+      ? Number(currentParsed && currentParsed.private_count) || 0
+      : 0;
+    if (basisCount > 0) {
+      el.classList.remove("hidden");
+      const one = basisCount === 1;
+      el.textContent = `${basisCount} comp${one ? "" : "s"} from the sender's own records ` +
+        `${one ? "is" : "are"} included in this valuation but ${one ? "is" : "are"} not shown.`;
+      return;
+    }
+    el.classList.add("hidden");
+    el.textContent = "";
   }
 
   // Shared viewers see the curated report but never the editing controls —
@@ -8455,7 +8849,7 @@
       const prev = cur.read || { direction: null, note: "" };
       cur.read = mutate(prev);
       if (cur.read && !cur.read.direction && !cur.read.note) cur.read = null;
-      lastPublished = { parsed: null, url: "" };
+      lastPublished = { parsed: null, key: "", result: null };
       renderValueDrivers(currentParsed, currentMeta);
       persistAssumptions();
       flashReadSaved();
@@ -9071,7 +9465,14 @@
     // a mistake, so the file says which way it goes.
     const privOut = privateIncludedCount();
     if (privOut > 0) {
-      curationBits.push(`${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, visible only to the report owner`);
+      // "visible only to the report owner" is false for a client reading an
+      // invited share with the whole-comps includePrivate opt-in — they can
+      // see these rows right in the table, they just aren't in THIS export.
+      // Same reader-vs-owner split as renderPrivateNotice() (2026-08-06
+      // review, item 4).
+      curationBits.push(currentMeta && currentMeta.shared
+        ? `${privOut} comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, from the sender's own records`
+        : `${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, visible only to the report owner`);
     }
     const title = currentMeta
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
@@ -9178,10 +9579,16 @@
           (cc.added ? `, ${cc.added} added by report owner` : ""),
         ]] : []),
         // Same disclosure the CSV title row carries: the Comps sheet is short
-        // by this many rows, and the value above is not.
+        // by this many rows, and the value above is not. "visible only to
+        // the report owner" is false for a client reading an invited share
+        // with the whole-comps includePrivate opt-in, who can see these rows
+        // in the table on screen — same reader-vs-owner split as
+        // renderPrivateNotice() (2026-08-06 review, item 4).
         ...(privateIncludedCount() > 0 ? [[
-          "Private vault comps",
-          `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (visible only to the report owner)`,
+          currentMeta && currentMeta.shared ? "Sender's private comps" : "Private vault comps",
+          currentMeta && currentMeta.shared
+            ? `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (from the sender's own records)`
+            : `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (visible only to the report owner)`,
         ]] : []),
         ...(s.noi > 0 ? [["NOI (yours)", xlsxMoney(s.noi)]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
@@ -9496,7 +9903,11 @@
     // panel carry a share link. Publish failure must never block the lead.
     let reportUrl = "";
     if (leadContext === "bov" && currentParsed && currentMeta) {
-      try { reportUrl = await publishCurrentReport(); } catch (_) {}
+      // publishCurrentReport() with no args always means visibility: "public"
+      // (opts.visibility defaults to "public" when undefined), so this keeps
+      // getting the same public link it always has — only its return shape
+      // changed, to { url, invited, visibility }.
+      try { reportUrl = (await publishCurrentReport()).url; } catch (_) {}
       if (reportUrl) payload.report_url = reportUrl;
     }
     try {
@@ -9554,54 +9965,172 @@
   // export gate), even when exports are already unlocked.
   document.getElementById("bovCtaBtn").addEventListener("click", () => openLeadModal("bov"));
 
-  // Publish the current report under a share id and return its URL. Used by
-  // the Share button and the BOV flow (the lead gets their report link).
-  // Memoized per report object so BOV-after-share doesn't publish twice; a
-  // viewer already on /r/<id> just reuses that link.
-  let lastPublished = { parsed: null, url: "" };
-  async function publishCurrentReport() {
+  // Said before the fact, in the interface, rather than buried in terms: this
+  // is the one action that sends vault addresses to someone outside the
+  // account, and whether that is allowed depends on a licence we do not hold.
+  const SHARE_PRIVATE_CONFIRM =
+    "Include your private comps in full?\n\n" +
+    "The people you invite will see the full address and price of the comps from your vault. " +
+    "Everything else in your vault stays private, and this applies only to this link.\n\n" +
+    "Sharing MLS-sourced data is subject to your own licence terms.";
+
+  // Publish the current report under a share id and return { url, invited,
+  // visibility }. Used by the Share button and the BOV flow (the lead gets
+  // their report link). Memoized per report object so BOV-after-share does
+  // not publish twice; a viewer already on /r/<id> just reuses that link.
+  //
+  // `invited` is the server's own final count (deduped, unparseable
+  // addresses dropped) — never recomputed here from what was typed. The
+  // caller must read it, not `viewers.length`, or a duplicate paste or one
+  // typo makes the success message claim more people got the link than
+  // actually did.
+  let lastPublished = { parsed: null, key: "", result: null };
+  async function publishCurrentReport(opts = {}) {
     if (!currentParsed || !currentMeta) throw new Error("No report to share.");
-    if (currentMeta.shared && /^\/r\/[A-Za-z0-9_-]+$/.test(location.pathname)) return location.href;
-    if (lastPublished.parsed === currentParsed && lastPublished.url) return lastPublished.url;
+    // A viewer already on their own published report's page: the URL IS the
+    // share, nothing to create. `invited` is unknown here (this path never
+    // asks the server), so callers must treat it as "don't know", not zero.
+    //
+    // Gated on `opts.visibility === undefined` (2026-08-06 review, item 2):
+    // this used to fire unconditionally, so choosing "Only people I invite"
+    // on a shared-report page returned the page's own URL with "Link
+    // copied" and never touched the server — no share row, no viewer list,
+    // no invitation email. If the underlying link was public, the member
+    // walked away believing they had just restricted it. The shortcut is
+    // only ever correct for the one caller that asks for nothing at all
+    // (the BOV flow's `publishCurrentReport()` above, which just wants
+    // whatever link is already current) — a plain re-copy of the link
+    // already on screen. Any call that names a visibility, INCLUDING an
+    // explicit "public" from the Create link button, is a real audience
+    // request and must reach the server: the front end has no way to know
+    // whether the share currently on screen was originally public or
+    // invited (GET /api/shared never sends that back in `meta`), so only
+    // the server can say whether "public" here means "same as before" or
+    // "widen an invited link."
+    if (opts.visibility === undefined
+      && currentMeta.shared && /^\/r\/[A-Za-z0-9_-]+$/.test(location.pathname)) {
+      return { url: location.href, invited: null, visibility: null };
+    }
+    // The memo exists so Share-then-BOV does not publish twice. It must key on
+    // the AUDIENCE as well as the report, or an invited share silently returns
+    // the public link created a moment earlier.
+    const key = JSON.stringify([opts.visibility || "public", opts.viewers || [], !!opts.includePrivate]);
+    if (lastPublished.parsed === currentParsed && lastPublished.key === key && lastPublished.result) {
+      return lastPublished.result;
+    }
     const r = await fetch("/api/share", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ data: currentParsed, meta: currentMeta }),
+      body: JSON.stringify({ data: currentParsed, meta: currentMeta, ...opts }),
     });
-    if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) || "Share failed.");
-    const { url } = await r.json();
-    lastPublished = { parsed: currentParsed, url };
-    return url;
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      const err = new Error(body.error || "Share failed.");
+      // The refusal is read off `upgrade`, a structured flag, never off the
+      // wording of `.message`. The 403's prose is customer-facing copy and
+      // free to be reworded; `upgrade: true` is the contract. Matching a
+      // string here would silently stop opening the pricing modal the moment
+      // someone rewords that sentence, with nothing failing loudly.
+      err.upgrade = body.upgrade === true;
+      throw err;
+    }
+    const body = await r.json();
+    const result = {
+      url: body.url,
+      invited: typeof body.invited === "number" ? body.invited : null,
+      visibility: body.visibility || null,
+    };
+    lastPublished = { parsed: currentParsed, key, result };
+    return result;
   }
 
-  // Share link — publish the current report server-side and copy its URL. NOT
-  // gated by lead capture: sharing spreads the product, so we want zero
-  // friction. The recipient lands on the full report with the BOV ask in view.
-  document.getElementById("shareBtn").addEventListener("click", async () => {
+  // ----------------------------------------------------------------------------
+  // Share panel — asks who a share is for before publishing. NOT gated by lead
+  // capture: sharing spreads the product, so we want zero friction on the
+  // public path. The recipient lands on the full report with the BOV ask in
+  // view.
+  // ----------------------------------------------------------------------------
+  const shareModal = document.getElementById("shareModal");
+
+  // Shows/hides the invite-emails box and the include-private checkbox. Called
+  // on panel open and on every visibility radio change. The checkbox's own
+  // rule is exactly the brief's: proConfig.canUseVault AND this report actually
+  // has private comps blended in (private_count > 0) — reading proConfig here
+  // is safe because this only ever runs from a later event, well past its
+  // declaration further down this same script (see the TDZ comment above
+  // addressExplorerAllowed()).
+  function updateShareVisibilityUI() {
+    const checked = document.querySelector('input[name="shareVisibility"]:checked');
+    const invited = Boolean(checked && checked.value === "invited");
+    document.getElementById("shareEmailsWrap").classList.toggle("hidden", !invited);
+    const canPrivate = invited && Boolean(proConfig && proConfig.canUseVault)
+      && Number(currentParsed && currentParsed.private_count) > 0;
+    document.getElementById("shareIncludePrivateWrap").classList.toggle("hidden", !canPrivate);
+  }
+
+  function openSharePanel() {
     if (!currentParsed || !currentMeta) return;
-    const btn = document.getElementById("shareBtn");
-    const label = document.getElementById("shareBtnLabel");
-    if (btn.dataset.busy === "1") return;
-    btn.dataset.busy = "1";
-    const original = "Share link";
-    label.textContent = "Creating link…";
-    try {
-      const url = await publishCurrentReport();
-      label.textContent = original;   // restore before flash captures the HTML
-      let copied = false;
-      try { await navigator.clipboard.writeText(url); copied = true; } catch (_) {}
-      if (copied) {
-        flashExportDone(btn, "Link copied!");
-      } else {
-        // Clipboard blocked (non-secure context, permissions) — show it to copy by hand.
-        window.prompt("Copy this shareable link:", url);
-      }
-    } catch (err) {
-      label.textContent = "Try again";
-      setTimeout(() => { label.textContent = original; }, 1800);
-    } finally {
-      btn.dataset.busy = "0";
+    document.querySelector('input[name="shareVisibility"][value="public"]').checked = true;
+    document.getElementById("shareEmails").value = "";
+    document.getElementById("shareIncludePrivate").checked = false;
+    document.getElementById("shareResult").textContent = "";
+    document.getElementById("shareCreateBtn").disabled = false;
+    updateShareVisibilityUI();
+    shareModal.classList.remove("hidden");
+  }
+  function closeSharePanel() { shareModal.classList.add("hidden"); }
+
+  document.querySelectorAll('input[name="shareVisibility"]')
+    .forEach((r) => r.addEventListener("change", updateShareVisibilityUI));
+  document.getElementById("shareCancelBtn").addEventListener("click", closeSharePanel);
+  shareModal.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeSharePanel();   // click the backdrop
+  });
+
+  function readShareEmails() {
+    return document.getElementById("shareEmails").value
+      .split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  document.getElementById("shareCreateBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("shareCreateBtn");
+    const out = document.getElementById("shareResult");
+    const visibility = document.querySelector('input[name="shareVisibility"]:checked').value;
+    const viewers = visibility === "invited" ? readShareEmails() : [];
+    const privEl = document.getElementById("shareIncludePrivate");
+    const includePrivate = visibility === "invited" && !!privEl && privEl.checked;
+    if (visibility === "invited" && !viewers.length) {
+      out.textContent = "Add at least one email address, or choose a public link.";
+      return;
     }
+    if (includePrivate && !confirm(SHARE_PRIVATE_CONFIRM)) return;
+    btn.disabled = true;
+    out.textContent = "Creating link…";
+    try {
+      const result = await publishCurrentReport({ visibility, viewers, includePrivate });
+      try { await navigator.clipboard.writeText(result.url); } catch (_) {}
+      // Read the server's own count (result.invited), never viewers.length —
+      // see the comment on publishCurrentReport. `invited` can be null (the
+      // already-published-page shortcut never asks the server), in which case
+      // say only that the link was copied rather than guess a number.
+      out.textContent = (visibility === "invited" && typeof result.invited === "number")
+        ? `Link copied. ${result.invited} ${result.invited === 1 ? "person" : "people"} invited.`
+        : "Link copied.";
+    } catch (err) {
+      // A paywall refusal is an offer, not an error message. Branch on the
+      // structured `upgrade` flag (see publishCurrentReport), not on prose.
+      if (err.upgrade) { closeSharePanel(); openUpgradePrompt(); }
+      else out.textContent = err.message || "That didn't go through. Please try again.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // The toolbar button now opens the panel instead of publishing immediately —
+  // publishing (and what it publishes) is decided by the Create link button
+  // above, once the visitor has said who this is for.
+  document.getElementById("shareBtn").addEventListener("click", () => {
+    openSharePanel();
   });
 
   // ----------------------------------------------------------------------------

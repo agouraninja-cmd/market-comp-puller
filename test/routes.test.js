@@ -159,6 +159,113 @@ test("bare environment", async (t) => {
   // service. Proving those two needs a seeded Supabase; until then they rest
   // on entitlements.js for the decision and on review for the wiring.
 
+  // Sharing's gate, wired.
+  //
+  // report-access.js proves the DECISION exhaustively. This proves it is
+  // ATTACHED: that an anonymous caller cannot create a permissioned share and
+  // cannot list anyone's shares, and that the refusal arrives as 401 BEFORE
+  // the 503 a database-less server would otherwise give — the same ordering
+  // rule openVault follows, so a stranger never learns whether the DB is up.
+  await t.test("permissioned sharing refuses an anonymous caller, 401 before 503", async () => {
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { comps: [{ address: "1 A St" }] }, meta: { address: "1 A St", type: "Industrial" },
+        visibility: "invited", viewers: ["client@acme.com"],
+      }),
+    });
+    assert.equal(r.status, 401, "an invited share must require a session");
+  });
+
+  await t.test("a public share still needs no account at all", async () => {
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: { comps: [{ address: "1 A St" }] }, meta: { address: "1 A St", type: "Industrial" } }),
+    });
+    assert.equal(r.status, 200, "the pre-v3 share path must be untouched");
+    const body = await r.json();
+    assert.match(body.url, /\/r\/[A-Za-z0-9_-]+$/);
+  });
+
+  await t.test("a public link may never carry private comps", async () => {
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { comps: [{ address: "1 A St" }] }, meta: { address: "1 A St", type: "Industrial" },
+        includePrivate: true,
+      }),
+    });
+    assert.equal(r.status, 400, "this must be loud on the first attempt, not silently corrected");
+  });
+
+  // Regression for the 2026-08-06 review's item 1: a privacy-wall leak, the
+  // second of this exact class (NOI was the first). meta.curation.excluded
+  // is a list of address|date|price keys the browser offers on EVERY comp,
+  // private ones included; POST /api/share used to copy meta.curation
+  // through untouched while stripping/anonymizing data.comps, so excluding a
+  // private vault comp as an outlier and then sharing left its full address
+  // and exact price sitting in meta.curation.excluded for anyone with the
+  // link to read straight off GET /api/shared — even on a public link, and
+  // even on the invited+anonymized path that is supposed to be the one place
+  // no address or price travels.
+  await t.test("an excluded private comp's address and price never reach a public share", async () => {
+    // The exact key format compKeyOf() in index.html builds — server.js's own
+    // corpusKeyOf() matches it byte for byte and is what the fix reads.
+    const excludedKey = "742 off-market secret rd, boise, id|2026-03-14|4250000";
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: {
+          comps: [
+            { address: "742 Off-Market Secret Rd, Boise, ID", date: "2026-03-14", price_or_rate: "4250000", private: true, source_type: "broker_vault" },
+            { address: "1 Public Ave, Boise, ID", date: "2026-01-01", price_or_rate: "1000000" },
+          ],
+          private_count: 1,
+        },
+        meta: {
+          address: "1 Public Ave, Boise, ID", type: "Industrial",
+          curation: { excluded: [excludedKey], added: [] },
+        },
+      }),
+    });
+    assert.equal(r.status, 200, "a public share of an otherwise-valid report must still succeed");
+    const { id } = await r.json();
+
+    const shared = await fetch(srv.base + "/api/shared?id=" + encodeURIComponent(id));
+    assert.equal(shared.status, 200);
+    const payload = await shared.json();
+    const raw = JSON.stringify(payload);
+
+    assert.ok(!raw.includes("742"), "the private comp's street number must not reach a public share, curation included");
+    assert.ok(!raw.includes("4250000"), "the private comp's exact price must not reach a public share, curation included");
+    assert.ok(!raw.includes("Secret"), "the private comp's street name must not reach a public share");
+    const excluded = (payload.meta && payload.meta.curation && payload.meta.curation.excluded) || [];
+    assert.ok(!excluded.includes(excludedKey), "the excluded key must be dropped once the comp it points to is gone from the share");
+    assert.deepEqual(payload.data.comps.map((c) => c.address), ["1 Public Ave, Boise, ID"], "only the surviving public comp should remain");
+  });
+
+  await t.test("every share-management route refuses an anonymous caller and exists", async () => {
+    const routes = [
+      ["GET", "/api/shares", null],
+      ["PUT", "/api/shares/viewers", { id: "abcdefgh", emails: [] }],
+      ["POST", "/api/shares/revoke", { id: "abcdefgh" }],
+    ];
+    for (const [method, p, body] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      assert.notEqual(r.status, 404, `${method} ${p} should exist and refuse, not be absent`);
+    }
+  });
+
+  // NOT COVERED HERE, deliberately, and for the reason the vault block already
+  // gives: the 200-for-an-invited-client and 403-for-a-stranger paths need a
+  // real session, which needs a database, and nothing in this file may touch
+  // an external service. They rest on report-access.js plus one manual check
+  // against the deployment.
+
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
     for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
       const r = await fetch(srv.base + p);

@@ -11474,9 +11474,16 @@ const server = http.createServer((req, res) => {
         safeMeta.generatedAt = meta.generatedAt || Date.now();
         const user = await getSessionUser(req);
         // Read once, used by both the invited gate and the private-comp
-        // decision below. Never cached across requests: entitlements are
-        // per-user and lapse with a card.
-        const ent = await entitlementsFor(req);
+        // decision below. Scoped to THIS report's id (mirrors /api/comps and
+        // /api/report-access) so a $20 single-report purchase carries
+        // canBrand for the address+type it was bought for, not just a live
+        // Pro subscription. reportIdFor()'s own address+type shape means this
+        // cannot change ent.pro or ent.canUseVault (the invited-share and
+        // private-comp gates below): both are governed by subscription state
+        // alone (`broker = pro` in entitlements.js), never by reportUnlocked.
+        // Never cached across requests: entitlements are per-user (and now
+        // per-report) and lapse with a card.
+        const ent = await entitlementsFor(req, reportIdFor({ address: meta.address, type: meta.type }));
 
         // The sender's mark travels with the report, as a SNAPSHOT rather than
         // a lookup: the report should look the way it looked when it was sent,
@@ -11486,14 +11493,21 @@ const server = http.createServer((req, res) => {
         // signed-in member because an unapplied profile is inert; this is the
         // moment a brand leaves the account and reaches other people, so it is
         // checked server-side and never trusted from the browser.
+        //
+        // Unconditionally cleared FIRST, before the entitlement check: a
+        // browser-supplied `branding` must never survive under ANY combination
+        // of entitlement and lookup outcome (unentitled, entitled-but-no-saved-
+        // profile, DB unconfigured, or a swallowed Supabase error all resolve
+        // `brand` to null/undefined, and without this unconditional delete the
+        // spread from `{ ...meta }` above would leave the browser's own value
+        // sitting there untouched, never even passed through normalizeBrand).
+        // The only way `safeMeta.branding` ends up set is the server having
+        // found and normalized the member's own saved row, below.
+        delete safeMeta.branding;
         if (user && ent.canBrand) {
           const brandRow = await findBrandingProfile(user.id);
           const brand = BRANDING.normalizeBrand(brandRow);
           if (brand) safeMeta.branding = brand;
-        } else {
-          // Never let a browser hand us one. A visitor could otherwise publish
-          // a report under someone else's firm name.
-          delete safeMeta.branding;
         }
 
         const visibility = parsed.visibility === "invited" ? "invited" : "public";

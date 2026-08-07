@@ -214,6 +214,18 @@ the broker copies the link by hand, exactly as password reset behaves today.
 **A failed or skipped send never fails the share**: the link exists the moment
 the row is written.
 
+## One trap in the existing front end
+
+`publishCurrentReport()` in `index.html` memoizes the created link per report
+object (`lastPublished`), so that pressing Share and then requesting a BOV does
+not publish twice. The memo knows nothing about visibility. Left alone, a
+broker who shares a public link and then invites a client would be handed back
+the **public** URL, and would believe they had sent a permissioned one.
+
+The memo key must include visibility, the viewer list and `includePrivate`, or
+the memo must be dropped when any of them is set. This is the single most
+likely way to ship this feature looking correct and being wrong.
+
 ## Explicitly not in v3
 
 - Expiry dates. Shares have never expired; a clock is a new failure mode with
@@ -231,11 +243,21 @@ the row is written.
 
 - `report-access.js`: the full decision table, including revoked, not-invited,
   owner-reading-own, anonymous-on-public.
-- A stranger gets 403 on an invited share; the invited email gets 200
-  (`test/routes.test.js`, which exists to prove gates are wired and not merely
-  correct in isolation).
-- `POST /api/share` with `visibility: "invited"` from a free or anonymous
-  caller is refused.
+- `POST /api/share` with `visibility: "invited"` from an anonymous caller is
+  refused with 401, **before** the 503 a database-less server would give, so a
+  stranger never learns whether the database is up. Same ordering rule
+  `openVault` follows.
+- Every management route (`GET /api/shares`, `PUT /api/shares/viewers`,
+  `POST /api/shares/revoke`) refuses an anonymous caller and exists rather
+  than 404ing.
+
+  These wiring tests live in `test/routes.test.js`, which boots a real server
+  with no Supabase. That file's standing rule is that nothing it runs touches
+  an external service, so the **happy paths** (an invited email reading a
+  share, a stranger being refused one) cannot live there: both need a real
+  session, which needs a database. They rest on `report-access.js`'s decision
+  table plus one manual check against the deployment, exactly as the vault's
+  403-and-200 paths already do.
 - `public` plus `includePrivate` is a 400.
 - Default invited share: no comp carries `private: true`, `locked_basis` grew
   by the private count, and the valuation inputs are unchanged.

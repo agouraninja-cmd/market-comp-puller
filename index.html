@@ -8351,10 +8351,28 @@
     if (n > 0) {
       el.classList.remove("hidden");
       const one = n === 1;
-      el.textContent =
-        `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
-        `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
-        `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+      // Two readers can land on this branch, and they need DIFFERENT copy.
+      // The default (currentMeta.shared is falsy) is the report's own owner
+      // looking at their own blended vault comps: the "left out of downloads/
+      // shared links" line is true and load-bearing there, it is the reason
+      // an export comes up short of rows the valuation still counted.
+      // But a shared report can ALSO reach this branch: an invited share
+      // made with the full-detail includePrivate: true opt-in keeps private
+      // comps whole (server.js's `canPrivate` path), so a client can be
+      // looking at a vault comp sitting right there in the table. Telling
+      // THAT reader the row is "visible only to you" and "left out of shared
+      // links" would be false on every clause -- they are reading it on a
+      // shared link right now. They just need to know where it came from.
+      if (currentMeta && currentMeta.shared) {
+        el.textContent = `${n} comp${one ? "" : "s"} in this report ` +
+          `${one ? "comes" : "come"} from the sender's own records, ` +
+          `not from CompNinja's public research.`;
+      } else {
+        el.textContent =
+          `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
+          `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
+          `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+      }
       return;
     }
     // A shared report can carry its owner's private comps as anonymized

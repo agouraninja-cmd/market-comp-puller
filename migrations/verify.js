@@ -56,6 +56,7 @@ const TABLES = [
   ["broker_comps",        "013-broker-vault.sql"],
   ["broker_coverage",     "015-broker-lead-inbox.sql"],
   ["lead_intro_requests", "015-broker-lead-inbox.sql"],
+  ["broker_properties",   "016-broker-comps-star.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -81,6 +82,18 @@ const COLUMNS = [
   // Without this column unpublish cannot reliably find the public copy, and a
   // comp the broker believes they retracted keeps being offered to reports.
   ["broker_comps",      ["published_submission_id"],             "014-vault-publish-link.sql"],
+  // 016 links each comp to its building. Without it linkVaultProperties()
+  // logs and gives up on every upload — which it is designed to survive, so
+  // nothing looks broken and the dimension just stays empty. Exactly the
+  // silent-failure shape 004 taught this folder to check for.
+  ["broker_comps",      ["property_id"],                         "016-broker-comps-star.sql"],
+  // 017 puts the building's location on the dimension so a private comp can be
+  // mapped without its address being geocoded. Same silent shape as the rest
+  // of this list: the coordinate PATCH is inside linkVaultProperties(), which
+  // swallows its own errors by design, so a missing column means every upload
+  // looks perfectly healthy and no building is ever located.
+  ["broker_properties", ["lat", "lng", "geo_source", "geocoded_at"],
+                                                                "017-broker-property-coordinates.sql"],
   // 015 alters two existing tables; a table check cannot see either change.
   // A missing broker_profiles.user_id silently re-orphans profiles on email
   // change; a missing leads.size_sqft 400s every sized lead insert into the

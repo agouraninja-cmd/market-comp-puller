@@ -111,6 +111,54 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The vault gate, wired.
+  //
+  // entitlements.js proves the DECISION — canUseVault tracks pro across every
+  // subscription state. Nothing proved the decision is attached to the routes
+  // it guards, and this file exists precisely because a paywall grows holes at
+  // the wiring rather than at the rule. The vault is the sharpest case in the
+  // app: behind it is a broker's private book of business, and the promise the
+  // whole tier is sold on is that nobody else can read it.
+  //
+  // Every vault route goes through one openVault() helper, so a route added
+  // later that forgets it would answer 200 here instead of 401.
+  await t.test("every vault route refuses an anonymous caller", async () => {
+    const routes = [
+      ["GET",    "/api/vault"],
+      ["GET",    "/api/vault/template"],
+      ["POST",   "/api/vault/upload"],
+      ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
+    ];
+    for (const [method, p] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(method === "POST"
+          ? { headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: "x.csv", csv: "a,b" }) }
+          : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      // 401 specifically, and BEFORE the 503 this bare server would give for a
+      // missing database. openVault's order is 401 -> 403 -> 503, and getting
+      // it backwards would tell a stranger whether the database is up.
+      const body = await r.json().catch(() => ({}));
+      assert.match(String(body.error || ""), /signed in/i, `${method} ${p} should say not signed in`);
+    }
+  });
+
+  await t.test("the vault routes exist rather than silently 404ing", async () => {
+    // A 404 here would look like a working gate while actually meaning the
+    // route was never registered — the failure mode migration 004 taught this
+    // repo to distrust.
+    const r = await fetch(srv.base + "/api/vault");
+    assert.notEqual(r.status, 404, "/api/vault should exist and refuse, not be absent");
+  });
+
+  // NOT COVERED HERE, and deliberately: the 403-not-a-broker and
+  // 200-for-an-entitled-broker paths. Both need a real session, which needs a
+  // database, and this file's rule is that nothing it runs touches an external
+  // service. Proving those two needs a seeded Supabase; until then they rest
+  // on entitlements.js for the decision and on review for the wiring.
+
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
     for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
       const r = await fetch(srv.base + p);

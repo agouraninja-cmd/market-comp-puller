@@ -12,20 +12,29 @@ intent, the devlog states history.
 
 ## Now
 
-- **Broker tier v1: private data vault + dashboard** (from the 2026-07-31
-  Chuck plan; read "CompNinja Ecosystem Plan.docx" in OneDrive Documents
-  before designing). CSV/PDF comp upload into a private vault plus a
-  sortable dashboard by property/market. The privacy wall is the product:
-  broker private data is never read into the public corpus; the only door
-  is per-comp opt-in publishing for Verified credit. Brokers bring their
-  own MLS-sourced data under their own license. New tables get the star
-  schema; existing tables are not rebuilt.
+- **Private comps must stop being geocoded by address** — the first piece of
+  work after v2. Spec AGREED 2026-08-06 in
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; section 7 is
+  answered (ship step 1 plus Jacob's two display guards, defer import-time
+  geocoding). Owen owns migration 017, `lat`/`lng` in the CSV template with
+  validation, `toApiComp()` lifting the property's coordinates, and
+  `blend-comps.js` carrying them through. Until it lands, a private comp's
+  address still leaves the broker's browser to place a map pin.
 - **Report branding UI.** The last unbuilt Pro entitlement: `canBrand` and
   `findBrandingProfile()` exist server-side with no UI at all. Shipping it
   lets the pricing tile finally advertise branded reports.
 - **Address Explorer follow-ups**: the "instant report" badge on addresses
   whose report is already cached, and wiring the existing
   `/?explore=City,%20ST&type=X` deep link into the market pages.
+- **The homepage is a 302 and out of `sitemap.xml`** (product decision;
+  full context in `docs/SEO.md`). Under `ACCOUNT_WALL` `/` redirects to
+  `/how-it-works`, and Search Console confirmed on 2026-08-06 that Google
+  has **never crawled** that page — so every brand search points at a
+  redirect to a page Google does not have. The root domain is normally the
+  strongest URL a site has. The fix is serving that content at `/` with a
+  200 for logged-out visitors and restoring `/` to the sitemap, which
+  reopens the account wall route and needs a decision about what a
+  logged-out visitor sees there.
 
 ## Next
 
@@ -61,11 +70,21 @@ fallback if fees are barred is lead visibility as a subscription benefit.
 - Re-measure `PARALLEL_SEARCH` on real traffic before ever flipping it on.
 - Fix `marketOf()` yielding "Canada" for Canadian addresses before
   non-USD reports are ever harvested.
+- Market page `<h1>`s still say "Property Values in" while the `<title>`s
+  now say "Comps in" — the two disagree about what the page is about, and
+  Google weights both. Small change, but it edits copy people see, so it
+  wants a yes rather than a drive-by. Context in `docs/SEO.md`.
 
 ## Open business questions (not code)
 
-For the attorney: referral fees, MLS re-share terms, broker-data privacy
-policy. For Chuck: the gut-check benchmark, pricing, day-one dashboard
+For the attorney: referral fees, MLS re-share terms, and broker-data
+privacy — processing limits, deletion rights, and liability for data a
+broker was not licensed to hold. **The last of these gates launch, not
+development.** As of 2026-08-06 it is no longer hypothetical: brokers'
+private comps are live in storage (`broker_comps`, `broker_properties`)
+and flow into that broker's own valuation reports.
+
+For Chuck: the gut-check benchmark, pricing, day-one dashboard
 views. Details in Section 8 of the Ecosystem Plan docx.
 
 ## Parked (decided, not forgotten)
@@ -90,6 +109,20 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-06: v2 closed.** Broker tier v1 is done and live — the private
+  vault, the star schema behind it (migration 016), blended private comps in a
+  broker's own reports (server half #28, display half #30), the vault
+  dashboard's market rollup + price trend + repeat properties (#34), the
+  empty-vault first run (#40), the broker lead inbox, and one product rather
+  than two in every place that described it (#39, #41). Live schema verified
+  against the code the same day. Organic acquisition also went from invisible
+  to measurable (#32, #36) — see `docs/SEO.md`.
+
+- 2026-08-06: organic acquisition made legible (PR #32) — all 38 market
+  page titles were 68–82 chars against Google's ~60 and were being
+  truncated mid-phrase; Search Console verified by HTML file, sitemap
+  resubmitted after going unread since 2026-07-14. State + what's left in
+  `docs/SEO.md`.
 - 2026-08-04: migrations/ folder + CI on every push; upstream-error leak
   fixed (PR #9); ledger data protected on public main (PR #10).
 - 2026-08-03: Pro tier public launch, $39 single-report unlock, guest

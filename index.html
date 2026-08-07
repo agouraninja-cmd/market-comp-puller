@@ -361,6 +361,10 @@
     .rd-badge.n { color: #5A6473; background: #F0EFE9; }
     .rd-badge.e { color: #9A3412; background: #F8E9DC; }
     .rd-badge.u { background:#F4F3EE; color:#5A6473; border:1px solid #D8D4C9; }
+    /* A comp from the signed-in broker's own private vault. Deliberately NOT
+       green: Verified is a public claim, earned by vouching for a comp in the
+       public records, and a private row has earned none of it. */
+    .rd-badge.bv { color:#4C3A8C; background:#EDE9F8; }
     tr.comp-excluded td > div, .card-excluded > :not(.cur-head), .card-excluded .cur-head > :not(.cur-ctrl) { opacity:.45; }
     /* Live comps table header — the landing exhibit's editorial th at the live
        table's own geometry (padding/alignment stay in the JS-built classes).
@@ -532,10 +536,22 @@
                qualified "as many as the search finds" rather than promising a
                number we don't control. Drop that qualifier only if the ask
                ceiling and searchBudgetFor() are actually raised. -->
+          <!-- The vault bullet is the ONE-SUBSCRIPTION decision made visible
+               (2026-08-06). The vault shipped as a second product, priced
+               separately, and then the owner decided there is one
+               subscription and the vault is a capability of it — so
+               entitlements.js now reads `const broker = pro`, and every Pro
+               member has one. A tile that does not say so is selling the
+               smaller half of what it charges for, and leaves the site still
+               describing two products in the one place it matters most.
+               It passes the sell-only-what-ships test that keeps report
+               branding off this list: /vault is live, it has a UI, and a
+               broker's own comps really do appear in their own reports. -->
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
             <li>Look back up to 10 years, not 3</li>
             <li>Unlimited comps — every comparable the search finds, itemized</li>
             <li>Unlimited CSV, image, PDF and Excel exports</li>
+            <li>A private vault for your own comps — they appear in your reports, and only you can see them</li>
             <li>Address Explorer: real addresses to value in any market</li>
           </ul>
           <button type="button" data-plan="pro_monthly"
@@ -748,10 +764,12 @@
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
           <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
-            <!-- The broker vault's only entrance. Shown from /api/config's
-                 canUseVault, so it appears for a broker subscription (and for
-                 comped admins) and for nobody else. A plain link, not a button:
-                 /vault is its own server-rendered page, not a view in here. -->
+            <!-- The vault's only entrance. Shown from /api/config's
+                 canUseVault, so it appears for any Pro member (and for comped
+                 admins) and for nobody else. There is no separate broker
+                 subscription to gate it on: one subscription since 2026-08-05,
+                 and entitlements.js reads `const broker = pro`. A plain link,
+                 not a button: /vault is its own server-rendered page. -->
             <a id="menuVaultLink" href="/vault" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-slate-50">Your vault</a>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
@@ -1644,6 +1662,13 @@
                in exports so the badges are explained wherever the report travels.
                Built by renderBadgeLegend(). -->
           <p id="badgeLegend" class="hidden text-xs leading-6 text-[#8A93A0] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
+          <!-- Vault-comp disclosure. Deliberately NOT no-print/no-capture, unlike
+               almost everything else down here: the private rows themselves ARE
+               stripped from the print and the PNG, and this line is the only
+               thing that stops a shorter table reading as lost data. Built by
+               renderPrivateNotice(); the CSV and XLSX say the same thing in
+               their own title rows. -->
+          <p id="privateNotice" class="hidden text-xs leading-6 text-[#5A6473] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
           <p class="hidden sm:block text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9] no-print">Click a column header to sort.</p>
           <!-- Add-your-own-comp form: client-only, never sent to the server. Hidden
                entirely for shared viewers (curationControlsAllowed() gate). -->
@@ -3573,6 +3598,42 @@
     return includedComps().concat(lockedBasis());
   }
 
+  // --------------------------------------------------------------------------
+  // Private comps (a broker's own vault). The mirror image of locked_basis
+  // above: those are comps the server WITHHELD from this viewer, these are
+  // comps only THIS viewer may ever see.
+  //
+  // The server blends them into data.comps at serialization time, each flagged
+  // `private: true` and carrying source_type "broker_vault". Spec:
+  // docs/superpowers/specs/2026-08-06-blended-comps-data-contract.md.
+  //
+  // They are deliberately ordinary comps everywhere it counts. The table, the
+  // map, the chart, the stat tiles and the whole valuation read them without
+  // knowing they exist — which is the entire reason the contract chose one
+  // flagged array over a second `private_comps` one. A broker's own deals move
+  // their own number, and that is the feature.
+  //
+  // What they must never do is leave this browser. A shared link is stripped
+  // SERVER-side (/api/share does not trust what a browser hands it), so this
+  // file is not the last line of defence there — but it IS the only thing
+  // standing between a broker's private book and a CSV, an XLSX, a saved PNG
+  // or a printed page they hand to a client.
+  // --------------------------------------------------------------------------
+  function isPrivateComp(c) {
+    return Boolean(c && c.private === true);
+  }
+  // What an export may contain: everything included, minus the private rows.
+  // Both file exporters read THIS, never includedComps().
+  function exportableComps() {
+    return includedComps().filter((c) => !isPrivateComp(c));
+  }
+  // Private comps on screen and counted in the valuation. Derived from the same
+  // list the exporters subtract from, so the disclosed number can never drift
+  // from the number of rows actually missing from the file.
+  function privateIncludedCount() {
+    return includedComps().filter(isPrivateComp).length;
+  }
+
   function curationCounts() {
     const cur = currentMeta && currentMeta.curation;
     const excluded = cur ? currentComps.filter((c) => isExcluded(c)).length : 0;
@@ -4512,7 +4573,25 @@
     return result;
   }
 
-  async function geocodeAddress(address) {
+  // `opts.noThirdParty` is GUARD 2 of the private-comp geocoding contract
+  // (docs/superpowers/specs/2026-08-06-private-comp-geocoding.md, agreed
+  // 2026-08-06). It stops after our own /api/geocode proxy and never falls
+  // through to Nominatim.
+  //
+  // Why only that hop: the proxy forwards to the US Census geocoder, a
+  // government service with no account and no commercial profile behind it.
+  // Nominatim is a third party that receives the address AND the broker's own
+  // IP, because that call is browser-direct rather than proxied. For a comp
+  // out of a broker's private vault — an off-market deal nobody else knows
+  // about — that is the hop that is hardest to defend.
+  //
+  // The cost is real and accepted: a private comp whose Census lookup misses
+  // gets no pin at all rather than an approximate one. That is the same call
+  // already made for Street View photos, where the rule is "the actual
+  // property or nothing", and a broker can settle it outright by putting
+  // lat/lng in their upload once the vault template carries them.
+  async function geocodeAddress(address, opts) {
+    const noThirdParty = Boolean(opts && opts.noThirdParty);
     const key = String(address || "").trim().toLowerCase();
     if (!key) return null;
     if (key in geoCache) {
@@ -4524,8 +4603,12 @@
       const j = await geoFetch("/api/geocode?address=" + encodeURIComponent(address));
       if (j && isFinite(j.lat) && isFinite(j.lng)) found = { lat: j.lat, lng: j.lng, label: j.matchedAddress || undefined };
     } catch (_) { /* proxy down — try the fallback */ }
-    if (!found) found = await nominatimGeocode(address);
-    geoCacheStore(key, found);   // null is cached too: a known miss
+    if (!found && !noThirdParty) found = await nominatimGeocode(address);
+    // Deliberately NOT cached when the third party was skipped: a miss here
+    // means "Census alone could not place it", not "this address cannot be
+    // placed". Storing it would poison the shared address-keyed cache for the
+    // public lookups that are still allowed to use the fallback.
+    if (!noThirdParty || found) geoCacheStore(key, found);   // null is cached too: a known miss
     return found;
   }
 
@@ -5332,7 +5415,12 @@
           if (subj) { parsed.subject_lat = String(subj.lat); parsed.subject_lng = String(subj.lng); found = true; }
           for (const c of includedComps() || []) {
             if (!c.address) continue;
-            const ll = await geocodeAddress(c.address);
+            // The same two guards as the main pass below. This rescue loop runs
+            // when a report arrives with no coordinates at all, and it would
+            // otherwise be a second door straight past both of them.
+            const priv = isPrivateComp(c);
+            if (priv && isFinite(parseFloat(c.lat)) && isFinite(parseFloat(c.lng))) continue;
+            const ll = await geocodeAddress(c.address, { noThirdParty: priv });
             if (ll) { c.lat = String(ll.lat); c.lng = String(ll.lng); found = true; }
           }
           if (found && gen === mapGeneration) renderMap(parsed, meta, true);
@@ -5683,7 +5771,22 @@
       const compQuery = (a) => (ST_RE.test(a) || !subjTail) ? a : a.trim().replace(/,+$/, "") + subjTail;
       const jobs = [geocodeAddress(meta.address).then((ll) => ({ subject: true, ll }))];
       (includedComps() || []).forEach((c) => {
-        if (c.address) jobs.push(geocodeAddress(compQuery(String(c.address))).then((ll) => ({ c, ll })));
+        if (!c.address) return;
+        // GUARD 1: a private comp that already knows where it is never gets
+        // geocoded at all. This pass otherwise geocodes EVERY comp
+        // unconditionally — coordinates a comp arrives with are treated as a
+        // first-paint approximation for the geocoder to refine, which is right
+        // for a public comp and wrong for one out of a broker's vault. Without
+        // this the coordinates in the upload would buy nothing, because the
+        // address would still be sent on every report.
+        //
+        // Scoped to private comps on purpose: refining a public comp's
+        // model-supplied guess is a real accuracy win and nothing about it is
+        // sensitive.
+        const priv = isPrivateComp(c);
+        if (priv && isFinite(parseFloat(c.lat)) && isFinite(parseFloat(c.lng))) return;
+        jobs.push(geocodeAddress(compQuery(String(c.address)), { noThirdParty: priv })
+          .then((ll) => ({ c, ll })));
       });
       const results = await Promise.all(jobs);
       if (gen !== mapGeneration || !mapInstance) return;   // a newer report took over
@@ -7623,11 +7726,22 @@
         // is granted by entitlements.js but has no UI, so it is not claimed
         // here; promising it to someone who has just paid is worse than
         // promising it to a prospect. Restore it with the feature.
-        detail: "Unlimited comps, a lookback of up to 10 years, and unlimited exports.",
+        //
+        // The vault IS named, for the opposite reason: it ships, every Pro
+        // member has one (`const broker = pro` in entitlements.js), and a
+        // paying member who never learns they have it is the clearest way to
+        // still be running two products after deciding to run one.
+        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, and your own private comp vault.",
       };
     }
     if (p.status === "expired") {
-      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 3-year lookback." };
+      // The vault closes with the subscription (canUseVault tracks `broker`,
+      // which tracks `pro`), and a broker who uploaded their book of business
+      // and then finds the door shut deserves to be told what happened to it.
+      // Nothing deletes vault rows on lapse — the only delete paths are the
+      // broker's own "remove this import" and account deletion — so saying so
+      // is a statement of fact, not a reassurance we cannot keep.
+      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
     }
     return { title: "Free", detail: "Reports itemize 4 comps and look back 3 years. The valuation still uses every comp we find." };
   }
@@ -8000,9 +8114,15 @@
 
   // Provenance tiers behind every comp's trust badge. "verified" is the
   // server-trusted tier (broker-submitted, team-reviewed); the rest come from
-  // the model-asserted source_type. Order = strongest to weakest, and the
-  // legend lists tiers in this order. Legacy saved reports predate
-  // source_type and simply get no badge.
+  // the model-asserted source_type. The first five are ranked strongest to
+  // weakest and the legend lists them in that order. Legacy saved reports
+  // predate source_type and simply get no badge.
+  //
+  // The last two are NOT rungs on that ladder — they are ownership statements,
+  // which is why they sit below it rather than inside it. "Added by you" is a
+  // comp the reader typed; "From your vault" is a comp the signed-in broker
+  // uploaded privately. Neither makes a claim about the public record, and
+  // ranking them against tiers that do would be the wrong comparison.
   // cls letters map onto the .rd-badge tier variants (landing design system).
   const SOURCE_TIERS = {
     verified:      { label: "Verified",      cls: "v",  legend: "submitted by a local broker and reviewed by our team" },
@@ -8011,6 +8131,7 @@
     news:          { label: "News",          cls: "n",  legend: "from a news article or press release" },
     estimate:      { label: "Estimate",      cls: "e",  legend: "not tied to a single source; verify before relying on it" },
     user:          { label: "Added by you",  cls: "u",  legend: "entered manually; not from CompNinja's sources" },
+    broker_vault:  { label: "From your vault", cls: "bv", legend: "your own comp, from your private vault, visible only to you" },
   };
   // One source of truth for a comp's tier: valuation.js owns the vocabulary
   // (it has to, since compWeight keys off it). SOURCE_TIERS above keeps only
@@ -8081,15 +8202,46 @@
     }
     tiers.forEach((tier) => {
       const t = SOURCE_TIERS[tier];
+      // The vault entry explains a badge that only exists on screen: private
+      // rows are stripped from the PNG and the printed page, so carrying its
+      // legend into them would explain a badge the reader cannot see, and
+      // would name the feature in a file handed to someone else.
+      const screenOnly = tier === "broker_vault" ? " no-print no-capture" : "";
       const chip = document.createElement("span");
-      chip.className = "align-middle rd-badge mr-1 " + t.cls;
+      chip.className = "align-middle rd-badge mr-1 " + t.cls + screenOnly;
       chip.textContent = t.label;
       const text = document.createElement("span");
-      text.className = "mr-3";
+      text.className = "mr-3" + screenOnly;
       text.textContent = "= " + t.legend + ".";
       legend.appendChild(chip);
       legend.appendChild(text);
     });
+  }
+
+  // One honest line about the vault rows, and the only place the two halves of
+  // this feature are reconciled for the reader: the comps count toward the
+  // valuation but not toward any file.
+  //
+  // It has to survive into the PNG and the printed page BECAUSE those drop the
+  // rows. A broker who sees twelve comps on screen and nine in the PDF they
+  // just handed a client would reasonably call that data loss — the same
+  // instinct the contract's duplicate rule turns on ("a broker watching their
+  // own uploaded deal vanish from their report reads as data loss, and they
+  // will notice"). Stating it is cheaper than being trusted less.
+  //
+  // Report-level, not filter-level: it describes what the exports do, and the
+  // exporters ignore the Sale/Lease filter.
+  function renderPrivateNotice() {
+    const el = document.getElementById("privateNotice");
+    if (!el) return;
+    const n = privateIncludedCount();
+    if (n <= 0) { el.classList.add("hidden"); el.textContent = ""; return; }
+    el.classList.remove("hidden");
+    const one = n === 1;
+    el.textContent =
+      `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
+      `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
+      `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
   }
 
   // Shared viewers see the curated report but never the editing controls —
@@ -8415,6 +8567,7 @@
   function renderTableBody(animateIn = true) {
     renderCards(animateIn);
     renderBadgeLegend();
+    renderPrivateNotice();
     renderSubjectRow();
     const body = document.getElementById("tableBody");
     body.innerHTML = "";
@@ -8435,7 +8588,12 @@
     comps.forEach((comp, idx) => {
       const tr = document.createElement("tr");
       // Re-sorts skip the entrance cascade — rows FLIP to their new spots instead.
-      tr.className = "hover:bg-[#F5F4EF]" + (animateIn ? " row-in" : "") + (isExcluded(comp) ? " comp-excluded" : "");
+      // A vault row is screen-only: no-print drops it from a printed report and
+      // no-capture from the PNG (html2canvas honours the same class the
+      // curation controls use). It stays a normal row in every other respect —
+      // sorted, filtered, curatable, and counted in the valuation.
+      tr.className = "hover:bg-[#F5F4EF]" + (animateIn ? " row-in" : "") + (isExcluded(comp) ? " comp-excluded" : "") +
+        (isPrivateComp(comp) ? " no-print no-capture" : "");
       if (animateIn) tr.style.animationDelay = Math.min(idx * 45, 450) + "ms";
       COLUMNS.forEach((col) => {
         const td = document.createElement("td");
@@ -8625,7 +8783,11 @@
     const showCuration = curationControlsAllowed();
     comps.forEach((comp, idx) => {
       const card = document.createElement("div");
-      card.className = "px-6 py-4" + (animateIn ? " row-in" : "") + (isExcluded(comp) ? " card-excluded" : "");
+      // Screen-only, same as the table row. The card list is hidden in print
+      // anyway, but html2canvas captures whatever is actually on screen, and on
+      // a phone that is this list rather than the table.
+      card.className = "px-6 py-4" + (animateIn ? " row-in" : "") + (isExcluded(comp) ? " card-excluded" : "") +
+        (isPrivateComp(comp) ? " no-print no-capture" : "");
       if (animateIn) card.style.animationDelay = Math.min(idx * 45, 450) + "ms";
 
       // Card header mirrors the table's address cell: roundel + two-line address,
@@ -8888,7 +9050,9 @@
     // The provenance tier is a derived column (Verified outranks source_type),
     // so it's appended here rather than living in COLUMNS.
     const header = [...COLUMNS.map((c) => esc(c.label)), esc("Source confidence")].join(",");
-    const rows = includedComps().map((comp) =>
+    // exportableComps(), never includedComps(): a CSV is the single easiest way
+    // for a broker's private vault to end up in someone else's inbox.
+    const rows = exportableComps().map((comp) =>
       [...COLUMNS.map((c) => esc(exportCellValue(comp, c))), esc((SOURCE_TIERS[compTier(comp)] || {}).label || "")].join(","));
     // Title row so an exported file records what was searched and when.
     // Curation is called out too — an exported file travels on its own, so
@@ -8902,6 +9066,13 @@
     }
     if (cc.excluded > 0) curationBits.push(`${cc.included} of ${cc.total} comps, ${cc.excluded} excluded by report owner`);
     if (cc.added > 0) curationBits.push(`${cc.added} comp${cc.added === 1 ? "" : "s"} added by report owner`);
+    // The rows are gone from this file but their $/SF is still inside the value
+    // range two lines down. An unexplained gap between the two would be read as
+    // a mistake, so the file says which way it goes.
+    const privOut = privateIncludedCount();
+    if (privOut > 0) {
+      curationBits.push(`${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed below, visible only to the report owner`);
+    }
     const title = currentMeta
       ? esc(`${currentMeta.address} | ${metaLine(currentMeta)} | Generated ${new Date(currentMeta.generatedAt || Date.now()).toLocaleDateString()}`
           + curationBits.map((b) => ` | ${b}`).join(""))
@@ -8965,7 +9136,8 @@
 
       const compsAoa = [
         [...COLUMNS.map((c) => c.label), "Source confidence"],
-        ...includedComps().map((comp) => [
+        // exportableComps(), never includedComps() — see exportCsv().
+        ...exportableComps().map((comp) => [
           ...COLUMNS.map((c) => String(exportCellValue(comp, c) ?? "")),
           (SOURCE_TIERS[compTier(comp)] || {}).label || "",
         ]),
@@ -9004,6 +9176,12 @@
           `${cc.included} of ${cc.total}` +
           (cc.excluded ? `, ${cc.excluded} excluded by report owner` : "") +
           (cc.added ? `, ${cc.added} added by report owner` : ""),
+        ]] : []),
+        // Same disclosure the CSV title row carries: the Comps sheet is short
+        // by this many rows, and the value above is not.
+        ...(privateIncludedCount() > 0 ? [[
+          "Private vault comps",
+          `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (visible only to the report owner)`,
         ]] : []),
         ...(s.noi > 0 ? [["NOI (yours)", xlsxMoney(s.noi)]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),

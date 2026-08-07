@@ -121,6 +121,66 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pubbtn.on{border-color:#BFE3CB;background:#F0FAF3;color:var(--green);font-weight:600}
 .pubbtn[disabled]{opacity:.5;cursor:default}
 .hide{display:none}
+/* ---- The market rollup: the page's lead view ----------------------------
+   A broker with 400 comps learns nothing from 400 rows. This is the index to
+   their own book: one card per market + property type, which is the same pair
+   their lead coverage is keyed on, so the two sections describe the world the
+   same way. Whole-book always, never narrowed by the filter below it: it is
+   the map, and a map that hides everything but your current street is not a
+   map. Clicking one drives the filter instead. */
+.cards{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
+.card{border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:var(--s4) var(--s5);
+  text-align:left;font-family:inherit;font-size:var(--t5);color:var(--ink);cursor:pointer;
+  display:flex;flex-direction:column;gap:var(--s1);transition:border-color .12s,background .12s}
+.card:hover{border-color:var(--ink-3);background:var(--wash)}
+.card.on{border-color:var(--red);background:#fff;box-shadow:inset 0 0 0 1px var(--red)}
+.card .mk{font-weight:600;font-size:var(--t4);line-height:1.3}
+.card .ty{color:var(--ink-3);font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+.card .big{font-family:var(--serif);font-size:var(--t2);font-weight:500;margin-top:var(--s2)}
+.card .big span{font-family:inherit;font-size:var(--t5);color:var(--ink-3)}
+.card .fine{color:var(--ink-3);font-size:var(--t6)}
+.card .fine.pub{color:var(--green);font-weight:600}
+/* ---- Chart + repeat-property blocks ---- */
+.panel{margin-top:var(--s6)}
+.panel h3{font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;margin:0 0 var(--s3)}
+/* Capped at the viewBox width so one SVG unit is one CSS pixel: the columns
+   are drawn at a 24px maximum, and letting the chart stretch to a 1040px
+   container would render them at ~40px, which is the heavy-saturated-block
+   look the rest of this page avoids. Below 600px it scales down as normal. */
+.chart svg{display:block;width:100%;max-width:600px;height:auto}
+.rep{border-top:1px solid var(--hair);padding:var(--s3) 0;font-size:var(--t5)}
+.rep .addr{font-weight:600}
+.rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.note{color:var(--ink-3);font-size:var(--t5)}
+/* ---- First run ----------------------------------------------------------
+   Deliberately quiet: two numbered steps on the page's own type scale, no
+   illustration, no coloured callout box. A broker arriving here has just paid
+   for something, and a loud empty state reads as a product apologising for
+   itself. The numbers carry the sequence; everything else is ordinary text. */
+.steps{display:grid;gap:var(--s6);margin-top:var(--s6)}
+@media (min-width:760px){.steps{grid-template-columns:1fr 1fr;gap:var(--s7)}}
+.step{display:flex;gap:var(--s4);align-items:flex-start}
+.stepn{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--wash);
+  border:1px solid var(--edge);color:var(--ink-2);font-size:var(--t5);font-weight:600;
+  display:flex;align-items:center;justify-content:center;margin-top:2px}
+.step h3{font-family:var(--serif);font-weight:500;font-size:var(--t3);margin:0 0 var(--s3)}
+.step p{margin:0 0 var(--s3);color:var(--ink-2)}
+.step .fine{color:var(--ink-3);font-size:var(--t5)}
+/* The template link is an <a> styled as a button, so it needs the same box the
+   <button>s get — .btn alone leaves it inline and underlined. */
+a.btn{display:inline-block;text-decoration:none;color:#fff}
+a.btn:hover{color:#fff}
+/* The section+section divider is drawn from DOM adjacency, which does not know
+   about display:none. With #firstRun hidden, #addSec became "a section after a
+   section" for the first time and picked up a rule above it — a stray line
+   across the top of a returning broker's workspace. Scoped to this one pair on
+   purpose: a blanket hidden-sibling rule would also strip the divider above
+   Leads on first run, where two hidden sections sit between it and #firstRun
+   and the divider is correct.
+   (No backticks in this file's comments: the whole page is one template
+   literal, so a backtick here ends it and the module stops parsing.) */
+#firstRun.hide + #addSec{border-top:0;padding-top:0}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
@@ -141,14 +201,91 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   <div id="gate"><p class="empty">Loading your vault&hellip;</p></div>
 
   <div id="app" class="hide">
-    <div class="trust">
+    <!-- The trust line's job is to prove a number stays at zero, which only
+         works once there is something it could have counted. On day one it is
+         a scoreboard reading 0-0 above an empty page, so it is hidden until
+         the first import lands and #firstRun carries the privacy promise in
+         words instead. See applyFirstRun(). -->
+    <div class="trust hide" id="trustLine">
       <span><b id="cCount">0</b> comps</span>
       <span class="pub"><b id="cPub">0</b> published</span>
       <span class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
         public records, and nothing is published unless you choose it.</span>
     </div>
+    <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
+      The figures below are drawn from those, so your full book may be larger.</p>
 
-    <section>
+    <!-- The lead view, deliberately above "Add comps": a broker who already has
+         a book opens this page to read it, not to upload again. It hides itself
+         when the vault is empty, so a first-time broker still lands on the
+         uploader with nothing in the way. -->
+    <section id="rollupSec" class="hide">
+      <h2>Your markets</h2>
+      <div class="cards" id="rollup"></div>
+    </section>
+
+    <!-- ------------------------------------------------------------------
+         First run. Shown only when the vault is genuinely empty (no comps
+         AND no imports), and replaced by the real workspace the moment
+         anything lands.
+
+         What it is fixing: the empty vault used to be a count of zero, an
+         uploader, and three empty tables. The only route forward was
+         "download a template, map your book into it, come back", which is
+         homework with no visible payoff, and the one thing a broker could
+         do immediately was at the bottom of the page under a heading about
+         something else. This is where people quietly give up.
+
+         So it says what the payoff is, states the effort honestly, and
+         offers the ten-second path as a real alternative rather than a
+         consolation prize.
+         ------------------------------------------------------------------ -->
+    <section id="firstRun" class="hide">
+      <h2>Start here</h2>
+      <p class="sub" style="margin-top:0">Two ways to get something out of this today. The
+        second one takes about ten seconds and needs no spreadsheet.</p>
+
+      <div class="steps">
+        <div class="step">
+          <span class="stepn">1</span>
+          <div>
+            <h3>Bring your own comps</h3>
+            <p>Your closed deals become a private comp set that only you can see. They
+              appear inside your own valuation reports, badged &ldquo;From your vault&rdquo;,
+              and they count toward the number at the top of the report. They are never
+              read into CompNinja&rsquo;s public records, never included in an export or a
+              shared link, and never shown to another broker.</p>
+            <!-- The friction this removes is fear, not typing: a broker looking at a
+                 ten-column template assumes all ten are mandatory and that a deal with
+                 an undisclosed price cannot go in. Neither is true, and saying so is
+                 what makes the first upload feel possible. -->
+            <p class="fine">Four columns are required: address, property type, sale or
+              lease, and the date. Everything else is optional, so undisclosed deals
+              still count.</p>
+            <div class="row" style="margin-top:var(--s4)">
+              <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
+              <button class="btn ghost" id="frPick">Choose a spreadsheet</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="stepn">2</span>
+          <div>
+            <h3>Or just tell us where you work</h3>
+            <p>Add the markets you cover and you will start seeing property owners in them
+              who have asked for a valuation. Their details stay anonymous until you ask
+              for an introduction, and CompNinja makes the introduction by hand.</p>
+            <p class="fine">Nothing to upload. This works on an empty vault.</p>
+            <div class="row" style="margin-top:var(--s4)">
+              <button class="btn ghost" id="frCoverage">Choose your markets</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="addSec">
       <h2>Add comps</h2>
       <div class="drop" id="drop">
         <button class="btn" id="pick">Choose a spreadsheet</button>
@@ -158,12 +295,24 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <div id="res"></div>
     </section>
 
-    <section>
+    <section id="compsSec">
       <h2>Your comps</h2>
+      <!-- One filter row above everything it scopes: the chart, the repeat-
+           property list and the table all read the same slice, so they can
+           never disagree about which comps are on screen. -->
       <div class="row">
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
+        <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
+      </div>
+      <div class="panel chart hide" id="chartBox">
+        <h3 id="chartTitle">Median $/SF by year</h3>
+        <div id="chartWrap"></div>
+      </div>
+      <div class="panel hide" id="repBox">
+        <h3>Properties you have more than one deal on</h3>
+        <div id="repRows"></div>
       </div>
       <div class="tw"><table id="tbl">
         <thead><tr>
@@ -189,14 +338,17 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <button class="btn ghost" id="covAdd">Watch this market</button>
       </div>
       <div id="leadMsg"></div>
-      <div class="tw"><table>
+      <!-- Hidden while there are no rows: a header row with nothing under it is
+           the same "is this broken?" signal the empty comps table gave, and a
+           broker sent here by step 1 of the first run lands on it directly. -->
+      <div class="tw hide" id="leadTableWrap"><table>
         <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
         <tbody id="leadRows"></tbody>
       </table></div>
       <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
     </section>
 
-    <section>
+    <section id="importsSec">
       <h2>Imports</h2>
       <div id="ups"></div>
     </section>
@@ -219,20 +371,86 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var psf=function(n){return n==null?"":"$"+Number(n).toFixed(2)};
+  var psf0=function(n){return n==null?"":"$"+Math.round(Number(n))};
+
+  // The whole book is fetched once and narrowed HERE, not by re-querying with
+  // market/type params as this page used to. Three reasons, in order of how
+  // much they matter:
+  //   1. The rollup has to count the WHOLE book. Server-side filtering means
+  //      the browser only ever holds the current slice, so "42 comps in Boise"
+  //      would silently become "42 of the ones you are already looking at".
+  //   2. GET /api/vault defaults to limit=200. A broker with 400 comps was
+  //      being shown half their vault, and the trust line said 200 with no
+  //      hint that anything was missing. Asking for the server's own maximum
+  //      fixes that up to 1000; past it, the #trunc line in apply() says so
+  //      out loud rather than quietly under-reporting someone's book.
+  //   3. Filtering is now instant and costs no round trip.
+  function view(){
+    var m=$("fMarket").value,t=$("fType").value;
+    if(!m&&!t)return comps;
+    return comps.filter(function(c){
+      return (!m||c.market===m)&&(!t||c.property_type===t);
+    });
+  }
+
+  var median=function(list){
+    if(!list.length)return null;
+    var s=list.slice().sort(function(a,b){return a-b}),h=s.length>>1;
+    return s.length%2?s[h]:(s[h-1]+s[h])/2;
+  };
+  // price_per_sqft is written server-side for SALES ONLY and left null on a
+  // lease, deliberately: dividing an annual rent by size is $/SF/yr, a
+  // different metric that would corrupt every median it touched. So reading
+  // the stored field (rather than deriving price/size here) is what keeps
+  // every number on this page sales-only. Do not "improve" this by computing
+  // a fallback.
+  var psfOf=function(c){
+    var v=c.price_per_sqft;
+    return (v==null||!isFinite(Number(v)))?null:Number(v);
+  };
+  var psfList=function(list){
+    return list.map(psfOf).filter(function(v){return v!=null});
+  };
+  var yearOf=function(c){
+    var m=/^(\\d{4})/.exec(String(c.deal_date||""));
+    return m?m[1]:null;
+  };
+  // Matches broker-vault.js's addressKey (lowercase, strip . , #, collapse
+  // whitespace) rather than reading the row's stored address_key. That field
+  // is on vault-api.js's INTERNAL_FIELDS list, kept in the response only until
+  // the dashboard confirms it does not read it — so grouping on a local copy
+  // is what lets that cleanup happen. Same conservative rule as the server's:
+  // it does not expand "Blvd", because merging two genuinely different
+  // properties is worse than showing one duplicate a broker can delete.
+  var addrKey=function(v){
+    return String(v==null?"":v).toLowerCase().replace(/[.,#]/g,"").replace(/\\s+/g," ").trim();
+  };
 
   function gate(html){ $("gate").innerHTML=html; $("gate").className=""; $("app").className="hide"; }
 
   function apply(o){
     if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
-    if(o.s===403) return gate('<div class="msg bad">The private vault is part of the broker plan. '+
-      '<a href="/brokers">What brokers get</a></div>');
+    // "Part of Pro", not "part of the broker plan". There is one subscription
+    // as of 2026-08-05 and the vault is a capability of it, so naming a broker
+    // plan sends someone off to look for a product that cannot be bought.
+    // The link goes to the plan card on /desk rather than /brokers: /brokers
+    // explains contributing comps for a Verified badge, which is a different
+    // thing entirely and is free.
+    if(o.s===403) return gate('<div class="msg bad">The private vault is part of Pro. '+
+      '<a href="/desk">See your plan</a></div>');
     if(o.s!==200) return gate('<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not load your vault.")+'</div>');
     $("gate").className="hide"; $("app").className="";
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+    renderRollup();
+    // GET /api/vault caps at 1000 rows. Past that the rollup really is
+    // counting part of the book, and a broker reading "42 comps in Boise"
+    // deserves to know it might be more. Said out loud rather than absorbed.
+    $("trunc").className=comps.length>=1000?"note":"note hide";
     renderUploads(o.j.uploads||[]);
+    applyFirstRun(comps.length,(o.j.uploads||[]).length);
     // Loaded once per page visit, not on every filter change/publish/
     // import-delete that re-runs load() — those all hit /api/vault, a
     // different endpoint, and re-querying /api/broker/leads on each one
@@ -243,11 +461,10 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     render();
   }
 
+  // No market/type params: the whole book comes down once and view() narrows
+  // it in the browser. See view() for why. limit is the server's own maximum.
   function load(){
-    var q=[],m=$("fMarket").value,t=$("fType").value;
-    if(m)q.push("market="+encodeURIComponent(m));
-    if(t)q.push("type="+encodeURIComponent(t));
-    fetch("/api/vault"+(q.length?"?"+q.join("&"):""),{credentials:"same-origin"})
+    fetch("/api/vault?limit=1000",{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(apply)
       .catch(function(){ gate('<div class="msg bad">Could not reach the server. Please try again.</div>'); });
@@ -262,14 +479,20 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   }
 
   function render(){
-    var rows=comps.slice().sort(function(a,b){
+    var rows=view().slice().sort(function(a,b){
       var x=a[sortK],y=b[sortK];
       if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
       if(typeof x==="number"&&typeof y==="number")return sortAsc?x-y:y-x;
       return sortAsc?String(x).localeCompare(String(y)):String(y).localeCompare(String(x));
     });
     $("none").className=rows.length?"empty hide":"empty";
-    $("shown").textContent=rows.length?rows.length+" shown":"";
+    // Say "of N" whenever a filter is narrowing, so the number on screen can
+    // never be mistaken for the size of the book.
+    $("shown").textContent=rows.length
+      ? (rows.length===comps.length?rows.length+" shown":rows.length+" of "+comps.length+" shown")
+      : "";
+    renderChart(rows);
+    renderRepeats(rows);
     $("tbody").innerHTML=rows.map(function(c){
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
@@ -286,6 +509,204 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       var on=th.getAttribute("data-k")===sortK;
       th.innerHTML=th.textContent.replace(/[ \\u25b2\\u25bc]+$/,"")+(on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"");
     });
+  }
+
+  // ---- The market rollup ---------------------------------------------------
+  // Keyed on market + property type, the same pair the lead coverage below is
+  // keyed on, so a broker reading "Boise, ID · Industrial" here and watching
+  // "Boise, ID · Industrial" there is looking at one thing, not two.
+  // Ordered by size: the biggest part of the book is the part worth opening.
+  function groups(list){
+    var by={},order=[];
+    list.forEach(function(c){
+      var mk=c.market||"Unknown market",ty=c.property_type||"",k=mk+"|"+ty;
+      if(!by[k]){by[k]={market:mk,type:ty,comps:[],pub:0};order.push(k);}
+      by[k].comps.push(c);
+      if(c.published)by[k].pub++;
+    });
+    return order.map(function(k){
+      var g=by[k],dates=g.comps.map(function(c){return c.deal_date}).filter(Boolean).sort();
+      var ps=psfList(g.comps);
+      return {market:g.market,type:g.type,n:g.comps.length,pub:g.pub,
+        med:median(ps),psfN:ps.length,
+        first:dates[0]||"",last:dates[dates.length-1]||""};
+    }).sort(function(a,b){return b.n-a.n});
+  }
+
+  function renderRollup(){
+    var gs=groups(comps);
+    $("rollupSec").className=gs.length?"":"hide";
+    var m=$("fMarket").value,t=$("fType").value;
+    $("rollup").innerHTML=gs.map(function(g){
+      // A card reads as selected only when the filter is exactly this card.
+      var on=(m===g.market&&t===g.type)?" on":"";
+      // The headline number is the median $/SF where there are priced sales to
+      // take one from, and the comp count where there are not. A book of
+      // leases has no $/SF and must not be shown a blank space where every
+      // other card has a figure.
+      var head=g.med!=null
+        ? '<div class="big">'+psf0(g.med)+'<span>/SF median</span></div>'
+        : '<div class="big">'+g.n+'<span> comp'+(g.n===1?"":"s")+'</span></div>';
+      var line=g.med!=null
+        ? g.n+" comp"+(g.n===1?"":"s")+" \\u00b7 "+g.psfN+" priced sale"+(g.psfN===1?"":"s")
+        : "no priced sales yet";
+      var span=g.first?(g.first.slice(0,4)===g.last.slice(0,4)
+        ? g.first.slice(0,4)
+        : g.first.slice(0,4)+"\\u2013"+g.last.slice(0,4)):"";
+      return '<button type="button" class="card'+on+'" data-mk="'+escA(g.market)+'" data-ty="'+escA(g.type)+'">'+
+        '<span class="ty">'+esc(g.type||"Unspecified")+"</span>"+
+        '<span class="mk">'+esc(g.market)+"</span>"+
+        head+
+        '<span class="fine">'+esc(line)+"</span>"+
+        (span?'<span class="fine">'+esc(span)+" \\u00b7 latest "+esc(g.last)+"</span>":"")+
+        (g.pub?'<span class="fine pub">'+g.pub+" published</span>":"")+
+        "</button>";
+    }).join("");
+  }
+
+  // ---- Median $/SF by year -------------------------------------------------
+  // One series, so one hue and no legend: the heading says what is plotted.
+  // Gray columns with the most recent year in the brand red, which is the same
+  // emphasis language index.html's market chart already speaks (gray comp
+  // dots, red for the one that matters). The latest year is the only one
+  // direct-labelled — a number over every column is noise, and the axis plus
+  // the per-column tooltip carry the rest.
+  function bar(x,y,w,h,r){
+    r=Math.min(r,w/2,h);
+    return "M"+x+","+(y+h)+"V"+(y+r)+"a"+r+","+r+" 0 0 1 "+r+",-"+r+
+      "h"+(w-2*r)+"a"+r+","+r+" 0 0 1 "+r+","+r+"V"+(y+h)+"Z";
+  }
+  function renderChart(rows){
+    var box=$("chartBox"),by={},order=[];
+    rows.forEach(function(c){
+      var y=yearOf(c),v=psfOf(c);
+      if(!y||v==null)return;
+      if(!by[y]){by[y]=[];order.push(y);}
+      by[y].push(v);
+    });
+    var years=order.sort();
+    var pts=years.map(function(y){return {year:y,med:median(by[y]),n:by[y].length}});
+    var total=pts.reduce(function(s,p){return s+p.n},0);
+    // Two years and three priced sales is the floor for calling anything a
+    // trend. Below it the honest thing is to say so, not to draw one column
+    // and let it imply a direction. Silence would read as a broken panel.
+    if(pts.length<2||total<3){
+      box.className="panel chart";
+      $("chartTitle").textContent="Median $/SF by year";
+      $("chartWrap").innerHTML='<p class="note">A price trend needs priced sales in at least two years. '+
+        (total?"There "+(total===1?"is 1":"are "+total)+" here so far.":"There are none in this view yet.")+"</p>";
+      if(!rows.length)box.className="panel chart hide";
+      return;
+    }
+    box.className="panel chart";
+    $("chartTitle").textContent="Median $/SF by year \\u00b7 "+total+" priced sales";
+
+    var W=600,H=190,L=44,R=8,T=16,B=34;               // B leaves room for the year band
+    var plotW=W-L-R,plotH=H-T-B;
+    var top=Math.max.apply(null,pts.map(function(p){return p.med}));
+    // Round the axis up to a clean number so the ticks read 0 / 60 / 120.
+    var step=Math.pow(10,Math.floor(Math.log(top)/Math.LN10))/2;
+    var max=Math.ceil(top/step)*step||1;
+    var band=plotW/pts.length;
+    var bw=Math.min(24,Math.max(6,band-10));          // capped; the leftover is air
+    var y=function(v){return T+plotH-(v/max)*plotH};
+
+    var s='<svg viewBox="0 0 '+W+" "+H+'" role="img" aria-label="Median price per square foot by year">';
+    // Recessive hairline grid, solid (never dashed), one step off the surface.
+    [0,max/2,max].forEach(function(v){
+      s+='<line x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
+        '" stroke="#E4E2DA" stroke-width="1"/>';
+      s+='<text x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#8A93A0" '+
+        'font-family="Inter, sans-serif" style="font-variant-numeric:tabular-nums">'+psf0(v)+"</text>";
+    });
+    pts.forEach(function(p,i){
+      var cx=L+band*i+band/2,last=i===pts.length-1;
+      var h=Math.max(2,y(0)-y(p.med));
+      var tip=p.year+" \\u00b7 median "+psf0(p.med)+"/SF \\u00b7 "+p.n+" sale"+(p.n===1?"":"s");
+      // Full-band transparent hit rect first: a 24px column is a small target,
+      // and the tooltip should not require landing on the mark itself.
+      s+='<rect x="'+(L+band*i).toFixed(1)+'" y="'+T+'" width="'+band.toFixed(1)+'" height="'+plotH+
+        '" fill="transparent"><title>'+esc(tip)+"</title></rect>";
+      s+='<path d="'+bar(cx-bw/2,y(p.med),bw,h,4)+'" fill="'+(last?"#B91C1C":"#5A6473")+
+        '" fill-opacity="'+(last?"1":"0.85")+'" pointer-events="none"/>';
+      s+='<text x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#8A93A0" '+
+        'font-family="Inter, sans-serif">'+esc(p.year)+"</text>";
+      // The endpoint is the one worth reading without hovering.
+      if(last){
+        s+='<text x="'+cx.toFixed(1)+'" y="'+(y(p.med)-7).toFixed(1)+'" text-anchor="middle" font-size="12" '+
+          'font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">'+psf0(p.med)+"</text>";
+      }
+    });
+    s+="</svg>";
+    $("chartWrap").innerHTML=s;
+  }
+
+  // ---- Repeat properties ---------------------------------------------------
+  // The "group them by building" half of the task, in the only form that adds
+  // information: a property you have transacted more than once. Grouping every
+  // property would be the same table with extra chrome, since most addresses
+  // appear exactly once. Hidden entirely when there are no repeats, rather
+  // than shown empty.
+  function renderRepeats(rows){
+    var by={},order=[];
+    rows.forEach(function(c){
+      var a=addrKey(c.address);
+      if(!a)return;
+      // Keyed on MARKET + address, never address alone. Street names repeat
+      // across a metro: on the first test book, 4 of 6 "repeat properties"
+      // were a Boise building and a Meridian building at the same house
+      // number, presented as one property with three deals. A broker's own
+      // records inventing a transaction history is worse than showing no
+      // repeats at all, and the same instinct is already written into
+      // broker-vault.js's addressKey: merging two genuinely different
+      // properties is worse than keeping one duplicate. The market never
+      // differs between two deals on the SAME building, so this can only
+      // split false groups, never true ones.
+      var k=(c.market||"")+"|"+a;
+      if(!by[k]){by[k]={address:c.address,market:c.market||"",deals:[]};order.push(k);}
+      by[k].deals.push(c);
+    });
+    var reps=order.map(function(k){return by[k]}).filter(function(g){return g.deals.length>1})
+      .sort(function(a,b){return b.deals.length-a.deals.length});
+    $("repBox").className=reps.length?"panel":"panel hide";
+    // Cleared, not just hidden: a filtered-out market's rows left in the DOM
+    // are the wrong answer waiting for whatever un-hides this next.
+    if(!reps.length){ $("repRows").innerHTML=""; return; }
+    $("repRows").innerHTML=reps.slice(0,10).map(function(g){
+      var deals=g.deals.slice().sort(function(a,b){
+        return String(b.deal_date||"").localeCompare(String(a.deal_date||""));
+      }).map(function(d){
+        return '<div class="deal">'+esc(d.deal_date||"undated")+" \\u00b7 "+esc(d.transaction||"")+
+          (d.price!=null?" \\u00b7 "+money(d.price):"")+
+          (psfOf(d)!=null?" \\u00b7 "+psf(psfOf(d))+"/SF":"")+"</div>";
+      }).join("");
+      // The market is named on the row, not just used as a grouping key: two
+      // same-numbered addresses in neighbouring cities are exactly the pair a
+      // reader would otherwise assume had been merged.
+      return '<div class="rep"><div class="addr">'+esc(g.address)+" <span class=\\"note\\">"+
+        (g.market?esc(g.market)+" \\u00b7 ":"")+g.deals.length+" deals</span></div>"+deals+"</div>";
+    }).join("")+(reps.length>10?'<p class="note">'+(reps.length-10)+" more not shown.</p>":"");
+  }
+
+  // ---- First run vs the real workspace --------------------------------------
+  // Keyed on comps AND uploads, not comps alone. A broker whose only import was
+  // entirely rejected, or who has deleted every comp out of an import, has
+  // already been through the door once — showing them "Start here" again would
+  // read as their work having been thrown away.
+  //
+  // Everything hidden here is hidden because it is EMPTY, not because it is
+  // unimportant: an empty table with a header row and a "nothing here yet" line
+  // reads as a broken page, and the vault had three of them stacked up.
+  function applyFirstRun(compCount,uploadCount){
+    var first=compCount===0&&uploadCount===0;
+    $("firstRun").className=first?"":"hide";
+    // The uploader lives in both places on first run, so the plain "Add comps"
+    // section stands down and step 1 owns it. Both buttons drive the same
+    // <input type=file>, so there is still only one upload path.
+    $("addSec").className=first?"hide":"";
+    $("trustLine").className=first?"trust hide":"trust";
+    $("compsSec").className=first?"hide":"";
+    $("importsSec").className=first?"hide":"";
   }
 
   function renderUploads(ups){
@@ -308,7 +729,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .then(function(o){
         if(o.s!==200){
           // No stale rows left on screen under an error message.
-          $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+          $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("leadTableWrap").className="tw hide"; $("noLeads").className="empty hide";
           $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>";
           return;
         }
@@ -318,7 +739,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         renderLeads(o.j.leads||[],cov.length);
       })
       .catch(function(){
-        $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("noLeads").className="empty hide";
+        $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("leadTableWrap").className="tw hide"; $("noLeads").className="empty hide";
         $("leadMsg").innerHTML='<div class="msg bad">Couldn\\'t load leads. Please try again.</div>';
       });
   }
@@ -337,6 +758,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   function renderLeads(leads,covCount){
     var showEmpty=leads.length===0&&covCount>0;
     $("noLeads").className=showEmpty?"empty":"empty hide";
+    $("leadTableWrap").className=leads.length?"tw":"tw hide";
     $("leadRows").innerHTML=leads.map(function(l){
       var btn=l.intro_requested
         ? '<button class="pubbtn on" disabled>Intro requested</button>'
@@ -437,14 +859,47 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   }
 
   $("pick").addEventListener("click",function(){ $("file").click() });
+  // Step 1's button is the same door as #pick — one <input type=file>, so an
+  // upload started here lands in the same handler and the same result message.
+  $("frPick").addEventListener("click",function(){ $("file").click() });
+  // Step 2 does not duplicate the coverage form; it takes the broker to the one
+  // that already exists and puts the cursor in it. A second copy of that input
+  // would be a second thing to keep in step with the coverage rules.
+  $("frCoverage").addEventListener("click",function(){
+    $("leads").scrollIntoView({behavior:"smooth",block:"start"});
+    // After the scroll settles, so focus does not fight the animation.
+    setTimeout(function(){ $("covMarket").focus(); },420);
+  });
   $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.add("over"); })});
   ["dragleave","drop"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.remove("over"); })});
   $("drop").addEventListener("drop",function(e){ upload(e.dataTransfer.files[0]) });
-  $("fMarket").addEventListener("change",load);
-  $("fType").addEventListener("change",load);
+  // Filtering is local now, so these redraw rather than refetch. renderRollup
+  // is included only to move the selected ring; its numbers are whole-book and
+  // do not change with the filter.
+  function redraw(){
+    $("fClear").className=($("fMarket").value||$("fType").value)?"btn ghost":"btn ghost hide";
+    renderRollup();
+    render();
+  }
+  $("fMarket").addEventListener("change",redraw);
+  $("fType").addEventListener("change",redraw);
+  $("fClear").addEventListener("click",function(){
+    $("fMarket").value=""; $("fType").value=""; redraw();
+  });
+  // A rollup card is the filter. Clicking the one already selected clears it,
+  // so a card is a toggle and never a trap you can only leave via the dropdowns.
+  $("rollup").addEventListener("click",function(e){
+    var card=e.target.closest("button.card"); if(!card)return;
+    var mk=card.getAttribute("data-mk"),ty=card.getAttribute("data-ty");
+    var same=$("fMarket").value===mk&&$("fType").value===ty;
+    $("fMarket").value=same?"":mk;
+    $("fType").value=same?"":ty;
+    redraw();
+    if(!same)$("tbl").scrollIntoView({behavior:"smooth",block:"start"});
+  });
   document.querySelector("#tbl thead").addEventListener("click",function(e){
     var th=e.target.closest("th[data-k]"); if(!th)return;
     var k=th.getAttribute("data-k");

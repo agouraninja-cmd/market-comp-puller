@@ -11392,23 +11392,40 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Fetch a published report by id (public: anyone with the link) ---
+  // --- Fetch a published report by id (public: anyone with the link;
+  // invited: only the owner or a viewer on the list) ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/shared") {
     const id = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
     if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
       return sendJson(res, 400, { error: "Invalid share id." });
     }
-    // Minimal call-site update for the new storage shape — Task 6 rewrites
-    // this route to actually enforce `share.visibility` / revoked_at / the
-    // viewer list. For now this preserves today's behavior (serve the
-    // payload for any known id) using getShareRecord instead of the removed
-    // getSharedReport, so the route keeps working while the ACL is unused.
-    getShareRecord(id).then((record) => {
-      if (!record) return sendJson(res, 404, { error: "This shared report was not found." });
-      return sendJson(res, 200, record.payload);
-    }).catch((err) => {
-      console.error("Shared report lookup failed:", err);
-      return sendJson(res, 500, { error: "Could not load the shared report." });
+    (async () => {
+      const user = await getSessionUser(req);
+      const rec = await getShareRecord(id);
+      if (!rec) return sendJson(res, 404, { error: "This shared report was not found." });
+      const decision = SHAREACCESS.canReadShare({ share: rec.share, viewers: rec.viewers, user });
+      if (!decision.ok) {
+        if (decision.reason === "revoked") {
+          // NOT 404 (a client would hunt for a typo in a link that was
+          // correct) and NOT signin_required (signing in cannot help, and the
+          // card would loop them).
+          return sendJson(res, 403, { error: "This report link was turned off by the person who sent it." });
+        }
+        if (decision.reason === "signin_required") {
+          return sendJson(res, 403, {
+            error: "This report was shared with specific people. Please sign in to view it.",
+            signin_required: true,
+          });
+        }
+        return sendJson(res, 403, { error: "This report was shared with specific people, and this account is not one of them." });
+      }
+      if (decision.reason === "invited") stampShareView(id, SHAREACCESS.normalizeEmail(user.email));
+      return sendJson(res, 200, rec.payload);
+    })().catch((err) => {
+      console.error("Shared report lookup failed:", err.message);
+      // Fails CLOSED: an error resolving the audience refuses the read. The
+      // opposite would serve a permissioned report during a database blip.
+      return sendJson(res, 503, { error: "Could not load the shared report. Please try again in a minute." });
     });
     return;
   }

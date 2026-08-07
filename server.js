@@ -2667,6 +2667,24 @@ function sendOutboundEmail(to, subject, text) {
   sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL });
 }
 
+// The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
+// unverified it logs "Outbound email skipped" and the sharer copies the link
+// by hand — exactly how password reset behaves today.
+//
+// Fire and forget, ALWAYS: the share row is already written when this runs. A
+// mail provider having a bad minute must never mean the link does not exist.
+function sendShareInvites(emails, { url, address, fromName }) {
+  for (const to of emails) {
+    const who = fromName ? `${fromName} has` : "Someone has";
+    sendOutboundEmail(to, `A property valuation was shared with you`,
+      `${who} shared a CompNinja valuation for ${address} with you.\n\n` +
+      `View it here: ${url}\n\n` +
+      `This report was shared with specific people. Sign in with this email address (${to}) to open it. ` +
+      `A free account is all it takes.\n\n` +
+      `Every CompNinja valuation is an automated estimate, not an appraisal.`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Prompt builder — property-type aware
 // ---------------------------------------------------------------------------
@@ -11390,6 +11408,15 @@ const server = http.createServer((req, res) => {
           userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers,
         });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
+        // The share row is already written. A mail send must never turn this
+        // success into an error, so guard even a synchronous throw here.
+        if (visibility === "invited" && viewers.length) {
+          try {
+            sendShareInvites(viewers, { url: `${SITE_URL}/r/${id}`, address: safeMeta.address, fromName: user.name || "" });
+          } catch (err) {
+            console.error("Share invite send failed:", err.message);
+          }
+        }
         return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}`, visibility });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -11492,11 +11519,27 @@ const server = http.createServer((req, res) => {
         if (asked.length > 20) return sendJson(res, 400, { error: "Up to 20 people per report." });
         const clean = [...new Set(asked.map(SHAREACCESS.normalizeEmail).filter(Boolean))];
         // Ownership proven by a scoped READ before any write: a stranger with
-        // an id must not be able to add themselves as a viewer.
+        // an id must not be able to add themselves as a viewer. Pulls the
+        // CURRENT viewer list and the report's address in the same query,
+        // because setShareViewers deletes the old list before writing the new
+        // one — this is the only chance to see who was already invited.
         const owned = await sbRequest("GET",
-          `shared_reports?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=1`);
+          `shared_reports?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}` +
+          `&select=id,payload,report_viewers(email)&limit=1`);
         if (!owned || !owned[0]) return sendJson(res, 404, { error: "That shared report was not found." });
+        const before = new Set((owned[0].report_viewers || []).map((v) => v.email));
+        // Only the NEWLY added addresses get mailed — re-saving an unchanged
+        // list (or only removing people) must email nobody.
+        const added = clean.filter((email) => !before.has(email));
         await setShareViewers(id, clean);
+        if (added.length) {
+          try {
+            const address = (owned[0].payload && owned[0].payload.meta && owned[0].payload.meta.address) || "";
+            sendShareInvites(added, { url: `${SITE_URL}/r/${id}`, address, fromName: user.name || "" });
+          } catch (err) {
+            console.error("Share invite send failed:", err.message);
+          }
+        }
         return sendJson(res, 200, { ok: true, viewers: clean });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

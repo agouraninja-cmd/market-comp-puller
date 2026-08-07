@@ -3629,6 +3629,10 @@
   // harvests them. Exclusion identity is a content key mirroring the server's
   // corpusKeyOf (address|date|price) so it survives sorting and re-renders.
   // ----------------------------------------------------------------------------
+  // ⚠ MIRROR: server.js's corpusKeyOf() generates the same key for curation
+  // exclusions. Change one and you must change the other, or POST /api/share's
+  // curation filter stops matching private vault comps and republishes their
+  // addresses and prices in meta.curation.excluded to anyone with the link.
   function compKeyOf(c) {
     const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
     return [norm(c.address), norm(c.date || c.deal_date), norm(c.price_or_rate)].join("|");

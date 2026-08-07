@@ -2508,30 +2508,56 @@
   // A /r/<id> share link: load the published report and render it read-only-ish
   // (it doesn't save into the viewer's history). The form above is pre-filled
   // with the property so the viewer can run their own fresh search in a click.
-  (function loadSharedReport() {
+  //
+  // A non-200 is not one outcome, it's three, and only one of them is fixable
+  // by signing in:
+  //   - 403 signin_required: true  -> the share is invited and this reader is
+  //     anonymous. Signing in can help, so offer the account modal.
+  //   - 403 with no signin_required -> either a signed-in reader who isn't on
+  //     the viewer list, or a revoked link. Neither is fixed by signing in
+  //     (the first is already signed in; the second stays off however many
+  //     accounts try it), so a sign-in button here would loop the reader.
+  //   - anything else (404/503/a malformed body) -> the existing generic copy.
+  (async function loadSharedReport() {
     const m = location.pathname.match(/^\/r\/([A-Za-z0-9_-]{6,32})$/);
     if (!m) return;
-    fetch("/api/shared?id=" + encodeURIComponent(m[1]))
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("not found"))))
-      .then((payload) => {
-        if (!payload || !payload.data || !payload.meta) throw new Error("bad payload");
-        const meta = payload.meta;
-        // Pre-fill the search form from the shared report's context.
-        if (meta.address) document.getElementById("address").value = meta.address;
-        if (meta.type) document.getElementById("propertyType").value = meta.type;
-        const s = meta.subject || {};
-        syncSubjectFieldsToType();
-        writeSubjectDetails(s.details);
-        if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
-        if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
-        if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
-        if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
-        renderResults(payload.data, meta);
-        showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
-      })
-      .catch(() => {
-        showStatus("That shared report link is invalid or is no longer available.", "error");
-      });
+    let r;
+    try {
+      r = await fetch("/api/shared?id=" + encodeURIComponent(m[1]));
+    } catch (e) {
+      showStatus("That shared report link is invalid or is no longer available.", "error");
+      return;
+    }
+    if (r.status === 403) {
+      const body = await r.json().catch(() => ({}));
+      showSharedNotice(body.error || "This report is private.", { offerSignIn: body.signin_required === true });
+      return;
+    }
+    if (!r.ok) {
+      showStatus("That shared report link is invalid or is no longer available.", "error");
+      return;
+    }
+    let payload;
+    try {
+      payload = await r.json();
+      if (!payload || !payload.data || !payload.meta) throw new Error("bad payload");
+    } catch (e) {
+      showStatus("That shared report link is invalid or is no longer available.", "error");
+      return;
+    }
+    const meta = payload.meta;
+    // Pre-fill the search form from the shared report's context.
+    if (meta.address) document.getElementById("address").value = meta.address;
+    if (meta.type) document.getElementById("propertyType").value = meta.type;
+    const s = meta.subject || {};
+    syncSubjectFieldsToType();
+    writeSubjectDetails(s.details);
+    if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
+    if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
+    if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
+    if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
+    renderResults(payload.data, meta);
+    showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
   })();
 
   // ----------------------------------------------------------------------------
@@ -2563,6 +2589,36 @@
     box.classList.remove("hidden");
   }
   function hideStatus() { document.getElementById("statusBox").classList.add("hidden"); }
+
+  // A /r/<id> refusal (private report, wrong account, or a revoked link)
+  // renders a card in place of the report, in the same statusBox a broken
+  // link already used. Only `offerSignIn` gets a button: canReadShare's other
+  // two 403 reasons cannot be fixed by signing in, and a button there would
+  // loop the reader forever. Builds nodes rather than interpolating the
+  // message into innerHTML, since it comes straight from the API response.
+  function showSharedNotice(message, { offerSignIn = false } = {}) {
+    const box = document.getElementById("statusBox");
+    box.className = "mt-6 rounded-lg border px-4 py-3 text-sm no-print bg-slate-50 border-slate-200 text-slate-700";
+    box.innerHTML = "";
+    const p = document.createElement("p");
+    p.textContent = message;
+    box.appendChild(p);
+    if (offerSignIn) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5";
+      btn.textContent = "Sign in or create account";
+      btn.addEventListener("click", () => {
+        // The account modal has no generic "on success" hook; reloading this
+        // same /r/<id> URL is the documented way to land on the report once
+        // the new session cookie makes canReadShare see it.
+        pendingSharedReload = true;
+        openAcctModal("signin", "Sign in to view this report.");
+      });
+      box.appendChild(btn);
+    }
+    box.classList.remove("hidden");
+  }
 
   // ----------------------------------------------------------------------------
   // Animated loading card — cycles through generation stages during the wait.
@@ -6425,6 +6481,7 @@
   let currentUser = null;           // { email, name } | null
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
+  let pendingSharedReload = false;  // signin_required on /r/<id>: reload this URL once signed in
   let acctMode = "signin";          // signin | signup | forgot | reset
   let resetToken = "";
 
@@ -6518,6 +6575,7 @@
   function closeAcctModal() {
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
     pendingCheckoutPlan = null;   // ...and must not open Stripe Checkout later either
+    pendingSharedReload = false;  // ...and a cancelled sign-in must not reload the page later
     document.getElementById("acctModal").classList.add("hidden");
   }
 
@@ -6586,6 +6644,16 @@
       // Whose entitlements these are just changed — re-read them before any
       // billing control is acted on.
       refreshProConfig();
+      // A /r/<id> that answered signin_required: the modal has no generic
+      // "on success" hook, and a reload of this same URL is the documented
+      // way to land on a now-readable report (canReadShare re-evaluates with
+      // the fresh session cookie). Do this before the import-prompt branch
+      // below, which would otherwise flash on screen for an instant that a
+      // reload immediately discards.
+      if (pendingSharedReload) {
+        location.reload();
+        return;
+      }
       // Capture the pending flags BEFORE closing: closeAcctModal clears them
       // (so a cancelled nudge can't fire a surprise save, or a surprise
       // checkout, after a later sign-in).
@@ -8280,13 +8348,35 @@
     const el = document.getElementById("privateNotice");
     if (!el) return;
     const n = privateIncludedCount();
-    if (n <= 0) { el.classList.add("hidden"); el.textContent = ""; return; }
-    el.classList.remove("hidden");
-    const one = n === 1;
-    el.textContent =
-      `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
-      `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
-      `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+    if (n > 0) {
+      el.classList.remove("hidden");
+      const one = n === 1;
+      el.textContent =
+        `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +
+        `and ${one ? "it is" : "they are"} counted in the valuation above. ` +
+        `Vault comps are visible only to you: they are left out of downloads, saved images, printed copies and shared links.`;
+      return;
+    }
+    // A shared report can carry its owner's private comps as anonymized
+    // locked_basis rows instead of table rows (an invited share's default,
+    // see anonymizePrivateComps in blend-comps.js): private_count > 0 but no
+    // comp in currentComps is flagged private, so privateIncludedCount() above
+    // reads 0 even though the valuation counted them. Say so, or a client
+    // reasonably asks why the range cites more evidence than the table shows.
+    // This never implies CompNinja withheld anything — the sender's own
+    // records are included, just not shown — and it is not an appraisal claim.
+    const basisCount = currentMeta && currentMeta.shared
+      ? Number(currentParsed && currentParsed.private_count) || 0
+      : 0;
+    if (basisCount > 0) {
+      el.classList.remove("hidden");
+      const one = basisCount === 1;
+      el.textContent = `${basisCount} comp${one ? "" : "s"} from the sender's own records ` +
+        `${one ? "is" : "are"} included in this valuation but ${one ? "is" : "are"} not shown.`;
+      return;
+    }
+    el.classList.add("hidden");
+    el.textContent = "";
   }
 
   // Shared viewers see the curated report but never the editing controls —

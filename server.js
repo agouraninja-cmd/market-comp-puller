@@ -11417,7 +11417,12 @@ const server = http.createServer((req, res) => {
             console.error("Share invite send failed:", err.message);
           }
         }
-        return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}`, visibility });
+        // `invited` is the FINAL normalized/deduped count actually stored and
+        // mailed (viewers.length), not the count of what the browser typed —
+        // the browser's own success message must read this, never recompute
+        // it, or a duplicate/typo makes it claim more people got the link
+        // than actually did.
+        return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}`, visibility, invited: viewers.length });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Failed to store shared report:", err);

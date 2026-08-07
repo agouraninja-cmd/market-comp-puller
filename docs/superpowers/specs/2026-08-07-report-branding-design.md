@@ -71,16 +71,26 @@ This is deliberate and it is not a hole:
   a cosmetic self-application with no third party involved, so it is enforced
   client-side off `/api/config`, like every other presentation limit.
 
-**Which client-side signal.** `/api/config` carries `pro.canBrand` computed with
-no report scope, so it is true for Pro and false for a $20 buyer even on the
-report they bought. The browser must therefore apply the brand when the visitor
-is Pro **or** when the report on screen is one they have unlocked, reusing
-whatever signal the client already holds for that (the same one that decides the
-report is not comp-gated after a purchase return). Do not invent a second
-notion of "unlocked" for branding. If no such signal turns out to be readily
-available in the front end, surface that in the implementation plan rather than
-working around it, because a $20 buyer silently getting no brand is the one
-outcome this arrangement exists to prevent.
+**Which client-side signal (resolved during planning, 2026-08-07).**
+`/api/config` carries `pro.canBrand` computed with no report scope, so it is
+true for Pro and false for a $20 buyer even on the report they bought. The
+front end's existing "is this report unlocked" signal is `lockedCount() === 0`,
+and that is **not** usable here: a free visitor whose thin-market report had
+four or fewer comps also has `lockedCount() === 0`, so branding would apply to
+people who never paid for it, and the pricing tile would be selling something
+visibly free.
+
+So the report carries the answer instead. `/api/comps` already resolves
+entitlements **with the report id** and already decorates the response at
+serialization time (that is where `locked_count` is set). It gains one more
+field there, `branding_allowed`, a per-visitor boolean computed from that
+same report-scoped `ent.canBrand`.
+
+This is exact rather than inferred, costs no extra round trip, and is right for
+all four cases at once: Pro, a $20 buyer on the report they bought, a comped
+admin, and a free visitor whose report merely happened not to be gated. Like
+every other serialization-time decoration it is never cached, so one cached
+search still serves branded and unbranded visitors correctly.
 
 ## Three routes
 

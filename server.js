@@ -35,6 +35,10 @@ const VAULT = require("./broker-vault");
 // broker product, so it has to be PROVABLE rather than reviewed. This module
 // only shapes and merges; the read below is scoped by user_id here.
 const BLEND = require("./blend-comps");
+// Who may read a shared report. Pure and tested for the same reason as the
+// modules above it: this gate protects a broker's private comps, not a comp
+// count, so it has to be provable rather than reviewed.
+const SHAREACCESS = require("./report-access.js");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
@@ -11330,16 +11334,55 @@ const server = http.createServer((req, res) => {
         delete safeMeta.portfolioId;
         safeMeta.shared = true;
         safeMeta.generatedAt = meta.generatedAt || Date.now();
-        // The broker's private comps are the same class of secret as the NOI
-        // above, with a sharper edge: this route takes the report FROM THE
-        // BROWSER, and a broker's browser is holding a BLENDED one. A shared
-        // report is public by design and has no viewer check to fall back on,
-        // so the server strips rather than trusting what it was handed.
-        const safeReport = BLEND.stripPrivateComps(report);
+        const user = await getSessionUser(req);
+        // Read once, used by both the invited gate and the private-comp
+        // decision below. Never cached across requests: entitlements are
+        // per-user and lapse with a card.
+        const ent = await entitlementsFor(req);
+        const visibility = parsed.visibility === "invited" ? "invited" : "public";
+        const includePrivate = parsed.includePrivate === true;
+
+        // A public link that carries private comps is the one mistake this
+        // route must never make quietly. 400, not a silent strip: a client bug
+        // should be loud on the first attempt rather than correct on every
+        // attempt by luck.
+        if (visibility === "public" && includePrivate) {
+          return sendJson(res, 400, { error: "A public link cannot include private comps." });
+        }
+
+        let viewers = [];
+        if (visibility === "invited") {
+          if (!user) return sendJson(res, 401, { error: "Please sign in to share a report with named people." });
+          if (!ent.pro) {
+            return sendJson(res, 403, { error: "Sharing with named clients is part of the paid plan.", upgrade: true });
+          }
+          if (!DB_CONFIGURED) {
+            // The vault's refusal, for the vault's reason: an access-control
+            // list in a JSON file on an ephemeral disk is not one.
+            return sendJson(res, 503, { error: "Private sharing is unavailable right now. Please try again in a minute." });
+          }
+          const asked = Array.isArray(parsed.viewers) ? parsed.viewers : [];
+          if (asked.length > 20) return sendJson(res, 400, { error: "Up to 20 people per report." });
+          viewers = [...new Set(asked.map(SHAREACCESS.normalizeEmail).filter(Boolean))];
+          if (asked.length && !viewers.length) {
+            return sendJson(res, 400, { error: "Those email addresses could not be read. Check them and try again." });
+          }
+        }
+
+        // Private comps: stripped for a public link; anonymized into the
+        // valuation basis for an invited one; carried whole only when the
+        // owner explicitly asked and may. Never trusted from the browser.
+        const canPrivate = includePrivate && visibility === "invited" && ent.canUseVault;
+        const safeReport = visibility === "public"
+          ? BLEND.stripPrivateComps(report)
+          : canPrivate ? report : BLEND.anonymizePrivateComps(report);
+
         const id = newShareId();
-        await storeSharedReport(id, { data: safeReport, meta: safeMeta });
-        logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address) });
-        return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}` });
+        await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
+          userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers,
+        });
+        logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
+        return sendJson(res, 200, { id, url: `${SITE_URL}/r/${id}`, visibility });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Failed to store shared report:", err);

@@ -12,14 +12,6 @@ intent, the devlog states history.
 
 ## Now
 
-- **Private comps must stop being geocoded by address** — the first piece of
-  work after v2. Spec AGREED 2026-08-06 in
-  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; section 7 is
-  answered (ship step 1 plus Jacob's two display guards, defer import-time
-  geocoding). Owen owns migration 017, `lat`/`lng` in the CSV template with
-  validation, `toApiComp()` lifting the property's coordinates, and
-  `blend-comps.js` carrying them through. Until it lands, a private comp's
-  address still leaves the broker's browser to place a map pin.
 - **Report branding UI.** The last unbuilt Pro entitlement: `canBrand` and
   `findBrandingProfile()` exist server-side with no UI at all. Shipping it
   lets the pricing tile finally advertise branded reports.
@@ -38,6 +30,22 @@ intent, the devlog states history.
 
 ## Next
 
+- **`/api/geocode` should take a POST, not a query string.** The two
+  follow-ons left by the private-comp geocoding work, in the order Owen set
+  when he answered section 7 — this one ABOVE import-time geocoding, not
+  below it. Today every comp's address travels in a URL, which means the
+  platform's access logs and any Referer. `POST /api/report-access` is already
+  POST for exactly this reason (CLAUDE.md says so). It is the same class of
+  fix at a wider blast radius, because it covers *every* comp rather than only
+  private ones. Scoped out of the original change deliberately: it touches
+  every caller (the report map, the market pages, the Explorer).
+- **Import-time geocoding for vault comps** (step 2 of the same spec).
+  Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
+  what fraction of broker exports already carry coordinates — could not be
+  answered because there were **no vault uploads at all** yet. It is work that
+  should be bought with evidence from the first real broker book, not
+  estimated. Nothing is wasted by waiting: `geo_source` already allows
+  `'census'`, so step 2 lands as a pure addition with no migration change.
 - **Corpus browse page** (the deferred half of friend-feedback #9). Gated
   on the density milestone: 10+ market/type buckets holding 8+
   provenance-good comps from organic traffic; the `corpus_offer` events on
@@ -109,6 +117,32 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-06: a private comp's address stops leaving the broker's browser.**
+  The first piece of work after v2, and it is done on both sides. Spec and
+  Owen's section 7 answer in
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`. Storage half
+  (#45): migration 017 puts `lat`/`lng`/`geo_source` on `broker_properties` —
+  one row per building, so a broker with three deals on it is located once —
+  plus `lat`/`lng` in the vault CSV with both-or-neither validation,
+  `attachPropertyCoords()` stitching them on, and `toApiComp()` carrying them
+  out. 017 recorded applied in `migrations/APPLIED.md` (#46; note it is NOT
+  idempotent). Display half (#43): a private comp that already knows where it
+  is is never geocoded, and one that still needs locating goes only to our own
+  Census proxy, never browser-direct to Nominatim, which would otherwise
+  receive the address *and* the broker's IP.
+  Verified end to end after both halves merged, since neither of us had run
+  them together: coordinates survive `attachPropertyCoords` →`toApiComp` →
+  `blendPrivateComps` → the browser guard, which then skips geocoding.
+  Import-time geocoding is deliberately deferred; see Next for it and for the
+  `/api/geocode` POST change that Owen ranked above it.
+- **2026-08-06: CI can be started by hand** (#44). GitHub had a seven-hour
+  Actions incident that throttled webhooks to ~15%, so pushes and PRs stopped
+  creating workflow runs at all — four branches merged with no CI result while
+  Render deployed each one. `workflow_dispatch` adds a Run workflow button on
+  any branch, which is a direct API call rather than a webhook and so still
+  works when pushes are being dropped. It gave `main` a green verdict in 17
+  seconds the same day. Note it only works on branches whose own copy of
+  `ci.yml` carries the trigger, so cut branches from an up-to-date `main`.
 - **2026-08-06: v2 closed.** Broker tier v1 is done and live — the private
   vault, the star schema behind it (migration 016), blended private comps in a
   broker's own reports (server half #28, display half #30), the vault

@@ -57,6 +57,7 @@ const TABLES = [
   ["broker_coverage",     "015-broker-lead-inbox.sql"],
   ["lead_intro_requests", "015-broker-lead-inbox.sql"],
   ["broker_properties",   "016-broker-comps-star.sql"],
+  ["report_viewers",      "018-report-sharing.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -94,6 +95,12 @@ const COLUMNS = [
   // looks perfectly healthy and no building is ever located.
   ["broker_properties", ["lat", "lng", "geo_source", "geocoded_at"],
                                                                 "017-broker-property-coordinates.sql"],
+  // 018 makes a share ownable and revocable. Without these columns every
+  // sharing route 400s at PostgREST, and the read path would fall back to
+  // treating a permissioned share as a public one — the one failure this
+  // feature must never have.
+  ["shared_reports",    ["user_id", "visibility", "include_private", "revoked_at"],
+                                                                "018-report-sharing.sql"],
   // 015 alters two existing tables; a table check cannot see either change.
   // A missing broker_profiles.user_id silently re-orphans profiles on email
   // change; a missing leads.size_sqft 400s every sized lead insert into the

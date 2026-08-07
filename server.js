@@ -2260,6 +2260,14 @@ function stampShareView(shareId, email) {
 // Whole-list replace, mirroring PUT /api/dev-ideas: one state to reason about
 // instead of three. Callers pass already-normalized emails.
 async function setShareViewers(shareId, emails) {
+  // DELETE before INSERT, deliberately, even though that order can leave the
+  // list empty if the insert below fails: a removed viewer is a security
+  // decision, and a half-completed replace must fail toward LESS access
+  // (nobody can read it) rather than MORE (a removed viewer keeps reading it,
+  // which insert-first would risk). The cost of that choice is a share that
+  // can be left with zero viewers on a mid-write failure — the caller in
+  // PUT /api/shares/viewers tells the member so, rather than implying nothing
+  // changed.
   await sbRequest("DELETE", `report_viewers?share_id=eq.${encodeURIComponent(shareId)}`, undefined,
     { prefer: "return=minimal" });
   if (emails.length) {
@@ -11493,7 +11501,10 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Viewer update failed:", err.message);
-        return sendJson(res, 503, { error: "Couldn't update that list. Please try again in a minute." });
+        // setShareViewers clears the old list before writing the new one, so a
+        // failure here can leave the share with no viewers at all, not the old
+        // list unchanged. Say so, rather than imply nothing happened.
+        return sendJson(res, 503, { error: "Couldn't update that list, and it may now be empty. Please set it again." });
       }
     });
     return;
@@ -11512,8 +11523,11 @@ const server = http.createServer((req, res) => {
         if (!/^[A-Za-z0-9_-]{6,32}$/.test(String(id || ""))) return sendJson(res, 400, { error: "Invalid share id." });
         const rows = await revokeShare(id, user.id);
         if (!rows || !rows.length) return sendJson(res, 404, { error: "That shared report was not found." });
-        // The in-process payload cache must forget it too, or this very
-        // server would keep answering the link it was just told to kill.
+        // NOT what stops this process from serving the revoked link — that is
+        // getShareRecord() re-reading visibility/revoked_at from the database
+        // on every call; sharedReportsMem is only ever consulted on the
+        // no-database file-fallback path, which a revoked share cannot reach.
+        // This just drops a payload this process can no longer serve anyway.
         sharedReportsMem.delete(id);
         return sendJson(res, 200, { ok: true });
       } catch (err) {

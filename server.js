@@ -11430,6 +11430,101 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- The member's own shares, and the ones shared with them -------------
+  // Both halves in ONE call: /desk needs both and it is a page-load path.
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/shares") {
+    (async () => {
+      const user = await getSessionUser(req);
+      if (!user) return sendJson(res, 401, { error: "Please sign in." });
+      if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
+      const [owned, invited] = await Promise.all([
+        listSharesForOwner(user.id),
+        listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
+      ]);
+      const brief = (payload) => ({
+        address: (payload && payload.meta && payload.meta.address) || "",
+        type: (payload && payload.meta && payload.meta.type) || "",
+      });
+      return sendJson(res, 200, {
+        mine: owned.map((r) => ({
+          id: r.id, ...brief(r.payload), visibility: r.visibility,
+          includePrivate: r.include_private, revokedAt: r.revoked_at, createdAt: r.created_at,
+          url: `${SITE_URL}/r/${r.id}`,
+          viewers: (r.report_viewers || []).map((v) => ({
+            email: v.email, invitedAt: v.invited_at,
+            firstViewedAt: v.first_viewed_at, lastViewedAt: v.last_viewed_at,
+          })),
+        })),
+        sharedWithMe: invited
+          .filter((r) => r.shared_reports && !r.shared_reports.revoked_at)
+          .map((r) => ({
+            id: r.share_id, ...brief(r.shared_reports.payload),
+            invitedAt: r.invited_at, url: `${SITE_URL}/r/${r.share_id}`,
+          })),
+      });
+    })().catch((err) => {
+      console.error("Shares list failed:", err.message);
+      return sendJson(res, 503, { error: "Couldn't load your shared reports. Please try again in a minute." });
+    });
+    return;
+  }
+
+  // --- Replace a share's viewer list wholesale ----------------------------
+  if (req.method === "PUT" && req.url.split("?")[0] === "/api/shares/viewers") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
+        const { id, emails } = JSON.parse(body || "{}");
+        if (!/^[A-Za-z0-9_-]{6,32}$/.test(String(id || ""))) return sendJson(res, 400, { error: "Invalid share id." });
+        const asked = Array.isArray(emails) ? emails : [];
+        if (asked.length > 20) return sendJson(res, 400, { error: "Up to 20 people per report." });
+        const clean = [...new Set(asked.map(SHAREACCESS.normalizeEmail).filter(Boolean))];
+        // Ownership proven by a scoped READ before any write: a stranger with
+        // an id must not be able to add themselves as a viewer.
+        const owned = await sbRequest("GET",
+          `shared_reports?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=1`);
+        if (!owned || !owned[0]) return sendJson(res, 404, { error: "That shared report was not found." });
+        await setShareViewers(id, clean);
+        return sendJson(res, 200, { ok: true, viewers: clean });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Viewer update failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't update that list. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+
+  // --- Turn a link off. One way, on purpose ------------------------------
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/shares/revoke") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
+        const { id } = JSON.parse(body || "{}");
+        if (!/^[A-Za-z0-9_-]{6,32}$/.test(String(id || ""))) return sendJson(res, 400, { error: "Invalid share id." });
+        const rows = await revokeShare(id, user.id);
+        if (!rows || !rows.length) return sendJson(res, 404, { error: "That shared report was not found." });
+        // The in-process payload cache must forget it too, or this very
+        // server would keep answering the link it was just told to kill.
+        sharedReportsMem.delete(id);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Share revoke failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't turn that link off. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+
   // --- Static: serve index.html for "/", "/index.html", a /r/<id> share link,
   // or /desk (the SPA's My Desk view — the client reads the path and shows the
   // desk instead of the home stack). ---

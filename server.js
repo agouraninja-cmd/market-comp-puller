@@ -2465,6 +2465,10 @@ let corpusSeenSeeded = false;
 // VOCABULARY rather than address shape, because genuine small multifamily and
 // retail comps are often listed without a street number.
 
+// ⚠ MIRROR: index.html's compKeyOf() generates the same key for curation
+// exclusions. Change one and you must change the other, or POST /api/share's
+// curation filter stops matching private vault comps and republishes their
+// addresses and prices in meta.curation.excluded to anyone with the link.
 function corpusKeyOf(c) {
   const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
   return [norm(c.address), norm(c.date || c.deal_date), norm(c.price_or_rate)].join("|");

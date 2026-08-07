@@ -11520,13 +11520,23 @@ const server = http.createServer((req, res) => {
         const clean = [...new Set(asked.map(SHAREACCESS.normalizeEmail).filter(Boolean))];
         // Ownership proven by a scoped READ before any write: a stranger with
         // an id must not be able to add themselves as a viewer. Pulls the
-        // CURRENT viewer list and the report's address in the same query,
-        // because setShareViewers deletes the old list before writing the new
-        // one — this is the only chance to see who was already invited.
+        // CURRENT viewer list, visibility, and the report's address in the
+        // same query, because setShareViewers deletes the old list before
+        // writing the new one — this is the only chance to see who was
+        // already invited.
         const owned = await sbRequest("GET",
           `shared_reports?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}` +
-          `&select=id,payload,report_viewers(email)&limit=1`);
+          `&select=id,visibility,payload,report_viewers(email)&limit=1`);
         if (!owned || !owned[0]) return sendJson(res, 404, { error: "That shared report was not found." });
+        // A public link has no viewer list to edit — refused here, not merely
+        // because the rows would go unused. sendShareInvites' copy tells the
+        // recipient the report is identity-bound and to sign in with the
+        // exact address it was sent to; both statements are false for a
+        // public link, which canReadShare serves to anyone with the URL,
+        // signed in or not. Adding rows here would send that false promise.
+        if (owned[0].visibility !== "invited") {
+          return sendJson(res, 400, { error: "This is a public link. Anyone with it can already open it, so there is no viewer list to edit." });
+        }
         const before = new Set((owned[0].report_viewers || []).map((v) => v.email));
         // Only the NEWLY added addresses get mailed — re-saving an unchanged
         // list (or only removing people) must email nobody.

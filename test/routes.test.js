@@ -159,6 +159,67 @@ test("bare environment", async (t) => {
   // service. Proving those two needs a seeded Supabase; until then they rest
   // on entitlements.js for the decision and on review for the wiring.
 
+  // Sharing's gate, wired.
+  //
+  // report-access.js proves the DECISION exhaustively. This proves it is
+  // ATTACHED: that an anonymous caller cannot create a permissioned share and
+  // cannot list anyone's shares, and that the refusal arrives as 401 BEFORE
+  // the 503 a database-less server would otherwise give — the same ordering
+  // rule openVault follows, so a stranger never learns whether the DB is up.
+  await t.test("permissioned sharing refuses an anonymous caller, 401 before 503", async () => {
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { comps: [{ address: "1 A St" }] }, meta: { address: "1 A St", type: "Industrial" },
+        visibility: "invited", viewers: ["client@acme.com"],
+      }),
+    });
+    assert.equal(r.status, 401, "an invited share must require a session");
+  });
+
+  await t.test("a public share still needs no account at all", async () => {
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: { comps: [{ address: "1 A St" }] }, meta: { address: "1 A St", type: "Industrial" } }),
+    });
+    assert.equal(r.status, 200, "the pre-v3 share path must be untouched");
+    const body = await r.json();
+    assert.match(body.url, /\/r\/[A-Za-z0-9_-]+$/);
+  });
+
+  await t.test("a public link may never carry private comps", async () => {
+    const r = await fetch(srv.base + "/api/share", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { comps: [{ address: "1 A St" }] }, meta: { address: "1 A St", type: "Industrial" },
+        includePrivate: true,
+      }),
+    });
+    assert.equal(r.status, 400, "this must be loud on the first attempt, not silently corrected");
+  });
+
+  await t.test("every share-management route refuses an anonymous caller and exists", async () => {
+    const routes = [
+      ["GET", "/api/shares", null],
+      ["PUT", "/api/shares/viewers", { id: "abcdefgh", emails: [] }],
+      ["POST", "/api/shares/revoke", { id: "abcdefgh" }],
+    ];
+    for (const [method, p, body] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      assert.notEqual(r.status, 404, `${method} ${p} should exist and refuse, not be absent`);
+    }
+  });
+
+  // NOT COVERED HERE, deliberately, and for the reason the vault block already
+  // gives: the 200-for-an-invited-client and 403-for-a-stranger paths need a
+  // real session, which needs a database, and nothing in this file may touch
+  // an external service. They rest on report-access.js plus one manual check
+  // against the deployment.
+
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
     for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
       const r = await fetch(srv.base + p);

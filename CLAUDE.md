@@ -505,8 +505,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `{ id, url, visibility, invited }`. Strips `meta.subject.noi` and
   `meta.assumptions` `debt`/`rentRoll`/`opex` (private finances) before
   storing. Stored in the Supabase `shared_reports` table
-  (id/payload/created_at), in-memory Map + `shared-reports.json` file
-  fallback, **no expiry**. Rate-limited per IP.
+  (id/payload/created_at, plus the four columns migration 018 adds — see
+  below), in-memory Map + `shared-reports.json` file fallback (the file
+  fallback only ever holds the original three columns' worth of data — see
+  the permissioned-sharing rules below), **no expiry**. Rate-limited per IP.
   **Permissioned sharing** (v3, 2026-08-06; migration
   `018-report-sharing.sql`, **not yet applied to production**; spec
   `docs/superpowers/specs/2026-08-06-client-sharing-design.md`). The body

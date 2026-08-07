@@ -2195,7 +2195,6 @@ async function getShareRecord(id) {
 
 async function storeSharedReport(id, payload, opts = {}) {
   const { userId = null, visibility = "public", includePrivate = false, viewers = [] } = opts;
-  sharedReportsMem.set(id, payload);
   if (DB_CONFIGURED) {
     const row = {
       id, payload, created_at: new Date().toISOString(),
@@ -2208,6 +2207,9 @@ async function storeSharedReport(id, payload, opts = {}) {
           viewers.map((email) => ({ share_id: id, email })),
           { prefer: "resolution=ignore-duplicates,return=minimal" });
       }
+      // Below the write, not above it: caching the payload only means
+      // anything once it is actually stored.
+      sharedReportsMem.set(id, payload);
       return;
     } catch (err) {
       // The two visibilities need OPPOSITE failure behaviour, which is why
@@ -2243,6 +2245,16 @@ async function storeSharedReport(id, payload, opts = {}) {
   const fileStore = await loadSharedReportsFile();
   fileStore[id] = payload;
   await fs.promises.writeFile(SHARED_REPORTS_FILE, JSON.stringify(fileStore));
+  // Below the guard above, on purpose (Item 5, 2026-08-06 review): this used
+  // to run unconditionally at the top of the function, seeding the
+  // in-process cache with an invited share's payload before the guard had a
+  // chance to refuse it. getShareRecord's own no-DB path answers a cache hit
+  // as `{ visibility: "public" }`, so a future caller of storeSharedReport
+  // that reached this function without going through the route's own 503
+  // check would have quietly published a permissioned share. Unreachable
+  // today (the route 503s first), but the cache write has no business
+  // happening before the write it is caching.
+  sharedReportsMem.set(id, payload);
 }
 
 // Fire and forget: a failed stamp must never cost the client their report.
@@ -11565,8 +11577,16 @@ const server = http.createServer((req, res) => {
         // already invited.
         const owned = await sbRequest("GET",
           `shared_reports?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}` +
-          `&select=id,visibility,payload,report_viewers(email)&limit=1`);
+          `&select=id,visibility,revoked_at,payload,report_viewers(email)&limit=1`);
         if (!owned || !owned[0]) return sendJson(res, 404, { error: "That shared report was not found." });
+        // A revoked link is permanently dead — checked before the visibility
+        // check below, in the same scoped read, so this never mails an
+        // invitation for a link that no longer opens for anyone. The UI
+        // already hides this control on a revoked row; this is the API-only
+        // door that leaves open otherwise (2026-08-06 review, item 7).
+        if (owned[0].revoked_at) {
+          return sendJson(res, 400, { error: "This link has been turned off and cannot be reopened." });
+        }
         // A public link has no viewer list to edit — refused here, not merely
         // because the rows would go unused. sendShareInvites' copy tells the
         // recipient the report is identity-bound and to sign in with the

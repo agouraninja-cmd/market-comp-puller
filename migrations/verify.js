@@ -96,9 +96,14 @@ const COLUMNS = [
   ["broker_properties", ["lat", "lng", "geo_source", "geocoded_at"],
                                                                 "017-broker-property-coordinates.sql"],
   // 018 makes a share ownable and revocable. Without these columns every
-  // sharing route 400s at PostgREST, and the read path would fall back to
-  // treating a permissioned share as a public one — the one failure this
-  // feature must never have.
+  // sharing route 400s at PostgREST, and getShareRecord's DB-configured read
+  // rethrows rather than falling back to the file store — so GET
+  // /api/shared answers 503 for EVERY share, including every legacy public
+  // link already mailed out before this feature existed. It does NOT fall
+  // back to treating a permissioned share as a public one; there is total
+  // unavailability instead, and there are no permissioned shares yet to
+  // mistreat in that window. Corrected 2026-08-06 review (item 3) after the
+  // original wording here described a downgrade that cannot happen.
   ["shared_reports",    ["user_id", "visibility", "include_private", "revoked_at"],
                                                                 "018-report-sharing.sql"],
   // 015 alters two existing tables; a table check cannot see either change.

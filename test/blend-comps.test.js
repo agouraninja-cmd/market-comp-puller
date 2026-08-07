@@ -228,3 +228,65 @@ test("a second broker's report carries no trace of the first broker's vault", ()
   }
   assert.equal("private_count" in strangersReport, false);
 });
+
+// ---------------------------------------------------------------------------
+// Anonymizing — the /api/invite-share path (Task 5)
+// ---------------------------------------------------------------------------
+
+const { anonymizePrivateComps } = require("../blend-comps.js");
+
+function blended() {
+  return {
+    comps: [
+      { address: "1 Public St", date: "2026-01-05", transaction: "sale",
+        price_or_rate: 1000000, size_sqft: 10000, price_per_sqft: 100, source_type: "listing" },
+      { address: "2 Private Rd", date: "2026-03-14", transaction: "sale",
+        price_or_rate: 4250000, size_sqft: 31000, price_per_sqft: 137,
+        source_type: "broker_vault", notes: "off market, my seller", private: true },
+    ],
+    locked_count: 0,
+    locked_basis: [],
+    private_count: 1,
+  };
+}
+
+test("anonymize removes the private comp from the table", () => {
+  const out = anonymizePrivateComps(blended());
+  assert.equal(out.comps.length, 1);
+  assert.equal(out.comps[0].address, "1 Public St");
+});
+
+test("anonymize keeps the private comp in the valuation basis", () => {
+  const out = anonymizePrivateComps(blended());
+  assert.equal(out.locked_basis.length, 1);
+  assert.equal(out.locked_basis[0].price_per_sqft, "137");
+  assert.equal(out.locked_basis[0].size_sqft, 31000);
+});
+
+test("no address, price, or note survives into the basis", () => {
+  const json = JSON.stringify(anonymizePrivateComps(blended()));
+  assert.equal(json.includes("2 Private Rd"), false);
+  assert.equal(json.includes("4250000"), false);
+  assert.equal(json.includes("my seller"), false);
+});
+
+test("private_count survives so the page can say how many are folded in", () => {
+  assert.equal(anonymizePrivateComps(blended()).private_count, 1);
+});
+
+test("an existing locked_basis is appended to, never replaced", () => {
+  const r = blended();
+  r.locked_basis = [{ date: "2025-12-01", transaction: "sale", size_sqft: 5000, source_type: "public_record" }];
+  const out = anonymizePrivateComps(r);
+  assert.equal(out.locked_basis.length, 2);
+});
+
+test("a report with no private comps comes back untouched, same object", () => {
+  const plain = { comps: [{ address: "1 Public St" }] };
+  assert.equal(anonymizePrivateComps(plain), plain);
+});
+
+test("junk in, junk out, without throwing", () => {
+  assert.equal(anonymizePrivateComps(null), null);
+  assert.deepEqual(anonymizePrivateComps({ comps: "nope" }), { comps: "nope" });
+});

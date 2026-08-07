@@ -51,6 +51,13 @@
 // so this value is never rewritten on the way out.
 // ---------------------------------------------------------------------------
 
+// The ONE exception to this file's no-requires rule, and it is a pure module
+// requiring a pure module (backtest.js already does the same with
+// valuation.js). Taking basisRow from comp-gate rather than copying it means
+// the anonymized shape a client sees is the same one a free visitor's locked
+// comps use, provably, instead of by review.
+const { basisRow } = require("./comp-gate.js");
+
 const PRIVATE_SOURCE_TYPE = "broker_vault";
 
 // broker_comps column -> report comp key. Deliberately explicit rather than a
@@ -173,9 +180,38 @@ function stripPrivateComps(report) {
   return { ...rest, comps: clean };
 }
 
+// Replace every private comp with its anonymized basis row.
+//
+// This is what an INVITED share does by default, where stripPrivateComps is
+// what a PUBLIC share does. The difference matters to the number on the page:
+// the browser computes the valuation from includedComps() plus lockedBasis(),
+// so a stripped report shows the client a DIFFERENT range than the broker saw,
+// while an anonymized one matches to the dollar.
+//
+// What travels: date, transaction, size, $/SF, provenance. What does not:
+// address, total price, notes, source url, coordinates. A basis row is a bar
+// on a histogram — it cannot be resold, cited, or tied to a property.
+//
+// private_count is deliberately KEPT. The client is told how many of their
+// broker's own deals are inside the number; hiding that would make the range
+// unexplainable.
+function anonymizePrivateComps(report) {
+  if (!report || typeof report !== "object" || Array.isArray(report)) return report;
+  if (!Array.isArray(report.comps)) return report;
+  const priv = report.comps.filter(isPrivateComp);
+  if (!priv.length) return report;      // untouched, same object — see blendPrivateComps
+  const basis = Array.isArray(report.locked_basis) ? report.locked_basis : [];
+  return {
+    ...report,
+    comps: report.comps.filter((c) => !isPrivateComp(c)),
+    locked_basis: [...basis, ...priv.map(basisRow)],
+  };
+}
+
 module.exports = {
   blendPrivateComps,
   stripPrivateComps,
+  anonymizePrivateComps,
   toReportComp,
   isPrivateComp,
   PRIVATE_SOURCE_TYPE,

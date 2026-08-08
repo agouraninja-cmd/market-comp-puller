@@ -619,6 +619,10 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     var box=$("gutBox");
     if(typeof GUTCHECK==="undefined"){box.className="panel hide";return {};}
     if(benchFailed){
+      // Only worth saying over comps it would have described: with the
+      // current filter showing nothing, an "unavailable" line above an empty
+      // table reads as a second breakage rather than a degraded extra.
+      if(!rows.length){box.className="panel hide";$("gutCards").innerHTML="";return {};}
       box.className="panel";
       $("gutCards").innerHTML="";
       $("gutNote").textContent="Market benchmarks are unavailable right now. Your comps are unaffected.";

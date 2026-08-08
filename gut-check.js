@@ -38,12 +38,25 @@
   // backtest already apply.
   const BAD_PROVENANCE = { estimate: true, news: true };
 
+  // Extracts the FIRST number from a string ("$1,234,567" -> 1234567), which
+  // means an ambiguous "100-200" yields 100 rather than a refusal. That is a
+  // deliberate divergence from index.html's displayMoney, which refuses
+  // ambiguity: displayMoney protects one number a customer reads, while this
+  // feeds aggregates over many rows, where refusing a parseable-enough value
+  // starves the benchmark and a rare mis-read is damped by the median.
   function toNum(v) {
     if (v == null || v === "") return null;
     const m = String(v).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
     if (!m) return null;
     const n = parseFloat(m[0]);
     return isFinite(n) ? n : null;
+  }
+
+  // A plausible going-in cap rate, in percent. Outside (0, 25) is a typo or a
+  // different unit, not a market signal. One predicate for BOTH the corpus
+  // aggregate and the broker side, so the two can never drift apart.
+  function capOk(v) {
+    return v != null && v > 0 && v < 25;
   }
 
   function median(xs) {
@@ -129,11 +142,10 @@
       .map(function (r) { return { psf: toNum(r.price_per_sqft), deal_date: r.deal_date }; })
       .filter(function (r) { return r.psf != null && r.psf > 0; });
     const ppsf = priced.map(function (r) { return r.psf; }).sort(function (a, b) { return a - b; });
-    // Cap rates parse defensively out of a text column; a rate outside (0, 25)
-    // is a typo or a different unit, not a market signal.
+    // Cap rates parse defensively out of a text column.
     const caps = usable
       .map(function (r) { return toNum(r.cap_rate); })
-      .filter(function (v) { return v != null && v > 0 && v < 25; });
+      .filter(capOk);
     if (!ppsf.length && !caps.length) return null;
 
     let newest = null, newestKey = -Infinity;
@@ -231,11 +243,15 @@
 
       // Cap rates: a verdict needs a RANGE, and only the snapshot has one —
       // the corpus median is a point and rides along as a supporting figure.
-      // Sale comps only, same as corpusStats' cap aggregate (which reads
-      // `usable`, already isSale-filtered) — a lease's cap rate is a
-      // different instrument and would be noise mixed into a sale-market band.
-      const capVals = sales.map(function (c) { return toNum(c.cap_rate); })
-        .filter(function (x) { return x != null && x > 0 && x < 25; });
+      // SALE comps only (a lease's cap rate is a different instrument), but
+      // deliberately NOT priced-sales-only: brokers track undisclosed-price
+      // deals, and a sale with no entered price can still carry a real cap
+      // rate. Same filter as corpusStats' cap aggregate, which reads the
+      // sale-filtered `usable` with no price requirement.
+      const capVals = list
+        .filter(function (c) { return isSale(c.transaction); })
+        .map(function (c) { return toNum(c.cap_rate); })
+        .filter(capOk);
       let cap = null;
       const capLow = snapshot ? toNum(snapshot.cap_rate_low) : null;
       const capHigh = snapshot ? toNum(snapshot.cap_rate_high) : null;

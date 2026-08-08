@@ -10254,22 +10254,28 @@ const server = http.createServer((req, res) => {
           catch { return sendJson(res, 400, { error: "Invalid JSON." }); }
           // Cap at 50 buckets: a broker's own bucket list, not a scan surface.
           const asked = Array.isArray(parsed.buckets) ? parsed.buckets.slice(0, 50) : [];
-          const out = [];
+          // Only canonical "City, ST" markets and known types resolve;
+          // anything else is silently skipped rather than 400ing the whole
+          // request — one odd bucket must not cost the other nineteen.
+          const valid = [];
           for (const bkt of asked) {
             const market = String((bkt && bkt.market) || "").trim().slice(0, 80);
             const type = String((bkt && bkt.type) || "").trim().slice(0, 40);
-            // Only canonical "City, ST" markets and known types resolve;
-            // anything else is silently skipped rather than 400ing the whole
-            // request — one odd bucket must not cost the other nineteen.
-            if (!LEADSVC.isCanonicalMarket(market) || !VAULT.PROPERTY_TYPES.includes(type)) continue;
-
+            if (LEADSVC.isCanonicalMarket(market) && VAULT.PROPERTY_TYPES.includes(type)) {
+              valid.push({ market, type });
+            }
+          }
+          // Buckets resolve CONCURRENTLY — sequential awaits made a worst-case
+          // call up to 50 corpus reads end to end. The 50 cap above is what
+          // bounds the burst, and Promise.all preserves request order.
+          const out = await Promise.all(valid.map(async ({ market, type }) => {
             // Corpus half: fail-safe per bucket, same stance as every corpus
             // read — an error yields null, never an error response.
             let corpus = null;
             try {
               const rows = await corpusRowsForMarket(market, type, 200);
               corpus = GUTCHECK.corpusStats(rows, { parseDealDate });
-            } catch (e) { corpus = null; }
+            } catch { corpus = null; }
 
             // Model half: the market page's snapshot, from memory.
             let snapshot = null;
@@ -10286,8 +10292,8 @@ const server = http.createServer((req, res) => {
                 };
               }
             }
-            out.push({ market, type, corpus, snapshot });
-          }
+            return { market, type, corpus, snapshot };
+          }));
           // PII-free adoption signal. No market dim: one call covers many.
           logEvent("gut_check", {});
           sendJson(res, 200, { buckets: out });

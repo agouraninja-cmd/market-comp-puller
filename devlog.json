@@ -212,5 +212,8 @@
   { "date": "2026-08-08", "type": "feature", "title": "Your firm's mark on the reports you send", "details": "Pro members can put a logo, firm name, preparer, phone, email, licence number and their own note on every report, on screen, in print, in the PNG and in both file exports. A report shared with a client carries the sender's mark, snapshotted when it was sent. CompNinja stays named as the author of the valuation, and the automated-estimate line survives every configuration." },
   { "date": "2026-08-08", "type": "feature",
     "title": "Gut check: your numbers vs the market, on /vault",
-    "details": "Per market + property type, your median $/SF and cap rates compared against public corpus quartiles and model market figures, each labeled with its source and date. Comps priced far outside the band get an outlier marker. Untrended, and framed as worth-a-look — your own records may be the better data. Private comps never leave your browser for this: the server sends only public benchmarks." }
+    "details": "Per market + property type, your median $/SF and cap rates compared against public corpus quartiles and model market figures, each labeled with its source and date. Comps priced far outside the band get an outlier marker. Untrended, and framed as worth-a-look — your own records may be the better data. Private comps never leave your browser for this: the server sends only public benchmarks." },
+  { "date": "2026-08-08", "type": "fix",
+    "title": "Gut check follow-ups from review",
+    "details": "An undisclosed-price sale's cap rate now counts toward your cap-rate median (it was silently dropped; only the $/SF median needs a price). Benchmark buckets resolve concurrently instead of one at a time. The benchmarks-unavailable note no longer renders above an empty filtered table." }
 ]

@@ -239,6 +239,27 @@ test("cap verdict: no snapshot range means no cap verdict, corpus median alone i
   assert.equal(r.buckets[0].cap, null);
 });
 
+test("cap verdict: an UNPRICED sale's cap rate still counts", () => {
+  // Brokers track undisclosed-price deals, and a sale with no entered price
+  // can still carry a real cap rate. Only the $/SF median needs a price; the
+  // cap aggregate needs a sale — same filter corpusStats' cap side uses.
+  const r = GC.gutCheck([
+    vaultComp({ cap_rate: 5.8 }),                                        // priced sale
+    vaultComp({ id: "c2", price_per_sqft: null, cap_rate: 6.2 }),        // unpriced sale
+  ], [bench({ snapshot: SNAP_OK })]);
+  assert.ok(r.buckets[0].cap, "two sale cap rates must clear the broker floor");
+  assert.equal(r.buckets[0].cap.count, 2, "the unpriced sale's cap rate must count");
+  assert.equal(r.buckets[0].cap.median, 6);
+  assert.equal(r.buckets[0].broker.pricedSales, 1, "the $/SF side still counts priced sales only");
+});
+
+test("the exported floors and threshold hold their specced values", () => {
+  assert.equal(GC.MIN_CORPUS_PPSF, 4);
+  assert.equal(GC.MIN_CORPUS_CAP, 3);
+  assert.equal(GC.MIN_BROKER_CAP, 2);
+  assert.equal(GC.OUTLIER_PCT, 0.25);
+});
+
 test("cap verdict: a lease's cap rate is ignored, sale-only like the corpus side", () => {
   const r = GC.gutCheck([
     vaultComp({ cap_rate: 5.8 }),

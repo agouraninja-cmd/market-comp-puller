@@ -6746,7 +6746,20 @@
       currentUser = await acctApi("POST", `/api/account/${isUp ? "signup" : "login"}`, {
         email, password, name: document.getElementById("acctName").value.trim(),
       });
-      brandingLoaded = false; // new identity: My Desk must fetch THIS account's branding, not reuse a prior one's
+      // New identity: My Desk must fetch THIS account's branding, never reuse
+      // a prior one's. brandingLoadPromise is nulled too (not just
+      // brandingLoaded), or the next loadBranding() call would return the
+      // PREVIOUS identity's in-flight fetch instead of starting its own.
+      // currentBranding/pendingLogo are cleared so nothing of the last
+      // account's profile can flash on screen before the fresh fetch lands,
+      // and the token bump discards that prior fetch's result outright if it
+      // resolves after this point.
+      brandingLoaded = false;
+      brandingLoadPromise = null;
+      currentBranding = null;
+      pendingLogo = "";
+      brandingLoadToken++;
+      renderReportBrand();
       refreshAccountUI();
       // Whose entitlements these are just changed — re-read them before any
       // billing control is acted on.
@@ -6799,7 +6812,19 @@
   document.getElementById("signOutBtn").addEventListener("click", async () => {
     try { await acctApi("POST", "/api/account/logout"); } catch (_) {}
     currentUser = null;
-    brandingLoaded = false; // so the next sign-in fetches THAT account's branding instead of reusing this one's
+    // See the comment on brandingLoadToken: a fetch already in flight for
+    // THIS (signed-out) identity must not be allowed to land later and paint
+    // its brand onto whatever report is on screen, or onto the next signed-in
+    // account's My Desk. Clearing currentBranding/pendingLogo here (not just
+    // waiting for the in-flight fetch's own reset) is what makes
+    // renderReportBrand() below actually strip the mark immediately, instead
+    // of leaving it up until something else happens to re-render.
+    brandingLoaded = false;
+    brandingLoadPromise = null;
+    currentBranding = null;
+    pendingLogo = "";
+    brandingLoadToken++;
+    renderReportBrand();
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     // Entitlements are per-user: the signed-in answer must not survive the
@@ -6810,7 +6835,13 @@
     if (!confirm("Delete your CompNinja account, portfolio, and watchlist? This can't be undone.")) return;
     try { await acctApi("DELETE", "/api/account"); } catch (_) {}
     currentUser = null;
+    // Same reset as sign-out — see the comment there.
     brandingLoaded = false;
+    brandingLoadPromise = null;
+    currentBranding = null;
+    pendingLogo = "";
+    brandingLoadToken++;
+    renderReportBrand();
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     refreshProConfig();
@@ -7543,8 +7574,22 @@
   // AND from renderMyDesk()'s own call, which race on sign-in and on a
   // signed-in page load. brandingLoaded alone only blocks a call that starts
   // AFTER an earlier one has resolved; this blocks a second concurrent fetch
-  // for the same identity while the first is still in flight.
+  // for the same identity while the first is still in flight. Reset to null
+  // at every auth transition alongside brandingLoaded — otherwise a later
+  // caller (a fresh sign-in's renderMyDesk()) would reuse a promise that was
+  // fetching the PREVIOUS identity's branding instead of starting a new
+  // fetch for its own.
   let brandingLoadPromise = null;
+  // Identity token for loadBranding(): bumped at every auth transition (sign
+  // in, sign out, account deletion) and captured by each fetch attempt at
+  // the moment it starts. When a fetch resolves, it compares its captured
+  // token against the current one and discards its result — no state write,
+  // no render — if they no longer match. This is what stops a fetch that was
+  // still in flight when the user signed out (or a second account signed in)
+  // from later painting a stale identity's brand onto the page; nulling
+  // brandingLoadPromise above only fixes the NEXT caller, not a resolution
+  // already underway.
+  let brandingLoadToken = 0;
 
   // ⚠ MIRROR: branding.js's normalizeBrand() — deliberately NARROWED. Same
   // per-field limits, same logo regex/size cap, same "logo or firm name
@@ -7782,11 +7827,18 @@
     // issuing a second one for the same identity.
     if (brandingLoadPromise) return brandingLoadPromise;
     const wrap = document.getElementById("deskBranding");
+    // Captured now, compared after every await below. An auth transition
+    // (sign-out, a second sign-in) bumps brandingLoadToken, so a stale
+    // mismatch here means this fetch is no longer for the CURRENT identity —
+    // its result is discarded outright, before any state write or render.
+    const token = ++brandingLoadToken;
     brandingLoadPromise = (async () => {
       try {
         const r = await fetch("/api/branding", { credentials: "same-origin" });
+        if (token !== brandingLoadToken) return; // superseded mid-fetch — discard
         if (r.status === 401) { wrap.classList.add("hidden"); brandingLoaded = true; return; }
         const body = await r.json().catch(() => ({}));
+        if (token !== brandingLoadToken) return; // superseded during the body read
         if (!r.ok) {
           // 503 and anything else: one line, and the rest of the desk keeps
           // working. Leave brandingLoaded false so a transient failure (a DB
@@ -7808,10 +7860,17 @@
         // for the next full re-render. A no-op when nothing is on screen.
         renderReportBrand();
       } catch (_) {
+        if (token !== brandingLoadToken) return;
         wrap.classList.remove("hidden");
         document.getElementById("brandMsg").textContent = "Couldn't reach the server.";
       } finally {
-        brandingLoadPromise = null;
+        // Only clear the slot this fetch itself occupied. If an auth
+        // transition already superseded it, brandingLoadPromise has moved on
+        // to a newer identity's fetch (or was nulled at the reset point with
+        // nothing started yet) — clearing it here would wrongly cancel that
+        // newer fetch's dedup protection for whoever calls loadBranding()
+        // next in the same tick.
+        if (token === brandingLoadToken) brandingLoadPromise = null;
       }
     })();
     return brandingLoadPromise;

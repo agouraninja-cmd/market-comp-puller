@@ -5244,7 +5244,15 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     brokersCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
     `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
-    `<a class="btn" href="/">Get my free valuation &rarr;</a></div>` +
+    `<a class="btn" href="/">Get my free valuation &rarr;</a>` +
+    // The Address Explorer deep link (spec 2026-08-03, "Deep link" section).
+    // auth=signup is the one query form ACCOUNT_WALL never 302s, so this same
+    // static href serves everyone: anonymous visitors get the signup modal
+    // (the explorer input arrives prefilled behind it), signed-in Pro members
+    // skip the modal and the panel opens fetching this market's list.
+    `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(
+      "/?auth=signup&explore=" + encodeURIComponent(p.city + ", " + p.state)
+      + "&type=" + encodeURIComponent(p.type))}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p></div>` +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 

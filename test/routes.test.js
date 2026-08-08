@@ -147,6 +147,19 @@ test("bare environment", async (t) => {
     assert.ok(xml.includes("/1031-exchange"), "sitemap must list /1031-exchange");
   });
 
+  // Market pages carry the Address Explorer deep link. The auth=signup form is
+  // the one door ACCOUNT_WALL never 302s, so the same static href serves every
+  // visitor: anonymous gets the signup modal with the explorer parked behind
+  // it, a signed-in Pro member gets the panel prefilled and fetching.
+  await t.test("a market page links into the Address Explorer via the wall-safe door", async () => {
+    const r = await fetch(srv.base + "/market/industrial-ontario-ca");
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.ok(
+      html.includes('href="/?auth=signup&amp;explore=Ontario%2C%20CA&amp;type=Industrial"'),
+      "the CTA must carry the encoded /?auth=signup&explore= deep link");
+  });
+
   // The vault gate, wired.
   //
   // entitlements.js proves the DECISION — canUseVault tracks pro across every

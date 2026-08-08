@@ -68,11 +68,14 @@ time; a BOV goes straight from open to lost when it dies quietly. This is
 the broker's own log, not a workflow engine. `bov-log.js` validates the
 vocabulary, never the transitions.
 
-**Backfill.** The migration seeds one row per existing
-`lead_intro_requests` entry (joined to `leads` for market, type, size), so
-a broker who already requested intros opens the tracker to their real
-history. Purely additive; precedent is 015's profile backfill. The
-existing destructive-statement test guard covers the new file.
+**Backfill (amended at plan time).** The spec originally put the backfill
+in the migration, but `market` must be canonical `marketOf()` form and
+`marketOf` lives in server.js, so SQL cannot write it. Instead, `GET
+/api/broker/bovs` seeds rows from the broker's existing
+`lead_intro_requests` (joined to `leads` in JS, markets computed with
+`marketOf()`) on every open, made idempotent by `unique (user_id,
+lead_id)`; the coverage-seeding precedent. Migration 019 creates the table
+only. The existing destructive-statement test guard covers the new file.
 
 ## Routes
 

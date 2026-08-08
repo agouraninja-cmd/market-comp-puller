@@ -357,6 +357,17 @@ test("bare environment", async (t) => {
       body: JSON.stringify({ lead_id: "1" }),
     });
     assert.equal(r3.status, 401);
+
+    // The BOV tracker (v4 slice 2) sits behind the same gate. 401 first,
+    // before the 503 this bare server would give for a missing database.
+    const r4 = await fetch(srv.base + "/api/broker/bovs");
+    assert.equal(r4.status, 401);
+    const r5 = await fetch(srv.base + "/api/broker/bovs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ market: "Boise, ID", property_type: "Industrial" }),
+    });
+    assert.equal(r5.status, 401);
   });
 
   await t.test("/api/config is public and advertises no entitlement it cannot enforce", async () => {

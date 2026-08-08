@@ -62,6 +62,7 @@ const PROPS = require("./broker-properties");
 // proved by npm test rather than reviewed.
 const DIRECTORY = require("./broker-directory");
 const LEADSVC = require("./broker-leads");
+const BOVSVC = require("./bov-log");
 // Corpus audit — the structural integrity rules for the comp corpus. It also
 // owns the source_type badge rule (enforcedSourceType + isAggregateAddress),
 // which USED to live inline below: the audit has to detect rows that predate a
@@ -10076,6 +10077,120 @@ const server = http.createServer((req, res) => {
       }
     })().catch((err) => { console.error("broker leads error:", err); sendJson(res, 500, { error: "Lead lookup failed." }); });
     return;
+  }
+
+  // --- BOV tracker (v4 slice 2) ---------------------------------------------
+  // The broker's practice log: every BOV they are working, from any source.
+  // Broker PRIVATE data, vault-class: DB-only (no file fallback — Render
+  // erases its disk on deploy), every read and write scoped by user_id, and
+  // no owner surface reads it. Rules in bov-log.js (pure, tested).
+  // Spec: docs/superpowers/specs/2026-08-08-bov-tracking-design.md
+  if (req.url.split("?")[0] === "/api/broker/bovs") {
+    if (req.method === "GET") {
+      (async () => {
+        if (rateLimited("bovs:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
+        if (!user) return;
+        try {
+          // Seed from existing intro requests on every open (the coverage-
+          // seeding pattern): marketOf lives here in JS, so migration 019
+          // deliberately has no SQL backfill. on_conflict=user_id,lead_id
+          // makes it idempotent, and makes the race with the intro
+          // handler's own auto-create harmless.
+          const intros = await sbRequest("GET",
+            `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}&select=lead_id&limit=500`);
+          const ids = (intros || []).map((r) => String(r.lead_id)).filter((s) => /^\d+$/.test(s));
+          if (ids.length) {
+            const leads = await sbRequest("GET",
+              `leads?id=in.(${ids.join(",")})&select=id,ts,address,type,size_sqft&limit=500`);
+            const joined = (leads || []).map((l) => ({
+              lead_id: l.id, market: marketOf(l.address), property_type: l.type,
+              size_sqft: LEADSVC.cleanSizeSqft(l.size_sqft), ts: l.ts,
+            }));
+            const seeds = BOVSVC.seedFromIntroRequests(joined, LEADSVC.isCanonicalMarket)
+              .map((s) => ({ ...s, user_id: user.id }));
+            if (seeds.length) {
+              await sbRequest("POST", "broker_bovs?on_conflict=user_id,lead_id",
+                seeds, { prefer: "resolution=ignore-duplicates,return=minimal" });
+            }
+          }
+          const rows = await sbRequest("GET",
+            `broker_bovs?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&select=id,lead_id,market,property_type,size_sqft,address,notes,received_on,source,status,status_changed_at,created_at` +
+            `&order=created_at.desc&limit=${BOVSVC.MAX_ROWS}`);
+          return sendJson(res, 200, {
+            bovs: rows || [],
+            rollup: BOVSVC.rollup(rows || [], Date.now()),
+          });
+        } catch (err) {
+          console.error("bov read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your BOV log. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("bov error:", err); sendJson(res, 500, { error: "BOV log failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (rateLimited("bovs:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
+          const user = await requireBroker(req, res);
+          if (!user) return;
+          const { market, property_type, source, size_sqft, received_on, address, notes } =
+            JSON.parse(body || "{}");
+          const canonical = marketOf(String(market || ""));
+          if (!LEADSVC.isCanonicalMarket(canonical)) {
+            return sendJson(res, 400, { error: 'Enter a market as "City, ST" (for example "Boise, ID").' });
+          }
+          const type = String(property_type || "");
+          if (!VAULT.PROPERTY_TYPES.includes(type)) {
+            return sendJson(res, 400, { error: "Unknown property type." });
+          }
+          const src = source === undefined ? "other" : String(source);
+          if (!BOVSVC.isSource(src)) {
+            return sendJson(res, 400, { error: "Unknown source." });
+          }
+          const dateRes = BOVSVC.cleanReceivedOn(received_on);
+          if (!dateRes.ok) return sendJson(res, 400, { error: dateRes.error });
+          // Same cap discipline as coverage: refuse past the read cap so a
+          // broker can never own rows the GET silently truncates away.
+          const count = ((await sbRequest("GET",
+            `broker_bovs?user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=${BOVSVC.MAX_ROWS + 1}`)) || []).length;
+          if (count >= BOVSVC.MAX_ROWS) {
+            return sendJson(res, 400, { error: `The log is capped at ${BOVSVC.MAX_ROWS} BOVs. Remove one to add another.` });
+          }
+          await sbRequest("POST", "broker_bovs", [{
+            user_id: user.id,
+            market: canonical,
+            property_type: type,
+            source: src,
+            status: "open",
+            size_sqft: LEADSVC.cleanSizeSqft(size_sqft),
+            received_on: dateRes.value,
+            address: BOVSVC.cleanAddress(address),
+            notes: BOVSVC.cleanNotes(notes),
+          }], { prefer: "return=minimal" });
+          // PII-free, like every analytics event: market and type only.
+          logEvent("bov", { prop_type: type, market: canonical });
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bov add failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that BOV. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      // Implemented in the next task; until then fall through to 404 below.
+      return sendJson(res, 404, { error: "Not found." });
+    }
+    return sendJson(res, 404, { error: "Not found." });
   }
 
   // A broker raising a hand. Emails the owner (who already holds the lead's

@@ -68,11 +68,28 @@ time; a BOV goes straight from open to lost when it dies quietly. This is
 the broker's own log, not a workflow engine. `bov-log.js` validates the
 vocabulary, never the transitions.
 
-**Backfill.** The migration seeds one row per existing
-`lead_intro_requests` entry (joined to `leads` for market, type, size), so
-a broker who already requested intros opens the tracker to their real
-history. Purely additive; precedent is 015's profile backfill. The
-existing destructive-statement test guard covers the new file.
+**Backfill (amended at plan time; seeding condition amended again at final
+review).** The spec originally put the backfill in the migration, but
+`market` must be canonical `marketOf()` form and `marketOf` lives in
+server.js, so SQL cannot write it. Instead, `GET /api/broker/bovs` seeds
+rows from the broker's existing `lead_intro_requests` (joined to `leads` in
+JS, markets computed with `marketOf()`), made idempotent by `unique
+(user_id, lead_id)`; the coverage-seeding precedent. Migration 019 creates
+the table only. The existing destructive-statement test guard covers the
+new file.
+
+Seeding on every open, as first shipped, had a bug: a broker who Removed a
+row sourced from an intro request saw it resurrect on the next load, status
+reset to open and notes gone, because the seed was still there in
+`lead_intro_requests` and nothing recorded that it had been deleted. Fixed
+to match `/api/broker/leads`'s own rule exactly: seed only when the
+broker's log is EMPTY, and support `?noseed=1` to skip the check for one
+call, which the page's post-delete reload passes so an empty-after-delete
+log cannot be reseeded either. From an empty log, seeding recovers history;
+from there, the intro handler's auto-create (below) is what keeps the log
+current. The consequence worth knowing: once a broker has any row at all,
+a dropped auto-create insert is no longer silently healed by the next
+`GET`, only by that seeding running again on some later empty log.
 
 ## Routes
 
@@ -97,9 +114,11 @@ Render's disk would vanish on the next deploy.
 after a new intro request succeeds (the `already: true` path skips this),
 insert a `broker_bovs` row: `source: 'compninja'`, the `lead_id`, and
 market, type, size copied from the lead. Non-blocking: if the insert
-fails, the intro still succeeds; the introduction is the primary action
-and the log row is re-derivable by the backfill query. The unique
-constraint makes a race harmless.
+fails, the intro still succeeds; the introduction is the primary action.
+The log row is re-derivable by the seeding query only while the broker's
+log is still empty (see the amended Backfill section above); once other
+rows exist, this auto-create is the only thing keeping the log current.
+The unique constraint makes a race harmless.
 
 ## Privacy
 

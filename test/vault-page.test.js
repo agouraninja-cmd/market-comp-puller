@@ -305,3 +305,29 @@ test("the gut check degrades to a one-line note when the benchmarks fetch fails,
   // table renders from `comps` alone, which loadBenchmarks never touches.
   assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
 });
+
+// ---------------------------------------------------------------------------
+// The BOV tracker (v4 slice 2)
+// ---------------------------------------------------------------------------
+
+test("the BOV tracker section is present and first-run hides it", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(html.includes('id="bovSec"'), "the tracker section is missing");
+  // First run keys on comps AND uploads (the standing rule); the tracker
+  // hides with everything else so the start page stays a two-step page.
+  const js = pageScript(html);
+  assert.match(js, /\$\("bovSec"\)\.className=first\?"hide":""/,
+    "applyFirstRun does not hide the tracker");
+});
+
+test("the tracker's empty state is a sentence, not an empty table", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  // The table wrapper starts hidden and #noBovs exists: with zero rows the
+  // section is prose plus the form, never a header row over nothing.
+  assert.ok(html.includes('class="tw hide" id="bovTableWrap"'));
+  assert.ok(html.includes('id="noBovs"'));
+});
+
+test("the emitted script still parses with the tracker in it", () => {
+  assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([]), CHROME))));
+});

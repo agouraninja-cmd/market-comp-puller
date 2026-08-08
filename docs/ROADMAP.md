@@ -47,9 +47,9 @@ intent, the devlog states history.
 
 ## Later (broker-tier phases, in order)
 
-v4 remaining: BOV tracking (in flight in a parallel session) → hub ratings
-last. The gut check (slice 1) and the 1031 exchange guide (slice 3) shipped
-2026-08-08. Hub monetization is gated on the attorney's referral-fee
+v4 is complete: the gut check (slice 1), the BOV tracker (slice 2), and
+the 1031 exchange guide (slice 3) all shipped 2026-08-08. Hub ratings
+remain, last. Hub monetization is gated on the attorney's referral-fee
 answer; the fallback if fees are barred is lead visibility as a
 subscription benefit.
 

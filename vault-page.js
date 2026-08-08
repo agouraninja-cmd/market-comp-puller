@@ -968,14 +968,24 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   var BOV_STATUSES=["open","delivered","won","lost"];
   var BOV_SOURCE_LABEL={compninja:"CompNinja intro",referral:"Referral",repeat_client:"Repeat client",other:"Other"};
   $("bovType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
-  function loadBovs(){
-    fetch("/api/broker/bovs",{credentials:"same-origin"})
+  // noseed=true after a delete: that call must NOT let the GET's own-empty-
+  // log reseed bring back a row the broker just Removed. A plain page visit
+  // (no arg) always leaves the seed check in place, same escape as
+  // loadLeads(noseed) above.
+  function loadBovs(noseed){
+    fetch("/api/broker/bovs"+(noseed?"?noseed=1":""),{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){
           $("bovCards").innerHTML=""; $("bovRows").innerHTML="";
           $("bovTableWrap").className="tw hide"; $("noBovs").className="empty hide";
-          $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load your BOV log.")+"</div>";
+          // Panel-scoped copy: requireBroker's strings name the lead inbox
+          // (that copy is load-bearing for the leads panel above this one),
+          // so a 403/503 here is reworded rather than shown verbatim.
+          var msg=o.s===403?"The BOV tracker is part of Pro."
+            :o.s===503?"The BOV tracker is unavailable right now. Please try again in a minute."
+            :(o.j.error||"Couldn't load your BOV log.");
+          $("bovMsg").innerHTML='<div class="msg bad">'+esc(msg)+"</div>";
           return;
         }
         $("bovMsg").innerHTML="";
@@ -1093,7 +1103,10 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){ $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that BOV.")+"</div>"; return; }
-        loadBovs();
+        // noseed: the row just removed must not be re-seeded from intro
+        // requests by this same reload if the delete emptied the log. A
+        // full page visit still reseeds it.
+        loadBovs(true);
       })
       .catch(function(){ $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
   });

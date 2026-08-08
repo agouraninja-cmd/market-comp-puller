@@ -10081,7 +10081,7 @@ const server = http.createServer((req, res) => {
 
   // --- BOV tracker (v4 slice 2) ---------------------------------------------
   // The broker's practice log: every BOV they are working, from any source.
-  // Broker PRIVATE data, vault-class: DB-only (no file fallback — Render
+  // Broker PRIVATE data, vault-class: DB-only (no file fallback, Render
   // erases its disk on deploy), every read and write scoped by user_id, and
   // no owner surface reads it. Rules in bov-log.js (pure, tested).
   // Spec: docs/superpowers/specs/2026-08-08-bov-tracking-design.md
@@ -10116,6 +10116,9 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: "Nothing to update." });
         }
         // Scoped by user_id: nobody edits another broker's log.
+        // A wrong id or another broker's id matches zero rows and still
+        // answers { ok: true } deliberately: there is no existence oracle
+        // across users, matching the vault's DELETE below.
         await sbRequest("PATCH",
           `broker_bovs?id=eq.${encodeURIComponent(String(id))}&user_id=eq.${encodeURIComponent(user.id)}`,
           patch, { prefer: "return=minimal" });
@@ -10137,33 +10140,46 @@ const server = http.createServer((req, res) => {
         }
         const user = await requireBroker(req, res);
         if (!user) return;
+        // noseed=1: skip the intro-request reseed for this call only. The
+        // page's post-delete reload passes it so a row the broker just
+        // Removed cannot resurrect; a plain page visit always leaves the
+        // seed check in place, same escape as /api/broker/leads's noseed.
+        const noseed = new URL(req.url, "http://localhost").searchParams.get("noseed") === "1";
+        const bovsSelect = `broker_bovs?user_id=eq.${encodeURIComponent(user.id)}` +
+          `&select=id,lead_id,market,property_type,size_sqft,address,notes,received_on,source,status,status_changed_at,created_at` +
+          `&order=created_at.desc&limit=${BOVSVC.MAX_ROWS}`;
         try {
-          // Seed from existing intro requests on every open (the coverage-
-          // seeding pattern): marketOf lives here in JS, so migration 019
-          // deliberately has no SQL backfill. on_conflict=user_id,lead_id
-          // makes it idempotent, and makes the race with the intro
-          // handler's own auto-create harmless.
-          const intros = await sbRequest("GET",
-            `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}&select=lead_id&limit=500`);
-          const ids = (intros || []).map((r) => String(r.lead_id)).filter((s) => /^\d+$/.test(s));
-          if (ids.length) {
-            const leads = await sbRequest("GET",
-              `leads?id=in.(${ids.join(",")})&select=id,ts,address,type,size_sqft&limit=500`);
-            const joined = (leads || []).map((l) => ({
-              lead_id: l.id, market: marketOf(l.address), property_type: l.type,
-              size_sqft: LEADSVC.cleanSizeSqft(l.size_sqft), ts: l.ts,
-            }));
-            const seeds = BOVSVC.seedFromIntroRequests(joined, LEADSVC.isCanonicalMarket)
-              .map((s) => ({ ...s, user_id: user.id }));
-            if (seeds.length) {
-              await sbRequest("POST", "broker_bovs?on_conflict=user_id,lead_id",
-                seeds, { prefer: "resolution=ignore-duplicates,return=minimal" });
+          let rows = await sbRequest("GET", bovsSelect);
+          // Seed from existing intro requests only when the log is EMPTY
+          // (the coverage-seeding pattern in /api/broker/leads): reseeding
+          // on every open resurrected a row the broker had just Removed,
+          // status reset and notes gone. The intro handler's own
+          // auto-create (see /api/broker/leads/intro) is what keeps a
+          // non-empty log current from here on; this seeding only recovers
+          // HISTORY for a log that has none yet. marketOf lives here in JS,
+          // so migration 019 deliberately has no SQL backfill.
+          // on_conflict=user_id,lead_id makes it idempotent, and makes the
+          // race with the intro handler's own auto-create harmless.
+          if (!noseed && (!rows || !rows.length)) {
+            const intros = await sbRequest("GET",
+              `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}&select=lead_id&limit=500`);
+            const ids = (intros || []).map((r) => String(r.lead_id)).filter((s) => /^\d+$/.test(s));
+            if (ids.length) {
+              const leads = await sbRequest("GET",
+                `leads?id=in.(${ids.join(",")})&select=id,ts,address,type,size_sqft&limit=500`);
+              const joined = (leads || []).map((l) => ({
+                lead_id: l.id, market: marketOf(l.address), property_type: l.type,
+                size_sqft: LEADSVC.cleanSizeSqft(l.size_sqft), ts: l.ts,
+              }));
+              const seeds = BOVSVC.seedFromIntroRequests(joined, LEADSVC.isCanonicalMarket)
+                .map((s) => ({ ...s, user_id: user.id }));
+              if (seeds.length) {
+                await sbRequest("POST", "broker_bovs?on_conflict=user_id,lead_id",
+                  seeds, { prefer: "resolution=ignore-duplicates,return=minimal" });
+                rows = await sbRequest("GET", bovsSelect);
+              }
             }
           }
-          const rows = await sbRequest("GET",
-            `broker_bovs?user_id=eq.${encodeURIComponent(user.id)}` +
-            `&select=id,lead_id,market,property_type,size_sqft,address,notes,received_on,source,status,status_changed_at,created_at` +
-            `&order=created_at.desc&limit=${BOVSVC.MAX_ROWS}`);
           return sendJson(res, 200, {
             bovs: rows || [],
             rollup: BOVSVC.rollup(rows || [], Date.now()),
@@ -10241,6 +10257,9 @@ const server = http.createServer((req, res) => {
         if (!/^[0-9a-f-]{36}$/i.test(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
         try {
           // Scoped by user_id: nobody deletes another broker's log entry.
+          // A wrong id or another broker's id matches zero rows and still
+          // answers { ok: true } deliberately: there is no existence oracle
+          // across users, matching the vault's DELETE.
           await sbRequest("DELETE",
             `broker_bovs?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`);
           return sendJson(res, 200, { ok: true });
@@ -10310,12 +10329,14 @@ const server = http.createServer((req, res) => {
           [{ lead_id: lead.id, user_id: user.id }],
           { prefer: "resolution=ignore-duplicates,return=minimal" });
         // The BOV tracker's auto-create (v4 slice 2). Non-blocking: the
-        // introduction is the primary action, and a lost row here is
-        // re-derived by /api/broker/bovs's seeding on next open. The
-        // market is canonical here by construction: the coverage check
-        // above only passes leads whose marketOf() matched a canonical
-        // coverage key. unique(user_id, lead_id) makes the race with that
-        // seeding harmless.
+        // introduction is the primary action. This auto-create, not the
+        // GET's seeding, is what keeps a non-empty log current from here
+        // on: /api/broker/bovs only seeds when the log is empty, so a
+        // dropped insert here is recovered by that seeding solely while the
+        // broker's log has no other rows yet. The market is canonical here
+        // by construction: the coverage check above only passes leads whose
+        // marketOf() matched a canonical coverage key. unique(user_id,
+        // lead_id) makes the race with that seeding harmless.
         sbRequest("POST", "broker_bovs?on_conflict=user_id,lead_id",
           [{
             user_id: user.id,

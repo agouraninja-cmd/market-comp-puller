@@ -1292,12 +1292,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     table `broker_bovs` (migration 019), vault-class private: DB-only, every
     read/write user-scoped, read by no owner surface (`/admin`'s
     intro-requests card is unchanged). Intro requests auto-create rows
-    (non-blocking) and `GET /api/broker/bovs` re-seeds from
-    `lead_intro_requests` on every open — idempotent via
-    `unique (user_id, lead_id)`, and the reason migration 019 has no SQL
-    backfill (`marketOf()` is JS). Routes go through `requireBroker`.
-    Manual adds log a PII-free `bov` analytics event. Lapse locks the log,
-    never deletes it.
+    (non-blocking), and `GET /api/broker/bovs` seeds from
+    `lead_intro_requests` only when the broker's log is EMPTY, mirroring
+    `/api/broker/leads`'s own coverage-seeding rule: seeding on every open
+    resurrected a row the broker had just Removed (status reset to open,
+    notes gone), so it now runs only to recover history for a log with
+    nothing in it yet, and `?noseed=1` skips it for one call the same way
+    `/api/broker/leads` does, which is what the page's post-delete reload
+    passes. From there the intro handler's auto-create is what keeps a
+    non-empty log current. Idempotent via `unique (user_id, lead_id)`, and
+    the reason migration 019 has no SQL backfill (`marketOf()` is JS).
+    Routes go through `requireBroker`. Manual adds log a PII-free `bov`
+    analytics event. Lapse locks the log, never deletes it.
 - **Broker lead inbox** (v1, 2026-08-05). DDL in
   `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead

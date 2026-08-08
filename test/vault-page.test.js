@@ -156,3 +156,152 @@ test("the gut-check panel ships hidden and lives inside the filtered section", (
 test("the emitted script still parses with the gut-check code in it", () => {
   assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
 });
+
+// ---------------------------------------------------------------------------
+// The gut check actually renders (review follow-up)
+//
+// The three tests above only prove the markup exists and the emitted script
+// COMPILES. None of them execute renderGutCheck, so a field-name typo against
+// gut-check.js's real output shape (b.corpus.q1_ppsf, b.snapshot.ppsf.low,
+// b.cap.corpus_median, outliers[id].dir/pct) would compile fine, pass every
+// test above, and render blank in production. These tests run the REAL
+// emitted script against a minimal DOM stub, with the REAL gut-check.js
+// module wired in as the GUTCHECK global — that is the point: they pin the
+// cross-module field contract against its actual producer, not a
+// hand-written fixture of the shape.
+// ---------------------------------------------------------------------------
+
+const GUTCHECK = require("../gut-check");
+
+// A generic auto-vivifying element: every id the page script touches gets a
+// working stub with no need to enumerate them all up front.
+function stubElement() {
+  let cls = "", html = "", text = "", val = "";
+  return {
+    get className() { return cls; }, set className(v) { cls = v; },
+    get innerHTML() { return html; }, set innerHTML(v) { html = v; },
+    get textContent() { return text; }, set textContent(v) { text = v; },
+    get value() { return val; }, set value(v) { val = v; },
+    disabled: false,
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener() {}, removeEventListener() {},
+    click() {}, focus() {}, scrollIntoView() {},
+    getAttribute() { return null; }, setAttribute() {},
+    closest() { return null; },
+  };
+}
+
+// createElement("div") reproduces the ONE browser behavior esc() relies on:
+// textContent -> innerHTML escapes &, < and > and deliberately leaves a
+// literal " alone (matches the comment on escA in vault-page.js).
+function stubDocument() {
+  const byId = {};
+  return {
+    getElementById(id) { if (!byId[id]) byId[id] = stubElement(); return byId[id]; },
+    createElement() {
+      let t = "";
+      return {
+        set textContent(v) { t = v == null ? "" : String(v); },
+        get textContent() { return t; },
+        get innerHTML() { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); },
+      };
+    },
+    addEventListener() {},
+    querySelector() { return stubElement(); },
+    querySelectorAll() { return []; },
+  };
+}
+
+function jsonResponse(status, body) {
+  return { ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) };
+}
+
+// Runs the page's REAL emitted script (from the REAL renderVaultHTML output)
+// against the stub DOM. fetch answers /api/broker/leads benignly (that route
+// is not what this test is about) and /api/vault/benchmarks with whatever
+// `benchResult()` returns — a function so a test can hand back a rejection
+// for the degraded-fetch case.
+async function runPage(comps, benchResult) {
+  const bootPayload = boot(comps);
+  const html = renderVaultHTML(bootPayload, CHROME);
+  const script = pageScript(html);
+  const doc = stubDocument();
+  const win = { __VAULT_BOOT__: bootPayload };
+  const fakeFetch = (url) => {
+    const u = String(url);
+    if (u.indexOf("/api/broker/leads") === 0) {
+      return Promise.resolve(jsonResponse(200, { coverage: [], leads: [] }));
+    }
+    if (u.indexOf("/api/vault/benchmarks") === 0) return benchResult();
+    return Promise.reject(new Error("unexpected fetch in test: " + u));
+  };
+  const fn = new Function("document", "window", "fetch", "GUTCHECK", script);
+  fn(doc, win, fakeFetch, GUTCHECK);
+  // loadLeads and loadBenchmarks (and benchmarks' own re-render) are chained
+  // Promise.then()s, i.e. microtasks only. Node drains the ENTIRE microtask
+  // queue, however deeply chained, before running any macrotask callback —
+  // so one setImmediate tick is enough to guarantee both have settled.
+  await new Promise((resolve) => setImmediate(resolve));
+  return doc;
+}
+
+test("renderGutCheck renders real verdict cards and marks an outlier row, executed against the real gut-check.js", async () => {
+  // Bucket A: two Boise/Industrial sales bracketing the benchmark band ->
+  // in_line. Also carries cap rates so the cap line gets exercised.
+  const a1 = comp({ id: "c1", address: "100 Main St", market: "Boise, ID", property_type: "Industrial",
+    transaction: "sale", price_per_sqft: 98, cap_rate: 6.5, deal_date: "2026-01-05" });
+  const a2 = comp({ id: "c2", address: "200 Second St", market: "Boise, ID", property_type: "Industrial",
+    transaction: "sale", price_per_sqft: 102, cap_rate: 6.5, deal_date: "2026-02-10" });
+  // Bucket B: one Dallas/Office sale priced well above the snapshot band ->
+  // above, and it must trip the outlier flag on the row itself.
+  const b1 = comp({ id: "c3", address: "300 Elm St", market: "Dallas, TX", property_type: "Office",
+    transaction: "sale", price_per_sqft: 300, deal_date: "2026-03-01" });
+
+  const buckets = [
+    { market: "Boise, ID", type: "Industrial",
+      corpus: { count: 5, q1_ppsf: 90, q3_ppsf: 110, newest_deal_date: "2026-01-15", cap_rate_median: 6.5 },
+      snapshot: { ppsf: { low: 85, high: 115 }, cap_rate_low: 6, cap_rate_high: 7, generatedAt: "2026-07-01" } },
+    { market: "Dallas, TX", type: "Office",
+      corpus: null,
+      snapshot: { ppsf: { low: 100, high: 150 }, generatedAt: "2026-06-01" } },
+  ];
+
+  const doc = await runPage([a1, a2, b1], () => Promise.resolve(jsonResponse(200, { buckets })));
+
+  assert.equal(doc.getElementById("gutBox").className, "panel",
+    "the panel must unhide once real benchmark data lands");
+
+  const cards = doc.getElementById("gutCards").innerHTML;
+  assert.match(cards, /<span class="mk">Boise, ID<\/span>/, "the in_line bucket names its market");
+  assert.match(cards, /In line with the market/, "the in_line bucket's verdict label");
+  assert.match(cards, /class="gcv ok"/, "the in_line chip carries the calm 'ok' class");
+  assert.match(cards, /Above the market band/, "the above bucket's verdict label");
+  assert.match(cards, /\+100%/, "the above bucket's signed delta, computed by the real gutCheck()");
+  assert.match(cards, /Public records: \$90–\$110\/SF · 5 comps · newest 2026-01-15/,
+    "the corpus line reads corpusStats' real field names (count, q1_ppsf, q3_ppsf, newest_deal_date)");
+  assert.match(cards, /Model market figures: \$85–\$115\/SF · 2026-07-01/,
+    "the snapshot line reads snapshot.ppsf.low\\/high and generatedAt");
+  assert.match(cards, /Cap rate: your median 6\.5% vs market 6–7%/, "the cap line's median/low/high");
+  assert.match(cards, /\(records median 6\.5%\)/, "the cap line's corpus_median");
+
+  const note = doc.getElementById("gutNote").textContent;
+  assert.match(note, /untrended/i, "the untrended caveat must render");
+
+  const tbody = doc.getElementById("tbody").innerHTML;
+  assert.match(tbody, /class="gcOut" title="100% above the market band"/,
+    "the outlier row is flagged with the real outliers[id].dir/pct gutCheck computed");
+});
+
+test("the gut check degrades to a one-line note when the benchmarks fetch fails, and the comps table still renders", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", market: "Boise, ID", property_type: "Industrial" });
+  const doc = await runPage([c1], () => Promise.reject(new Error("network down")));
+
+  assert.equal(doc.getElementById("gutBox").className, "panel",
+    "the panel unhides to show the failure note rather than staying blank");
+  assert.equal(doc.getElementById("gutCards").innerHTML, "", "no cards render on a failed fetch");
+  assert.match(doc.getElementById("gutNote").textContent, /unavailable/i);
+
+  // The rest of the page is unaffected by the benchmarks failure: the comps
+  // table renders from `comps` alone, which loadBenchmarks never touches.
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
+});

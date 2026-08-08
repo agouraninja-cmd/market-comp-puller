@@ -1111,7 +1111,14 @@
         <p class="text-sm text-[#5A6473] mt-2">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
           <div class="flex flex-wrap items-center gap-3">
-            <img id="brandLogoPreview" alt="Your logo" class="hidden h-9 rounded border border-[#D8D4C9] bg-white" />
+            <!-- Persistent element (fillBrandForm() and the choose/remove
+                 handlers keep referencing this id on every future load), so
+                 the fallback hides it rather than removing it the way a
+                 freshly-built report mark does — there is no separate
+                 firm-name element beside it to take over; the Firm name
+                 input a few lines down is already visible regardless. -->
+            <img id="brandLogoPreview" alt="Your logo" class="hidden h-9 rounded border border-[#D8D4C9] bg-white"
+              onerror="this.classList.add('hidden')" />
             <button type="button" id="brandLogo"
               class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Choose a logo</button>
             <button type="button" id="brandLogoRemove" class="text-sm text-slate-500 hover:text-slate-700">Remove logo</button>
@@ -6816,6 +6823,15 @@
       currentUser = r.ok ? await r.json() : null;
     } catch (_) { currentUser = null; }
     refreshAccountUI();
+    // Kick this here rather than waiting for renderMyDesk() to get to it: a
+    // report can render (fresh search, a saved report, /r/<id>) well before
+    // My Desk's own chain of awaits (portfolio, watch feed, shares) reaches
+    // its loadBranding() call, and Finding 1 was exactly that gap — a
+    // signed-in member's first report rendering unbranded because
+    // currentBranding was still null. loadBranding() itself re-renders any
+    // report already on screen once this resolves, and dedupes against
+    // renderMyDesk()'s own call, so kicking it from both places is safe.
+    if (currentUser) loadBranding();
     // A direct /desk load is an explicit visit, so it marks the feed seen —
     // same as clicking the header link.
     if (currentUser && location.pathname === "/desk") renderWatchFeed({ markSeen: true });
@@ -7523,13 +7539,21 @@
   // `currentUser` actually changes (sign-in, sign-out, account deletion) so a
   // switched account is never shown the previous one's branding.
   let brandingLoaded = false;
+  // In-flight dedup for loadBranding(): it is now kicked from page bootstrap
+  // AND from renderMyDesk()'s own call, which race on sign-in and on a
+  // signed-in page load. brandingLoaded alone only blocks a call that starts
+  // AFTER an earlier one has resolved; this blocks a second concurrent fetch
+  // for the same identity while the first is still in flight.
+  let brandingLoadPromise = null;
 
-  // ⚠ MIRROR: branding.js's normalizeBrand(). Trim + collapse whitespace,
-  // truncate to the same per-field limits, drop empties, drop a logo that
-  // isn't a data:image/(png|jpeg|webp);base64,... URI or is oversized, and
-  // return null unless a logo or a firm name survives. Keep the two in step —
-  // this is what stands between an unbranded report and one carrying half of
-  // a stale or malformed profile.
+  // ⚠ MIRROR: branding.js's normalizeBrand() — deliberately NARROWED. Same
+  // per-field limits, same logo regex/size cap, same "logo or firm name
+  // required" rule; keep those in step. The shape it reads is narrower on
+  // purpose: the browser only ever gets camelCase JSON (GET /api/branding's
+  // response, or a share's meta.branding snapshot), never a raw PostgREST
+  // row, so this copy reads `firmName`/`logo` etc. only. branding.js also
+  // accepts snake_case columns and `logo_url` because it normalizes both
+  // shapes server-side — that half of it has nothing to mirror here.
   const BRAND_TEXT_LIMITS = { firmName: 80, preparerName: 80, phone: 40, email: 120, licenseNumber: 40, disclaimer: 300 };
   const BRAND_LOGO_RE = /^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
   const BRAND_LOGO_RENDER_MAX = 200000;
@@ -7563,7 +7587,9 @@
   // Draws an <img> for a data-URI logo (never an external URL — a
   // cross-origin image taints the html2canvas canvas the PNG export reads)
   // with the firm name as a sibling text node, hidden while the logo holds.
-  function appendBrandMark(container, brand, logoClass) {
+  // `onLogoFail`, if given, is the caller's fallback for a logo-only brand
+  // (no firm name to take over) whose image fails to decode — see below.
+  function appendBrandMark(container, brand, logoClass, onLogoFail) {
     const firmEl = document.createElement("span");
     firmEl.className = "text-sm font-semibold text-[#1A2433]" + (brand.logo ? " hidden" : "");
     firmEl.textContent = brand.firmName || "";
@@ -7575,9 +7601,16 @@
       img.onerror = function () {
         // A stored logo can be corrupt, or truncated by an older save. A
         // broken image icon on a document a broker is handing to a client is
-        // the worst available outcome, so the firm name takes over silently.
+        // the worst available outcome, so the firm name takes over silently —
+        // and for a logo-only brand with no firm name to fall back to, the
+        // CompNinja mark this brand was replacing comes back into view
+        // (via onLogoFail) rather than leaving a blank mark.
         this.remove();
-        if (firmEl) firmEl.classList.remove("hidden");
+        if (brand.firmName) {
+          if (firmEl) firmEl.classList.remove("hidden");
+        } else if (typeof onLogoFail === "function") {
+          onLogoFail();
+        }
       };
       container.appendChild(img);
     }
@@ -7604,7 +7637,14 @@
       lhDefault.classList.add("hidden");
       lhBrand.classList.remove("hidden");
       lhValBy.classList.remove("hidden");
-      appendBrandMark(lhBrand, brand, "h-7");
+      appendBrandMark(lhBrand, brand, "h-7", () => {
+        // Logo-only brand, broken logo: fall back to the CompNinja mark this
+        // was replacing. "Valuation by CompNinja" no longer makes sense next
+        // to CompNinja's own lockup, so it goes with it.
+        lhBrand.classList.add("hidden");
+        lhDefault.classList.remove("hidden");
+        lhValBy.classList.add("hidden");
+      });
     } else {
       lhDefault.classList.remove("hidden");
       lhBrand.classList.add("hidden");
@@ -7618,7 +7658,13 @@
     if (brand) {
       lockupDefault.classList.add("hidden");
       lockupBrand.classList.remove("hidden");
-      appendBrandMark(lockupBrand, brand, "h-8");
+      appendBrandMark(lockupBrand, brand, "h-8", () => {
+        // Logo-only brand, broken logo: fall back to the CompNinja lockup
+        // this was replacing (which also removes the "via CompNinja" line
+        // appended below, since it's a child of lockupBrand).
+        lockupBrand.classList.add("hidden");
+        lockupDefault.classList.remove("hidden");
+      });
       const via = document.createElement("div");
       via.className = "text-xs text-[#8A93A0] mt-1";
       via.textContent = "via CompNinja";
@@ -7724,37 +7770,51 @@
     box.appendChild(attribution);
   }
 
-  async function loadBranding() {
+  function loadBranding() {
     // See the comment on brandingLoaded: renderMyDesk() re-runs for reasons
     // that have nothing to do with branding, and refetching on every one of
     // those would overwrite a form the member is still typing into (or a
     // logo they just chose but haven't saved). Identity changes reset the
     // flag explicitly, so this still refreshes for a switched account.
-    if (brandingLoaded) return;
+    if (brandingLoaded) return brandingLoadPromise || Promise.resolve();
+    // A call already in flight (page bootstrap and renderMyDesk() both kick
+    // this now, and can land in the same tick) reuses that fetch instead of
+    // issuing a second one for the same identity.
+    if (brandingLoadPromise) return brandingLoadPromise;
     const wrap = document.getElementById("deskBranding");
-    try {
-      const r = await fetch("/api/branding", { credentials: "same-origin" });
-      if (r.status === 401) { wrap.classList.add("hidden"); brandingLoaded = true; return; }
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        // 503 and anything else: one line, and the rest of the desk keeps
-        // working. Leave brandingLoaded false so a transient failure (a DB
-        // blip, not a signed-out visitor) gets retried on the next re-render
-        // rather than sticking forever.
+    brandingLoadPromise = (async () => {
+      try {
+        const r = await fetch("/api/branding", { credentials: "same-origin" });
+        if (r.status === 401) { wrap.classList.add("hidden"); brandingLoaded = true; return; }
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          // 503 and anything else: one line, and the rest of the desk keeps
+          // working. Leave brandingLoaded false so a transient failure (a DB
+          // blip, not a signed-out visitor) gets retried on the next re-render
+          // rather than sticking forever.
+          wrap.classList.remove("hidden");
+          document.getElementById("brandMsg").textContent = body.error || "Couldn't load your branding.";
+          return;
+        }
         wrap.classList.remove("hidden");
-        document.getElementById("brandMsg").textContent = body.error || "Couldn't load your branding.";
-        return;
+        currentBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
+        pendingLogo = (currentBranding && currentBranding.logo) || "";
+        fillBrandForm(currentBranding);
+        renderBrandPreview();
+        brandingLoaded = true;
+        // A report can already be on screen — rendered before this fetch
+        // resolved (page load), or rendered while signed out and still up
+        // after signing in — so apply the mark to it now rather than waiting
+        // for the next full re-render. A no-op when nothing is on screen.
+        renderReportBrand();
+      } catch (_) {
+        wrap.classList.remove("hidden");
+        document.getElementById("brandMsg").textContent = "Couldn't reach the server.";
+      } finally {
+        brandingLoadPromise = null;
       }
-      wrap.classList.remove("hidden");
-      currentBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
-      pendingLogo = (currentBranding && currentBranding.logo) || "";
-      fillBrandForm(currentBranding);
-      renderBrandPreview();
-      brandingLoaded = true;
-    } catch (_) {
-      wrap.classList.remove("hidden");
-      document.getElementById("brandMsg").textContent = "Couldn't reach the server.";
-    }
+    })();
+    return brandingLoadPromise;
   }
 
   document.getElementById("brandLogo").addEventListener("click", () => {
@@ -7818,8 +7878,11 @@
       // rather than inventing a vaguer one.
       if (!r.ok) { msg.textContent = body.error || "That didn't save."; return; }
       currentBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
-      msg.textContent = "Saved. It will appear on your next report.";
+      msg.textContent = "Saved.";
       renderBrandPreview();
+      // Applies immediately to whatever report is already on screen, not
+      // just the next one — a no-op (via activeBrand()) when nothing is.
+      renderReportBrand();
     } catch (_) {
       msg.textContent = "That didn't reach the server. Nothing was saved.";
     } finally {
@@ -7836,6 +7899,7 @@
       if (!r.ok) { msg.textContent = body.error || "That didn't go through."; return; }
       currentBranding = null; pendingLogo = "";
       fillBrandForm(null); renderBrandPreview();
+      renderReportBrand();
       msg.textContent = "Removed.";
     } catch (_) {
       msg.textContent = "That didn't reach the server. Nothing was changed.";

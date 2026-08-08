@@ -50,6 +50,9 @@ function clean(v, max) {
  * Accepts either shape, so the same function serves a PostgREST row and a
  * `meta.branding` snapshot that has already been camelCased.
  */
+// ⚠ MIRROR: index.html's normalizeBrandBlock() is a deliberately NARROWED
+// copy of this function (camelCase/`logo` only — the browser never sees a
+// raw snake_case row). Same field limits, same logo rule; keep both in step.
 function normalizeBrand(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out = {};

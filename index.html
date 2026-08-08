@@ -4884,8 +4884,10 @@
   // (server: newest deal then alphabetical; here: OSM id order) so every
   // visitor sees the same list — that concentration is what turns repeat
   // clicks into free 30-day search-cache hits instead of billed searches.
-  // Clicking an address submits the ordinary compForm flow; this block adds
-  // no billable path of its own.
+  // Clicking an address only FILLS the form (address + type); the visitor
+  // runs the report themselves, which routes through the ordinary confirm
+  // modal (map check) like any typed address. This block adds no billable
+  // path of its own.
   //
   // PRO-ONLY as of 2026-08-03. The gate has two halves and needs both: this one
   // hides the panel (the Overpass top-up is browser-direct, so the server can
@@ -5034,7 +5036,7 @@
         status.textContent = `No addresses found for ${loc.city}, ${loc.state}. Try a nearby larger city, or type any address above.`;
         return;
       }
-      status.textContent = `${addresses.length} ${listType.toLowerCase()} address${addresses.length === 1 ? "" : "es"} · click one to run a report`;
+      status.textContent = `${addresses.length} ${listType.toLowerCase()} address${addresses.length === 1 ? "" : "es"} · click one to fill in the form`;
       for (const a of addresses) {
         const b = document.createElement("button");
         b.type = "button";
@@ -5048,8 +5050,12 @@
             applyRecommendedLookback();
             syncSubjectFieldsToType();   // programmatic set fires no "change"
           }
-          panel.classList.add("hidden");
-          document.getElementById("compForm").requestSubmit();
+          // Fill only, never auto-submit (owner's call, 2026-08-08): the
+          // visitor clicks "Run a report" themselves, and the ordinary
+          // confirm modal's map check still runs since the address was
+          // never confirmed this session. Panel stays open so they can
+          // swap in a different address before running.
+          status.textContent = "Address filled in. Click “Run a report” when ready; you’ll see it on a map first.";
         });
         list.appendChild(b);
       }

@@ -1000,7 +1000,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     when a report is on screen with `lockedCount() > 0` and it isn't a shared
     report. It still lives inside the ONE pricing modal — do not add a second
     upgrade prompt.
-  **Report branding** (shipped 2026-08-07). `GET|PUT|DELETE /api/branding`
+  **Report branding** (shipped 2026-08-08). `GET|PUT|DELETE /api/branding`
   lets a signed-in member save one profile (firm name, preparer, phone,
   email, license number, a short disclaimer, and a logo stored inline as a
   data URI — never a URL, because a cross-origin image taints the

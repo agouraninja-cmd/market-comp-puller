@@ -10084,7 +10084,16 @@
     const subjectLine = currentMeta && lastValuation && lastValuation.likely > 0
       ? esc(`Subject property: ${currentMeta.address} | Estimated value range ${fmtV(lastValuation.low)} – ${fmtV(lastValuation.high)} (likely ${fmtV(lastValuation.likely)}) | Comp-based estimate, not an appraisal. The rows below are the comparable transactions, so the subject itself is not a row.`)
       : "";
-    const csv = [...(title ? [title] : []), ...(subjectLine ? [subjectLine] : []), header, ...rows].join("\r\n");
+    // Co-branding, not white label: even the CSV, which has no letterhead of
+    // its own, still names CompNinja as the one that computed the number.
+    const brand = activeBrand();
+    const preparedBy = brand
+      ? esc("Prepared by " + [brand.firmName, brand.preparerName, brand.phone, brand.email,
+          brand.licenseNumber ? "Lic. " + brand.licenseNumber : ""].filter(Boolean).join(" · ")
+          + (brand.disclaimer ? " | " + brand.disclaimer : "")
+          + " | Valuation by CompNinja")
+      : "";
+    const csv = [...(preparedBy ? [preparedBy] : []), ...(title ? [title] : []), ...(subjectLine ? [subjectLine] : []), header, ...rows].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -10145,7 +10154,18 @@
       const capR = currentParsed && currentParsed.market_cap_rate_range;
       const sell = sellTodayEstimate(currentParsed, currentMeta);
       const cc = curationCounts();
+      const brand = activeBrand();
       const vRows = [
+        // Co-branding, not white label: "Valuation by CompNinja" always
+        // follows the member's own mark, mirroring exportCsv()'s preparedBy line.
+        ...(brand ? [
+          ["Prepared by", [brand.firmName, brand.preparerName].filter(Boolean).join(" · ")],
+          ...(brand.phone || brand.email ? [["Contact", [brand.phone, brand.email].filter(Boolean).join(" · ")]] : []),
+          ...(brand.licenseNumber ? [["Licence", brand.licenseNumber]] : []),
+          ...(brand.disclaimer ? [["Note", brand.disclaimer]] : []),
+          ["Valuation by", "CompNinja"],
+          [],
+        ] : []),
         ["Property", currentMeta.address],
         ["Type", currentMeta.type],
         ["Search", metaLine(currentMeta)],

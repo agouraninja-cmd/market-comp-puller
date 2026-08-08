@@ -353,6 +353,23 @@
        red uppercase label — quietly distinct, editorial, not a colored bubble. */
     .rd-tile-hi { background: #fff; border: 1px solid #B91C1C; border-radius: 5px; padding: 16px; }
     .rd-tile-hi .rd-lab { color: #B91C1C; }
+    /* Ledger hero (Direction A, owner-approved 2026-08-08): the Low/Likely/High
+       tiles as one ruled ledger line — serif figures, red spent only on the
+       LIKELY label. Flex without gap on purpose: #ownerHero IS captured by the
+       PNG exporter, which can't render flex gap; the hairlines carry the
+       separation instead. */
+    .rd-ledger { display: flex; border: 1px solid #D8D4C9; border-radius: 6px; overflow: hidden; }
+    .rd-ledger .rd-lcell { flex: 1 1 0; min-width: 0; padding: 14px 18px; border-right: 1px solid #ECEAE3; background: #fff; }
+    .rd-ledger .rd-lcell:last-child { border-right: 0; }
+    .rd-ledger .rd-lcell.mid { background: #FCFBF8; }
+    .rd-ledger .rd-lcell.mid .rd-lab { color: #B91C1C; }
+    .rd-lfig { font-size: 26px; }
+    .rd-lcell.mid .rd-lfig { font-size: 32px; }
+    @media (max-width: 639.98px) {
+      .rd-ledger { flex-direction: column; }
+      .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid #ECEAE3; }
+      .rd-ledger .rd-lcell:last-child { border-bottom: 0; }
+    }
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
     .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: #4C5665; background: #F0EFE9; border: 1px solid #E4E2DA; border-radius: 3px; padding: 2px 8px; }
     .rd-chip.o { background: #fff; border-color: #D8D4C9; color: #5A6473; }
@@ -1388,20 +1405,20 @@
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">What This Building Is Worth</h2>
             <span id="ownerBasis" class="text-xs text-[#8A93A0] text-right"></span>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="rd-tile">
+          <div class="rd-ledger">
+            <div class="rd-lcell">
               <div class="rd-lab">Low</div>
-              <div id="ownerLow" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="ownerLow" class="rd-h rd-lfig mt-1">-</div>
               <div id="ownerLowPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
-            <div class="rd-tile">
+            <div class="rd-lcell mid">
               <div class="rd-lab">Likely</div>
-              <div id="ownerMid" class="text-3xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="ownerMid" class="rd-h rd-lfig mt-1">-</div>
               <div id="ownerMidPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
-            <div class="rd-tile">
+            <div class="rd-lcell">
               <div class="rd-lab">High</div>
-              <div id="ownerHigh" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="ownerHigh" class="rd-h rd-lfig mt-1">-</div>
               <div id="ownerHighPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
           </div>

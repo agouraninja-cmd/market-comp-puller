@@ -1310,13 +1310,21 @@
         <div class="print-only pb-3 mb-2 border-b-2 border-brand-700">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
-                <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-                <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
-              </svg>
-              <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
+              <div id="letterheadDefault" class="flex items-center gap-2">
+                <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
+                  <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
+                  <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+                </svg>
+                <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
+              </div>
+              <!-- Filled by renderReportBrand(): the member's logo and/or
+                   firm name lead the letterhead when the report is branded.
+                   Co-branded, never white label — see letterheadValuationBy. -->
+              <div id="letterheadBrand" class="hidden flex items-center gap-2"></div>
             </div>
             <div class="text-right text-xs text-slate-500">
+              <!-- Shown only alongside the member's own mark on the left. -->
+              <div id="letterheadValuationBy" class="hidden font-medium text-[#1A2433]">Valuation by CompNinja</div>
               <div>info@compninja.co</div>
               <div id="printDate"></div>
             </div>
@@ -1330,11 +1338,19 @@
         <div class="rd-bcard print-shadow-none fade-in">
           <div class="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
             <div class="report-lockup shrink-0 flex items-center gap-2">
-              <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
-                <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-                <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
-              </svg>
-              <div class="rd-wordmark uppercase">Comp<b>Ninja</b></div>
+              <div id="reportLockupDefault" class="flex items-center gap-2">
+                <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
+                  <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
+                  <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+                </svg>
+                <div class="rd-wordmark uppercase">Comp<b>Ninja</b></div>
+              </div>
+              <!-- Filled by renderReportBrand(): the member's own mark plus a
+                   "via CompNinja" line, replacing the lockup above when this
+                   report is branded. This is also what html2canvas captures
+                   for the PNG export, so it is built with an <img> data URI,
+                   never an external reference. -->
+              <div id="reportLockupBrand" class="hidden flex flex-col"></div>
             </div>
             <div class="min-w-0">
               <div id="reportKicker" class="rd-kicker">Market Comparables Report</div>
@@ -1846,6 +1862,10 @@
 
         </div><!-- /tabReport -->
 
+        <!-- Member disclaimer: additive only. The automated-estimate line
+             right below is never removed by any branding configuration. -->
+        <p id="memberDisclaimer" class="hidden text-center text-xs text-[#8A93A0]"></p>
+
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
         <p class="text-center text-xs text-[#8A93A0]">
           Prepared by CompNinja · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
@@ -1853,6 +1873,10 @@
 
         <!-- Print footer -->
         <div class="print-only pt-3 mt-2 border-t border-[#E4E2DA] text-center text-xs text-[#8A93A0]">
+          <!-- Filled by renderReportBrand(): the member's firm name and
+               contact line, above the CompNinja line below, which stays
+               unconditionally. -->
+          <div id="footerBrand" class="hidden mb-1"></div>
           CompNinja · info@compninja.co · https://market-comp-puller.onrender.com
         </div>
       </div>
@@ -6180,6 +6204,10 @@
     });
     document.getElementById("printDate").textContent = "Generated " + dateStr;
 
+    // Co-branded letterhead/lockup/footer — depends only on currentMeta and
+    // currentParsed, both just set above.
+    renderReportBrand();
+
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
 
     // Search radius (makes the market-radius calibration visible): the geographic
@@ -7495,6 +7523,134 @@
   // `currentUser` actually changes (sign-in, sign-out, account deletion) so a
   // switched account is never shown the previous one's branding.
   let brandingLoaded = false;
+
+  // ⚠ MIRROR: branding.js's normalizeBrand(). Trim + collapse whitespace,
+  // truncate to the same per-field limits, drop empties, drop a logo that
+  // isn't a data:image/(png|jpeg|webp);base64,... URI or is oversized, and
+  // return null unless a logo or a firm name survives. Keep the two in step —
+  // this is what stands between an unbranded report and one carrying half of
+  // a stale or malformed profile.
+  const BRAND_TEXT_LIMITS = { firmName: 80, preparerName: 80, phone: 40, email: 120, licenseNumber: 40, disclaimer: 300 };
+  const BRAND_LOGO_RE = /^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+  const BRAND_LOGO_RENDER_MAX = 200000;
+
+  function normalizeBrandBlock(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const out = {};
+    for (const key of Object.keys(BRAND_TEXT_LIMITS)) {
+      const max = BRAND_TEXT_LIMITS[key];
+      const s = String(raw[key] == null ? "" : raw[key]).replace(/\s+/g, " ").trim();
+      if (s) out[key] = s.length > max ? s.slice(0, max) : s;
+    }
+    const logo = String(raw.logo == null ? "" : raw.logo).trim();
+    if (logo && logo.length <= BRAND_LOGO_RENDER_MAX && BRAND_LOGO_RE.test(logo)) out.logo = logo;
+    // Contact details alone are not a brand — see branding.js's own comment.
+    if (!out.logo && !out.firmName) return null;
+    return out;
+  }
+
+  // Mirrors branding.js's brandForRender. The rule that matters: a SHARED
+  // report renders the sender's snapshot and NEVER the viewer's own profile —
+  // otherwise a Pro member opening a report their broker sent them sees their
+  // own logo on it.
+  function activeBrand() {
+    if (currentMeta && currentMeta.shared) return normalizeBrandBlock(currentMeta.branding);
+    if (!currentParsed || currentParsed.branding_allowed !== true) return null;
+    return normalizeBrandBlock(currentBranding);
+  }
+
+  // Shared logo+firm-name renderer for the letterhead and the screen lockup.
+  // Draws an <img> for a data-URI logo (never an external URL — a
+  // cross-origin image taints the html2canvas canvas the PNG export reads)
+  // with the firm name as a sibling text node, hidden while the logo holds.
+  function appendBrandMark(container, brand, logoClass) {
+    const firmEl = document.createElement("span");
+    firmEl.className = "text-sm font-semibold text-[#1A2433]" + (brand.logo ? " hidden" : "");
+    firmEl.textContent = brand.firmName || "";
+    if (brand.logo) {
+      const img = document.createElement("img");
+      img.src = brand.logo;
+      img.alt = brand.firmName || "";
+      img.className = logoClass || "h-7";
+      img.onerror = function () {
+        // A stored logo can be corrupt, or truncated by an older save. A
+        // broken image icon on a document a broker is handing to a client is
+        // the worst available outcome, so the firm name takes over silently.
+        this.remove();
+        if (firmEl) firmEl.classList.remove("hidden");
+      };
+      container.appendChild(img);
+    }
+    container.appendChild(firmEl);
+  }
+
+  // Applies the member's mark (or the CompNinja default) to every branded
+  // surface on the report: the print letterhead, the on-screen lockup, the
+  // print footer, and the additive member disclaimer. Called from
+  // renderResults() once currentMeta/currentParsed are set. Rebuilds each
+  // branded container from scratch on every call (same idiom as
+  // renderStatTiles / renderBrandPreview) so a re-render never leaves a
+  // stale logo behind — e.g. switching from a branded saved report to an
+  // unbranded fresh search.
+  function renderReportBrand() {
+    const brand = activeBrand();
+
+    // --- Print letterhead ---------------------------------------------------
+    const lhDefault = document.getElementById("letterheadDefault");
+    const lhBrand = document.getElementById("letterheadBrand");
+    const lhValBy = document.getElementById("letterheadValuationBy");
+    lhBrand.innerHTML = "";
+    if (brand) {
+      lhDefault.classList.add("hidden");
+      lhBrand.classList.remove("hidden");
+      lhValBy.classList.remove("hidden");
+      appendBrandMark(lhBrand, brand, "h-7");
+    } else {
+      lhDefault.classList.remove("hidden");
+      lhBrand.classList.add("hidden");
+      lhValBy.classList.add("hidden");
+    }
+
+    // --- Screen lockup (also what the PNG export captures) -----------------
+    const lockupDefault = document.getElementById("reportLockupDefault");
+    const lockupBrand = document.getElementById("reportLockupBrand");
+    lockupBrand.innerHTML = "";
+    if (brand) {
+      lockupDefault.classList.add("hidden");
+      lockupBrand.classList.remove("hidden");
+      appendBrandMark(lockupBrand, brand, "h-8");
+      const via = document.createElement("div");
+      via.className = "text-xs text-[#8A93A0] mt-1";
+      via.textContent = "via CompNinja";
+      lockupBrand.appendChild(via);
+    } else {
+      lockupDefault.classList.remove("hidden");
+      lockupBrand.classList.add("hidden");
+    }
+
+    // --- Print footer --------------------------------------------------------
+    const footerBrand = document.getElementById("footerBrand");
+    footerBrand.innerHTML = "";
+    if (brand) {
+      footerBrand.classList.remove("hidden");
+      const line = document.createElement("div");
+      const bits = [brand.firmName, brand.preparerName, brand.phone, brand.email].filter(Boolean);
+      line.textContent = bits.join(" · ");
+      footerBrand.appendChild(line);
+    } else {
+      footerBrand.classList.add("hidden");
+    }
+
+    // --- Member disclaimer (additive — see the comment above the element) --
+    const memberDisclaimer = document.getElementById("memberDisclaimer");
+    if (brand && brand.disclaimer) {
+      memberDisclaimer.textContent = brand.disclaimer;
+      memberDisclaimer.classList.remove("hidden");
+    } else {
+      memberDisclaimer.textContent = "";
+      memberDisclaimer.classList.add("hidden");
+    }
+  }
 
   const brandFields = () => ({
     logo: pendingLogo,

@@ -7725,7 +7725,7 @@
     if (brand) {
       footerBrand.classList.remove("hidden");
       const line = document.createElement("div");
-      const bits = [brand.firmName, brand.preparerName, brand.phone, brand.email].filter(Boolean);
+      const bits = [brand.firmName, brand.preparerName, brand.licenseNumber ? "Lic. " + brand.licenseNumber : "", brand.phone, brand.email].filter(Boolean);
       line.textContent = bits.join(" · ");
       footerBrand.appendChild(line);
     } else {

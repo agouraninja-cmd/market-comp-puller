@@ -6711,6 +6711,7 @@
       currentUser = await acctApi("POST", `/api/account/${isUp ? "signup" : "login"}`, {
         email, password, name: document.getElementById("acctName").value.trim(),
       });
+      brandingLoaded = false; // new identity: My Desk must fetch THIS account's branding, not reuse a prior one's
       refreshAccountUI();
       // Whose entitlements these are just changed — re-read them before any
       // billing control is acted on.
@@ -6763,6 +6764,7 @@
   document.getElementById("signOutBtn").addEventListener("click", async () => {
     try { await acctApi("POST", "/api/account/logout"); } catch (_) {}
     currentUser = null;
+    brandingLoaded = false; // so the next sign-in fetches THAT account's branding instead of reusing this one's
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     // Entitlements are per-user: the signed-in answer must not survive the
@@ -6773,6 +6775,7 @@
     if (!confirm("Delete your CompNinja account, portfolio, and watchlist? This can't be undone.")) return;
     try { await acctApi("DELETE", "/api/account"); } catch (_) {}
     currentUser = null;
+    brandingLoaded = false;
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     refreshProConfig();
@@ -7461,7 +7464,17 @@
           const ctx = c.getContext("2d");
           ctx.drawImage(img, 0, 0, c.width, c.height);
           let out = c.toDataURL("image/png");
-          if (out.length > BRAND_LOGO_TARGET) out = c.toDataURL("image/jpeg", 0.85);
+          if (out.length > BRAND_LOGO_TARGET) {
+            // JPEG has no alpha channel, so a transparent PNG's empty pixels
+            // encode as black unless the canvas is filled first — and most
+            // firm logos are transparent. Fill white, then redraw and
+            // re-encode, so a logo above the re-encode threshold doesn't
+            // gain a black box on a client-facing document.
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            out = c.toDataURL("image/jpeg", 0.85);
+          }
           resolve(out);
         };
         img.src = String(fr.result || "");
@@ -7472,6 +7485,16 @@
 
   let currentBranding = null;   // the member's own saved profile, or null
   let pendingLogo = "";         // data URI chosen but not yet saved
+  // Guards loadBranding() against re-entry: renderMyDesk() (and so
+  // loadBranding()) re-runs from unrelated My Desk actions — portfolio
+  // save/delete, account import — that have nothing to do with branding, and
+  // without this a member mid-edit (or with a just-chosen logo not yet saved)
+  // would have the fetch overwrite their form with the last-saved profile.
+  // Set once a load has been resolved one way or another (loaded or 401), so
+  // it fetches only once per identity; reset to false at every place
+  // `currentUser` actually changes (sign-in, sign-out, account deletion) so a
+  // switched account is never shown the previous one's branding.
+  let brandingLoaded = false;
 
   const brandFields = () => ({
     logo: pendingLogo,
@@ -7546,13 +7569,22 @@
   }
 
   async function loadBranding() {
+    // See the comment on brandingLoaded: renderMyDesk() re-runs for reasons
+    // that have nothing to do with branding, and refetching on every one of
+    // those would overwrite a form the member is still typing into (or a
+    // logo they just chose but haven't saved). Identity changes reset the
+    // flag explicitly, so this still refreshes for a switched account.
+    if (brandingLoaded) return;
     const wrap = document.getElementById("deskBranding");
     try {
       const r = await fetch("/api/branding", { credentials: "same-origin" });
-      if (r.status === 401) { wrap.classList.add("hidden"); return; }
+      if (r.status === 401) { wrap.classList.add("hidden"); brandingLoaded = true; return; }
       const body = await r.json().catch(() => ({}));
       if (!r.ok) {
-        // 503 and anything else: one line, and the rest of the desk keeps working.
+        // 503 and anything else: one line, and the rest of the desk keeps
+        // working. Leave brandingLoaded false so a transient failure (a DB
+        // blip, not a signed-out visitor) gets retried on the next re-render
+        // rather than sticking forever.
         wrap.classList.remove("hidden");
         document.getElementById("brandMsg").textContent = body.error || "Couldn't load your branding.";
         return;
@@ -7562,6 +7594,7 @@
       pendingLogo = (currentBranding && currentBranding.logo) || "";
       fillBrandForm(currentBranding);
       renderBrandPreview();
+      brandingLoaded = true;
     } catch (_) {
       wrap.classList.remove("hidden");
       document.getElementById("brandMsg").textContent = "Couldn't reach the server.";
@@ -7604,12 +7637,25 @@
   document.getElementById("brandSave").addEventListener("click", async () => {
     const btn = document.getElementById("brandSave");
     const msg = document.getElementById("brandMsg");
+    const fields = brandFields();
+    const hasAnyField = Boolean(fields.logo || fields.firmName || fields.preparerName || fields.phone || fields.email || fields.licenseNumber || fields.disclaimer);
+    // branding.js's normalizeBrand() (the server's own rule) treats a profile
+    // with neither a logo nor a firm name as null — nothing to put on a
+    // letterhead. Left unchecked here, a contact-only save would report
+    // "Saved" while the server actually stored nothing, and the next load
+    // would refill the form empty: silent data loss. An all-empty save is the
+    // one exception and must still go through untouched — that is how a
+    // member clears their profile.
+    if (hasAnyField && !fields.logo && !fields.firmName) {
+      msg.textContent = "Add a logo or a firm name — contact details alone don't make a letterhead.";
+      return;
+    }
     btn.disabled = true; msg.textContent = "Saving…";
     try {
       const r = await fetch("/api/branding", {
         method: "PUT", credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(brandFields()),
+        body: JSON.stringify(fields),
       });
       const body = await r.json().catch(() => ({}));
       // The server's own 400 names the offending field and its limit. Show it

@@ -1,0 +1,111 @@
+"use strict";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const M = require("../market");
+
+// --- marketOf: the canonical "City, ST" key ---------------------------------
+// These first tests pin the behavior marketOf() had while it lived in
+// server.js. The parse is the comp corpus key (harvestComps writes under it,
+// corpusRowsForMarket matches it case-sensitively), so any change here
+// silently re-keys the corpus. Extraction must not move a byte of US behavior.
+
+test("marketOf reads city + state from an ordinary address", () => {
+  assert.equal(M.marketOf("5905 Kieley Pl, Cincinnati, OH 45217"), "Cincinnati, OH");
+});
+
+test("marketOf canonicalizes case: title-cased city, uppercase state", () => {
+  assert.equal(M.marketOf("100 main st, ontario, ca"), "Ontario, CA");
+});
+
+test("marketOf title-cases across spaces, hyphens, apostrophes and dots", () => {
+  assert.equal(M.marketOf("winston-salem, nc"), "Winston-Salem, NC");
+  assert.equal(M.marketOf("coeur d'alene, id"), "Coeur D'Alene, ID");
+});
+
+test("marketOf drops parentheticals whose commas would fool the segment walk", () => {
+  assert.equal(
+    M.marketOf("Ontario, CA (Orden acquisition, 257,000 SF industrial/office)"),
+    "Ontario, CA");
+});
+
+test("marketOf survives a trailing descriptor after the state code", () => {
+  assert.equal(M.marketOf("Ontario, CA - Airport Area Submarket Warehouse"), "Ontario, CA");
+});
+
+test("marketOf strips a trailing USA suffix", () => {
+  assert.equal(M.marketOf("100 Main St, Dallas, TX, USA"), "Dallas, TX");
+  assert.equal(M.marketOf("100 Main St, Dallas, TX, United States"), "Dallas, TX");
+});
+
+test("marketOf keeps one city per key for slash-named submarkets", () => {
+  assert.equal(M.marketOf("Ontario/San Bernardino County, CA"), "Ontario, CA");
+});
+
+test("marketOf does not read a bare zip or square-footage token as a state", () => {
+  // "SF" starts a segment but is not a state; the walk must keep looking.
+  assert.equal(M.marketOf("Financial District, SF Bay Area, Oakland, CA"), "Oakland, CA");
+});
+
+test("marketOf falls back to the trailing segment when no state is found", () => {
+  assert.equal(M.marketOf("Somewhere, Nowhereland"), "Nowhereland");
+});
+
+test("marketOf returns a comma-less address as-is (the known non-canonical echo)", () => {
+  assert.equal(M.marketOf("1394 North 28th st washougal"), "1394 North 28th st washougal");
+});
+
+test("marketOf caps the fallback at 60 chars", () => {
+  const long = "x".repeat(200);
+  assert.equal(M.marketOf(long).length, 60);
+});
+
+test("marketOf returns empty string for empty or missing input", () => {
+  assert.equal(M.marketOf(""), "");
+  assert.equal(M.marketOf(null), "");
+  assert.equal(M.marketOf(undefined), "");
+});
+
+// --- marketOf: Canadian addresses (the roadmap's "Canada" fix) ---------------
+// Before this module existed, every Canadian address collapsed to the literal
+// key "Canada" (the trailing-segment fallback), which would file every
+// Canadian city in one corpus bucket the day non-USD reports are harvested.
+
+test("marketOf reads a Canadian province like a state", () => {
+  assert.equal(M.marketOf("123 King St W, Toronto, ON, Canada"), "Toronto, ON");
+});
+
+test("marketOf handles a province with a trailing postal code", () => {
+  assert.equal(M.marketOf("1055 W Georgia St, Vancouver, BC V6E 3P3"), "Vancouver, BC");
+});
+
+test("marketOf canonicalizes Canadian case too", () => {
+  assert.equal(M.marketOf("montreal, qc, canada"), "Montreal, QC");
+});
+
+test("marketOf strips a trailing Canada suffix so it never becomes the key", () => {
+  // No province to find, but the country name must not become a market.
+  assert.equal(M.marketOf("Toronto, Canada"), "Toronto");
+});
+
+// --- marketForLog: the analytics shape guard --------------------------------
+
+test("marketForLog passes a canonical market through", () => {
+  assert.equal(M.marketForLog("Boise, ID"), "Boise, ID");
+  assert.equal(M.marketForLog("Toronto, ON"), "Toronto, ON");
+});
+
+test("marketForLog drops free text, echoes and empties", () => {
+  assert.equal(M.marketForLog("1394 North 28th st washougal"), "");
+  assert.equal(M.marketForLog("Canada"), "");
+  assert.equal(M.marketForLog(""), "");
+  assert.equal(M.marketForLog(null), "");
+});
+
+// --- US_STATES: shared vocabulary, exported for server.js's validators ------
+
+test("US_STATES holds the 50 states plus DC", () => {
+  assert.equal(M.US_STATES.size, 51);
+  assert.ok(M.US_STATES.has("TX"));
+  assert.ok(M.US_STATES.has("DC"));
+  assert.ok(!M.US_STATES.has("ON"), "provinces are not US states");
+});

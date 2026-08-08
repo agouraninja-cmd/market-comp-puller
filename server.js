@@ -62,6 +62,10 @@ const GUTCHECK = require("./gut-check");
 // which stay US-only on purpose (the module recognizes Canadian provinces
 // internally, for the key only).
 const { marketOf, marketForLog, US_STATES } = require("./market");
+// The /api/comps parse pipeline's pure pieces, extracted one function at a
+// time as each gains tests (normalizeCurrency today; see its header). New
+// pipeline normalizers belong THERE.
+const { normalizeCurrency } = require("./report-parse");
 // The property dimension — one row per building per broker (migration 016).
 // Pure and tested; server.js owns the upsert and the user_id scoping.
 const PROPS = require("./broker-properties");
@@ -3223,27 +3227,8 @@ function normalizeSourceTypes(parsed) {
   return parsed;
 }
 
-// currency/usd_rate drive the front-end's convert-to-USD toggle. Coerce to a
-// safe pair: unknown/blank currency reads as USD (the pre-feature behavior),
-// and a rate that isn't a positive finite number becomes null so the toggle
-// simply doesn't render. Rates are sanity-bounded at 10: the strongest real
-// currency is ~$3.3/unit, and anything larger is almost certainly an inverted
-// rate (units-per-USD, e.g. MXN "18.7" or JPY "155") rather than a genuinely
-// strong currency. This is a deliberate asymmetry: a bad rate keeps the
-// currency label but drops the toggle (prices really are in that currency;
-// relabeling them USD would be worse). usd_rate is left as a JS number (the
-// front-end multiplies by it), unlike every other field, which stays a string.
-function normalizeCurrency(parsed) {
-  if (!parsed || typeof parsed !== "object") return parsed;
-  const code = String(parsed.currency || "").trim().toUpperCase();
-  parsed.currency = /^[A-Z]{3}$/.test(code) ? code : "USD";
-  const rate = Number(parsed.usd_rate);
-  parsed.usd_rate =
-    parsed.currency !== "USD" && Number.isFinite(rate) && rate > 0 && rate < 10
-      ? rate
-      : null;
-  return parsed;
-}
+// normalizeCurrency() lives in report-parse.js (required at the top),
+// extracted 2026-08-08 with tests pinning the currency/usd_rate contract.
 
 // annual_price_trend_pct powers the front-end's time adjustment of older
 // comps, so a bad value multiplies straight into the valuation. Coerce to a

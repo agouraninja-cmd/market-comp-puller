@@ -33,8 +33,8 @@ const GUIDE_CSS = `
   width:28px;height:28px;border-radius:50%;border:1px solid #D8D4C9;
   background:#F5F4EF;color:#4C5665;font-weight:600;font-size:13px;
   display:flex;align-items:center;justify-content:center}
-.steps1031 h3{margin:0 0 4px;font-size:16px}
-.steps1031 p{margin:0;color:#4C5665}
+ol.steps1031 h3{margin:0 0 4px;font-size:16px}
+ol.steps1031 p{margin:0;color:#4C5665}
 details.faq{border-top:1px solid #E4E2DA;padding:10px 0}
 details.faq summary{cursor:pointer;font-weight:600}
 details.faq p{color:#4C5665;margin:8px 0 0}
@@ -49,6 +49,12 @@ details.faq p{color:#4C5665;margin:8px 0 0}
 // are both rendered from this, so they cannot drift apart (the same rule
 // /how-it-works's HOW_FAQ established). Plain text only — answers reach
 // JSON-LD unescaped.
+// ANSWERS MUST BE PLAIN TEXT ONLY — never HTML, and never the literal
+// sequence </script>. `a` is embedded two ways: raw (unescaped) inside the
+// faqPageNode() ld+json block, and escaped via escGuide() inside the visible
+// <details><p> markup. HTML in `a` would render literally in the JSON-LD
+// block instead of being interpreted, and a stray </script> would close the
+// page's own <script> tag early no matter which surface it lands in.
 const GUIDE_1031_FAQ = [
   {
     q: "What is a 1031 exchange?",
@@ -98,7 +104,9 @@ const WIDGET_JS = `(function(){
     return DAYS[d.getDay()]+", "+MONTHS[d.getMonth()]+" "+d.getDate()+", "+d.getFullYear();
   }
   function update(){
-    var m=/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(input.value||""));
+    var raw=String(input.value||"");
+    if(raw.length!==10){ out.innerHTML=""; return; }
+    var m=/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(raw);
     if(!m){ out.innerHTML=""; return; }
     var y=+m[1], mo=+m[2]-1, day=+m[3];
     var d45=new Date(y,mo,day+45), d180=new Date(y,mo,day+180);

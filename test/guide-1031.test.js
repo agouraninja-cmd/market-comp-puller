@@ -138,4 +138,8 @@ test("45 and 180 day dates: leap year", () => {
 test("an empty or invalid date clears the output rather than guessing", () => {
   assert.equal(runWidget("").innerHTML, "");
   assert.equal(runWidget("not-a-date").innerHTML, "");
+  // Trailing garbage past a valid-looking prefix must not parse: the widget
+  // has no regex end anchor (a literal $ is banned from the script by the
+  // no-money test above), so it guards on exact length instead.
+  assert.equal(runWidget("2026-08-20x").innerHTML, "");
 });

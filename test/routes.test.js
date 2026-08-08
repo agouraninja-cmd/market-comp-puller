@@ -138,6 +138,8 @@ test("bare environment", async (t) => {
     assert.ok(html.includes("1031"), "the page should be about 1031 exchanges");
     assert.ok(html.toLowerCase().includes("not tax, legal, or investment advice"),
       "the not-advice box must ship on the live page");
+    assert.ok(html.includes(".steps1031"),
+      "GUIDE_CSS must ship on the served page (proves the route's head: line survived)");
   });
 
   await t.test("sitemap.xml lists the 1031 guide", async () => {

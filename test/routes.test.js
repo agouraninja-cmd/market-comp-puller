@@ -368,6 +368,16 @@ test("bare environment", async (t) => {
       body: JSON.stringify({ market: "Boise, ID", property_type: "Industrial" }),
     });
     assert.equal(r5.status, 401);
+    const r6 = await fetch(srv.base + "/api/broker/bovs/update", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "x", status: "won" }),
+    });
+    assert.equal(r6.status, 401);
+    const r7 = await fetch(srv.base + "/api/broker/bovs?id=00000000-0000-0000-0000-000000000000", {
+      method: "DELETE",
+    });
+    assert.equal(r7.status, 401);
   });
 
   await t.test("/api/config is public and advertises no entitlement it cannot enforce", async () => {

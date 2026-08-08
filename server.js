@@ -10085,6 +10085,50 @@ const server = http.createServer((req, res) => {
   // erases its disk on deploy), every read and write scoped by user_id, and
   // no owner surface reads it. Rules in bov-log.js (pure, tested).
   // Spec: docs/superpowers/specs/2026-08-08-bov-tracking-design.md
+  // Status and notes edits. One route for both so the page has one failure
+  // mode; a status change stamps status_changed_at. Transitions are
+  // deliberately not policed (bov-log.js's rule): this is the broker's own
+  // log, not a workflow engine.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/broker/bovs/update") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (rateLimited("bovs:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
+        if (!user) return;
+        const { id, status, notes } = JSON.parse(body || "{}");
+        if (!/^[0-9a-f-]{36}$/i.test(String(id || ""))) {
+          return sendJson(res, 400, { error: "Missing or malformed id." });
+        }
+        const patch = {};
+        if (status !== undefined) {
+          if (!BOVSVC.isStatus(String(status))) {
+            return sendJson(res, 400, { error: "Unknown status." });
+          }
+          patch.status = String(status);
+          patch.status_changed_at = new Date().toISOString();
+        }
+        if (notes !== undefined) patch.notes = BOVSVC.cleanNotes(notes);
+        if (!Object.keys(patch).length) {
+          return sendJson(res, 400, { error: "Nothing to update." });
+        }
+        // Scoped by user_id: nobody edits another broker's log.
+        await sbRequest("PATCH",
+          `broker_bovs?id=eq.${encodeURIComponent(String(id))}&user_id=eq.${encodeURIComponent(user.id)}`,
+          patch, { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("bov update failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+      }
+    });
+    return;
+  }
+
   if (req.url.split("?")[0] === "/api/broker/bovs") {
     if (req.method === "GET") {
       (async () => {
@@ -10187,8 +10231,25 @@ const server = http.createServer((req, res) => {
       return;
     }
     if (req.method === "DELETE") {
-      // Implemented in the next task; until then fall through to 404 below.
-      return sendJson(res, 404, { error: "Not found." });
+      (async () => {
+        if (rateLimited("bovs:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await requireBroker(req, res);
+        if (!user) return;
+        const id = String(new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        if (!/^[0-9a-f-]{36}$/i.test(id)) return sendJson(res, 400, { error: "Missing or malformed id." });
+        try {
+          // Scoped by user_id: nobody deletes another broker's log entry.
+          await sbRequest("DELETE",
+            `broker_bovs?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`);
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error("bov delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't remove that BOV. Please try again in a minute." });
+        }
+      })().catch((err) => { console.error("bov error:", err); sendJson(res, 500, { error: "BOV update failed." }); });
+      return;
     }
     return sendJson(res, 404, { error: "Not found." });
   }
@@ -10248,6 +10309,26 @@ const server = http.createServer((req, res) => {
         await sbRequest("POST", "lead_intro_requests?on_conflict=lead_id,user_id",
           [{ lead_id: lead.id, user_id: user.id }],
           { prefer: "resolution=ignore-duplicates,return=minimal" });
+        // The BOV tracker's auto-create (v4 slice 2). Non-blocking: the
+        // introduction is the primary action, and a lost row here is
+        // re-derived by /api/broker/bovs's seeding on next open. The
+        // market is canonical here by construction — the coverage check
+        // above only passes leads whose marketOf() matched a canonical
+        // coverage key. unique(user_id, lead_id) makes the race with that
+        // seeding harmless.
+        sbRequest("POST", "broker_bovs?on_conflict=user_id,lead_id",
+          [{
+            user_id: user.id,
+            lead_id: lead.id,
+            market: marketOf(lead.address),
+            property_type: lead.type,
+            size_sqft: LEADSVC.cleanSizeSqft(lead.size_sqft),
+            received_on: /^\d{4}-\d{2}-\d{2}/.test(String(lead.ts || "")) ? String(lead.ts).slice(0, 10) : null,
+            source: "compninja",
+            status: "open",
+          }],
+          { prefer: "resolution=ignore-duplicates,return=minimal" })
+          .catch((e) => console.error("bov auto-create failed (seeding recovers it):", e.message));
         // Broker identity for the owner's email: account + public profile if
         // one exists (BROKER_PROFILES holds public rows only; that is fine,
         // the email address is the working identifier either way).

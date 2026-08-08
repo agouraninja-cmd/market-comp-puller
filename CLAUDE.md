@@ -1268,6 +1268,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       geocoding — step 2, deferred by the owner's §7 decision (zero real vault
       uploads exist, so the question it answers cannot be measured yet, and it
       is where the rate limit and retry policy would live). A test pins this.
+  - **Gut check** (v4 slice 1, 2026-08-08; spec
+    `docs/superpowers/specs/2026-08-08-gut-check-design.md`). A panel on
+    `/vault` compares the broker's per-bucket median $/SF and cap rates
+    against two separately-labeled public benchmarks: corpus quartiles
+    (floor 4 priced sales, same usability rules as retrieval) and the
+    market page's model figures. Rules live in the pure, dual-export
+    **`gut-check.js`** (browser global `GUTCHECK`, served with `max-age: 0`
+    exactly like `valuation.js` and for the same reason). `POST
+    /api/vault/benchmarks` serves the benchmarks and **reads no vault
+    rows** — the broker's numbers stay in their browser, so this feature's
+    server surface cannot leak a private comp even in principle. It still
+    answers through `openVault` for gate consistency. Verdicts are
+    untrended and framed "worth a look", never "your data is wrong";
+    individual sale comps >25% outside the band get an outlier marker in
+    the comps table. No migration.
 - **Broker lead inbox** (v1, 2026-08-05). DDL in
   `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead

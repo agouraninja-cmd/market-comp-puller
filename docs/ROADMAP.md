@@ -47,10 +47,10 @@ intent, the devlog states history.
 
 ## Later (broker-tier phases, in order)
 
-v4 gut-check vs market data, BOV tracking, 1031 workflow education → hub
-ratings last. Hub monetization is gated on the attorney's referral-fee
-answer; the fallback if fees are barred is lead visibility as a
-subscription benefit.
+v4 remaining: BOV tracking, 1031 workflow education → hub ratings last.
+The gut check (v4 slice 1) shipped 2026-08-08. Hub monetization is gated
+on the attorney's referral-fee answer; the fallback if fees are barred is
+lead visibility as a subscription benefit.
 
 ## Engineering track (no product decisions needed)
 
@@ -105,6 +105,12 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-08: v4 slice 1, the gut check.** A broker's book, sanity-checked
+  against the public market layer on /vault: per-bucket median $/SF and cap
+  rates vs corpus quartiles + model market figures (the owner's blended-
+  benchmark answer to Chuck's §8 question), plain-English verdicts, and
+  outlier markers on comps priced >25% outside the band. Pure dual-export
+  `gut-check.js`; the benchmarks endpoint reads no vault rows. No migration.
 - **2026-08-08: report branding.** The last unbuilt Pro entitlement now has a
   UI: a saved profile (logo, firm name, preparer, phone, email, license
   number, a short note) renders on every report a member's entitlement

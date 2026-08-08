@@ -1405,6 +1405,17 @@
               <div id="ownerHighPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
             </div>
           </div>
+          <!-- No-estimate rescue: shown only by renderOwnerHero's dash branch
+               when a wider, sales-only re-run could produce the range this
+               window couldn't. A re-run is a billed search, so it is always
+               an explicit click, never automatic. Label + helper are written
+               per render (the month count depends on the visitor's lookback
+               ceiling). -->
+          <div id="widenSearchWrap" class="hidden no-print no-capture mt-4">
+            <button id="widenSearchBtn" type="button"
+              class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5"></button>
+            <p class="text-xs text-[#5A6473] mt-2">A longer window focused on sales usually finds the priced sale comps this range needs. Runs a new search for this address.</p>
+          </div>
           <!-- Approach reconciliation — the classic appraisal framing (sales
                comparison / income / cost), each labeled and explained in plain
                English. Built by renderOwnerHero; margins only, no flex gap
@@ -3347,6 +3358,9 @@
     const trustEl = document.getElementById("ownerTrust");
     trustEl.classList.add("hidden");
     trustEl.textContent = "";
+    // Hidden by default every render; only the no-estimate branch re-shows it.
+    const widenWrap = document.getElementById("widenSearchWrap");
+    widenWrap.classList.add("hidden");
 
     // The classic appraisal framing, labeled explicitly so the report reads
     // like a reconciliation rather than one unexplained number. Each entry:
@@ -3628,6 +3642,34 @@
               ? "No priced sale comps came back in this window, so there's no per-square-foot range to build."
               : `Only ${ppsfs.length} priced sale comp came back in this window; a per-square-foot range needs at least two.`)
             + (sizeR ? "" : " We also couldn't find this building's square footage.");
+      // Rescue CTA: a wider, sales-only re-run is the fix that actually worked
+      // on a real thin-window case (24-month Sales & leases returned 1 priced
+      // sale; 60-month sales-only returned 5 and a full range). Offered only
+      // where the copy above says "not enough came back" — a curated
+      // shortfall or an alt-basis answer has a cheaper fix, and a shared
+      // report is someone else's search, restored into a form the viewer
+      // never filled. Clamped to the visitor's lookback ceiling (the server
+      // clamps regardless; this keeps the button honest about what it runs),
+      // and never narrower than the window already searched. A re-run is a
+      // billed search, so it only ever fires on the visitor's own click.
+      if (!meta.shared && !curatedShortfall && altCompN < 3) {
+        const ceiling = (!proConfig || !proConfig.enabled)
+          ? PRO_LOOKBACK_CEILING
+          : (Number(proConfig.maxLookbackMonths) || PRO_LOOKBACK_CEILING);
+        const months = Number(meta.months) || 0;
+        const target = Math.min(Math.max(60, months), ceiling);
+        if (target >= months && (target > months || meta.txFocus !== "sales")) {
+          const widenBtn = document.getElementById("widenSearchBtn");
+          widenBtn.textContent = `Search ${target} months, sales only`;
+          // Through rerunHistory -> the form's ordinary submit path, so the
+          // cache, the guest gate, entitlement clamps and the address-confirm
+          // step all apply exactly as they would to a manual search.
+          // Assignment, not addEventListener: this runs once per render and
+          // must replace the previous report's handler, never stack on it.
+          widenBtn.onclick = () => rerunHistory({ ...meta, months: target, txFocus: "sales" });
+          widenWrap.classList.remove("hidden");
+        }
+      }
     }
 
     // Residential is the one type whose closed sales mostly live behind the

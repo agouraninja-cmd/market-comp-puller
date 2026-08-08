@@ -111,6 +111,20 @@ test("bare environment", async (t) => {
     }
   });
 
+  // /vault's inline script calls into the global GUTCHECK the moment the
+  // benchmarks arrive; a stale or missing /gut-check.js must degrade (the
+  // page guards with typeof), but the file being UNREACHABLE would silently
+  // remove the whole feature. Same query-string rule as /valuation.js.
+  await t.test("/gut-check.js is reachable, with or without a query string", async () => {
+    for (const p of ["/gut-check.js", "/gut-check.js?v=1"]) {
+      const r = await fetch(srv.base + p);
+      assert.equal(r.status, 200, p + " should serve the file");
+      assert.match(r.headers.get("content-type") || "", /javascript/, p);
+      assert.match(r.headers.get("cache-control") || "", /max-age=0/,
+        p + " must not cache: the vault page's inline script depends on it");
+    }
+  });
+
   // The vault gate, wired.
   //
   // entitlements.js proves the DECISION — canUseVault tracks pro across every
@@ -128,6 +142,7 @@ test("bare environment", async (t) => {
       ["GET",    "/api/vault/template"],
       ["POST",   "/api/vault/upload"],
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
+      ["POST",   "/api/vault/benchmarks"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {

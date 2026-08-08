@@ -49,6 +49,10 @@ const { renderVaultHTML } = require("./vault-page");
 // purpose: introducing the seam must not change a byte of the response while
 // the dashboard is being written against it.
 const VAULTAPI = require("./vault-api");
+// The gut check: a broker's private numbers against the public market layer.
+// Pure and dual-exported like valuation.js — the /vault page runs this SAME
+// copy, so a tested verdict and a rendered verdict can't quietly diverge.
+const GUTCHECK = require("./gut-check");
 // The property dimension — one row per building per broker (migration 016).
 // Pure and tested; server.js owns the upsert and the user_id scoping.
 const PROPS = require("./broker-properties");
@@ -10225,6 +10229,76 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // Public market benchmarks for the /vault gut check. POST, not GET:
+    // market names carry commas ("Boise, ID") and a JSON body beats
+    // query-string escaping.
+    //
+    // THE PRIVACY WALL, from the other side: this route reads NO vault rows.
+    // Its response is public data only — corpus aggregates and market-page
+    // model figures — so the feature's entire server surface cannot leak a
+    // private comp even in principle. The broker's own numbers stay in their
+    // browser, which already holds the whole book. It still answers through
+    // openVault for consistency (401 -> 403 -> 503, one testable ladder),
+    // not because the data needs guarding.
+    if (req.method === "POST" && path === "/api/vault/benchmarks") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (!(await openVault())) return;
+          if (rateLimited("vaultbm:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          let parsed;
+          try { parsed = JSON.parse(body || "{}"); }
+          catch { return sendJson(res, 400, { error: "Invalid JSON." }); }
+          // Cap at 50 buckets: a broker's own bucket list, not a scan surface.
+          const asked = Array.isArray(parsed.buckets) ? parsed.buckets.slice(0, 50) : [];
+          const out = [];
+          for (const bkt of asked) {
+            const market = String((bkt && bkt.market) || "").trim().slice(0, 80);
+            const type = String((bkt && bkt.type) || "").trim().slice(0, 40);
+            // Only canonical "City, ST" markets and known types resolve;
+            // anything else is silently skipped rather than 400ing the whole
+            // request — one odd bucket must not cost the other nineteen.
+            if (!LEADSVC.isCanonicalMarket(market) || !VAULT.PROPERTY_TYPES.includes(type)) continue;
+
+            // Corpus half: fail-safe per bucket, same stance as every corpus
+            // read — an error yields null, never an error response.
+            let corpus = null;
+            try {
+              const rows = await corpusRowsForMarket(market, type, 200);
+              corpus = GUTCHECK.corpusStats(rows, { parseDealDate });
+            } catch (e) { corpus = null; }
+
+            // Model half: the market page's snapshot, from memory.
+            let snapshot = null;
+            const mm = market.match(/^(.+),\s([A-Z]{2})$/);
+            if (mm) {
+              const page = getMarketPage(slugifyMarket(type, mm[1], mm[2]));
+              if (page && page.ppsf) {
+                snapshot = {
+                  ppsf: page.ppsf,
+                  cap_rate_low: page.cap_rate_low || "",
+                  cap_rate_high: page.cap_rate_high || "",
+                  market_trend: page.market_trend || "",
+                  generatedAt: page.generatedAt || "",
+                };
+              }
+            }
+            out.push({ market, type, corpus, snapshot });
+          }
+          // PII-free adoption signal. No market dim: one call covers many.
+          logEvent("gut_check", {});
+          sendJson(res, 200, { buckets: out });
+        } catch (err) {
+          console.error("vault benchmarks error:", err.message);
+          sendJson(res, 500, { error: "Could not build benchmarks." });
+        }
+      });
+      return;
+    }
+
     // Upload. The body is JSON carrying the file's text, not multipart — the
     // browser reads the file with FileReader and posts it. Multipart would be
     // a few hundred lines of hand-rolled parsing in a repo with no
@@ -11854,6 +11928,10 @@ const server = http.createServer((req, res) => {
     // renders its HTML/CSS and looks fine. Nothing else on this allowlist
     // has that single-point-of-failure shape, so nothing else needs this.
     "/valuation.js": { file: "valuation.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Same maxAge: 0 rule as /valuation.js, same reason: /vault's inline
+    // script calls the global GUTCHECK, so this file must never be stale
+    // relative to the page that depends on it.
+    "/gut-check.js": { file: "gut-check.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },

@@ -1099,6 +1099,56 @@
         <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
       </div>
 
+      <!-- Report branding — the mark THIS member's own reports and exports
+           carry (Task 7/8 apply it; this card only saves it). Saving is open
+           to anyone signed in, whether or not they currently hold an
+           entitlement to apply it (see the server route's own comment) — a
+           saved-but-unentitled profile is simply inert. Always co-branded:
+           the CompNinja line in the preview below is not something a member
+           can remove here. -->
+      <div id="deskBranding" class="hidden mt-8">
+        <span class="rd-lab">Report branding</span>
+        <p class="text-sm text-[#5A6473] mt-2">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
+        <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <img id="brandLogoPreview" alt="Your logo" class="hidden h-9 rounded border border-[#D8D4C9] bg-white" />
+            <button type="button" id="brandLogo"
+              class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Choose a logo</button>
+            <button type="button" id="brandLogoRemove" class="text-sm text-slate-500 hover:text-slate-700">Remove logo</button>
+            <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
+          </div>
+          <p class="text-xs text-[#8A93A0] mt-1">PNG or JPEG. Resized automatically for print.</p>
+
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandPreparer" type="text" placeholder="Prepared by" aria-label="Prepared by" maxlength="80"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandPhone" type="tel" placeholder="Phone" aria-label="Phone" maxlength="40"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandEmail" type="email" placeholder="Email" aria-label="Email" maxlength="120"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandLicense" type="text" placeholder="License number" aria-label="License number" maxlength="40"
+              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <textarea id="brandDisclaimer" rows="2" placeholder="Extra disclaimer for your reports (optional)" aria-label="Disclaimer (optional)" maxlength="300"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+
+          <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
+
+          <div class="mt-2 flex flex-wrap items-center gap-3">
+            <button type="button" id="brandSave"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 disabled:opacity-60">Save</button>
+            <button type="button" id="brandDelete" class="text-sm text-slate-500 hover:text-slate-700">Remove branding</button>
+          </div>
+
+          <div class="mt-4">
+            <span class="text-xs font-medium text-[#8A93A0] uppercase tracking-wide">Preview</span>
+            <div id="brandPreview" class="mt-1 border border-[#D8D4C9] rounded-lg bg-white p-3"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Plan + billing. Shown only when the deployment actually sells
            something (proConfig.billing); everything in it is rendered by
            refreshBillingUI() from /api/config, never from local state. -->
@@ -6902,6 +6952,7 @@
     renderWatchFeed();
     renderBrokerDesk();
     renderShares();
+    loadBranding();
   }
 
   // ----------------------------------------------------------------------------
@@ -7372,6 +7423,222 @@
       wrap.appendChild(row);
     });
   }
+
+  // ----------------------------------------------------------------------------
+  // Report branding — My Desk's editor for the mark a member's OWN reports and
+  // exports carry (Task 7 applies it to the report letterhead, Task 8 to
+  // exports). Saving here is open to anyone signed in; it is inert without a
+  // Pro or single-report entitlement, which is checked where the mark is
+  // applied, never in this card (see the server route's own comment).
+  //
+  // Downscale in the browser and embed the result. Never store a URL: a
+  // cross-origin image taints the html2canvas canvas, and a tainted canvas
+  // makes the PNG export throw — one pasted logo URL would silently break
+  // image export for every report that member touches.
+  // ----------------------------------------------------------------------------
+  const BRAND_LOGO_MAX_W = 400;      // plenty for a letterhead at print DPI
+  const BRAND_LOGO_TARGET = 100000;  // re-encode above this; the server refuses above 150KB
+
+  function readLogoFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error("No file chosen."));
+      if (!/^image\/(png|jpeg)$/.test(file.type)) {
+        // SVG rasterizes unreliably in html2canvas and print, and a broken
+        // logo on a document a broker hands a client is worse than plain text.
+        return reject(new Error("Please choose a PNG or JPEG image."));
+      }
+      if (file.size > 5e6) return reject(new Error("That image is very large. Please choose one under 5MB."));
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error("Could not read that file."));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("That file is not an image we can read."));
+        img.onload = () => {
+          const scale = Math.min(1, BRAND_LOGO_MAX_W / (img.width || 1));
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(img.width * scale));
+          c.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = c.getContext("2d");
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          let out = c.toDataURL("image/png");
+          if (out.length > BRAND_LOGO_TARGET) out = c.toDataURL("image/jpeg", 0.85);
+          resolve(out);
+        };
+        img.src = String(fr.result || "");
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  let currentBranding = null;   // the member's own saved profile, or null
+  let pendingLogo = "";         // data URI chosen but not yet saved
+
+  const brandFields = () => ({
+    logo: pendingLogo,
+    firmName: document.getElementById("brandFirm").value,
+    preparerName: document.getElementById("brandPreparer").value,
+    phone: document.getElementById("brandPhone").value,
+    email: document.getElementById("brandEmail").value,
+    licenseNumber: document.getElementById("brandLicense").value,
+    disclaimer: document.getElementById("brandDisclaimer").value,
+  });
+
+  function fillBrandForm(brand) {
+    const b = brand || {};
+    document.getElementById("brandFirm").value = b.firmName || "";
+    document.getElementById("brandPreparer").value = b.preparerName || "";
+    document.getElementById("brandPhone").value = b.phone || "";
+    document.getElementById("brandEmail").value = b.email || "";
+    document.getElementById("brandLicense").value = b.licenseNumber || "";
+    document.getElementById("brandDisclaimer").value = b.disclaimer || "";
+    const img = document.getElementById("brandLogoPreview");
+    if (pendingLogo) { img.src = pendingLogo; img.classList.remove("hidden"); }
+    else { img.src = ""; img.classList.add("hidden"); }
+  }
+
+  // Draws the same block Task 7 puts on the report letterhead, so a member
+  // sees what they are buying before exporting anything. Reads the live form
+  // state (not just the last-saved profile), so it updates as they type.
+  // Co-branded, never white label: the CompNinja line at the bottom is not
+  // built from member data and this function does not take a flag to hide it.
+  function renderBrandPreview() {
+    const box = document.getElementById("brandPreview");
+    box.innerHTML = "";
+    const b = brandFields();
+    const hasContent = b.logo || b.firmName || b.preparerName || b.phone || b.email || b.licenseNumber || b.disclaimer;
+    if (!hasContent) {
+      const empty = document.createElement("p");
+      empty.className = "text-sm text-[#8A93A0]";
+      empty.textContent = "Add a logo or firm name to see how your reports will look.";
+      box.appendChild(empty);
+      return;
+    }
+    if (b.logo) {
+      const img = document.createElement("img");
+      img.src = b.logo;
+      img.alt = "";
+      img.className = "h-9";
+      box.appendChild(img);
+    }
+    if (b.firmName) {
+      const firm = document.createElement("div");
+      firm.className = "text-sm font-semibold text-[#1A2433] mt-2";
+      firm.textContent = b.firmName;
+      box.appendChild(firm);
+    }
+    const contactBits = [b.preparerName, b.licenseNumber ? `Lic. ${b.licenseNumber}` : "", b.phone, b.email].filter(Boolean);
+    if (contactBits.length) {
+      const contact = document.createElement("div");
+      contact.className = "text-xs text-[#5A6473] mt-1";
+      contact.textContent = contactBits.join(" · ");
+      box.appendChild(contact);
+    }
+    if (b.disclaimer) {
+      const disc = document.createElement("p");
+      disc.className = "text-xs text-[#8A93A0] mt-2";
+      disc.textContent = b.disclaimer;
+      box.appendChild(disc);
+    }
+    const attribution = document.createElement("p");
+    attribution.className = "text-xs text-[#8A93A0] mt-3 border-t border-[#D8D4C9] pt-2";
+    attribution.textContent = "Prepared with CompNinja · an automated estimate, not an appraisal.";
+    box.appendChild(attribution);
+  }
+
+  async function loadBranding() {
+    const wrap = document.getElementById("deskBranding");
+    try {
+      const r = await fetch("/api/branding", { credentials: "same-origin" });
+      if (r.status === 401) { wrap.classList.add("hidden"); return; }
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // 503 and anything else: one line, and the rest of the desk keeps working.
+        wrap.classList.remove("hidden");
+        document.getElementById("brandMsg").textContent = body.error || "Couldn't load your branding.";
+        return;
+      }
+      wrap.classList.remove("hidden");
+      currentBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
+      pendingLogo = (currentBranding && currentBranding.logo) || "";
+      fillBrandForm(currentBranding);
+      renderBrandPreview();
+    } catch (_) {
+      wrap.classList.remove("hidden");
+      document.getElementById("brandMsg").textContent = "Couldn't reach the server.";
+    }
+  }
+
+  document.getElementById("brandLogo").addEventListener("click", () => {
+    document.getElementById("brandLogoFile").click();
+  });
+
+  document.getElementById("brandLogoFile").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // so choosing the same file again still fires change
+    if (!file) return;
+    const msg = document.getElementById("brandMsg");
+    try {
+      pendingLogo = await readLogoFile(file);
+      msg.textContent = "";
+      const img = document.getElementById("brandLogoPreview");
+      img.src = pendingLogo;
+      img.classList.remove("hidden");
+      renderBrandPreview();
+    } catch (ex) {
+      msg.textContent = ex.message;
+    }
+  });
+
+  document.getElementById("brandLogoRemove").addEventListener("click", () => {
+    pendingLogo = "";
+    const img = document.getElementById("brandLogoPreview");
+    img.src = "";
+    img.classList.add("hidden");
+    renderBrandPreview();
+  });
+
+  ["brandFirm", "brandPreparer", "brandPhone", "brandEmail", "brandLicense", "brandDisclaimer"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", renderBrandPreview);
+  });
+
+  document.getElementById("brandSave").addEventListener("click", async () => {
+    const btn = document.getElementById("brandSave");
+    const msg = document.getElementById("brandMsg");
+    btn.disabled = true; msg.textContent = "Saving…";
+    try {
+      const r = await fetch("/api/branding", {
+        method: "PUT", credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(brandFields()),
+      });
+      const body = await r.json().catch(() => ({}));
+      // The server's own 400 names the offending field and its limit. Show it
+      // rather than inventing a vaguer one.
+      if (!r.ok) { msg.textContent = body.error || "That didn't save."; return; }
+      currentBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
+      msg.textContent = "Saved. It will appear on your next report.";
+      renderBrandPreview();
+    } catch (_) {
+      msg.textContent = "That didn't reach the server. Nothing was saved.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("brandDelete").addEventListener("click", async () => {
+    if (!confirm("Remove your branding?\n\nReports you have already shared keep the mark they were sent with.")) return;
+    const msg = document.getElementById("brandMsg");
+    try {
+      const r = await fetch("/api/branding", { method: "DELETE", credentials: "same-origin" });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { msg.textContent = body.error || "That didn't go through."; return; }
+      currentBranding = null; pendingLogo = "";
+      fillBrandForm(null); renderBrandPreview();
+      msg.textContent = "Removed.";
+    } catch (_) {
+      msg.textContent = "That didn't reach the server. Nothing was changed.";
+    }
+  });
 
   // Direct load / hard refresh on /desk. Runs after `let currentUser` executes;
   // renderMyDesk early-returns until the auth bootstrap fills the portfolio in.

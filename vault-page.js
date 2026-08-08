@@ -370,6 +370,39 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
     </section>
 
+    <section id="bovSec">
+      <h2>BOV tracker</h2>
+      <p class="sub" style="margin-top:0">Every Broker Opinion of Value you&rsquo;re working,
+        from any source. Introductions you request above land here automatically; log the
+        rest yourself. This is your private log: only you can see it.</p>
+      <div class="cards" id="bovCards"></div>
+      <div class="row" style="margin-top:var(--s4)">
+        <label>Market <input id="bovMarket" type="text" placeholder="City, ST"/></label>
+        <label>Type <select id="bovType"></select></label>
+        <label>Source <select id="bovSource">
+          <option value="referral">Referral</option>
+          <option value="repeat_client">Repeat client</option>
+          <option value="other" selected>Other</option>
+        </select></label>
+        <label>Size (SF) <input id="bovSize" type="text" style="width:90px"/></label>
+        <label>Received <input id="bovDate" type="date"/></label>
+        <label>Address <input id="bovAddr" type="text" placeholder="optional"/></label>
+        <label>Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
+        <button class="btn ghost" id="bovAdd">Log a BOV</button>
+      </div>
+      <div id="bovMsg"></div>
+      <div class="tw hide" id="bovTableWrap"><table id="bovTbl">
+        <thead><tr>
+          <th data-bk="received_on">Received</th><th data-bk="market">Market</th>
+          <th data-bk="property_type">Type</th><th data-bk="size_sqft" class="num">Size</th>
+          <th data-bk="source">Source</th><th data-bk="status">Status</th>
+          <th>Notes</th><th></th>
+        </tr></thead><tbody id="bovRows"></tbody>
+      </table></div>
+      <div class="empty hide" id="noBovs">Nothing logged yet. Request an introduction above,
+        or log a BOV you got elsewhere.</div>
+    </section>
+
     <section id="importsSec">
       <h2>Imports</h2>
       <div id="ups"></div>
@@ -389,7 +422,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // Order matters: esc() first (so a literal & in the text becomes &amp;),
   // then &quot; the remaining bare double quotes.
   var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
-  var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false;
+  var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false,bovsLoaded=false;
   var bench=null,benchFailed=false,benchLoaded=false;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -482,6 +515,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // rather than load() so the baked-in boot payload path (which never
     // calls load()) still populates the Leads section on first paint.
     if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
+    if(!bovsLoaded){ bovsLoaded=true; loadBovs(); }
     if(!benchLoaded){ benchLoaded=true; loadBenchmarks(); }
     render();
   }
@@ -810,6 +844,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("trustLine").className=first?"trust hide":"trust";
     $("compsSec").className=first?"hide":"";
     $("importsSec").className=first?"hide":"";
+    $("bovSec").className=first?"hide":"";
   }
 
   function renderUploads(ups){
@@ -926,6 +961,141 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
           $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was sent.</div>';
         });
     }
+  });
+
+  // ---- BOV tracker ----------------------------------------------------------
+  var bovs=[],bovRollup=null,bovSortK="received_on",bovSortAsc=false;
+  var BOV_STATUSES=["open","delivered","won","lost"];
+  var BOV_SOURCE_LABEL={compninja:"CompNinja intro",referral:"Referral",repeat_client:"Repeat client",other:"Other"};
+  $("bovType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
+  function loadBovs(){
+    fetch("/api/broker/bovs",{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){
+          $("bovCards").innerHTML=""; $("bovRows").innerHTML="";
+          $("bovTableWrap").className="tw hide"; $("noBovs").className="empty hide";
+          $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load your BOV log.")+"</div>";
+          return;
+        }
+        $("bovMsg").innerHTML="";
+        bovs=o.j.bovs||[];
+        bovRollup=o.j.rollup||null;
+        renderBovs(bovRollup);
+      })
+      .catch(function(){
+        $("bovCards").innerHTML=""; $("bovRows").innerHTML="";
+        $("bovTableWrap").className="tw hide"; $("noBovs").className="empty hide";
+        $("bovMsg").innerHTML='<div class="msg bad">Couldn\\'t load your BOV log. Please try again.</div>';
+      });
+  }
+  function bovTile(label,val){
+    return '<div class="card"><span class="ty">'+esc(label)+'</span>'+
+      '<div class="big">'+esc(String(val))+"</div></div>";
+  }
+  function renderBovs(ru){
+    // Tiles only once there is anything to count: four zeros over an empty
+    // section is the 0-0 scoreboard the first-run work removed elsewhere.
+    if(!ru||!ru.total){ $("bovCards").innerHTML=""; }
+    else{
+      // The dash under the floor is deliberate: a win rate over one or two
+      // decided BOVs reads as a joke (bov-log.js holds the floor).
+      var wr=ru.winRate==null?"\\u2014":Math.round(ru.winRate*100)+"%";
+      $("bovCards").innerHTML=bovTile("This year",ru.thisYear)+bovTile("Open",ru.open)+
+        bovTile("Delivered",ru.delivered)+bovTile("Win rate",wr);
+    }
+    $("noBovs").className=bovs.length?"empty hide":"empty";
+    $("bovTableWrap").className=bovs.length?"tw":"tw hide";
+    var rows=bovs.slice().sort(function(a,b){
+      var av=a[bovSortK],bv=b[bovSortK];
+      if(av==null&&bv==null)return 0;
+      if(av==null)return 1;
+      if(bv==null)return -1;
+      var c=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv));
+      return bovSortAsc?c:-c;
+    });
+    $("bovRows").innerHTML=rows.map(function(b){
+      var sel='<select data-bov="'+escA(b.id)+'" data-prev="'+escA(b.status)+'">'+
+        BOV_STATUSES.map(function(s){
+          return '<option value="'+s+'"'+(b.status===s?" selected":"")+">"+
+            s.charAt(0).toUpperCase()+s.slice(1)+"</option>";
+        }).join("")+"</select>";
+      return "<tr><td>"+esc(b.received_on||String(b.created_at||"").slice(0,10))+"</td>"+
+        "<td>"+esc(b.market)+(b.address?' <span class="note">'+esc(b.address)+"</span>":"")+"</td>"+
+        "<td>"+esc(b.property_type)+"</td>"+
+        '<td class="num">'+(b.size_sqft?num(b.size_sqft)+" SF":"")+"</td>"+
+        "<td>"+esc(BOV_SOURCE_LABEL[b.source]||b.source)+"</td>"+
+        "<td>"+sel+"</td>"+
+        "<td>"+esc(b.notes||"")+"</td>"+
+        '<td><button class="pubbtn" data-bovdel="'+escA(b.id)+'">Remove</button></td></tr>';
+    }).join("");
+  }
+  document.querySelector("#bovTbl thead").addEventListener("click",function(e){
+    var th=e.target.closest("th[data-bk]"); if(!th)return;
+    var k=th.getAttribute("data-bk");
+    if(k===bovSortK)bovSortAsc=!bovSortAsc; else{bovSortK=k;bovSortAsc=false;}
+    // The kept rollup means a sort click redraws in place and never clears
+    // the tiles or costs a refetch.
+    renderBovs(bovRollup);
+  });
+  $("bovAdd").addEventListener("click",function(){
+    var b=$("bovAdd");
+    b.disabled=true;
+    fetch("/api/broker/bovs",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({
+        market:$("bovMarket").value, property_type:$("bovType").value,
+        source:$("bovSource").value, size_sqft:$("bovSize").value,
+        received_on:$("bovDate").value, address:$("bovAddr").value,
+        notes:$("bovNotes").value })})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        b.disabled=false;
+        if(o.s!==200){ $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't log that BOV.")+"</div>"; return; }
+        $("bovMarket").value=""; $("bovSize").value=""; $("bovDate").value="";
+        $("bovAddr").value=""; $("bovNotes").value="";
+        loadBovs();
+      })
+      .catch(function(){ b.disabled=false;
+        $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was logged.</div>'; });
+  });
+  // Status changes post immediately and revert on failure: the intro
+  // button's optimistic-with-rollback pattern, applied to a <select>.
+  document.addEventListener("change",function(e){
+    var id=e.target.getAttribute&&e.target.getAttribute("data-bov");
+    if(!id)return;
+    var sel=e.target,prev=sel.getAttribute("data-prev"),next=sel.value;
+    sel.disabled=true;
+    fetch("/api/broker/bovs/update",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({id:id,status:next})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        sel.disabled=false;
+        if(o.s!==200){
+          sel.value=prev;
+          $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't save that change.")+"</div>";
+          return;
+        }
+        sel.setAttribute("data-prev",next);
+        loadBovs();   // the tiles moved
+      })
+      .catch(function(){
+        sel.disabled=false; sel.value=prev;
+        $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>';
+      });
+  });
+  document.addEventListener("click",function(e){
+    var del=e.target.getAttribute&&e.target.getAttribute("data-bovdel");
+    if(!del)return;
+    if(!confirm("Remove this BOV from your log?"))return;
+    fetch("/api/broker/bovs?id="+encodeURIComponent(del),{method:"DELETE",credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){ $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that BOV.")+"</div>"; return; }
+        loadBovs();
+      })
+      .catch(function(){ $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
   });
 
   function upload(file){

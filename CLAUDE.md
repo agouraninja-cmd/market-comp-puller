@@ -741,6 +741,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   modal and then clearing the hash — deliberately one form, not a second copy
   of it on this page. Do not confuse this with `GET /broker/<slug>`, the
   per-contributor public profile.
+- `GET /1031-exchange` — public 1031-exchange education page (v4 slice 3;
+  spec `docs/superpowers/specs/2026-08-08-1031-guide-design.md`). All
+  content lives in the pure **`guide-1031.js`** (the vault-page.js
+  precedent) — FAQ array feeding both the accordions and the FAQPage
+  JSON-LD, the education-not-advice compliance box, and a client-side
+  45/180-day deadline-dates widget (calendar dates only, never taxes or
+  dollars; nothing is sent to a server). server.js only dresses it in
+  `marketShell` and spreads the module's JSON-LD nodes into the shared
+  `brandGraph()` @graph. Education, never advice — the compliance strings
+  are test-pinned in both directions (must-appear and must-never-appear).
+  Listed in `sitemap.xml`; linked from `MARKET_FOOTER`, `/how-it-works`'s
+  footer, and `/brokers`.
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real

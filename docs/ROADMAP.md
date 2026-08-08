@@ -47,10 +47,11 @@ intent, the devlog states history.
 
 ## Later (broker-tier phases, in order)
 
-v4 remaining: BOV tracking, 1031 workflow education → hub ratings last.
-The gut check (v4 slice 1) shipped 2026-08-08. Hub monetization is gated
-on the attorney's referral-fee answer; the fallback if fees are barred is
-lead visibility as a subscription benefit.
+v4 remaining: BOV tracking (in flight in a parallel session) → hub ratings
+last. The gut check (slice 1) and the 1031 exchange guide (slice 3) shipped
+2026-08-08. Hub monetization is gated on the attorney's referral-fee
+answer; the fallback if fees are barred is lead visibility as a
+subscription benefit.
 
 ## Engineering track (no product decisions needed)
 
@@ -105,6 +106,12 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-08: v4 slice 3, the 1031 exchange guide.** Public education
+  page at /1031-exchange: the exchange workflow in order, a client-side
+  45/180-day deadline-dates widget (dates only, never taxes), the
+  identification rules, common failure modes, and a FAQ with FAQPage
+  JSON-LD. One page for both audiences — owners researching a sale find
+  it, brokers hand it to clients. Education, never advice, test-pinned.
 - **2026-08-08: v4 slice 1, the gut check.** A broker's book, sanity-checked
   against the public market layer on /vault: per-bucket median $/SF and cap
   rates vs corpus quartiles + model market figures (the owner's blended-

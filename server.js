@@ -43,6 +43,9 @@ const SHAREACCESS = require("./report-access.js");
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
 const { renderVaultHTML } = require("./vault-page");
+// The 1031 exchange guide's content. A web page, so it is not server code —
+// the vault-page.js precedent; server.js only dresses it in marketShell.
+const G1031 = require("./guide-1031");
 // The vault API's comp shape — the seam between how comps are STORED and how
 // the dashboard READS them. It exists so broker_comps can be restructured into
 // the star schema without the dashboard moving. A pass-through today, on
@@ -4804,6 +4807,7 @@ const MARKET_FOOTER =
   `<li><a href="/brokers">Brokers</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
   `<li><a href="/how-it-works#faq">FAQ</a></li>` +
+  `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
   `<li><a href="/">Run a report</a></li></ul></div>` +
   `<div><div class="ch">Company</div>` +
   `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
@@ -5560,7 +5564,8 @@ function renderBrokersPageHTML() {
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
     `<a class="btn" href="/#submit-comp">Submit a comp</a>` +
-    `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p></div>` +
+    `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p>` +
+    `<p style="margin:0"><a class="alt" href="/1031-exchange">Client weighing a 1031? Send them our exchange guide &rarr;</a></p></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
@@ -5982,6 +5987,7 @@ function renderHowItWorksHTML() {
             <li><a href="/brokers">Brokers</a></li>
             <li><a href="/how-it-works">How it works</a></li>
             <li><a href="/how-it-works#faq">FAQ</a></li>
+            <li><a href="/1031-exchange">1031 exchange guide</a></li>
             <li><a href="/">Run a report</a></li>
           </ul>
         </div>
@@ -11991,6 +11997,26 @@ const server = http.createServer((req, res) => {
     return res.end(renderHowItWorksHTML());
   }
 
+  // --- 1031 exchange guide — public education page (v4 slice 3). Content
+  // lives in guide-1031.js (a web page, so it is not server code — the
+  // vault-page.js precedent); this route only dresses it in the shared
+  // shell. Education, never advice: the compliance strings are pinned by
+  // test/guide-1031.test.js. ---
+  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+    return res.end(marketShell({
+      title: G1031.TITLE,
+      description: G1031.DESCRIPTION,
+      canonical: `${SITE_URL}/1031-exchange`,
+      body: G1031.renderGuide1031Body(),
+      head: `<style>${G1031.GUIDE_CSS}</style>`,
+      jsonLd: JSON.stringify({
+        "@context": "https://schema.org",
+        "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
+      }),
+    }));
+  }
+
   // --- Brokers — the contributor-facing page (header + footer nav). Static
   // content, same hour-long cache as /how-it-works. Sits above the
   // /broker/<slug> profile matcher below so the two stay adjacent. ---
@@ -12387,6 +12413,7 @@ const server = http.createServer((req, res) => {
       (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/terms</loc></url>\n` +
       `  <url><loc>${SITE_URL}/privacy</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +

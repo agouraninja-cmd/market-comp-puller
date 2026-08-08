@@ -215,5 +215,8 @@
     "details": "Per market + property type, your median $/SF and cap rates compared against public corpus quartiles and model market figures, each labeled with its source and date. Comps priced far outside the band get an outlier marker. Untrended, and framed as worth-a-look — your own records may be the better data. Private comps never leave your browser for this: the server sends only public benchmarks." },
   { "date": "2026-08-08", "type": "fix",
     "title": "Gut check follow-ups from review",
-    "details": "An undisclosed-price sale's cap rate now counts toward your cap-rate median (it was silently dropped; only the $/SF median needs a price). Benchmark buckets resolve concurrently instead of one at a time. The benchmarks-unavailable note no longer renders above an empty filtered table." }
+    "details": "An undisclosed-price sale's cap rate now counts toward your cap-rate median (it was silently dropped; only the $/SF median needs a price). Benchmark buckets resolve concurrently instead of one at a time. The benchmarks-unavailable note no longer renders above an empty filtered table." },
+  { "date": "2026-08-08", "type": "feature",
+    "title": "1031 exchange guide at /1031-exchange",
+    "details": "The exchange workflow in plain English — engage a qualified intermediary before closing, identify in writing within 45 days, close within 180 — plus a deadline-dates widget that runs entirely in your browser, the identification rules, and the ways exchanges commonly fail. Written for owners weighing a sale and for brokers to hand to clients. Educational only, never tax advice, and the tests enforce exactly that." }
 ]

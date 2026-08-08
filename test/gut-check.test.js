@@ -38,21 +38,52 @@ const SNAP_OK = { ppsf: { median: 145, low: 125, high: 170, count: 8 },
 // --- corpusStats -----------------------------------------------------------
 
 test("corpusStats: quartiles over usable sale rows only", () => {
+  // Distinct addresses: same-building dedupe (below) must not collapse four
+  // genuinely different comps into one.
   const rows = [
-    corpusRow({ price_per_sqft: "100" }),
-    corpusRow({ price_per_sqft: "120" }),
-    corpusRow({ price_per_sqft: "140" }),
-    corpusRow({ price_per_sqft: "160" }),
-    corpusRow({ price_per_sqft: "200", transaction: "lease" }),   // lease: out
-    corpusRow({ price_per_sqft: "999", source_type: "estimate" }),// provenance: out
-    corpusRow({ price_per_sqft: "998", source_type: "news" }),    // provenance: out
-    corpusRow({ price_per_sqft: "" }),                            // unpriced: out
+    corpusRow({ address: "100 Elm St, Boise, ID", price_per_sqft: "100" }),
+    corpusRow({ address: "200 Oak St, Boise, ID", price_per_sqft: "120" }),
+    corpusRow({ address: "300 Pine St, Boise, ID", price_per_sqft: "140" }),
+    corpusRow({ address: "400 Cedar St, Boise, ID", price_per_sqft: "160" }),
+    corpusRow({ address: "500 Birch St, Boise, ID", price_per_sqft: "200", transaction: "lease" }),   // lease: out
+    corpusRow({ address: "600 Fir St, Boise, ID", price_per_sqft: "999", source_type: "estimate" }),// provenance: out
+    corpusRow({ address: "700 Ash St, Boise, ID", price_per_sqft: "998", source_type: "news" }),    // provenance: out
+    corpusRow({ address: "800 Maple St, Boise, ID", price_per_sqft: "" }),                            // unpriced: out
   ];
   const s = GC.corpusStats(rows, { parseDealDate });
   assert.equal(s.count, 4);
   assert.equal(s.median_ppsf, 130);
   assert.ok(s.q1_ppsf >= 100 && s.q1_ppsf <= 120);
   assert.ok(s.q3_ppsf >= 140 && s.q3_ppsf <= 160);
+});
+
+test("corpusStats: same building harvested under four address spellings dedupes to one, below the band floor", () => {
+  const rows = [
+    corpusRow({ address: "19127 Red Label Lane, Caldwell, ID 83607", price_per_sqft: "150", deal_date: "2026-01-01" }),
+    corpusRow({ address: "19127 Red Label Ln, Caldwell, ID 83605", price_per_sqft: "152", deal_date: "2026-02-01" }),
+    corpusRow({ address: "19127 RED LABEL LANE, Caldwell, ID 83607", price_per_sqft: "148", deal_date: "2026-03-01" }),
+    corpusRow({ address: "19127 red label ln., Caldwell, ID", price_per_sqft: "151", deal_date: "2025-12-01" }),
+  ];
+  const s = GC.corpusStats(rows, { parseDealDate });
+  assert.equal(s.count, 1, "four spellings of one building fold to one row");
+  assert.equal(s.median_ppsf, 148, "the surviving row is the newest-dated copy (2026-03-01)");
+  // count 1 is below MIN_CORPUS_PPSF (4), so it cannot contribute to the band
+  // even though a naive q1-q3 over four near-identical prices would look
+  // confidently tight.
+  const r = GC.gutCheck([vaultComp({ price_per_sqft: 150 })], [bench({ corpus: s })]);
+  assert.equal(r.buckets[0].verdict, "no_data");
+  assert.equal(r.buckets[0].band, null);
+});
+
+test("corpusStats: rows with no address are kept separately, never merged into one bucket", () => {
+  const rows = [
+    corpusRow({ address: "", price_per_sqft: "100" }),
+    corpusRow({ address: "", price_per_sqft: "120" }),
+    corpusRow({ address: "", price_per_sqft: "140" }),
+    corpusRow({ address: "", price_per_sqft: "160" }),
+  ];
+  const s = GC.corpusStats(rows, { parseDealDate });
+  assert.equal(s.count, 4, "empty-address rows must not be folded together");
 });
 
 test("corpusStats: newest_deal_date is the raw string of the newest parseable date", () => {
@@ -65,15 +96,19 @@ test("corpusStats: newest_deal_date is the raw string of the newest parseable da
 });
 
 test("corpusStats: cap-rate median needs 3 parseable values, skips junk", () => {
+  // Distinct addresses: same-building dedupe must not collapse these three
+  // otherwise-identical rows (same default address/date) into one.
   const two = GC.corpusStats([
-    corpusRow({ cap_rate: "5.5%" }), corpusRow({ cap_rate: "6.5%" }),
-    corpusRow({ cap_rate: "n/a" }),
+    corpusRow({ address: "1 First St, Boise, ID", cap_rate: "5.5%" }),
+    corpusRow({ address: "2 Second St, Boise, ID", cap_rate: "6.5%" }),
+    corpusRow({ address: "3 Third St, Boise, ID", cap_rate: "n/a" }),
   ], { parseDealDate });
   assert.equal(two.cap_rate_median, null);
   assert.equal(two.cap_rate_count, 2);
   const three = GC.corpusStats([
-    corpusRow({ cap_rate: "5.5%" }), corpusRow({ cap_rate: "6.0%" }),
-    corpusRow({ cap_rate: "6.5%" }),
+    corpusRow({ address: "1 First St, Boise, ID", cap_rate: "5.5%" }),
+    corpusRow({ address: "2 Second St, Boise, ID", cap_rate: "6.0%" }),
+    corpusRow({ address: "3 Third St, Boise, ID", cap_rate: "6.5%" }),
   ], { parseDealDate });
   assert.equal(three.cap_rate_median, 6);
   assert.equal(three.cap_rate_count, 3);
@@ -114,6 +149,18 @@ test("below market: negative delta", () => {
     [bench({ corpus: CORPUS_OK })]);           // band 120-180
   assert.equal(r.buckets[0].verdict, "below");
   assert.equal(r.buckets[0].delta_pct, -25);   // (120-90)/120
+});
+
+test("a delta that rounds to 0% never renders as above/below", () => {
+  const tightBand = { count: 6, median_ppsf: 100, q1_ppsf: 100, q3_ppsf: 100,
+    newest_deal_date: "2026-03-14", cap_rate_median: null, cap_rate_count: 0 };
+  // 100.4 is technically over a band topping out at 100, but (0.4/100)*100
+  // rounds to 0 -- the contradiction "above * 0%" must collapse to in_line.
+  const r = GC.gutCheck(
+    [vaultComp({ price_per_sqft: 100.4 })],
+    [bench({ corpus: tightBand })]);
+  assert.equal(r.buckets[0].verdict, "in_line");
+  assert.equal(r.buckets[0].delta_pct, null);
 });
 
 test("thin corpus (count < 4) does not count toward the band", () => {
@@ -190,6 +237,19 @@ test("cap verdict: no snapshot range means no cap verdict, corpus median alone i
     vaultComp({ cap_rate: 5.8 }), vaultComp({ id: "c2", cap_rate: 6.2 }),
   ], [bench({ corpus: Object.assign({}, CORPUS_OK, { cap_rate_median: 6.1, cap_rate_count: 4 }) })]);
   assert.equal(r.buckets[0].cap, null);
+});
+
+test("cap verdict: a lease's cap rate is ignored, sale-only like the corpus side", () => {
+  const r = GC.gutCheck([
+    vaultComp({ cap_rate: 5.8 }),
+    vaultComp({ id: "c2", cap_rate: 6.2 }),
+    // priced, so it would otherwise widen the bucket -- excluded purely for
+    // being a lease, matching corpusStats' sale-only cap aggregate.
+    vaultComp({ id: "c3", transaction: "lease", price_per_sqft: 500, cap_rate: 9.9 }),
+  ], [bench({ snapshot: SNAP_OK })]);
+  assert.ok(r.buckets[0].cap);
+  assert.equal(r.buckets[0].cap.count, 2, "the lease's cap rate must not count toward the median");
+  assert.equal(r.buckets[0].cap.median, 6);
 });
 
 // --- malformed input never throws ------------------------------------------

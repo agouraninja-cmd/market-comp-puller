@@ -67,16 +67,64 @@
 
   function round2(v) { return v == null ? null : Math.round(v * 100) / 100; }
 
+  // Sibling of backtest.js's normAddress (backtest.js:66-83) — folds a street
+  // line to one spelling so the same building harvested under several address
+  // spellings (a zip typo, an abbreviated suffix) doesn't count as several
+  // transactions. Duplicated rather than required in: this module must stay
+  // pure (no requires) and load in a browser, and backtest.js is Node-only.
+  // Keep the two tables in step if either grows.
+  const STREET_SUFFIXES = {
+    lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd",
+    boulevard: "blvd", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy",
+  };
+  const DIRECTIONALS = { north: "n", south: "s", east: "e", west: "w" };
+
+  function normAddressKey(s) {
+    const streetLine = String(s == null ? "" : s).split(",")[0] || "";
+    return streetLine
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ")
+      .trim()
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map(function (w) { return STREET_SUFFIXES[w] || DIRECTIONALS[w] || w; })
+      .join(" ");
+  }
+
+  // Fold usable rows down to one per real building before any aggregate is
+  // computed from them: MIN_CORPUS_PPSF counts BUILDINGS, and one warehouse
+  // harvested under four address spellings must not clear that floor on its
+  // own. Keeps the newest copy per building (by the injected parseDealDate;
+  // an unparseable/missing date sorts oldest, so it loses any tie to a row
+  // with a real date). A row whose normalized address is EMPTY is never
+  // folded with another empty-address row — two rows with no address are not
+  // provably the same building, so each is kept as its own row.
+  function dedupeByBuilding(rows, parseDealDate) {
+    const byKey = new Map();
+    let emptySeq = 0;
+    rows.forEach(function (r) {
+      const norm = normAddressKey(r.address);
+      const key = norm ? "a:" + norm : "e:" + (emptySeq++);
+      const dv = parseDealDate(r.deal_date);
+      const dk = dv == null ? -Infinity : dv;
+      const existing = byKey.get(key);
+      if (!existing || dk > existing.dk) byKey.set(key, { row: r, dk: dk });
+    });
+    return Array.from(byKey.values()).map(function (v) { return v.row; });
+  }
+
   // Raw corpus rows -> the `corpus` benchmark block. Server-side use (the
   // endpoint calls this), but it lives here so the aggregation is tested with
   // everything else. parseDealDate is INJECTED — same rule as corpus-audit.js:
   // this module must never disagree with server.js about what a date means.
   function corpusStats(rows, opts) {
     const parseDealDate = (opts && opts.parseDealDate) || function () { return null; };
-    const usable = (Array.isArray(rows) ? rows : []).filter(function (r) {
+    const usableRaw = (Array.isArray(rows) ? rows : []).filter(function (r) {
       return r && !BAD_PROVENANCE[String(r.source_type || "").toLowerCase()] &&
         isSale(r.transaction);
     });
+    const usable = dedupeByBuilding(usableRaw, parseDealDate);
     const priced = usable
       .map(function (r) { return { psf: toNum(r.price_per_sqft), deal_date: r.deal_date }; })
       .filter(function (r) { return r.psf != null && r.psf > 0; });
@@ -127,16 +175,24 @@
   }
 
   // Delta is % from the NEAREST band edge, signed: +25 means 25% above the
-  // top of the band, -25 means 25% below the bottom.
+  // top of the band, -25 means 25% below the bottom. A value can sit outside
+  // the band by less than half a rounding point (e.g. 0.4% over the top) —
+  // rounding that to 0 while still calling it "above"/"below" would render
+  // the contradiction "above · 0%", so a delta that rounds to zero is
+  // reported as in_line instead.
   function verdictFor(value, band) {
     if (value == null || !band || !(band.high >= band.low)) {
       return { verdict: "no_data", delta_pct: null };
     }
     if (value > band.high) {
-      return { verdict: "above", delta_pct: Math.round(((value - band.high) / band.high) * 100) };
+      const d = Math.round(((value - band.high) / band.high) * 100);
+      if (d === 0) return { verdict: "in_line", delta_pct: null };
+      return { verdict: "above", delta_pct: d };
     }
     if (value < band.low) {
-      return { verdict: "below", delta_pct: -Math.round(((band.low - value) / band.low) * 100) };
+      const d = -Math.round(((band.low - value) / band.low) * 100);
+      if (d === 0) return { verdict: "in_line", delta_pct: null };
+      return { verdict: "below", delta_pct: d };
     }
     return { verdict: "in_line", delta_pct: null };
   }
@@ -175,7 +231,10 @@
 
       // Cap rates: a verdict needs a RANGE, and only the snapshot has one —
       // the corpus median is a point and rides along as a supporting figure.
-      const capVals = list.map(function (c) { return toNum(c.cap_rate); })
+      // Sale comps only, same as corpusStats' cap aggregate (which reads
+      // `usable`, already isSale-filtered) — a lease's cap rate is a
+      // different instrument and would be noise mixed into a sale-market band.
+      const capVals = sales.map(function (c) { return toNum(c.cap_rate); })
         .filter(function (x) { return x != null && x > 0 && x < 25; });
       let cap = null;
       const capLow = snapshot ? toNum(snapshot.cap_rate_low) : null;

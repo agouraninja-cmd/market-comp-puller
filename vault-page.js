@@ -153,6 +153,23 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rep .addr{font-weight:600}
 .rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums}
 .note{color:var(--ink-3);font-size:var(--t5)}
+/* ---- Gut check ----------------------------------------------------------
+   Verdict chips stay in the page's existing voice: the pubbtn border style,
+   ink for facts, green only for "in line" (the calm state), never red for a
+   divergence — above/below is "worth a look", not an error. */
+.gc{border:1px solid var(--line);border-radius:var(--r);background:#fff;
+  padding:var(--s4) var(--s5);font-size:var(--t5);display:flex;
+  flex-direction:column;gap:var(--s2)}
+.gc .mk{font-weight:600;font-size:var(--t4)}
+.gc .ty{color:var(--ink-3);font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+.gcv{display:inline-block;border:1px solid var(--edge);border-radius:var(--r);
+  padding:1px var(--s3);font-size:var(--t6);color:var(--ink-2);font-weight:600;
+  align-self:flex-start;margin-top:var(--s2)}
+.gcv.ok{border-color:#BFE3CB;background:#F0FAF3;color:var(--green)}
+.gc .fine{color:var(--ink-3);font-size:var(--t6)}
+.gcOut{display:inline-block;margin-left:var(--s2);font-size:var(--t6);
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
+  border-bottom:1px dotted var(--ink-3);cursor:help}
 /* ---- First run ----------------------------------------------------------
    Deliberately quiet: two numbered steps on the page's own type scale, no
    illustration, no coloured callout box. A broker arriving here has just paid
@@ -306,6 +323,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
       </div>
+      <div class="panel hide" id="gutBox">
+        <h3>Gut check &middot; your numbers vs the market</h3>
+        <div class="cards" id="gutCards"></div>
+        <p class="note" id="gutNote"></p>
+      </div>
       <div class="panel chart hide" id="chartBox">
         <h3 id="chartTitle">Median $/SF by year</h3>
         <div id="chartWrap"></div>
@@ -356,6 +378,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 </div></main>
 <footer><div class="wrap">Private broker workspace &middot; CompNinja</div></footer>
 <script>window.__VAULT_BOOT__=${bootJson};</script>
+<script src="/gut-check.js"></script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -367,6 +390,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // then &quot; the remaining bare double quotes.
   var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
   var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false;
+  var bench=null,benchFailed=false,benchLoaded=false;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -458,6 +482,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // rather than load() so the baked-in boot payload path (which never
     // calls load()) still populates the Leads section on first paint.
     if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
+    if(!benchLoaded){ benchLoaded=true; loadBenchmarks(); }
     render();
   }
 
@@ -485,6 +510,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       if(typeof x==="number"&&typeof y==="number")return sortAsc?x-y:y-x;
       return sortAsc?String(x).localeCompare(String(y)):String(y).localeCompare(String(x));
     });
+    var gutOutliers=renderGutCheck(rows);
     $("none").className=rows.length?"empty hide":"empty";
     // Say "of N" whenever a filter is narrowing, so the number on screen can
     // never be mistaken for the size of the book.
@@ -500,10 +526,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       var pub=c.published
         ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
         : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var flag=gutOutliers[c.id]
+        ? ' <span class="gcOut" title="'+escA(Math.abs(gutOutliers[c.id].pct)+"% "+
+            (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
+        : "";
       return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
         "</td><td>"+esc(c.transaction)+"</td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
-        '</td><td class="num">'+psf(c.price_per_sqft)+"</td><td>"+pub+"</td></tr>";
+        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td></tr>";
     }).join("");
     Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
       var on=th.getAttribute("data-k")===sortK;
@@ -562,6 +592,75 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         (g.pub?'<span class="fine pub">'+g.pub+" published</span>":"")+
         "</button>";
     }).join("");
+  }
+
+  // ---- The gut check --------------------------------------------------------
+  function loadBenchmarks(){
+    if(typeof GUTCHECK==="undefined")return;      // script failed to load: panel stays hidden
+    var bk={},list=[];
+    comps.forEach(function(c){
+      var k=(c.market||"")+"|"+(c.property_type||"");
+      if(!bk[k]&&c.market&&c.property_type){bk[k]=1;list.push({market:c.market,type:c.property_type});}
+    });
+    if(!list.length)return;
+    fetch("/api/vault/benchmarks",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({buckets:list.slice(0,50)})})
+      .then(function(r){if(!r.ok)throw new Error("bench "+r.status);return r.json()})
+      .then(function(j){bench=(j&&j.buckets)||[];render();})
+      .catch(function(){benchFailed=true;render();});
+  }
+
+  // The verdict chip's label is plain English; the deltas are stated, the
+  // sample sizes and dates ride on every number, and the whole panel says
+  // "untrended" once at the bottom. Divergence copy is "worth a look" —
+  // never a claim the broker's data is wrong.
+  function renderGutCheck(rows){
+    var box=$("gutBox");
+    if(typeof GUTCHECK==="undefined"){box.className="panel hide";return {};}
+    if(benchFailed){
+      box.className="panel";
+      $("gutCards").innerHTML="";
+      $("gutNote").textContent="Market benchmarks are unavailable right now. Your comps are unaffected.";
+      return {};
+    }
+    if(!bench){box.className="panel hide";return {};}
+    var gc=GUTCHECK.gutCheck(rows,bench);
+    var withData=gc.buckets.filter(function(b){return b.verdict!=="no_data"});
+    // An all-"no data" panel reads as broken; hide it entirely instead.
+    if(!withData.length){box.className="panel hide";$("gutCards").innerHTML="";return gc.outliers;}
+    box.className="panel";
+    var V={in_line:"In line with the market",above:"Above the market band",below:"Below the market band"};
+    $("gutCards").innerHTML=withData.map(function(b){
+      var chip='<span class="gcv'+(b.verdict==="in_line"?" ok":"")+'">'+V[b.verdict]+
+        (b.delta_pct!=null?" \\u00b7 "+(b.delta_pct>0?"+":"")+b.delta_pct+"%":"")+"</span>";
+      var lines=['<span class="fine">Your median '+psf0(b.broker.median_ppsf)+"/SF \\u00b7 "+
+        b.broker.pricedSales+" priced sale"+(b.broker.pricedSales===1?"":"s")+"</span>"];
+      if(b.corpus&&b.corpus.count>=GUTCHECK.MIN_CORPUS_PPSF){
+        lines.push('<span class="fine">Public records: '+psf0(b.corpus.q1_ppsf)+"\\u2013"+
+          psf0(b.corpus.q3_ppsf)+"/SF \\u00b7 "+b.corpus.count+" comps"+
+          (b.corpus.newest_deal_date?" \\u00b7 newest "+esc(b.corpus.newest_deal_date):"")+"</span>");
+      }
+      if(b.snapshot&&b.snapshot.ppsf){
+        lines.push('<span class="fine">Model market figures: '+psf0(b.snapshot.ppsf.low)+"\\u2013"+
+          psf0(b.snapshot.ppsf.high)+"/SF"+
+          (b.snapshot.generatedAt?" \\u00b7 "+esc(b.snapshot.generatedAt):"")+"</span>");
+      }
+      if(b.cap){
+        lines.push('<span class="fine">Cap rate: your median '+b.cap.median+"% vs market "+
+          b.cap.low+"\\u2013"+b.cap.high+"%"+
+          (b.cap.corpus_median!=null?" (records median "+b.cap.corpus_median+"%)":"")+"</span>");
+      }
+      if(b.outlierIds.length){
+        lines.push('<span class="fine">'+b.outlierIds.length+" comp"+
+          (b.outlierIds.length===1?"":"s")+" priced well outside the band \\u2014 marked in the table, worth a look</span>");
+      }
+      return '<div class="gc"><span class="ty">'+esc(b.type)+'</span><span class="mk">'+
+        esc(b.market)+"</span>"+chip+lines.join("")+"</div>";
+    }).join("");
+    $("gutNote").textContent="Compared untrended against public-web records and model market figures. "+
+      "A divergence is worth a look, not a verdict \\u2014 your own records may be the better data.";
+    return gc.outliers;
   }
 
   // ---- Median $/SF by year -------------------------------------------------

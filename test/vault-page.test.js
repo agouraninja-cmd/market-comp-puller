@@ -125,3 +125,34 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
   assert.match(html, /id="chartBox"[^>]*class="panel chart hide"|class="panel chart hide" id="chartBox"/);
   assert.match(html, /id="repBox"[^>]*class="panel hide"|class="panel hide" id="repBox"/);
 });
+
+// ---------------------------------------------------------------------------
+// The gut check (v4 slice 1)
+// ---------------------------------------------------------------------------
+
+test("the page loads /gut-check.js and guards the global", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<script src="\/gut-check\.js"><\/script>/,
+    "the gut-check module must load before the inline script");
+  const js = pageScript(html);
+  // The panel must degrade to hidden — never a thrown ReferenceError that
+  // kills the whole workspace — if /gut-check.js fails to load.
+  assert.match(js, /typeof GUTCHECK/,
+    "the inline script must guard its use of the GUTCHECK global");
+});
+
+test("the gut-check panel ships hidden and lives inside the filtered section", () => {
+  const html = renderVaultHTML(boot([]), CHROME);
+  // Inside #compsSec (so applyFirstRun's hide covers it) and hidden until
+  // renderGutCheck reveals it — same pattern as #chartBox / #repBox.
+  assert.match(html, /id="gutBox"[^>]*class="panel hide"|class="panel hide" id="gutBox"/);
+  const comps_ix = html.indexOf('<section id="compsSec">');
+  const gut_ix = html.indexOf('id="gutBox"');
+  const chart_ix = html.indexOf('id="chartBox"');
+  assert.ok(comps_ix < gut_ix && gut_ix < chart_ix,
+    "gutBox must sit inside #compsSec, above the chart");
+});
+
+test("the emitted script still parses with the gut-check code in it", () => {
+  assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
+});

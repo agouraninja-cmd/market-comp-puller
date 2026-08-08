@@ -125,6 +125,26 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The 1031 guide — a public education page. Path-only matching is the
+  // regression this file pins for every route; the sitemap line is what
+  // makes the page findable at all.
+  await t.test("/1031-exchange serves the guide, query strings included", async () => {
+    for (const p of ["/1031-exchange", "/1031-exchange?utm_source=x"]) {
+      const r = await fetch(srv.base + p);
+      assert.equal(r.status, 200, p + " should serve the guide");
+      assert.match(r.headers.get("content-type") || "", /text\/html/, p);
+    }
+    const html = await (await fetch(srv.base + "/1031-exchange")).text();
+    assert.ok(html.includes("1031"), "the page should be about 1031 exchanges");
+    assert.ok(html.toLowerCase().includes("not tax, legal, or investment advice"),
+      "the not-advice box must ship on the live page");
+  });
+
+  await t.test("sitemap.xml lists the 1031 guide", async () => {
+    const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
+    assert.ok(xml.includes("/1031-exchange"), "sitemap must list /1031-exchange");
+  });
+
   // The vault gate, wired.
   //
   // entitlements.js proves the DECISION — canUseVault tracks pro across every

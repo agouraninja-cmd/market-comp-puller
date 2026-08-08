@@ -32,15 +32,17 @@ There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 
 There is one small test suite: `npm test` (`node --test`, no dependencies)
-covers the eight pure modules — **`entitlements.js`** (the Pro tier's
+covers the nine pure modules — **`entitlements.js`** (the Pro tier's
 decision table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`**,
 **`corpus-audit.js`**, **`broker-leads.js`** (the broker lead inbox's
 rules: coverage matching, lead anonymization allowlist, coverage seeding,
 notify dedupe), **`valuation.js`** (the value-range math shared by the
 browser and the accuracy backtest — the one pure module here that loads in a
-browser too, via a dual Node/global export) and **`backtest.js`** (the
+browser too, via a dual Node/global export), **`backtest.js`** (the
 hold-one-out accuracy scorer built on it, requiring nothing but
-`valuation.js`) — plus **`report-access.js`** (the ONLY function that
+`valuation.js`) and **`branding.js`** (report branding's decision table: what
+mark a render uses, and the rule that a shared report is decided entirely by
+its own snapshot) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
@@ -998,9 +1000,50 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     when a report is on screen with `lockedCount() > 0` and it isn't a shared
     report. It still lives inside the ONE pricing modal — do not add a second
     upgrade prompt.
-  Still unbuilt: report branding. `canBrand` is a real entitlement and
-  `findBrandingProfile()` exists, but there is no UI at all, so the bullet stays
-  off the pricing tile.
+  **Report branding** (shipped 2026-08-07). `GET|PUT|DELETE /api/branding`
+  lets a signed-in member save one profile (firm name, preparer, phone,
+  email, license number, a short disclaimer, and a logo stored inline as a
+  data URI — never a URL, because a cross-origin image taints the
+  html2canvas canvas and silently breaks PNG export). Rules live in the
+  pure, tested **`branding.js`**: `validateForSave` rejects an
+  over-length field or a non-image logo rather than truncating it, and
+  `brandForRender` decides what a given render is allowed to show. The mark
+  appears everywhere a report does once entitled — the on-screen letterhead,
+  the print footer, the PNG export, and both the CSV and XLSX exports — and
+  the license number renders on all of those, not just the desk preview.
+  **Co-branded, never white-label**: the surfaces (not `branding.js`) always
+  add the CompNinja attribution and the automated-estimate line, on top of
+  whatever the member's profile supplies; the owner is not a licensed
+  broker, so a report carrying only a brokerage's mark would read as that
+  brokerage's own appraisal. `/api/comps` carries `branding_allowed`
+  (`ent.canBrand === true`) on every served report, computed per-report like
+  `exports_remaining` — a $20 single-report buyer's `canBrand` is scoped to
+  the property they bought, not a live Pro subscription, so this cannot be
+  folded into `/api/config`. Two rules a future editor will otherwise break:
+  - **A shared report renders the sender's snapshot and never the viewer's
+    own profile.** `POST /api/share` looks up the sender's saved profile at
+    share time (only when `user && ent.canBrand`) and writes it into
+    `meta.branding` as a point-in-time snapshot, not a pointer — the report
+    should look the way it looked when it was sent, and a share outlives its
+    owner's subscription and even their account. `brandForRender`'s
+    `isShared` branch returns `normalizeBrand(sharedBranding)`
+    unconditionally and never falls through to the viewer's own profile: a
+    Pro member opening a report their broker sent them must not see their
+    own logo on someone else's work. `index.html`'s `normalizeBrandBlock()`
+    is a deliberately narrower mirror of `branding.js`'s `normalizeBrand()`
+    (camelCase/`logo` only) and must stay in step with it.
+  - **Saving a profile is not the entitlement, applying it is.** `PUT
+    /api/branding` is deliberately NOT gated on `canBrand` — any signed-in
+    member can save one, because an unsaved-but-inert profile costs nothing
+    (`brandForRender` returns null without the entitlement). The gate is on
+    APPLYING a profile to a report, checked server-side at serialization
+    (`/api/comps`'s `branding_allowed`) and again at share time (`POST
+    /api/share`'s `ent.canBrand` check before the snapshot). This is what
+    makes the $20 single-report unlock's branding promise fulfillable: the
+    entitlement it grants is scoped to one address+type, so a buyer with no
+    Pro subscription can still save a profile in advance and have it apply
+    the moment they unlock a report, without the editor itself needing to
+    know which case it is.
 - **The vault is part of Pro. There is ONE subscription** (decided and shipped
   2026-08-05; the vault itself is live). Ecosystem Plan v1 — design spec and
   the vault contract in

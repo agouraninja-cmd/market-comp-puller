@@ -20,9 +20,6 @@ intent, the devlog states history.
   validation, `toApiComp()` lifting the property's coordinates, and
   `blend-comps.js` carrying them through. Until it lands, a private comp's
   address still leaves the broker's browser to place a map pin.
-- **Report branding UI.** The last unbuilt Pro entitlement: `canBrand` and
-  `findBrandingProfile()` exist server-side with no UI at all. Shipping it
-  lets the pricing tile finally advertise branded reports.
 - **Address Explorer follow-ups**: the "instant report" badge on addresses
   whose report is already cached, and wiring the existing
   `/?explore=City,%20ST&type=X` deep link into the market pages.
@@ -108,6 +105,15 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-08: report branding.** The last unbuilt Pro entitlement now has a
+  UI: a saved profile (logo, firm name, preparer, phone, email, license
+  number, a short note) renders on every report a member's entitlement
+  covers, on screen, in print, in the PNG, and in both the CSV and XLSX
+  exports. A shared report carries the sender's mark as a snapshot taken at
+  share time, never the viewer's own profile. Co-branded, not white-label:
+  CompNinja stays named as the author of the valuation and the
+  automated-estimate line survives every configuration. Rules live in the
+  pure, tested `branding.js`. The pricing tile and plan card now advertise it.
 - **2026-08-06: v3 client sharing.** A share now carries an owner, an
   audience and an off switch instead of only a public link: invited
   visibility with a per-report viewer list keyed by email

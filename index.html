@@ -524,9 +524,11 @@
             <span class="text-2xl font-semibold text-[#1A2433]">$129</span>
             <span class="text-sm text-[#8A93A0]">/month</span>
           </div>
-          <!-- Sell only what ships. Report branding is a real entitlement in
-               entitlements.js but has NO UI at all, so it stays off this list
-               until something actually draws a logo. The exports bullet came
+          <!-- Sell only what ships. Report branding was held off this list
+               while it was a real entitlement in entitlements.js with no UI
+               drawing a logo anywhere; the bullet is back now that it does
+               (branding.js, GET|PUT|DELETE /api/branding, the letterhead on
+               screen/print/PNG/CSV/XLSX, 2026-08-07). The exports bullet came
                back on 2026-08-03 when the monthly cap became real. -->
           <!-- "Unlimited comps" is a claim about the GATE, not about search
                depth: entitlements.js returns maxComps "all", so Pro is never
@@ -553,6 +555,7 @@
             <li>Unlimited CSV, image, PDF and Excel exports</li>
             <li>A private vault for your own comps — they appear in your reports, and only you can see them</li>
             <li>Address Explorer: real addresses to value in any market</li>
+            <li>Your firm's logo and details on every report you send</li>
           </ul>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-4 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
@@ -8663,15 +8666,15 @@
       return {
         title: p.plan === "pro_annual_founding" ? "Pro: founding member" : "Pro",
         // Same rule as the pricing tile: name only what ships. Report branding
-        // is granted by entitlements.js but has no UI, so it is not claimed
-        // here; promising it to someone who has just paid is worse than
-        // promising it to a prospect. Restore it with the feature.
+        // was withheld here while it was granted by entitlements.js with no
+        // UI to draw it; it is named to a paying member now that it renders
+        // everywhere a report does (screen, print, PNG, CSV, XLSX).
         //
-        // The vault IS named, for the opposite reason: it ships, every Pro
+        // The vault IS named, for the same reason: it ships, every Pro
         // member has one (`const broker = pro` in entitlements.js), and a
         // paying member who never learns they have it is the clearest way to
         // still be running two products after deciding to run one.
-        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, and your own private comp vault.",
+        detail: "Unlimited comps, a lookback of up to 10 years, unlimited exports, your own private comp vault, and your firm's branding on every report.",
       };
     }
     if (p.status === "expired") {

@@ -10312,7 +10312,7 @@ const server = http.createServer((req, res) => {
         // The BOV tracker's auto-create (v4 slice 2). Non-blocking: the
         // introduction is the primary action, and a lost row here is
         // re-derived by /api/broker/bovs's seeding on next open. The
-        // market is canonical here by construction — the coverage check
+        // market is canonical here by construction: the coverage check
         // above only passes leads whose marketOf() matched a canonical
         // coverage key. unique(user_id, lead_id) makes the race with that
         // seeding harmless.

@@ -1283,6 +1283,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     untrended and framed "worth a look", never "your data is wrong";
     individual sale comps >25% outside the band get an outlier marker in
     the comps table. No migration.
+  - **BOV tracker** (v4 slice 2, 2026-08-08; spec
+    `docs/superpowers/specs/2026-08-08-bov-tracking-design.md`). A panel on
+    `/vault`: the broker's private log of BOV engagements from any source,
+    statuses open/delivered/won/lost (vocabulary validated, transitions
+    deliberately unpoliced), tiles for this year / open / delivered / win
+    rate (dash under 3 decided). Rules in the pure, tested **`bov-log.js`**;
+    table `broker_bovs` (migration 019), vault-class private: DB-only, every
+    read/write user-scoped, read by no owner surface (`/admin`'s
+    intro-requests card is unchanged). Intro requests auto-create rows
+    (non-blocking) and `GET /api/broker/bovs` re-seeds from
+    `lead_intro_requests` on every open — idempotent via
+    `unique (user_id, lead_id)`, and the reason migration 019 has no SQL
+    backfill (`marketOf()` is JS). Routes go through `requireBroker`.
+    Manual adds log a PII-free `bov` analytics event. Lapse locks the log,
+    never deletes it.
 - **Broker lead inbox** (v1, 2026-08-05). DDL in
   `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead

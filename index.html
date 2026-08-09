@@ -5679,6 +5679,13 @@
     propertyTypeSel.value = next;
     applyRecommendedLookback();
     renderSubjectFields(next);
+    // A machine-written size is a BUILDING's square footage (footprint ×
+    // levels, or a record lookup). The moment the type resolves to Land the
+    // box means lot size, which that number never was. maybeEstimateSize's
+    // own Land guard can't cover this: since type-at-verification the pick
+    // usually lands AFTER the estimate has filled the box. A size the
+    // visitor typed is theirs and stays, whatever the type.
+    if (next === "Land") dropMachineSize();
   }
 
   // The status line's door into the inline picker. A function DECLARATION on
@@ -5972,6 +5979,16 @@
     if (!filledFor) return;
     const key = sizeAddrKey(addr);
     if (!key || key === filledFor) return;
+    dropMachineSize();
+  }
+  // The unconditional half of the rule above: forget the machine-written
+  // size (and its "estimated" note) while leaving anything the visitor
+  // typed over it alone. Called on an address change (via
+  // dropStaleMachineSize) and on a type change to Land (setTypeProgrammatic),
+  // both of which make the stored number a claim about the wrong thing.
+  function dropMachineSize() {
+    const sizeInput = document.getElementById("targetSize");
+    if (!sizeInput.dataset.autoFor) return;
     if (sizeInput.value.trim() === sizeInput.dataset.autoValue) {
       sizeInput.value = "";
       document.getElementById("sizeEstimateNote").classList.add("hidden");

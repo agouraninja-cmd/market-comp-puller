@@ -5797,7 +5797,11 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // 2-search run still clocked 74s). Promising 40 and delivering 75 costs
   // trust on the very first search — the one the visitor is timing.
   const stats = [
-    ["Free", "Every report"],
+    // "To start", not "Every report": every report IS free to run, but the
+    // strip sits two scrolls above an FAQ describing $129/mo Pro and a $20
+    // report unlock, and "free / every report" reads as denying both. Same
+    // wording the approved Direction E card carried.
+    ["Free", "To start"],
     ["Up to 12", "Cited comps per report"],
     ["~1 min", "Search to report"],
     ["100%", "Sources disclosed"],

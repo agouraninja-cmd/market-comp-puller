@@ -202,6 +202,39 @@ test("with the wall off the app is open again", async (t) => {
 
 // --- The front door -------------------------------------------------------
 
+// --- Signed-in visitors ----------------------------------------------------
+
+// /how-it-works is linked from inside the signed-in app (header nav, footer),
+// and it used to render the same signed-out chrome for everyone — "Log in" /
+// "Create account" — which read as having been logged out mid-session. The
+// page now swaps its auth chrome on cookie PRESENCE, the wall's own rule:
+// cheap, no DB read, and a forged cookie buys the sight of different buttons
+// and nothing else.
+test("/how-it-works does not read as logged out to a signed-in visitor", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  await t.test("a session cookie swaps the signup chrome for app links", async () => {
+    const html = await (await fetch(srv.base + "/how-it-works", { headers: FAKE_SESSION })).text();
+    assert.ok(!/href="\/\?auth=signup"/.test(html), "a signed-in visitor must not be told to create an account");
+    assert.ok(!/href="\/\?auth=signin"/.test(html), "nor to log in — that chrome is what read as being logged out");
+    assert.match(html, /href="\/desk"/, "the header should lead back into the app instead");
+  });
+
+  await t.test("the signed-in variant is never cached", async () => {
+    const r = await fetch(srv.base + "/how-it-works", { headers: FAKE_SESSION });
+    assert.match(r.headers.get("cache-control") || "", /no-store/,
+      "a cached signed-in copy would outlive a sign-out");
+  });
+
+  await t.test("the anonymous variant still caches, but varies on the cookie", async () => {
+    const r = await fetch(srv.base + "/how-it-works");
+    assert.match(r.headers.get("cache-control") || "", /max-age/, "the SEO-facing page keeps its hour cache");
+    assert.match((r.headers.get("vary") || "").toLowerCase(), /cookie/,
+      "without this, the hour-old signed-out copy survives signing in");
+  });
+});
+
 test("/how-it-works carries the signup controls", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());

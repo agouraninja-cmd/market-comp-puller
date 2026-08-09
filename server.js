@@ -5579,7 +5579,7 @@ function renderPrivacyPageHTML() {
   return marketShell({ title, description, canonical, body });
 }
 
-function renderHowItWorksHTML({ home = false } = {}) {
+function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // This content is BOTH the /how-it-works page and, under ACCOUNT_WALL, what
   // a logged-out visitor gets at `/` itself (200, not a redirect — the root
   // domain is the strongest URL the site has, and Search Console showed
@@ -5691,8 +5691,11 @@ function renderHowItWorksHTML({ home = false } = {}) {
           <a href="/how-it-works" class="on" aria-current="page">How it works</a>
         </div>
       </details>
-      <a href="/?auth=signin">Log in</a>
-      <a class="btn sm" href="/?auth=signup">Create account</a>
+      ${signedIn
+        ? `<a href="/desk">My Desk</a>
+      <a class="btn sm" href="/">Run a report</a>`
+        : `<a href="/?auth=signin">Log in</a>
+      <a class="btn sm" href="/?auth=signup">Create account</a>`}
     </nav>
   </div>
 </header>
@@ -5724,8 +5727,11 @@ function renderHowItWorksHTML({ home = false } = {}) {
       <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
         subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
       <div class="heroCta">
-        <a class="btn" href="/?auth=signup">Create a free account</a>
-        <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>
+        ${signedIn
+          ? `<a class="btn" href="/">Run a report</a>
+        <span class="alt">You're signed in. Reports are free.</span>`
+          : `<a class="btn" href="/?auth=signup">Create a free account</a>
+        <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
       </div>
     </section>
     <div class="stats">${stats}</div>
@@ -5783,8 +5789,11 @@ function renderHowItWorksHTML({ home = false } = {}) {
 
     <div class="cta">
       <h2 class="h" style="font-size:22px">See it on your own building.</h2>
-      <p>Reports are free and take about a minute. Create an account and run one on your own building.</p>
-      <a class="btn" href="/?auth=signup">Create a free account &rarr;</a>
+      ${signedIn
+        ? `<p>Reports are free and take about a minute. Run one on your own building.</p>
+      <a class="btn" href="/">Run a report &rarr;</a>`
+        : `<p>Reports are free and take about a minute. Create an account and run one on your own building.</p>
+      <a class="btn" href="/?auth=signup">Create a free account &rarr;</a>`}
     </div>
   </div>
 </main>
@@ -11968,7 +11977,12 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end();
     }
-    return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY) });
+    // boot_id: set only by the test suites' boot helper (TEST_BOOT_ID), so a
+    // test can verify the responder is ITS child and not a foreign server on
+    // the same port — two concurrent suite runs once cross-talked exactly
+    // that way. Absent in production, where the env var is never set.
+    return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY),
+      ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
   // --- Market list for the landing page's market-search box (seed + explorer
@@ -11991,8 +12005,23 @@ const server = http.createServer((req, res) => {
   // splitting one page's signals across two indexed URLs; wall off, `/` is
   // the app again and this page canonicalizes itself. ---
   if (req.method === "GET" && req.url.split("#")[0] === "/how-it-works") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderHowItWorksHTML({ home: ACCOUNT_WALL }));
+    // Cookie PRESENCE only, same rule as the wall at `/`: this runs on every
+    // view and getSessionUser() reads the database. A signed-in visitor gets
+    // app chrome (My Desk / Run a report) instead of the signup buttons —
+    // the static signed-out header here used to read as having been logged
+    // out mid-session. Presentation only; a forged cookie buys different
+    // buttons and nothing else.
+    const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      // The signed-in variant must never be cached (it would outlive a
+      // sign-out); the anonymous one keeps its hour cache for crawlers, with
+      // `vary: cookie` so a browser copy cached before signing in is not
+      // re-served after.
+      "cache-control": signedIn ? "no-store" : "public, max-age=3600",
+      vary: "cookie",
+    });
+    return res.end(renderHowItWorksHTML({ home: ACCOUNT_WALL, signedIn }));
   }
 
   // --- 1031 exchange guide — public education page (v4 slice 3). Content

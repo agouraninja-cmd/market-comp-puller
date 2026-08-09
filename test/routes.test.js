@@ -20,51 +20,17 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { spawn } = require("node:child_process");
-const path = require("node:path");
-
-const SERVER = path.join(__dirname, "..", "server.js");
-
-// High ports, deliberately clear of the dev servers this repo uses (3000,
-// 3117-3121) so a running session cannot collide with a test run.
-let nextPort = 39140;
+const shared = require("./helpers/boot");
 
 // Boot server.js with an explicit environment and wait for /healthz.
-// `env` REPLACES rather than extends the parent environment for the keys that
-// matter, so a developer's local .env cannot change what these tests prove.
-async function boot(env) {
-  const port = nextPort++;
-  const child = spawn(process.execPath, [SERVER], {
-    env: {
-      ...process.env,
-      PORT: String(port),
-      // Cleared unless a test opts in: these decide whether whole routes exist.
-      ANTHROPIC_API_KEY: "",
-      ADMIN_KEY: "",
-      APP_PASSWORD: "",
-      SUPABASE_URL: "",
-      SUPABASE_SERVICE_KEY: "",
-      STRIPE_SECRET_KEY: "",
-      PRO_ENABLED: "",
-      // Off by default here: this file's SPA-routing tests prove that / and
-      // /desk MATCH on path, which needs a server that is not walling them.
-      // The wall's own routing lives in test/account-wall.test.js.
-      ACCOUNT_WALL: "off",
-      ...env,
-    },
-    stdio: "ignore",
-  });
-  const base = `http://localhost:${port}`;
-  for (let i = 0; i < 60; i++) {
-    if (child.exitCode !== null) throw new Error("server exited early, code " + child.exitCode);
-    try {
-      const r = await fetch(base + "/healthz");
-      if (r.ok) return { base, stop: () => child.kill() };
-    } catch (_) { /* not listening yet */ }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  child.kill();
-  throw new Error("server never became healthy on port " + port);
+// One implementation for every suite — ports are OS-assigned and the
+// responder is identity-checked (see helpers/boot.js for the collision this
+// closes). This wrapper only adds this file's default:
+// ACCOUNT_WALL off, because the SPA-routing tests here prove that / and
+// /desk MATCH on path, which needs a server that is not walling them.
+// The wall's own routing lives in test/account-wall.test.js.
+function boot(env) {
+  return shared.boot({ ACCOUNT_WALL: "off", ...env });
 }
 
 // --- A bare environment: no keys, no database, nothing configured -----------

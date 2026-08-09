@@ -498,13 +498,37 @@ test("admin gating", async (t) => {
   // The confirm dialog's type picker logs outcome "dialog_pick". The route's
   // allowlist and the stats aggregation are two separate places, and a word
   // accepted by one but uncounted by the other is invisible: /admin's tile
-  // would under-report while the events pile up correctly in the table.
+  // would under-report while the events pile up correctly in the table. This
+  // is a real round trip (POST the ping, then observe the counter move) so it
+  // fails if EITHER place falls out of step with the other — a test that only
+  // reads the stats shape would pass even with the allowlist rejecting the
+  // outcome.
   await t.test("the type-autofill block counts the confirm dialog's picks", async () => {
-    const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
-    assert.equal(r.status, 200);
-    const body = await r.json();
-    assert.ok(body.typeAutofill, "typeAutofill block missing");
-    assert.equal(typeof body.typeAutofill.dialogPick, "number");
+    const before = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(before.status, 200);
+    const startCount = (await before.json()).typeAutofill.dialogPick;
+    assert.equal(typeof startCount, "number");
+
+    const post = await fetch(srv.base + "/api/type-autofill", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ outcome: "dialog_pick", type: "Industrial", address: "123 Test St, Dallas, TX" }),
+    });
+    assert.equal(post.status, 204);
+
+    // The route answers 204 before the event is written (logEvent's
+    // storeRow(...) is fire-and-forget), so an immediate re-read can race the
+    // append. Poll instead of a fixed sleep.
+    let dialogPick = startCount;
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+      dialogPick = (await r.json()).typeAutofill.dialogPick;
+      if (dialogPick === startCount + 1) break;
+      await new Promise((res) => setTimeout(res, 75));
+    }
+    assert.equal(dialogPick, startCount + 1,
+      "dialogPick did not increase by exactly 1 after posting outcome:\"dialog_pick\"");
   });
 
   await t.test("the ?key= form still works for machine callers", async () => {

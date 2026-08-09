@@ -55,9 +55,13 @@ subscription benefit.
 
 - Deploy-checklist project skill (tests → tailwind regen if needed →
   pending migrations → push → verify live → devlog).
-- Extract tested pure modules out of server.js as they're touched
-  (`marketOf`, `normalizeCurrency`, `parseCompJson`/`expandCompKeys`,
-  `reportIdFor` pinned against `exportReportKey`).
+- Extract tested pure modules out of server.js as they're touched. The
+  named list shipped 2026-08-08: `marketOf` → market.js (+ the Canada fix),
+  `normalizeCurrency` + `parseCompJson`/`expandCompKeys` → report-parse.js,
+  and `reportIdFor` → report-id.js with the `exportReportKey` mirror pinned
+  by test. Still inline and worth a module when touched:
+  `normalizeSourceTypes`, `normalizeTrendPct`, `reconcilePricePerSqft`
+  (report-parse.js's header names them as its next tenants).
 - Branch protection on main once PR flow feels routine (CI is live but
   advisory today).
 - Market pages restyle onto the `rd-*` Research Desk tokens; regenerate

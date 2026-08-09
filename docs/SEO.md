@@ -64,10 +64,11 @@ and Google unverifies a property whose token stops answering.
 |------|-------|
 | Search Console property | **Verified** 2026-08-06 — URL-prefix `https://compninja.co/`, HTML-file method, under okb336@gmail.com |
 | `GOOGLE_SITE_VERIFICATION` | Set on Render. **Leave it set** — Google re-fetches the file and unverifies when it stops answering |
-| Sitemap | Resubmitted 2026-08-06. Google had auto-found it 2026-07-14 and **never re-read it**, so it only knew 29 pages; it now has all 43 |
+| Sitemap | Submitted 2026-08-06, **last read 2026-08-07**, Success, **42 pages discovered**. That read predates the 2026-08-08 change, so Google's copy still lists `/how-it-works` and omits `/` |
 | Market pages | **Indexed** — `/market/industrial-dallas-tx` returned "URL is on Google". Re-crawl requested so the new title is picked up |
-| `/how-it-works` | Was **never crawled** as of 2026-08-06 — "Discovered, currently not indexed", last crawl N/A. Since 2026-08-08 its content is also served at `/`, which is now the canonical — **re-inspect `/`, not this URL** |
-| `/` | Serving 200 since 2026-08-08 (was a 302). **Not yet re-inspected** — do this first; see items 1 and 3 |
+| `/how-it-works` | **Indexed** — "URL is on Google". Last crawl **2026-08-06 12:32 PM**, referring sitemap present, HTTPS valid, 1 valid breadcrumb item. (This corrects the 2026-08-06 note that it had never been crawled; the indexing request that day worked.) |
+| `/` | **Indexed** — "URL is on Google". But last crawl is **2026-07-30 11:11 PM**, which predates both the wall (08-05) and the fix (08-08), so Google is holding pre-wall content and has seen neither. No referring sitemap. **Indexing requested 2026-08-09** — added to the priority crawl queue |
+| Search performance | **2 total web search clicks**, 2026-08-05 to 08-06. Tiny, but not zero |
 | Everything else audited | Fine — 650-word average, 63% unique between siblings, canonicals present, one h1 per page, `/markets` links all 39, robots.txt correct, mobile viewport present |
 
 ## What is left, ranked
@@ -125,24 +126,37 @@ at the h1 site in `renderMarketPageHTML`. Deliberately **not** done unprompted:
 it changes copy people see, and the plainer wording genuinely reads better as a
 heading. A real tradeoff, not an oversight.
 
-### 3. Check the reports — **now the highest-value item here** (no code)
+### 3. Checked 2026-08-09 — the answer is "not yet knowable", for a good reason
 
-Everything above is machinery built on an assumption nobody has tested: that
-these pages can be found at all. Two days of engineering went into the fix in
-item 1, and **not one line of it is known to have worked.** This is the step
-that says whether any of it did, and it is the cheapest item on the list.
+Measured in Search Console rather than assumed. What it showed:
 
-Three things to do in Search Console, in order:
+- **Both `/` and `/how-it-works` are indexed.** Neither is missing. The
+  2026-08-06 worry that the front door was invisible is resolved — and the
+  note that `/how-it-works` had "never been crawled" is simply out of date.
+- **`/` was last crawled 2026-07-30.** That is the number that matters.
+  It predates the wall (08-05) *and* the fix (08-08), so **Google has never
+  seen either one.** It is holding a ten-day-old copy of the pre-wall app
+  page. Nothing is broken; Google just has not looked.
+- **That timing was lucky.** Between 08-05 and 08-08, `/` was a 302. Had
+  Google re-crawled inside that window it would very likely have dropped `/`
+  and folded it into `/how-it-works`. The fix landed before that happened.
+- **One thing to watch on the next crawl.** Google currently records `/`'s
+  user-declared canonical as `/how-it-works` — the *opposite* of the intended
+  direction. The live page has declared `/` since 08-08, so a re-crawl should
+  correct it. If it does not, that is the first real sign the canonical
+  strategy needs revisiting.
+- **Page Indexing has no data** — still "Processing data, check again in a day
+  or so", so the site-wide report could not be read at all.
 
-1. **URL-inspect `https://compninja.co/`** and request indexing. Before
-   2026-08-08 the front door was "Discovered, currently not indexed", last
-   crawl N/A. Whether that changes is the entire scoreboard for item 1.
-2. **Resubmit the sitemap** — its contents changed (`/` added,
-   `/how-it-works` dropped while the wall is up).
-3. **Read Page Indexing** for all 43 URLs. Performance and Page Indexing needed
-   ~a day to populate after verification, so there should be real data now. Two
-   pages were spot-checked by hand on 2026-08-06; this report checks every one
-   at once.
+**Done on 2026-08-09:** indexing requested for `/` (added to the priority
+crawl queue). The sitemap was deliberately **not** resubmitted — the owner's
+call; Google's copy is still the 08-07 read, so `/` has no referring sitemap
+until it is. That is the obvious next lever if the re-crawl alone does not
+move things.
+
+**Re-check in a few days:** URL-inspect `/` again and confirm the last-crawl
+date has moved past 2026-08-08 and the canonical reads `/`. Then read Page
+Indexing across all 43 URLs, which should have populated by then.
 
 Worth holding on to while reading it: the caveat at the top of this file. Zero
 real users is an acquisition problem, and SEO on auto-generated pages for a

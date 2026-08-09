@@ -12,16 +12,18 @@ intent, the devlog states history.
 
 ## Now
 
-- **Find out whether the SEO work worked** (no code — Search Console, ~15
-  minutes). The homepage fix shipped 2026-08-08 on the strength of one
-  measurement: Google had never crawled the redirect's target. Nothing has
-  confirmed the fix landed. URL-inspect `https://compninja.co/` and request
-  indexing, resubmit the sitemap (its contents changed), then read Page
-  Indexing across all 43 URLs. Steps in `docs/SEO.md` item 3.
-  This sits above every engineering item deliberately: as of 2026-08-06 the
-  product had **zero real outside users**, so "can anyone find this" is the
-  binding constraint, and a thin Page Indexing report is a real answer —
-  evidence to stop investing in SEO, not a reason to do more of it.
+- **Re-check Search Console in a few days** (no code, ~5 minutes). Checked
+  2026-08-09: **both `/` and `/how-it-works` are indexed** — but `/` was last
+  crawled **2026-07-30**, before both the wall and the fix, so Google has seen
+  neither and is holding pre-wall content. Indexing was requested for `/` that
+  day (priority crawl queue). Page Indexing had no data yet.
+  The re-check is: has `/`'s last-crawl date moved past 2026-08-08, and does
+  its canonical now read `/` rather than `/how-it-works`? Then read Page
+  Indexing across all 43 URLs. Full findings in `docs/SEO.md` item 3.
+  Still above every engineering item: as of 2026-08-06 the product had **zero
+  real outside users**, so "can anyone find this" is the binding constraint,
+  and a thin report is a real answer — evidence to stop investing in SEO, not
+  a reason to do more of it.
 
 ## Next
 

@@ -72,6 +72,11 @@
       animation: shimmer 2.2s ease-in-out infinite;
     }
     @keyframes shimmer { 100% { transform: translateX(100%); } }
+    /* Assembling report: children of #results outside the data-assemble
+       allowlist are hidden by beginAssembly()'s walk and restored wholesale
+       by resetAssembly(). Its own class, never `hidden`, which belongs to
+       the renderers. */
+    .asm-hidden { display: none !important; }
 
     th.sortable { cursor: pointer; user-select: none; }
     #compsTable th.sortable:hover { background-color: #F5F4EF; color: #374253; }
@@ -1453,16 +1458,10 @@
             <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
-        <!-- Live report preview: the streamed market summary (applyProgress
-             phase "field") and a growing comp table (phase "comp"). aria-hidden
-             keeps the polite live region above from narrating every row; model
-             text goes in via textContent only. Inline max-width: wider than the
-             bar's max-w-xs, and inline so no Tailwind regen is needed. -->
-        <div id="loadingComps" class="hidden w-full mt-4 text-left" style="max-width:34rem" aria-hidden="true"></div>
       </div>
       <!-- Purely visual (the live region above announces progress): gray placeholders
            in the same card shells the finished report renders into. -->
-      <div class="mt-6 space-y-6" aria-hidden="true">
+      <div id="loadingSkeletons" class="mt-6 space-y-6" aria-hidden="true">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="bg-white rounded-md border border-[#D8D4C9] p-4">
             <div class="skeleton h-3 w-16"></div>
@@ -1610,7 +1609,7 @@
 
         <!-- Owner value estimate hero (owner mode only). Sales-comp math runs
              in the browser via renderOwnerHero; NOI never leaves the page. -->
-        <div id="ownerHero" class="hidden rd-bcard print-shadow-none fade-in">
+        <div id="ownerHero" data-assemble class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">What This Building Is Worth</h2>
             <span id="ownerBasis" class="text-xs text-[#68707E] text-right"></span>
@@ -1899,7 +1898,7 @@
         <div id="statTiles" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
 
         <!-- Summary card -->
-        <div class="rd-bcard print-shadow-none fade-in">
+        <div id="summaryCard" data-assemble class="rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-3">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Market Summary</h2>
             <!-- no-print + skipped by the PNG capture: a button in an exported report is noise -->
@@ -1993,7 +1992,7 @@
         </div>
 
         <!-- Comps table -->
-        <div id="compsCard" class="rd-exhibit overflow-hidden print-shadow-none fade-in">
+        <div id="compsCard" data-assemble class="rd-exhibit overflow-hidden print-shadow-none fade-in">
           <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#ECEAE3]">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comparable Properties</h2>
             <div class="flex items-center gap-3">
@@ -3044,84 +3043,160 @@
     if (el) el.textContent = text || "";
   }
 
-  // Live report preview while the model writes: the streamed market summary
-  // on top, then a compact table gaining one row per identified comp (all rows
-  // kept), plus one trailing "+N more" line for comps past the visitor's plan
-  // (the server sends those as { locked: true } with no address). The final
-  // result still renders through the normal renderResults, which replaces all
-  // of this wholesale — the preview is never the report of record.
-  let loadingCompsSeen = 0;   // identified comps received this attempt
-  function resetLoadingComps() {
-    loadingCompsSeen = 0;
-    const box = document.getElementById("loadingComps");
-    if (box) { box.innerHTML = ""; box.classList.add("hidden"); }
-  }
-  function loadingCompTable(box) {
-    let table = box.querySelector("table");
-    if (!table) {
-      table = document.createElement("table");
-      table.className = "w-full text-sm";
-      table.style.tableLayout = "fixed";
-      const head = table.createTHead().insertRow();
-      ["Address", "Price", "Size", "Date"].forEach((h, i) => {
-        const th = document.createElement("th");
-        th.textContent = h;
-        th.className = "text-left font-medium text-[#68707E] pb-1 pr-3 text-xs uppercase tracking-wide";
-        if (i === 0) th.style.width = "45%";
-        head.appendChild(th);
-      });
-      table.createTBody();
-      // The lock line (if it ever arrives first) must stay below the table.
-      box.insertBefore(table, box.querySelector("[data-locked]"));
-    }
-    return table;
-  }
-  function addLoadingCompLine(evt) {
-    const box = document.getElementById("loadingComps");
-    if (!box) return;
-    if (evt.locked) {
-      let lock = box.querySelector("[data-locked]");
-      if (!lock) {
-        lock = document.createElement("p");
-        lock.dataset.locked = "1";
-        lock.className = "text-sm text-[#68707E] mt-2 truncate";
-        box.appendChild(lock);
+  // -------------------------------------------------------------------------
+  // Assembling report: from the first streamed event, the REAL report
+  // surfaces (#ownerHero, #summaryCard, #compsCard) fill in live while the
+  // model writes; everything else in #results is hidden by an allowlist walk.
+  // renderResults repaints all of it wholesale at the end, so nothing here
+  // survives into the report of record. Counts only, never a dollar figure:
+  // comp events deliberately omit price_per_sqft and source_type (both are
+  // corrected post-parse), and the preview must never show a number the
+  // final report walks back.
+  let asm = null;   // null = not assembling; else { comps, priced, lockedN, skipped }
+  const ASM_COLUMNS = [
+    { label: "Address", numeric: false },
+    { label: "Type", numeric: false },
+    { label: "Price", numeric: true },
+    { label: "Size (SF)", numeric: true },
+    { label: "Date", numeric: false },
+  ];
+  function beginAssembly() {
+    if (asm) return;
+    asm = { comps: 0, priced: 0, lockedN: 0, skipped: 0 };
+    const results = document.getElementById("results");
+    // The assembling cards live in the Report tab panel.
+    setReportTab("report");
+    // Allowlist, not a blocklist: hide every child that neither is nor
+    // contains a data-assemble block, so a future results card stays out of
+    // the assembly by default instead of leaking in half-rendered.
+    (function hideOthers(el) {
+      for (const child of el.children) {
+        if (child.hasAttribute("data-assemble")) continue;
+        if (child.querySelector("[data-assemble]")) { hideOthers(child); continue; }
+        child.classList.add("asm-hidden");
       }
-      lock.textContent = `+ ${Math.max(1, Number(evt.n) - loadingCompsSeen)} more found · unlock with Pro`;
+    })(results);
+    // Hero -> counts-only placeholder.
+    ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
+    ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
+    document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
+    ["widenSearchWrap", "ownerApproaches", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+      document.getElementById(id).classList.add("asm-hidden"));
+    document.getElementById("ownerHero").classList.remove("hidden");
+    // A repeat search must not show the previous report's prose or rows.
+    document.getElementById("summaryText").textContent = "";
+    const card = document.getElementById("compsCard");
+    for (const child of card.children) {
+      if (child.id === "scrollBody" || child.id === "cardList" || child.querySelector("h2")) continue;
+      child.classList.add("asm-hidden");
+    }
+    document.getElementById("txFilter").classList.add("asm-hidden");
+    document.getElementById("compCount").textContent = "";
+    const head = document.getElementById("tableHead");
+    head.innerHTML = "";
+    ASM_COLUMNS.forEach((col) => {
+      const th = document.createElement("th");
+      th.className = "font-semibold px-4 py-3 whitespace-nowrap " + (col.numeric ? "text-right" : "text-left");
+      th.textContent = col.label;
+      head.appendChild(th);
+    });
+    ["subjectRowBody", "tableBody", "tableFoot", "cardList"].forEach((id) => {
+      document.getElementById(id).innerHTML = "";
+    });
+    results.classList.add("assembling");
+    results.setAttribute("aria-busy", "true");
+    results.classList.remove("hidden");
+    // The loading card slims down: its decorative gray skeletons are
+    // redundant once real cards are filling in below it.
+    document.getElementById("loadingSkeletons").classList.add("hidden");
+  }
+  function updateAsmHero() {
+    const found = asm.comps + asm.lockedN;
+    document.getElementById("ownerBasis").textContent =
+      "Valuation computes when all comps are in · " + found + (found === 1 ? " comp" : " comps") + " found" +
+      (asm.priced ? " · " + asm.priced + " priced sale" + (asm.priced === 1 ? "" : "s") : "");
+  }
+  function assemblyComp(evt) {
+    // A report opened from My Desk mid-search calls hideLoadingCard, and the
+    // still-running stream's events must not clobber it: assembly only ever
+    // acts while the loading card is up (true for the whole legitimate
+    // window, including retry).
+    if (document.getElementById("loadingCard").classList.contains("hidden")) return;
+    beginAssembly();
+    if (evt.locked) {
+      // Gated comps stream as { locked: true } with no identity (guardComp,
+      // server-side). One line below the table, same as the final report's
+      // stance: redacted, never blurred.
+      asm.lockedN = Math.max(asm.lockedN, Math.max(1, Number(evt.n) - asm.comps - asm.skipped));
+      const foot = document.getElementById("tableFoot");
+      let cell = foot.querySelector("[data-asm-lock]");
+      if (!cell) {
+        const tr = foot.insertRow();
+        cell = tr.insertCell();
+        cell.colSpan = ASM_COLUMNS.length;
+        cell.setAttribute("data-asm-lock", "1");
+        cell.className = "px-4 py-3 text-sm text-[#68707E]";
+      }
+      cell.textContent = "+ " + asm.lockedN + " more found · unlock with Pro";
     } else {
-      if (!evt.address) return;
-      loadingCompsSeen++;
-      const row = loadingCompTable(box).tBodies[0].insertRow();
+      if (!evt.address) { asm.skipped++; return; }
+      asm.comps++;
+      if (evt.price && /sale/i.test(String(evt.transaction || ""))) asm.priced++;
+      const tr = document.getElementById("tableBody").insertRow();
+      tr.className = "row-in";
       // Model-written text: textContent only, never innerHTML.
-      [`${evt.n}. ${evt.address}`, evt.price || "", evt.size_sqft || "", evt.date || ""].forEach((v) => {
-        const td = row.insertCell();
-        td.textContent = v;
-        td.className = "py-0.5 pr-3 text-[#9AA2AD] truncate align-top";
-      });
+      [evt.n + ". " + evt.address, evt.transaction || "", evt.price || "", evt.size_sqft || "", evt.date || ""]
+        .forEach((v, i) => {
+          const td = tr.insertCell();
+          td.textContent = v;
+          td.className = "px-4 py-3 align-top whitespace-nowrap" + (ASM_COLUMNS[i].numeric ? " text-right" : "");
+        });
+      // Mobile mirror: the table body is hidden under sm, cards carry it.
+      const div = document.createElement("div");
+      div.className = "px-6 py-3 row-in";
+      const a = document.createElement("p");
+      a.className = "text-sm font-medium text-[#1A2433]";
+      a.textContent = evt.n + ". " + evt.address;
+      const m = document.createElement("p");
+      m.className = "text-xs text-[#68707E] mt-0.5";
+      m.textContent = [evt.transaction, evt.price, evt.size_sqft, evt.date].filter(Boolean).join(" · ");
+      div.appendChild(a); div.appendChild(m);
+      document.getElementById("cardList").appendChild(div);
+      document.getElementById("compCount").textContent =
+        asm.comps + (asm.comps === 1 ? " comp" : " comps") + " so far";
       // Cache warmer: the same lookup renderResults' map will make, done now
       // during the wait so pins paint instantly at render. Failures are
       // already swallowed inside geocodeAddress.
       geocodeAddress(evt.address);
     }
-    box.classList.remove("hidden");
+    updateAsmHero();
   }
-  function showLoadingSummary(text) {
-    const box = document.getElementById("loadingComps");
-    if (!box) return;
-    let p = box.querySelector("[data-summary]");
-    if (!p) {
-      const label = document.createElement("p");
-      label.className = "text-xs uppercase tracking-wide text-[#68707E] mb-1";
-      label.textContent = "Early market read";
-      box.insertBefore(label, box.firstChild);
-      p = document.createElement("p");
-      p.dataset.summary = "1";
-      p.className = "text-sm text-[#4C5665] mb-3";
-      box.insertBefore(p, label.nextSibling);
-    }
-    // Model-written text: textContent only, never innerHTML.
-    p.textContent = text;
-    box.classList.remove("hidden");
+  function assemblySummary(text) {
+    // A report opened from My Desk mid-search calls hideLoadingCard, and the
+    // still-running stream's events must not clobber it: assembly only ever
+    // acts while the loading card is up (true for the whole legitimate
+    // window, including retry).
+    if (document.getElementById("loadingCard").classList.contains("hidden")) return;
+    beginAssembly();
+    document.getElementById("summaryText").textContent = text;
+  }
+  function resetAssembly() {
+    if (!asm) return;
+    asm = null;
+    const results = document.getElementById("results");
+    results.querySelectorAll(".asm-hidden").forEach((el) => el.classList.remove("asm-hidden"));
+    results.classList.remove("assembling");
+    results.removeAttribute("aria-busy");
+    results.classList.add("hidden");
+    // Leave nothing half-real behind: renderResults rebuilds all of these
+    // wholesale on success, and on error the report region must be empty.
+    ["tableBody", "tableFoot", "cardList", "subjectRowBody"].forEach((id) => {
+      document.getElementById(id).innerHTML = "";
+    });
+    document.getElementById("summaryText").textContent = "";
+    document.getElementById("compCount").textContent = "";
+    document.getElementById("ownerBasis").textContent = "";
+    document.getElementById("loadingSkeletons").classList.remove("hidden");
   }
 
   function showLoadingCard(address, type) {
@@ -3129,7 +3204,7 @@
     headline.style.opacity = "1";
     headline.textContent = loadingSteps(address, type)[0].text;
     setLoadingDetail("This usually takes 20-60 seconds.");
-    resetLoadingComps();
+    resetAssembly();
     document.getElementById("loadingCard").classList.remove("hidden");
     setLoadingProgress(0);
     requestAnimationFrame(() => setLoadingProgress(8));
@@ -3204,13 +3279,13 @@
       }
       aimLoadingBar(50 + Math.min(45, (evt.chars / DRAFT_CHARS_FULL) * 45));
     } else if (evt.phase === "comp") {
-      addLoadingCompLine(evt);
+      assemblyComp(evt);
     } else if (evt.phase === "field") {
-      if (evt.key === "summary" && evt.value) showLoadingSummary(String(evt.value));
+      if (evt.key === "summary" && evt.value) assemblySummary(String(evt.value));
     } else if (evt.phase === "retry") {
       swapHeadline(headline, "The results came back oddly, rechecking…");
       setLoadingDetail("");
-      resetLoadingComps();   // attempt 2 finds its own comps
+      resetAssembly();   // attempt 2 finds its own comps
     }
     // "comp" and "field" events interleave with "drafting" — none may claim
     // lastPhase, or the drafting branch would re-swap the headline every second.
@@ -3234,7 +3309,7 @@
     clearInterval(loadingProgressTimer); loadingProgressTimer = null;
     loadingTarget = 8;
     setLoadingDetail("");
-    resetLoadingComps();
+    resetAssembly();
     document.getElementById("loadingCard").classList.add("hidden");
   }
 

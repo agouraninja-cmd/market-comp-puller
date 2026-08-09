@@ -283,10 +283,18 @@ dependency. `.env` is git-ignored — never commit it.
   the handler's `guardComp` closure anonymizes events past the visitor's
   `maxComps` entitlement to `{ locked: true }` so gated comp identities never
   reach a free browser, even transiently), `retry`. Front-end:
-  `readProgressStream` +`applyProgress` in
-  index.html, driving the existing loading card; `comp` events render as
-  plain text lines via `addLoadingCompLine` (5 most recent + a "+N more"
-  lock line). Three fallback layers, all
+  `readProgressStream` + `applyProgress` in index.html. Since 2026-08-09 the
+  streamed events assemble the REAL report surfaces (`beginAssembly` /
+  `assemblyComp` / `assemblySummary` / `resetAssembly`): the first `comp` or
+  summary `field` event reveals `#results` with only the `data-assemble` cards
+  visible (hero as a counts-only placeholder, never a dollar figure; summary;
+  core-column comp table + "+ N more found · unlock with Pro" lock line),
+  everything else hidden under `.asm-hidden` until `renderResults` repaints
+  wholesale.
+  Assembly never touches the `hidden` class except on
+  `#results`/`#ownerHero`/`#loadingSkeletons`;
+  every exit (result, error, `retry`) funnels through `resetAssembly` riding on
+  `hideLoadingCard`. Three fallback layers, all
   load-bearing — the old wall-clock simulation still starts on submit and is
   cancelled by the first real event; a non-SSE content-type falls back to
   `res.json()`; and an 8-second silence watchdog restarts the simulation,

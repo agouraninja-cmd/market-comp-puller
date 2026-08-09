@@ -495,6 +495,18 @@ test("admin gating", async (t) => {
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
   });
 
+  // The confirm dialog's type picker logs outcome "dialog_pick". The route's
+  // allowlist and the stats aggregation are two separate places, and a word
+  // accepted by one but uncounted by the other is invisible: /admin's tile
+  // would under-report while the events pile up correctly in the table.
+  await t.test("the type-autofill block counts the confirm dialog's picks", async () => {
+    const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.ok(body.typeAutofill, "typeAutofill block missing");
+    assert.equal(typeof body.typeAutofill.dialogPick, "number");
+  });
+
   await t.test("the ?key= form still works for machine callers", async () => {
     const r = await fetch(srv.base + "/api/stats?key=" + encodeURIComponent(ADMIN));
     assert.equal(r.status, 200);

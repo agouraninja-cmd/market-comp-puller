@@ -741,6 +741,24 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   moved off `index.html`'s `<head>` with the copy it describes), and the sample
   exhibit's illustrative figures. The home page keeps only a one-line pointer
   strip linking here. Listed in `sitemap.xml`.
+  **It renders two variants, and the caching split between them is
+  load-bearing** (2026-08-08). The page is linked from inside the signed-in
+  app, and while it served one static body to everyone its "Log in / Create
+  account" chrome read to a member as having been silently logged out
+  mid-session. It now takes `signedIn` — decided on `cn_session` **presence**,
+  the wall's own cheap rule, because this renders synchronously and
+  `getSessionUser()` reads the database — and swaps all **three** signup
+  surfaces (header nav, hero CTA, closing CTA) for `My Desk` / `Run a report`.
+  Presentation only: a forged cookie buys different buttons and nothing else.
+  The headers are the half a future editor will "simplify" and thereby
+  reintroduce the bug: the signed-in variant is **`no-store`** (a cached copy
+  would outlive a sign-out), while the anonymous variant keeps its hour cache
+  for crawlers and carries **`vary: cookie`**. That `vary` looks redundant on
+  a page whose body is static and is not — without it the hour-old signed-out
+  copy is re-served after signing in, so the people who just created an
+  account are exactly the ones who still get told to create one.
+  `test/account-wall.test.js` pins all three (chrome swap, `no-store`,
+  `vary`).
 - **Broker directory on market pages** (2026-08-06). A market page slug IS a
   (market, property type) pair — `industrial-boise-id` — the identical key
   `broker_coverage` uses, so "who covers Boise industrial" renders on

@@ -6167,6 +6167,7 @@ function aggregateStats(rows) {
         attempts: a.length,
         applied: n("applied"),
         agreed: n("agreed"),
+        dialogPick: n("dialog_pick"),
         noAddressMatch: n("no_address_match"),
         ambiguous: n("ambiguous"),
         failed: n("failed"),
@@ -6441,7 +6442,7 @@ function render(d){
   var t=d.totals, hit=t.searches?Math.round(t.cached/t.searches*100):0;
   var c=d.corpus||{hits:0,billedReport:0,pct:0,health:{}};
   // Absent on a stale /api/stats from before this tile existed.
-  var ta=d.typeAutofill||{attempts:0,applied:0,agreed:0,noAddressMatch:0,ambiguous:0,failed:0,pct:0};
+  var ta=d.typeAutofill||{attempts:0,applied:0,agreed:0,dialogPick:0,noAddressMatch:0,ambiguous:0,failed:0,pct:0};
   // null only on a stale /api/stats response from before the cost tiles existed.
   // Render an em-dash rather than $0.00, which would read as "searches are free".
   var sp=d.spend||null;
@@ -6525,10 +6526,10 @@ function render(d){
     "<div class=tile><div class=k>Billed</div><div class=v>"+t.billed+"</div></div>"+
     "<div class=tile><div class=k>Cache hit rate</div><div class=v>"+hit+"%</div></div>"+
     "<div class=tile><div class=k>Corpus hit rate</div><div class=v>"+c.pct+"%</div><div class=muted style='margin-top:2px'>"+c.hits+" of "+c.billedReport+" billed</div></div>"+
-    "<div class=tile title='applied = set the type. agreed = already correct. no match = OpenStreetMap has no building at that house number. ambiguous = building mapped but untyped. failed = Overpass down or rate-limiting us.'>"+
+    "<div class=tile title='applied = set the type. agreed = already correct. dialog_pick = the visitor picked it in the confirm dialog. no match = OpenStreetMap has no building at that house number. ambiguous = building mapped but untyped. failed = Overpass down or rate-limiting us.'>"+
       "<div class=k>Type autofill</div><div class=v>"+ta.pct+"%</div>"+
       "<div class=muted style='margin-top:2px'>"+ta.applied+" applied of "+ta.attempts+"</div>"+
-      (ta.attempts?"<div class=muted style='margin-top:2px'>"+ta.agreed+" agreed &middot; "+ta.noAddressMatch+
+      (ta.attempts?"<div class=muted style='margin-top:2px'>"+ta.agreed+" agreed &middot; "+(ta.dialogPick||0)+" dialog &middot; "+ta.noAddressMatch+
         " no match &middot; "+ta.ambiguous+" ambiguous &middot; "+ta.failed+" failed</div>":"")+
     "</div>"+
     "<div class=tile><div class=k>Avg comp search</div><div class=v>"+(sp?money(sp.avgReport):"&mdash;")+"</div><div class=muted style='margin-top:2px'>"+
@@ -11719,7 +11720,7 @@ const server = http.createServer((req, res) => {
       try {
         if (rateLimited("tafill:" + clientIp(req), 60)) return;
         const p = JSON.parse(body || "{}");
-        const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed"];
+        const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed", "dialog_pick"];
         const outcome = OUTCOMES.indexOf(String(p.outcome || "")) >= 0 ? String(p.outcome) : null;
         if (!outcome) return;
         const TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];

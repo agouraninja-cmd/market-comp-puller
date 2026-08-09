@@ -156,6 +156,49 @@ test("bare environment", async (t) => {
     assert.match(related, /·/, "trimmed links use a bullet in place of the middle");
   });
 
+  // The signed-in header chrome, on every page that is not index.html.
+  //
+  // The bug (owner-reported 2026-08-09): MARKET_BAR carried three links and
+  // nothing else, so leaving the home page dropped Pricing, My Desk and the
+  // account circle in one go and read as having been logged out mid-browse.
+  // Nothing touched the session — the bar just stopped mentioning it.
+  //
+  // There are now THREE headers that have to agree (index.html's, MARKET_BAR,
+  // and /how-it-works') and the site's own convention is that two copies of a
+  // nav drift. This is what catches a fourth server-rendered page shipping
+  // without the chrome: accountNavSlots() is one call, so forgetting it is the
+  // easy mistake, not getting it subtly wrong.
+  await t.test("every server-rendered page carries the signed-in header chrome", async () => {
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
+      "/1031-exchange", "/how-it-works", "/terms", "/privacy"];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /id="navAcct"/, p + " is missing the account circle");
+      assert.match(html, /id="navPricing"/, p + " is missing the Pricing link");
+      assert.match(html, /id="navSignOut"/, p + " is missing the account menu");
+      // The hydration script is what fills any of it in; markup alone is inert.
+      assert.match(html, /\/api\/account\/me/, p + " never asks who the visitor is");
+      // Load-bearing: .hdr nav .dd a sets display:block, which out-specifies
+      // the [hidden] attribute's UA rule. Without this line every page paints
+      // signed-out and signed-in chrome at the same time.
+      assert.match(html, /\.hdr nav \[hidden\]\{display:none!important\}/,
+        p + " can't actually hide the slots it ships");
+    }
+  });
+
+  // /how-it-works renders My Desk server-side (2026-08-08) AND takes the
+  // shared circle, so it is the one page that can end up with two of them.
+  // accountNavSlots({ desk: false }) is what prevents that.
+  await t.test("/how-it-works does not double up its My Desk link", async () => {
+    const html = await (await fetch(srv.base + "/how-it-works", {
+      headers: { cookie: "cn_session=irrelevant-presence-only" },
+    })).text();
+    const desks = (html.match(/>My Desk</g) || []).length;
+    assert.equal(desks, 1, "a signed-in member should see exactly one My Desk link");
+    assert.ok(!/id="navDesk"/.test(html),
+      "this page renders its own My Desk — the hydrated one must stay off it");
+  });
+
   // The vault gate, wired.
   //
   // entitlements.js proves the DECISION — canUseVault tracks pro across every

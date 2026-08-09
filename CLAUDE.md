@@ -759,6 +759,36 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   account are exactly the ones who still get told to create one.
   `test/account-wall.test.js` pins all three (chrome swap, `no-store`,
   `vary`).
+- **Signed-in header chrome on every server-rendered page** (2026-08-09;
+  `ACCOUNT_NAV_CSS` / `accountNavSlots()` / `ACCOUNT_NAV_PRICING` /
+  `ACCOUNT_NAV_JS`, declared just above `MARKET_CSS`). The /how-it-works
+  complaint above, generalized: `MARKET_BAR` carried three links and nothing
+  else, so leaving the home page dropped Pricing, My Desk and the account
+  circle in one go — reading as a mid-browse logout on `/markets`, all
+  `/market/<slug>` pages, `/brokers`, `/1031-exchange`, `/terms`, `/privacy`.
+  Fixed the OPPOSITE way from /how-it-works, on purpose: the markup is
+  byte-identical for every visitor (hidden slots) and a client script asks
+  `/api/config` + `/api/account/me` (both `no-store`) after paint, then
+  unhides. Why not server-render like /how-it-works: it would drag ~38
+  cached market pages onto the `no-store`/`vary: cookie` split, and the
+  circle wants an email, which is `getSessionUser()`, a DB read on a
+  synchronous render path. The cost is the chrome popping in a beat late.
+  Visibility rules are index.html's `refreshBillingUI()` restated (that copy
+  is locked in its module scope): Pricing/Upgrade = billing live && !isPro;
+  vault = `canUseVault`, NOT gated on billing; Manage billing = status set,
+  not "none", not admin. Pricing links to **`/#pricing`** (the modal lives
+  only in index.html — the `/#submit-comp` idiom; consumed in
+  `refreshBillingUI` once `live`/`pro` are known, cleared either way).
+  Sign-out reloads the page rather than re-hydrating, because the page
+  around the bar may itself be signed-in-shaped (the vault above all).
+  Traps: /how-it-works takes `accountNavSlots({ desk: false })` or a member
+  sees TWO My Desk links (it renders its own); and `.hdr nav .dd a` sets
+  `display:block`, which out-specifies `[hidden]`, so the
+  `.hdr nav [hidden]{display:none!important}` line in ACCOUNT_NAV_CSS is
+  load-bearing — without it every page shows both auth states at once.
+  There are now THREE headers to keep in step (index.html, MARKET_BAR,
+  /how-it-works'). `test/routes.test.js` pins presence on all seven pages
+  and the no-double-desk rule.
 - **Broker directory on market pages** (2026-08-06). A market page slug IS a
   (market, property type) pair — `industrial-boise-id` — the identical key
   `broker_coverage` uses, so "who covers Boise industrial" renders on

@@ -4148,6 +4148,121 @@ const CN_LOGO_LIGHT =
   `<rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>` +
   `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
 
+// ---------------------------------------------------------------------------
+// Signed-in header chrome for the server-rendered pages (2026-08-09).
+//
+// Until now MARKET_BAR carried three links and nothing else, so the moment a
+// member left index.html — to /markets, any of the ~38 /market/<slug> pages,
+// /brokers, a broker profile, /1031-exchange, /terms, /privacy — the header
+// dropped Pricing, My Desk and the account circle in one go. Nothing touched
+// the session; the bar simply never mentioned it, which reads as having been
+// logged out mid-browse. /how-it-works got the same complaint and was fixed on
+// 2026-08-08 by rendering its auth chrome server-side; this is the rest of the
+// site, fixed the other way round, and the difference is deliberate.
+//
+// **Why this hydrates client-side instead of rendering per session.** Market
+// pages are cached an hour for crawlers. Making their HTML depend on
+// `cn_session` would drag all ~38 onto the `no-store` + `vary: cookie` split
+// /how-it-works needed — and the account circle wants an email, which means
+// getSessionUser(), which is a DB read on a path CLAUDE.md is explicit must
+// never wait on the database. So the markup below is byte-identical for every
+// visitor and a crawler, the cache headers are untouched, and the auth-shaped
+// parts arrive a beat after paint. That lag is the whole trade.
+//
+// It is presentation only, exactly like /api/config itself: every limit named
+// here is enforced server-side, so a visitor unhiding these by hand gets a link
+// and nothing behind it.
+//
+// The three visibility rules are index.html's, restated rather than shared
+// because that file's copy lives inside its module scope — keep them in step
+// with refreshBillingUI():
+//   Pricing / Upgrade   billing live AND not already Pro (else it dead-ends)
+//   Your vault          pro.canUseVault, never a plan test, and NOT gated on
+//                       `billing` — a comped admin has the vault with no Stripe
+//   Manage billing      a Stripe customer exists (status set, not "none") and
+//                       is not the comped "admin" status, which has no portal
+const ACCOUNT_NAV_CSS = `
+/* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.
+   Load-bearing: .hdr nav .dd a sets display:block, which out-specifies the
+   [hidden] attribute's UA display:none, so every slot below would render
+   signed-out chrome and signed-in chrome at once without this line. */
+.hdr nav [hidden]{display:none!important}
+.hdr nav .acct summary{display:flex;align-items:center}
+.hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:#1A2433;color:#fff;
+  font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block}
+.hdr nav .dd .em{padding:6px 12px 7px;font-size:12px;color:#94A3B8;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:176px}
+/* Menu rows that act rather than navigate. Restates .dd a's box so the two
+   kinds of row are indistinguishable to the eye. */
+.hdr nav .dd button{display:block;width:100%;text-align:left;padding:8px 12px;color:#374253;
+  background:none;border:0;font:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap}
+.hdr nav .dd button:hover{background:#F8FAFC;color:#1A2433}
+.hdr nav .dd .up{color:#B91C1C;font-weight:500}
+.hdr nav .dd a.vault{font-weight:500}
+`;
+
+// The nav slots. `desk: false` for /how-it-works, which already renders its own
+// My Desk / Log in server-side and would otherwise show two of each.
+function accountNavSlots({ desk = true } = {}) {
+  return (desk
+    ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
+      `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
+    : "") +
+    `<details id="navAcct" class="acct" hidden>` +
+    `<summary aria-label="Account menu"><span class="ini" id="navAcctInitial"></span></summary>` +
+    `<div class="dd">` +
+    `<div class="em" id="navAcctEmail"></div>` +
+    `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
+    `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` +
+    `<button id="navBilling" type="button" hidden>Manage billing</button>` +
+    `<button id="navSignOut" type="button">Sign out</button>` +
+    `</div></details>`;
+}
+
+// Pricing lives in a modal that exists only in index.html, so from here it is
+// the /#pricing deep link — the same shape /brokers already uses for
+// /#submit-comp, not a new pattern. index.html opens the modal and clears the
+// hash. Rendered inside the Explore dropdown, last, matching index.html.
+const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/#pricing" hidden>Pricing</a>`;
+
+const ACCOUNT_NAV_JS =
+  `<script>(function(){` +
+  `var $=function(i){return document.getElementById(i);};` +
+  `var show=function(el,on){if(el)el.hidden=!on;};` +
+  // Both no-store: these answer "who is this visitor", and a cached copy would
+  // outlive a sign-out on a page whose own HTML is cached for an hour.
+  `var get=function(u){return fetch(u,{cache:"no-store"}).then(function(r){` +
+  `return r.ok?r.json():null;}).catch(function(){return null;});};` +
+  `Promise.all([get("/api/config"),get("/api/account/me")]).then(function(res){` +
+  `var pro=(res[0]||{}).pro||{},me=res[1];` +
+  `var live=Boolean(pro.billing),isPro=Boolean(pro.isPro);` +
+  `show($("navPricing"),live&&!isPro);` +
+  `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
+  `if(!me)return;` +
+  `var lab=String(me.name||me.email||"").trim();` +
+  `var ini=$("navAcctInitial");if(ini)ini.textContent=lab.slice(0,1).toUpperCase();` +
+  `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
+  `show($("navVault"),Boolean(pro.canUseVault));` +
+  `show($("navUpgrade"),live&&!isPro);` +
+  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin);` +
+  `});` +
+  `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/#pricing";});` +
+  `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
+  `bill.disabled=true;bill.textContent="Opening\\u2026";` +
+  `fetch("/api/billing-portal",{method:"POST"}).then(function(r){return r.json();}).then(function(d){` +
+  `if(!d||!d.url)throw new Error(d&&d.error||"Could not open the billing portal.");` +
+  `location.assign(d.url);}).catch(function(ex){alert(ex.message);` +
+  `bill.disabled=false;bill.textContent="Manage billing";});});` +
+  // Reload rather than re-hydrate in place: these pages render other
+  // signed-in-only things (the vault page above all), and one bar quietly
+  // swapping itself would leave the rest of the page still addressed to
+  // whoever just left. The HTML is identical for both states, so the reload
+  // may come from cache and re-hydrate signed-out either way.
+  `var out=$("navSignOut");if(out)out.addEventListener("click",function(){` +
+  `fetch("/api/account/logout",{method:"POST"}).catch(function(){}).then(function(){` +
+  `location.reload();});});` +
+  `})();</script>`;
+
 // Research Desk system — the same palette and type as the landing page and
 // /how-it-works, so a visitor arriving from search lands on something that
 // looks like the app they are being sent to. Self-contained by design: no
@@ -4295,17 +4410,25 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
   footer .wrap{flex-direction:row}
   footer .right{flex-shrink:0}
 }
-`;
+${ACCOUNT_NAV_CSS}`;
 
 const MARKET_BAR =
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
+  // Owner's order (2026-08-09): Pricing, Brokers, Markets, How it works, 1031
+  // Guide — mirrored in index.html's menu and /how-it-works'; keep the three
+  // in step.
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd"><a href="/markets">Markets</a><a href="/brokers">Brokers</a>` +
-  `<a href="/how-it-works">How it works</a></div></details></nav>` +
-  `</div></header>` +
+  `<div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>` +
+  `<a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
+  `<a href="/1031-exchange">1031 Guide</a></div></details>` +
+  // My Desk / Sign in / the account circle, all hidden until ACCOUNT_NAV_JS
+  // knows the visitor. See the ACCOUNT_NAV_CSS header for why these hydrate
+  // rather than render per session.
+  `${accountNavSlots()}</nav>` +
+  `</div></header>${ACCOUNT_NAV_JS}` +
   // Close the dropdown when the visitor clicks anywhere else (scoped to the
   // header nav so it can never touch other <details> on a page, e.g. FAQs).
   `<script>document.addEventListener("click",function(e){` +
@@ -5308,7 +5431,7 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
   .exrow{flex-direction:row}
   .exside{width:38%;border-bottom:0;border-right:1px solid #ECEAE3}
 }
-`;
+${ACCOUNT_NAV_CSS}`;
 
 // One Q/A array feeds both the visible FAQ block and the FAQPage JSON-LD, so
 // the two can never drift (Google flags mismatched FAQ markup). This is the
@@ -5316,8 +5439,13 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 const HOW_FAQ = [
   ["What is a comp in commercial real estate?",
    "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command."],
+  // Rewritten 2026-08-09: the old answer ("free and there is no
+  // subscription") predated the Pro launch and the account wall, so the FAQ
+  // was contradicting the pricing page. Deliberately names NO dollar amounts —
+  // prices live in the pricing modal and the $20 one-off is already
+  // hard-coded in two places; a third would be one more thing to drift.
   ["How much does a comp report cost?",
-   "Nothing. Reports are free and there is no subscription. We only ask for your contact details when you export a report, so we can follow up about your property and market."],
+   "Reports are free with a free account. A free report opens with the full value range and the strongest comps itemized; a Pro subscription unlocks every comparable, a longer lookback, unlimited exports, and the Broker Vault. You can also unlock a single report once, with no subscription. Current rates are under Pricing in the menu."],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -5326,6 +5454,12 @@ const HOW_FAQ = [
    "Industrial, office, retail, multifamily, land, and residential. Each type reports the specifics its buyers price on: clear height and dock doors for industrial, building class for office, center type and anchor tenant for retail, unit count and price per unit for multifamily, acreage and zoning for land, and bedroom and bathroom counts for residential."],
   ["How accurate are the reports?",
    "Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one."],
+  // The two broker entries (owner's notes, 2026-08-08). Answers are escHtml'd
+  // like every entry here, so no links — name the pages instead.
+  ["I'm a broker. What do I get for submitting comps?",
+   "Credit, visibly: an approved comp carries a green Verified badge and your firm's name on every report that uses it. Contributing brokers are also first in line when an owner in their market requests a Broker Opinion of Value — we make the introduction. Details on the Brokers page."],
+  ["What is the Broker Vault?",
+   "A private comp database for Pro members. Upload your own comp book and it folds into your reports, benchmarked against the market, visible to you and no one else. It never appears in anyone else's report unless you explicitly share yours."],
 ];
 
 // ---------------------------------------------------------------------------
@@ -5369,6 +5503,15 @@ function renderBrokersPageHTML() {
     ],
   });
 
+  // Rewritten 2026-08-09 from the owner's notes: the page had "way too much
+  // writing" and TWO submit-a-comp doors. Rules of this copy —
+  //   - ONE submit door: the bottom CTA button. Card 1 pitches, it does not
+  //     link; adding a second door back is the regression.
+  //   - The BOV card must NAME the feature ("Broker Opinion of Value") — the
+  //     old card described it without ever saying what it was called.
+  //   - "For members" is the paid tier's home on this page: vault + pricing
+  //     (/#pricing, the deep-link idiom — the modal lives in index.html).
+  //   - Compliance line stays: we connect, we never broker.
   const body =
     `<h1>The comps get better because brokers make them better.</h1>` +
     `<p class="sub">CompNinja reports are built from public records, listings, and live search. ` +
@@ -5376,21 +5519,22 @@ function renderBrokersPageHTML() {
     `the contributor's name wherever they appear.</p>` +
     `<div class="grid">` +
     `<div class="card"><h2>Submit a comp, get the credit.</h2>` +
-    `<p>Approved comps appear with a green Verified badge and your firm's name on every report ` +
-    `that uses them. That badge is visible proof you know your market.</p>` +
-    `<p style="margin:0"><a href="/#submit-comp">Submit a comp &rarr;</a></p></div>` +
-    `<div class="card"><h2>Meet owners already asking about value.</h2>` +
-    `<p>Owners requesting a Broker Opinion of Value are matched with brokers active in that ` +
-    `market. These are not cold leads; they are owners in the middle of a decision.</p>` +
+    `<p>Every submission is hand-reviewed. Approved comps carry a green ` +
+    `<strong>Verified &middot; via your firm</strong> badge — the highest provenance tier in a ` +
+    `report, above public record, listing, news, and estimate — on every report that uses them.</p></div>` +
+    `<div class="card"><h2>Owners here ask for Broker Opinions of Value. We hand those to you.</h2>` +
+    `<p>When an owner requests a free BOV on their building, we match the request with brokers ` +
+    `active in that market and property type and make the introduction. Not cold leads — owners ` +
+    `in the middle of a decision.</p>` +
     `<p style="margin:0"><a href="${introHref}">Get introduced &rarr;</a></p></div>` +
     `</div>` +
-    `<div class="card"><h2>What &quot;Verified&quot; means</h2>` +
-    `<p>Every submitted comp is hand-reviewed by our team before it joins the comp layer. ` +
-    `Verified is the highest provenance tier in a CompNinja report, above public record, ` +
-    `listing, news, and estimate. Once approved, the comp is offered to every matching search ` +
-    `in that market and property type, badged <strong>Verified &middot; via your firm</strong>.</p>` +
-    `<p style="margin:0">Contributors with a public profile get a page of their own listing their ` +
-    `verified comps, the markets they cover, and how often their comps have been cited.</p></div>` +
+    `<div class="card"><h2>For members: the Broker Vault</h2>` +
+    `<p>A Pro subscription opens your private vault: upload your own comp book and it folds into ` +
+    `your reports, benchmarked against the market &mdash; visible to you and no one else. ` +
+    `Contributors with a public profile also get a page of their own listing their verified comps ` +
+    `and coverage.</p>` +
+    `<p style="margin:0"><a href="/vault">Open your vault &rarr;</a> &nbsp;&middot;&nbsp; ` +
+    `<a href="/#pricing">See pricing &rarr;</a></p></div>` +
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
     `<a class="btn" href="/#submit-comp">Submit a comp</a>` +
@@ -5706,9 +5850,11 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
       <details>
         <summary>Explore<span class="car">▾</span></summary>
         <div class="dd">
-          <a href="/markets">Markets</a>
+          ${ACCOUNT_NAV_PRICING}
           <a href="/brokers">Brokers</a>
+          <a href="/markets">Markets</a>
           <a href="/how-it-works" class="on" aria-current="page">How it works</a>
+          <a href="/1031-exchange">1031 Guide</a>
         </div>
       </details>
       ${signedIn
@@ -5716,6 +5862,10 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
       <a class="btn sm" href="/">Run a report</a>`
         : `<a href="/?auth=signin">Log in</a>
       <a class="btn sm" href="/?auth=signup">Create account</a>`}
+      ${/* This page renders My Desk / Log in server-side already (2026-08-08),
+            so it takes the circle and Pricing only — desk:false, or a member
+            would see My Desk twice. */ ""}
+      ${accountNavSlots({ desk: false })}
     </nav>
   </div>
 </header>
@@ -5739,6 +5889,7 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     goBack();
   });
 })();</script>
+${ACCOUNT_NAV_JS}
 
 <main>
   <div class="wrap">

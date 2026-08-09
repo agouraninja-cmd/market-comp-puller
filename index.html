@@ -861,13 +861,18 @@
             class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
             <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <!-- Order is the owner's (2026-08-09): Pricing, Brokers, Markets,
+               How it works, 1031 Guide — money first. Mirrored in server.js's
+               two headers (MARKET_BAR and /how-it-works'); keep the three in
+               step. -->
           <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
-            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Markets</a>
-            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Brokers</a>
-            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">How it works</a>
             <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
                  unset there is nothing to sell and the link would dead-end. -->
             <button id="pricingLink" type="button" class="hidden block w-full text-left px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Pricing</button>
+            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Brokers</a>
+            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Markets</a>
+            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">How it works</a>
+            <a href="/1031-exchange" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">1031 Guide</a>
           </div>
         </div>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
@@ -972,7 +977,7 @@
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
-        <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
+        <div class="rd-row grid grid-cols-1 sm:grid-cols-2">
           <div class="rd-cell">
             <label class="rd-lab" for="lookback">Lookback</label>
             <select id="lookback" class="rd-in">
@@ -996,19 +1001,22 @@
               <option value="leases">Leases only</option>
             </select>
           </div>
-          <div class="rd-cell">
-            <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-            <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="rd-in" />
-          </div>
+          <!-- The visible "Market note" field was removed at the owner's
+               request (2026-08-08 notes). The hidden input stays because the
+               note is load-bearing plumbing: it is part of the search cache
+               key, saved searches restore it (so re-running one still hits
+               the cache it paid for), and the report's meta pills display it.
+               New searches simply send it empty. -->
+          <input id="marketNote" type="hidden" value="" />
         </div>
 
         <!-- Subject property (optional; size auto-pulled from public records when blank) -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(size, price, NOI: optional, sharpens the estimate)</span></span>
+            <span id="subjectSummary">+ Details for comps <span class="text-[#8A93A0] font-normal">(size, price, NOI: optional, sharpens the match)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</p>
+            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">What you enter here steers which comps we pick — buildings like yours in size and specs. Size is pulled from public records automatically when left blank. Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label id="targetSizeLabel" class="rd-lab">Building size (SF)</label>
@@ -1994,7 +2002,14 @@
       </div>
 
       <!-- The For Brokers section moved to its own page, /brokers (built by
-           renderBrokersPageHTML in server.js). Header/footer link there. -->
+           renderBrokersPageHTML in server.js). This strip is the landing
+           page's door to it (owner's notes, 2026-08-08) — same hairline
+           treatment as the how-it-works pointer above so the two read as a
+           matched pair of signposts, not a new section. -->
+      <div class="reveal border-b rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <p class="text-sm text-[#4C5665]">Are you a broker? Verified comps carry your firm's name on every report that uses them.</p>
+        <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers →</a>
+      </div>
 
       <!-- Market Explorer — inline in the content column (the full-width band
            treatment was reverted), but still self-contained: it builds standing
@@ -3480,7 +3495,7 @@
         if (meta.type === "Land") return null;
         return {
           label: "Income approach",
-          text: "not run: enter your NOI under 'Your property details' and the building gets valued on its income too.",
+          text: "not run: enter your NOI under 'Details for comps' and the building gets valued on its income too.",
           muted: true,
         };
       }
@@ -3671,7 +3686,7 @@
       basisEl.textContent = (rr.trimmed
         ? `The middle range of ${ppsfs.length} sale comps, per square foot. `
         : `$/SF from ${ppsfs.length} sale comps. `)
-        + "We couldn't find this building's square footage; enter it under 'Your property details' and this becomes a total dollar value instantly.";
+        + "We couldn't find this building's square footage; enter it under 'Details for comps' and this becomes a total dollar value instantly.";
       trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
       const entries = [{
@@ -3699,7 +3714,7 @@
       // the fix here is to restore a comp, not to wait for a fresh search.
       const curatedShortfall = !!sizeR && allSaleComps.length >= 2 && ppsfs.length < 2;
       basisEl.textContent = altCompN >= 3
-        ? `Enter your ${altSpec.askFor} under 'Your property details': ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
+        ? `Enter your ${altSpec.askFor} under 'Details for comps': ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
         : curatedShortfall
           ? (meta.shared
             ? "Not enough included sale comps to compute a range: the report owner excluded some comps."
@@ -6776,6 +6791,10 @@
   let pendingSharedReload = false;  // signin_required on /r/<id>: reload this URL once signed in
   let acctMode = "signin";          // signin | signup | forgot | reset
   let resetToken = "";
+  // /#pricing arrived from a server-rendered header's Pricing link. Read at
+  // parse time (before anything can rewrite the hash) and consumed once by
+  // refreshBillingUI — see the comment there for why it waits.
+  let pendingPricingHash = location.hash === "#pricing";
 
   async function acctApi(method, url, bodyObj) {
     const r = await fetch(url, {
@@ -8883,7 +8902,25 @@
     // makes it the one seam the explorer's lock needs too.
     applyExplorerGating();
 
+    // The locked notice's price-named button reads billingLive() and the
+    // shared flag, both of which can land AFTER a report is already on screen
+    // (a cached report races /api/config). Re-render it at the same seam so
+    // the button appears once billing is known and vanishes post-purchase.
+    if (typeof renderLockedNotice === "function") renderLockedNotice();
+
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
+
+    // /#pricing — the deep link the server-rendered headers use, because the
+    // pricing modal lives only in this file (the same idiom /brokers already
+    // uses for /#submit-comp). Consumed HERE rather than inline at parse time
+    // because whether Pricing is offered at all is `live && !pro`, and that is
+    // only known once /api/config lands. One-shot, and the hash is cleared
+    // either way so a refresh doesn't reopen a modal that was closed.
+    if (pendingPricingHash) {
+      pendingPricingHash = false;
+      if (live && !pro) openPricingModal();
+      history.replaceState({}, "", location.pathname + location.search);
+    }
 
     const menuUpgrade = document.getElementById("menuUpgradeBtn");
     const menuBilling = document.getElementById("menuBillingBtn");
@@ -9165,6 +9202,12 @@
   document.addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest(".unlock-comps-btn");
     if (btn) openUpgradePrompt();
+    // The price-named one-off on the locked notice. Straight to checkout —
+    // startCheckout already owns every edge (signed out → signup nudge that
+    // resumes this plan; no billing → error; no report → error), so this
+    // button adds no rules of its own.
+    const single = e.target.closest && e.target.closest(".unlock-single-btn");
+    if (single) startCheckout("single_report", single);
   });
 
   // The audit trail: what the user changed about the comp set. Deliberately
@@ -9979,16 +10022,28 @@
     const n = lockedCount();
     if (n <= 0 || txFilter !== "all") { el.classList.add("hidden"); el.innerHTML = ""; return; }
     el.classList.remove("hidden");
+    // The one-off gets a price-named button HERE, on the report (owner's call,
+    // 2026-08-08 — it was two clicks deep and rendered last in the modal, and
+    // nobody found it). This reverses the earlier "name no plan" rule for the
+    // one-off ONLY; the red button still opens the one modal with both offers.
+    // Same three exclusions as updateSingleReportTile: nothing to buy without
+    // billing live, and a shared report belongs to whoever published it. The
+    // $20 is also hard-coded in the modal's tile — change them together.
+    const buyable = billingLive() && Boolean(currentMeta) && !currentMeta.shared;
     el.innerHTML =
-      // Names no plan, for the same reason the corpus-offer notice doesn't:
-      // this button opens the ONE modal, which offers Pro AND the one-off,
-      // and which of them fits depends on the report.
       `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} in this report</div>` +
       `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
       `Your value range above already includes ${n === 1 ? "it" : "them"}; only the itemized list is limited.` +
       `</div>` +
-      `<button type="button" class="unlock-comps-btn btn-live mt-3 inline-flex items-center justify-center gap-2 ` +
-      `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>`;
+      `<div class="mt-3 flex flex-col sm:flex-row items-center justify-center gap-2">` +
+      `<button type="button" class="unlock-comps-btn btn-live inline-flex items-center justify-center gap-2 ` +
+      `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>` +
+      (buyable
+        ? `<button type="button" class="unlock-single-btn btn-live inline-flex items-center justify-center gap-2 ` +
+          `bg-white border border-[#D8D4C9] hover:bg-slate-50 text-[#1A2433] font-semibold text-sm px-5 py-2.5 rounded">` +
+          `Unlock just this report — $20</button>`
+        : "") +
+      `</div>`;
   }
 
   // Mobile rendering of the same comps: stacked cards instead of the wide

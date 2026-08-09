@@ -73,12 +73,32 @@ h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var
    our terms promise we cannot read it — they do it because they can watch this
    number stay at zero. It is deliberately the most prominent thing on the page
    after the title. */
-.trust{margin:var(--s7) 0 0;padding:var(--s5) var(--s6);background:var(--wash);
-  border:1px solid var(--line);border-radius:var(--r);display:flex;flex-wrap:wrap;
-  align-items:baseline;gap:var(--s3) var(--s5);font-size:var(--t4)}
-.trust b{font-size:var(--t2);font-family:var(--serif);font-weight:500}
-.trust .pub{color:var(--green);font-weight:600}
-.trust .note{color:var(--ink-3);font-size:var(--t5)}
+/* The book ledger (approved as "Vault A", 2026-08-08): the report hero's
+   ruled-cell geometry applied to the trust line. Green is spent on exactly
+   one cell — Published — because zero staying zero is the number this page
+   exists to prove. Figure size is the 26px the approved card set, not a
+   token from this page's scale. */
+.trust{margin:var(--s7) 0 0}
+.ledger{border:1px solid var(--edge);border-radius:var(--r);background:#fff;
+  display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden}
+.lcell{padding:var(--s4) var(--s5);border-left:1px solid var(--hair)}
+.lcell:first-child{border-left:0}
+.lcell.mid{background:#FCFBF8}
+.llab{display:block;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:var(--s2)}
+.lcell.mid .llab{color:var(--green)}
+.lfig{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;font-size:26px;
+  line-height:1.2;color:var(--ink)}
+.lcell.mid .lfig{color:var(--green)}
+.lsub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1)}
+/* Exactly four cells, so the 2x2 wrap can place its dividers by position. */
+@media (max-width:640px){
+  .ledger{grid-template-columns:1fr 1fr}
+  .lcell{border-left:0}
+  .lcell:nth-child(even){border-left:1px solid var(--hair)}
+  .lcell:nth-child(-n+2){border-bottom:1px solid var(--hair)}
+}
+.trust .note{color:var(--ink-3);font-size:var(--t5);margin:var(--s3) 0 0;max-width:62ch}
 section{margin-top:var(--s8)}
 section+section{border-top:1px solid var(--line);padding-top:var(--s7)}
 h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(--s5)}
@@ -96,13 +116,24 @@ h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(-
 select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink)}
 table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
+/* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
+   every header on this page — the broker's own book of record earns the same
+   audited-statement vocabulary the report's comp table shipped. */
 th{text-align:left;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--line);white-space:nowrap}
+  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:2px solid var(--ink);white-space:nowrap}
 th[data-k]{cursor:pointer}
 th[data-k]:hover{color:var(--ink)}
 th .ar{color:var(--red)}
 td{padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--hair);vertical-align:top}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* The comps table seals with a median row under a double rule. The last body
+   row's hairline is dropped explicitly: with collapsed borders two same-width
+   rules at that boundary would otherwise fight, and which one wins is
+   browser-defined — the ink top rule must never lose to a hairline. */
+#tbl tbody tr:last-child td{border-bottom:0}
+tfoot td{padding:var(--s3) var(--s4) var(--s3) 0;border-top:1px solid var(--ink);
+  border-bottom:3px double var(--ink);font-weight:600}
+tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
 .tw{overflow-x:auto}
 .msg{margin-top:var(--s5);padding:var(--s4) var(--s5);border-radius:var(--r);font-size:var(--t5);border:1px solid}
 .msg.ok{background:#F0FAF3;border-color:#BFE3CB;color:#14532D}
@@ -115,10 +146,14 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .up .meta{color:var(--ink-3)}
 .up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--t5);padding:0}
 .up button:hover{color:var(--red)}
-.pubbtn{background:none;border:1px solid var(--edge);border-radius:var(--r);padding:1px var(--s3);
-  font-family:inherit;font-size:var(--t6);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+/* Publish state as the statement's badge chip (Vault B): green tint only once
+   published — the deliberate act, not the default. The tints are the report
+   table's own Verified-badge pair, so one green means one thing site-wide. */
+.pubbtn{background:#fff;border:1px solid var(--edge);border-radius:3px;padding:1.5px 7px;
+  font-family:inherit;font-size:var(--t6);font-weight:600;line-height:1.4;color:var(--ink-2);
+  cursor:pointer;white-space:nowrap}
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
-.pubbtn.on{border-color:#BFE3CB;background:#F0FAF3;color:var(--green);font-weight:600}
+.pubbtn.on{border-color:transparent;background:#E3F2EA;color:#06603A}
 .pubbtn[disabled]{opacity:.5;cursor:default}
 .hide{display:none}
 /* ---- The market rollup: the page's lead view ----------------------------
@@ -224,10 +259,18 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
          the first import lands and #firstRun carries the privacy promise in
          words instead. See applyFirstRun(). -->
     <div class="trust hide" id="trustLine">
-      <span><b id="cCount">0</b> comps</span>
-      <span class="pub"><b id="cPub">0</b> published</span>
-      <span class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
-        public records, and nothing is published unless you choose it.</span>
+      <div class="ledger">
+        <div class="lcell"><span class="llab">Comps</span>
+          <div class="lfig" id="cCount">0</div><div class="lsub" id="cImports"></div></div>
+        <div class="lcell"><span class="llab">Priced sales</span>
+          <div class="lfig" id="cPriced">0</div><div class="lsub" id="cPricedPct"></div></div>
+        <div class="lcell"><span class="llab">Median $/SF</span>
+          <div class="lfig" id="cMed">&mdash;</div><div class="lsub">sales only</div></div>
+        <div class="lcell mid"><span class="llab">Published</span>
+          <div class="lfig" id="cPub">0</div><div class="lsub">only if you choose it</div></div>
+      </div>
+      <p class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
+        public records, and nothing is published unless you choose it.</p>
     </div>
     <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
       The figures below are drawn from those, so your full book may be larger.</p>
@@ -343,7 +386,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
           <th data-k="deal_date">Date</th><th data-k="price" class="num">Price</th>
           <th data-k="size_sqft" class="num">Size</th><th data-k="price_per_sqft" class="num">$/SF</th>
           <th data-k="published">Public</th>
-        </tr></thead><tbody id="tbody"></tbody>
+        </tr></thead><tbody id="tbody"></tbody><tfoot id="tblFoot"></tfoot>
       </table></div>
       <div class="empty hide" id="none">Nothing here yet. Upload a spreadsheet above.</div>
     </section>
@@ -500,6 +543,15 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    // The ledger's other figures come from the returned rows — the same book
+    // the rollup and chart read, so the strip can never disagree with the
+    // panels below it. Whole-book always; the filter never narrows it.
+    var ups=o.j.uploads||[];
+    var ps=psfList(comps),med=median(ps);
+    $("cImports").textContent=ups.length?ups.length+" import"+(ups.length===1?"":"s"):"";
+    $("cPriced").textContent=ps.length;
+    $("cPricedPct").textContent=comps.length?Math.round(ps.length*100/comps.length)+"% of book":"";
+    $("cMed").textContent=med!=null?psf0(med):"\\u2014";
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
@@ -569,6 +621,16 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
         '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td></tr>";
     }).join("");
+    // The statement's closing rule: the median of the priced sales in the
+    // current view, sealed under a double rule — the same figure the market
+    // cards and the year chart lead with, so the three views read against
+    // each other. No priced sales = no row; a double rule over a blank would
+    // claim a figure that does not exist.
+    var vps=psfList(rows),vmed=median(vps);
+    $("tblFoot").innerHTML=vps.length
+      ? '<tr><td class="lab" colspan="7">Median of '+vps.length+" priced sale"+(vps.length===1?"":"s")+
+        (rows.length===comps.length?"":" in this view")+'</td><td class="num">'+psf(vmed)+"</td><td></td></tr>"
+      : "";
     Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
       var on=th.getAttribute("data-k")===sortK;
       th.innerHTML=th.textContent.replace(/[ \\u25b2\\u25bc]+$/,"")+(on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"");

@@ -91,14 +91,42 @@ confirm nothing unique lives there: `git hash-object --path=<p> <p>` +
 `git cat-file -e` proves the content is already stored elsewhere (note
 `--path` — blobs are LF, the working tree is CRLF).
 
+## Hunks vanishing from `git diff` is NOT proof they were committed
+
+The 2026-08-08 sweep, in one line: foreign hunks disappeared from the
+unstaged diff, a session concluded "they committed theirs," ran
+`git add <file>`, and shipped another session's staged work under its own
+message. The hunks had moved INTO THE SHARED INDEX, not into a commit.
+Unstaged diff, staged diff, and log are three different places; before any
+`git add <file>`, check `git diff --cached -- <file>` — if it is non-empty
+and not yours, adding the file whole will sweep it. `git status --short`
+already says this (`MM` = staged AND unstaged changes; `M ` in column one =
+someone's staged work) — read both columns, not just whether the file is
+listed.
+
+## `git merge --autostash` in a shared tree
+
+When an autostash merge hits a conflict, the autostash does NOT pop — it
+becomes `stash@{0}: autostash`, silently holding every session's
+uncommitted work, and the tree everyone sees is missing all of it. If files
+you edited minutes ago look reverted to HEAD: run `git stash list` FIRST,
+before concluding anything and before redoing work. Prefer plain `git
+merge` (no --autostash) here; if you find an orphaned autostash, announce
+it to the other sessions rather than popping it into a tree that has moved
+on — and before dropping it, diff it against HEAD to prove every hunk is
+superseded.
+
 ## Common mistakes
 
 | Mistake | Consequence |
 |---|---|
 | `git add -A` | sweeps another session's WIP, or a real secret, into your commit |
+| `git add <file>` after its foreign hunks "disappeared" | they were STAGED, not committed — your commit ships them (see above) |
 | Trusting `git push`'s silence | "Everything up-to-date" means someone already pushed for you |
 | Patching `devlog.json` instead of rebuilding it | one session's entry silently overwrites the other's |
+| Rebuilding `devlog.json` and discarding others' unstaged entries | an author's only record of shipped work is destroyed — fold in every entry in the working file, not just HEAD's |
 | Building a patch, then waiting to apply it | the source file grew new hunks in the meantime |
 | PowerShell for patch generation | BOM + CRLF + mangled em dashes make `git apply` reject it |
 | Committing during a MERGE_HEAD you didn't start | hijacks another session's in-progress merge |
+| `git merge --autostash` | a conflict strands everyone's WIP in `stash@{0}` and the tree looks reverted (see above) |
 | Skipping `git fetch` before starting a feature | duplicate work if someone already built it |

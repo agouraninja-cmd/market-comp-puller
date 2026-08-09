@@ -146,12 +146,15 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .up{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);
   padding:var(--s4) 0;border-bottom:1px solid var(--hair);font-size:var(--t5)}
 .up .meta{color:var(--ink-3)}
-.up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--t5);padding:0}
+/* Padding + offsetting negative margin: a real tap target on the one control
+   that DELETES an import, without moving the row's baseline layout. */
+.up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--t5);
+  padding:var(--s3) var(--s3);margin:calc(-1 * var(--s3)) calc(-1 * var(--s3))}
 .up button:hover{color:var(--red)}
 /* Publish state as the statement's badge chip (Vault B): green tint only once
    published — the deliberate act, not the default. The tints are the report
    table's own Verified-badge pair, so one green means one thing site-wide. */
-.pubbtn{background:#fff;border:1px solid var(--edge);border-radius:3px;padding:1.5px 7px;
+.pubbtn{background:#fff;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;
   font-family:inherit;font-size:var(--t6);font-weight:600;line-height:1.4;color:var(--ink-2);
   cursor:pointer;white-space:nowrap}
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}

@@ -369,7 +369,11 @@
        zoomed and side-scrolled after tapping the address field — the site's
        single most-tapped control. Do not "tidy" this back down. */
     .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: #1A2433; background: transparent; }
-    .rd-in::placeholder { color: #9AA2AD; }
+    /* #68707E, same as the swept caption gray: #9AA2AD measured 2.6:1, below
+       even the relaxed placeholder bar, and the example addresses rotating in
+       the search field are real guidance, not decoration. Still clearly
+       lighter than typed ink (#1A2433). */
+    .rd-in::placeholder { color: #68707E; }
     select.rd-in { appearance: auto; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
@@ -1440,32 +1444,32 @@
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
         <button id="shareBtn" style="margin-right:auto"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] border border-[#B91C1C] rounded px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] border border-[#B91C1C] rounded px-3 py-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span id="shareBtnLabel">Share link</span>
         </button>
         <button id="portfolioBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
           <span id="portfolioBtnLabel">Save to portfolio</span>
         </button>
         <button id="imgBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 21"/></svg>
           Download Image
         </button>
         <button id="printBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
           Print / PDF
         </button>
         <button id="csvBtn"
-          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5">
+          class="btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-2.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
           Export CSV
         </button>
         <button id="xlsxBtn"
-          class="hidden btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5"
+          class="hidden btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-2.5"
           title="Comps, valuation, and assumptions as a 3-sheet workbook">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6"/><path d="m15 13-6 6"/></svg>
           Excel
@@ -1608,12 +1612,16 @@
         <!-- Report | Analysis tabs — the hero stays above; everything below
              splits into two wrappers. Screen-only navigation: print CSS forces
              both wrappers visible so PDFs keep the whole document. -->
-        <div id="reportTabs" class="no-print flex items-center gap-6 border-b rd-hairline">
-          <button id="tabBtnReport" type="button" class="pb-2 text-sm font-semibold text-[#1A2433] border-b-2 border-[#B91C1C] -mb-px">Market Report</button>
-          <button id="tabBtnAnalysis" type="button" class="pb-2 text-sm font-medium text-[#5A6473] border-b-2 border-transparent -mb-px hover:text-[#1A2433]">Analysis</button>
+        <!-- Real tablist semantics: aria-selected is the announced state (the
+             red underline was the ONLY signal before), roving tabindex + the
+             arrow keys in setReportTab's keydown handler complete the ARIA
+             tabs pattern. Print CSS still forces both panels visible. -->
+        <div id="reportTabs" role="tablist" aria-label="Report sections" class="no-print flex items-center gap-6 border-b rd-hairline">
+          <button id="tabBtnReport" type="button" role="tab" aria-selected="true" aria-controls="tabReport" class="pb-2 text-sm font-semibold text-[#1A2433] border-b-2 border-[#B91C1C] -mb-px">Market Report</button>
+          <button id="tabBtnAnalysis" type="button" role="tab" aria-selected="false" aria-controls="tabAnalysis" tabindex="-1" class="pb-2 text-sm font-medium text-[#5A6473] border-b-2 border-transparent -mb-px hover:text-[#1A2433]">Analysis</button>
         </div>
 
-        <div id="tabAnalysis" class="hidden space-y-6">
+        <div id="tabAnalysis" role="tabpanel" aria-labelledby="tabBtnAnalysis" class="hidden space-y-6">
 
         <!-- DCF + hold/sell analysis — client-side math on the browser-held NOI
              (never sent to the server), shown only when an NOI is entered.
@@ -1825,7 +1833,7 @@
 
         </div><!-- /tabAnalysis -->
 
-        <div id="tabReport" class="space-y-6">
+        <div id="tabReport" role="tabpanel" aria-labelledby="tabBtnReport" class="space-y-6">
 
         <!-- Key stats row — the report leads with scannable numbers (built per search) -->
         <div id="statTiles" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
@@ -1930,9 +1938,9 @@
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comparable Properties</h2>
             <div class="flex items-center gap-3">
               <div id="txFilter" style="display:none" class="items-center rounded border border-[#D8D4C9] p-0.5 bg-[#F5F4EF] no-print">
-                <button type="button" data-tx="all"    class="text-xs font-medium px-2.5 py-1 rounded">All</button>
-                <button type="button" data-tx="sales"  class="text-xs font-medium px-2.5 py-1 rounded">Sales</button>
-                <button type="button" data-tx="leases" class="text-xs font-medium px-2.5 py-1 rounded">Leases</button>
+                <button type="button" data-tx="all"    class="text-xs font-medium px-3 py-2 rounded">All</button>
+                <button type="button" data-tx="sales"  class="text-xs font-medium px-3 py-2 rounded">Sales</button>
+                <button type="button" data-tx="leases" class="text-xs font-medium px-3 py-2 rounded">Leases</button>
               </div>
               <span id="compCount" class="rd-chip whitespace-nowrap"></span>
             </div>
@@ -4713,14 +4721,33 @@
     document.getElementById("tabAnalysis").classList.toggle("hidden", isReport);
     const on = "pb-2 text-sm font-semibold text-[#1A2433] border-b-2 border-[#B91C1C] -mb-px";
     const off = "pb-2 text-sm font-medium text-[#5A6473] border-b-2 border-transparent -mb-px hover:text-[#1A2433]";
-    document.getElementById("tabBtnReport").className = isReport ? on : off;
-    document.getElementById("tabBtnAnalysis").className = isReport ? off : on;
+    const rBtn = document.getElementById("tabBtnReport");
+    const aBtn = document.getElementById("tabBtnAnalysis");
+    rBtn.className = isReport ? on : off;
+    aBtn.className = isReport ? off : on;
+    // The ARIA half of the same state: aria-selected is what gets announced
+    // (the underline is color-only), and the roving tabindex keeps ONE tab in
+    // the Tab order, per the tabs pattern — arrow keys move between them.
+    rBtn.setAttribute("aria-selected", String(isReport));
+    aBtn.setAttribute("aria-selected", String(!isReport));
+    rBtn.tabIndex = isReport ? 0 : -1;
+    aBtn.tabIndex = isReport ? -1 : 0;
     if (!isReport && currentParsed && currentMeta) renderAnalysisCluster(currentParsed, currentMeta, false);
     // Leaflet renders blank tiles if its container was hidden — re-measure.
     if (isReport && mapInstance) setTimeout(() => mapInstance.invalidateSize(), 50);
   }
   document.getElementById("tabBtnReport").addEventListener("click", () => setReportTab("report"));
   document.getElementById("tabBtnAnalysis").addEventListener("click", () => setReportTab("analysis"));
+  // Arrow keys complete the tabs pattern (with only two tabs, every arrow is
+  // "the other one"); the switch also moves focus, per the APG pattern.
+  document.getElementById("reportTabs").addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const toReport = e.key === "Home" ||
+      (e.key !== "End" && document.getElementById("tabBtnReport").tabIndex === -1);
+    setReportTab(toReport ? "report" : "analysis");
+    document.getElementById(toReport ? "tabBtnReport" : "tabBtnAnalysis").focus();
+  });
 
   // The whole analysis cluster re-renders together so every card reads the
   // same assumptions. Signed-out visitors with an NOI see one calm lock card
@@ -7356,9 +7383,15 @@
     // followed a static link from a page that is cached for everyone.
     const authParam = new URLSearchParams(location.search).get("auth");
     if (!currentUser && (authParam === "signup" || authParam === "signin")) {
-      openAcctModal(authParam, authParam === "signup"
-        ? "Create a free account to run a report. It's free, no card needed."
-        : "");
+      // An arrival via a market page's Explore link gets told up front that
+      // the Explorer is Pro — the generic "run a report" nudge didn't match
+      // what they clicked, and the gap only surfaced after they'd signed up
+      // (the post-signup notice in applyExplorerGating is the second half).
+      const viaExplore = Boolean(new URLSearchParams(location.search).get("explore"));
+      openAcctModal(authParam, authParam !== "signup" ? ""
+        : viaExplore
+          ? "Create a free account to get started. Browsing whole markets is part of Pro; free reports work on any single address."
+          : "Create a free account to run a report. It's free, no card needed.");
     }
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off
@@ -8912,13 +8945,33 @@
     const head = document.getElementById("tableHead");
     head.innerHTML = "";
     COLUMNS.forEach((col) => {
+      // APG sortable-table shape: the th STAYS a columnheader (a role="button"
+      // on it would erase the table semantics a screen reader navigates by)
+      // and carries aria-sort; the actual control is a real <button> inside,
+      // which brings Enter/Space and focus for free. The button inherits the
+      // header's look because Tailwind's preflight resets button font and
+      // background to inherit/transparent; its padding is the th's old
+      // padding, so the geometry doesn't move.
       const th = document.createElement("th");
-      th.className = "sortable font-semibold px-4 py-3 whitespace-nowrap " +
+      th.className = "sortable whitespace-nowrap p-0";
+      if (sortState.key === col.key) {
+        th.setAttribute("aria-sort", sortState.dir === 1 ? "ascending" : "descending");
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "font-semibold px-4 py-3 w-full whitespace-nowrap " +
         (col.numeric ? "text-right" : "text-left");
-      let arrow = "";
-      if (sortState.key === col.key) arrow = sortState.dir === 1 ? " ▲" : " ▼";
-      th.textContent = col.label + arrow;
-      th.addEventListener("click", () => sortBy(col.key));
+      btn.textContent = col.label;
+      if (sortState.key === col.key) {
+        // Decorative — aria-sort above is the announced state, so the glyph
+        // must not read out as a stray triangle character.
+        const glyph = document.createElement("span");
+        glyph.setAttribute("aria-hidden", "true");
+        glyph.textContent = sortState.dir === 1 ? " ▲" : " ▼";
+        btn.appendChild(glyph);
+      }
+      btn.addEventListener("click", () => sortBy(col.key));
+      th.appendChild(btn);
       head.appendChild(th);
     });
     // Curation actions column — not a COLUMNS entry, so exports (which map
@@ -9572,7 +9625,10 @@
   function updateTxButtons() {
     document.querySelectorAll("#txFilter [data-tx]").forEach((btn) => {
       const active = btn.dataset.tx === txFilter;
-      btn.className = "text-xs font-medium px-2.5 py-1 rounded transition-colors " +
+      // Padding here must match the markup's (px-3 py-2, the tap-target
+      // bump) — this rebuild runs on every filter click and would otherwise
+      // shrink the control back the moment it is first used.
+      btn.className = "text-xs font-medium px-3 py-2 rounded transition-colors " +
         (active ? "bg-[#1A2433] text-white" : "text-[#5A6473] hover:text-[#1A2433]");
     });
   }

@@ -159,7 +159,10 @@ function renderGuide1031Body() {
     `<p>Enter your sale's closing date to see the two deadlines. This runs entirely in ` +
     `your browser — the date is not sent anywhere.</p>` +
     `<label for="q1031close">Closing date</label> <input type="date" id="q1031close"/>` +
-    `<div id="q1031out"></div>` +
+    // aria-live: the computed 45/180-day dates replace this div's content on
+    // every input change, and without a live region a screen-reader user who
+    // just typed a closing date hears nothing back.
+    `<div id="q1031out" aria-live="polite"></div>` +
     `<p class="disc">Calendar days, no extensions assumed. The 180-day period can end ` +
     `sooner if your tax-return due date arrives first and you do not file an extension — ` +
     `confirm your dates with your tax advisor.</p></div>` +

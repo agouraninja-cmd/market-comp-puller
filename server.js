@@ -4241,6 +4241,12 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .cta .alt:hover{color:#1A2433}
 .btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:#991B1B;color:#fff}
+/* Header-sized variant, for the auth controls in the market bar. Mirrors the
+   same rule in HOW_CSS so the two site headers sit at the same height. The nav
+   rule below it exists because .hdr nav a would otherwise grey the button out.
+   No backticks in here: this whole block is a template literal. */
+.btn.sm{padding:7px 14px;font-size:13px}
+.hdr nav a.btn{color:#fff}.hdr nav a.btn:hover{color:#fff}
 .related{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .related a{background:#fff;border:1px solid #D8D4C9;border-radius:4px;padding:6px 14px;font-size:13px;color:#374253}
 .related a:hover{border-color:#8A93A0;color:#1A2433}
@@ -4297,14 +4303,29 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 }
 `;
 
-const MARKET_BAR =
+// The shared header for every server-rendered page. Takes `signedIn` for the
+// same reason renderHowItWorksHTML does, and the rule recorded there governs
+// here too: these pages are the site's entry points from Google, so an
+// anonymous visitor needs both auth doors (before 2026-08-08 there were none
+// at all, and a returning customer landing on a market page had nowhere to
+// click), while a member must not be told to create an account they have.
+// Decided on cookie PRESENCE, never getSessionUser(), because these pages
+// render synchronously and that helper reads the database. Presentation only:
+// a forged cookie changes which buttons are drawn and nothing else.
+// Callers must pair this with sendShellPage()'s headers, or the cached
+// anonymous copy is re-served to someone who has just signed in.
+const marketBar = (signedIn = false) =>
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd"><a href="/markets">Markets</a><a href="/brokers">Brokers</a>` +
-  `<a href="/how-it-works">How it works</a></div></details></nav>` +
+  `<a href="/how-it-works">How it works</a></div></details>` +
+  (signedIn
+    ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
+    : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
+  `</nav>` +
   `</div></header>` +
   // Close the dropdown when the visitor clicks anywhere else (scoped to the
   // header nav so it can never touch other <details> on a page, e.g. FAQs).
@@ -4458,7 +4479,7 @@ async function fetchSubmissionsForEmail(email) {
   return rows.filter((r) => String(r.broker_email || "").trim().toLowerCase() === target);
 }
 
-function renderBrokerProfileHTML(profile, subs) {
+function renderBrokerProfileHTML(profile, subs, signedIn) {
   const display = String(profile.display_name || "").trim() || "Verified contributor";
   const firm = String(profile.company || "").trim();
   const headline = firm || display;
@@ -4778,7 +4799,7 @@ function brandGraph() {
   ];
 }
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn }) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
@@ -4797,10 +4818,27 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     (head || "") +
-    `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${MARKET_BAR}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
-function renderMarketPageHTML(slug, p, opts = {}) {
+// The one place that serves a marketShell page, so the header swap and the
+// caching that keeps it honest can never drift apart. The `vary` is the half
+// that looks redundant on a page with a static body and is not: without it a
+// browser re-serves the hour-old signed-out copy after the visitor signs in,
+// so the people who just created an account are exactly the ones still being
+// told to create one. Same contract as /how-it-works; CLAUDE.md records why.
+function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
+  const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
+  res.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": signedIn ? "no-store" : `public, max-age=${maxAge}`,
+    vary: "cookie",
+    ...(headers || {}),
+  });
+  res.end(render(signedIn));
+}
+
+function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const title = marketTitle(p);
   const canonical = marketUrl(slug);
   const rangeTxt = p.ppsf.low === p.ppsf.high ? usd0(p.ppsf.median) : `${usd0(p.ppsf.low)}–${usd0(p.ppsf.high)}`;
@@ -5062,7 +5100,16 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     brokersCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
     `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
-    `<a class="btn" href="/">Get my free valuation &rarr;</a>` +
+    // The loudest CTA on the site's biggest SEO surface, so it carries the
+    // market the visitor is standing in. It used to be a bare href="/", which
+    // under the wall answers an anonymous visitor with the landing page: they
+    // ask to value their building and get another marketing page, then have
+    // to find "Create account" a second time. The `alt` link directly below
+    // already did this properly; the big button was the one ignoring it.
+    // A member skips the signup door (index.html ignores ?auth= when signed
+    // in anyway) and just arrives with the type prefilled.
+    `<a class="btn" href="${escHtml(
+      (signedIn ? "/?" : "/?auth=signup&") + "type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
     // The Address Explorer deep link (spec 2026-08-03, "Deep link" section).
     // auth=signup is the one query form ACCOUNT_WALL never 302s, so this same
     // static href serves everyone: anonymous visitors get the signup modal
@@ -5080,10 +5127,11 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     jsonLd: opts.preview ? null : jsonLd,
     noindex: Boolean(opts.preview),
     head: mapHead,
+    signedIn,
   });
 }
 
-function renderMarketDirectoryHTML() {
+function renderMarketDirectoryHTML(signedIn) {
   const merged = allMarketPages();
   // Curated seed pages first (in seed-file order), explorer-generated after,
   // alphabetically — the hand-picked markets stay the face of the directory.
@@ -5165,7 +5213,7 @@ function renderMarketDirectoryHTML() {
     filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
-  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd });
+  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn });
 }
 
 
@@ -5357,8 +5405,13 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 const HOW_FAQ = [
   ["What is a comp in commercial real estate?",
    "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command."],
+  // This answer reaches Google twice: as the visible accordion and inside the
+  // FAQPage JSON-LD below. It claimed "there is no subscription" for months
+  // after Pro went on sale, so the search result was actively denying the
+  // product. Keep it true to entitlements.js (4 comps, 36 months free) and to
+  // the pricing modal in index.html, which are the numbers being charged.
   ["How much does a comp report cost?",
-   "Nothing. Reports are free and there is no subscription. We only ask for your contact details when you export a report, so we can follow up about your property and market."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. The free report itemizes four comps and looks back three years. Pro, at $129 a month, removes both limits and adds unlimited exports and your own branding on the report. If you only need one building, a single report unlocks on its own for $20."],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -5376,10 +5429,14 @@ const HOW_FAQ = [
 // canonical URL, and room to grow into a real contributor hub.
 // Rendered through marketShell (MARKET_CSS/BAR/FOOTER) like /markets and
 // /broker/<slug>, so it does NOT depend on the purged tailwind.css.
-// The "Submit a comp" CTA points at /#submit-comp: the submission form is the
-// modal that lives in index.html, and one form beats two copies of it.
+// The "Submit a comp" CTA points at /?submit=comp: the submission form is the
+// modal that lives in index.html, and one form beats two copies of it. It is a
+// QUERY, not the /#submit-comp fragment it used to be, because ACCOUNT_WALL
+// decides what "/" serves on the server and a fragment never reaches it, so
+// the hash link left every logged-out broker on the landing page with no modal
+// and no anchor. See the wall's door list in the static handler.
 // ---------------------------------------------------------------------------
-function renderBrokersPageHTML() {
+function renderBrokersPageHTML(signedIn) {
   const title = "For Commercial Real Estate Brokers | CompNinja";
   const canonical = `${SITE_URL}/brokers`;
   // Trimmed to the ~160 characters Google renders; it was 180.
@@ -5419,7 +5476,7 @@ function renderBrokersPageHTML() {
     `<div class="card"><h2>Submit a comp, get the credit.</h2>` +
     `<p>Approved comps appear with a green Verified badge and your firm's name on every report ` +
     `that uses them. That badge is visible proof you know your market.</p>` +
-    `<p style="margin:0"><a href="/#submit-comp">Submit a comp &rarr;</a></p></div>` +
+    `<p style="margin:0"><a href="/?submit=comp">Submit a comp &rarr;</a></p></div>` +
     `<div class="card"><h2>Meet owners already asking about value.</h2>` +
     `<p>Owners requesting a Broker Opinion of Value are matched with brokers active in that ` +
     `market. These are not cold leads; they are owners in the middle of a decision.</p>` +
@@ -5434,13 +5491,13 @@ function renderBrokersPageHTML() {
     `verified comps, the markets they cover, and how often their comps have been cited.</p></div>` +
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
-    `<a class="btn" href="/#submit-comp">Submit a comp</a>` +
+    `<a class="btn" href="/?submit=comp">Submit a comp</a>` +
     `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p>` +
     `<p style="margin:0"><a class="alt" href="/1031-exchange">Client weighing a 1031? Send them our exchange guide &rarr;</a></p></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
-  return marketShell({ title, description, canonical, body, jsonLd });
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn });
 }
 
 // ---------------------------------------------------------------------------
@@ -5456,7 +5513,7 @@ function renderBrokersPageHTML() {
 // ---------------------------------------------------------------------------
 const LEGAL_UPDATED = "August 3, 2026";
 
-function renderTermsPageHTML() {
+function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
   const canonical = `${SITE_URL}/terms`;
   const description =
@@ -5529,10 +5586,10 @@ function renderTermsPageHTML() {
     `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
     `</div>`;
 
-  return marketShell({ title, description, canonical, body });
+  return marketShell({ title, description, canonical, body, signedIn });
 }
 
-function renderPrivacyPageHTML() {
+function renderPrivacyPageHTML(signedIn) {
   const title = "Privacy Policy | CompNinja";
   const canonical = `${SITE_URL}/privacy`;
   const description =
@@ -5637,7 +5694,7 @@ function renderPrivacyPageHTML() {
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
     `</div>`;
 
-  return marketShell({ title, description, canonical, body });
+  return marketShell({ title, description, canonical, body, signedIn });
 }
 
 function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
@@ -12014,9 +12071,19 @@ const server = http.createServer((req, res) => {
     // /desk stays a redirect — it is a personal workspace with no anonymous
     // rendering, and its target is now the front door at `/`.
     if (ACCOUNT_WALL && !parseCookies(req)[SESSION_COOKIE]) {
-      const auth = new URLSearchParams(req.url.split("?")[1] || "").get("auth");
+      const qs = new URLSearchParams(req.url.split("?")[1] || "");
+      const auth = qs.get("auth");
+      // The third door, alongside ?auth=. /brokers' "Submit a comp" CTA used
+      // to be /#submit-comp, which cannot work: the wall decides server-side
+      // and a fragment is never sent, so a broker landed on the wall's
+      // landing page, which has no comp modal and no such anchor. A broker
+      // contributing a comp is exactly who this site wants and the only one
+      // who does not yet have a reason to hold an account, so the form opens
+      // without one (POST /api/comp-submission has never required a session).
+      // An allowlist of one literal value, like ?auth=, never "any submit".
+      const submit = qs.get("submit");
       const shared = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath);
-      if (!shared && auth !== "signup" && auth !== "signin") {
+      if (!shared && auth !== "signup" && auth !== "signin" && submit !== "comp") {
         if (staticPath === "/desk") {
           res.writeHead(302, { location: "/", "cache-control": "no-store" });
           return res.end();
@@ -12147,8 +12214,7 @@ const server = http.createServer((req, res) => {
   // shell. Education, never advice: the compliance strings are pinned by
   // test/guide-1031.test.js. ---
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(marketShell({
+    return sendShellPage(req, res, (signedIn) => marketShell({
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,
       canonical: `${SITE_URL}/1031-exchange`,
@@ -12158,6 +12224,7 @@ const server = http.createServer((req, res) => {
         "@context": "https://schema.org",
         "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
       }),
+      signedIn,
     }));
   }
 
@@ -12165,26 +12232,22 @@ const server = http.createServer((req, res) => {
   // content, same hour-long cache as /how-it-works. Sits above the
   // /broker/<slug> profile matcher below so the two stay adjacent. ---
   if (req.method === "GET" && req.url.split("#")[0] === "/brokers") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderBrokersPageHTML());
+    return sendShellPage(req, res, (signedIn) => renderBrokersPageHTML(signedIn));
   }
 
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
   // resolves; Stripe checkout settings and campaign links both send query
   // strings. Same hour cache as the other static pages. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/terms") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderTermsPageHTML());
+    return sendShellPage(req, res, (signedIn) => renderTermsPageHTML(signedIn));
   }
   if (req.method === "GET" && req.url.split("?")[0] === "/privacy") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderPrivacyPageHTML());
+    return sendShellPage(req, res, (signedIn) => renderPrivacyPageHTML(signedIn));
   }
 
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && req.url === "/markets") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderMarketDirectoryHTML());
+    return sendShellPage(req, res, (signedIn) => renderMarketDirectoryHTML(signedIn));
   }
   const marketMatch = req.method === "GET" && req.url.match(/^\/market\/([a-z0-9-]{3,80})$/);
   if (marketMatch) {
@@ -12197,10 +12260,9 @@ const server = http.createServer((req, res) => {
     // background refresh when it is old, render from whatever is cached now.
     // The response never waits, and an empty map simply renders no section.
     if (Date.now() - BROKER_DIRECTORY.fetchedAt > BROKER_DIRECTORY_TTL_MS) refreshBrokerDirectory();
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderMarketPageHTML(marketMatch[1], page, {
+    return sendShellPage(req, res, (signedIn) => renderMarketPageHTML(marketMatch[1], page, {
       brokers: brokersCoveringMarket(`${page.city}, ${page.state}`, page.type),
-    }));
+    }, signedIn));
   }
 
   // --- Public broker profiles — opt-in pages for verified contributors ---
@@ -12218,8 +12280,8 @@ const server = http.createServer((req, res) => {
       if (!profile) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
       const subs = await fetchSubmissionsForEmail(profile.email);
       // Short max-age so toggling a profile off propagates within minutes.
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" });
-      return res.end(renderBrokerProfileHTML(profile, subs));
+      return sendShellPage(req, res,
+        (signedIn) => renderBrokerProfileHTML(profile, subs, signedIn), { maxAge: 300 });
     })().catch((err) => {
       console.error("broker page error:", err);
       res.writeHead(500, { "content-type": "text/plain" });
@@ -12239,12 +12301,11 @@ const server = http.createServer((req, res) => {
       res.writeHead(404, { "content-type": "text/plain" });
       return res.end("Preview expired; explore the market again from the homepage.");
     }
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderMarketPageHTML(previewMatch[1], entry.payload, { preview: true }));
+    // A preview belongs to whoever generated it, so it is already no-store and
+    // noindexed at every layer; it still renders the member's own chrome.
+    return sendShellPage(req, res,
+      (signedIn) => renderMarketPageHTML(previewMatch[1], entry.payload, { preview: true }, signedIn),
+      { maxAge: 0, headers: { "x-robots-tag": "noindex, nofollow" } });
   }
 
   // --- Development hub: repo-committed changelog + editable future ideas.

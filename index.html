@@ -8157,12 +8157,21 @@
 
   // Restore the last-searched property type (saved on each submit) so repeat
   // visitors don't reselect their asset class every session.
+  //
+  // ?type= beats the stored value, and this is the ONLY place that can honor
+  // it: this block runs long after the initial paint and would otherwise
+  // overwrite anything set earlier. A market page's CTA carries the type the
+  // visitor was reading about, which is a fresher statement of intent than
+  // whatever they searched last week. Unrecognized values fall through to the
+  // stored type rather than being forced onto the select.
   try {
-    const lastType = localStorage.getItem("lastPropertyType");
     const typeSel = document.getElementById("propertyType");
-    if (lastType && [...typeSel.options].some((o) => o.value === lastType)) {
-      typeSel.value = lastType;
-      syncSubjectFieldsToType();
+    const valid = (v) => v && [...typeSel.options].some((o) => o.value === v);
+    const urlType = new URLSearchParams(location.search).get("type");
+    const next = valid(urlType) ? urlType : localStorage.getItem("lastPropertyType");
+    if (valid(next)) {
+      typeSel.value = next;
+      syncSubjectFieldsToType();   // programmatic set fires no "change"
     }
   } catch (_) { /* private mode etc. — a nicety, not a requirement */ }
 
@@ -11098,9 +11107,15 @@
 
   // /brokers sends "Submit a comp" here. Open the form on arrival and clean the
   // hash, so a later refresh doesn't reopen a modal the visitor already closed.
-  if (location.hash === "#submit-comp") {
+  // ?submit=comp is the live door (a fragment never reaches the server, so the
+  // wall could not let #submit-comp through); the hash form is still honored
+  // for any link already in the wild. Either way the parameter is cleared
+  // afterwards, so a refresh does not reopen a modal the visitor closed.
+  if (location.hash === "#submit-comp" || new URLSearchParams(location.search).get("submit") === "comp") {
     openCompModal();
-    history.replaceState({}, "", location.pathname + location.search);
+    const qs = new URLSearchParams(location.search);
+    qs.delete("submit");
+    history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
   }
   document.getElementById("compCancel").addEventListener("click", closeCompModal);
   document.getElementById("compDoneBtn").addEventListener("click", closeCompModal);

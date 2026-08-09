@@ -56,6 +56,11 @@ const VAULTAPI = require("./vault-api");
 // Pure and dual-exported like valuation.js — the /vault page runs this SAME
 // copy, so a tested verdict and a rendered verdict can't quietly diverge.
 const GUTCHECK = require("./gut-check");
+
+// The outbound email letterhead — pure, tested. sendOutboundEmail wraps every
+// customer-facing email's text in this HTML shell; see the note on that
+// function before changing how it is applied.
+const EMAILSHELL = require("./email-shell");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
@@ -2707,7 +2712,7 @@ const STATE_NAMES = {
 //                       in Resend; until then these calls silently no-op
 //                       (with a console line so tests can see the skip).
 // ---------------------------------------------------------------------------
-function sendEmail(to, subject, text, { from, replyTo } = {}) {
+function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
   if (!RESEND_API_KEY) return;
   fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -2717,6 +2722,7 @@ function sendEmail(to, subject, text, { from, replyTo } = {}) {
       to: [to],
       subject,
       text,
+      ...(html ? { html } : {}),
       ...(replyTo ? { reply_to: replyTo } : {}),
     }),
     signal: AbortSignal.timeout(8000),
@@ -2736,13 +2742,17 @@ function notifyByEmail(subject, fields) {
   sendEmail(LEAD_NOTIFY_EMAIL, subject, text);
 }
 
-// Outbound mail to a lead or broker. Replies route to the owner.
+// Outbound mail to a lead or broker. Replies route to the owner. Every
+// outbound send gains the letterhead HTML part (email-shell.js) built from
+// the SAME text — the text stays the source of truth and the fallback part,
+// so a call site edits its copy in one place and plain-text clients lose
+// nothing. Owner-facing notifyByEmail stays deliberately plain.
 function sendOutboundEmail(to, subject, text) {
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
     return;
   }
-  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL });
+  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
 }
 
 // The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain

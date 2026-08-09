@@ -2322,10 +2322,23 @@
   const propertyTypeSel = document.getElementById("propertyType");
 
   // Where the current type came from. null = nobody has decided for this
-  // address yet, so the confirm dialog will ask. "detected" (OSM) is
-  // evidence about ONE address and resets when the address changes;
-  // "explicit" (any human choice) survives address edits — their call
-  // stands until they change it.
+  // address yet, so the confirm dialog will ask.
+  //
+  // The three resolved values split on WHO decided, because only a human's
+  // decision may outlive the address it was made about:
+  //   "explicit"   — a human choice (a picker, a chip, a saved report). It
+  //                  survives address edits: their call stands until they
+  //                  change it.
+  //   "detected"   — OSM tags for ONE building. Resets to null on an address
+  //                  change, since it is evidence about that address only.
+  //   "remembered" — recalled from addrType.v1, this visitor's own last run of
+  //                  THIS address. It resolves the type (the dialog shows the
+  //                  passive row instead of asking) but it is a machine recall,
+  //                  not a pick, so it resets on an address change exactly as
+  //                  "detected" does. Marking a recall "explicit" was a real
+  //                  bug: address A's remembered Office survived the edit to
+  //                  address B, suppressed B's own remembered Retail, ran B as
+  //                  Office, and then rewrote B's memory as Office at submit.
   //
   // Declared HERE rather than beside its helpers further down because the
   // explorer's deep-link block is a synchronous IIFE that runs at parse time
@@ -5432,7 +5445,21 @@
 
   // Mirrors the manual-change path: a type change without its recommended
   // lookback and its own subject fields was the bug applyDetectedType fixed.
+  //
+  // No-op when the type is already selected, because the reset is only ever
+  // WANTED as the consequence of a CHANGE. A resolution that lands on the type
+  // already showing is not a change, and resetting there destroys what the
+  // visitor deliberately configured: applyRecommendedLookback overwrites a
+  // hand-set lookback window, and renderSubjectFields opens with
+  // wrap.innerHTML = "", so every typed subject detail is gone. That wipe was
+  // reproduced before this guard existed (Lookback 36 back to 24, a typed
+  // clear height back to empty) on the most ordinary path there is: the
+  // confirm dialog's "change" door pre-selects the current type, so simply
+  // opening it and confirming ran setTypeProgrammatic with an unchanged value
+  // moments before the billed search. When the type genuinely does change the
+  // reset still happens, exactly as the manual dropdown always behaved.
   function setTypeProgrammatic(next) {
+    if (next === propertyTypeSel.value) return;
     propertyTypeSel.value = next;
     applyRecommendedLookback();
     renderSubjectFields(next);
@@ -5477,9 +5504,15 @@
     el.textContent = "";
     if (customNodes) { customNodes.forEach((n) => el.appendChild(n)); return; }
     const label = document.createElement("span");
-    label.textContent = typeResolution === null
-      ? "Property type: chosen when you run the report."
-      : "Property type: " + propertyTypeSel.value + (typeResolution === "detected" ? " (detected)." : ".");
+    // Each resolved state says where the type came from in its own words. A
+    // remembered type must not borrow the detected wording: it claims a map
+    // lookup that never ran, and the honest version is also the more
+    // reassuring one.
+    const v = propertyTypeSel.value;
+    if (typeResolution === null) label.textContent = "Property type: chosen when you run the report.";
+    else if (typeResolution === "detected") label.textContent = "Property type: " + v + " (detected).";
+    else if (typeResolution === "remembered") label.textContent = "Property type: " + v + ", from your last run of this address.";
+    else label.textContent = "Property type: " + v + ".";
     el.appendChild(label);
     const door = makeTypeChangeButton();
     if (typeResolution === null) door.textContent = "pick it now";
@@ -5559,8 +5592,11 @@
   document.getElementById("address").addEventListener("change", async () => {
     typeAutoNote.textContent = "";
     const addr = document.getElementById("address").value.trim();
-    // A detection made for the previous address is not evidence about this one.
-    if (typeResolution === "detected") { typeResolution = null; renderTypeStatus(); }
+    // Neither a detection nor a recall made for the PREVIOUS address says
+    // anything about this one, so both machine states clear here and let this
+    // address's own memory, then its own detection, answer again. Only
+    // "explicit" (a human's pick) survives the edit.
+    if (typeResolution === "detected" || typeResolution === "remembered") { typeResolution = null; renderTypeStatus(); }
     if (typeResolution === "explicit") return;
     // Above BOTH paths below, not just detection: either one can change the
     // type, and a type change re-renders the subject-fields container from
@@ -5571,8 +5607,12 @@
     if (Object.keys(readSubjectDetails()).length) return;
     const remembered = addrTypeFor(addr);
     if (remembered) {
-      if (remembered !== propertyTypeSel.value) setTypeProgrammatic(remembered);
-      typeResolution = "explicit";   // it was their choice when they ran it
+      setTypeProgrammatic(remembered);   // no-ops when it already matches
+      // "remembered", NOT "explicit": it was their choice about THIS address,
+      // so it resolves the dialog, but it is this code recalling it rather
+      // than the visitor choosing it now. Calling it explicit made it outlive
+      // the address it belonged to and overwrite the next address's memory.
+      typeResolution = "remembered";
       renderTypeStatus();
       return;
     }
@@ -8259,10 +8299,16 @@
 
   // Restore the last-searched property type (saved on each submit) so repeat
   // visitors don't reselect their asset class every session.
+  // Guarded on an UNRESOLVED type: anything that ran before this point (the
+  // ?explore=&type= deep link, a shared report, a restored saved report) has
+  // already decided, and last session's hint must never overrule a decision.
+  // Unguarded it swapped the type out from under a still-"explicit"
+  // resolution, so the status line asserted a type the form no longer held and
+  // the confirm dialog, seeing something resolved, never caught it.
   try {
     const lastType = localStorage.getItem("lastPropertyType");
     const typeSel = document.getElementById("propertyType");
-    if (lastType && [...typeSel.options].some((o) => o.value === lastType)) {
+    if (typeResolution === null && lastType && [...typeSel.options].some((o) => o.value === lastType)) {
       typeSel.value = lastType;
       syncSubjectFieldsToType();
     }
@@ -11109,6 +11155,12 @@
   // Non-null only while the dialog is asking. Read once, on Run — a pick the
   // visitor abandons with Escape must not leak into the next submission.
   let dialogTypePick = null;
+  // Was the dialog actually ASKING when it opened? Captured at open time
+  // because the Run handler cannot tell afterwards: picking through the
+  // resolved row's "change" door leaves a dialogTypePick behind exactly like
+  // an ask does. The dialog_pick counter measures how often the dialog is what
+  // decides the type, so a confirm on an already-resolved type is not one.
+  let dialogAskedType = false;
 
   function setConfirmRunEnabled(on) {
     document.getElementById("confirmRunBtn").disabled = !on;
@@ -11182,6 +11234,7 @@
     // unresolved shows the six buttons and holds the run button until one
     // is picked — the whole point is that nothing silently runs Industrial.
     dialogTypePick = null;
+    dialogAskedType = typeResolution === null;
     const typeResolvedEl = document.getElementById("confirmTypeResolved");
     const typeButtonsEl = document.getElementById("confirmTypeButtons");
     typeButtonsEl.classList.add("hidden");
@@ -11191,7 +11244,13 @@
       typeResolvedEl.classList.remove("hidden");
       typeResolvedEl.textContent = "";
       const t = document.createElement("span");
-      t.textContent = propertyTypeSel.value + (typeResolution === "detected" ? " (detected from the building's map data) " : " ");
+      // A remembered type gets its own parenthetical: the detected wording
+      // names a map lookup, and claiming one that never ran would misdescribe
+      // the evidence right where the visitor is checking it.
+      const provenance = typeResolution === "detected" ? " (detected from the building's map data) "
+        : typeResolution === "remembered" ? " (your usual type for this address) "
+        : " ";
+      t.textContent = propertyTypeSel.value + provenance;
       const change = document.createElement("button");
       change.type = "button";
       change.textContent = "change";
@@ -11251,6 +11310,7 @@
     pendingConfirmKey = null;
     // Escape or "edit address" resolves nothing, so the next submit asks again.
     dialogTypePick = null;
+    dialogAskedType = false;
   }
 
   function cancelConfirmModal() {
@@ -11263,10 +11323,18 @@
   document.getElementById("confirmRunBtn").addEventListener("click", () => {
     const key = pendingConfirmKey; // read before close nulls it
     if (dialogTypePick) {
+      // No-ops when the pick equals what is already selected, which is the
+      // common case behind the "change" door (it pre-selects the current
+      // type). Without that guard this line sits immediately before the billed
+      // POST and silently reset the visitor's lookback and typed subject
+      // details on a plain confirm.
       setTypeProgrammatic(dialogTypePick);
       typeResolution = "explicit";
       renderTypeStatus();
-      logTypeAutofill(document.getElementById("address").value.trim(), "dialog_pick", dialogTypePick);
+      // Only counted when the dialog was in ask mode. Confirming a type the
+      // dialog had already resolved is not a decision the dialog made, and
+      // counting it would overstate the ratio this log exists to measure.
+      if (dialogAskedType) logTypeAutofill(document.getElementById("address").value.trim(), "dialog_pick", dialogTypePick);
     }
     closeConfirmModal();
     if (key) {

@@ -1561,11 +1561,27 @@ private row has not earned. Two rules matter when editing anything down here:
      `#propertyType` select remains the single source of truth, and the type is
      resolved at verification — OSM detection, per-address memory
      (localStorage `addrType.v1`), or a required pick in the confirm dialog
-     (`typeResolution` in index.html: null | "detected" | "explicit"). Every
-     programmatic type change must go through `setTypeProgrammatic()` (or call
-     `syncSubjectFieldsToType()` and mark `typeResolution` itself), or the
-     subject inputs keep the previous type's fields. The select fires no
-     `change` events anymore; nothing may rely on them.
+     (`typeResolution` in index.html: null | "detected" | "remembered" |
+     "explicit"). The three resolved values split on **who** decided, because
+     only a human's decision may outlive the address it was made about:
+     `"explicit"` (a picker, a chip, a saved or shared report) survives address
+     edits, while `"detected"` (OSM tags) and `"remembered"` (recalled from
+     `addrType.v1`) are machine states about ONE address and both reset to null
+     on an address change, after which that address's own memory then its own
+     detection are consulted. Marking a recall explicit let address A's type
+     survive onto address B, suppress B's memory, and overwrite it at submit.
+     Every programmatic type change must go through `setTypeProgrammatic()` (or
+     call `syncSubjectFieldsToType()` and mark `typeResolution` itself), or the
+     subject inputs keep the previous type's fields. That function is a
+     **no-op when the type is unchanged** — it resets the lookback window and
+     re-renders (i.e. empties) the subject inputs, which is right after a
+     change and destructive without one; the confirm dialog's "change" door
+     pre-selects the current type, so a plain confirm used to wipe a typed
+     lookback and typed details moments before the billed search. The select
+     fires no `change` events anymore; nothing may rely on them. The
+     `lastPropertyType` restore at startup is likewise guarded on
+     `typeResolution === null`: a repeat visitor's hint may not overrule a
+     decision a deep link or a restored report already made.
    - **The subject-edit listener replaces `meta.subject` wholesale**, so it
      re-reads `details` from the DOM rather than merging — anything not
      re-read is lost on the next keystroke.

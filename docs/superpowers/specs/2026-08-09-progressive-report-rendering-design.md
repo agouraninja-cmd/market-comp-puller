@@ -153,3 +153,11 @@ server:
 
 Ship with a devlog.json entry and update CLAUDE.md's live-progress paragraph
 (it still describes the retired text-line preview).
+
+## Accepted deviation (final review, 2026-08-09)
+
+The hero placeholder shows the counts line only, not the subject address and
+type this spec asked for. During assembly the loading-card headline directly
+above the hero already names the address and type, so duplicating them in
+`ownerBasis` would add plumbing (threading the subject into `beginAssembly`
+and `updateAsmHero`) for no information gain. Accepted as shipped.

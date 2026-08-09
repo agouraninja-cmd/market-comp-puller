@@ -288,9 +288,11 @@ dependency. `.env` is git-ignored — never commit it.
   `assemblyComp` / `assemblySummary` / `resetAssembly`): the first `comp` or
   summary `field` event reveals `#results` with only the `data-assemble` cards
   visible (hero as a counts-only placeholder, never a dollar figure; summary;
-  core-column comp table + "+N more · unlock with Pro" lock line), everything
-  else hidden under `.asm-hidden` until `renderResults` repaints wholesale.
-  Assembly never touches the `hidden` class except on `#results`/`#ownerHero`;
+  core-column comp table + "+ N more found · unlock with Pro" lock line),
+  everything else hidden under `.asm-hidden` until `renderResults` repaints
+  wholesale.
+  Assembly never touches the `hidden` class except on
+  `#results`/`#ownerHero`/`#loadingSkeletons`;
   every exit (result, error, `retry`) funnels through `resetAssembly` riding on
   `hideLoadingCard`. Three fallback layers, all
   load-bearing — the old wall-clock simulation still starts on submit and is

@@ -3026,7 +3026,7 @@
   // comp events deliberately omit price_per_sqft and source_type (both are
   // corrected post-parse), and the preview must never show a number the
   // final report walks back.
-  let asm = null;   // null = not assembling; else { comps, priced, lockedN }
+  let asm = null;   // null = not assembling; else { comps, priced, lockedN, skipped }
   const ASM_COLUMNS = [
     { label: "Address", numeric: false },
     { label: "Type", numeric: false },
@@ -3036,7 +3036,7 @@
   ];
   function beginAssembly() {
     if (asm) return;
-    asm = { comps: 0, priced: 0, lockedN: 0 };
+    asm = { comps: 0, priced: 0, lockedN: 0, skipped: 0 };
     const results = document.getElementById("results");
     // The assembling cards live in the Report tab panel.
     setReportTab("report");
@@ -3091,12 +3091,17 @@
       (asm.priced ? " · " + asm.priced + " priced sale" + (asm.priced === 1 ? "" : "s") : "");
   }
   function assemblyComp(evt) {
+    // A report opened from My Desk mid-search calls hideLoadingCard, and the
+    // still-running stream's events must not clobber it: assembly only ever
+    // acts while the loading card is up (true for the whole legitimate
+    // window, including retry).
+    if (document.getElementById("loadingCard").classList.contains("hidden")) return;
     beginAssembly();
     if (evt.locked) {
       // Gated comps stream as { locked: true } with no identity (guardComp,
       // server-side). One line below the table, same as the final report's
       // stance: redacted, never blurred.
-      asm.lockedN = Math.max(asm.lockedN, Math.max(1, Number(evt.n) - asm.comps));
+      asm.lockedN = Math.max(asm.lockedN, Math.max(1, Number(evt.n) - asm.comps - asm.skipped));
       const foot = document.getElementById("tableFoot");
       let cell = foot.querySelector("[data-asm-lock]");
       if (!cell) {
@@ -3108,7 +3113,7 @@
       }
       cell.textContent = "+ " + asm.lockedN + " more found · unlock with Pro";
     } else {
-      if (!evt.address) return;
+      if (!evt.address) { asm.skipped++; return; }
       asm.comps++;
       if (evt.price && /sale/i.test(String(evt.transaction || ""))) asm.priced++;
       const tr = document.getElementById("tableBody").insertRow();
@@ -3141,6 +3146,11 @@
     updateAsmHero();
   }
   function assemblySummary(text) {
+    // A report opened from My Desk mid-search calls hideLoadingCard, and the
+    // still-running stream's events must not clobber it: assembly only ever
+    // acts while the loading card is up (true for the whole legitimate
+    // window, including retry).
+    if (document.getElementById("loadingCard").classList.contains("hidden")) return;
     beginAssembly();
     document.getElementById("summaryText").textContent = text;
   }

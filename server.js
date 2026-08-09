@@ -3014,7 +3014,16 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     } near this address that match the property type.`,
     `Today's date is ${todayStr}. Comps MUST be dated ${cutoffStr} or later (the last ${months === 1 ? "1 month" : months + " months"}). If you cannot find at least 3 comps inside that window, you may include older comps to reach 3, but you MUST state in "summary" that some comps fall outside the requested ${months}-month window.`,
     txFocus === "sales"  ? `Include ONLY sale transactions — do NOT include lease comps.` :
-    txFocus === "leases" ? `Include ONLY lease transactions or active lease listings — do NOT include sale comps.` : "",
+    txFocus === "leases" ? `Include ONLY lease transactions or active lease listings — do NOT include sale comps.` :
+    // The value hero computes ONLY from sale comps carrying both a price and
+    // a size, so on a mixed search those rows are the report's fuel. Without
+    // this rule, thin markets produce reports that cannot value the building
+    // at all: a Calabasas Office search (24mo, mixed) returned 1 priced sale
+    // plus 4 rate-less lease listings, while the two priced sales a sales-only
+    // 60-month re-run found had been one search away the whole time. Ranked
+    // above lease coverage on purpose; the window rule's "flag older comps in
+    // summary" disclosure still applies to any older sale this pulls in.
+    `SALES FIRST: the report's value estimate is computed only from SALE comps that carry both a price and a building size, so priced, sized sale comps are the most valuable rows you can return. Secure at least 3 of them before spending searches on lease comps. A lease listing with no stated rate is the least useful row in the report; include one only when nothing better exists. If the requested window holds fewer than 3 priced sales, prefer OLDER priced sale comps (flagged in "summary" per the window rule above) over filling the list with unpriced lease listings.`,
     // Thin markets tempt the model into padding the list with market medians
     // dressed up as comps. Those look authoritative, carry no property behind
     // them, and would land in the permanent corpus as fake transactions.

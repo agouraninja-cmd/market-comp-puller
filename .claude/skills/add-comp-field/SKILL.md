@@ -47,12 +47,14 @@ server.js:1168 via `ALL_TYPE_COMP_FIELDS`), and the corpus CSV export
 onto the enum the way `source_type` does (unknown → safest value), so the
 front-end can trust it.
 
-### 1b. Give it a short key (server.js — same edit session)
+### 1b. Give it a short key (report-parse.js — same edit session)
 
 Since 2026-08-03 the model writes comps under compact keys (`SHORT_COMP_KEYS`,
-declared right after `ALL_TYPE_COMP_FIELDS`) and `expandCompKeys` restores the
+in **report-parse.js** since the 2026-08-08 extraction) and `expandCompKeys`
+(same file) restores the
 long names at parse time. **A new comp field needs an entry there too** — 1-3
-chars, unique among the shorts, and never colliding with any long field name.
+chars, unique among the shorts, and never colliding with any long field name
+(`test/report-parse.test.js` pins both invariants).
 The prompt template (`compShape`) and legend line pick it up automatically.
 Miss this and the prompt's template line throws at build time (`S[f]` is
 undefined inside a template literal renders "undefined" as the key — the

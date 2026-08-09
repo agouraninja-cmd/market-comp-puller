@@ -63,9 +63,11 @@ const GUTCHECK = require("./gut-check");
 // internally, for the key only).
 const { marketOf, marketForLog, US_STATES } = require("./market");
 // The /api/comps parse pipeline's pure pieces, extracted one function at a
-// time as each gains tests (normalizeCurrency today; see its header). New
-// pipeline normalizers belong THERE.
-const { normalizeCurrency } = require("./report-parse");
+// time as each gains tests (see its header for what still lives here). New
+// pipeline normalizers belong THERE. expandCompKeys is wrapped below where
+// the inline version used to live, so it can carry TYPE_COMP_FIELDS.
+const RPARSE = require("./report-parse");
+const { normalizeCurrency, parseCompJson, stripEmDashes, SHORT_COMP_KEYS } = RPARSE;
 // The property dimension — one row per building per broker (migration 016).
 // Pure and tested; server.js owns the upsert and the user_id scoping.
 const PROPS = require("./broker-properties");
@@ -2874,62 +2876,12 @@ const ALL_TYPE_COMP_FIELDS = [...new Set(
   Object.values(TYPE_COMP_FIELDS).flatMap((t) => t.fields)
 )];
 
-// Compact comp encoding (2026-08-03): the model writes each comp under these
-// SHORT keys and the server re-expands immediately after parse — the long key
-// names alone measured 20-23% of a real report, and model OUTPUT is the wall
-// clock. Long -> short. A NEW COMP FIELD NEEDS AN ENTRY HERE (the
-// add-comp-field skill has the step). Shorts must stay unique and must never
-// collide with a long name.
-const SHORT_COMP_KEYS = {
-  address: "a", date: "d", transaction: "t", size_sqft: "sf",
-  price_or_rate: "p", price_per_sqft: "psf", cap_rate: "cap",
-  tenancy: "ten", year_built: "yr", notes: "n", source_url: "u",
-  source_type: "st", verified: "v",
-  clear_height: "ch", dock_doors: "dd", building_class: "bc",
-  floor_plate: "fp", center_type: "ct", anchor_tenant: "at",
-  units: "un", price_per_unit: "ppu", lot_acres: "ac",
-  price_per_acre: "ppa", zoning: "z", beds_baths: "bb",
-};
-const LONG_COMP_KEYS = Object.fromEntries(
-  Object.entries(SHORT_COMP_KEYS).map(([l, s]) => [s, l])
-);
-
-// Re-expand one short-keyed comp. Tolerant by design: long keys pass through
-// (a model that ignores the encoding produces exactly the old behavior),
-// unknown keys survive, and a long key wins over its short twin if both
-// arrive. Never throws on junk — returns it unchanged.
-function expandComp(c) {
-  if (!c || typeof c !== "object" || Array.isArray(c)) return c;
-  const out = {};
-  for (const [k, v] of Object.entries(c)) {
-    const long = LONG_COMP_KEYS[k];
-    if (long) { if (!(long in c)) out[long] = v; }
-    else out[k] = v;
-  }
-  return out;
-}
-
-// Expand every comp in a parsed report, then backfill omitted fields to ""
-// for the base shape + this type's fields (+ tenancy/year_built unless Land),
-// and coerce `verified` to a boolean — so the stored/served report is
-// byte-shaped exactly like the pre-encoding output and nothing downstream
-// (normalization, gate, cache, harvest, market pages) can meet undefined.
-function expandCompKeys(parsed, type) {
-  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
-  const base = ["address", "date", "transaction", "size_sqft", "price_or_rate",
-    "price_per_sqft", "cap_rate", "notes", "source_url", "source_type"];
-  const spec = TYPE_COMP_FIELDS[type];
-  const fill = [...base, ...(spec ? spec.fields : []),
-    ...(type === "Land" ? [] : ["tenancy", "year_built"])];
-  parsed.comps = parsed.comps.map((c) => {
-    const e = expandComp(c);
-    if (!e || typeof e !== "object" || Array.isArray(e)) return e;
-    for (const k of fill) if (e[k] == null) e[k] = "";
-    e.verified = e.verified === true;
-    return e;
-  });
-  return parsed;
-}
+// Compact comp encoding: SHORT_COMP_KEYS and the expansion live in
+// report-parse.js (required at the top), extracted 2026-08-08 with tests.
+// A NEW COMP FIELD STILL NEEDS A SHORT KEY THERE (the add-comp-field skill
+// has the step). This wrapper feeds it TYPE_COMP_FIELDS, which stays in this
+// file as the prompt's source of truth.
+const expandCompKeys = (parsed, type) => RPARSE.expandCompKeys(parsed, type, TYPE_COMP_FIELDS);
 
 // Display labels for the per-type comp fields, for the server-rendered market
 // pages. Flat and keyed by field name — NOT a fifth per-type map. These must
@@ -3188,88 +3140,10 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   ].join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Safely extract a JSON object from Claude's text output
-// ---------------------------------------------------------------------------
-// The first balanced {...} in a text, found with the same string- and
-// escape-aware walk the live-preview comp extractor uses — because the
-// captured parse failure was a COMPLETE report followed by stray text
-// containing a brace, which fools a first-{-to-last-} slice.
-function extractFirstJsonObject(text) {
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0, inString = false, escaped = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
-    } else if (ch === '"') inString = true;
-    else if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-
-function parseCompJson(rawText, stats) {
-  let text = (rawText || "").trim();
-  text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  const first = text.indexOf("{");
-  const last = text.lastIndexOf("}");
-  if (first !== -1 && last !== -1 && last > first) {
-    text = text.slice(first, last + 1);
-  }
-  try {
-    return stripEmDashes(JSON.parse(text));
-  } catch (err) {
-    // Layer A rescue (2026-08-04): try the first BALANCED object before
-    // giving up — the comps sanity check keeps a stray early object from
-    // being mistaken for the report (both lanes always return comps).
-    const inner = extractFirstJsonObject(text);
-    if (inner && inner.length < text.length) {
-      try {
-        const salvaged = JSON.parse(inner);
-        if (salvaged && Array.isArray(salvaged.comps)) {
-          console.warn(`Comp JSON salvaged: first balanced object parsed, ${text.length - inner.length} trailing chars discarded`);
-          if (stats) stats.rescue = "salvaged";
-          return stripEmDashes(salvaged);
-        }
-      } catch (_) { /* fall through to the diagnostic + rethrow */ }
-    }
-    // Evidence for the recurring "unexpected format" flake (a Phoenix search
-    // failed BOTH attempts on 2026-08-03): log where the parse died and the
-    // bytes around it, so one Render log line is enough to diagnose without
-    // a reproduction. Bounded snippet, never the whole report. Rethrows —
-    // behavior is unchanged.
-    const at = Number((String(err.message).match(/position (\d+)/) || [])[1]);
-    if (Number.isFinite(at)) {
-      console.error(`Comp JSON parse failure at ${at}/${text.length}: ${JSON.stringify(text.slice(Math.max(0, at - 120), at + 200))}`);
-    } else {
-      console.error(`Comp JSON parse failure (${err.message}); head=${JSON.stringify(text.slice(0, 160))} tail=${JSON.stringify(text.slice(-160))}`);
-    }
-    throw err;
-  }
-}
-
-// Site style rule: no em dashes anywhere. The prompt already forbids them,
-// but models slip, so scrub every string in the parsed report. Numeric
-// ranges become hyphens; prose dashes become commas.
-function stripEmDashes(value) {
-  if (typeof value === "string") {
-    return value
-      .replace(/(\d)\s*—\s*(\$?\d)/g, "$1-$2")
-      .replace(/\s*—\s*/g, ", ");
-  }
-  if (Array.isArray(value)) return value.map(stripEmDashes);
-  if (value && typeof value === "object") {
-    for (const k of Object.keys(value)) value[k] = stripEmDashes(value[k]);
-  }
-  return value;
-}
+// parseCompJson(), extractFirstJsonObject() and stripEmDashes() live in
+// report-parse.js (required at the top), extracted 2026-08-08 with tests
+// pinning the fence-stripping, the balanced-object salvage (and its comps
+// sanity check), and the em-dash scrub.
 
 // source_type drives a trust badge and lands in CSV exports, so stray model
 // values are coerced onto the enum. Unknown maps to "estimate": the label may

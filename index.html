@@ -2670,6 +2670,7 @@
     try {
       const r = await fetch("/api/config");
       cfg = await r.json();
+      proConfigResolved = true;   // a real answer, not the boot-time default
     } catch (_) { /* if config fails, treat as open */ }
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
@@ -5095,10 +5096,37 @@
     link.classList.toggle("hidden", !allowed);
     link.title = "";
     if (!allowed) panel.classList.add("hidden");
+    // The deep link is a ONE-SHOT, so neither branch below may act on a
+    // guess: proConfigResolved distinguishes "config really answered" from
+    // the boot-time default, which is byte-identical to a pre-Pro
+    // deployment's answer. Acting on the default is what used to eat the
+    // link during bootstrap and fire findAddresses() into the guest gate.
+    if (!proConfigResolved && runPendingExplore) return;
     if (allowed && runPendingExplore) {
       const run = runPendingExplore;
       runPendingExplore = null;   // clear first: the deep link is a one-shot
       run();
+    } else if (!allowed && runPendingExplore && currentUser) {
+      // The other half of the deep link, which used to be silence: a market
+      // page's "Explore <city> properties" link carries ?explore=, a visitor
+      // signs up for a free account, and the Explorer is Pro-only — so they
+      // landed on a plain search form with no hint of what they clicked or
+      // why nothing happened. Say so, once, through the one pricing modal
+      // (.unlock-comps-btn is the sanctioned door — never a second prompt).
+      //
+      // Only for a RESOLVED signed-in account: while the visitor is still
+      // anonymous the link stays parked, because the account they are about
+      // to sign in with may be a Pro one, and consuming the link early would
+      // rob that member of the auto-open they were promised. The market name
+      // is deliberately not interpolated into this HTML — it arrives via the
+      // URL, and untrusted strings stay out of innerHTML in this file.
+      runPendingExplore = null;   // one-shot either way; the message repeats poorly
+      showStatus(
+        'Welcome in. One note: the Address Explorer, which browses every property in a market at once, is part of Pro. ' +
+        '<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">See Pro plans</button>' +
+        '<span class="block mt-1">Free reports work on any single address: the property type from that page is already filled in, so just enter an address above.</span>',
+        "info"
+      );
     }
   }
 
@@ -5315,8 +5343,11 @@
     //
     // Parked rather than run: at this point in the script /api/config has not
     // answered, so entitlements are unknown and `proConfig` is still in its TDZ.
-    // applyExplorerGating() fires this once the answer arrives — and simply
-    // never fires it for a visitor without Pro, who is left on a locked link.
+    // applyExplorerGating() fires this once the answer arrives. A Pro account
+    // gets the panel; a resolved signed-in account WITHOUT Pro gets a status
+    // notice naming the gate (see the else-branch there) instead of the
+    // silence this shipped with; an anonymous visitor keeps the link parked,
+    // because the account they sign in with may turn out to be a Pro one.
     try {
       const qp = new URLSearchParams(location.search);
       const ex = qp.get("explore");
@@ -9233,6 +9264,7 @@
       const r = await fetch("/api/config", { cache: "no-store" });
       const cfg = await r.json();
       proConfig = cfg.pro || { enabled: false };
+      proConfigResolved = true;   // a real answer, not the boot-time default
       // Absent for signed-in visitors, so signing in clears the hint here.
       guestSearch = cfg.guestSearch || null;
     } catch (_) { /* keep the last known answer */ }
@@ -10864,6 +10896,16 @@
   // limit described here is enforced server-side, so editing this object in
   // the console unlocks nothing but the visitor's own greyed-out controls.
   let proConfig = { enabled: false };
+  // Whether /api/config has ACTUALLY answered at least once. The default
+  // proConfig above is byte-identical to what a real pre-Pro deployment
+  // returns ({ enabled: false } = everything allowed), so code that must not
+  // act on a GUESS — consuming the explorer deep link, most importantly —
+  // checks this flag, not the object. Before it existed, an early
+  // refreshBillingUI() call (refreshAccountUI runs during bootstrap, ahead of
+  // the config answer) read the default as "explorer is free", consumed the
+  // one-shot ?explore= link, and fired a doomed /api/explore-market call
+  // straight into the guest gate's 403.
+  let proConfigResolved = false;
   // Free-search state from /api/config: { limit, used } for a signed-out
   // visitor when the guest gate is on, null otherwise. Presentation only —
   // /api/comps enforces the cap server-side and answers signin_required.

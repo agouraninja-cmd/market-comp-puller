@@ -67,6 +67,17 @@ ship-time one. Both apply.
    Check the changed surface at its exact URL, no query strings.
    `tailwind.css` serves with max-age 300, so curl it rather than trusting
    a browser that may hold stale CSS.
+   **To check a change inside `index.html`, you must use a wall-exempt
+   URL.** While `ACCOUNT_WALL` is on, an anonymous request to `/` OR
+   `/index.html` gets the LANDING page (~30KB, server-rendered) — the app
+   HTML is never in those bytes, so grepping them for your change reports
+   "not deployed" forever, no matter how long you wait. Use
+   `https://compninja.co/?auth=signup` or `/r/<anything>` (~674KB; both
+   exemptions exist precisely because they must serve the app). Sanity-
+   check the fetch itself before believing a negative: if a string that
+   shipped WEEKS ago is also missing, you are reading the wrong page, not
+   a failed deploy. This cost a false 10-minute "deploy timed out" on
+   2026-08-09 when the deploy had in fact already succeeded.
 10. **Smoke a report change live**: one search on a FRESH address — a
     previously searched address is a cache hit serving the pre-change
     report, which proves nothing. Sign in + admin unlock first so guest
@@ -85,6 +96,7 @@ ship-time one. Both apply.
 | Pushing before running the migration | weeks-long silent corpus outage (happened 2026-07) |
 | Verifying on an already-searched address | the 30-day cache serves the OLD report shape |
 | Judging live CSS through the browser | max-age 300 shows stale styles for 5 minutes |
+| Curling `/` or `/index.html` to confirm an app change | the wall serves the LANDING page there, so the change never appears and a healthy deploy reads as failed — use `/?auth=signup` or `/r/<id>` |
 | `git add -A` | sweeps the other session's work-in-progress into your commit |
 | Trusting the `+N` harvest log line | fallback writes log it too; only the DB row count proves durability |
 | Skipping the main sync | `push HEAD:main` rejected as non-fast-forward |

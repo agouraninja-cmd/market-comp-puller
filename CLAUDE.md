@@ -1388,7 +1388,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
-CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
+CSV / PNG / Print-to-PDF exporters. The main form's second slot is the
+Building size (SF) field; the property type is chosen at the verification
+step, and the confirm dialog blocks the run until a type is resolved.
+Contains **no secrets**.
 
 **Private comps in the front end** (the display half of blended comps, 2026-08-06;
 server half and spec are under the broker vault above). A comp the server flags
@@ -1554,11 +1557,15 @@ private row has not earned. Two rules matter when editing anything down here:
    - **`cacheKeyFor` includes the details**, appended only when non-empty so
      existing cache entries keep their keys. Without this a 48-unit and a
      6-unit building at one address collide and are served each other's comps.
-   - **Assigning `#propertyType.value` does not fire `change`.** Every
-     programmatic type change (localStorage restore, recent-search chips,
-     shared-report restore, market-explorer parse) must call
-     `syncSubjectFieldsToType()`, or the inputs keep the previous type's
-     fields. The localStorage restore runs long after the initial paint.
+   - **The type dropdown is gone from the visible form** (2026-08-08): a hidden
+     `#propertyType` select remains the single source of truth, and the type is
+     resolved at verification — OSM detection, per-address memory
+     (localStorage `addrType.v1`), or a required pick in the confirm dialog
+     (`typeResolution` in index.html: null | "detected" | "explicit"). Every
+     programmatic type change must go through `setTypeProgrammatic()` (or call
+     `syncSubjectFieldsToType()` and mark `typeResolution` itself), or the
+     subject inputs keep the previous type's fields. The select fires no
+     `change` events anymore; nothing may rely on them.
    - **The subject-edit listener replaces `meta.subject` wholesale**, so it
      re-reads `details` from the DOM rather than merging — anything not
      re-read is lost on the next keystroke.

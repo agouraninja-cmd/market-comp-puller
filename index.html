@@ -5113,6 +5113,20 @@
         b.type = "button";
         b.className = "btn-live text-xs text-[#1A2433] border border-[#D8D4C9] bg-white hover:bg-[#FBFBF9] hover:text-[#B91C1C] rounded px-2.5 py-1.5";
         b.textContent = a.address;   // textContent on purpose: OSM data is untrusted
+        // "Instant" — the server saw a recent cached report for this address
+        // (corpus rows only; OSM top-ups are never probed). A nudge, not a
+        // promise: the real cache hit still needs the submit's key to match,
+        // which the explorer's deterministic flow makes the common case. The
+        // flag rides the 7-day aeCache like the rest of the row and can go
+        // stale a few days before the 30-day report cache does — acceptable
+        // for a hint whose failure mode is one ordinary billed search.
+        if (a.cached) {
+          const tag = document.createElement("span");
+          tag.className = "ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700";
+          tag.textContent = "Instant";
+          b.appendChild(tag);
+          b.title = "A recent report for this address is on file; it loads in about a second.";
+        }
         b.addEventListener("click", () => {
           document.getElementById("address").value = a.address;
           const sel = document.getElementById("propertyType");

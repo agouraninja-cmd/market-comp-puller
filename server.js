@@ -272,9 +272,12 @@ const SITE_URL = (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 // Google Search Console verification, by the HTML-FILE method.
 //
 // Why the file and not the meta tag: meta-tag verification fetches the
-// property ROOT, and under ACCOUNT_WALL `/` is a 302 to /how-it-works, so
-// Google never sees a tag placed there and verification fails without ever
-// saying why. The file lives at its own path, which the wall does not touch
+// property ROOT, and when this shipped `/` was a 302 under ACCOUNT_WALL, so
+// Google never saw a tag placed there and verification failed without ever
+// saying why. `/` answers 200 to logged-out visitors now (the landing page),
+// but the file method stays: it is auth-independent by construction, and
+// Google re-checks it forever, so it must never ride on what `/` happens to
+// serve. The file lives at its own path, which the wall does not touch
 // (the static handler is an allowlist, so this route is reached untouched).
 //
 // Set GOOGLE_SITE_VERIFICATION to what Search Console hands you — the whole
@@ -1891,6 +1894,50 @@ function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSi
   return crypto.createHash("sha256").update(detailsSig ? `${raw}::${detailsSig}` : raw).digest("hex");
 }
 
+// The Address Explorer's "instant report" badge asks a question the opaque
+// cache key cannot answer: "is there ANY recent cached report for this
+// address + type?" So the address is ALSO recorded, normalized the same way
+// the key normalizes it, in two places: this in-process index (covers the
+// file-fallback deployment and the minutes before a DB write lands) and the
+// nullable address_key/prop_type columns migration 020 adds to search_cache.
+// Presence is an approximation, deliberately: the true hit still needs the
+// visitor's exact key to match, and the explorer's determinism (same list,
+// same empty note, same per-type lookback, same footprint estimate) is what
+// makes the approximation honest. Failure-safe everywhere — no badge, never
+// an error.
+function cacheAddressKey(address) {
+  return String(address || "").trim().toLowerCase()
+    .replace(/\./g, "").replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ").trim();
+}
+const cacheAddrIndex = new Map(); // "<addressKey>|<type>" -> ts of last store
+
+// Which of these addresses have a recent cached report for `type`?
+// Returns a Set of cacheAddressKey() strings; empty on any failure.
+async function cachedAddressKeys(addresses, type) {
+  const hit = new Set();
+  const now = Date.now();
+  const keys = addresses.map(cacheAddressKey);
+  for (const k of keys) {
+    const ts = cacheAddrIndex.get(`${k}|${type}`);
+    if (ts && now - ts < SEARCH_CACHE_TTL_MS) hit.add(k);
+  }
+  if (DB_CONFIGURED && hit.size < keys.length) {
+    try {
+      const cutoff = new Date(now - SEARCH_CACHE_TTL_MS).toISOString();
+      const list = keys.map((k) => `"${k.replace(/"/g, '')}"`).join(",");
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/search_cache?select=address_key` +
+        `&address_key=in.(${encodeURIComponent(list)})` +
+        `&prop_type=eq.${encodeURIComponent(type)}&created_at=gte.${cutoff}`,
+        { headers: supabaseHeaders() }
+      );
+      // 400 = migration 020 not run yet; the badge just stays off.
+      if (r.ok) for (const row of await r.json()) hit.add(row.address_key);
+    } catch (_) { /* no badge, never an error */ }
+  }
+  return hit;
+}
+
 async function loadSearchCacheFile() {
   try {
     return JSON.parse(await fs.promises.readFile(SEARCH_CACHE_FILE, "utf8"));
@@ -1936,9 +1983,15 @@ async function getCachedSearch(key) {
   return null;
 }
 
-async function storeCachedSearch(key, payload) {
+async function storeCachedSearch(key, payload, meta) {
   const now = Date.now();
   searchCacheMem.set(key, { payload, ts: now });
+  // The instant-badge index (see cachedAddressKeys above). Only the report
+  // path passes meta — the Explorer's market-level "City, ST" searches are
+  // not addresses anyone badges.
+  if (meta && meta.address && meta.type) {
+    cacheAddrIndex.set(`${cacheAddressKey(meta.address)}|${meta.type}`, now);
+  }
   if (DB_CONFIGURED) {
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/search_cache?on_conflict=cache_key`, {
@@ -1946,7 +1999,21 @@ async function storeCachedSearch(key, payload) {
         headers: { ...supabaseHeaders(), prefer: "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify({ cache_key: key, payload, created_at: new Date(now).toISOString() }),
       });
-      if (r.ok) return;
+      if (r.ok) {
+        // Badge columns ride a SEPARATE best-effort PATCH, never the insert
+        // itself: before migration 020 runs, an unknown column in the insert
+        // body would 400 the whole write and silently divert the CACHE to the
+        // ephemeral file (the 004 corpus outage's shape). This way the row is
+        // durable regardless and a missing column costs only the badge.
+        if (meta && meta.address && meta.type) {
+          fetch(`${SUPABASE_URL}/rest/v1/search_cache?cache_key=eq.${key}`, {
+            method: "PATCH",
+            headers: { ...supabaseHeaders(), prefer: "return=minimal" },
+            body: JSON.stringify({ address_key: cacheAddressKey(meta.address), prop_type: meta.type }),
+          }).catch(() => {});
+        }
+        return;
+      }
       console.error(`Search cache DB write failed (${r.status}) — falling back to file.`);
     } catch (err) {
       console.error("Search cache DB write failed — falling back to file:", err.message);
@@ -5766,16 +5833,23 @@ function renderPrivacyPageHTML() {
   return marketShell({ title, description, canonical, body });
 }
 
-function renderHowItWorksHTML() {
-  // Under ACCOUNT_WALL this page is the front door — `/` 302s here, so it
-  // catches both brand searches and every anonymous arrival. The old title,
-  // "How CompNinja Works", was addressed to people who already knew the name,
-  // which is nobody yet. This one still describes the page honestly and also
-  // matches a question people actually type. Description trimmed to the ~160
-  // characters Google renders (it was 199, so the last line never showed).
+function renderHowItWorksHTML({ home = false } = {}) {
+  // This content is BOTH the /how-it-works page and, under ACCOUNT_WALL, what
+  // a logged-out visitor gets at `/` itself (200, not a redirect — the root
+  // domain is the strongest URL the site has, and Search Console showed
+  // Google never crawled the redirect it used to answer with). `home: true`
+  // renders the root flavor: canonical `/`, a head-term title. The
+  // /how-it-works route passes `home: ACCOUNT_WALL` so that while the wall is
+  // up the two identical pages canonicalize to ONE URL (`/`) instead of
+  // splitting their signals; with the wall off, `/` is the app again and
+  // /how-it-works reverts to canonicalizing itself.
+  //
+  // The non-home title matches a question people actually type; the home one
+  // carries the head terms, and the H1/content still target the rest.
+  // Description trimmed to the ~160 characters Google renders.
   // No brand suffix here — this page's own shell appends " | CompNinja".
-  const title = "How Commercial Property Valuation Works";
-  const canonical = `${SITE_URL}/how-it-works`;
+  const title = home ? "Commercial Real Estate Comps & Valuations" : "How Commercial Property Valuation Works";
+  const canonical = home ? `${SITE_URL}/` : `${SITE_URL}/how-it-works`;
   const description =
     "How a CompNinja report is built: live searches of public records and listings, " +
     "a source badge on every comp, and a value range for your building.";
@@ -5821,13 +5895,17 @@ function renderHowItWorksHTML() {
         url: canonical,
         isPartOf: { "@id": WEBSITE_ID },
         publisher: { "@id": ORG_ID },
-        breadcrumb: {
-          "@type": "BreadcrumbList",
-          itemListElement: [
-            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
-            { "@type": "ListItem", position: 2, name: title, item: canonical },
-          ],
-        },
+        // At the root there is nothing to breadcrumb back to — both items
+        // would point at the same URL.
+        ...(home ? {} : {
+          breadcrumb: {
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+              { "@type": "ListItem", position: 2, name: title, item: canonical },
+            ],
+          },
+        }),
       },
       {
         "@type": "FAQPage",
@@ -8873,7 +8951,9 @@ const server = http.createServer((req, res) => {
         // A fresh lookup (no memo, no typed size) is worth remembering for
         // every future search of this address. Fire-and-forget.
         if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
-        await storeCachedSearch(cacheKey, result);
+        // meta feeds the instant-badge address index; the Explorer's
+        // market-level store below deliberately passes none.
+        await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
         logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan,
           duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
         maybePublishMarketSnapshot(typeOk, addressOk, result);
@@ -10959,8 +11039,17 @@ const server = http.createServer((req, res) => {
         }
         picked.sort((x, y) => (y.dealDate - x.dealDate) || x.address.localeCompare(y.address));
         const addresses = picked.slice(0, 8).map((p) => ({ address: p.address, source: "corpus" }));
+        // The "instant report" badge: flag addresses a recent cached report
+        // already exists for, so the panel can say which clicks are free and
+        // immediate. Presence-based and failure-safe (see cachedAddressKeys);
+        // the browser's OSM top-up rows never carry the flag — they were
+        // discovered client-side and no probe has seen them.
         if (addresses.length) {
-          logEvent("explore_addresses", { prop_type: typeOk, market, cached: false, source: String(addresses.length) });
+          const cachedSet = await cachedAddressKeys(addresses.map((a) => a.address), typeOk);
+          for (const a of addresses) {
+            if (cachedSet.has(cacheAddressKey(a.address))) a.cached = true;
+          }
+          logEvent("explore_addresses", { prop_type: typeOk, market, cached: cachedSet.size > 0, source: String(addresses.length) });
         }
         return sendJson(res, 200, { market, addresses });
       } catch (e) {
@@ -12029,7 +12118,7 @@ const server = http.createServer((req, res) => {
   // link to /?utm_source=…, which used to 404 for the same reason.
   const staticPath = req.url.split("?")[0];
   if (req.method === "GET" && (staticPath === "/" || staticPath === "/index.html" || staticPath === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath))) {
-    // Account wall: an anonymous visitor meets /how-it-works, not the app.
+    // Account wall: an anonymous visitor meets the landing page, not the app.
     //
     // Cookie PRESENCE only, never getSessionUser() — that helper reads the
     // database and this route runs on every page view. A forged cookie buys
@@ -12040,18 +12129,28 @@ const server = http.createServer((req, res) => {
     //
     // Two exemptions. Shared reports are public by design — that is the whole
     // share feature. And ?auth= has to serve the app, or the signup buttons on
-    // /how-it-works point straight back at /how-it-works and the account modal
+    // the landing page point straight back at it and the account modal
     // (which lives only in index.html) becomes unreachable.
     //
-    // 302, not 301: what lives at / genuinely depends on auth state, and a
-    // permanent redirect would be cached past the point where the visitor has
-    // an account. no-store for the same reason.
+    // A 200 at `/`, not the 302 to /how-it-works this shipped with. The root
+    // domain is the strongest URL the site has, and Search Console showed
+    // Google had never crawled the redirect's target — every brand search
+    // pointed at a redirect to a page Google didn't hold. So `/` now RENDERS
+    // the landing content itself (same bytes /how-it-works serves, canonical
+    // `/`), and /how-it-works canonicalizes here while the wall is up.
+    // no-store because what lives at / genuinely depends on auth state.
+    // /desk stays a redirect — it is a personal workspace with no anonymous
+    // rendering, and its target is now the front door at `/`.
     if (ACCOUNT_WALL && !parseCookies(req)[SESSION_COOKIE]) {
       const auth = new URLSearchParams(req.url.split("?")[1] || "").get("auth");
       const shared = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath);
       if (!shared && auth !== "signup" && auth !== "signin") {
-        res.writeHead(302, { location: "/how-it-works", "cache-control": "no-store" });
-        return res.end();
+        if (staticPath === "/desk") {
+          res.writeHead(302, { location: "/", "cache-control": "no-store" });
+          return res.end();
+        }
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        return res.end(renderHowItWorksHTML({ home: true }));
       }
     }
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
@@ -12140,10 +12239,14 @@ const server = http.createServer((req, res) => {
   }
 
   // --- How It Works — the standalone proof/FAQ page (header + footer nav).
-  // Static content, so it caches for an hour like the market pages. ---
+  // Static content, so it caches for an hour like the market pages.
+  // While the wall is up, `/` serves this same content to logged-out
+  // visitors, so this URL canonicalizes to `/` (home: true) rather than
+  // splitting one page's signals across two indexed URLs; wall off, `/` is
+  // the app again and this page canonicalizes itself. ---
   if (req.method === "GET" && req.url.split("#")[0] === "/how-it-works") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderHowItWorksHTML());
+    return res.end(renderHowItWorksHTML({ home: ACCOUNT_WALL }));
   }
 
   // --- 1031 exchange guide — public education page (v4 slice 3). Content
@@ -12557,10 +12660,14 @@ const server = http.createServer((req, res) => {
     return res.end(
       `<?xml version="1.0" encoding="UTF-8"?>\n` +
       `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      // Under the wall / is a 302 to /how-it-works, and listing a redirecting
-      // URL is a soft error in Search Console. ACCOUNT_WALL=off restores it.
-      (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/</loc></url>\n`) +
-      `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
+      // `/` is always a real 200 now (the landing page for logged-out
+      // visitors under the wall, the app otherwise), so it is always listed.
+      // /how-it-works is only listed when the wall is OFF: while the wall is
+      // up it serves the same content as `/` and canonicalizes there, and
+      // listing a URL that declares itself a duplicate is a soft error in
+      // Search Console.
+      `  <url><loc>${SITE_URL}/</loc></url>\n` +
+      (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/terms</loc></url>\n` +
@@ -12606,7 +12713,7 @@ server.listen(PORT, () => {
   console.log(`🗄  Search cache: ${DB_CONFIGURED ? "Supabase" : path.basename(SEARCH_CACHE_FILE) + " (EPHEMERAL on most hosts)"}, ${SEARCH_CACHE_TTL_MS / 3600000}h TTL.`);
   console.log(`💵 Daily search cap: ${DAILY_SEARCH_CAP} billed searches/day (set DAILY_SEARCH_CAP to change).`);
   console.log(ACCOUNT_WALL
-    ? "🔐 Account wall ON — anonymous visitors are sent to /how-it-works, and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
+    ? "🔐 Account wall ON — anonymous visitors get the landing page at / (200, not a redirect; /desk redirects home), and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
     : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`

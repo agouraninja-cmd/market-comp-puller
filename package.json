@@ -5,6 +5,7 @@
   "description": "Single-page web app that pulls commercial real estate comps via the Anthropic API with web search.",
   "main": "server.js",
   "scripts": {
+    "prestart": "node --check server.js && npm test",
     "start": "node server.js",
     "test": "node --test \"test/*.test.js\""
   },

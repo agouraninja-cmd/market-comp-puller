@@ -75,7 +75,7 @@ test("the rollback lever restores the configured guest limit", async (t) => {
 // getSessionUser() reads the database and this route runs on every page view.
 const FAKE_SESSION = { cookie: "cn_session=not-a-real-token" };
 
-test("the wall routes anonymous visitors to /how-it-works", async (t) => {
+test("the wall serves the landing page at the root", async (t) => {
   // Fake key for the same reason as above: the forged-cookie subtest below
   // needs /api/comps to get past its missing-key check and reach the gate.
   const srv = await boot({ ACCOUNT_WALL: "on", ANTHROPIC_API_KEY: FAKE_KEY });
@@ -84,12 +84,44 @@ test("the wall routes anonymous visitors to /how-it-works", async (t) => {
   const get = (p, headers) =>
     fetch(srv.base + p, { redirect: "manual", headers: headers || {} });
 
-  await t.test("the app redirects", async () => {
-    for (const p of ["/", "/index.html", "/desk", "/?utm_source=newsletter", "/desk?checkout=success"]) {
+  // What tells the two HTML bodies apart: only the app carries the comp form,
+  // only the landing page carries the signup hero CTA.
+  const isApp = (html) => html.includes('id="compForm"');
+  const isLanding = (html) => html.includes('class="heroCta"');
+
+  await t.test("/ answers 200 with the landing content, not a redirect", async () => {
+    // The root domain is the site's strongest URL, and Search Console showed
+    // Google never crawled the 302's target — so the wall RENDERS here now.
+    for (const p of ["/", "/index.html", "/?utm_source=newsletter"]) {
       const r = await get(p);
-      assert.equal(r.status, 302, p + " should send an anonymous visitor away");
-      assert.equal(r.headers.get("location"), "/how-it-works", p + " should land on the front door");
-      // A cached redirect would survive the visitor signing in.
+      assert.equal(r.status, 200, p + " must be a real page for an anonymous visitor");
+      const html = await r.text();
+      assert.ok(isLanding(html), p + " should carry the landing content");
+      assert.ok(!isApp(html), p + " must not leak the app to an anonymous visitor");
+      // What lives at / depends on auth state; a cached copy would survive
+      // the visitor signing in.
+      assert.match(r.headers.get("cache-control") || "", /no-store/, p + " must not be cached");
+    }
+  });
+
+  await t.test("the anonymous root canonicalizes to itself and carries the product's structured data", async () => {
+    const html = await (await get("/")).text();
+    assert.match(html, /<link rel="canonical" href="[^"]*\/"\/>/, "canonical must be the bare root");
+    assert.match(html, /"@type":"WebApplication"/, "the crawler-facing product entity now lives at /");
+  });
+
+  await t.test("/how-it-works canonicalizes to / while the wall is up", async () => {
+    // Same content at two URLs; the signals must consolidate on ONE.
+    const html = await (await get("/how-it-works")).text();
+    assert.match(html, /<link rel="canonical" href="[^"]*\/"\/>/,
+      "under the wall this page is a duplicate of / and must say so");
+  });
+
+  await t.test("/desk still redirects, to the front door at /", async () => {
+    for (const p of ["/desk", "/desk?checkout=success"]) {
+      const r = await get(p);
+      assert.equal(r.status, 302, p + " is a personal workspace with no anonymous rendering");
+      assert.equal(r.headers.get("location"), "/", p + " should land on the front door");
       assert.match(r.headers.get("cache-control") || "", /no-store/, p + " redirect must not be cached");
     }
   });
@@ -97,20 +129,27 @@ test("the wall routes anonymous visitors to /how-it-works", async (t) => {
   await t.test("shared reports stay public", async () => {
     const r = await get("/r/abc123");
     assert.equal(r.status, 200, "a shared link is the whole point of the share feature");
+    assert.ok(isApp(await r.text()), "a shared link renders in the app, not the landing page");
   });
 
   await t.test("the auth door serves the app", async () => {
-    // Without this the signup buttons on /how-it-works point at a redirect
-    // back to /how-it-works, and there is no way to reach the account modal.
+    // Without this the signup buttons on the landing page point straight back
+    // at it, and there is no way to reach the account modal.
     for (const p of ["/?auth=signup", "/?auth=signin"]) {
-      assert.equal((await get(p)).status, 200, p + " must serve index.html");
+      const r = await get(p);
+      assert.equal(r.status, 200, p + " must serve index.html");
+      assert.ok(isApp(await r.text()), p + " must serve the APP — a 200 alone no longer proves that");
     }
     // Anything else in that parameter is not a door.
-    assert.equal((await get("/?auth=whatever")).status, 302);
+    const r = await get("/?auth=whatever");
+    assert.equal(r.status, 200);
+    assert.ok(isLanding(await r.text()), "a junk auth value gets the landing page, not the app");
   });
 
   await t.test("a session cookie is enough to reach the app", async () => {
-    assert.equal((await get("/", FAKE_SESSION)).status, 200);
+    const r = await get("/", FAKE_SESSION);
+    assert.equal(r.status, 200);
+    assert.ok(isApp(await r.text()));
   });
 
   await t.test("but a forged cookie still cannot search", async () => {
@@ -131,10 +170,11 @@ test("the wall routes anonymous visitors to /how-it-works", async (t) => {
     }
   });
 
-  await t.test("the sitemap does not advertise a redirect", async () => {
+  await t.test("the sitemap lists / and not its duplicate", async () => {
     const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
-    assert.ok(!/<loc>[^<]*\/<\/loc>/.test(xml), "the bare / redirects under the wall; do not list it");
-    assert.match(xml, /how-it-works/, "the front door must still be listed");
+    assert.match(xml, /<loc>[^<]*\/<\/loc>/, "/ is a real 200 now and the strongest URL the site has");
+    assert.ok(!/how-it-works/.test(xml),
+      "under the wall /how-it-works canonicalizes to /; listing a self-declared duplicate is a soft error");
   });
 });
 
@@ -147,9 +187,16 @@ test("with the wall off the app is open again", async (t) => {
     assert.equal(r.status, 200);
   });
 
-  await t.test("the sitemap lists / again", async () => {
+  await t.test("the sitemap lists both / and /how-it-works again", async () => {
     const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
-    assert.match(xml, /<loc>[^<]*\/<\/loc>/, "with no wall, / is the landing page again");
+    assert.match(xml, /<loc>[^<]*\/<\/loc>/, "with no wall, / is the app's landing page again");
+    assert.match(xml, /how-it-works/, "with no wall, /how-it-works is its own page again");
+  });
+
+  await t.test("/how-it-works canonicalizes to itself again", async () => {
+    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    assert.match(html, /<link rel="canonical" href="[^"]*\/how-it-works"\/>/,
+      "with / serving the app, this page is no duplicate and keeps its own canonical");
   });
 });
 

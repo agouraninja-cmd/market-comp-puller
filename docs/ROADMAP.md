@@ -16,10 +16,12 @@ intent, the devlog states history.
   2026-08-09: **both `/` and `/how-it-works` are indexed** — but `/` was last
   crawled **2026-07-30**, before both the wall and the fix, so Google has seen
   neither and is holding pre-wall content. Indexing was requested for `/` that
-  day (priority crawl queue). Page Indexing had no data yet.
+  day (priority crawl queue), and the sitemap was resubmitted — Google re-read
+  it immediately, 42 → 44 pages, so `/` now has a referring sitemap. Page
+  Indexing had no data yet. **Both levers are pulled; what is left is waiting.**
   The re-check is: has `/`'s last-crawl date moved past 2026-08-08, and does
   its canonical now read `/` rather than `/how-it-works`? Then read Page
-  Indexing across all 43 URLs. Full findings in `docs/SEO.md` item 3.
+  Indexing across all 44 URLs. Full findings in `docs/SEO.md` item 3.
   Still above every engineering item: as of 2026-08-06 the product had **zero
   real outside users**, so "can anyone find this" is the binding constraint,
   and a thin report is a real answer — evidence to stop investing in SEO, not

@@ -39,7 +39,7 @@ function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
 <style>
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;
   --green:#15803D;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
@@ -114,7 +114,9 @@ h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(-
 .btn.ghost:hover{background:var(--wash);color:var(--ink)}
 .row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
 select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink)}
+  font-family:inherit;font-size:16px;background:#fff;color:var(--ink)}
+/* 16px, not var(--t5): iOS Safari zooms on focus for any input under 16px
+   and stays zoomed — on a data-entry page that means every filter tap. */
 table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
    every header on this page — the broker's own book of record earns the same
@@ -815,7 +817,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     [0,max/2,max].forEach(function(v){
       s+='<line x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
         '" stroke="#E4E2DA" stroke-width="1"/>';
-      s+='<text x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#8A93A0" '+
+      s+='<text x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#68707E" '+
         'font-family="Inter, sans-serif" style="font-variant-numeric:tabular-nums">'+psf0(v)+"</text>";
     });
     pts.forEach(function(p,i){
@@ -828,7 +830,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         '" fill="transparent"><title>'+esc(tip)+"</title></rect>";
       s+='<path d="'+bar(cx-bw/2,y(p.med),bw,h,4)+'" fill="'+(last?"#B91C1C":"#5A6473")+
         '" fill-opacity="'+(last?"1":"0.85")+'" pointer-events="none"/>';
-      s+='<text x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#8A93A0" '+
+      s+='<text x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#68707E" '+
         'font-family="Inter, sans-serif">'+esc(p.year)+"</text>";
       // The endpoint is the one worth reading without hovering.
       if(last){

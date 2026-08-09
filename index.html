@@ -363,8 +363,12 @@
     .rd-cell { padding: 11px 16px; border-right: 1px solid #ECEAE3; }
     .rd-cell:last-child { border-right: 0; }
     .rd-row { border-bottom: 1px solid #ECEAE3; }
-    .rd-lab { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A93A0; font-weight: 600; margin-bottom: 2px; }
-    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 14.5px; color: #1A2433; background: transparent; }
+    .rd-lab { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #68707E; font-weight: 600; margin-bottom: 2px; }
+    /* 16px is load-bearing, not a taste choice: iOS Safari auto-zooms on focus
+       for any input under 16px and never zooms back out, leaving the page
+       zoomed and side-scrolled after tapping the address field — the site's
+       single most-tapped control. Do not "tidy" this back down. */
+    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: #1A2433; background: transparent; }
     .rd-in::placeholder { color: #9AA2AD; }
     select.rd-in { appearance: auto; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
@@ -426,7 +430,7 @@
     /* Live comps table header — the landing exhibit's editorial th at the live
        table's own geometry (padding/alignment stay in the JS-built classes).
        No background here so the sortable hover rule can win. */
-    #compsTable thead th { color: #8A93A0; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid #1A2433; }
+    #compsTable thead th { color: #68707E; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid #1A2433; }
     /* Statement table (Direction B, owner-approved 2026-08-08): the header
        closes under a strong ink rule (above) and the table ends in a median
        row sealed with a double rule — the audited-statement mark for "this
@@ -587,7 +591,7 @@
           <span class="rd-lab">Pro</span>
           <div class="mt-1">
             <span class="text-2xl font-semibold text-[#1A2433]">$129</span>
-            <span class="text-sm text-[#8A93A0]">/month</span>
+            <span class="text-sm text-[#68707E]">/month</span>
           </div>
           <!-- Sell only what ships. Report branding was held off this list
                while it was a real entitlement in entitlements.js with no UI
@@ -626,7 +630,7 @@
             class="pricing-buy btn-live mt-4 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
             Upgrade to Pro
           </button>
-          <p class="text-xs text-[#8A93A0] mt-2">Cancel any time; access runs to the end of the period you paid for.</p>
+          <p class="text-xs text-[#68707E] mt-2">Cancel any time; access runs to the end of the period you paid for.</p>
         </div>
 
         <!-- Founding annual. Hidden unless seats remain. -->
@@ -637,7 +641,7 @@
           </div>
           <div class="mt-1">
             <span class="text-2xl font-semibold text-[#1A2433]">$990</span>
-            <span class="text-sm text-[#8A93A0]">/year</span>
+            <span class="text-sm text-[#68707E]">/year</span>
           </div>
           <ul class="mt-3 space-y-1.5 text-sm text-[#4C5665] flex-1">
             <li>Everything in Pro</li>
@@ -651,7 +655,7 @@
           <!-- $129 x 12 = $1,548 against $990. Recompute this figure if EITHER
                price changes — both are hard-coded here while the actual charge
                comes from the Stripe price IDs, so nothing catches a drift. -->
-          <p class="text-xs text-[#8A93A0] mt-2">Saves $558 a year against paying monthly, billed once a year.</p>
+          <p class="text-xs text-[#68707E] mt-2">Saves $558 a year against paying monthly, billed once a year.</p>
         </div>
       </div>
 
@@ -668,7 +672,7 @@
           <span class="rd-lab">Just this report</span>
           <div class="mt-1">
             <span class="text-2xl font-semibold text-[#1A2433]">$20</span>
-            <span class="text-sm text-[#8A93A0]">once</span>
+            <span class="text-sm text-[#68707E]">once</span>
           </div>
           <!-- What this buys is now every Pro capability that is SCOPED TO A
                PROPERTY: all comps, the ten-year window, unlimited exports,
@@ -691,7 +695,7 @@
       </div>
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
-      <p class="text-xs text-[#8A93A0] mt-4">
+      <p class="text-xs text-[#68707E] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms</a>.
       </p>
       <button id="pricingCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-2 mt-2">Not now</button>
@@ -945,7 +949,7 @@
                    lists it as a Pro perk. Stays exactly as written here while
                    the tier is dark, which is the pre-Pro behavior PRO_ENABLED
                    promises. -->
-              <button id="exploreAddrLink" type="button" class="text-xs text-[#8A93A0] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
+              <button id="exploreAddrLink" type="button" class="text-xs text-[#68707E] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
             </div>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
             <!-- The property type lives under the address it describes, as a
@@ -953,9 +957,9 @@
                  building, and the confirm dialog is where it gets settled.
                  The picker is revealed on demand so someone who wants to
                  decide up front still can. -->
-            <div id="typeStatusLine" class="text-xs text-[#8A93A0] mt-1"></div>
+            <div id="typeStatusLine" class="text-xs text-[#68707E] mt-1"></div>
             <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
-            <div id="typeAutoNote" class="text-xs text-[#8A93A0] mt-1"></div>
+            <div id="typeAutoNote" class="text-xs text-[#68707E] mt-1"></div>
           </div>
           <div class="rd-cell">
             <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
@@ -992,7 +996,7 @@
               class="w-56 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
             <button id="exploreAddrBtn" type="button"
               class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded px-3 py-1.5">Find addresses</button>
-            <span id="exploreAddrStatus" class="text-xs text-[#8A93A0]"></span>
+            <span id="exploreAddrStatus" class="text-xs text-[#68707E]"></span>
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
@@ -1010,7 +1014,7 @@
               <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
               <span class="text-sm text-slate-500 shrink-0">months</span>
             </div>
-            <div id="lookbackHint" class="text-xs text-[#8A93A0] mt-1"></div>
+            <div id="lookbackHint" class="text-xs text-[#68707E] mt-1"></div>
           </div>
           <div class="rd-cell" id="txFocusWrap">
             <label class="rd-lab" for="txFocus">Focus</label>
@@ -1029,10 +1033,10 @@
         <!-- Subject property (optional; size now lives up in row 1) -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(price, NOI: optional, sharpens the estimate)</span></span>
+            <span id="subjectSummary">+ Your property details <span class="text-[#68707E] font-normal">(price, NOI: optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size is up top; it's pulled from public records automatically when left blank.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3">Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size is up top; it's pulled from public records automatically when left blank.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
@@ -1045,7 +1049,7 @@
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
                 <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                <p class="text-xs text-[#8A93A0] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
+                <p class="text-xs text-[#68707E] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
               </div>
               <div id="subjectTypeFields" class="contents"></div>
             </div>
@@ -1106,7 +1110,7 @@
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <span class="rd-lab">Recent searches</span>
           <div class="flex items-center gap-3">
-            <span id="historyCount" class="text-xs text-[#8A93A0]"></span>
+            <span id="historyCount" class="text-xs text-[#68707E]"></span>
             <input id="historyFilter" type="search" autocomplete="off" placeholder="Filter by address or type"
               class="hidden w-52 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <button id="clearHistoryBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
@@ -1127,7 +1131,7 @@
       <div class="mt-4">
         <div class="flex items-center gap-2">
           <span class="rd-lab">Portfolio</span>
-          <span id="deskCount" class="text-xs text-[#8A93A0]"></span>
+          <span id="deskCount" class="text-xs text-[#68707E]"></span>
         </div>
         <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and press "Save to portfolio" to start tracking a property here.</p>
         <div id="portfolioGrid" class="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
@@ -1150,7 +1154,7 @@
       <div id="deskBroker" class="hidden mt-8">
         <div class="flex items-center gap-2">
           <span class="rd-lab">Broker</span>
-          <span id="brokerStats" class="text-xs text-[#8A93A0]"></span>
+          <span id="brokerStats" class="text-xs text-[#68707E]"></span>
         </div>
         <div id="brokerRows" class="mt-2 space-y-1.5"></div>
         <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
@@ -1163,7 +1167,7 @@
           <a id="brokerProfileLink" class="hidden text-[#B91C1C] underline" href="#" target="_blank" rel="noopener">View profile</a>
           <span id="brokerProfileErr" class="hidden text-red-600 text-xs"></span>
         </div>
-        <p class="text-xs text-[#8A93A0] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
+        <p class="text-xs text-[#68707E] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
       </div>
 
       <!-- Client sharing — two lists, one GET (/api/shares) covers both. A 401
@@ -1207,7 +1211,7 @@
             <button type="button" id="brandLogoRemove" class="text-sm text-slate-500 hover:text-slate-700">Remove logo</button>
             <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
           </div>
-          <p class="text-xs text-[#8A93A0] mt-1">PNG or JPEG. Resized automatically for print.</p>
+          <p class="text-xs text-[#68707E] mt-1">PNG or JPEG. Resized automatically for print.</p>
 
           <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
@@ -1233,7 +1237,7 @@
           </div>
 
           <div class="mt-4">
-            <span class="text-xs font-medium text-[#8A93A0] uppercase tracking-wide">Preview</span>
+            <span class="text-xs font-medium text-[#68707E] uppercase tracking-wide">Preview</span>
             <div id="brandPreview" class="mt-1 border border-[#D8D4C9] rounded-lg bg-white p-3"></div>
           </div>
         </div>
@@ -1252,8 +1256,8 @@
         <span class="rd-lab">Broker vault</span>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
           <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
-          <div id="vaultCardDetail" class="text-xs text-[#8A93A0] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
-          <div id="vaultCardLeads" class="hidden text-xs text-[#8A93A0] mt-1"></div>
+          <div id="vaultCardDetail" class="text-xs text-[#68707E] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
+          <div id="vaultCardLeads" class="hidden text-xs text-[#68707E] mt-1"></div>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <a id="vaultOpenBtn" href="/vault"
               class="btn-live inline-flex items-center text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Open your vault</a>
@@ -1265,7 +1269,7 @@
         <span class="rd-lab">Plan</span>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
           <div id="billingStatus" class="text-sm font-semibold text-[#1A2433]"></div>
-          <div id="billingDetail" class="text-xs text-[#8A93A0] mt-1"></div>
+          <div id="billingDetail" class="text-xs text-[#68707E] mt-1"></div>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button id="billingUpgradeBtn" type="button"
               class="hidden btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Upgrade to Pro</button>
@@ -1390,7 +1394,7 @@
         <!-- Monthly export allowance. Hidden entirely for Pro, for anyone with
              the tier switched off, and until we've actually been told a number —
              a blank counter is worse than none. -->
-        <span id="exportAllowance" class="hidden inline-flex items-center text-xs text-[#8A93A0]"></span>
+        <span id="exportAllowance" class="hidden inline-flex items-center text-xs text-[#68707E]"></span>
       </div>
 
       <!-- Captured / printed region -->
@@ -1455,7 +1459,7 @@
                   <input id="usdToggle" type="checkbox" class="mr-1.5">
                   <span>Show in USD</span>
                 </label>
-                <span id="currencyNote" aria-live="polite" class="text-xs text-[#8A93A0]"></span>
+                <span id="currencyNote" aria-live="polite" class="text-xs text-[#68707E]"></span>
               </div>
             </div>
           </div>
@@ -1466,23 +1470,23 @@
         <div id="ownerHero" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">What This Building Is Worth</h2>
-            <span id="ownerBasis" class="text-xs text-[#8A93A0] text-right"></span>
+            <span id="ownerBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div class="rd-ledger">
             <div class="rd-lcell">
               <div class="rd-lab">Low</div>
               <div id="ownerLow" class="rd-h rd-lfig mt-1">-</div>
-              <div id="ownerLowPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="ownerLowPpsf" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-lcell mid">
               <div class="rd-lab">Likely</div>
               <div id="ownerMid" class="rd-h rd-lfig mt-1">-</div>
-              <div id="ownerMidPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="ownerMidPpsf" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-lcell">
               <div class="rd-lab">High</div>
               <div id="ownerHigh" class="rd-h rd-lfig mt-1">-</div>
-              <div id="ownerHighPpsf" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="ownerHighPpsf" class="text-xs text-[#68707E] mt-1"></div>
             </div>
           </div>
           <!-- No-estimate rescue: shown only by renderOwnerHero's dash branch
@@ -1504,7 +1508,7 @@
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
-          <p class="text-xs text-[#8A93A0] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
+          <p class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
             <button id="bovCtaBtn" type="button"
               class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
@@ -1539,7 +1543,7 @@
         <div id="dcfCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Hold or Sell? (DCF Analysis)</h2>
-            <span id="dcfBasis" class="text-xs text-[#8A93A0] text-right"></span>
+            <span id="dcfBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <div>
@@ -1567,7 +1571,7 @@
             <div id="dcfSellTile" class="rd-tile">
               <div class="rd-lab">Sell today (est.)</div>
               <div id="dcfSellVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div id="dcfSellSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="dcfSellSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile-hi">
               <div id="dcfHoldLabel" class="rd-lab">Hold (DCF value)</div>
@@ -1577,12 +1581,12 @@
             <div id="dcfVerdictTile" class="rd-tile">
               <div class="rd-lab">Verdict</div>
               <div id="dcfVerdict" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div id="dcfVerdictSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="dcfVerdictSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
           </div>
           <p id="dcfWhatIs" class="text-sm text-[#4C5665] leading-relaxed mt-4"></p>
           <p id="dcfHoldSell" class="text-sm text-[#4C5665] leading-relaxed mt-2"></p>
-          <p class="text-xs text-[#8A93A0] mt-4">Automated planning estimate: unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
+          <p class="text-xs text-[#68707E] mt-4">Automated planning estimate: unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
         </div>
 
         <!-- Signed-out gate for the toolkit below: one calm framed nudge stands
@@ -1617,24 +1621,24 @@
             <div class="rd-tile">
               <div class="rd-lab">Your expense ratio</div>
               <div id="opexRatio" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="opexRatioSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="opexRatioSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile">
               <div class="rd-lab">Typical for this market</div>
               <div id="opexBand" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="opexBandSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="opexBandSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile">
               <div class="rd-lab">Your operating expenses</div>
               <div id="opexDollars" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="opexDollarsSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="opexDollarsSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
           </div>
           <div class="rd-tile-hi mt-4">
             <div class="rd-lab">Expense Benchmark<span id="opexVerdict"></span></div>
             <p id="opexRead" class="text-sm text-[#374253] mt-1"></p>
           </div>
-          <p class="text-xs text-[#8A93A0] mt-4">Automated benchmark from this search, not an audit of your books. Your income figures stay in your browser.</p>
+          <p class="text-xs text-[#68707E] mt-4">Automated benchmark from this search, not an audit of your books. Your income figures stay in your browser.</p>
         </div>
 
         <!-- Debt & refi — DSCR / LTV / debt yield + refi headroom, computed on the
@@ -1644,7 +1648,7 @@
         <div id="debtCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Debt &amp; Refi Check</h2>
-            <span id="debtBasis" class="text-xs text-[#8A93A0] text-right"></span>
+            <span id="debtBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
             <div>
@@ -1667,22 +1671,22 @@
             <div class="rd-tile">
               <div class="rd-lab">Annual debt service</div>
               <div id="debtSvc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtSvcSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="debtSvcSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile">
               <div class="rd-lab">DSCR</div>
               <div id="debtDscr" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtDscrSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="debtDscrSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile">
               <div class="rd-lab">LTV</div>
               <div id="debtLtv" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtLtvSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="debtLtvSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile">
               <div class="rd-lab">Debt yield</div>
               <div id="debtYield" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtYieldSub" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="debtYieldSub" class="text-xs text-[#68707E] mt-1"></div>
             </div>
           </div>
           <div class="rd-tile-hi mt-4">
@@ -1690,7 +1694,7 @@
             <div id="debtHeadroom" class="rd-h text-[30px] mt-1">—</div>
             <div id="debtHeadroomSub" class="text-xs text-[#5A6473] mt-1"></div>
           </div>
-          <p class="text-xs text-[#8A93A0] mt-4">Loan terms stay in your browser and your own portfolio, never on shared links. Screening math at market-standard limits, not a loan quote.</p>
+          <p class="text-xs text-[#68707E] mt-4">Loan terms stay in your browser and your own portfolio, never on shared links. Screening math at market-standard limits, not a loan quote.</p>
         </div>
 
         <!-- Sensitivity — DCF value across exit cap × NOI growth. Same math as
@@ -1698,10 +1702,10 @@
         <div id="sensCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Sensitivity (DCF Value)</h2>
-            <span id="sensBasis" class="text-xs text-[#8A93A0] text-right"></span>
+            <span id="sensBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div id="sensBody" class="overflow-x-auto"></div>
-          <p id="sensNote" class="text-xs text-[#8A93A0] mt-3"></p>
+          <p id="sensNote" class="text-xs text-[#68707E] mt-3"></p>
         </div>
 
         <!-- Rent roll & rollover — standalone risk view (WALT, occupancy, expiry
@@ -1710,7 +1714,7 @@
         <div id="rentRollCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Rent Roll &amp; Rollover</h2>
-            <span id="rrBasis" class="text-xs text-[#8A93A0] text-right"></span>
+            <span id="rrBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div id="rrRows" class="no-print space-y-2 mb-2"></div>
           <button id="rrAdd" type="button" class="no-print btn-live text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5 mb-4">+ Add lease</button>
@@ -1719,22 +1723,22 @@
               <div class="rd-tile">
                 <div class="rd-lab">WALT</div>
                 <div id="rrWalt" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-                <div class="text-xs text-[#8A93A0] mt-1">rent-weighted avg lease term</div>
+                <div class="text-xs text-[#68707E] mt-1">rent-weighted avg lease term</div>
               </div>
               <div class="rd-tile">
                 <div class="rd-lab">Occupancy</div>
                 <div id="rrOcc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-                <div id="rrOccSub" class="text-xs text-[#8A93A0] mt-1"></div>
+                <div id="rrOccSub" class="text-xs text-[#68707E] mt-1"></div>
               </div>
               <div class="rd-tile">
                 <div class="rd-lab">Total base rent</div>
                 <div id="rrRent" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-                <div id="rrRentSub" class="text-xs text-[#8A93A0] mt-1"></div>
+                <div id="rrRentSub" class="text-xs text-[#68707E] mt-1"></div>
               </div>
             </div>
             <div id="rrScheduleWrap" class="overflow-x-auto mt-4"></div>
           </div>
-          <p class="text-xs text-[#8A93A0] mt-4">Lease data stays in your browser and your own portfolio, never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
+          <p class="text-xs text-[#68707E] mt-4">Lease data stays in your browser and your own portfolio, never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
         </div>
 
         <!-- no-print: an instruction to interact with the app is noise on paper. -->
@@ -1771,18 +1775,18 @@
           <!-- Price-discovery read: the market's momentum + how open it looks to
                pricing above recent comps. An automated read of conditions, not advice. -->
           <div id="priceDiscovery" class="hidden mt-3 pt-3 border-t border-[#F0EFE9]">
-            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">Price Discovery<span id="priceDiscoveryDir"></span></div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#68707E] mb-1">Price Discovery<span id="priceDiscoveryDir"></span></div>
             <p id="priceDiscoveryNote" class="text-sm text-[#374253]"></p>
           </div>
           <!-- The user's own price-discovery read — an opinion recorded next to
                the automated one, never replacing it. Prints and shares. -->
           <div id="userRead" class="hidden mt-3 pt-3 border-t border-[#F0EFE9]">
-            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1"><span id="userReadLabel">Your read</span><span id="userReadDir"></span></div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#68707E] mb-1"><span id="userReadLabel">Your read</span><span id="userReadDir"></span></div>
             <p id="userReadNote" class="text-sm text-[#374253]"></p>
           </div>
           <div id="userReadControls" class="no-print no-capture hidden mt-3 pt-3 border-t border-[#F0EFE9]">
-            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">Your read of this market</div>
-            <p class="text-xs text-[#8A93A0] mb-2">The read above is automated. Agree or disagree; record your own call here. It's saved with this report and appears next to the automated read on prints, exports, and shared links (labeled &ldquo;Owner's read&rdquo;).</p>
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#68707E] mb-1">Your read of this market</div>
+            <p class="text-xs text-[#68707E] mb-2">The read above is automated. Agree or disagree; record your own call here. It's saved with this report and appears next to the automated read on prints, exports, and shared links (labeled &ldquo;Owner's read&rdquo;).</p>
             <div class="flex flex-wrap items-center gap-2">
               <div class="inline-flex rounded border border-[#D8D4C9] overflow-hidden" role="group" aria-label="Your price-discovery read">
                 <button type="button" data-read-dir="expanding" class="px-3 py-1.5 text-xs font-medium">Expanding</button>
@@ -1791,9 +1795,9 @@
               </div>
               <input id="userReadNoteInput" type="text" maxlength="140" placeholder="Note (optional)" aria-label="Note (optional)"
                 class="flex-1 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-xs text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-              <span id="userReadSavedFlash" class="text-xs text-[#8A93A0]" aria-live="polite"></span>
+              <span id="userReadSavedFlash" class="text-xs text-[#68707E]" aria-live="polite"></span>
             </div>
-            <p class="text-xs text-[#8A93A0] mt-2">Click a direction again to clear it.</p>
+            <p class="text-xs text-[#68707E] mt-2">Click a direction again to clear it.</p>
           </div>
         </div>
 
@@ -1803,7 +1807,7 @@
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comp Map</h2>
           </div>
           <div id="compMap" style="height: 340px;"></div>
-          <p class="text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9]">
+          <p class="text-xs text-[#68707E] px-6 py-2 border-t border-[#F0EFE9]">
             Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
           </p>
         </div>
@@ -1815,12 +1819,12 @@
             <div class="rd-tile">
               <div class="rd-lab">Your Property $/SF</div>
               <div id="targetPpsfVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div id="targetBasis" class="text-xs text-[#8A93A0] mt-1"></div>
+              <div id="targetBasis" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile">
               <div class="rd-lab">Market Avg $/SF</div>
               <div id="marketPpsfVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div class="text-xs text-[#8A93A0] mt-1">from pulled comps</div>
+              <div class="text-xs text-[#68707E] mt-1">from pulled comps</div>
             </div>
             <div id="deltaTile" class="rd-tile">
               <div class="text-xs font-semibold uppercase tracking-wider opacity-70">Difference vs. Market</div>
@@ -1835,9 +1839,9 @@
         <div id="chartCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-1">
             <h2 id="chartTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Market Position</h2>
-            <span id="chartBasis" class="text-xs text-[#8A93A0]"></span>
+            <span id="chartBasis" class="text-xs text-[#68707E]"></span>
           </div>
-          <p class="text-xs text-[#8A93A0] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
+          <p class="text-xs text-[#68707E] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
           <div id="chartWrap"></div>
         </div>
 
@@ -1856,18 +1860,18 @@
           </div>
           <!-- Search radius: surfaces the geographic scope the model used to gather
                comps (wider in thin/rural markets). Hidden until the model returns one. -->
-          <p id="searchRadiusNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
+          <p id="searchRadiusNote" class="hidden text-xs text-[#68707E] px-6 py-2 border-b border-[#F0EFE9]"></p>
           <!-- Breadth framing: how many transactions were weighed vs. how many were
                kept as the most comparable. Hidden unless the model returns a count. -->
-          <p id="reviewedNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
+          <p id="reviewedNote" class="hidden text-xs text-[#68707E] px-6 py-2 border-b border-[#F0EFE9]"></p>
           <!-- How tight the comp set is geographically. Written by
                renderDistanceNote() once pins geocode, so it appears a beat
                after the first paint on a fresh report. -->
-          <p id="distanceNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
+          <p id="distanceNote" class="hidden text-xs text-[#68707E] px-6 py-2 border-b border-[#F0EFE9]"></p>
           <!-- Curation audit trail: what the user changed about the comp set.
                Deliberately NOT no-print — it must travel in print/PNG so a
                curated report says so. Hidden on shared reports with no edits. -->
-          <p id="curationNote" class="hidden text-xs text-[#8A93A0] px-6 py-2 border-b border-[#F0EFE9]"></p>
+          <p id="curationNote" class="hidden text-xs text-[#68707E] px-6 py-2 border-b border-[#F0EFE9]"></p>
           <!-- Mobile card list: same data as the table, stacked for small screens -->
           <div id="cardList" class="sm:hidden divide-y divide-[#F0EFE9]"></div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
@@ -1894,7 +1898,7 @@
           <!-- Legend listing the provenance badges present in the visible comps; kept
                in exports so the badges are explained wherever the report travels.
                Built by renderBadgeLegend(). -->
-          <p id="badgeLegend" class="hidden text-xs leading-6 text-[#8A93A0] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
+          <p id="badgeLegend" class="hidden text-xs leading-6 text-[#68707E] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
           <!-- Vault-comp disclosure. Deliberately NOT no-print/no-capture, unlike
                almost everything else down here: the private rows themselves ARE
                stripped from the print and the PNG, and this line is the only
@@ -1902,7 +1906,7 @@
                renderPrivateNotice(); the CSV and XLSX say the same thing in
                their own title rows. -->
           <p id="privateNotice" class="hidden text-xs leading-6 text-[#5A6473] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
-          <p class="hidden sm:block text-xs text-[#8A93A0] px-6 py-2 border-t border-[#F0EFE9] no-print">Click a column header to sort.</p>
+          <p class="hidden sm:block text-xs text-[#68707E] px-6 py-2 border-t border-[#F0EFE9] no-print">Click a column header to sort.</p>
           <!-- Add-your-own-comp form: client-only, never sent to the server. Hidden
                entirely for shared viewers (curationControlsAllowed() gate). -->
           <div id="addCompWrap" class="no-print no-capture px-6 py-3 border-t border-[#F0EFE9]">
@@ -1945,7 +1949,7 @@
               <div class="flex items-center gap-3 mt-3">
                 <button id="acSubmit" type="button" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Add to report</button>
                 <button id="acCancel" type="button" class="text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">Cancel</button>
-                <span class="text-xs text-[#8A93A0]">Stays in your report, never added to CompNinja's data.</span>
+                <span class="text-xs text-[#68707E]">Stays in your report, never added to CompNinja's data.</span>
               </div>
             </div>
           </div>
@@ -1960,8 +1964,8 @@
                not report content: the comps that matter appear in the real
                table once added, so the whole section stays out of print/PNG. -->
           <div id="corpusOffer" class="hidden no-print no-capture px-6 py-4 border-t border-[#F0EFE9]">
-            <div class="text-xs font-semibold uppercase tracking-wider text-[#8A93A0] mb-1">From CompNinja's records</div>
-            <p class="text-xs text-[#8A93A0] mb-3">Comps CompNinja has gathered for this market. Add any that fit; they join your report's math and keep their source badge.</p>
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#68707E] mb-1">From CompNinja's records</div>
+            <p class="text-xs text-[#68707E] mb-3">Comps CompNinja has gathered for this market. Add any that fit; they join your report's math and keep their source badge.</p>
             <div id="corpusOfferRows" class="space-y-2"></div>
           </div>
         </div>
@@ -1970,15 +1974,15 @@
 
         <!-- Member disclaimer: additive only. The automated-estimate line
              right below is never removed by any branding configuration. -->
-        <p id="memberDisclaimer" class="hidden text-center text-xs text-[#8A93A0]"></p>
+        <p id="memberDisclaimer" class="hidden text-center text-xs text-[#68707E]"></p>
 
         <!-- Disclaimer (kept inside the report so it appears in images/prints) -->
-        <p class="text-center text-xs text-[#8A93A0]">
+        <p class="text-center text-xs text-[#68707E]">
           Prepared by CompNinja · Comparables are derived from publicly available data and are intended as a starting point, not a system of record. Independently verify before relying on them for underwriting.
         </p>
 
         <!-- Print footer -->
-        <div class="print-only pt-3 mt-2 border-t border-[#E4E2DA] text-center text-xs text-[#8A93A0]">
+        <div class="print-only pt-3 mt-2 border-t border-[#E4E2DA] text-center text-xs text-[#68707E]">
           <!-- Filled by renderReportBrand(): the member's firm name and
                contact line, above the CompNinja line below, which stays
                unconditionally. -->
@@ -2018,7 +2022,7 @@
         <div class="rd-kicker">Market Explorer</div>
         <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the page.</h2>
         <p class="text-sm text-[#4C5665] mb-1 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot (about a minute).</p>
-        <p class="text-sm text-[#8A93A0] mb-5 max-w-[58ch]">Standing market pages, separate from the property valuation above.</p>
+        <p class="text-sm text-[#68707E] mb-5 max-w-[58ch]">Standing market pages, separate from the property valuation above.</p>
         <div class="relative max-w-sm mb-5">
           <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
                  class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
@@ -3247,7 +3251,7 @@
   const MATCH_TIERS = [
     { min: 0.6, label: "Strong", cls: "text-[#1A2433] font-medium" },
     { min: 0.3, label: "Fair",   cls: "text-[#5A6473]" },
-    { min: 0,   label: "Weak",   cls: "text-[#8A93A0]" },
+    { min: 0,   label: "Weak",   cls: "text-[#68707E]" },
   ];
 
   // The subject size the weighting compares against: the user's entry first,
@@ -3490,7 +3494,7 @@
       if (!entries.length) return;
       entries.forEach((e, i) => {
         const p = document.createElement("p");
-        p.className = (e.muted ? "text-xs text-[#8A93A0]" : "text-sm text-[#4C5665] leading-relaxed") + (i ? " mt-2" : "");
+        p.className = (e.muted ? "text-xs text-[#68707E]" : "text-sm text-[#4C5665] leading-relaxed") + (i ? " mt-2" : "");
         const b = document.createElement("strong");
         b.className = e.muted ? "" : "text-[#1A2433]";
         b.textContent = e.label + ": ";
@@ -4432,12 +4436,12 @@
     table.className = "w-full text-xs border-collapse";
     const head = document.createElement("tr");
     const corner = document.createElement("th");
-    corner.className = "text-left font-medium text-[#8A93A0] p-1.5 whitespace-nowrap";
+    corner.className = "text-left font-medium text-[#68707E] p-1.5 whitespace-nowrap";
     corner.textContent = "exit cap ↓ · growth →";
     head.appendChild(corner);
     growths.forEach((g) => {
       const th = document.createElement("th");
-      th.className = "font-medium p-1.5 text-right whitespace-nowrap " + (g === a.noiGrowthPct ? "text-[#1A2433]" : "text-[#8A93A0]");
+      th.className = "font-medium p-1.5 text-right whitespace-nowrap " + (g === a.noiGrowthPct ? "text-[#1A2433]" : "text-[#68707E]");
       th.textContent = pct1(g) + "%";
       head.appendChild(th);
     });
@@ -4445,7 +4449,7 @@
     caps.forEach((c) => {
       const tr = document.createElement("tr");
       const th = document.createElement("th");
-      th.className = "text-left font-medium p-1.5 whitespace-nowrap " + (c === a.exitCapPct ? "text-[#1A2433]" : "text-[#8A93A0]");
+      th.className = "text-left font-medium p-1.5 whitespace-nowrap " + (c === a.exitCapPct ? "text-[#1A2433]" : "text-[#68707E]");
       th.textContent = pct1(c) + "%";
       tr.appendChild(th);
       growths.forEach((g) => {
@@ -4521,7 +4525,7 @@
     row.appendChild(mk("rr-end w-20", "Expires", lease.endYear || "", "Expiration year"));
     const del = document.createElement("button");
     del.type = "button";
-    del.className = "text-[#8A93A0] hover:text-red-700 text-lg leading-none px-1";
+    del.className = "text-[#68707E] hover:text-red-700 text-lg leading-none px-1";
     del.textContent = "×";
     del.title = "Remove lease";
     del.addEventListener("click", () => { row.remove(); syncRentRoll(); });
@@ -4580,7 +4584,7 @@
     const head = document.createElement("tr");
     ["Expires", "Leases", "SF", "% of rent"].forEach((h, i) => {
       const th = document.createElement("th");
-      th.className = "font-medium text-[#8A93A0] p-1.5 " + (i === 0 ? "text-left" : "text-right");
+      th.className = "font-medium text-[#68707E] p-1.5 " + (i === 0 ? "text-left" : "text-right");
       th.textContent = h;
       head.appendChild(th);
     });
@@ -4867,8 +4871,8 @@
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
     const loHiY = compact ? baseY + 52 : baseY + 38;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="#8A93A0" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="#8A93A0" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="#68707E" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="#68707E" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
@@ -6414,7 +6418,7 @@
     el.innerHTML =
       '<div class="spread-track"><div class="spread-fill"></div>' +
       '<div class="spread-marker" style="left:' + pct.toFixed(1) + '%"></div></div>' +
-      '<div class="flex justify-between mt-1 text-[10px] text-[#8A93A0]">' +
+      '<div class="flex justify-between mt-1 text-[10px] text-[#68707E]">' +
         '<span>' + formatUsd(lo, { maximumFractionDigits: 0 }) + '</span>' +
         '<span>' + formatUsd(hi, { maximumFractionDigits: 0 }) + '</span>' +
       '</div>';
@@ -6849,7 +6853,7 @@
       addr.addEventListener("click", () => openHistoryReport(r));
     }
     const sub = document.createElement("div");
-    sub.className = "text-xs text-[#8A93A0]";
+    sub.className = "text-xs text-[#68707E]";
     sub.textContent = [r.meta.type, histDate(r.ts)].filter(Boolean).join(" · ");
     left.append(addr, sub);
 
@@ -7358,7 +7362,7 @@
       addr.addEventListener("click", () => openPortfolioItem(item.id));
       card.appendChild(addr);
       const sub = document.createElement("div");
-      sub.className = "text-xs text-[#8A93A0]";
+      sub.className = "text-xs text-[#68707E]";
       sub.textContent = `${item.property_type} · updated ${new Date(item.updated_at).toLocaleDateString()}`;
       card.appendChild(sub);
       const val = document.createElement("div");
@@ -7385,7 +7389,7 @@
       });
       const del = document.createElement("button");
       del.type = "button";
-      del.className = "text-[#8A93A0] hover:text-red-700";
+      del.className = "text-[#68707E] hover:text-red-700";
       del.textContent = "Remove";
       del.addEventListener("click", async () => {
         if (!confirm(`Remove ${item.address} from your portfolio?`)) return;
@@ -7490,7 +7494,7 @@
       title.className = "text-sm font-medium text-[#1A2433]";
       title.textContent = `${w.property_type} · ${w.market}`;
       const right = document.createElement("div");
-      right.className = "flex items-center gap-3 text-xs text-[#8A93A0]";
+      right.className = "flex items-center gap-3 text-xs text-[#68707E]";
       if (w.median_psf) {
         const m = document.createElement("span");
         m.textContent = `median $${w.median_psf}/SF of recently collected sale comps`;
@@ -7534,7 +7538,7 @@
             a.href = c.source_url;
             a.target = "_blank";
             a.rel = "noopener noreferrer";
-            a.className = "text-[#8A93A0] underline hover:text-[#1A2433]";
+            a.className = "text-[#68707E] underline hover:text-[#1A2433]";
             a.textContent = "source";
             li.appendChild(a);
           }
@@ -7543,7 +7547,7 @@
         box.appendChild(ul);
       } else {
         const q = document.createElement("div");
-        q.className = "text-xs text-[#8A93A0] mt-2";
+        q.className = "text-xs text-[#68707E] mt-2";
         q.textContent = "Quiet since your last visit.";
         box.appendChild(q);
       }
@@ -7583,7 +7587,7 @@
   const BROKER_STATUS_CHIP = {
     approved: "text-[#06603A] bg-[#E7F5EE] border-[#BFE5D2]",
     pending:  "text-[#8A6D1A] bg-[#FBF3DC] border-[#EDDFB0]",
-    rejected: "text-[#8A93A0] bg-[#F1F0EC] border-[#D8D4C9]",
+    rejected: "text-[#68707E] bg-[#F1F0EC] border-[#D8D4C9]",
   };
   async function renderBrokerDesk() {
     const box = document.getElementById("deskBroker");
@@ -7604,7 +7608,7 @@
       addr.textContent = sub.address;
       row.appendChild(addr);
       const meta = document.createElement("span");
-      meta.className = "text-xs text-[#8A93A0]";
+      meta.className = "text-xs text-[#68707E]";
       meta.textContent = [sub.property_type, sub.transaction, sub.deal_date].filter(Boolean).join(" · ");
       row.appendChild(meta);
       const st = ["approved", "rejected"].includes(sub.status) ? sub.status : "pending";
@@ -7723,7 +7727,7 @@
     addr.textContent = r.address;
     head.appendChild(addr);
     const type = document.createElement("span");
-    type.className = "text-xs text-[#8A93A0]";
+    type.className = "text-xs text-[#68707E]";
     type.textContent = r.type;
     head.appendChild(type);
     card.appendChild(head);
@@ -7731,7 +7735,7 @@
     // Status line: revoked wins over visibility — a report can be "invited"
     // AND turned off, and "Link turned off" is the more useful thing to say.
     const status = document.createElement("div");
-    status.className = "text-xs mt-1 " + (revoked ? "text-[#8A93A0]" : "text-[#4C5665]");
+    status.className = "text-xs mt-1 " + (revoked ? "text-[#68707E]" : "text-[#4C5665]");
     status.textContent = revoked
       ? "Link turned off"
       : (invited ? `${viewers.length} invited` : "Anyone with the link");
@@ -7776,7 +7780,7 @@
       saveBtn.textContent = "Save";
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
-      cancelBtn.className = "text-[#8A93A0] hover:text-[#1A2433]";
+      cancelBtn.className = "text-[#68707E] hover:text-[#1A2433]";
       cancelBtn.textContent = "Cancel";
       editActions.appendChild(saveBtn); editActions.appendChild(cancelBtn);
       editWrap.appendChild(editActions);
@@ -7798,7 +7802,7 @@
       }
       const offBtn = document.createElement("button");
       offBtn.type = "button";
-      offBtn.className = "text-[#8A93A0] hover:text-red-700";
+      offBtn.className = "text-[#68707E] hover:text-red-700";
       offBtn.textContent = "Turn off link";
       offBtn.addEventListener("click", async () => {
         rowErr.classList.add("hidden");
@@ -7864,7 +7868,7 @@
       if (r.invitedBy) bits.push(`from ${r.invitedBy}`);
       if (r.invitedAt) bits.push(`shared ${fmtShareDate(r.invitedAt)}`);
       const meta = document.createElement("span");
-      meta.className = "text-xs text-[#8A93A0]";
+      meta.className = "text-xs text-[#68707E]";
       meta.textContent = bits.filter(Boolean).join(" · ");
       row.appendChild(meta);
       wrap.appendChild(row);
@@ -8080,7 +8084,7 @@
         lockupDefault.classList.remove("hidden");
       });
       const via = document.createElement("div");
-      via.className = "text-xs text-[#8A93A0] mt-1";
+      via.className = "text-xs text-[#68707E] mt-1";
       via.textContent = "via CompNinja";
       lockupBrand.appendChild(via);
     } else {
@@ -8147,7 +8151,7 @@
     const hasContent = b.logo || b.firmName || b.preparerName || b.phone || b.email || b.licenseNumber || b.disclaimer;
     if (!hasContent) {
       const empty = document.createElement("p");
-      empty.className = "text-sm text-[#8A93A0]";
+      empty.className = "text-sm text-[#68707E]";
       empty.textContent = "Add a logo or firm name to see how your reports will look.";
       box.appendChild(empty);
       return;
@@ -8174,12 +8178,12 @@
     }
     if (b.disclaimer) {
       const disc = document.createElement("p");
-      disc.className = "text-xs text-[#8A93A0] mt-2";
+      disc.className = "text-xs text-[#68707E] mt-2";
       disc.textContent = b.disclaimer;
       box.appendChild(disc);
     }
     const attribution = document.createElement("p");
-    attribution.className = "text-xs text-[#8A93A0] mt-3 border-t border-[#D8D4C9] pt-2";
+    attribution.className = "text-xs text-[#68707E] mt-3 border-t border-[#D8D4C9] pt-2";
     attribution.textContent = "Prepared with CompNinja · an automated estimate, not an appraisal.";
     box.appendChild(attribution);
   }
@@ -8457,6 +8461,34 @@
   document.getElementById("footerSubmitComp").addEventListener("click", openCompModal);
 
   // ----------------------------------------------------------------------------
+  // Escape closes the topmost open modal, by clicking that modal's own cancel
+  // control — the click path is the one that carries each modal's extra
+  // semantics (leadCancel clears the pending export, closeAcctModal clears
+  // pending flags), so routing through it can never drift from the button.
+  // confirmModal is absent here because it registers its own Escape handler
+  // (cancelConfirmModal, further down). Until this existed, Escape was a dead
+  // key in every modal but confirm — and worse, the report-close handler
+  // below would fire UNDER the pricing modal and silently discard the report.
+  // ----------------------------------------------------------------------------
+  const MODAL_CANCELS = [
+    ["pricingModal", "pricingCancel"],
+    ["shareModal", "shareCancelBtn"],
+    ["leadModal", "leadCancel"],
+    ["compModal", "compCancel"],
+    ["acctModal", "acctCancel"],
+  ];
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    for (const [modalId, cancelId] of MODAL_CANCELS) {
+      if (!document.getElementById(modalId).classList.contains("hidden")) {
+        e.preventDefault();
+        document.getElementById(cancelId).click();
+        return;
+      }
+    }
+  });
+
+  // ----------------------------------------------------------------------------
   // Escape closes the report and returns to the home view. The report itself
   // is safe — fresh searches were already saved to the "Saved reports" chips
   // at render time, so nothing is lost by leaving.
@@ -8470,7 +8502,10 @@
     // The map listener runs first and preventDefaults when it exits fullscreen.
     if (e.defaultPrevented) return;
     if (document.getElementById("compMap").classList.contains("map-fullscreen")) return;
-    if (["leadModal", "acctModal", "compModal", "confirmModal"]
+    // Every modal, not just the four this list began with: pricingModal and
+    // shareModal were missing, so Escape on the pricing modal closed the
+    // REPORT underneath it while the modal stayed up.
+    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal"]
         .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
     // A focused form control keeps Escape for itself — just drop focus.
     const ae = document.activeElement;
@@ -8521,7 +8556,7 @@
     const exploreProgressHtml = (type, city, state) =>
       `<div class="fade-in px-3 py-2">` +
       `<div id="exploreProgHead" class="text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot…</div>` +
-      `<div id="exploreProgDetail" class="mt-0.5 truncate text-[12.5px] text-[#8A93A0]">Usually 30–60 seconds.</div>` +
+      `<div id="exploreProgDetail" class="mt-0.5 truncate text-[12.5px] text-[#68707E]">Usually 30–60 seconds.</div>` +
       `<div class="mt-2 h-0.5 overflow-hidden rounded bg-slate-200">` +
       `<div id="exploreProgBar" class="h-full bg-[#B91C1C] transition-all duration-700" style="width:6%"></div></div>` +
       `</div>`;
@@ -8578,7 +8613,7 @@
     };
     // Re-shown on every failure, so the visitor always has a worked example.
     const exploreHintRow =
-      `<div class="px-3 py-1.5 text-[#8A93A0]">Adjust the search and try again, e.g. “industrial Boise ID”</div>`;
+      `<div class="px-3 py-1.5 text-[#68707E]">Adjust the search and try again, e.g. “industrial Boise ID”</div>`;
     const exploreFail = (msg) => {
       exploring = false;
       input.readOnly = false;
@@ -8663,15 +8698,15 @@
       if (p.type && !exactMatch) {
         html += `<button type="button" id="marketSearchExplore" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">Explore this market, build the ${escq(p.type)} · ${escq(p.city)}, ${escq(p.state)} page →</button>`;
       } else if (p.reason === "no-state" && !matches.length) {
-        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Add the state to explore a new market, e.g. “industrial Boise ID”</div>`;
+        html += `<div class="px-3 py-1.5 text-[#68707E]">Add the state to explore a new market, e.g. “industrial Boise ID”</div>`;
       } else if (p.reason === "no-type" && !matches.length) {
-        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Explore ${escq(p.city)}, ${escq(p.state)} as:</div>` +
+        html += `<div class="px-3 py-1.5 text-[#68707E]">Explore ${escq(p.city)}, ${escq(p.state)} as:</div>` +
           EXPLORE_TYPES.map((t) =>
             `<button type="button" data-explore-type="${t}" class="block w-full text-left px-3 py-1.5 font-semibold text-[#B91C1C] hover:bg-[#FBFBF9]">${cap(t)} →</button>`).join("");
       } else if (p.reason === "unsupported-type" && !matches.length) {
-        html += `<div class="px-3 py-1.5 text-[#8A93A0]">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
+        html += `<div class="px-3 py-1.5 text-[#68707E]">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
       } else if (p.reason === "no-city" && !matches.length) {
-        html += `<div class="px-3 py-1.5 text-[#8A93A0]">Search a market like “industrial Boise ID”</div>`;
+        html += `<div class="px-3 py-1.5 text-[#68707E]">Search a market like “industrial Boise ID”</div>`;
       }
       resultsEl.innerHTML = html;
       resultsEl.classList.remove("hidden");
@@ -9645,15 +9680,19 @@
   function buildCurationControl(comp) {
     const btn = document.createElement("button");
     btn.type = "button";
+    // px-2 py-2 with the offsetting negative margin: a real tap target (the
+    // bare text was ~16px tall — the primary action in the mobile card list,
+    // nearly untappable) without moving a pixel of the layout around it.
+    const HIT = " px-2 py-2 -mx-2 -my-2";
     if (comp.user_added) {
       btn.textContent = "Remove";
-      btn.className = "text-xs font-medium text-[#8A93A0] hover:text-[#1A2433]";
+      btn.className = "text-xs font-medium text-[#68707E] hover:text-[#1A2433]" + HIT;
     } else if (isExcluded(comp)) {
       btn.textContent = "Restore";
-      btn.className = "text-xs font-semibold text-[#B91C1C] hover:text-[#991B1B]";
+      btn.className = "text-xs font-semibold text-[#B91C1C] hover:text-[#991B1B]" + HIT;
     } else {
       btn.textContent = "Exclude";
-      btn.className = "text-xs font-medium text-[#8A93A0] hover:text-[#1A2433]";
+      btn.className = "text-xs font-medium text-[#68707E] hover:text-[#1A2433]" + HIT;
     }
     btn.addEventListener("click", () => {
       const cur = ensureCuration(currentMeta);
@@ -9739,7 +9778,7 @@
       const badge = sourceBadge(r);
       if (badge) addr.appendChild(badge);
       const metaLine = document.createElement("div");
-      metaLine.className = "text-xs text-[#8A93A0] mt-1";
+      metaLine.className = "text-xs text-[#68707E] mt-1";
       metaLine.textContent = [r.transaction, r.date, r.size_sqft ? r.size_sqft + " SF" : "", r.price_or_rate, r.price_per_sqft ? r.price_per_sqft + "/SF" : ""].filter(Boolean).join(" · ");
       left.appendChild(addr);
       left.appendChild(metaLine);
@@ -9942,7 +9981,7 @@
         tag.textContent = "Your property";
         cell.appendChild(tag);
       } else {
-        cell.className = v ? "text-[#1A2433] font-medium" : "text-[#8A93A0]";
+        cell.className = v ? "text-[#1A2433] font-medium" : "text-[#68707E]";
         cell.textContent = v || "-";
       }
       td.appendChild(cell);
@@ -9965,9 +10004,11 @@
     const colCount = COLUMNS.length + (showCuration ? 1 : 0);
     if (comps.length === 0) {
       const tr = document.createElement("tr");
-      const msg = currentComps.length === 0 ? "No comps found."
-        : (txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.");
-      tr.innerHTML = `<td colspan="${colCount}" class="px-4 py-6 text-center text-[#8A93A0]">${msg}</td>`;
+      const td = document.createElement("td");
+      td.colSpan = colCount;
+      td.className = "px-4 py-6 text-center";
+      td.appendChild(buildEmptyCompsNotice());
+      tr.appendChild(td);
       body.appendChild(tr);
       // Still refresh it — a filter that empties the table must clear a stale
       // notice, and excluding every visible comp must not hide the count.
@@ -10056,7 +10097,7 @@
             td.title = "Recomputed from sale price ÷ building size";
             const sup = document.createElement("sup");
             sup.textContent = "†";
-            sup.className = "text-[#8A93A0]";
+            sup.className = "text-[#68707E]";
             cell.appendChild(sup);
           }
           // Different size class than the subject — down-weighted in the
@@ -10065,7 +10106,7 @@
             td.title = "Different size class than your building, counts less in the valuation";
             const sup = document.createElement("sup");
             sup.textContent = "‡";
-            sup.className = "text-[#8A93A0]";
+            sup.className = "text-[#68707E]";
             cell.appendChild(sup);
           }
           // Time-adjusted: the raw figure stays on screen, the § carries the
@@ -10077,7 +10118,7 @@
               td.title = td.title ? td.title + " · " + note : note;
               const sup = document.createElement("sup");
               sup.textContent = "§";
-              sup.className = "text-[#8A93A0]";
+              sup.className = "text-[#68707E]";
               cell.appendChild(sup);
             }
           }
@@ -10197,7 +10238,7 @@
       // this button opens the ONE modal, which offers Pro AND the one-off,
       // and which of them fits depends on the report.
       `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} in this report</div>` +
-      `<div class="text-xs text-[#8A93A0] mt-1 max-w-md mx-auto">` +
+      `<div class="text-xs text-[#68707E] mt-1 max-w-md mx-auto">` +
       `Your value range above already includes ${n === 1 ? "it" : "them"}; only the itemized list is limited.` +
       `</div>` +
       `<button type="button" class="unlock-comps-btn btn-live mt-3 inline-flex items-center justify-center gap-2 ` +
@@ -10212,12 +10253,10 @@
     list.innerHTML = "";
     const comps = visibleComps();
     if (comps.length === 0) {
-      const msg = currentComps.length === 0 ? "No comps found."
-        : (txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.");
-      const p = document.createElement("p");
-      p.className = "px-6 py-6 text-center text-sm text-[#8A93A0]";
-      p.textContent = msg;
-      list.appendChild(p);
+      const wrap = document.createElement("div");
+      wrap.className = "px-6 py-6 text-center text-sm";
+      wrap.appendChild(buildEmptyCompsNotice());
+      list.appendChild(wrap);
       return;
     }
     const showCuration = curationControlsAllowed();
@@ -10284,7 +10323,7 @@
         const row = document.createElement("div");
         row.className = wide ? "col-span-2" : "";
         const dt = document.createElement("dt");
-        dt.className = "text-[10px] font-medium uppercase tracking-wide text-[#8A93A0]";
+        dt.className = "text-[10px] font-medium uppercase tracking-wide text-[#68707E]";
         dt.textContent = col.label;
         const dd = document.createElement("dd");
         dd.className = "mt-0.5 " + (col.key === "notes" ? "text-[#5A6473]" : "text-[#374253]");
@@ -10312,7 +10351,7 @@
             dd.title = "Recomputed from sale price ÷ building size";
             const sup = document.createElement("sup");
             sup.textContent = "†";
-            sup.className = "text-[#8A93A0]";
+            sup.className = "text-[#68707E]";
             dd.appendChild(sup);
           }
           // Same size-class disclosure as the desktop table.
@@ -10320,7 +10359,7 @@
             dd.title = "Different size class than your building, counts less in the valuation";
             const sup = document.createElement("sup");
             sup.textContent = "‡";
-            sup.className = "text-[#8A93A0]";
+            sup.className = "text-[#68707E]";
             dd.appendChild(sup);
           }
           // Same time-adjustment disclosure as the desktop table.
@@ -10330,7 +10369,7 @@
               dd.title = dd.title ? dd.title + " · " + note : note;
               const sup = document.createElement("sup");
               sup.textContent = "§";
-              sup.className = "text-[#8A93A0]";
+              sup.className = "text-[#68707E]";
               dd.appendChild(sup);
             }
           }
@@ -10484,6 +10523,49 @@
     return MONEY_KEYS.has(col.key) ? displayMoney(comp[col.key]) : comp[col.key];
   }
 
+  // The zero-comps state, shared by the table and the mobile card list. A bare
+  // "No comps found." was a dead end at exactly the moment a human broker is
+  // most valuable: the visitor waited a minute, the market was thin, and the
+  // page offered nothing to do next. A genuinely empty report now suggests the
+  // two moves that actually work — a longer lookback (thin markets usually DO
+  // have sales, just not in the last 12 months) and the free BOV, which rides
+  // the existing lead flow (openLeadModal("bov"), source "bov"). A merely
+  // FILTERED-empty set keeps the one-line message; the visitor caused that
+  // state and knows how to undo it.
+  function buildEmptyCompsNotice() {
+    const wrap = document.createElement("div");
+    if (currentComps.length !== 0) {
+      wrap.className = "text-sm text-[#68707E]";
+      wrap.textContent = txFilter === "sales" ? "No sale comps in this set." : "No lease comps in this set.";
+      return wrap;
+    }
+    wrap.className = "text-sm text-[#374253] max-w-md mx-auto";
+    const head = document.createElement("p");
+    head.className = "font-semibold text-[#1A2433]";
+    head.textContent = "No comps found in this window.";
+    const tip = document.createElement("p");
+    tip.className = "mt-1 text-[#68707E]";
+    tip.textContent = "Thin markets usually have sales further back — try a longer lookback in the search form. Or skip straight to a human:";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mt-3 text-sm font-semibold text-[#B91C1C] hover:text-[#991B1B] underline decoration-[#D8D4C9] underline-offset-2";
+    btn.textContent = "Get a free Broker Opinion of Value";
+    btn.addEventListener("click", () => openLeadModal("bov"));
+    wrap.append(head, tip, btn);
+    return wrap;
+  }
+
+  // One filename rule for every export. A broker who exports five properties
+  // used to get five files named market-comps.csv — indistinguishable on a
+  // desktop and carrying the retired "market comp" branding onto their
+  // clients' machines. The XLSX exporter already derived a slug from the
+  // address; now all three formats share it.
+  function exportFileName(ext) {
+    const slug = String((currentMeta && currentMeta.address) || "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "report";
+    return `compninja-${slug}.${ext}`;
+  }
+
   function exportCsv() {
     if (!currentComps.length) return;
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -10547,7 +10629,7 @@
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "market-comps.csv"; a.click();
+    a.href = url; a.download = exportFileName("csv"); a.click();
     URL.revokeObjectURL(url);
     flashExportDone(document.getElementById("csvBtn"), "Saved");
   }
@@ -10734,8 +10816,7 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rrAoa), "Rent Roll");
       }
 
-      const slug = String(currentMeta.address).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "report";
-      XLSX.writeFile(wb, `compninja-${slug}.xlsx`);
+      XLSX.writeFile(wb, exportFileName("xlsx"));
       flashExportDone(btn, "Saved");
     } catch (err) {
       showStatus(err.message, "error");
@@ -10760,7 +10841,7 @@
         ignoreElements: (el) => el.id === "mapCard" || el.id === "copySummaryBtn" || el.id === "bovCtaWrap" || (el.classList && el.classList.contains("no-capture")),
       });
       const a = document.createElement("a");
-      a.download = "market-comp-report.png";
+      a.download = exportFileName("png");
       a.href = canvas.toDataURL("image/png");
       a.click();
       ok = true;

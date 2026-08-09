@@ -181,3 +181,72 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
     }
   });
 });
+
+test("a lost visitor gets a page, not a bare string", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  // Market slugs are indexed and explorer-generated pages come and go, so a
+  // stale Google result is a normal arrival, not an edge case. It used to be
+  // answered with text/plain "Market not found" — an unbranded white page
+  // with no way anywhere.
+  await t.test("a dead market slug still answers 404, but as a branded page", async () => {
+    const r = await fetch(srv.base + "/market/industrial-nowhere-zz");
+    assert.equal(r.status, 404, "the status code is load-bearing for crawlers; never soften it");
+    assert.match(r.headers.get("content-type") || "", /text\/html/);
+    const html = await r.text();
+    assert.match(html, /CompNinja/, "the page should still look like the site");
+    assert.match(html, /href="\/markets"/, "a dead market page should point at the live ones");
+    assert.match(html, /noindex/, "a 404 page must never be indexed");
+  });
+
+  await t.test("the catch-all serves the same page for lost GETs", async () => {
+    const r = await fetch(srv.base + "/definitely-not-a-page");
+    assert.equal(r.status, 404);
+    assert.match(r.headers.get("content-type") || "", /text\/html/);
+    assert.match(await r.text(), /href="\/"/, "there must be a way home");
+  });
+
+  await t.test("machine surfaces stay plain", async () => {
+    // API callers parse bodies; an HTML page where an error string used to be
+    // is a regression for them. POSTs and /api/* keep the old shape.
+    const api = await fetch(srv.base + "/api/definitely-not-a-route");
+    assert.match(api.headers.get("content-type") || "", /text\/plain/, "/api/* stays text");
+    const post = await fetch(srv.base + "/definitely-not-a-page", { method: "POST" });
+    assert.equal(post.status, 404);
+    assert.match(post.headers.get("content-type") || "", /text\/plain/, "non-GET stays text");
+  });
+
+  await t.test("admin endpoints still deny their own existence", async () => {
+    // The camouflage rule from routes.test.js, re-checked here because THIS
+    // change is the one most likely to break it: with no ADMIN_KEY, gated
+    // routes answer a plain 404 indistinguishable from a missing route.
+    const r = await fetch(srv.base + "/api/stats");
+    assert.equal(r.status, 404);
+    assert.match(r.headers.get("content-type") || "", /text\/plain/);
+  });
+});
+
+test("the landing stats tell the truth in both directions", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  // "3–6 cited comps" undersold the product (the model is asked for up to 12
+  // and dense markets deliver them), and "~40s" oversold it (the model alone
+  // spends 40–70s writing; a full search runs longer). A first search that
+  // takes double the promised time costs trust at the exact moment the
+  // product is proving itself.
+  await t.test("the old numbers are gone from both pages", async () => {
+    for (const p of ["/", "/how-it-works"]) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(!/3&ndash;6/.test(html), p + " must not undersell the comp count");
+      assert.ok(!/~40s/.test(html), p + " must not promise a 40-second report");
+    }
+  });
+
+  await t.test("the replacements match what the product does", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.match(html, /Up to 12/, "the comp ask is 12; say so");
+    assert.match(html, /minute/i, "a minute is the honest unit for a live search");
+  });
+});

@@ -4203,10 +4203,10 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
    divides evenly (which the mesh needs to avoid a half-empty row) is out. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
 .tile{background:#fff;border:1px solid #E4E2DA;border-radius:6px;padding:16px 18px}
-.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600}
+.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#68707E;font-weight:600}
 .tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
   color:#1A2433;font-variant-numeric:tabular-nums}
-.tile .n{font-size:12.5px;color:#8A93A0;margin-top:2px}
+.tile .n{font-size:12.5px;color:#68707E;margin-top:2px}
 /* Ledger stat strip (Direction G, owner-approved 2026-08-09): the market
    page's headline figures as one ruled ledger line, the same geometry the
    report hero and the vault book line use — median emphasized on warmer
@@ -4217,12 +4217,12 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid #ECEAE3}
 .lcell:last-child{border-right:0}
 .lcell.mid{background:#FCFBF8}
-.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
+.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600}
 .lcell.mid .k{color:#B91C1C}
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
   color:#1A2433;font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
-.lcell .n{font-size:12px;color:#8A93A0;margin-top:2px}
+.lcell .n{font-size:12px;color:#68707E;margin-top:2px}
 @media(max-width:700px){.ledger{flex-direction:column}.lcell{border-right:0;border-bottom:1px solid #ECEAE3}.lcell:last-child{border-bottom:0}}
 /* Statement comps table (Direction H, same approval): ink header rule and a
    median closing row under a double rule. Scoped to table.stmt so the other
@@ -4246,7 +4246,7 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
    crush to ~40px per column on a phone. */
 table{width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 td:first-child,th:first-child{min-width:180px}
-th{background:#F5F4EF;color:#8A93A0;text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
+th{background:#F5F4EF;color:#68707E;text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
   text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #D8D4C9}
 td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .scroll{overflow-x:auto;border:1px solid #E4E2DA;border-radius:6px;margin:18px 0;background:#fff}
@@ -4273,10 +4273,10 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .hdr nav a.btn{color:#fff}.hdr nav a.btn:hover{color:#fff}
 .related{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .related a{background:#fff;border:1px solid #D8D4C9;border-radius:4px;padding:6px 14px;font-size:13px;color:#374253}
-.related a:hover{border-color:#8A93A0;color:#1A2433}
+.related a:hover{border-color:#68707E;color:#1A2433}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
 .mcard{display:block;background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:18px 20px;color:inherit}
-.mcard:hover{border-color:#8A93A0}
+.mcard:hover{border-color:#68707E}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
 .mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
@@ -4289,11 +4289,12 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .mfilter{margin-top:24px;max-width:420px}
 .mfilter input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #D8D4C9;border-radius:6px;
-  padding:10px 12px;font-family:inherit;font-size:14px;color:#1A2433}
-.mfilter input::placeholder{color:#8A93A0}
+  padding:10px 12px;font-family:inherit;font-size:16px;color:#1A2433}
+/* 16px: anything smaller makes iOS Safari zoom on focus and stay zoomed. */
+.mfilter input::placeholder{color:#68707E}
 .mfilter input:focus{outline:none;border-color:#B91C1C;box-shadow:0 0 0 1px #B91C1C}
 .mcount{color:#5A6473;font-size:13px;margin-top:10px;min-height:1.2em}
-.disc{color:#8A93A0;font-size:12.5px;margin-top:26px}
+.disc{color:#68707E;font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
 .legal{max-width:72ch}
@@ -4851,6 +4852,36 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
 // browser re-serves the hour-old signed-out copy after the visitor signs in,
 // so the people who just created an account are exactly the ones still being
 // told to create one. Same contract as /how-it-works; CLAUDE.md records why.
+// The visitor-facing 404. Market slugs are indexed and explorer pages come
+// and go, so a stale search result is a normal arrival — it used to be met
+// with text/plain "Not found", an unbranded white page with no way anywhere.
+// HTML only for the surfaces a person reaches: /api/* and non-GET requests
+// keep the plain body (machine callers parse it), and the ADMIN_KEY-gated
+// routes keep their own plain 404s — that camouflage is deliberate and
+// test-pinned. The status stays 404: crawlers must still drop the URL.
+function sendNotFound(req, res, message) {
+  if (req.method !== "GET" || req.url.split("?")[0].startsWith("/api/")) {
+    res.writeHead(404, { "content-type": "text/plain" });
+    return res.end("Not found");
+  }
+  const body =
+    `<section style="padding:56px 0"><div class="kicker">404</div>` +
+    `<h1>${escHtml(message || "This page doesn't exist.")}</h1>` +
+    `<p style="color:#4C5665;max-width:56ch">The address may have moved, or the report behind it may have been ` +
+    `regenerated under a newer market page. Everything current is one click away.</p>` +
+    `<p style="margin-top:18px"><a class="btn" href="/">Run a free valuation &rarr;</a></p>` +
+    `<p style="margin-top:14px"><a href="/markets">Browse every market we cover &rarr;</a></p></section>`;
+  res.writeHead(404, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(marketShell({
+    title: "Page not found | CompNinja",
+    description: "That page doesn't exist.",
+    canonical: `${SITE_URL}/`,
+    noindex: true,
+    body,
+    signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+  }));
+}
+
 function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
   const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
   res.writeHead(200, {
@@ -4918,7 +4949,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
         const cx = Math.round(x(i)), cy = Math.round(y(b.medianPsf));
         return `<circle cx="${cx}" cy="${cy}" r="4" fill="${i === buckets.length - 1 ? "#B91C1C" : "#1A2433"}"/>` +
           `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="#1A2433">${usd0(b.medianPsf)}</text>` +
-          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#8A93A0">${escHtml(b.label)} &middot; ${b.count}</text>`;
+          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#68707E">${escHtml(b.label)} &middot; ${b.count}</text>`;
       }).join("") +
       `</svg>`;
   }
@@ -5315,13 +5346,13 @@ h3{font-size:15px;font-weight:600;color:#1A2433;margin:0 0 6px}
 .sub{color:#4C5665;font-size:14px;max-width:60ch;margin:4px 0 20px}
 section{padding:48px 0}
 .band{background:#F5F4EF;box-shadow:0 0 0 100vmax #F5F4EF;clip-path:inset(0 -100vmax)}
-.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600;margin-bottom:2px}
+.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600;margin-bottom:2px}
 /* Stat strip */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid #E4E2DA;border-bottom:1px solid #E4E2DA}
 .stat{padding:18px}
 .stat:nth-child(1),.stat:nth-child(3){border-right:1px solid #E4E2DA}
 .stat .n{font-size:22px;font-weight:600;color:#1A2433;font-variant-numeric:tabular-nums}
-.stat .l{font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+.stat .l{font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
 /* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
    the ONLY place a visitor sees the product before signing up, so it is built
    as a faithful miniature of the real report rather than a layout of its own:
@@ -5330,17 +5361,17 @@ section{padding:48px 0}
    .rd-ledger and #compsTable rules — when the report changes shape, this
    exhibit is what tells visitors it did. */
 .exhibit{border:1px solid #D8D4C9;background:#fff;border-radius:6px;overflow:hidden}
-.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .exbody{padding:20px}
 .exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;letter-spacing:-.005em}
 .exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:#5A6473;margin-top:6px;padding-bottom:12px;border-bottom:1px solid #ECEAE3}
 .exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid #ECEAE3}
 .exmeta span:last-child{border-right:0;margin-right:0;padding-right:0}
-.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:#8A93A0}
+.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:#68707E}
 .exsec{margin-top:16px}
 .secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid #1A2433;padding-bottom:4px;margin-bottom:9px}
 .seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#1A2433}
-.secnote{font-size:9.5px;color:#8A93A0;text-align:right}
+.secnote{font-size:9.5px;color:#68707E;text-align:right}
 .ledger{display:flex;border:1px solid #D8D4C9;border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid #ECEAE3}
 .lcell:last-child{border-right:0}
@@ -5348,13 +5379,13 @@ section{padding:48px 0}
 .lcell.mid .lab{color:#B91C1C}
 .fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}
-.psf{font-size:10.5px;color:#8A93A0;margin-top:2px}
+.psf{font-size:10.5px;color:#68707E;margin-top:2px}
 .drv{font-size:13px;color:#374253;padding:7px 0;border-top:1px solid #F0EFE9;display:flex;gap:8px}
 .drv:first-of-type{border-top:0}
 .drv b{color:#B91C1C;font-weight:700}
 .exscroll{overflow-x:auto}
 table.comps{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-table.comps th{text-align:left;color:#8A93A0;font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid #1A2433;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
+table.comps th{text-align:left;color:#68707E;font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid #1A2433;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
 table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid #F0EFE9;white-space:nowrap}
 table.comps th.n,table.comps td.n{text-align:right}
 table.comps tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600}
@@ -5760,10 +5791,15 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     "How a CompNinja report is built: live searches of public records and listings, " +
     "a source badge on every comp, and a value range for your building.";
 
+  // Both numbers were wrong in opposite directions until 2026-08-08: "3–6"
+  // undersold a product whose search asks for up to 12 comps, and "~40s"
+  // oversold one whose model alone spends 40–70s writing (a corpus-strong
+  // 2-search run still clocked 74s). Promising 40 and delivering 75 costs
+  // trust on the very first search — the one the visitor is timing.
   const stats = [
     ["Free", "Every report"],
-    ["3&ndash;6", "Cited comps per report"],
-    ["~40s", "Search to report"],
+    ["Up to 12", "Cited comps per report"],
+    ["~1 min", "Search to report"],
     ["100%", "Sources disclosed"],
   ].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
 
@@ -5983,7 +6019,7 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
         <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
         <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
         <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <span style="color:#8A93A0">Badges under-claim, never over-claim.</span>
+        <span style="color:#68707E">Badges under-claim, never over-claim.</span>
       </div>
     </section>
   </div>
@@ -6298,7 +6334,7 @@ function renderAdminHTML() {
    The one page-local token is --red-wash, the alarm card's tint. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;--red-wash:#FCF3F2;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -6984,7 +7020,7 @@ function renderDevHubHTML() {
    a loose hex — the fix dot, the note grey, both footer greys — is a token. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --note:#5F5E5A;--foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -7566,7 +7602,7 @@ function renderContactsHTML() {
    at a glance), the one place this page steps outside the token palette. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -7650,7 +7686,7 @@ h1.h{font-size:var(--t1);line-height:1.15;margin:var(--s4) 0 0}
 .st-contacted{background:#FEF3C7;color:#8A6100}
 .st-following-up{background:#FFE8D9;color:#9A4A12}
 .st-client{background:#DCFCE7;color:#166534}
-.st-dead{background:#F1F0EC;color:#8A93A0}
+.st-dead{background:#F1F0EC;color:#68707E}
 .empty{text-align:center;color:var(--ink-3);font-size:var(--t4);padding:var(--s7) 0}
 footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
@@ -8300,7 +8336,7 @@ function renderHqHTML() {
    red reserved for interaction. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -12295,7 +12331,7 @@ const server = http.createServer((req, res) => {
   const marketMatch = req.method === "GET" && req.url.match(/^\/market\/([a-z0-9-]{3,80})$/);
   if (marketMatch) {
     const page = getMarketPage(marketMatch[1]);
-    if (!page) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Market not found"); }
+    if (!page) return sendNotFound(req, res, "That market page isn't here anymore.");
     // Stale-while-revalidate: serve from the current credit cache and kick a
     // background refresh when it's old — the response never waits on the DB.
     if (Date.now() - MARKET_CREDIT.fetchedAt > MARKET_CREDIT_TTL_MS) refreshMarketCredit();
@@ -12316,11 +12352,13 @@ const server = http.createServer((req, res) => {
         res.writeHead(429, { "content-type": "text/plain" });
         return res.end("Too many requests.");
       }
-      if (!DB_CONFIGURED) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+      if (!DB_CONFIGURED) return sendNotFound(req, res, "That broker profile isn't here.");
       const rows = await sbRequest("GET",
         `broker_profiles?slug=eq.${encodeURIComponent(brokerMatch[1])}&public=eq.true&limit=1`);
       const profile = rows && rows[0];
-      if (!profile) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+      // Also the door a broker who has just toggled their profile OFF sends
+      // people through — the page must not read as an error in their name.
+      if (!profile) return sendNotFound(req, res, "That broker profile isn't public anymore.");
       const subs = await fetchSubmissionsForEmail(profile.email);
       // Short max-age so toggling a profile off propagates within minutes.
       return sendShellPage(req, res,
@@ -12341,8 +12379,7 @@ const server = http.createServer((req, res) => {
     const entry = previewPagesMem.get(previewMatch[1]);
     if (!entry || Date.now() - entry.ts > PREVIEW_TTL_MS) {
       previewPagesMem.delete(previewMatch[1]);
-      res.writeHead(404, { "content-type": "text/plain" });
-      return res.end("Preview expired; explore the market again from the homepage.");
+      return sendNotFound(req, res, "This preview has expired. Explore the market again for a fresh one.");
     }
     // A preview belongs to whoever generated it, so it is already no-store and
     // noindexed at every layer; it still renders the member's own chrome.
@@ -12675,8 +12712,7 @@ const server = http.createServer((req, res) => {
     );
   }
 
-  res.writeHead(404, { "content-type": "text/plain" });
-  res.end("Not found");
+  sendNotFound(req, res);
 });
 
 server.listen(PORT, () => {

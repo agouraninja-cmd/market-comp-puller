@@ -42,7 +42,8 @@ details.faq p{color:#4C5665;margin:8px 0 0}
 #q1031out span{display:block;margin-top:4px}
 .datebox label{font-weight:600}
 .datebox input{padding:6px 8px;border:1px solid #D8D4C9;border-radius:4px;
-  font-family:inherit;font-size:14px;margin-left:8px}
+  font-family:inherit;font-size:16px;margin-left:8px}
+/* 16px: smaller inputs make iOS Safari zoom on focus and stay zoomed. */
 `;
 
 // One array, two surfaces: the visible accordions and the FAQPage JSON-LD

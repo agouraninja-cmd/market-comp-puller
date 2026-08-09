@@ -47,10 +47,22 @@ ship-time one. Both apply.
    `origin/main` into dev-hub before pushing (never rebase or force-push).
    If the merge touched code, re-run step 3's tests before continuing.
 7. **Push**: `git push origin dev-hub` (branch backup), then
-   `git push origin HEAD:main`. Render deploys automatically.
-8. **CI green**: the push triggers syntax check + tests + boot smoke at
+   `git push origin HEAD:main`. Render deploys automatically — but since
+   2026-08-08 `npm start` carries a `prestart` (`node --check server.js &&
+   npm test`), so a red suite makes the deploy FAIL and the previous build
+   keeps serving. The push "succeeding" therefore proves nothing about the
+   deploy: a blocked deploy looks exactly like a slow one from outside
+   (happened 2026-08-09 — two deploys failed back-to-back on a
+   non-hermetic test fixture and production silently served the old build
+   for an hour). If the live check in step 9 doesn't show the change
+   within ~3 minutes, check the service's Events tab on
+   https://dashboard.render.com before suspecting caches.
+   Tests on Render run against a FRESH disk: any test fixture that leans
+   on a git-ignored local file (market-pages-dynamic.json, leads.jsonl,
+   a local corpus) passes on this machine and fails the deploy.
+8. **CI green**: the push also triggers the same checks at
    github.com/agouraninja-cmd/market-comp-puller/actions. A red X means
-   fix or revert now — Render deployed anyway.
+   fix or revert now.
 9. **Verify live**: `https://compninja.co/healthz` answers `{"ok":true...}`.
    Check the changed surface at its exact URL, no query strings.
    `tailwind.css` serves with max-age 300, so curl it rather than trusting

@@ -4084,7 +4084,19 @@ function escHtml(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 }
-function marketTitle(p) { return `${p.type} Property Values in ${p.city}, ${p.state}`; }
+// The on-page NAME of a market page: its <h1>, its JSON-LD `name`, its
+// breadcrumb leaf, and /markets' hasPart entries — everything that says what
+// this page is, other than the <title> tag (marketPageTitle, below).
+//
+// It said "Property Values in" until 2026-08-09. The <title>s moved to
+// "Comps in" on 2026-08-06 because that is what people actually type, but the
+// headings were left behind, so the two disagreed about the page's subject on
+// all 38 pages — and Google weights the h1 alongside the title. Aligning them
+// costs the plainer reading of "property values" (a real trade, not an
+// oversight) and buys one consistent phrase everywhere the page names itself.
+// Keep this in step with marketPageTitle()'s `base`: they are deliberately the
+// same string now, and the point is lost if they drift apart again.
+function marketTitle(p) { return `${p.type} Comps in ${p.city}, ${p.state}`; }
 
 // The <title> a market page shows IN SEARCH RESULTS, which is a different job
 // from marketTitle() and has a hard budget: Google renders about 60 characters
@@ -4098,9 +4110,12 @@ function marketTitle(p) { return `${p.type} Property Values in ${p.city}, ${p.st
 // end of the part carrying the actual query terms.
 //
 // So the words are chosen for what owners and brokers type: "comps", "$/SF",
-// "cap rates". "Property values" is not a phrase people search, which is why
-// marketTitle() keeps it only for on-page headings and link text, where there
-// is no length budget and the plainer wording reads better.
+// "cap rates". "Property values" is not a phrase people search. marketTitle()
+// kept that older wording for on-page headings until 2026-08-09, on the
+// grounds that headings have no length budget and the plainer phrase reads
+// better — but it left the h1 and the title disagreeing about the page's
+// subject, which Google reads as a mixed signal. Both now say "Comps in";
+// `base` below and marketTitle() are deliberately the same string.
 //
 // Dropping the brand is a deliberate trade, not an oversight: 20% of the
 // budget for a name nobody looks up yet, on pages whose whole job is to be
@@ -4968,7 +4983,12 @@ function renderMarketPageHTML(slug, p, opts = {}) {
   const others = Object.keys(merged).filter((s) => s !== slug).slice(0, 6);
   const related = others.length
     ? `<div class="card"><h2>Other markets</h2><div class="related">` +
-      others.map((s) => `<a href="/market/${s}">${escHtml(marketTitle(merged[s]).replace(" Property Values in", " ·"))}</a>`).join("") +
+      // Strips the middle of marketTitle() to a bullet: "Industrial Comps in
+      // Dallas, TX" -> "Industrial · Dallas, TX". The needle MUST match
+      // marketTitle()'s wording — it changed to " Comps in" on 2026-08-09, and
+      // a stale needle here does not throw, it just silently renders the whole
+      // untrimmed title in every related-markets link.
+      others.map((s) => `<a href="/market/${s}">${escHtml(marketTitle(merged[s]).replace(" Comps in", " ·"))}</a>`).join("") +
       `<a href="/markets">All markets &rarr;</a></div></div>`
     : "";
 

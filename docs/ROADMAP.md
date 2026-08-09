@@ -79,10 +79,8 @@ subscription benefit.
 - Re-measure `PARALLEL_SEARCH` on real traffic before ever flipping it on.
 - Fix `marketOf()` yielding "Canada" for Canadian addresses before
   non-USD reports are ever harvested.
-- Market page `<h1>`s still say "Property Values in" while the `<title>`s
-  now say "Comps in" — the two disagree about what the page is about, and
-  Google weights both. Small change, but it edits copy people see, so it
-  wants a yes rather than a drive-by. Context in `docs/SEO.md`.
+  (Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
+  owner's yes — both now say "Comps in". See the Shipped log.)
 
 ## Open business questions (not code)
 
@@ -118,6 +116,16 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-09: market pages agree with themselves.** The `<title>`s said
+  "Comps in" and the `<h1>`s said "Property Values in" on all 38 pages, so
+  each one gave Google a mixed signal about its own subject. `marketTitle()`
+  now returns the same string as `marketPageTitle()`'s base, aligning the h1,
+  the JSON-LD name, the breadcrumb leaf and `/markets`' hasPart in one change.
+  Shipped with the owner's explicit yes, since it edits visible copy; the
+  trade — "property values" reads more plainly than "comps" — was taken
+  knowingly. Related-market link text is unchanged on screen. Route tests pin
+  the h1/title agreement and the trimming needle that silently depends on the
+  wording.
 - **2026-08-08: the homepage is a page again.** Logged-out `/` serves the
   landing content with a 200 (was a 302 the index never followed);
   /how-it-works canonicalizes to `/` while the wall is up; `/` is back in

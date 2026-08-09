@@ -126,6 +126,36 @@ test("bare environment", async (t) => {
       "the CTA must carry the encoded /?auth=signup&explore= deep link");
   });
 
+  // The <h1> and the <title> must describe the page the same way.
+  //
+  // They disagreed from 2026-08-06 to 2026-08-09: the titles moved to "Comps
+  // in" (what people search) while the headings kept "Property Values in", on
+  // all 38 pages. Google weights both, so that is a mixed signal about the
+  // page's own subject. marketTitle() and marketPageTitle()'s `base` are now
+  // deliberately the same string, and this is what catches them drifting.
+  await t.test("a market page's h1 agrees with its title", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
+    const h1 = (html.match(/<h1>([^<]+)<\/h1>/) || [])[1];
+    const title = (html.match(/<title>([^<]+)<\/title>/) || [])[1];
+    assert.ok(h1, "the page must have an h1");
+    assert.ok(title, "the page must have a title");
+    assert.ok(title.startsWith(h1),
+      `the title must lead with the h1's exact wording — h1 ${JSON.stringify(h1)}, title ${JSON.stringify(title)}`);
+    assert.match(h1, /Comps in/, "both must use the phrase people actually search");
+  });
+
+  // The related-markets links trim marketTitle() down with a string replace,
+  // which is a silent dependency on its exact wording: a stale needle does not
+  // throw, it just renders the full untrimmed title in all six links.
+  await t.test("related-market links are trimmed to the bullet form", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
+    const related = (html.match(/<div class="related">([\s\S]*?)<\/div>/) || [])[1] || "";
+    assert.ok(related.includes("/market/"), "the related card should carry market links");
+    assert.ok(!/Comps in/.test(related),
+      "the replace needle is stale — links are rendering marketTitle() untrimmed");
+    assert.match(related, /·/, "trimmed links use a bullet in place of the middle");
+  });
+
   // The vault gate, wired.
   //
   // entitlements.js proves the DECISION — canUseVault tracks pro across every

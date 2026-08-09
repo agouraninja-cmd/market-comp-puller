@@ -112,19 +112,39 @@ search form. `/how-it-works` is the stable URL for this content in both states;
 whole point was that Search Console had never crawled the redirect's target;
 nothing proves the fix worked except `/` actually getting crawled and indexed.
 
-### 2. Market page h1s still say the old wording (small, but visible copy)
+### 2. ~~Market page h1s still say the old wording~~ — SHIPPED 2026-08-09
 
-Titles now say "Comps"; the headings still say:
+**Done**, with the owner's explicit yes (it edits copy people see). All 38
+pages now agree with themselves:
 
 ```html
-<h1>Industrial Property Values in Dallas, TX</h1>
+<title>Industrial Comps in Ontario, CA | $/SF & Cap Rates</title>
+<h1>Industrial Comps in Ontario, CA</h1>
 ```
 
-Google weights the h1 alongside the title, and right now they disagree about
-what the page is about. Aligning them is a small change to `marketTitle()`'s use
-at the h1 site in `renderMarketPageHTML`. Deliberately **not** done unprompted:
-it changes copy people see, and the plainer wording genuinely reads better as a
-heading. A real tradeoff, not an oversight.
+Between 08-06 and 08-09 the titles said "Comps in" while the headings said
+"Property Values in", so every market page gave Google a mixed signal about
+its own subject. `marketTitle()` now returns the same string as
+`marketPageTitle()`'s `base`, which aligned four surfaces in one change: the
+h1, the JSON-LD `name`, the breadcrumb leaf, and `/markets`' `hasPart` entries.
+
+**The trade was real and was taken deliberately:** "property values" reads
+more plainly as a heading than "comps". Consistency with the title was judged
+worth more than the nicer phrase.
+
+Two things a future editor should know:
+
+- **`marketTitle()` and `marketPageTitle()`'s `base` are now the same string
+  on purpose.** The whole point is lost if they drift apart again.
+- **The related-markets links depend on `marketTitle()`'s exact wording**, via
+  a `.replace(" Comps in", " ·")` that trims them to "Industrial · Dallas, TX".
+  A stale needle there does not throw — it silently renders the full untrimmed
+  title in all six links. On-screen output was unchanged by this work because
+  the needle moved in step.
+
+Both hazards are pinned by route tests in `test/routes.test.js` (h1/title
+agreement, and the trimming), and both were verified to fail when broken
+rather than passing vacuously.
 
 ### 3. Checked 2026-08-09 — the answer is "not yet knowable", for a good reason
 

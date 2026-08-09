@@ -4207,6 +4207,30 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
   color:#1A2433;font-variant-numeric:tabular-nums}
 .tile .n{font-size:12.5px;color:#8A93A0;margin-top:2px}
+/* Ledger stat strip (Direction G, owner-approved 2026-08-09): the market
+   page's headline figures as one ruled ledger line, the same geometry the
+   report hero and the vault book line use — median emphasized on warmer
+   paper, red label. The .tiles grid above stays for its OTHER consumers
+   (the Explorer preview page and the /markets client tiles); only the
+   market page itself moved to the ledger. */
+.ledger{display:flex;border:1px solid #D8D4C9;border-radius:6px;overflow:hidden;background:#fff;margin:22px 0}
+.lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid #ECEAE3}
+.lcell:last-child{border-right:0}
+.lcell.mid{background:#FCFBF8}
+.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
+.lcell.mid .k{color:#B91C1C}
+.lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
+  color:#1A2433;font-variant-numeric:tabular-nums}
+.lcell.mid .v{font-size:29px}
+.lcell .n{font-size:12px;color:#8A93A0;margin-top:2px}
+@media(max-width:700px){.ledger{flex-direction:column}.lcell{border-right:0;border-bottom:1px solid #ECEAE3}.lcell:last-child{border-bottom:0}}
+/* Statement comps table (Direction H, same approval): ink header rule and a
+   median closing row under a double rule. Scoped to table.stmt so the other
+   marketShell pages (brokers, vault, the markets directory) keep their own
+   table look. */
+table.stmt th{background:none;border-bottom:2px solid #1A2433}
+table.stmt tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600;color:#1A2433}
+table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600}
 /* Cards. Headings stay serif at reading size rather than the uppercase
    micro-label used elsewhere — these are sentence-length ("What's driving
    Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
@@ -4846,13 +4870,18 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `Recent ${p.type.toLowerCase()} sale comps in ${p.city}, ${p.state}: about ${usd0(p.ppsf.median)}/SF ` +
     `(typical ${rangeTxt}/SF) across ${p.ppsf.count} recent sales. Get a free instant valuation of your property.`;
 
+  // Ledger stat strip (Direction G). The median leads and is emphasized; the
+  // old "Comps window" tile is deliberately gone, not restyled — a date range
+  // is context, not a headline figure (it set a whole date span at display
+  // size, which wrapped), and the .sub line above already states the same
+  // window at text size. Two or three cells always divide the row cleanly,
+  // which the old auto-fit tile grid could not promise.
   const tiles = [
-    ["Median price / SF", usd0(p.ppsf.median), `across ${p.ppsf.count} recent sales`],
-    ["Typical range", `${rangeTxt}`, "middle of the market, $/SF"],
-    (p.cap_rate_low && p.cap_rate_high) ? ["Cap rate range", `${escHtml(p.cap_rate_low)}–${escHtml(p.cap_rate_high)}`, "stabilized deals"] : null,
-    p.date_range ? ["Comps window", escHtml(p.date_range), "most recent sales & leases"] : null,
-  ].filter(Boolean).map(([k, v, n]) =>
-    `<div class="tile"><div class="k">${escHtml(k)}</div><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`).join("");
+    ["Median price / SF", usd0(p.ppsf.median), `across ${p.ppsf.count} recent sales`, true],
+    ["Typical range", `${rangeTxt}`, "middle of the market, $/SF", false],
+    (p.cap_rate_low && p.cap_rate_high) ? ["Cap rate range", `${escHtml(p.cap_rate_low)}–${escHtml(p.cap_rate_high)}`, "stabilized deals", false] : null,
+  ].filter(Boolean).map(([k, v, n, mid]) =>
+    `<div class="lcell${mid ? " mid" : ""}"><span class="k">${escHtml(k)}</span><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`).join("");
 
   const drivers = (p.value_drivers || []).length
     ? `<div class="card"><h2>What's driving ${escHtml(p.type)} prices in ${escHtml(p.city)}</h2>` +
@@ -4964,11 +4993,24 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       ? `<td>${escHtml(c.address)} ${badge}</td>`
       : `<td>${escHtml(c[col.key] || "")}</td>`)).join("") + "</tr>";
   }).join("");
+  // Statement closing row (Direction H): the sales median under a double
+  // rule — quoting p.ppsf, the page's OWN headline statistic, so the table's
+  // closing figure and the median cell above it can never disagree (they are
+  // the same number from the same seed). The figure rides in the label as
+  // well as under the $/SF column because the table scrolls sideways on
+  // phones; same reasoning as the report's renderTableFoot. Hidden when the
+  // page has fewer than two recent sales, per the under-claim rule.
+  const psfIdx = compCols.findIndex((col) => col.key === "price_per_sqft");
+  const restCols = compCols.length - psfIdx - 1;
+  const medianRow = (p.ppsf && p.ppsf.count >= 2 && psfIdx > 0)
+    ? `<tfoot><tr><td class="tl" colspan="${psfIdx}">Median of ${p.ppsf.count} recent sales &middot; ${usd0(p.ppsf.median)}/SF</td>` +
+      `<td>${usd0(p.ppsf.median)}</td>${restCols > 0 ? `<td colspan="${restCols}"></td>` : ""}</tr></tfoot>`
+    : "";
   const compsTable = compRows
     ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
-      `<div class="scroll"><table><thead><tr>` +
+      `<div class="scroll"><table class="stmt"><thead><tr>` +
       compCols.map((col) => `<th>${escHtml(col.label)}</th>`).join("") +
-      `</tr></thead><tbody>${compRows}</tbody></table></div></div>`
+      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div></div>`
     : "";
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
@@ -5090,7 +5132,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `<h1>${escHtml(title)}</h1>` +
     `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
     previewBanner +
-    `<div class="tiles">${tiles}</div>` +
+    `<div class="ledger">${tiles}</div>` +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     intelCard +

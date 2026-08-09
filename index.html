@@ -374,6 +374,14 @@
        the search field are real guidance, not decoration. Still clearly
        lighter than typed ink (#1A2433). */
     .rd-in::placeholder { color: #68707E; }
+    /* The building-size cell shows exactly one hint line: the footprint
+       "estimated" note when it is showing, otherwise the standing
+       "we'll pull it from public records" line. Done here rather than in JS
+       because four separate call sites toggle sizeEstimateNote's .hidden
+       (typed-over, record-backed size, address change, estimate landed) and
+       none of them should have to know a second element exists. Adjacent
+       sibling, so the two <p>s must stay in this order in the markup. */
+    #sizeEstimateNote:not(.hidden) + #sizeHint { display: none; }
     select.rd-in { appearance: auto; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
@@ -1070,12 +1078,30 @@
           </div>
           <div class="rd-cell">
             <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
+            <!-- Placeholders stay SHORT because this cell is the 1fr column of
+                 a 2.2fr/1fr grid and then splits again into two inputs around
+                 a "to". Measured at the sm breakpoint the box is ~69px of
+                 usable text width, so "auto from records" (135px) and "max
+                 (optional)" (108px) both clipped mid-word — the first rendering
+                 as "auto from recc", which reads as a typo on the busiest
+                 screen the site has. Anything longer than about four characters
+                 will clip again there; the sentence belongs in the hint below,
+                 which has the whole cell width to sit in. -->
             <div class="flex items-center gap-2">
-              <input id="targetSize" type="number" min="0" step="any" placeholder="auto from records" class="rd-in" />
+              <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="rd-in" />
               <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
-              <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="rd-in" />
+              <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max" class="rd-in" />
             </div>
             <p id="sizeEstimateNote" class="hidden text-xs text-[#68707E] mt-1">Estimated from the building's footprint - edit if it's off.</p>
+            <!-- The default state of the line above, and the home of the copy
+                 the placeholder can no longer carry. The two are mutually
+                 exclusive in CSS (see #sizeHint in the style block) rather than
+                 in JS on purpose: four separate places already toggle
+                 sizeEstimateNote's .hidden, and a fifth element for each of
+                 them to remember is exactly the kind of coupling that goes
+                 stale. It also steadies the layout — the footprint note used to
+                 ADD a line when it appeared. -->
+            <p id="sizeHint" class="text-xs text-[#68707E] mt-1">Leave blank and we'll pull it from public records.</p>
           </div>
           <!-- Still the single source of truth for the current type (and for the
                list of types every picker builds itself from), just no longer a

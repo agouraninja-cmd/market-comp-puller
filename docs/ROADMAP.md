@@ -12,8 +12,16 @@ intent, the devlog states history.
 
 ## Now
 
-(Empty — the three items that lived here all shipped; see the Shipped log.
-Pull the next item up from Next when one is chosen.)
+- **Find out whether the SEO work worked** (no code — Search Console, ~15
+  minutes). The homepage fix shipped 2026-08-08 on the strength of one
+  measurement: Google had never crawled the redirect's target. Nothing has
+  confirmed the fix landed. URL-inspect `https://compninja.co/` and request
+  indexing, resubmit the sitemap (its contents changed), then read Page
+  Indexing across all 43 URLs. Steps in `docs/SEO.md` item 3.
+  This sits above every engineering item deliberately: as of 2026-08-06 the
+  product had **zero real outside users**, so "can anyone find this" is the
+  binding constraint, and a thin Page Indexing report is a real answer —
+  evidence to stop investing in SEO, not a reason to do more of it.
 
 ## Next
 

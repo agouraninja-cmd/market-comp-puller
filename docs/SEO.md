@@ -1,9 +1,11 @@
 # SEO — State & Resume Point
 
-Written 2026-08-06. **Read this first when picking organic acquisition back
-up.** The short version: the 38 market pages went from invisible and
-unmeasurable to indexed, measured, and correctly labeled. One structural
-decision and one small copy change are left.
+Written 2026-08-06, updated 2026-08-08. **Read this first when picking organic
+acquisition back up.** The short version: the 38 market pages went from
+invisible and unmeasurable to indexed, measured and correctly labeled, and the
+homepage stopped being a redirect (item 1, shipped 2026-08-08). What is left is
+one small copy change and — the one that actually matters — **checking whether
+any of it worked**, which needs Search Console and no code.
 
 ---
 
@@ -50,9 +52,11 @@ people who already knew the brand, with a 199-character description;
 ### Search Console verification
 
 `GOOGLE_SITE_VERIFICATION` (see CLAUDE.md for the full contract). **HTML file
-method, not the meta tag** — meta-tag verification fetches the property root, and
-under `ACCOUNT_WALL` `/` is a 302, so a tag there is never seen and verification
-fails without saying why.
+method, not the meta tag** — meta-tag verification fetches the property root,
+and at the time `/` was a 302, so a tag there was never seen and verification
+failed without saying why. Since 2026-08-08 `/` serves 200, so a meta tag
+*would* work now — but keep the file: the property is already verified by it,
+and Google unverifies a property whose token stops answering.
 
 ## Current state
 
@@ -62,30 +66,50 @@ fails without saying why.
 | `GOOGLE_SITE_VERIFICATION` | Set on Render. **Leave it set** — Google re-fetches the file and unverifies when it stops answering |
 | Sitemap | Resubmitted 2026-08-06. Google had auto-found it 2026-07-14 and **never re-read it**, so it only knew 29 pages; it now has all 43 |
 | Market pages | **Indexed** — `/market/industrial-dallas-tx` returned "URL is on Google". Re-crawl requested so the new title is picked up |
-| `/how-it-works` | **Never crawled** — "Discovered, currently not indexed", last crawl N/A. Indexing requested |
+| `/how-it-works` | Was **never crawled** as of 2026-08-06 — "Discovered, currently not indexed", last crawl N/A. Since 2026-08-08 its content is also served at `/`, which is now the canonical — **re-inspect `/`, not this URL** |
+| `/` | Serving 200 since 2026-08-08 (was a 302). **Not yet re-inspected** — do this first; see items 1 and 3 |
 | Everything else audited | Fine — 650-word average, 63% unique between siblings, canonicals present, one h1 per page, `/markets` links all 39, robots.txt correct, mobile viewport present |
 
 ## What is left, ranked
 
-### 1. The homepage is a 302 and out of the sitemap (product decision)
+### 1. ~~The homepage is a 302 and out of the sitemap~~ — SHIPPED 2026-08-08
 
-**This is the biggest remaining item and it is no longer hypothetical.** `/`
-redirects to `/how-it-works`, which was dropped from `sitemap.xml` because
-listing a redirecting URL is a soft error in Search Console. The consequence,
-now confirmed: Google has never crawled the page that every brand search and
-every anonymous arrival lands on.
+**Done**, in commit `1803936`. `/` now renders the landing content with a
+**200** for logged-out visitors instead of 302ing to `/how-it-works`, and is in
+`sitemap.xml` unconditionally. The wall itself did not change: `GUEST_SEARCH_LIMIT`
+is still forced to 0 and `/api/comps` still refuses an anonymous search. A
+logged-out visitor sees what they always saw — the same content, one redirect
+earlier, at the URL they actually arrived on.
 
-The root domain is normally the strongest URL a site has, and inbound links
-currently pass through a redirect to reach content. The fix is serving that
-content **at `/` with a 200** for logged-out visitors instead of redirecting,
-and putting `/` back in the sitemap. That reopens the account wall route in
-server.js (the `ACCOUNT_WALL` branch of the static handler), so it needs a
-decision about what a logged-out visitor sees at `/`, plus a canonical
-strategy so `/` and `/how-it-works` are not duplicates.
+The canonical strategy was the real substance, and it follows `ACCOUNT_WALL`
+rather than the route that served the render:
 
-`ACCOUNT_WALL=off` on Render is the instant, no-deploy alternative — it restores
-`/` to a 200 and to the sitemap — but it also reopens free guest searches, which
-is a different decision. The owner chose to **leave the wall on** on 2026-08-06.
+| | Wall ON (today) | Wall OFF (rollback) |
+|---|---|---|
+| `/` | landing content, 200, **canonical** | the app |
+| `/how-it-works` | same bytes, canonical → `/` | standalone page, self-canonical |
+| Sitemap | `/` only | both |
+
+Mechanically that is `renderHowItWorksHTML({ home })`: `/` passes `home: true`,
+`/how-it-works` passes `home: ACCOUNT_WALL`. Two URLs serving identical bytes
+are duplicates unless exactly one is named canonical, and `/` wins because the
+root domain is the strongest URL a site has. `ACCOUNT_WALL=off` therefore stays
+a *complete* no-deploy rollback — routing, canonical and sitemap all revert
+together. `test/account-wall.test.js` pins both directions.
+
+**`/how-it-works` deliberately did NOT become a 301.** A 301 is cached
+near-permanently by browsers and by Google, making it the one part of this that
+could not be walked back. The canonical carries the same consolidation signal
+reversibly. Convert it once `/` is confirmed indexed — it is a one-liner.
+
+Internal nav/footer links stay pointed at `/how-it-works` on purpose: with the
+wall off `/` is the app, and a "How it works" link there would land on the
+search form. `/how-it-works` is the stable URL for this content in both states;
+`/` is the front door only while the wall is up.
+
+**This is not finished until Google says so, and that check is item 3.** The
+whole point was that Search Console had never crawled the redirect's target;
+nothing proves the fix worked except `/` actually getting crawled and indexed.
 
 ### 2. Market page h1s still say the old wording (small, but visible copy)
 
@@ -101,13 +125,30 @@ at the h1 site in `renderMarketPageHTML`. Deliberately **not** done unprompted:
 it changes copy people see, and the plainer wording genuinely reads better as a
 heading. A real tradeoff, not an oversight.
 
-### 3. Check the reports (no work, just look)
+### 3. Check the reports — **now the highest-value item here** (no code)
 
-Performance and Page Indexing needed ~a day to populate after verification. The
-Page Indexing report is what actually closes this loop — it says how many of the
-43 are indexed versus sitting in the same never-crawled state as
-`/how-it-works`. Two pages were spot-checked by hand; that report checks all of
-them at once.
+Everything above is machinery built on an assumption nobody has tested: that
+these pages can be found at all. Two days of engineering went into the fix in
+item 1, and **not one line of it is known to have worked.** This is the step
+that says whether any of it did, and it is the cheapest item on the list.
+
+Three things to do in Search Console, in order:
+
+1. **URL-inspect `https://compninja.co/`** and request indexing. Before
+   2026-08-08 the front door was "Discovered, currently not indexed", last
+   crawl N/A. Whether that changes is the entire scoreboard for item 1.
+2. **Resubmit the sitemap** — its contents changed (`/` added,
+   `/how-it-works` dropped while the wall is up).
+3. **Read Page Indexing** for all 43 URLs. Performance and Page Indexing needed
+   ~a day to populate after verification, so there should be real data now. Two
+   pages were spot-checked by hand on 2026-08-06; this report checks every one
+   at once.
+
+Worth holding on to while reading it: the caveat at the top of this file. Zero
+real users is an acquisition problem, and SEO on auto-generated pages for a
+three-week-old domain may simply never pay. If Page Indexing comes back thin
+after a fair wait, that is **information**, not a prompt for more SEO work —
+the broker relationships are the better lever.
 
 ### 4. Cosmetic leftover
 

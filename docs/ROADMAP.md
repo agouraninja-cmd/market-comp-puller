@@ -12,26 +12,8 @@ intent, the devlog states history.
 
 ## Now
 
-- **Private comps must stop being geocoded by address** — the first piece of
-  work after v2. Spec AGREED 2026-08-06 in
-  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; section 7 is
-  answered (ship step 1 plus Jacob's two display guards, defer import-time
-  geocoding). Owen owns migration 017, `lat`/`lng` in the CSV template with
-  validation, `toApiComp()` lifting the property's coordinates, and
-  `blend-comps.js` carrying them through. Until it lands, a private comp's
-  address still leaves the broker's browser to place a map pin.
-- **Address Explorer follow-ups**: the "instant report" badge on addresses
-  whose report is already cached, and wiring the existing
-  `/?explore=City,%20ST&type=X` deep link into the market pages.
-- **The homepage is a 302 and out of `sitemap.xml`** (product decision;
-  full context in `docs/SEO.md`). Under `ACCOUNT_WALL` `/` redirects to
-  `/how-it-works`, and Search Console confirmed on 2026-08-06 that Google
-  has **never crawled** that page — so every brand search points at a
-  redirect to a page Google does not have. The root domain is normally the
-  strongest URL a site has. The fix is serving that content at `/` with a
-  200 for logged-out visitors and restoring `/` to the sitemap, which
-  reopens the account wall route and needs a decision about what a
-  logged-out visitor sees there.
+(Empty — the three items that lived here all shipped; see the Shipped log.
+Pull the next item up from Next when one is chosen.)
 
 ## Next
 
@@ -105,6 +87,24 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 "analyst-grade" before the comp audit scores 90%+.
 
 ## Shipped log (roadmap-level items only)
+
+- **2026-08-08: the homepage is a page again.** Logged-out `/` serves the
+  landing content with a 200 (was a 302 the index never followed);
+  /how-it-works canonicalizes to `/` while the wall is up; `/` is back in
+  the sitemap. Every market-page CTA that points at `/` now lands on a
+  real page.
+- **2026-08-08: Address Explorer follow-ups closed.** Market pages link
+  into the explorer via the wall-safe `/?auth=signup&explore=` door, and
+  cached addresses carry an "Instant" badge (presence recorded per address
+  by migration 020, failure-safe, approximation by design).
+- **2026-08-08: deploys gated on the checks.** `npm start` runs
+  `prestart` (syntax check + full suite), so a red build exits before
+  listening and Render keeps the previous green deploy — works even when
+  GitHub Actions is down. CI on GitHub stays advisory.
+- **2026-08-06: private comps stopped being geocoded by address.** Both
+  halves shipped same-day (storage: migration 017 + CSV coordinates;
+  display: the skip + no-third-party guards in `renderMap()`). This line
+  sat in "Now" until 2026-08-08 — it was already done.
 
 - **2026-08-08: v4 slice 3, the 1031 exchange guide.** Public education
   page at /1031-exchange: the exchange workflow in order, a client-side

@@ -56,8 +56,12 @@ Nothing beyond those modules and that route wiring is tested; do not assume a
 green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
 every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
-`/healthz` — advisory only, since Render deploys main regardless; a red X on
-GitHub Actions means fix or revert now. **No result at all is not the same as
+`/healthz` — advisory on GitHub, but since 2026-08-08 the same checks also
+gate the deploy itself: `npm start` runs a `prestart` script (`node --check
+server.js && npm test`), so on Render a red build exits before the server
+listens and the previous green deploy keeps serving. That gate holds even
+when Actions is down. A red X on
+GitHub Actions still means fix or revert now. **No result at all is not the same as
 green**, and it happens: during a 7-hour Actions incident on 2026-08-06 GitHub
 throttled webhooks to ~15% and four branches merged with no CI run ever
 created. So the workflow also carries **`workflow_dispatch`** — a "Run
@@ -77,10 +81,13 @@ utility class actually landed in the vendored file and commit it alongside.
 ## Running it
 
 ```bash
-npm start          # = node server.js  -> serves http://localhost:3000
+npm start          # prestart runs the checks (~2s), then node server.js -> http://localhost:3000
 ```
 
-`npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
+`npm start` first runs `prestart` (`node --check server.js && npm test`, about
+two seconds) and refuses to boot on a failure — that is the production deploy
+gate (Render's start command is `npm start`), so do not remove it to save the
+two seconds. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
 a **portable (no-admin) copy**, so it's launched by full path instead:
 
 ```powershell
@@ -161,8 +168,14 @@ dependency. `.env` is git-ignored — never commit it.
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
 - `ACCOUNT_WALL` — optional `on`/`off`, **default ON** (live since 2026-08-05).
-  Makes the app account-only: `GET /` and `/desk` 302 to `/how-it-works` for a
-  visitor with no `cn_session` cookie, and `index.html` swaps the search form
+  Makes the app account-only. Since 2026-08-08 a visitor with no `cn_session`
+  cookie gets the **landing page rendered at `/` with a 200** (the same
+  content `/how-it-works` serves, via `renderHowItWorksHTML({ home: true })`,
+  canonical `/`, served no-store because what lives at `/` depends on auth
+  state) — NOT the 302 to `/how-it-works` the wall shipped with, which left
+  the site's strongest URL a redirect Google never followed (Search Console
+  confirmed the target was never crawled). `/desk` still 302s, now to `/`.
+  Signed-in visitors get the app; `index.html` swaps the search form
   for a signup card (`applySearchLock()`, driven by `/api/config`'s
   `accountWall`). It decides on cookie **presence**, never `getSessionUser()`,
   because that reads the database and this route runs on every page load; the
@@ -171,13 +184,20 @@ dependency. `.env` is git-ignored — never commit it.
   settings are deliberately not allowed to disagree. Two exemptions:
   `/r/<id>` (shared reports are public by design, and now render with the
   signup card above them) and `/?auth=signup|signin` (the account modal lives
-  only in `index.html`, so the signup buttons on `/how-it-works` need a door
-  that is not a redirect loop). While it is on, `sitemap.xml` drops `/` and the
-  `WebApplication` JSON-LD lives on `/how-it-works` rather than `index.html`,
-  which no crawler reaches. `off` is the instant rollback lever and restores
-  the pre-wall app exactly, including `GUEST_SEARCH_LIMIT`'s own configured
-  value; the startup banner says which state it is in. Spec in
-  `docs/superpowers/specs/2026-08-05-account-wall-and-how-it-works-landing-design.md`.
+  only in `index.html`, so the signup buttons on the landing page need a door
+  that serves the app — note a 200 alone no longer proves which page answered;
+  tests discriminate on content). While the wall is on, `/how-it-works` serves
+  the same bytes as `/` and **canonicalizes to `/`** (`home: ACCOUNT_WALL`),
+  `sitemap.xml` lists `/` and drops `/how-it-works` (listing a self-declared
+  duplicate is a Search Console soft error), and the `WebApplication` JSON-LD
+  reaches crawlers at `/` itself via the landing render. `off` is the instant
+  rollback lever and restores the pre-wall app exactly — `/` serves the app,
+  `/how-it-works` reverts to its own canonical and returns to the sitemap,
+  and `GUEST_SEARCH_LIMIT` keeps its own configured value; the startup banner
+  says which state it is in. Spec in
+  `docs/superpowers/specs/2026-08-05-account-wall-and-how-it-works-landing-design.md`
+  (predates the 200-at-root change; test/account-wall.test.js pins the
+  current contract).
 - `GUEST_SEARCH_LIMIT` — optional (default 1, LIVE since 2026-08-03; forced to
   0 while `ACCOUNT_WALL` is on). Free
   report searches per **anonymous** visitor before a free sign-in is required —
@@ -337,9 +357,12 @@ dependency. `.env` is git-ignored — never commit it.
   filename or the bare token. Set, the server answers that exact path with the
   line Google expects and logs the live path at startup; unset, the route does
   not exist. **The file method, not the meta tag, on purpose**: meta-tag
-  verification fetches the property root, and under `ACCOUNT_WALL` `/` is a 302
-  to `/how-it-works`, so a tag placed there is never seen and verification fails
-  with no stated reason. This path is its own route and the wall never touches
+  verification fetches the property root, and when this shipped `/` was a 302
+  under `ACCOUNT_WALL`, so a tag placed there was never seen and verification
+  failed with no stated reason. `/` answers 200 now (the landing page), but
+  the file method stays — it is auth-independent by construction and Google
+  re-checks it forever, so it must never ride on what `/` happens to serve.
+  This path is its own route and the wall never touches
   it (the static handler is an allowlist). A DNS TXT record reaches the same
   place and is better where there is registrar access — it covers every
   subdomain and survives any redirect; the two do not conflict. **Keep the var
@@ -461,7 +484,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   signature of the offered verified comps — so approving a broker comp busts
   the cache for that type — plus a signature of `subjectDetails`, appended only
   when non-empty so pre-existing cache entries keep their keys; in-memory Map +
-  file fallback when Supabase is unconfigured). A cache hit does NOT call Anthropic and does NOT count against
+  file fallback when Supabase is unconfigured). Since 2026-08-08 each DB entry
+  also records `address_key` + `prop_type` (nullable columns, migration 020) —
+  written by a separate best-effort PATCH after the main insert, never in it
+  (an unknown column in the insert would divert the whole cache to the
+  ephemeral file, the 004 outage's shape) — feeding the Address Explorer's
+  "Instant" badge via `cachedAddressKeys()`; presence-based, failure-safe,
+  and an approximation by design (the true hit still needs the exact key).
+  A cache hit does NOT call Anthropic and does NOT count against
   `DAILY_SEARCH_CAP`.
 - `GET /api/config` — what the front-end needs before it can render:
   `{ authRequired, leadCapture, streetview, pro }`. The `pro` block carries
@@ -768,8 +798,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `info@compninja.co`, **never `LEAD_NOTIFY_EMAIL`** (the owner's personal
   inbox, and this is public output); and `sameAs` is deliberately absent
   because it means profiles the business actually controls, so add real URLs
-  only when they exist. `index.html` needs no copy — `ACCOUNT_WALL` keeps
-  crawlers off `/`.
+  only when they exist. `index.html` needs no copy — under `ACCOUNT_WALL` a
+  crawler at `/` gets the landing render, which spreads `brandGraph()` like
+  every other server-rendered page.
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
   (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do

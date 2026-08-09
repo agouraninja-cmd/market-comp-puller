@@ -908,19 +908,37 @@
               <button id="exploreAddrLink" type="button" class="text-xs text-[#8A93A0] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
             </div>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
-          </div>
-          <div class="rd-cell">
-            <label class="rd-lab" for="propertyType">Property type</label>
-            <select id="propertyType" class="rd-in">
-              <option>Industrial</option>
-              <option>Office</option>
-              <option>Retail</option>
-              <option>Multifamily</option>
-              <option>Land</option>
-              <option>Residential</option>
-            </select>
+            <!-- The property type lives under the address it describes, as a
+                 sentence rather than a control: it is a fact about THIS
+                 building, and the confirm dialog is where it gets settled.
+                 The picker is revealed on demand so someone who wants to
+                 decide up front still can. -->
+            <div id="typeStatusLine" class="text-xs text-[#8A93A0] mt-1"></div>
+            <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
             <div id="typeAutoNote" class="text-xs text-[#8A93A0] mt-1"></div>
           </div>
+          <div class="rd-cell">
+            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
+            <div class="flex items-center gap-2">
+              <input id="targetSize" type="number" min="0" step="any" placeholder="auto from records" class="rd-in" />
+              <span class="text-sm text-slate-400 shrink-0">to</span>
+              <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="rd-in" />
+            </div>
+            <p id="sizeEstimateNote" class="hidden text-xs text-slate-500 mt-1">Estimated from the building's footprint - edit if it's off.</p>
+          </div>
+          <!-- Still the single source of truth for the current type (and for the
+               list of types every picker builds itself from), just no longer a
+               control the visitor operates. Hidden rather than removed so every
+               read/write path, the watch-type option copy, and the remembered-
+               type validation all keep working unchanged. -->
+          <select id="propertyType" class="hidden" tabindex="-1" aria-hidden="true">
+            <option>Industrial</option>
+            <option>Office</option>
+            <option>Retail</option>
+            <option>Multifamily</option>
+            <option>Land</option>
+            <option>Residential</option>
+          </select>
         </div>
         <!-- Address Explorer — hands a visitor with no address a stable list of
              real ones (see docs/superpowers/specs/2026-08-03-address-explorer-
@@ -968,23 +986,14 @@
           </div>
         </div>
 
-        <!-- Subject property (optional; size auto-pulled from public records when blank) -->
+        <!-- Subject property (optional; size now lives up in row 1) -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(size, price, NOI: optional, sharpens the estimate)</span></span>
+            <span id="subjectSummary">+ Your property details <span class="text-[#8A93A0] font-normal">(price, NOI: optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Size is pulled from public records automatically when left blank; enter it to override. Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</p>
+            <p id="subjectHint" class="text-xs text-[#8A93A0] mb-3">Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size is up top; it's pulled from public records automatically when left blank.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label id="targetSizeLabel" class="rd-lab">Building size (SF)</label>
-                <div class="flex items-center gap-2">
-                  <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 25000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                  <span class="text-sm text-slate-400 shrink-0">to</span>
-                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                </div>
-                <p id="sizeEstimateNote" class="hidden text-xs text-slate-500 mt-1">Estimated from the building's footprint - edit if it's off.</p>
-              </div>
               <div>
                 <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
                 <div class="flex items-center gap-2">
@@ -2332,10 +2341,10 @@
     setLookbackControls(rec);
     lookbackHint.textContent = "Recommended for " + propertyTypeSel.value;
   }
-  propertyTypeSel.addEventListener("change", () => {
-    applyRecommendedLookback();
-    renderSubjectFields(propertyTypeSel.value);
-  });
+  // No "change" listener on the select: it is hidden, so no user event can
+  // reach it, and every programmatic path goes through setTypeProgrammatic
+  // (which does exactly what this listener used to) or marks resolution
+  // itself. A listener here would be dead code pretending to be a guarantee.
   syncSubjectFieldsToType();   // initial paint; the localStorage restore re-syncs later
   // Seed the default type's recommendation on first load, unless a report is
   // already being restored into the form.
@@ -5429,7 +5438,39 @@
     renderSubjectFields(next);
   }
 
-  // Task 3 adds the status element; until then this is a guarded no-op.
+  // The status line's door into the inline picker. A function DECLARATION on
+  // purpose: renderTypeStatus calls it and runs at parse time from the
+  // explorer deep-link block, so a `const` arrow would still be in its
+  // temporal dead zone there — and that block's try/catch would swallow the
+  // ReferenceError, killing the feature silently. Same trap the
+  // `typeResolution` note upstream describes.
+  function makeTypeChangeButton() {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "change";
+    b.className = "underline text-[#5A6473] hover:text-[#1A2433] ml-1";
+    b.addEventListener("click", () => {
+      const wrap = document.getElementById("typeInlinePicker");
+      if (!wrap.classList.contains("hidden")) { wrap.classList.add("hidden"); return; }
+      wrap.classList.remove("hidden");
+      buildTypeButtons(wrap, propertyTypeSel.value, (v) => {
+        setTypeProgrammatic(v);
+        // Marked HERE rather than by a select "change" listener: the select is
+        // hidden, so assigning its value fires nothing. Every picker site owns
+        // its own resolution.
+        typeResolution = "explicit";
+        wrap.classList.add("hidden");
+        typeAutoNote.textContent = "";
+        renderTypeStatus();
+      });
+    });
+    return b;
+  }
+
+  // The one-line answer to "what type is this?" under the address field. The
+  // door is offered in BOTH states: unresolved reads as an invitation ("pick
+  // it now"), resolved as a correction ("change"). customNodes is the escape
+  // hatch for callers that want to say something else in the same slot.
   function renderTypeStatus(customNodes) {
     const el = document.getElementById("typeStatusLine");
     if (!el) return;
@@ -5440,7 +5481,9 @@
       ? "Property type: chosen when you run the report."
       : "Property type: " + propertyTypeSel.value + (typeResolution === "detected" ? " (detected)." : ".");
     el.appendChild(label);
-    if (typeResolution !== null) el.appendChild(makeTypeChangeButton());
+    const door = makeTypeChangeButton();
+    if (typeResolution === null) door.textContent = "pick it now";
+    el.appendChild(door);
   }
 
   // Per-address type memory: re-runs never re-ask. Bounded like fpSize.v1.
@@ -5462,11 +5505,6 @@
   }
 
   const typeAutoNote = document.getElementById("typeAutoNote");
-  propertyTypeSel.addEventListener("change", () => {
-    typeResolution = "explicit";      // their call from here on
-    typeAutoNote.textContent = "";
-    renderTypeStatus();
-  });
 
   function applyDetectedType(next, label) {
     const prevType = propertyTypeSel.value;
@@ -8229,6 +8267,10 @@
       syncSubjectFieldsToType();
     }
   } catch (_) { /* private mode etc. — a nicety, not a requirement */ }
+  // After the restore so the line never paints blank, and deliberately after a
+  // restore that leaves `typeResolution` null: last session's asset class is a
+  // hint about this visitor, not a decision about this address.
+  renderTypeStatus();
 
   // ----------------------------------------------------------------------------
   // Rotating example addresses — the search field quietly cycles through

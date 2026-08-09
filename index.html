@@ -310,6 +310,46 @@
       #mapCard { display: none !important; }
       /* Print always uses the table, never the mobile card list. */
       #cardList { display: none !important; }
+      /* ---- Document print styling (Directions C+D, owner-approved
+         2026-08-09). C: the report header card prints as a document title
+         block — box gone, big Georgia address, the meta chips flattened
+         into a ruled strip, a hairline closing the block. D: every report
+         card's box dissolves and its heading becomes an uppercase
+         micro-label on an ink rule; only the value ledger and the
+         statement table keep their frames, as the exhibits they are.
+         Print/PDF ONLY — html2canvas ignores @media print, so the PNG
+         export and the screen are untouched. The :has() rules move a
+         heading's rule onto its flex wrapper so the rule spans the row
+         and the right-hand note sits on it; browsers without :has()
+         degrade to underlining the heading text alone. */
+      #reportArea .rd-bcard { border: 0 !important; border-radius: 0; padding-left: 0; padding-right: 0; }
+      #compsCard { border: 0 !important; border-radius: 0; }
+      #reportArea h2.font-brand {
+        font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+        font-size: 10.5px; letter-spacing: .12em; font-weight: 600; color: #1A2433;
+        border-bottom: 1.5px solid #1A2433; padding-bottom: 5px; margin-bottom: 10px;
+      }
+      #reportArea div:not(.rd-bcard):has(> h2.font-brand) {
+        border-bottom: 1.5px solid #1A2433; padding-bottom: 5px; margin-bottom: 10px; align-items: baseline;
+      }
+      #reportArea div:not(.rd-bcard):has(> h2.font-brand) > h2.font-brand {
+        border-bottom: 0; padding-bottom: 0; margin-bottom: 0;
+      }
+      #reportHeaderCard { padding-top: 8px; padding-bottom: 14px; border-bottom: 1px solid #E4E2DA !important; }
+      #reportHeaderCard #reportAddress { font-size: 30px; }
+      #reportHeaderCard .rd-chip {
+        background: none !important; border: 0 !important; border-radius: 0;
+        border-right: 1px solid #ECEAE3 !important; padding: 0 12px 0 0; margin-right: 12px;
+        color: #5A6473;
+      }
+      #reportHeaderCard .rd-chip:last-child { border-right: 0 !important; }
+      /* The chart's entrance animations start elements at opacity 0 and are
+         armed on visibility — a report printed before the chart was ever
+         scrolled into view printed an EMPTY chart. Force every mark visible
+         on paper, like the card-level rule above already does for cards. */
+      #chartWrap .ch-fade, #chartWrap .ch-pop {
+        animation: none !important; opacity: 1 !important; transform: none !important;
+      }
     }
 
     /* ---------------- Research Desk landing system ---------------- */
@@ -1370,7 +1410,7 @@
              the DOM so it tops the stack on phones; sm:flex-row-reverse puts it
              back on the right on wider screens. Hidden in print — the letterhead
              above already carries the brand there. -->
-        <div class="rd-bcard print-shadow-none fade-in">
+        <div id="reportHeaderCard" class="rd-bcard print-shadow-none fade-in">
           <div class="flex flex-col gap-3 sm:flex-row-reverse sm:items-start sm:justify-between">
             <div class="report-lockup shrink-0 flex items-center gap-2">
               <div id="reportLockupDefault" class="flex items-center gap-2">
@@ -1682,7 +1722,8 @@
           <p class="text-xs text-[#8A93A0] mt-4">Lease data stays in your browser and your own portfolio, never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
         </div>
 
-        <p id="analysisEmpty" class="hidden text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
+        <!-- no-print: an instruction to interact with the app is noise on paper. -->
+        <p id="analysisEmpty" class="hidden no-print text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
 
         </div><!-- /tabAnalysis -->
 

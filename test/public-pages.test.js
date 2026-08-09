@@ -21,9 +21,19 @@ const { boot } = require("./helpers/boot");
 // validates the token, it only looks.
 const SESSION = { cookie: "cn_session=not-a-real-token" };
 
+// The market page under test must come from the COMMITTED market-seed.json,
+// never from a slug that happens to exist on the dev machine. The original
+// hardcoded industrial-boise-id, which lives only in the git-ignored
+// market-pages-dynamic.json on the machine that wrote the test — so the suite
+// passed locally and failed on Render's fresh disk, which (deploy-gated on
+// the tests) blocked every deploy behind it. Deriving the slug from the seed
+// keeps the fixture hermetic; the CTA test below also needs it industrial.
+const MARKET_SLUG = Object.keys(require("../market-seed.json")).find((s) => s.startsWith("industrial-"));
+const MARKET_PAGE = "/market/" + MARKET_SLUG;
+
 // Every page that renders through marketShell(). /broker/<slug> is omitted: it
 // needs a database to resolve a profile and 404s without one.
-const SHELL_PAGES = ["/markets", "/market/industrial-boise-id", "/brokers", "/1031-exchange", "/terms", "/privacy"];
+const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers", "/1031-exchange", "/terms", "/privacy"];
 
 test("the public pages let a visitor sign in", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
@@ -153,7 +163,7 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
     // another marketing page. The secondary link beneath it already carried
     // the market and type, so the pattern existed and the big button ignored
     // it.
-    const html = await (await fetch(srv.base + "/market/industrial-boise-id")).text();
+    const html = await (await fetch(srv.base + MARKET_PAGE)).text();
     const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
     assert.ok(ctas.length > 0, "the market page must still have a primary CTA");
     for (const href of ctas) {
@@ -164,7 +174,7 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
   });
 
   await t.test("a signed-in visitor is not shown a signup CTA either", async () => {
-    const html = await (await fetch(srv.base + "/market/industrial-boise-id", { headers: SESSION })).text();
+    const html = await (await fetch(srv.base + MARKET_PAGE, { headers: SESSION })).text();
     const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
     for (const href of ctas) {
       assert.ok(!/auth=signup/.test(href), "a member already has an account: " + href);

@@ -512,7 +512,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   fallback only ever holds the original three columns' worth of data — see
   the permissioned-sharing rules below), **no expiry**. Rate-limited per IP.
   **Permissioned sharing** (v3, 2026-08-06; migration
-  `018-report-sharing.sql`, **not yet applied to production**; spec
+  `018-report-sharing.sql`, **applied to production 2026-08-06**; spec
   `docs/superpowers/specs/2026-08-06-client-sharing-design.md`). The body
   also takes `visibility` (`"public"`, the default, or `"invited"`) and, for
   an invited share, `viewers` (up to 20 emails) and `includePrivate`. An

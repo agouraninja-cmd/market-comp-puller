@@ -12,9 +12,10 @@ intent, the devlog states history.
 
 ## Now
 
-- **Address Explorer follow-ups**: the "instant report" badge on addresses
-  whose report is already cached, and wiring the existing
-  `/?explore=City,%20ST&type=X` deep link into the market pages.
+- **Address Explorer follow-up**: the "instant report" badge on addresses
+  whose report is already cached. The other half of this item — wiring the
+  `/?explore=City,%20ST&type=X` deep link into the market pages — shipped
+  2026-08-08 through the wall-safe `?auth=signup&explore=` door.
 - **The homepage is a 302 and out of `sitemap.xml`** (product decision;
   full context in `docs/SEO.md`). Under `ACCOUNT_WALL` `/` redirects to
   `/how-it-works`, and Search Console confirmed on 2026-08-06 that Google
@@ -143,8 +144,8 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
   client's valuation matches the broker's to the dollar without an
   off-market address ever leaving the vault. Full private detail is a
   per-share opt-in gated on `canUseVault`. Rules live in the pure, tested
-  `report-access.js`. Not yet deployed — migration 018 has not run in
-  production.
+  `report-access.js`. Live — migration 018 applied 2026-08-06 (see
+  `migrations/APPLIED.md`) and the sharing routes are serving in production.
 - **2026-08-06: a private comp's address stops leaving the broker's browser.**
   The first piece of work after v2, and it is done on both sides. Spec and
   Owen's section 7 answer in

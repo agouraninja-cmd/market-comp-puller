@@ -5,16 +5,17 @@
 // entitlements.js and market.js, which is what lets `npm test` pin these
 // coercions with no server boot.
 //
-// This file is the designated home of the /api/comps parse pipeline
+// This file is the whole /api/comps parse pipeline
 // (parseCompJson → expandCompKeys → normalizeSourceTypes → normalizeCurrency
-// → normalizeTrendPct → reconcilePricePerSqft), being extracted from
-// server.js one function at a time as each gains tests. Still in server.js:
-// normalizeSourceTypes, normalizeTrendPct, reconcilePricePerSqft. Add the
-// next one HERE, not in a new file.
+// → normalizeTrendPct → reconcilePricePerSqft), extracted from server.js
+// 2026-08-08. A new pipeline step belongs HERE, not in a new file.
 //
-// TYPE_COMP_FIELDS deliberately stays in server.js — it is the prompt's
-// source of truth and the add-comp-field skill's checker greps it there —
-// so expandCompKeys takes it as an argument instead of importing it.
+// Two deliberate injections keep this module require-free:
+// TYPE_COMP_FIELDS stays in server.js — it is the prompt's source of truth
+// and the add-comp-field skill's checker greps it there — so expandCompKeys
+// takes it as an argument; and the source_type rule lives in corpus-audit.js
+// (the audit must apply the SAME rule to old harvested rows), so
+// normalizeSourceTypes takes enforcedSourceType as an argument too.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -180,11 +181,128 @@ function normalizeCurrency(parsed) {
   return parsed;
 }
 
+// source_type drives a trust badge and lands in CSV exports, so stray model
+// values are coerced onto the enum. Unknown maps to "estimate": the label may
+// under-claim a comp's provenance, never over-claim it. Both halves of the
+// rule (coerce onto the enum, then ENFORCE the individual-property
+// requirement) live in corpus-audit.js as enforcedSourceType, passed in by
+// the caller — the prompt already forbids market-level rows as comps, but in
+// thin markets the model pads anyway, and a prompt rule is a request while
+// normalization is a guarantee.
+function normalizeSourceTypes(parsed, enforcedSourceType) {
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  for (const c of parsed.comps) {
+    if (!c || typeof c !== "object") continue;
+    c.source_type = enforcedSourceType(c.source_type, c.address);
+  }
+  return parsed;
+}
+
+// annual_price_trend_pct powers the front-end's time adjustment of older
+// comps, so a bad value multiplies straight into the valuation. Coerce to a
+// plain number and refuse anything outside +/-30%/yr (almost certainly a
+// monthly figure, a whole-window change, or noise) — null simply disables
+// the adjustment. Zero also maps to null: no trend means no indexing.
+function normalizeTrendPct(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const v = Number(String(parsed.annual_price_trend_pct ?? "").replace(/%/g, "").trim());
+  parsed.annual_price_trend_pct =
+    Number.isFinite(v) && v !== 0 && Math.abs(v) <= 30 ? v : null;
+  return parsed;
+}
+
+// ---------------------------------------------------------------------------
+// $/SF reconciliation — the model's per-comp price_per_sqft feeds the
+// valuation math directly, so verify it against the comp's own stated
+// price ÷ size instead of taking it on faith. Fill it when missing, replace
+// it when it disagrees with the comp's own figures by more than 10%
+// (rounding never trips that; rate-vs-price and order-of-magnitude slips
+// blow far past it). All three parsers are strict whole-string matchers on
+// the displayMoney philosophy: a value that could mean two things (a range,
+// a per-unit rate, a parenthetical) is refused, and refusal always means
+// "leave the comp untouched" — never a guessed number.
+// ---------------------------------------------------------------------------
+const GROUPED_INT = /^\d{1,3}(,\d{3})+$/; // "6,400,000" yes; "12,50" no
+
+function moneyNumberFrom(numStr, suffix) {
+  const intPart = numStr.split(".")[0];
+  if (intPart.includes(",") && !GROUPED_INT.test(intPart)) return null;
+  const n = Number(numStr.replace(/,/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const mult = { k: 1e3, thousand: 1e3, m: 1e6, mm: 1e6, million: 1e6, b: 1e9, billion: 1e9 }[
+    (suffix || "").toLowerCase()
+  ] || 1;
+  return n * mult;
+}
+
+// Total sale price: "$6,400,000", "$1.2M", "1.2 million", "850K". Refuses
+// ranges (em-dash ranges are already hyphens via stripEmDashes), per-SF
+// rates, parentheticals, negatives — anything beyond one plain figure.
+function parseSalePrice(s) {
+  const m = /^\s*~?\s*(?:US)?\$?\s*([\d,]+(?:\.\d+)?)\s*(mm?|million|k|thousand|b|billion)?\s*\.?\s*$/i
+    .exec(String(s || ""));
+  return m ? moneyNumberFrom(m[1], m[2]) : null;
+}
+
+// Building size: "48,000", "48,000 SF", "48000 sq ft".
+function parseSizeSqft(s) {
+  const m = /^\s*~?\s*([\d,]+(?:\.\d+)?)\s*(?:sf|sq\.?\s?ft\.?|square\s+feet)?\s*$/i
+    .exec(String(s || ""));
+  return m ? moneyNumberFrom(m[1], "") : null;
+}
+
+// Stated $/SF: "$115", "115.50", "$115/SF". Unparseable reads as missing,
+// which is safe — a fill only happens when price AND size parsed cleanly.
+function parsePsf(s) {
+  const m = /^\s*~?\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(?:\/\s?sf)?\s*$/i.exec(String(s || ""));
+  return m ? moneyNumberFrom(m[1], "") : null;
+}
+
+function reconcilePricePerSqft(parsed) {
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  // "$" only for USD reports — a foreign report's prices are local currency,
+  // and a baked-in "$" would be a false label (must run after normalizeCurrency).
+  // Legacy cached payloads may lack the currency field entirely; blank reads
+  // as USD, matching normalizeCurrency's own convention.
+  const prefix = (parsed.currency || "USD") === "USD" ? "$" : "";
+  const fmtPsf = (v) => {
+    const r = v >= 10 ? Math.round(v) : Math.round(v * 100) / 100;
+    return prefix + r.toLocaleString("en-US");
+  };
+  for (const c of parsed.comps) {
+    try {
+      if (!c || typeof c !== "object") continue;
+      // Same sale test as the front-end hero: blank transaction counts as sale.
+      if (String(c.transaction || "").toLowerCase().startsWith("lease")) continue;
+      const price = parseSalePrice(c.price_or_rate);
+      const size = parseSizeSqft(c.size_sqft);
+      if (price === null || size === null) continue;
+      const derived = price / size;
+      // Same sane per-SF band the front-end uses for user-added comps.
+      if (derived < 1 || derived > 100000) continue;
+      const stated = parsePsf(c.price_per_sqft);
+      if (stated === null || Math.abs(stated - derived) / derived > 0.10) {
+        c.price_per_sqft = fmtPsf(derived);
+        c.psf_reconciled = true; // front-end discloses the recompute
+      }
+    } catch (err) {
+      // Never let a malformed comp break the report — leave it untouched.
+    }
+  }
+  return parsed;
+}
+
 module.exports = {
   extractFirstJsonObject,
   parseCompJson,
   stripEmDashes,
   SHORT_COMP_KEYS,
   expandCompKeys,
+  normalizeSourceTypes,
   normalizeCurrency,
+  normalizeTrendPct,
+  parseSalePrice,
+  parseSizeSqft,
+  parsePsf,
+  reconcilePricePerSqft,
 };

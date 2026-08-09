@@ -177,3 +177,139 @@ test("stripEmDashes keeps a dollar range numeric and recurses into arrays", () =
   assert.equal(RP.stripEmDashes("$4—$5"), "$4-$5");
   assert.deepEqual(RP.stripEmDashes(["a — b"]), ["a, b"]);
 });
+
+// --- normalizeSourceTypes: the badge enum, enforced --------------------------
+// The rule itself lives in corpus-audit.js (enforcedSourceType); the pipeline
+// step takes it as an argument the way expandCompKeys takes TYPE_COMP_FIELDS.
+// These tests wire in the REAL rule so the pairing is what's pinned.
+
+const AUDIT = require("../corpus-audit");
+
+test("normalizeSourceTypes coerces unknown values to estimate, never over-claims", () => {
+  // "brokerage flyer" would map to listing via the synonym table — this value
+  // matches nothing, which is the under-claim case.
+  const parsed = { comps: [{ address: "1 Elm St, Boise, ID", source_type: "word of mouth" }] };
+  RP.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+  assert.equal(parsed.comps[0].source_type, "estimate");
+});
+
+test("normalizeSourceTypes keeps honest provenance on a street-numbered address", () => {
+  const parsed = { comps: [{ address: "1 Elm St, Boise, ID", source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+  assert.equal(parsed.comps[0].source_type, "listing");
+});
+
+test("normalizeSourceTypes forces an aggregate row to estimate whatever it claims", () => {
+  const parsed = { comps: [{
+    address: "Financial District (general submarket estimate), Boston, MA",
+    source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+  assert.equal(parsed.comps[0].source_type, "estimate");
+});
+
+test("normalizeSourceTypes never throws on junk", () => {
+  assert.equal(RP.normalizeSourceTypes(null, AUDIT.enforcedSourceType), null);
+  const parsed = { comps: [null, "x"] };
+  assert.equal(RP.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType), parsed);
+});
+
+// --- normalizeTrendPct: the time-adjustment input ----------------------------
+
+test("normalizeTrendPct coerces a plain number string, tolerating a percent sign", () => {
+  assert.equal(RP.normalizeTrendPct({ annual_price_trend_pct: "6.5" }).annual_price_trend_pct, 6.5);
+  assert.equal(RP.normalizeTrendPct({ annual_price_trend_pct: "-6.5%" }).annual_price_trend_pct, -6.5);
+});
+
+test("normalizeTrendPct refuses zero and anything outside ±30%/yr", () => {
+  assert.equal(RP.normalizeTrendPct({ annual_price_trend_pct: "0" }).annual_price_trend_pct, null);
+  assert.equal(RP.normalizeTrendPct({ annual_price_trend_pct: "31" }).annual_price_trend_pct, null);
+  assert.equal(RP.normalizeTrendPct({ annual_price_trend_pct: "-30" }).annual_price_trend_pct, -30);
+  assert.equal(RP.normalizeTrendPct({ annual_price_trend_pct: "wild" }).annual_price_trend_pct, null);
+  assert.equal(RP.normalizeTrendPct({}).annual_price_trend_pct, null);
+});
+
+// --- the strict money parsers ------------------------------------------------
+// Whole-string matchers on the displayMoney philosophy: anything that could
+// mean two things is refused, and refusal means "leave the comp untouched".
+
+test("parseSalePrice reads plain figures and shorthand", () => {
+  assert.equal(RP.parseSalePrice("$6,400,000"), 6400000);
+  assert.equal(RP.parseSalePrice("$1.2M"), 1200000);
+  assert.equal(RP.parseSalePrice("1.2 million"), 1200000);
+  assert.equal(RP.parseSalePrice("850K"), 850000);
+  assert.equal(RP.parseSalePrice("US$2.5MM"), 2500000);
+});
+
+test("parseSalePrice refuses ranges, rates, negatives and bad grouping", () => {
+  assert.equal(RP.parseSalePrice("$4-$5M"), null);
+  assert.equal(RP.parseSalePrice("$115/SF"), null);
+  assert.equal(RP.parseSalePrice("-500000"), null);
+  assert.equal(RP.parseSalePrice("12,50"), null);
+  assert.equal(RP.parseSalePrice(""), null);
+});
+
+test("parseSizeSqft reads sizes with or without units", () => {
+  assert.equal(RP.parseSizeSqft("48,000"), 48000);
+  assert.equal(RP.parseSizeSqft("48,000 SF"), 48000);
+  assert.equal(RP.parseSizeSqft("48000 sq ft"), 48000);
+  assert.equal(RP.parseSizeSqft("~48,000 sf"), 48000);
+  assert.equal(RP.parseSizeSqft("48,000 - 50,000"), null);
+});
+
+test("parsePsf reads a stated $/SF", () => {
+  assert.equal(RP.parsePsf("$115"), 115);
+  assert.equal(RP.parsePsf("115.50"), 115.5);
+  assert.equal(RP.parsePsf("$115/SF"), 115);
+  assert.equal(RP.parsePsf("$110-$120"), null);
+});
+
+// --- reconcilePricePerSqft: trust but verify ---------------------------------
+
+test("reconcile fills a missing $/SF from the comp's own price and size", () => {
+  const parsed = { currency: "USD", comps: [{
+    transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "" }] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "$133");
+  assert.equal(parsed.comps[0].psf_reconciled, true);
+});
+
+test("reconcile replaces a stated $/SF that disagrees by more than 10%", () => {
+  const parsed = { currency: "USD", comps: [{
+    transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "$100" }] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "$133");
+});
+
+test("reconcile leaves a stated $/SF within 10% untouched", () => {
+  const parsed = { currency: "USD", comps: [{
+    transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "$130" }] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "$130");
+  assert.ok(!("psf_reconciled" in parsed.comps[0]));
+});
+
+test("reconcile skips leases — an annual rent over size is not a sale $/SF", () => {
+  const parsed = { currency: "USD", comps: [{
+    transaction: "Lease", price_or_rate: "$480,000", size_sqft: "48,000", price_per_sqft: "" }] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "");
+});
+
+test("reconcile writes no dollar sign on a non-USD report", () => {
+  const parsed = { currency: "CAD", comps: [{
+    transaction: "Sale", price_or_rate: "6,400,000", size_sqft: "48,000", price_per_sqft: "" }] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "133");
+});
+
+test("reconcile refuses a derived figure outside the sane per-SF band", () => {
+  const parsed = { currency: "USD", comps: [{
+    transaction: "Sale", price_or_rate: "$5,000", size_sqft: "48,000", price_per_sqft: "" }] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "", "derived $0.10/SF must be refused");
+});
+
+test("reconcile never throws on junk comps", () => {
+  const parsed = { comps: [null, "x", {}] };
+  assert.equal(RP.reconcilePricePerSqft(parsed), parsed);
+});

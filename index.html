@@ -72,6 +72,11 @@
       animation: shimmer 2.2s ease-in-out infinite;
     }
     @keyframes shimmer { 100% { transform: translateX(100%); } }
+    /* Assembling report: children of #results outside the data-assemble
+       allowlist are hidden by beginAssembly()'s walk and restored wholesale
+       by resetAssembly(). Its own class, never `hidden`, which belongs to
+       the renderers. */
+    .asm-hidden { display: none !important; }
 
     th.sortable { cursor: pointer; user-select: none; }
     #compsTable th.sortable:hover { background-color: #F5F4EF; color: #374253; }
@@ -1427,16 +1432,10 @@
             <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
-        <!-- Live report preview: the streamed market summary (applyProgress
-             phase "field") and a growing comp table (phase "comp"). aria-hidden
-             keeps the polite live region above from narrating every row; model
-             text goes in via textContent only. Inline max-width: wider than the
-             bar's max-w-xs, and inline so no Tailwind regen is needed. -->
-        <div id="loadingComps" class="hidden w-full mt-4 text-left" style="max-width:34rem" aria-hidden="true"></div>
       </div>
       <!-- Purely visual (the live region above announces progress): gray placeholders
            in the same card shells the finished report renders into. -->
-      <div class="mt-6 space-y-6" aria-hidden="true">
+      <div id="loadingSkeletons" class="mt-6 space-y-6" aria-hidden="true">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="bg-white rounded-md border border-[#D8D4C9] p-4">
             <div class="skeleton h-3 w-16"></div>
@@ -1584,7 +1583,7 @@
 
         <!-- Owner value estimate hero (owner mode only). Sales-comp math runs
              in the browser via renderOwnerHero; NOI never leaves the page. -->
-        <div id="ownerHero" class="hidden rd-bcard print-shadow-none fade-in">
+        <div id="ownerHero" data-assemble class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">What This Building Is Worth</h2>
             <span id="ownerBasis" class="text-xs text-[#68707E] text-right"></span>
@@ -1873,7 +1872,7 @@
         <div id="statTiles" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
 
         <!-- Summary card -->
-        <div class="rd-bcard print-shadow-none fade-in">
+        <div id="summaryCard" data-assemble class="rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-3">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Market Summary</h2>
             <!-- no-print + skipped by the PNG capture: a button in an exported report is noise -->
@@ -1967,7 +1966,7 @@
         </div>
 
         <!-- Comps table -->
-        <div id="compsCard" class="rd-exhibit overflow-hidden print-shadow-none fade-in">
+        <div id="compsCard" data-assemble class="rd-exhibit overflow-hidden print-shadow-none fade-in">
           <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#ECEAE3]">
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comparable Properties</h2>
             <div class="flex items-center gap-3">

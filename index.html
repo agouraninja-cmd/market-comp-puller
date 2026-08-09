@@ -386,7 +386,15 @@
     /* Live comps table header — the landing exhibit's editorial th at the live
        table's own geometry (padding/alignment stay in the JS-built classes).
        No background here so the sortable hover rule can win. */
-    #compsTable thead th { color: #8A93A0; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 1px solid #D8D4C9; }
+    #compsTable thead th { color: #8A93A0; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid #1A2433; }
+    /* Statement table (Direction B, owner-approved 2026-08-08): the header
+       closes under a strong ink rule (above) and the table ends in a median
+       row sealed with a double rule — the audited-statement mark for "this
+       figure is final". Built by renderTableFoot() from the same
+       valuationComps() sales median the chart and hero read, so the three
+       can never disagree on one report. */
+    #compsTable tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; }
+    #compsTable tfoot .tf-lab { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: #5A6473; }
     /* Driver rows: .rd-drv's hairline rhythm without flex gap (PNG exporter). */
     #driversList p { border-top: 1px solid #F0EFE9; padding: 7px 0; margin: 0; }
     #driversList p:first-child { border-top: 0; }
@@ -1810,6 +1818,10 @@
                    #tableBody, so this row never moves. -->
               <tbody id="subjectRowBody" class="border-b-2 border-[#E4E2DA]"></tbody>
               <tbody id="tableBody" class="divide-y divide-[#F0EFE9]"></tbody>
+              <!-- Statement footer: the sales-median closing row (Direction B).
+                   Its own tfoot so sorting, which only rebuilds #tableBody,
+                   never moves it. -->
+              <tfoot id="tableFoot"></tfoot>
             </table>
           </div>
           <!-- Legend listing the provenance badges present in the visible comps; kept
@@ -9599,6 +9611,7 @@
       // Still refresh it — a filter that empties the table must clear a stale
       // notice, and excluding every visible comp must not hide the count.
       renderLockedNotice();
+      renderTableFoot();
       return;
     }
     comps.forEach((comp, idx) => {
@@ -9721,9 +9734,59 @@
     });
     appendLockedRows(body, colCount);
     renderLockedNotice();
+    renderTableFoot();
     // Only a first render adds .badge-in in the first place; re-sorts have
     // nothing to arm.
     if (animateIn) armWhenVisible(document.getElementById("compsCard"), "in-view");
+  }
+
+  // The statement footer (Direction B): the table closes with the median $/SF
+  // of the full valuation set — the SAME statistic over the SAME comps as the
+  // chart's median line and the hero's basis (valuationComps() sales, locked
+  // rows included), so the three can never disagree on one report. Lives in
+  // its own tfoot: sorting rebuilds only #tableBody, and the closing rule
+  // must stay closed. Rebuilt with every body render (sort, filter,
+  // curation, gating) because curation changes the median.
+  function renderTableFoot() {
+    const foot = document.getElementById("tableFoot");
+    if (!foot) return;
+    foot.innerHTML = "";
+    // A sales median has no place over a leases-only view, and an empty
+    // table needs no closing rule.
+    if (txFilter === "leases" || visibleComps().length === 0) return;
+    const psfIdx = COLUMNS.findIndex((c) => c.key === "price_per_sqft");
+    if (psfIdx < 1) return;
+    const vals = valuationComps()
+      .filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease"))
+      .map((c) => numericValue(c.price_per_sqft))
+      .filter((v) => v > 0)
+      .sort((a, b) => a - b);
+    if (vals.length < 2) return;
+    const med = vals.length % 2
+      ? vals[(vals.length - 1) / 2]
+      : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
+    const tr = document.createElement("tr");
+    const lab = document.createElement("td");
+    lab.colSpan = psfIdx;
+    lab.className = "tf-lab px-4 py-3 whitespace-nowrap";
+    // The figure rides in the label as well as under the $/SF column: the
+    // live table scrolls horizontally and $/SF starts off-screen, so the
+    // label is the only part guaranteed visible without a scroll. A printed
+    // page unclips the table and shows both — same number, statement-style.
+    lab.textContent = "Median of " + vals.length + " sale comps · "
+      + formatUsd(med, { maximumFractionDigits: 0 }) + "/SF";
+    tr.appendChild(lab);
+    const val = document.createElement("td");
+    val.className = "px-4 py-3 text-right whitespace-nowrap";
+    val.textContent = formatUsd(med, { maximumFractionDigits: 0 });
+    tr.appendChild(val);
+    const after = COLUMNS.length - psfIdx - 1 + (curationControlsAllowed() ? 1 : 0);
+    if (after > 0) {
+      const rest = document.createElement("td");
+      rest.colSpan = after;
+      tr.appendChild(rest);
+    }
+    foot.appendChild(tr);
   }
 
   // --------------------------------------------------------------------------

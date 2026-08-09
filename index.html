@@ -53,8 +53,8 @@
        Accents: brand red = actions + the subject property · slate-900 ink =
          selected state (segmented controls) · emerald = verified/positive ·
          amber = caution · plain red + left rule = errors. No blues.
-       Buttons: primary bg-brand-600 · secondary white/slate-bordered · ghost
-         text-slate-500 hover:text-slate-700 · on-dark inverse bg-white
+       Buttons: primary bg-brand-600 · secondary white, #D8D4C9-bordered · ghost
+         text-[#68707E] hover:text-[#374253] · on-dark inverse bg-white
          text-brand-800. Brand-tinted chips are reserved for saved reports.
        Labels: eyebrow = text-xs font-semibold uppercase tracking-wider ·
          badge = text-[10px] font-medium uppercase tracking-wide.
@@ -507,21 +507,21 @@
     body.map-locked { overflow: hidden; }
   </style>
 </head>
-<body class="bg-[#FBFBF9] text-slate-800 min-h-screen">
+<body class="bg-[#FBFBF9] text-[#1A2433] min-h-screen">
 
   <!-- Password gate overlay (shown only if the server requires a password) -->
   <div id="gate" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6">
+    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-sm p-6">
       <div class="flex items-center gap-2.5 mb-1">
-        <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 text-slate-700">
+        <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#F0EFE9] text-[#374253]">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </span>
-        <h2 class="text-lg font-semibold text-slate-900">Secure access</h2>
+        <h2 class="text-lg font-semibold text-[#1A2433]">Secure access</h2>
       </div>
-      <p class="text-sm text-slate-500 mb-4">Please enter your access password to continue.</p>
+      <p class="text-sm text-[#68707E] mb-4">Please enter your access password to continue.</p>
       <form id="gateForm" class="space-y-3">
         <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Access password" aria-label="Access password"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <p id="gateError" class="hidden text-sm text-red-600"></p>
         <button type="submit"
           class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">
@@ -533,19 +533,19 @@
 
   <!-- Lead-capture modal — unlocks exports on public (lead-magnet) deployments -->
   <div id="leadModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
-      <h2 id="leadTitle" class="text-lg font-semibold text-slate-900">Unlock your export</h2>
-      <p id="leadSubtitle" class="text-sm text-slate-500 mt-1 mb-4">Tell us who you are and we'll unlock CSV, image, and PDF exports for this browser, and follow up about your property and market.</p>
+    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
+      <h2 id="leadTitle" class="text-lg font-semibold text-[#1A2433]">Unlock your export</h2>
+      <p id="leadSubtitle" class="text-sm text-[#68707E] mt-1 mb-4">Tell us who you are and we'll unlock CSV, image, and PDF exports for this browser, and follow up about your property and market.</p>
       <form id="leadForm" class="space-y-3">
         <input id="leadName" type="text" autocomplete="name" placeholder="Full name *" aria-label="Full name"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <input id="leadEmail" type="email" autocomplete="email" placeholder="Email *" aria-label="Email"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input id="leadPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)" aria-label="Phone (optional)"
-            class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           <input id="leadCompany" type="text" autocomplete="organization" placeholder="Company (optional)" aria-label="Company (optional)"
-            class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         </div>
         <p id="leadError" class="hidden text-sm text-red-600"></p>
         <button id="leadSubmit" type="submit"
@@ -553,48 +553,48 @@
           Unlock exports
         </button>
         <button id="leadCancel" type="button"
-          class="w-full text-sm text-slate-500 hover:text-slate-700 py-1">
+          class="w-full text-sm text-[#68707E] hover:text-[#374253] py-1">
           Not now
         </button>
       </form>
-      <p class="text-xs text-slate-400 mt-2">We'll only use this to follow up about your property and market. No spam, no sharing.</p>
+      <p class="text-xs text-[#9AA2AD] mt-2">We'll only use this to follow up about your property and market. No spam, no sharing.</p>
     </div>
   </div>
 
   <!-- Account: one modal, four modes (signin / signup / forgot / reset) -->
   <div id="acctModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
-      <h2 id="acctTitle" class="text-lg font-semibold text-slate-900">Sign in</h2>
-      <p id="acctNudge" class="hidden text-sm text-slate-500 mt-1"></p>
-      <div id="acctTabs" class="flex gap-4 mt-3 mb-4 text-sm border-b border-slate-200">
-        <button id="acctTabIn" type="button" class="pb-2 border-b-2 border-brand-600 font-medium text-slate-900">Sign in</button>
-        <button id="acctTabUp" type="button" class="pb-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800">Create account</button>
+    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
+      <h2 id="acctTitle" class="text-lg font-semibold text-[#1A2433]">Sign in</h2>
+      <p id="acctNudge" class="hidden text-sm text-[#68707E] mt-1"></p>
+      <div id="acctTabs" class="flex gap-4 mt-3 mb-4 text-sm border-b border-[#E4E2DA]">
+        <button id="acctTabIn" type="button" class="pb-2 border-b-2 border-brand-600 font-medium text-[#1A2433]">Sign in</button>
+        <button id="acctTabUp" type="button" class="pb-2 border-b-2 border-transparent text-[#68707E] hover:text-[#1A2433]">Create account</button>
       </div>
       <form id="acctForm" class="space-y-3">
         <input id="acctName" type="text" autocomplete="name" placeholder="Name (optional)" aria-label="Name"
-          class="hidden w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="hidden w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <input id="acctEmail" type="email" autocomplete="email" placeholder="Email" aria-label="Email"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <input id="acctPassword" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <p id="acctError" class="hidden text-sm text-red-600"></p>
-        <p id="acctInfo" class="hidden text-sm text-slate-600"></p>
+        <p id="acctInfo" class="hidden text-sm text-[#4C5665]"></p>
         <button id="acctSubmit" type="submit"
           class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">Sign in</button>
         <div class="flex items-center justify-between text-sm">
-          <button id="acctForgotLink" type="button" class="text-slate-500 hover:text-slate-700">Forgot password?</button>
-          <button id="acctCancel" type="button" class="text-slate-500 hover:text-slate-700">Not now</button>
+          <button id="acctForgotLink" type="button" class="text-[#68707E] hover:text-[#374253]">Forgot password?</button>
+          <button id="acctCancel" type="button" class="text-[#68707E] hover:text-[#374253]">Not now</button>
         </div>
       </form>
       <div id="acctImport" class="hidden">
-        <p class="text-sm text-slate-600 mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser. Import them into your portfolio?</p>
+        <p class="text-sm text-[#4C5665] mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser. Import them into your portfolio?</p>
         <div class="flex gap-2 mt-3">
           <button id="acctImportYes" type="button" class="btn-live flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">Import</button>
-          <button id="acctImportNo" type="button" class="flex-1 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg">Skip</button>
+          <button id="acctImportNo" type="button" class="flex-1 text-sm text-[#68707E] hover:text-[#374253] border border-[#E4E2DA] rounded-lg">Skip</button>
         </div>
       </div>
-      <p class="text-xs text-slate-400 mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.
-        <span id="acctTos" class="hidden">By creating an account you agree to the <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms of Service</a> and <a href="/privacy" target="_blank" class="underline text-slate-500 hover:text-slate-700">Privacy Policy</a>.</span></p>
+      <p class="text-xs text-[#9AA2AD] mt-3">Free account. Your portfolio and watchlist sync across devices. No spam.
+        <span id="acctTos" class="hidden">By creating an account you agree to the <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms of Service</a> and <a href="/privacy" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Privacy Policy</a>.</span></p>
     </div>
   </div>
 
@@ -603,8 +603,8 @@
        /api/pricing confirms seats are actually left — advertising an offer
        that would 409 on click is worse than not showing it. -->
   <div id="pricingModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-2xl p-6 my-8">
-      <h2 id="pricingTitle" class="text-lg font-semibold text-slate-900">Unlock the full comp set</h2>
+    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-2xl p-6 my-8">
+      <h2 id="pricingTitle" class="text-lg font-semibold text-[#1A2433]">Unlock the full comp set</h2>
       <!-- Lead with the LOOKBACK, not the comp count. Measured 2026-08-03 on the
            then-12-month free window: dense industrial markets (Dallas, Ontario
            CA, Phoenix) each returned four or fewer comps, so "Pro itemizes all
@@ -616,7 +616,7 @@
            and in the bullet list. These numbers are hard-coded copy — if
            FREE_MAX_LOOKBACK_MONTHS moves again, this paragraph, the Pro bullet
            and both plan-card strings all have to move with it. -->
-      <p id="pricingSubtitle" class="text-sm text-slate-500 mt-1">
+      <p id="pricingSubtitle" class="text-sm text-[#68707E] mt-1">
         Free reports look back 3 years and itemize four of the comps found.
         Pro widens the search to ten years — the change that actually surfaces more
         transactions — and itemizes every one it finds, with the sources.
@@ -765,47 +765,47 @@
           </p>
         </div>
         <button type="button" data-plan="single_report"
-          class="pricing-buy btn-live shrink-0 w-full sm:w-auto bg-white border border-[#D8D4C9] hover:bg-slate-50 text-[#1A2433] font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+          class="pricing-buy btn-live shrink-0 w-full sm:w-auto bg-white border border-[#D8D4C9] hover:bg-[#F5F4EF] text-[#1A2433] font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
           Unlock this report
         </button>
       </div>
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
       <p class="text-xs text-[#68707E] mt-4">
-        Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-slate-500 hover:text-slate-700">Terms</a>.
+        Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms</a>.
       </p>
-      <button id="pricingCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-2 mt-2">Not now</button>
+      <button id="pricingCancel" type="button" class="w-full text-sm text-[#68707E] hover:text-[#374253] py-2 mt-2">Not now</button>
     </div>
   </div>
 
   <!-- Broker comp-submission modal -->
   <div id="compModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-8">
+    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-lg p-6 my-8">
       <div id="compFormWrap">
-        <h2 class="text-lg font-semibold text-slate-900">Submit a comp</h2>
-        <p class="text-sm text-slate-500 mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission. Approved comps carry your firm's name in every matching report and on our public market pages, and when an owner in your market requests a Broker Opinion of Value, contributing brokers are who we reach out to first.</p>
+        <h2 class="text-lg font-semibold text-[#1A2433]">Submit a comp</h2>
+        <p class="text-sm text-[#68707E] mt-1 mb-4">Share a recent sale or lease you know closed. Our team reviews every submission. Approved comps carry your firm's name in every matching report and on our public market pages, and when an owner in your market requests a Broker Opinion of Value, contributing brokers are who we reach out to first.</p>
         <form id="compForm2" class="space-y-3">
           <div class="rd-lab">Your details</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compBrokerName" type="text" autocomplete="name" placeholder="Your name *" aria-label="Your name"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="compBrokerEmail" type="email" autocomplete="email" placeholder="Email *" aria-label="Email"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compBrokerPhone" type="tel" autocomplete="tel" placeholder="Phone (optional)" aria-label="Phone (optional)"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="compBrokerCompany" type="text" autocomplete="organization" placeholder="Brokerage (optional)" aria-label="Brokerage (optional)"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
-          <div class="border-t border-slate-200 pt-3">
-            <div class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">The comp</div>
+          <div class="border-t border-[#E4E2DA] pt-3">
+            <div class="text-xs font-semibold uppercase tracking-wider text-[#9AA2AD] mb-2">The comp</div>
             <input id="compAddress" type="text" placeholder="Property address *" aria-label="Property address"
-              class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <div class="grid grid-cols-2 gap-3">
             <select id="compType" aria-label="Property type"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
               <option value="Industrial" selected>Industrial</option>
               <option value="Office">Office</option>
               <option value="Retail">Retail</option>
@@ -814,7 +814,7 @@
               <option value="Residential">Residential</option>
             </select>
             <select id="compTx" aria-label="Transaction type"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
               <option value="Sale" selected>Sale</option>
               <option value="Lease">Lease</option>
             </select>
@@ -823,34 +823,34 @@
                instead of clipping in a half-width column. -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compDate" type="text" placeholder="Close date, e.g. Mar 2026" aria-label="Close date"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="compSize" type="text" placeholder="Size (SF), e.g. 86,400" aria-label="Size in square feet"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="compPrice" type="text" placeholder="Price / rate *" aria-label="Price or rate"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="compCapRate" type="text" placeholder="Cap rate (optional)" aria-label="Cap rate (optional)"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <textarea id="compNotes" rows="2" placeholder="Notes: tenant, condition, terms (optional)" aria-label="Notes (optional)"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+            class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
           <p id="compError" class="hidden text-sm text-red-600"></p>
           <button id="compSubmitBtn" type="submit"
             class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
             Submit comp
           </button>
-          <button id="compCancel" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-1">Cancel</button>
+          <button id="compCancel" type="button" class="w-full text-sm text-[#68707E] hover:text-[#374253] py-1">Cancel</button>
         </form>
       </div>
       <div id="compSuccess" class="hidden text-center py-6">
         <div class="text-3xl mb-2">🤝</div>
-        <h2 class="text-lg font-semibold text-slate-900">Thanks, we got it.</h2>
-        <p class="text-sm text-slate-500 mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit, and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
-        <p class="text-xs text-slate-400 mt-2">Tip: create a free CompNinja account with this same email to track your submissions and see when reports cite your comps.</p>
+        <h2 class="text-lg font-semibold text-[#1A2433]">Thanks, we got it.</h2>
+        <p class="text-sm text-[#68707E] mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit, and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
+        <p class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email to track your submissions and see when reports cite your comps.</p>
         <div class="mt-4 flex justify-center gap-3">
-          <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Submit another</button>
-          <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-4 py-2">Done</button>
+          <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Submit another</button>
+          <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Done</button>
         </div>
       </div>
     </div>
@@ -861,62 +861,62 @@
        client-sharing feature and is the only path that can ever carry
        includePrivate. Follows the comp-submission modal's markup/classes. -->
   <div id="shareModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-8">
-      <h2 class="text-lg font-semibold text-slate-900">Share this report</h2>
-      <p class="text-sm text-slate-500 mt-1 mb-4">Choose who can open the link.</p>
+    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-lg p-6 my-8">
+      <h2 class="text-lg font-semibold text-[#1A2433]">Share this report</h2>
+      <p class="text-sm text-[#68707E] mt-1 mb-4">Choose who can open the link.</p>
       <div class="space-y-3">
-        <label class="flex items-start gap-2 text-sm text-slate-700">
+        <label class="flex items-start gap-2 text-sm text-[#374253]">
           <input type="radio" name="shareVisibility" value="public" checked class="accent-[#B91C1C] mt-0.5" />
           <span>
-            <span class="block font-medium text-slate-900">Anyone with the link</span>
-            <span class="block text-slate-500">A public link. Works for anyone it reaches.</span>
+            <span class="block font-medium text-[#1A2433]">Anyone with the link</span>
+            <span class="block text-[#68707E]">A public link. Works for anyone it reaches.</span>
           </span>
         </label>
-        <label class="flex items-start gap-2 text-sm text-slate-700">
+        <label class="flex items-start gap-2 text-sm text-[#374253]">
           <input type="radio" name="shareVisibility" value="invited" class="accent-[#B91C1C] mt-0.5" />
           <span>
-            <span class="block font-medium text-slate-900">Only people I invite</span>
-            <span class="block text-slate-500">Named clients or partners, by email. Part of the paid plan.</span>
+            <span class="block font-medium text-[#1A2433]">Only people I invite</span>
+            <span class="block text-[#68707E]">Named clients or partners, by email. Part of the paid plan.</span>
           </span>
         </label>
       </div>
       <div id="shareEmailsWrap" class="hidden mt-3">
         <textarea id="shareEmails" rows="2" placeholder="client@company.com, partner@company.com" aria-label="Emails to invite"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+          class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
       </div>
       <!-- Shown only for a signed-in vault-entitled member on a report that
            actually has private comps blended in (private_count > 0). Nested
            beside, not inside, shareEmailsWrap so its own visibility rule
            (canUseVault + private_count) stays independently readable. -->
-      <label id="shareIncludePrivateWrap" class="hidden mt-2 flex items-center gap-2 text-sm text-slate-700">
+      <label id="shareIncludePrivateWrap" class="hidden mt-2 flex items-center gap-2 text-sm text-[#374253]">
         <input id="shareIncludePrivate" type="checkbox" class="accent-[#B91C1C]" />
         <span>Include my private comps in full</span>
       </label>
-      <p id="shareResult" class="text-sm text-slate-500 mt-3"></p>
+      <p id="shareResult" class="text-sm text-[#68707E] mt-3"></p>
       <button id="shareCreateBtn" type="button"
         class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60 mt-4">
         Create link
       </button>
-      <button id="shareCancelBtn" type="button" class="w-full text-sm text-slate-500 hover:text-slate-700 py-1">Cancel</button>
+      <button id="shareCancelBtn" type="button" class="w-full text-sm text-[#68707E] hover:text-[#374253] py-1">Cancel</button>
     </div>
   </div>
 
   <!-- Property confirmation — free geocode check before the billed comp search -->
   <div id="confirmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
       <div class="rd-lab">Confirm property</div>
-      <h2 id="confirmHeading" class="text-lg font-semibold text-slate-900 mt-1">Is this the property you're looking for?</h2>
-      <p class="text-sm text-slate-500 mt-3">You searched for:</p>
-      <p id="confirmTyped" class="text-sm font-medium text-slate-900"></p>
+      <h2 id="confirmHeading" class="text-lg font-semibold text-[#1A2433] mt-1">Is this the property you're looking for?</h2>
+      <p class="text-sm text-[#68707E] mt-3">You searched for:</p>
+      <p id="confirmTyped" class="text-sm font-medium text-[#1A2433]"></p>
       <p id="confirmNoMatch" class="hidden text-sm text-[#B91C1C] mt-2">We couldn't find this address on any map. Check the street number, city, and state; a mistyped address returns comps for the wrong market.</p>
       <div id="confirmMatchedWrap" class="hidden mt-2">
-        <p class="text-sm text-slate-500">We matched it to:</p>
-        <p id="confirmMatched" class="text-sm font-medium text-slate-900"></p>
+        <p class="text-sm text-[#68707E]">We matched it to:</p>
+        <p id="confirmMatched" class="text-sm font-medium text-[#1A2433]"></p>
       </div>
-      <div id="confirmMap" class="mt-4 h-[200px] rounded-lg border border-slate-200 overflow-hidden"></div>
+      <div id="confirmMap" class="mt-4 h-[200px] rounded-lg border border-[#E4E2DA] overflow-hidden"></div>
       <div id="confirmTypeWrap" class="mt-4">
-        <p class="text-sm text-slate-500">Property type:</p>
-        <div id="confirmTypeResolved" class="hidden text-sm font-medium text-slate-900 mt-0.5"></div>
+        <p class="text-sm text-[#68707E]">Property type:</p>
+        <div id="confirmTypeResolved" class="hidden text-sm font-medium text-[#1A2433] mt-0.5"></div>
         <div id="confirmTypeButtons" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
         <p id="confirmTypeHint" class="hidden text-xs text-[#B91C1C] mt-1.5">Pick the property type to run the report.</p>
       </div>
@@ -947,13 +947,13 @@
             class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
             <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
-            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Markets</a>
-            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Brokers</a>
-            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">How it works</a>
+          <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-[#E4E2DA] rounded-lg shadow-lg py-1 w-44 text-left">
+            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Markets</a>
+            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Brokers</a>
+            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">How it works</a>
             <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
                  unset there is nothing to sell and the link would dead-end. -->
-            <button id="pricingLink" type="button" class="hidden block w-full text-left px-3 py-2 text-[#374253] hover:bg-slate-50 hover:text-[#1A2433]">Pricing</button>
+            <button id="pricingLink" type="button" class="hidden block w-full text-left px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Pricing</button>
           </div>
         </div>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
@@ -961,20 +961,20 @@
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
-          <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44 text-left">
-            <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-slate-400 truncate"></div>
+          <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-[#E4E2DA] rounded-lg shadow-lg py-1 w-44 text-left">
+            <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-[#9AA2AD] truncate"></div>
             <!-- The vault's only entrance. Shown from /api/config's
                  canUseVault, so it appears for any Pro member (and for comped
                  admins) and for nobody else. There is no separate broker
                  subscription to gate it on: one subscription since 2026-08-05,
                  and entitlements.js reads `const broker = pro`. A plain link,
                  not a button: /vault is its own server-rendered page. -->
-            <a id="menuVaultLink" href="/vault" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-slate-50">Your vault</a>
+            <a id="menuVaultLink" href="/vault" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-[#F5F4EF]">Your vault</a>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
-            <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-slate-50">Upgrade to Pro</button>
-            <button id="menuBillingBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 hover:bg-slate-50">Manage billing</button>
-            <button id="signOutBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-slate-50">Sign out</button>
+            <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
+            <button id="menuBillingBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Manage billing</button>
+            <button id="signOutBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Sign out</button>
             <button id="deleteAcctBtn" type="button" class="block w-full text-left px-3 py-1.5 text-red-700 hover:bg-red-50">Delete account…</button>
           </div>
         </div>
@@ -1025,7 +1025,7 @@
                    lists it as a Pro perk. Stays exactly as written here while
                    the tier is dark, which is the pre-Pro behavior PRO_ENABLED
                    promises. -->
-              <button id="exploreAddrLink" type="button" class="text-xs text-[#68707E] underline decoration-slate-300 hover:text-[#1A2433]">No address? Explore a market</button>
+              <button id="exploreAddrLink" type="button" class="text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">No address? Explore a market</button>
             </div>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
             <!-- The property type lives under the address it describes, as a
@@ -1048,10 +1048,10 @@
             <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
             <div class="flex items-center gap-2">
               <input id="targetSize" type="number" min="0" step="any" placeholder="auto from records" class="rd-in" />
-              <span class="text-sm text-slate-400 shrink-0">to</span>
+              <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
               <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="rd-in" />
             </div>
-            <p id="sizeEstimateNote" class="hidden text-xs text-slate-500 mt-1">Estimated from the building's footprint - edit if it's off.</p>
+            <p id="sizeEstimateNote" class="hidden text-xs text-[#68707E] mt-1">Estimated from the building's footprint - edit if it's off.</p>
           </div>
           <!-- Still the single source of truth for the current type (and for the
                list of types every picker builds itself from), just no longer a
@@ -1094,8 +1094,8 @@
               <option value="custom">Custom…</option>
             </select>
             <div id="lookbackCustomWrap" class="hidden mt-2 flex items-center gap-2">
-              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-              <span class="text-sm text-slate-500 shrink-0">months</span>
+              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-[#D8D4C9] px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+              <span class="text-sm text-[#68707E] shrink-0">months</span>
             </div>
             <div id="lookbackHint" class="text-xs text-[#68707E] mt-1"></div>
           </div>
@@ -1125,7 +1125,7 @@
                 <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
                 <div class="flex items-center gap-2">
                   <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                  <span class="text-sm text-slate-400 shrink-0">to</span>
+                  <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
                   <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
               </div>
@@ -1172,7 +1172,7 @@
          the account-backed #myDesk section shows only when signed in. -->
     <section id="deskView" class="hidden mt-8 no-print">
       <div class="flex items-center justify-between border-b rd-hairline pb-2">
-        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">My Desk</h2>
+        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">My Desk</h2>
         <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
       </div>
       <p class="text-sm text-[#5A6473] mt-3">Your recent searches and tracked properties.</p>
@@ -1195,8 +1195,8 @@
           <div class="flex items-center gap-3">
             <span id="historyCount" class="text-xs text-[#68707E]"></span>
             <input id="historyFilter" type="search" autocomplete="off" placeholder="Filter by address or type"
-              class="hidden w-52 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <button id="clearHistoryBtn" type="button" class="text-xs text-slate-500 hover:text-slate-700 underline decoration-slate-300">clear</button>
+              class="hidden w-52 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button id="clearHistoryBtn" type="button" class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">clear</button>
           </div>
         </div>
         <div id="historyRows" class="mt-2"></div>
@@ -1223,11 +1223,11 @@
         <span class="rd-lab">Watchlist</span>
         <form id="watchForm" class="mt-2 flex flex-wrap items-center gap-2">
           <input id="watchCity" type="text" placeholder="City" aria-label="City"
-            class="w-40 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-40 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
-            class="w-14 rounded-lg border border-slate-300 px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            class="w-14 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           <select id="watchType" aria-label="Property type"
-            class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
+            class="rounded-lg border border-[#D8D4C9] px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
           <button type="submit"
             class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Watch market</button>
           <span id="watchError" class="hidden text-sm text-red-600"></span>
@@ -1291,32 +1291,32 @@
               onerror="this.classList.add('hidden')" />
             <button type="button" id="brandLogo"
               class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Choose a logo</button>
-            <button type="button" id="brandLogoRemove" class="text-sm text-slate-500 hover:text-slate-700">Remove logo</button>
+            <button type="button" id="brandLogoRemove" class="text-sm text-[#68707E] hover:text-[#374253]">Remove logo</button>
             <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
           </div>
           <p class="text-xs text-[#68707E] mt-1">PNG or JPEG. Resized automatically for print.</p>
 
           <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="brandPreparer" type="text" placeholder="Prepared by" aria-label="Prepared by" maxlength="80"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="brandPhone" type="tel" placeholder="Phone" aria-label="Phone" maxlength="40"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="brandEmail" type="email" placeholder="Email" aria-label="Email" maxlength="120"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
             <input id="brandLicense" type="text" placeholder="License number" aria-label="License number" maxlength="40"
-              class="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           </div>
           <textarea id="brandDisclaimer" rows="2" placeholder="Extra disclaimer for your reports (optional)" aria-label="Disclaimer (optional)" maxlength="300"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+            class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
 
           <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
 
           <div class="mt-2 flex flex-wrap items-center gap-3">
             <button type="button" id="brandSave"
               class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 disabled:opacity-60">Save</button>
-            <button type="button" id="brandDelete" class="text-sm text-slate-500 hover:text-slate-700">Remove branding</button>
+            <button type="button" id="brandDelete" class="text-sm text-[#68707E] hover:text-[#374253]">Remove branding</button>
           </div>
 
           <div class="mt-4">
@@ -1375,11 +1375,11 @@
     <!-- Loading state: step text + progress, over a skeleton of the report taking shape -->
     <div id="loadingCard" class="hidden mt-6 no-print" role="status" aria-live="polite">
       <div class="bg-white rounded-md border border-[#D8D4C9] p-8 flex flex-col items-center text-center fade-in">
-        <p id="loadingHeadline" class="text-base font-semibold text-slate-900">Searching recent listings…</p>
+        <p id="loadingHeadline" class="text-base font-semibold text-[#1A2433]">Searching recent listings…</p>
         <!-- Detail line: carries the specific, fast-changing fact (the actual
              search query, the result count) while the headline stays calm.
              Model-written text goes in here via textContent, never innerHTML. -->
-        <p id="loadingDetail" class="text-sm text-slate-400 mt-1 max-w-xs truncate" style="white-space:nowrap">This usually takes 20-60 seconds.</p>
+        <p id="loadingDetail" class="text-sm text-[#9AA2AD] mt-1 max-w-xs truncate" style="white-space:nowrap">This usually takes 20-60 seconds.</p>
         <div class="w-full max-w-xs mt-5 relative">
           <!-- The brand ninja jogs along the bar's leading edge while the search runs. -->
           <div id="loadingNinja" class="loading-ninja" aria-hidden="true">
@@ -1389,7 +1389,7 @@
               <path class="ninja-body" d="M20 12 Q26 13 27.5 17.5 L26 19 Q24.5 16.5 21.5 15.5 Q22 19 19.5 21 Q23 23 23.5 27 L25.5 29.5 Q26 30.5 24.5 30.5 L21.5 30.5 Q21 27 19 24.5 Q15 26 11.5 25 L7 29.5 Q6 30.5 5.5 29.5 Q7.5 25 9.5 22.5 Q12 19.5 15 14.5 Q16.5 12 20 12 Z"/>
             </svg>
           </div>
-          <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div class="h-2 rounded-full bg-[#F0EFE9] overflow-hidden">
             <div id="loadingBar" class="h-full rounded-full bg-brand-600" style="width:0%; transition:width .35s ease-out;"></div>
           </div>
         </div>
@@ -1499,7 +1499,7 @@
                    Co-branded, never white label — see letterheadValuationBy. -->
               <div id="letterheadBrand" class="hidden flex items-center gap-2"></div>
             </div>
-            <div class="text-right text-xs text-slate-500">
+            <div class="text-right text-xs text-[#68707E]">
               <!-- Shown only alongside the member's own mark on the left. -->
               <div id="letterheadValuationBy" class="hidden font-medium text-[#1A2433]">Valuation by CompNinja</div>
               <div>info@compninja.co</div>
@@ -1552,7 +1552,7 @@
              in the browser via renderOwnerHero; NOI never leaves the page. -->
         <div id="ownerHero" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">What This Building Is Worth</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">What This Building Is Worth</h2>
             <span id="ownerBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div class="rd-ledger">
@@ -1580,7 +1580,7 @@
                ceiling). -->
           <div id="widenSearchWrap" class="hidden no-print no-capture mt-4">
             <button id="widenSearchBtn" type="button"
-              class="btn-live text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5"></button>
+              class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-3 py-1.5"></button>
             <p class="text-xs text-[#5A6473] mt-2">A longer window focused on sales usually finds the priced sale comps this range needs. Runs a new search for this address.</p>
           </div>
           <!-- Approach reconciliation — the classic appraisal framing (sales
@@ -1629,7 +1629,7 @@
              them, so exports stay clean. Built by renderDcfCard(). -->
         <div id="dcfCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Hold or Sell? (DCF Analysis)</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Hold or Sell? (DCF Analysis)</h2>
             <span id="dcfBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -1681,7 +1681,7 @@
         <div id="analysisLockCard" class="hidden rd-bcard print-shadow-none no-print">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Expense, Debt &amp; Risk Analysis</h2>
+              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Expense, Debt &amp; Risk Analysis</h2>
               <p class="text-sm text-[#5A6473] mt-1">How your expense ratio compares to this market, plus DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk, free with an account.</p>
             </div>
             <button id="analysisLockBtn" type="button"
@@ -1695,7 +1695,7 @@
              Signed-in only; built by renderOpexCard(). -->
         <div id="opexCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Operating Expense Check</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Operating Expense Check</h2>
           </div>
           <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
             <div>
@@ -1734,7 +1734,7 @@
              built by renderDebtCard(). -->
         <div id="debtCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Debt &amp; Refi Check</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Debt &amp; Refi Check</h2>
             <span id="debtBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
@@ -1788,7 +1788,7 @@
              the DCF card (shared dcfValue); built by renderSensCard(). -->
         <div id="sensCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Sensitivity (DCF Value)</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Sensitivity (DCF Value)</h2>
             <span id="sensBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div id="sensBody" class="overflow-x-auto"></div>
@@ -1800,7 +1800,7 @@
              strip them. Built by renderRentRollCard(). -->
         <div id="rentRollCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Rent Roll &amp; Rollover</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Rent Roll &amp; Rollover</h2>
             <span id="rrBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div id="rrRows" class="no-print space-y-2 mb-2"></div>
@@ -1841,7 +1841,7 @@
         <!-- Summary card -->
         <div class="rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-3">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Market Summary</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Market Summary</h2>
             <!-- no-print + skipped by the PNG capture: a button in an exported report is noise -->
             <button id="copySummaryBtn" type="button"
               class="btn-live no-print inline-flex items-center gap-1.5 text-xs font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-2.5 py-1">
@@ -1856,7 +1856,7 @@
              the concrete factors behind the estimate, in plain English. Built by
              renderValueDrivers(); hidden when the model returns neither. -->
         <div id="driversCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-3">What's Driving Prices Here</h2>
+          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433] mb-3">What's Driving Prices Here</h2>
           <p id="marketTrend" class="hidden text-sm font-medium text-[#374253]"></p>
           <div id="driversList" class="text-sm text-[#374253] mt-1"></div>
           <!-- Price-discovery read: the market's momentum + how open it looks to
@@ -1891,7 +1891,7 @@
         <!-- Comp map (shown when the comps carry coordinates) -->
         <div id="mapCard" class="hidden rd-exhibit overflow-hidden print-shadow-none fade-in">
           <div class="px-6 py-4 border-b border-[#ECEAE3]">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comp Map</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comp Map</h2>
           </div>
           <div id="compMap" style="height: 340px;"></div>
           <p class="text-xs text-[#68707E] px-6 py-2 border-t border-[#F0EFE9]">
@@ -1901,7 +1901,7 @@
 
         <!-- Target comparison card -->
         <div id="compareCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800 mb-4">Your Property vs. Market</h2>
+          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433] mb-4">Your Property vs. Market</h2>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="rd-tile">
               <div class="rd-lab">Your Property $/SF</div>
@@ -1925,7 +1925,7 @@
         <!-- Market position: each sale comp $/SF on a strip, with the average and the subject -->
         <div id="chartCard" class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-1">
-            <h2 id="chartTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Market Position</h2>
+            <h2 id="chartTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Market Position</h2>
             <span id="chartBasis" class="text-xs text-[#68707E]"></span>
           </div>
           <p class="text-xs text-[#68707E] mb-3">Sale comps by price per square foot. Lease comps are excluded.</p>
@@ -1935,7 +1935,7 @@
         <!-- Comps table -->
         <div id="compsCard" class="rd-exhibit overflow-hidden print-shadow-none fade-in">
           <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#ECEAE3]">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-slate-800">Comparable Properties</h2>
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comparable Properties</h2>
             <div class="flex items-center gap-3">
               <div id="txFilter" style="display:none" class="items-center rounded border border-[#D8D4C9] p-0.5 bg-[#F5F4EF] no-print">
                 <button type="button" data-tx="all"    class="text-xs font-medium px-3 py-2 rounded">All</button>
@@ -2112,8 +2112,8 @@
         <p class="text-sm text-[#68707E] mb-5 max-w-[58ch]">Standing market pages, separate from the property valuation above.</p>
         <div class="relative max-w-sm mb-5">
           <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
-                 class="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-slate-200 bg-white shadow-sm py-1 text-[13.5px]"></div>
+                 class="w-full rounded border border-[#D8D4C9] bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
         </div>
       </section>
 
@@ -2891,7 +2891,7 @@
   function showStatus(html, kind = "info") {
     const box = document.getElementById("statusBox");
     const styles = {
-      info:  "bg-slate-50 border-slate-200 text-slate-700",
+      info:  "bg-[#F5F4EF] border-[#E4E2DA] text-[#374253]",
       error: "bg-red-50 border-red-200 border-l-4 border-l-red-600 text-red-800",
     };
     box.className = `mt-6 rounded-lg border px-4 py-3 text-sm no-print ${styles[kind] || styles.info}`;
@@ -2917,7 +2917,7 @@
   // message into innerHTML, since it comes straight from the API response.
   function showSharedNotice(message, { offerSignIn = false } = {}) {
     const box = document.getElementById("statusBox");
-    box.className = "mt-6 rounded-lg border px-4 py-3 text-sm no-print bg-slate-50 border-slate-200 text-slate-700";
+    box.className = "mt-6 rounded-lg border px-4 py-3 text-sm no-print bg-[#F5F4EF] border-[#E4E2DA] text-[#374253]";
     box.innerHTML = "";
     const p = document.createElement("p");
     p.textContent = message;
@@ -3006,7 +3006,7 @@
       ["Address", "Price", "Size", "Date"].forEach((h, i) => {
         const th = document.createElement("th");
         th.textContent = h;
-        th.className = "text-left font-medium text-slate-500 pb-1 pr-3 text-xs uppercase tracking-wide";
+        th.className = "text-left font-medium text-[#68707E] pb-1 pr-3 text-xs uppercase tracking-wide";
         if (i === 0) th.style.width = "45%";
         head.appendChild(th);
       });
@@ -3024,7 +3024,7 @@
       if (!lock) {
         lock = document.createElement("p");
         lock.dataset.locked = "1";
-        lock.className = "text-sm text-slate-500 mt-2 truncate";
+        lock.className = "text-sm text-[#68707E] mt-2 truncate";
         box.appendChild(lock);
       }
       lock.textContent = `+ ${Math.max(1, Number(evt.n) - loadingCompsSeen)} more found · unlock with Pro`;
@@ -3036,7 +3036,7 @@
       [`${evt.n}. ${evt.address}`, evt.price || "", evt.size_sqft || "", evt.date || ""].forEach((v) => {
         const td = row.insertCell();
         td.textContent = v;
-        td.className = "py-0.5 pr-3 text-slate-400 truncate align-top";
+        td.className = "py-0.5 pr-3 text-[#9AA2AD] truncate align-top";
       });
       // Cache warmer: the same lookup renderResults' map will make, done now
       // during the wait so pins paint instantly at render. Failures are
@@ -3051,12 +3051,12 @@
     let p = box.querySelector("[data-summary]");
     if (!p) {
       const label = document.createElement("p");
-      label.className = "text-xs uppercase tracking-wide text-slate-500 mb-1";
+      label.className = "text-xs uppercase tracking-wide text-[#68707E] mb-1";
       label.textContent = "Early market read";
       box.insertBefore(label, box.firstChild);
       p = document.createElement("p");
       p.dataset.summary = "1";
-      p.className = "text-sm text-slate-600 mb-3";
+      p.className = "text-sm text-[#4C5665] mb-3";
       box.insertBefore(p, label.nextSibling);
     }
     // Model-written text: textContent only, never innerHTML.
@@ -6644,7 +6644,7 @@
       tile.append(label, value);
       if (qual) {
         const sub = document.createElement("div");
-        sub.className = "text-xs text-slate-400 mt-1";
+        sub.className = "text-xs text-[#9AA2AD] mt-1";
         sub.textContent = qual[2];
         tile.appendChild(sub);
       }
@@ -7007,7 +7007,7 @@
     const action = (text, title, fn) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "text-[#5A6473] hover:text-[#1A2433] underline decoration-slate-300";
+      b.className = "text-[#5A6473] hover:text-[#1A2433] underline decoration-[#D8D4C9]";
       b.textContent = text;
       b.title = title;
       b.addEventListener("click", fn);
@@ -7172,9 +7172,9 @@
     document.getElementById("acctTabs").classList.toggle("hidden", mode === "reset");
     document.getElementById("acctForgotLink").classList.toggle("hidden", mode !== "signin");
     document.getElementById("acctTabIn").className = "pb-2 border-b-2 " +
-      (mode === "signin" ? "border-brand-600 font-medium text-slate-900" : "border-transparent text-slate-500 hover:text-slate-800");
+      (mode === "signin" ? "border-brand-600 font-medium text-[#1A2433]" : "border-transparent text-[#68707E] hover:text-[#1A2433]");
     document.getElementById("acctTabUp").className = "pb-2 border-b-2 " +
-      (mode === "signup" ? "border-brand-600 font-medium text-slate-900" : "border-transparent text-slate-500 hover:text-slate-800");
+      (mode === "signup" ? "border-brand-600 font-medium text-[#1A2433]" : "border-transparent text-[#68707E] hover:text-[#1A2433]");
     document.getElementById("acctError").classList.add("hidden");
     document.getElementById("acctInfo").classList.add("hidden");
   }
@@ -7921,7 +7921,7 @@
       ta.rows = 2;
       ta.setAttribute("aria-label", "Edit invited emails");
       ta.placeholder = "client@company.com, partner@company.com";
-      ta.className = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none";
+      ta.className = "w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none";
       // Pre-filled with the CURRENT list — replacing is wholesale, so a saved
       // textarea that only ADDED one address must still carry everyone else.
       const currentEmails = viewers.map((v) => v.email).join(", ");
@@ -8715,7 +8715,7 @@
       `<div class="fade-in px-3 py-2">` +
       `<div id="exploreProgHead" class="text-[#46536A]">Building the ${escq(type)} · ${escq(city)}, ${escq(state)} snapshot…</div>` +
       `<div id="exploreProgDetail" class="mt-0.5 truncate text-[12.5px] text-[#68707E]">Usually 30–60 seconds.</div>` +
-      `<div class="mt-2 h-0.5 overflow-hidden rounded bg-slate-200">` +
+      `<div class="mt-2 h-0.5 overflow-hidden rounded bg-[#E4E2DA]">` +
       `<div id="exploreProgBar" class="h-full bg-[#B91C1C] transition-all duration-700" style="width:6%"></div></div>` +
       `</div>`;
     // The Explorer asks for 8 comps over 24 months, a shorter payload than the
@@ -9425,7 +9425,7 @@
     if (!el) return;
     const skin = tone === "ok" ? "text-[#06603A] bg-[#E7F5EE] border-[#BFE5D2]"
       : tone === "wait" ? "text-[#8A6D1A] bg-[#FBF3DC] border-[#EDDFB0]"
-      : "text-slate-700 bg-[#F5F4EF] border-[#D8D4C9]";
+      : "text-[#374253] bg-[#F5F4EF] border-[#D8D4C9]";
     el.className = "mt-4 rounded-lg border px-4 py-3 text-sm " + skin;
     el.innerHTML = "";
     const t = document.createElement("div");
@@ -11518,7 +11518,7 @@
       b.dataset.type = o.value;   // survives the rebuild; label text does not identify it
       b.className = o.value === selected
         ? "text-sm font-medium rounded border border-[#1A2433] bg-[#1A2433] text-white px-2.5 py-1.5"
-        : "text-sm rounded border border-slate-300 text-slate-700 hover:border-[#1A2433] px-2.5 py-1.5";
+        : "text-sm rounded border border-[#D8D4C9] text-[#374253] hover:border-[#1A2433] px-2.5 py-1.5";
       b.addEventListener("click", () => onPick(o.value));
       wrap.appendChild(b);
     });
@@ -11952,7 +11952,7 @@
       const msg = err && err.message ? err.message : String(err);
       showStatus(
         `<strong>Something went wrong.</strong><br>${msg}` +
-        `<br><button id="retryBtn" type="button" class="btn-live mt-2 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5">Try again</button>`,
+        `<br><button id="retryBtn" type="button" class="btn-live mt-2 text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Try again</button>`,
         "error"
       );
       const retry = document.getElementById("retryBtn");

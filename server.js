@@ -5232,19 +5232,64 @@ section{padding:48px 0}
 .stat:nth-child(1),.stat:nth-child(3){border-right:1px solid #E4E2DA}
 .stat .n{font-size:22px;font-weight:600;color:#1A2433;font-variant-numeric:tabular-nums}
 .stat .l{font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
-/* Sample-report exhibit */
+/* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
+   the ONLY place a visitor sees the product before signing up, so it is built
+   as a faithful miniature of the real report rather than a layout of its own:
+   title block, ink-ruled sections, the value ledger, and the comp table
+   closing on its double-ruled median. Keep it in step with index.html's
+   .rd-ledger and #compsTable rules — when the report changes shape, this
+   exhibit is what tells visitors it did. */
 .exhibit{border:1px solid #D8D4C9;background:#fff;border-radius:6px;overflow:hidden}
-.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between}
-.exrow{display:flex;flex-direction:column}
-.exside{padding:24px;border-bottom:1px solid #ECEAE3}
-.exmain{padding:24px;flex:1;overflow-x:auto}
-.big{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:32px;margin-top:2px;font-variant-numeric:tabular-nums}
-.psf{font-size:13px;color:#5A6473;margin-bottom:16px}
+.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.exbody{padding:20px}
+.exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;letter-spacing:-.005em}
+.exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:#5A6473;margin-top:6px;padding-bottom:12px;border-bottom:1px solid #ECEAE3}
+.exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid #ECEAE3}
+.exmeta span:last-child{border-right:0;margin-right:0;padding-right:0}
+.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:#8A93A0}
+.exsec{margin-top:16px}
+.secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid #1A2433;padding-bottom:4px;margin-bottom:9px}
+.seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#1A2433}
+.secnote{font-size:9.5px;color:#8A93A0;text-align:right}
+.ledger{display:flex;border:1px solid #D8D4C9;border-radius:5px;overflow:hidden}
+.lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid #ECEAE3}
+.lcell:last-child{border-right:0}
+.lcell.mid{background:#FCFBF8}
+.lcell.mid .lab{color:#B91C1C}
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+.lcell.mid .fig{font-size:22px}
+.psf{font-size:10.5px;color:#8A93A0;margin-top:2px}
 .drv{font-size:13px;color:#374253;padding:7px 0;border-top:1px solid #F0EFE9;display:flex;gap:8px}
+.drv:first-of-type{border-top:0}
 .drv b{color:#B91C1C;font-weight:700}
+.exscroll{overflow-x:auto}
 table.comps{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-table.comps th{text-align:left;color:#8A93A0;font-weight:600;padding:7px 8px 7px 0;border-bottom:1px solid #D8D4C9;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
+table.comps th{text-align:left;color:#8A93A0;font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid #1A2433;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
 table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid #F0EFE9;white-space:nowrap}
+table.comps th.n,table.comps td.n{text-align:right}
+table.comps tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600}
+table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473}
+/* Hero (Direction E): the claim on the left, the product itself on the right —
+   the exhibit used to sit below the fold while half this row was empty.
+   Stacks claim-first below 900px, so a phone loses nothing but the order. */
+.hero2{display:grid;grid-template-columns:1fr;gap:28px}
+.hero2 h1.h{max-width:none}
+.hero2 .lead{max-width:48ch}
+@media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
+/* The hero's copy is the same document at a smaller scale: the answer and a
+   few comps, where the exhibit below carries the whole file. */
+.exmini .cap{padding:9px 14px;font-size:10px}
+.exmini .exbody{padding:16px}
+.exmini .exaddr{font-size:15px}
+.exmini .lcell{padding:9px 11px}
+.exmini .fig{font-size:15px}
+.exmini .lcell.mid .fig{font-size:19px}
+.mrows{margin-top:12px;border-top:1px solid #ECEAE3;padding-top:8px}
+.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid #F0EFE9;font-variant-numeric:tabular-nums}
+.mrow:last-of-type{border-bottom:0}
+.mrow .a{color:#1A2433;font-weight:500}
+.mrow .badge{margin-left:6px}
+.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600;border-top:1px solid #1A2433;border-bottom:3px double #1A2433;padding:6px 0;margin-top:2px}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:#06603A;background:#E3F2EA}
 .badge.p{color:#46536A;background:#EAEEF4}
@@ -5303,10 +5348,6 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
   h1.h{font-size:42px}
   footer .wrap{flex-direction:row}
   footer .right{flex-shrink:0}
-}
-@media (min-width:1024px){
-  .exrow{flex-direction:row}
-  .exside{width:38%;border-bottom:0;border-right:1px solid #ECEAE3}
 }
 `;
 
@@ -5629,13 +5670,48 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
 
   // Illustrative sample, clearly captioned as such — the same exhibit that
   // used to sit on the home page. Figures are representative, not a live pull.
-  const sampleComps = [
-    ["9020 Center Ave", "May 26", "21,400", "$238", `<span class="badge v">Verified &middot; via Ridgeline CRE</span>`],
-    ["11215 4th St", "Mar 26", "18,750", "$226", `<span class="badge p">Public record</span>`],
-    ["8933 Utica Ave", "Feb 26", "24,100", "$219", `<span class="badge li">Listing</span>`],
-    ["10722 Arrow Route", "Dec 25", "19,900", "$214", `<span class="badge p">Public record</span>`],
-    ["12190 6th St", "Nov 25", "26,300", "$208", `<span class="badge li">Listing</span>`],
-  ].map((r) => `<tr>${r.map((c, i) => `<td>${i === 4 ? c : escHtml(c)}</td>`).join("")}</tr>`).join("");
+  // ONE illustrative comp set feeds both the hero's compact exhibit and the
+  // full one below, so the two can never quote different numbers at each
+  // other. The figures are also internally honest, which the previous set was
+  // not: SAMPLE_MEDIAN is the real median of these five $/SF values, the
+  // "Likely" value equals that median x the subject size (21,600 SF), and Low
+  // and High are the size x the cheapest and dearest comp. A visitor who
+  // checks the arithmetic finds it holds, and that is the whole pitch of the
+  // page it sits on.
+  const SAMPLE_SIZE_SQFT = "21,600";
+  const SAMPLE_MEDIAN = "$219";
+  const SAMPLE_COMPS = [
+    { addr: "9020 Center Ave", sold: "May 26", sf: "21,400", psf: "$238",
+      badge: `<span class="badge v">Verified &middot; via Ridgeline CRE</span>`, short: `<span class="badge v">Verified</span>` },
+    { addr: "11215 4th St", sold: "Mar 26", sf: "18,750", psf: "$226",
+      badge: `<span class="badge p">Public record</span>`, short: `<span class="badge p">Public record</span>` },
+    { addr: "8933 Utica Ave", sold: "Feb 26", sf: "24,100", psf: "$219",
+      badge: `<span class="badge li">Listing</span>`, short: `<span class="badge li">Listing</span>` },
+    { addr: "10722 Arrow Route", sold: "Dec 25", sf: "19,900", psf: "$214",
+      badge: `<span class="badge p">Public record</span>`, short: `<span class="badge p">Public record</span>` },
+    { addr: "12190 6th St", sold: "Nov 25", sf: "26,300", psf: "$208",
+      badge: `<span class="badge li">Listing</span>`, short: `<span class="badge li">Listing</span>` },
+  ];
+  const sampleComps = SAMPLE_COMPS.map((c) =>
+    `<tr><td>${escHtml(c.addr)}</td><td>${escHtml(c.sold)}</td><td class="n">${escHtml(c.sf)}</td>` +
+    `<td class="n">${escHtml(c.psf)}</td><td>${c.badge}</td></tr>`).join("");
+  // The hero shows the answer and the first few comps; the exhibit below
+  // carries the whole file.
+  const sampleMiniRows = SAMPLE_COMPS.slice(0, 3).map((c) =>
+    `<div class="mrow"><span class="a">${escHtml(c.addr)}${c.short}</span><span>${escHtml(c.psf)}</span></div>`).join("");
+  // Low / Likely / High, as the report itself renders them: Likely IS the
+  // comp median, which is why it carries that label in the sub-line.
+  const sampleLedger = [
+    ["Low", "$4,580,000", "at $212/SF"],
+    ["Likely", "$4,730,000", `at ${SAMPLE_MEDIAN}/SF`],
+    ["High", "$5,140,000", "at $238/SF"],
+  ];
+  // The full exhibit names the statistic under "Likely"; the hero's compact
+  // copy leaves it off, because its own median row says it one line below and
+  // the extra words wrap the cell to two lines at that width.
+  const ledgerCells = (nameMedian) => sampleLedger.map(([lab, fig, sub], i) =>
+    `<div class="lcell${i === 1 ? " mid" : ""}"><span class="lab">${lab}</span><div class="fig">${fig}</div>` +
+    `<div class="psf">${sub}${nameMedian && i === 1 ? " &middot; comp median" : ""}</div></div>`).join("");
 
   const steps = [
     ["I.", "Search live",
@@ -5743,15 +5819,29 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
 <main>
   <div class="wrap">
     <section style="padding-bottom:32px">
-      <h1 class="h">A report you can hand to someone who will argue with it.</h1>
-      <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
-        subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
-      <div class="heroCta">
-        ${signedIn
-          ? `<a class="btn" href="/">Run a report</a>
-        <span class="alt">You're signed in. Reports are free.</span>`
-          : `<a class="btn" href="/?auth=signup">Create a free account</a>
-        <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
+      <div class="hero2">
+        <div>
+          <h1 class="h">A report you can hand to someone who will argue with it.</h1>
+          <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
+            subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
+          <div class="heroCta">
+            ${signedIn
+              ? `<a class="btn" href="/">Run a report</a>
+            <span class="alt">You're signed in. Reports are free.</span>`
+              : `<a class="btn" href="/?auth=signup">Create a free account</a>
+            <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
+          </div>
+        </div>
+        <div class="exhibit exmini">
+          <div class="cap"><span>Sample report &middot; Industrial</span><span>Illustrative</span></div>
+          <div class="exbody">
+            <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
+            <div class="exmeta plain">${SAMPLE_SIZE_SQFT} SF from public record &middot; 24-month lookback</div>
+            <div class="ledger">${ledgerCells(false)}</div>
+            <div class="mrows">${sampleMiniRows}</div>
+            <div class="mmed"><span>Median of 5 sale comps</span><span>${SAMPLE_MEDIAN}/SF</span></div>
+          </div>
+        </div>
       </div>
     </section>
     <div class="stats">${stats}</div>
@@ -5765,21 +5855,28 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
         both, with a confidence badge on every source.</p>
       <div class="exhibit">
         <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
-        <div class="exrow">
-          <div class="exside">
-            <div class="lab">Estimated value</div>
-            <div class="big">$4.6M&ndash;$5.3M</div>
-            <div class="psf">$212&ndash;$245 / SF &middot; 21,600 SF (public record)</div>
-            <div class="lab" style="margin-bottom:4px">What's driving prices</div>
+        <div class="exbody">
+          <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
+          <div class="exmeta"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF (public record)</span><span>24-month lookback</span><span>5 comparables</span></div>
+          <div class="exsec">
+            <div class="secrule"><span class="seclab">What This Building Is Worth</span><span class="secnote">from 5 comparable sales</span></div>
+            <div class="ledger">${ledgerCells(true)}</div>
+          </div>
+          <div class="exsec">
+            <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
             <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
             <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
-            <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9–6.4%</div>
+            <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
           </div>
-          <div class="exmain">
-            <table class="comps">
-              <thead><tr><th>Address</th><th>Sold</th><th>SF</th><th>$/SF</th><th>Source</th></tr></thead>
-              <tbody>${sampleComps}</tbody>
-            </table>
+          <div class="exsec">
+            <div class="secrule"><span class="seclab">Comparable Properties</span><span class="secnote">source badged per comp</span></div>
+            <div class="exscroll">
+              <table class="comps">
+                <thead><tr><th>Address</th><th>Sold</th><th class="n">SF</th><th class="n">$/SF</th><th>Source</th></tr></thead>
+                <tbody>${sampleComps}</tbody>
+                <tfoot><tr><td class="tl" colspan="3">Median of 5 sale comps &middot; ${SAMPLE_MEDIAN}/SF</td><td class="n">${SAMPLE_MEDIAN}</td><td></td></tr></tfoot>
+              </table>
+            </div>
           </div>
         </div>
       </div>

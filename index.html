@@ -5290,7 +5290,9 @@
   //      this exists to catch: a new address searched under the last one's type.
   //   2. Any subject detail already entered -> stop. renderSubjectFields()
   //      wipes those inputs on a type switch, and losing typed data costs far
-  //      more than a stale default.
+  //      more than a stale default. This guard sits above the per-address
+  //      memory too, not just above detection: recalling a remembered type
+  //      also switches the control, so it would wipe just as silently.
   //   3. The address must start with a street number. A bare "Dallas, TX"
   //      geocodes to a district point and would read some random downtown
   //      tower — the same trap the map photos gate on.
@@ -5522,6 +5524,13 @@
     // A detection made for the previous address is not evidence about this one.
     if (typeResolution === "detected") { typeResolution = null; renderTypeStatus(); }
     if (typeResolution === "explicit") return;
+    // Above BOTH paths below, not just detection: either one can change the
+    // type, and a type change re-renders the subject-fields container from
+    // scratch (renderSubjectFields opens with wrap.innerHTML = ""). Typed
+    // Multifamily details would vanish on editing the address to one
+    // remembered as Office, with no note and no undo. Nothing this listener
+    // does is worth destroying what the visitor typed.
+    if (Object.keys(readSubjectDetails()).length) return;
     const remembered = addrTypeFor(addr);
     if (remembered) {
       if (remembered !== propertyTypeSel.value) setTypeProgrammatic(remembered);
@@ -5529,7 +5538,6 @@
       renderTypeStatus();
       return;
     }
-    if (Object.keys(readSubjectDetails()).length) return;
     if (!/^\d/.test(addr)) return;
     const guess = await detectPropertyType(addr);
     // Re-check every guard: the await gave the visitor a second or two to pick
@@ -7194,6 +7202,13 @@
     document.getElementById("address").value = meta.address || "";
     const typeSel = document.getElementById("propertyType");
     if ([...typeSel.options].some((o) => o.value === meta.type)) typeSel.value = meta.type;
+    // Same treatment as rerunHistory, and for a sharper reason: this
+    // requestSubmit()s immediately, so an unmarked type strands the member in
+    // the confirm dialog with Run held. Picking a DIFFERENT type there would
+    // then miss the pendingPortfolioRefresh write-back, which is gated on
+    // type === meta.type, leaving the refresh dangling and the item unupdated.
+    typeResolution = "explicit";
+    renderTypeStatus();
     if (meta.subject && meta.subject.sizeMin) document.getElementById("targetSize").value = meta.subject.sizeMin;
     pendingPortfolioRefresh = { id: item.id, address: meta.address || "", type: meta.type || "" };
     document.getElementById("compForm").requestSubmit();
@@ -11064,6 +11079,7 @@
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = o.value;
+      b.dataset.type = o.value;   // survives the rebuild; label text does not identify it
       b.className = o.value === selected
         ? "text-sm font-medium rounded border border-[#1A2433] bg-[#1A2433] text-white px-2.5 py-1.5"
         : "text-sm rounded border border-slate-300 text-slate-700 hover:border-[#1A2433] px-2.5 py-1.5";
@@ -11080,11 +11096,21 @@
     // Named so the pick handler can rebuild the row it lives in; the buttons
     // are destroyed and recreated on every pick, so the closure has to outlive
     // the button that called it.
-    const repaint = () => buildTypeButtons(wrap, dialogTypePick, (v) => {
-      dialogTypePick = v;
-      repaint();
-      setConfirmRunEnabled(true);
-    });
+    const repaint = () => {
+      buildTypeButtons(wrap, dialogTypePick, (v) => {
+        dialogTypePick = v;
+        repaint();
+        setConfirmRunEnabled(true);
+      });
+      // The rebuild destroys the button that was just activated, which drops
+      // focus to <body>. The dialog has no focus trap, so a keyboard visitor's
+      // next Tab would land behind the modal — the same failure the held run
+      // button guards against.
+      if (dialogTypePick) {
+        const active = [...wrap.querySelectorAll("button")].find((b) => b.dataset.type === dialogTypePick);
+        if (active) active.focus();
+      }
+    };
     repaint();
     setConfirmRunEnabled(!!dialogTypePick);
   }

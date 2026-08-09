@@ -19,14 +19,18 @@
 - Editing `server.js` requires restarting the local process; `index.html` does not.
 - The tailwind regen hook runs when index.html is edited in a session; if `tailwind.css` changed, verify any genuinely new utility class landed in it and commit it alongside. Prefer already-used utilities so no new ones are needed.
 - Never trigger a real billed search during verification. Boot the local server with `ANTHROPIC_API_KEY=` (empty) so a stray click cannot bill anything.
+- **Line numbers in this plan are stale by 40-60 lines in `index.html`.** They were captured before commits `ccfbe9a` and `996ff15` landed. **Locate every edit by symbol name, not by line number** (`grep -n "userChoseType" index.html`, etc.). The symbols themselves are current and verified.
+- **Two landed commits interact with this work, both benignly:**
+  - `ccfbe9a` moved the test server boot into `test/helpers/boot.js`; `test/routes.test.js` now does `const shared = require("./helpers/boot")`. Task 1's test uses the existing `boot` binding in that file, not a new spawn.
+  - `996ff15` added machine-size provenance (`noteMachineSize` / `dropStaleMachineSize` / `sizeAddrKey`, tagging `#targetSize`'s dataset with the address a machine-written size belongs to, dropped at submit). It is **compatible with Task 3 by design** — its own comment says the provenance "travels with the element if the field is ever moved," which is exactly what Task 3 does. Moving `#targetSize` requires **no change** to that logic; just do not drop the `id`, and leave `dropStaleMachineSize(address)` where it sits at the top of the submit handler.
 
 ---
 
 ### Task 1: Server accepts and counts `dialog_pick`
 
 **Files:**
-- Modify: `server.js` (route `POST /api/type-autofill` OUTCOMES list, ~line 11497; `typeAutofill` stats block, ~line 5938; admin tile, ~line 6303)
-- Test: `test/routes.test.js` (the admin-key boot block that already fetches `/api/stats`)
+- Modify: `server.js` (route `POST /api/type-autofill` OUTCOMES list; the `typeAutofill:` stats block; the admin tile's `var ta=` default and its breakdown line — find each by those strings)
+- Test: `test/routes.test.js`, inside the existing `test("admin gating", …)` block (its key constant is `ADMIN`, its server is `srv`)
 
 **Interfaces:**
 - Consumes: existing `logEvent("type_autofill", …)` plumbing; nothing new.
@@ -34,21 +38,21 @@
 
 - [ ] **Step 1: Write the failing test**
 
-In `test/routes.test.js`, find the boot that passes `ADMIN_KEY` and fetches `/api/stats` (search for `x-admin-key`). Add a subtest in that block:
+In `test/routes.test.js`, inside `test("admin gating", async (t) => {…})`, add this subtest immediately after the existing `"the header form is accepted"` subtest. The surrounding block already defines `ADMIN` and `srv`; use them as-is.
 
 ```js
-await t.test("/api/stats carries the dialog_pick counter in the type-autofill block", async () => {
-  const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": KEY } });
-  assert.equal(r.status, 200);
-  const s = await r.json();
-  // The confirm dialog's picker logs outcome "dialog_pick"; the stats
-  // aggregation must count it or the /admin tile silently under-reports.
-  assert.ok(s.typeAutofill, "typeAutofill block missing");
-  assert.equal(typeof s.typeAutofill.dialogPick, "number");
-});
+  // The confirm dialog's type picker logs outcome "dialog_pick". The route's
+  // allowlist and the stats aggregation are two separate places, and a word
+  // accepted by one but uncounted by the other is invisible: /admin's tile
+  // would under-report while the events pile up correctly in the table.
+  await t.test("the type-autofill block counts the confirm dialog's picks", async () => {
+    const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.ok(body.typeAutofill, "typeAutofill block missing");
+    assert.equal(typeof body.typeAutofill.dialogPick, "number");
+  });
 ```
-
-Use whatever the surrounding tests call the admin key constant (match the existing block's variable name; if they inline the string, inline the same string).
 
 - [ ] **Step 2: Run test to verify it fails**
 

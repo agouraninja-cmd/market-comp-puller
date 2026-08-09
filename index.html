@@ -373,6 +373,19 @@
     select.rd-in { appearance: auto; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
+    /* ...but only for the cell's OWN input. The address cell now also carries
+       the type status line and its picker buttons, and :focus-within fires for
+       those too, so clicking "change" lit the address field's ring while the
+       address field held no focus at all. Deliberately a second rule rather
+       than folded into the first: where :has() is unsupported this one is
+       dropped whole and the ring falls back to the behaviour above, which is
+       the wrong ring rather than no ring.
+       :focus-within inside the :has(), NOT :focus. Chrome stops matching
+       :focus once the WINDOW loses focus but keeps matching :focus-within, so
+       the two selectors would disagree exactly then and this rule would strip
+       the ring off a legitimately focused address field. Same notion on both
+       sides means they cannot drift apart. */
+    .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
     @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
     /* Card frame — shared by the live map and comps cards. (The sample-report
        exhibit that also used it now lives on /how-it-works, which is
@@ -1016,7 +1029,14 @@
                  building, and the confirm dialog is where it gets settled.
                  The picker is revealed on demand so someone who wants to
                  decide up front still can. -->
-            <div id="typeStatusLine" class="text-xs text-[#68707E] mt-1"></div>
+            <!-- aria-live: the type can change without the visitor touching
+                 anything (OSM detection landing, an address's remembered type
+                 being recalled), and this line is the only thing that says so.
+                 Sighted users see it rewrite itself; without this, a screen
+                 reader user got no announcement at all. Polite, not assertive:
+                 it is never urgent, and the confirm dialog restates the type
+                 with real buttons before any search runs. -->
+            <div id="typeStatusLine" class="text-xs text-[#68707E] mt-1" aria-live="polite"></div>
             <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
             <div id="typeAutoNote" class="text-xs text-[#68707E] mt-1"></div>
           </div>
@@ -5636,6 +5656,14 @@
   function renderTypeStatus(customNodes) {
     const el = document.getElementById("typeStatusLine");
     if (!el) return;
+    // An open picker goes stale the moment anything else resolves the type:
+    // it keeps highlighting the old value while the line right above it says
+    // something newer. Every path that re-renders this line has decided the
+    // question the picker was asking, so close it here rather than at each
+    // caller. The picker's own pick handler closes it before calling in, so
+    // this never fights the toggle.
+    const picker = document.getElementById("typeInlinePicker");
+    if (picker) picker.classList.add("hidden");
     el.textContent = "";
     if (customNodes) { customNodes.forEach((n) => el.appendChild(n)); return; }
     const label = document.createElement("span");
@@ -7414,7 +7442,14 @@
     const meta = item.payload.meta;
     document.getElementById("address").value = meta.address || "";
     const typeSel = document.getElementById("propertyType");
-    if ([...typeSel.options].some((o) => o.value === meta.type)) typeSel.value = meta.type;
+    if ([...typeSel.options].some((o) => o.value === meta.type)) {
+      typeSel.value = meta.type;
+      // Assigning a hidden select's value fires no "change", so without this
+      // the detail inputs keep the PREVIOUS type's fields while the search
+      // runs as meta.type. rerunHistory and the explorer chip both already
+      // do this; only the desk's refresh was missing it.
+      syncSubjectFieldsToType();
+    }
     // Same treatment as rerunHistory, and for a sharper reason: this
     // requestSubmit()s immediately, so an unmarked type strands the member in
     // the confirm dialog with Run held. Picking a DIFFERENT type there would

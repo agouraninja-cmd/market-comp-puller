@@ -68,6 +68,9 @@ const { marketOf, marketForLog, US_STATES } = require("./market");
 // the inline version used to live, so it can carry TYPE_COMP_FIELDS.
 const RPARSE = require("./report-parse");
 const { normalizeCurrency, parseCompJson, stripEmDashes, SHORT_COMP_KEYS } = RPARSE;
+// Report identity — the purchase/export key pair, with the exportReportKey
+// mirror contract pinned by test/report-id.test.js (see report-id.js).
+const { reportKeyOf, reportIdFor } = require("./report-id");
 // The property dimension — one row per building per broker (migration 016).
 // Pure and tested; server.js owns the upsert and the user_id scoping.
 const PROPS = require("./broker-properties");
@@ -1216,42 +1219,13 @@ async function getExportUsage(userId, period) {
   }
 }
 
-// Stable identity for "the same report". Address + type + the report's own
-// timestamp: re-exporting the report on screen is free, while a fresh search of
-// the same building next month is a new report. Hashed so no address is stored
-// in a usage table.
-function reportKeyOf(raw) {
-  return sha256Hex(String(raw || "").trim().toLowerCase().replace(/\s+/g, " ")).slice(0, 32);
-}
-
-// The identity a single-report purchase is keyed on: ADDRESS + TYPE.
-//
-// Derived from the SEARCH, never from an id the client hands us: address and
-// type are already in every /api/comps body, so the server computes this itself
-// and a buyer cannot unlock a report they did not pay for by posting someone
-// else's id.
-//
-// **The lookback was dropped from this key on 2026-08-04**, and that is what
-// lets a purchase carry Pro's 10-year window. While `months` was part of the
-// hash, buying a 36-month report and then re-running it at 120 months produced
-// a DIFFERENT id, matched no purchase, and came back locked — so the unlock
-// could never widen the window, which is precisely why maxLookbackMonths used
-// to sit on `pro` alone. Keyed on address+type, one purchase covers that
-// property at every window, which is what the price is actually buying.
-// Safe to change when it was: `report_purchases` held zero rows, so nothing
-// orphaned. It will never be that cheap again — a later change needs a
-// migration that re-keys every existing purchase.
-//
-// It must produce the same string `exportReportKey()` builds in index.html —
-// same two fields, same order, same `|` separator — because both feed
-// reportKeyOf(), which owns the lowercasing and whitespace collapse.
-// **Change one and you must change the other**, or a purchased report stops
-// matching its own export rows and the buyer is charged an export against a
-// report they own. There is a ⚠ comment on both.
-function reportIdFor({ address, type } = {}) {
-  if (!address || !type) return "";
-  return reportKeyOf([address, type].join("|"));
-}
+// reportKeyOf() and reportIdFor() live in report-id.js (required at the top),
+// extracted 2026-08-08. The load-bearing contract — reportIdFor must produce
+// the same key as reportKeyOf over index.html's exportReportKey() plaintext,
+// or a purchased report stops matching its own export rows — is now PINNED by
+// test/report-id.test.js, which compiles the real browser function out of
+// index.html and compares hashes. The full history of why the lookback left
+// this key on 2026-08-04 is in report-id.js's header and the git log here.
 
 // Records one report-export. Idempotent by primary key, so the second format of
 // the same report is a conflict we deliberately swallow.

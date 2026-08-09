@@ -10552,13 +10552,15 @@
   // exporting both windows costs one export, not two. That is the intended
   // reading: the visitor analysed one building.
   //
-  // ⚠ MIRROR: server.js's reportIdFor() builds this same string from the
+  // ⚠ MIRROR: report-id.js's reportIdFor() builds this same string from the
   // /api/comps body — same two fields, same order, same `|`. Both are then
   // hashed by reportKeyOf() server-side, so this one string is BOTH the
   // export-tally key and the single-report purchase key. Change it here and you
   // must change reportIdFor(), or a bought report stops matching itself: the
   // unlock silently stops applying and the owner's exports start counting
-  // against their free monthly allowance.
+  // against their free monthly allowance. Since 2026-08-08 the agreement is
+  // PINNED: test/report-id.test.js compiles this very function out of this
+  // file and compares hashes, so drift fails `npm test` instead of billing.
   function exportReportKey() {
     if (!currentMeta) return "";
     return [currentMeta.address || "", currentMeta.type || ""]

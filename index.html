@@ -65,7 +65,7 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     /* Skeleton loading — calm gray placeholders shaped like the report. The
        sweep is slow and faint on purpose; the progress bar carries the motion. */
-    .skeleton { position: relative; overflow: hidden; background: #E4E2DA; border-radius: .375rem; }
+    .skeleton { position: relative; overflow: hidden; background: #E4E2DA; border-radius: 6px; }
     .skeleton::after {
       content: ""; position: absolute; inset: 0; transform: translateX(-100%);
       background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent);
@@ -409,10 +409,10 @@
 
     /* ------------- Research Desk report tokens (live report restyle) ------------- */
     /* Neutral value tile: paper alt tone + hairline — replaces the slate-50 bubbles. */
-    .rd-tile { background: #F5F4EF; border: 1px solid #E4E2DA; border-radius: 5px; padding: 16px; }
+    .rd-tile { background: #F5F4EF; border: 1px solid #E4E2DA; border-radius: 6px; padding: 16px; }
     /* Highlight tile (Likely / Hold DCF): white with a single red hairline and a
        red uppercase label — quietly distinct, editorial, not a colored bubble. */
-    .rd-tile-hi { background: #fff; border: 1px solid #B91C1C; border-radius: 5px; padding: 16px; }
+    .rd-tile-hi { background: #fff; border: 1px solid #B91C1C; border-radius: 6px; padding: 16px; }
     .rd-tile-hi .rd-lab { color: #B91C1C; }
     /* Ledger hero (Direction A, owner-approved 2026-08-08): the Low/Likely/High
        tiles as one ruled ledger line — serif figures, red spent only on the

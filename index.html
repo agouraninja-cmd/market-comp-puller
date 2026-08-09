@@ -446,6 +446,30 @@
     .pr-stmt col.pro-col { background: #FCFBF8; }
     .pr-stmt tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; padding: 9px 10px; }
     .pr-stmt tfoot .fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 17px; }
+    /* My Desk (Directions K+L, owner-approved 2026-08-09): the portfolio as a
+       book — ledger strip, statement table closing on the combined total,
+       per-row sparklines drawn from the snapshot history the product already
+       stores — and the watchlist as a ruled briefing. .dk-rule is the
+       section-head-on-an-ink-rule treatment every desk section now uses in
+       place of the old floating labels. */
+    .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid #1A2433; padding-bottom: 4px; }
+    .dk-rule .rd-lab { margin-bottom: 0; color: #1A2433; letter-spacing: .12em; }
+    .dk-note { font-size: 10.5px; color: #68707E; text-align: right; }
+    .dk-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; }
+    .dk-stmt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 560px; }
+    .dk-stmt th { text-align: left; color: #68707E; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 7px 10px 7px 0; border-bottom: 1px solid #ECEAE3; }
+    .dk-stmt td { padding: 9px 10px 9px 0; border-bottom: 1px solid #F0EFE9; color: #374253; vertical-align: middle; }
+    .dk-stmt th.num, .dk-stmt td.num { text-align: right; }
+    .dk-stmt tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; color: #1A2433; }
+    .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: #5A6473; }
+    .dk-up { color: #047857; font-size: 11px; font-weight: 500; }
+    .dk-down { color: #B91C1C; font-size: 11px; font-weight: 500; }
+    .dk-mkt { padding: 14px 0; border-bottom: 1px solid #F0EFE9; }
+    .dk-mkt:last-child { border-bottom: 0; }
+    .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: #1A2433; }
+    .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #B91C1C; margin-top: 6px; }
+    .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: #374253; padding: 4px 0; border-bottom: 1px solid #F7F6F2; flex-wrap: wrap; }
+    .dk-crow:last-child { border-bottom: 0; }
     @media (max-width: 639.98px) {
       .rd-ledger { flex-direction: column; }
       .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid #ECEAE3; }
@@ -1190,7 +1214,7 @@
            three times over, and regenerating the input would eat what the user
            is typing. -->
       <div id="historyWrap" class="hidden mt-6">
-        <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div class="dk-rule flex-wrap">
           <span class="rd-lab">Recent searches</span>
           <div class="flex items-center gap-3">
             <span id="historyCount" class="text-xs text-[#68707E]"></span>
@@ -1212,16 +1236,26 @@
       <!-- My Desk — the signed-in areas: portfolio, watchlist, updates feed -->
       <section id="myDesk" class="hidden mt-4">
       <div class="mt-4">
-        <div class="flex items-center gap-2">
+        <div class="dk-rule">
           <span class="rd-lab">Portfolio</span>
-          <span id="deskCount" class="text-xs text-[#68707E]"></span>
+          <span id="deskCount" class="dk-note"></span>
         </div>
         <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and press "Save to portfolio" to start tracking a property here.</p>
-        <div id="portfolioGrid" class="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        <!-- The book line (Direction K): combined value on the warm cell,
+             markets cell filled by renderWatchFeed once the feed answers.
+             Hidden with 0 properties — a 0-0 scoreboard over an empty desk
+             is the vault first-run lesson. -->
+        <div id="deskLedger" class="hidden rd-ledger mt-3 bg-white"></div>
+        <!-- Statement table container (was a 3-col card grid). The id keeps
+             every existing reference; renderMyDesk builds the table inside. -->
+        <div id="portfolioGrid" class="mt-2 overflow-x-auto no-scrollbar"></div>
       </div>
       <div id="deskWatch" class="mt-8">
-        <span class="rd-lab">Watchlist</span>
-        <form id="watchForm" class="mt-2 flex flex-wrap items-center gap-2">
+        <div class="dk-rule">
+          <span class="rd-lab">Watchlist</span>
+          <span id="deskWatchNote" class="dk-note"></span>
+        </div>
+        <form id="watchForm" class="mt-3 flex flex-wrap items-center gap-2">
           <input id="watchCity" type="text" placeholder="City" aria-label="City"
             class="w-40 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
           <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
@@ -1235,9 +1269,9 @@
         <div id="feedWrap" class="mt-3 space-y-4"></div>
       </div>
       <div id="deskBroker" class="hidden mt-8">
-        <div class="flex items-center gap-2">
+        <div class="dk-rule">
           <span class="rd-lab">Broker</span>
-          <span id="brokerStats" class="text-xs text-[#68707E]"></span>
+          <span id="brokerStats" class="dk-note"></span>
         </div>
         <div id="brokerRows" class="mt-2 space-y-1.5"></div>
         <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
@@ -1259,12 +1293,12 @@
            leaves the rest of the desk working. See renderShares(). -->
       <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports.</p>
       <div id="deskShares" class="hidden mt-8">
-        <span class="rd-lab">Reports you have shared</span>
+        <div class="dk-rule"><span class="rd-lab">Reports you have shared</span></div>
         <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet. Open a report and use Share to invite someone or copy a link.</p>
         <div id="sharesRows" class="mt-2 space-y-3"></div>
       </div>
       <div id="deskSharedWithMe" class="hidden mt-8">
-        <span class="rd-lab">Shared with you</span>
+        <div class="dk-rule"><span class="rd-lab">Shared with you</span></div>
         <p id="deskSharedWithMeEmpty" class="hidden text-sm text-[#5A6473] mt-2">No one has shared a report with you yet.</p>
         <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
       </div>
@@ -1277,7 +1311,7 @@
            the CompNinja line in the preview below is not something a member
            can remove here. -->
       <div id="deskBranding" class="hidden mt-8">
-        <span class="rd-lab">Report branding</span>
+        <div class="dk-rule"><span class="rd-lab">Report branding</span></div>
         <p class="text-sm text-[#5A6473] mt-2">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
           <div class="flex flex-wrap items-center gap-3">
@@ -1336,7 +1370,7 @@
            An <a>, not a button: /vault is a real page, so middle-click and
            open-in-new-tab should work. -->
       <div id="vaultCard" class="hidden mt-8">
-        <span class="rd-lab">Broker vault</span>
+        <div class="dk-rule"><span class="rd-lab">Broker vault</span></div>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
           <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
           <div id="vaultCardDetail" class="text-xs text-[#68707E] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
@@ -1349,7 +1383,7 @@
       </div>
 
       <div id="billingCard" class="hidden mt-8">
-        <span class="rd-lab">Plan</span>
+        <div class="dk-rule"><span class="rd-lab">Plan</span></div>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
           <div id="billingStatus" class="text-sm font-semibold text-[#1A2433]"></div>
           <div id="billingDetail" class="text-xs text-[#68707E] mt-1"></div>
@@ -7504,60 +7538,131 @@
     try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
     document.getElementById("deskCount").textContent = items.length ? `${items.length} propert${items.length === 1 ? "y" : "ies"}` : "";
     document.getElementById("deskEmpty").classList.toggle("hidden", items.length > 0);
-    const grid = document.getElementById("portfolioGrid");
-    grid.innerHTML = "";
+    // Direction K (owner-approved 2026-08-09): the portfolio is a book. A
+    // ledger strip answers "what is everything worth" first; the statement
+    // table below closes on the SAME sum under the double rule — one figure,
+    // computed once, so the two can never disagree. The sparkline finally
+    // renders the snapshot history every re-run has been saving: a bare gray
+    // polyline with the latest point in red — no axes, no animation.
+    const sparkline = (snaps) => {
+      const vals = snaps.map((s) => Number(s.likely)).filter((v) => v > 0).slice(-12);
+      if (vals.length < 2) return null;
+      const w = 72, h = 18, pad = 3;
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      const x = (i) => pad + (i * (w - 2 * pad)) / (vals.length - 1);
+      const y = (v) => (hi === lo ? h / 2 : h - pad - ((v - lo) * (h - 2 * pad)) / (hi - lo));
+      const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("width", w); svg.setAttribute("height", h);
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      svg.setAttribute("aria-label", `${vals.length} valuations tracked`);
+      svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="#8A93A0" stroke-width="1.4"/>` +
+        `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="#B91C1C"/>`;
+      return svg;
+    };
+    let combined = 0, curOfPaired = 0, prevOfPaired = 0;
+    const typeCounts = {};
     items.forEach((item) => {
       const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
       const last = snaps[snaps.length - 1] || null;
       const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
-      const card = document.createElement("div");
-      card.className = "border border-[#D8D4C9] rounded-lg bg-white p-3 flex flex-col gap-1 fade-in";
-      const addr = document.createElement("button");
-      addr.type = "button";
-      addr.className = "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C] truncate";
-      addr.textContent = item.address;
-      addr.title = "Open this report (no new search, no cost)";
-      addr.addEventListener("click", () => openPortfolioItem(item.id));
-      card.appendChild(addr);
-      const sub = document.createElement("div");
-      sub.className = "text-xs text-[#68707E]";
-      sub.textContent = `${item.property_type} · updated ${new Date(item.updated_at).toLocaleDateString()}`;
-      card.appendChild(sub);
-      const val = document.createElement("div");
-      val.className = "text-lg font-semibold text-[#1A2433]";
-      val.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
-      card.appendChild(val);
-      if (last && prev && last.likely && prev.likely) {
-        const pct = ((last.likely - prev.likely) / prev.likely) * 100;
-        const d = document.createElement("div");
-        d.className = "text-xs font-medium " + (pct >= 0 ? "text-emerald-700" : "text-red-700");
-        d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% since ${new Date(prev.ts).toLocaleDateString()}`;
-        card.appendChild(d);
-      }
-      const row = document.createElement("div");
-      row.className = "flex items-center gap-3 mt-1 text-xs";
-      const refresh = document.createElement("button");
-      refresh.type = "button";
-      refresh.className = "text-[#5A6473] hover:text-[#1A2433] underline";
-      refresh.textContent = "Refresh valuation";
-      refresh.title = "Runs a new live search for this property";
-      refresh.addEventListener("click", async () => {
-        const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(item.id)).catch(() => null);
-        if (full) refreshPortfolioItem(full);
-      });
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "text-[#68707E] hover:text-red-700";
-      del.textContent = "Remove";
-      del.addEventListener("click", async () => {
-        if (!confirm(`Remove ${item.address} from your portfolio?`)) return;
-        try { await acctApi("DELETE", "/api/portfolio?id=" + encodeURIComponent(item.id)); } catch (_) {}
-        renderMyDesk();
-      });
-      row.appendChild(refresh); row.appendChild(del);
-      card.appendChild(row);
-      grid.appendChild(card);
+      if (last && last.likely) combined += Number(last.likely);
+      if (last && prev && last.likely && prev.likely) { curOfPaired += Number(last.likely); prevOfPaired += Number(prev.likely); }
+      const t = String(item.property_type || "").toLowerCase();
+      if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
     });
+    const ledger = document.getElementById("deskLedger");
+    ledger.classList.toggle("hidden", items.length === 0);
+    const bookPct = prevOfPaired > 0 ? ((curOfPaired - prevOfPaired) / prevOfPaired) * 100 : null;
+    const cell = (k, v, n, mid) =>
+      `<div class="rd-lcell${mid ? " mid" : ""}"><span class="rd-lab">${k}</span><div class="dk-fig text-[21px]${mid ? "" : ""}">${v}</div><div class="dk-note" style="text-align:left">${n}</div></div>`;
+    ledger.innerHTML =
+      cell("Properties", String(items.length), Object.entries(typeCounts).map(([t, n]) => `${n} ${t}`).join(" · ") || "&nbsp;", false) +
+      cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
+      cell("Since last checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
+        bookPct == null ? "re-run a property to start the trail" : "across properties checked twice", false) +
+      `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">—</div><div class="dk-note" style="text-align:left">&nbsp;</div></div>`;
+    const grid = document.getElementById("portfolioGrid");
+    grid.innerHTML = "";
+    if (items.length) {
+      const table = document.createElement("table");
+      table.className = "dk-stmt";
+      table.innerHTML = `<thead><tr><th>Property</th><th>History</th><th class="num">Likely value</th><th class="num">Change</th><th></th></tr></thead>`;
+      const tbody = document.createElement("tbody");
+      items.forEach((item) => {
+        const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
+        const last = snaps[snaps.length - 1] || null;
+        const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
+        const tr = document.createElement("tr");
+        const tdA = document.createElement("td");
+        const addr = document.createElement("button");
+        addr.type = "button";
+        addr.className = "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C]";
+        addr.textContent = item.address;
+        addr.title = "Open this report (no new search, no cost)";
+        addr.addEventListener("click", () => openPortfolioItem(item.id));
+        tdA.appendChild(addr);
+        const sub = document.createElement("div");
+        sub.className = "text-[10.5px] text-[#68707E]";
+        sub.textContent = `${item.property_type} · checked ${new Date(item.updated_at).toLocaleDateString()}`;
+        tdA.appendChild(sub);
+        tr.appendChild(tdA);
+        const tdS = document.createElement("td");
+        const spark = sparkline(snaps);
+        if (spark) tdS.appendChild(spark);
+        else { tdS.className = "text-[10.5px] text-[#9AA2AD]"; tdS.textContent = "—"; }
+        tr.appendChild(tdS);
+        const tdV = document.createElement("td");
+        tdV.className = "num dk-fig text-[14.5px]";
+        tdV.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
+        tr.appendChild(tdV);
+        const tdC = document.createElement("td");
+        tdC.className = "num";
+        if (last && prev && last.likely && prev.likely) {
+          const pct = ((last.likely - prev.likely) / prev.likely) * 100;
+          const d = document.createElement("span");
+          d.className = pct >= 0 ? "dk-up" : "dk-down";
+          d.title = `since ${new Date(prev.ts).toLocaleDateString()}`;
+          d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
+          tdC.appendChild(d);
+        } else tdC.textContent = "—";
+        tr.appendChild(tdC);
+        const tdX = document.createElement("td");
+        tdX.className = "num text-[10.5px] whitespace-nowrap";
+        const refresh = document.createElement("button");
+        refresh.type = "button";
+        refresh.className = "text-[#5A6473] hover:text-[#1A2433] underline mr-2";
+        refresh.textContent = "Refresh";
+        refresh.title = "Runs a new live search for this property";
+        refresh.addEventListener("click", async () => {
+          const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(item.id)).catch(() => null);
+          if (full) refreshPortfolioItem(full);
+        });
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "text-[#68707E] hover:text-red-700 underline";
+        del.textContent = "Remove";
+        del.addEventListener("click", async () => {
+          if (!confirm(`Remove ${item.address} from your portfolio?`)) return;
+          try { await acctApi("DELETE", "/api/portfolio?id=" + encodeURIComponent(item.id)); } catch (_) {}
+          renderMyDesk();
+        });
+        tdX.appendChild(refresh); tdX.appendChild(del);
+        tr.appendChild(tdX);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      // The closing total only earns its double rule with something to sum.
+      if (items.length > 1 && combined) {
+        const tfoot = document.createElement("tfoot");
+        const pctCell = bookPct == null ? "" :
+          `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`;
+        tfoot.innerHTML = `<tr><td class="tl" colspan="2">Combined · ${items.length} properties</td>` +
+          `<td class="num dk-fig text-[16px]">${fmtDeskUsd(combined)}</td><td class="num">${pctCell}</td><td></td></tr>`;
+        table.appendChild(tfoot);
+      }
+      grid.appendChild(table);
+    }
     renderWatchFeed();
     renderBrokerDesk();
     renderShares();
@@ -7637,25 +7742,33 @@
     try { feed = await acctApi("GET", "/api/watchlist/feed"); } catch (_) { return; }
     const wrap = document.getElementById("feedWrap");
     wrap.innerHTML = "";
+    // Direction L (owner-approved 2026-08-09): the feed is a briefing. Each
+    // watched market is a ruled section — market name in the display face,
+    // median + trend as the note beside it — with new comps as quiet
+    // statement mini-rows. The red "N new" micro-label is the only accent,
+    // so a desk with news reads differently from a desk without.
     if (!feed.items.length) {
       const p = document.createElement("p");
       p.className = "text-sm text-[#5A6473]";
       p.textContent = "Watch a market above and new comps will show up here as they're found.";
       wrap.appendChild(p);
     }
+    let totalNew = 0;
     feed.items.forEach((w) => {
+      totalNew += Number(w.new_count) || 0;
       const box = document.createElement("div");
-      box.className = "border border-[#D8D4C9] rounded-lg bg-white p-3";
+      box.className = "dk-mkt";
       const head = document.createElement("div");
-      head.className = "flex items-center justify-between gap-2";
+      head.className = "flex items-baseline justify-between gap-3 flex-wrap";
       const title = document.createElement("div");
-      title.className = "text-sm font-medium text-[#1A2433]";
+      title.className = "dk-mname";
       title.textContent = `${w.property_type} · ${w.market}`;
       const right = document.createElement("div");
-      right.className = "flex items-center gap-3 text-xs text-[#68707E]";
+      right.className = "flex items-baseline gap-3 text-[11px] text-[#68707E]";
       if (w.median_psf) {
         const m = document.createElement("span");
-        m.textContent = `median $${w.median_psf}/SF of recently collected sale comps`;
+        m.textContent = `median $${w.median_psf}/SF`;
+        m.title = "Median of recently collected sale comps";
         right.appendChild(m);
       }
       // Direction suffix — only when the server had >=3 dated sale comps in
@@ -7663,13 +7776,13 @@
       if (w.median_trend) {
         const up = w.median_trend.current >= w.median_trend.prior;
         const t = document.createElement("span");
-        t.className = up ? "text-[#06603A]" : "text-[#8A6D1A]";
+        t.className = up ? "dk-up" : "text-[#8A6D1A]";
         t.textContent = `${up ? "▲" : "▼"} from $${w.median_trend.prior} (deals 6–12 mo ago)`;
         right.appendChild(t);
       }
       const un = document.createElement("button");
       un.type = "button";
-      un.className = "hover:text-red-700";
+      un.className = "hover:text-red-700 underline decoration-[#D8D4C9]";
       un.textContent = "Unwatch";
       un.addEventListener("click", async () => {
         try { await acctApi("DELETE", "/api/watchlist?id=" + encodeURIComponent(w.id)); } catch (_) {}
@@ -7680,37 +7793,59 @@
       box.appendChild(head);
       if (w.comps.length) {
         const label = document.createElement("div");
-        label.className = "text-xs font-medium text-[#B91C1C] mt-2";
+        label.className = "dk-new";
         label.textContent = `${w.new_count} new comp${w.new_count === 1 ? "" : "s"} since your last visit`;
         box.appendChild(label);
-        const ul = document.createElement("ul");
-        ul.className = "mt-1 space-y-1";
+        const rows = document.createElement("div");
+        rows.className = "mt-1";
         w.comps.forEach((c) => {
-          const li = document.createElement("li");
-          li.className = "text-xs text-[#4C5665] flex flex-wrap items-center gap-x-2";
-          const bits = [c.address, c.transaction, c.deal_date, c.price_or_rate,
+          const row = document.createElement("div");
+          row.className = "dk-crow";
+          const a = document.createElement("span");
+          a.className = "font-medium text-[#1A2433]";
+          a.textContent = c.address;
+          row.appendChild(a);
+          const r = document.createElement("span");
+          r.className = "text-[#68707E]";
+          const bits = [c.transaction, c.deal_date, c.price_or_rate,
             c.price_per_sqft ? c.price_per_sqft + "/SF" : "", c.cap_rate].filter(Boolean);
-          li.textContent = bits.join(" · ");
+          r.textContent = bits.join(" · ");
           if (/^https?:\/\//i.test(String(c.source_url || ""))) {
-            const a = document.createElement("a");
-            a.href = c.source_url;
-            a.target = "_blank";
-            a.rel = "noopener noreferrer";
-            a.className = "text-[#68707E] underline hover:text-[#1A2433]";
-            a.textContent = "source";
-            li.appendChild(a);
+            const link = document.createElement("a");
+            link.href = c.source_url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.className = "text-[#68707E] underline hover:text-[#1A2433] ml-1";
+            link.textContent = "source";
+            r.appendChild(link);
           }
-          ul.appendChild(li);
+          row.appendChild(r);
+          rows.appendChild(row);
         });
-        box.appendChild(ul);
+        box.appendChild(rows);
       } else {
         const q = document.createElement("div");
-        q.className = "text-xs text-[#68707E] mt-2";
+        q.className = "text-[11px] text-[#68707E] mt-2";
         q.textContent = "Quiet since your last visit.";
         box.appendChild(q);
       }
       wrap.appendChild(box);
     });
+    if (feed.items.length) {
+      const done = document.createElement("p");
+      done.className = "text-[11px] text-[#68707E] pt-2";
+      done.textContent = "You're caught up. Watching finds new comps as our records grow; nothing here costs a search.";
+      wrap.appendChild(done);
+    }
+    // The Watchlist rule's note and the book line's Markets cell — one
+    // computation, two surfaces, so they cannot disagree.
+    const note = document.getElementById("deskWatchNote");
+    if (note) note.textContent = feed.items.length
+      ? (totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} across ${feed.items.length} market${feed.items.length === 1 ? "" : "s"}` : `${feed.items.length} market${feed.items.length === 1 ? "" : "s"} watched · quiet`)
+      : "";
+    const mk = document.getElementById("deskLedgerMarkets");
+    if (mk) mk.innerHTML = `<span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">${feed.items.length}</div>` +
+      `<div class="dk-note" style="text-align:left">${totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} waiting` : "&nbsp;"}</div>`;
     if (markSeen && feed.unseen) {
       try { await acctApi("POST", "/api/watchlist/seen"); } catch (_) {}
     }

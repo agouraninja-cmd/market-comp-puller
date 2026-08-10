@@ -3995,10 +3995,13 @@ function privateAddress(addr, family) {
     const p = String(addr).split(".").map(Number);
     return p[0] === 0 || p[0] === 10 || p[0] === 127 ||
       (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
-      (p[0] === 192 && p[1] === 168) || (p[0] === 169 && p[1] === 254);
+      (p[0] === 192 && p[1] === 168) || (p[0] === 169 && p[1] === 254) ||
+      (p[0] === 100 && p[1] >= 64 && p[1] <= 127);   // CGNAT, 100.64.0.0/10
   }
   const a = String(addr).toLowerCase();
-  return a === "::" || a === "::1" || a.startsWith("fe80") ||
+  // Link-local is fe80::/10, which spans the fe8/fe9/fea/feb prefixes, not
+  // just fe80 literally.
+  return a === "::" || a === "::1" || /^fe[89ab]/.test(a) ||
     a.startsWith("fc") || a.startsWith("fd") || a.startsWith("::ffff:");
 }
 
@@ -4065,7 +4068,7 @@ async function applySourceLinkCheck(report, type, address) {
     const unknown = checked - dead - live;
     const demoted = LINKCHECK.applyLinkVerdicts(report, verdicts);
     if (demoted) {
-      console.log(`🔗 ${demoted} comp(s) demoted: source link dead at harvest (${checked} checked, ${blocked} blocked-host, ${unknown} unknown)`);
+      console.log(`🔗 ${demoted} comp(s) demoted: source link dead at harvest (${checked} checked, ${dead} dead, ${blocked} blocked-host, ${unknown} unknown)`);
     }
     // Counts ride the source column: the analytics schema is fixed, and a
     // migration for four integers is not worth the outage class it risks.

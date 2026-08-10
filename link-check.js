@@ -71,7 +71,7 @@ function applyLinkVerdicts(payload, verdictsByUrl) {
   for (const c of comps) {
     if (!c || c.verified === true) continue;
     if (String(c.source_type || "") === "estimate") continue;
-    if (verdicts[String(c.source_url || "")] !== "dead") continue;
+    if (verdicts[String(c.source_url || "").trim()] !== "dead") continue;
     c.source_type = "estimate";
     demoted += 1;
   }

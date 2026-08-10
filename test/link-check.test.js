@@ -32,6 +32,15 @@ test("hostClass blocks the bot-wall list including subdomains, case-insensitivel
   assert.equal(LC.hostClass("https://notloopnet.com/x"), "fetchable");
 });
 
+test("hostClass blocks every bot-wall host, bare-domain form", () => {
+  assert.equal(LC.hostClass("https://loopnet.com/x"), "blocked");
+  assert.equal(LC.hostClass("https://cityfeet.com/x"), "blocked");
+  assert.equal(LC.hostClass("https://commercialsearch.com/x"), "blocked");
+  assert.equal(LC.hostClass("https://costar.com/x"), "blocked");
+  assert.equal(LC.hostClass("https://zillow.com/x"), "blocked");
+  assert.equal(LC.hostClass("https://redfin.com/x"), "blocked");
+});
+
 test("verdictFor: dead only for dnsNotFound, 404, 410", () => {
   assert.equal(LC.verdictFor({ dnsNotFound: true }), "dead");
   assert.equal(LC.verdictFor({ status: 404 }), "dead");
@@ -73,6 +82,15 @@ test("applyLinkVerdicts skips verified comps and existing estimates", () => {
   assert.equal(n, 0);
   assert.equal(payload.comps[0].source_type, "listing");
   assert.equal(payload.comps[1].source_type, "estimate");
+});
+
+test("applyLinkVerdicts looks up the trimmed source_url, matching how checkSourceLinks keys verdicts", () => {
+  const payload = { comps: [
+    { address: "1 A St", source_type: "listing", source_url: " https://a.example.com/1 " },
+  ] };
+  const n = LC.applyLinkVerdicts(payload, { "https://a.example.com/1": "dead" });
+  assert.equal(n, 1);
+  assert.equal(payload.comps[0].source_type, "estimate");
 });
 
 test("applyLinkVerdicts ignores live/unknown verdicts and tolerates junk shapes", () => {

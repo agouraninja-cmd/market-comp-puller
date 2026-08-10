@@ -444,6 +444,29 @@
     .rd-ledger .rd-lcell.mid .rd-lab { color: #B91C1C; }
     .rd-lfig { font-size: 26px; }
     .rd-lcell.mid .rd-lfig { font-size: 32px; }
+    /* Comp scatter (owner-approved 2026-08-09): the hairline number line under
+       the ledger, one tick per sale comp at its own $/SF, so the agreement the
+       trust line ASSERTS is visible. Spec:
+       docs/superpowers/specs/2026-08-09-hero-comp-scatter-design.md.
+       ⚠ #ownerHero is captured by the PNG exporter and printed, and this line
+       is evidence rather than chrome, so it carries no no-print/no-capture.
+       That is why everything here is absolute + percentage and there is no
+       flex gap and no transform: html2canvas silently collapses gap, and its
+       transform support is partial. Keep it that way. */
+    .rd-scat { position: relative; height: 26px; }
+    .rd-scat-band { position: absolute; top: 0; height: 100%; background: #F1EFE8; border-radius: 2px; }
+    .rd-scat-rule { position: absolute; left: 0; right: 0; top: 12px; height: 1px; background: #D8D4C9; }
+    .rd-scat-tick { position: absolute; top: 7px; width: 1px; height: 12px; background: #8A929E; opacity: .55; }
+    .rd-scat-mid { position: absolute; top: 3px; width: 2px; height: 20px; background: #B91C1C; }
+    .rd-scat-midlab { position: absolute; top: -13px; width: 60px; margin-left: -30px; text-align: center; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: #B91C1C; }
+    .rd-scat-ends { display: flex; justify-content: space-between; font-size: 11px; color: #68707E; margin-top: 3px; }
+    /* Every mark on this line IS a background color, and browsers drop
+       backgrounds on paper unless the visitor ticks "Background graphics".
+       Without this the printed report shows a bare rule with no ticks, no
+       tint and no Likely mark — a caption pointing at nothing. */
+    .rd-scat-band, .rd-scat-rule, .rd-scat-tick, .rd-scat-mid {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
     /* Pricing modal (Directions I+J, owner-approved 2026-08-09): the plans as
        a rate-card ledger (reusing the hero's .rd-ledger geometry, with
        column layout for the buttons) plus the itemized Free-vs-Pro statement
@@ -1629,6 +1652,20 @@
               <div id="ownerHigh" class="rd-h rd-lfig mt-1">-</div>
               <div id="ownerHighPpsf" class="text-xs text-[#68707E] mt-1"></div>
             </div>
+          </div>
+          <!-- Comp scatter: every sale comp behind the ledger, each at its own
+               $/SF, with the tint marking the Low-High span and the red mark
+               at Likely. Built by renderCompScatter; hidden unless the ledger
+               above is quoting the same unit the line plots. Prints and
+               captures on purpose (it is the evidence for the figures), so
+               nothing in here may use flex gap or a transform. -->
+          <div id="ownerScatter" class="hidden mt-6" role="img" aria-label="">
+            <div id="ownerScatterStrip" class="rd-scat"></div>
+            <div class="rd-scat-ends">
+              <span id="ownerScatterLo"></span>
+              <span id="ownerScatterHi"></span>
+            </div>
+            <p id="ownerScatterNote" class="text-xs text-[#68707E] mt-2"></p>
           </div>
           <!-- No-estimate rescue: shown only by renderOwnerHero's dash branch
                when a wider, sales-only re-run could produce the range this
@@ -3082,7 +3119,7 @@
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerApproaches", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerTrust", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -3595,6 +3632,81 @@
     };
   }
 
+  // ----------------------------------------------------------------------------
+  // The hero's comp scatter: one hairline number line under the ledger, one
+  // tick per sale comp at its own price, the tint marking the Low-High span
+  // and the red mark sitting at Likely. Derived at render time from figures
+  // already on the page; nothing is stored, sent, or computed on the server.
+  //
+  // `values` are the DISPLAYED per-unit figures, i.e. what the comp table
+  // shows, NOT the trend-indexed weighted ones the band is computed from: a
+  // customer has to be able to find the $210/SF comp they can see in the table.
+  // That is the same displayed-against-displayed pairing buildOutlierChip uses,
+  // so a tick can never sit outside the tint while the table's outlier chip
+  // calls that same comp in-range.
+  //
+  // The axis spans the comps, not the band. The band is the weighted
+  // interquartile range (robustPpsfRange), so with 4+ comps roughly half of
+  // them sit OUTSIDE it by construction — an axis clipped to Low-High would
+  // hide half the evidence, which is the opposite of the point.
+  //
+  // Draws nothing unless the caller's band is `trimmed` (exactly the "4 or
+  // more comps" condition: below it the band IS the full observed spread, so
+  // the tint would cover the entire line and state nothing) and the comps
+  // actually spread, so the scale has a denominator.
+  // ----------------------------------------------------------------------------
+  function renderCompScatter(values, band, opts) {
+    const wrap = document.getElementById("ownerScatter");
+    const strip = document.getElementById("ownerScatterStrip");
+    wrap.classList.add("hidden");
+    strip.innerHTML = "";
+    const o = opts || {};
+    const fmt = typeof o.fmt === "function" ? o.fmt : (v) => String(v);
+    const vals = (values || []).filter((v) => v > 0).sort((a, b) => a - b);
+    if (!band || !band.trimmed || vals.length < 4) return;
+    const lo = vals[0], hi = vals[vals.length - 1];
+    if (!(hi > lo)) return;
+    // Band edges are clamped to the axis: an upward trend index can push the
+    // whole band past the raw displayed spread, and a tint hanging off the end
+    // of its own line reads as a rendering bug.
+    const at = (v) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+    const add = (cls, style) => {
+      const el = document.createElement("div");
+      el.className = cls;
+      Object.assign(el.style, style);
+      strip.appendChild(el);
+      return el;
+    };
+    // Paint order is DOM order for absolutely-positioned siblings: tint, then
+    // rule, then ticks, then the Likely mark on top of all of them.
+    const bLo = at(band.low), bHi = at(band.high);
+    add("rd-scat-band", { left: bLo + "%", width: Math.max(0, bHi - bLo) + "%" });
+    add("rd-scat-rule", {});
+    vals.forEach((v) => { add("rd-scat-tick", { left: at(v) + "%" }); });
+    const midPct = at(band.mid);
+    add("rd-scat-mid", { left: midPct + "%" });
+    // Centered under 60px of label, except near the ends, where centering
+    // would hang the word off the card. No transform: html2canvas (PNG export)
+    // captures this card and its transform support is partial.
+    const lab = add("rd-scat-midlab", { left: midPct + "%" });
+    lab.textContent = "Likely";
+    if (midPct < 12) Object.assign(lab.style, { marginLeft: "0", textAlign: "left" });
+    else if (midPct > 88) Object.assign(lab.style, { marginLeft: "-60px", textAlign: "right" });
+
+    document.getElementById("ownerScatterLo").textContent = fmt(lo);
+    document.getElementById("ownerScatterHi").textContent = fmt(hi);
+    document.getElementById("ownerScatterNote").textContent =
+      `Each gray tick is one of the ${vals.length} sale comps at its own ${o.unitPhrase}. `
+      + "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
+      + "the firmer this estimate.";
+    // The meaning lives entirely in mark positions, so the accessible name has
+    // to state the same thing in words.
+    wrap.setAttribute("aria-label",
+      `${vals.length} sale comps ranging from ${fmt(lo)} to ${fmt(hi)}. `
+      + `The estimate's range is ${fmt(band.low)} to ${fmt(band.high)}, likely ${fmt(band.mid)}.`);
+    wrap.classList.remove("hidden");
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
@@ -3707,6 +3819,9 @@
     const trustEl = document.getElementById("ownerTrust");
     trustEl.classList.add("hidden");
     trustEl.textContent = "";
+    // Hidden by default every render: only the branches whose ledger quotes
+    // the same unit the line plots call renderCompScatter to re-show it.
+    document.getElementById("ownerScatter").classList.add("hidden");
     // Hidden by default every render; only the no-estimate branch re-shows it.
     const widenWrap = document.getElementById("widenSearchWrap");
     widenWrap.classList.add("hidden");
@@ -3845,6 +3960,7 @@
         + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote
         + sizeNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
+      renderCompScatter(ppsfs, rr, { fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF" });
 
       const entries = [{
         label: "Sales comparison approach",
@@ -3886,6 +4002,13 @@
       trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
         + `Building size wasn't needed for this estimate.` + weighNote + smallNNote(per.length);
       trustEl.classList.remove("hidden");
+      // Same line, this type's own unit: the ledger above is quoting per unit
+      // or per acre, so a $/SF scatter under it would be measuring something
+      // the three figures never used.
+      renderCompScatter(per, rr, {
+        fmt: (v) => per0(v) + "/" + spec.noun,
+        unitPhrase: "price per " + spec.noun,
+      });
       const entries = [{
         label: "Sales comparison approach",
         text: `${fmtTotal(rr.low * qty)} – ${fmtTotal(rr.high * qty)}, what ${per.length} recent sale comps say `
@@ -3950,6 +4073,7 @@
         + "We couldn't find this building's square footage; enter it under 'Your property details' and this becomes a total dollar value instantly.";
       trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
+      renderCompScatter(ppsfs, rr, { fmt: fmtPsf, unitPhrase: "$/SF" });
       const entries = [{
         label: "Sales comparison approach",
         text: `${fmtPsf(rr.low)} – ${fmtPsf(rr.high)}, what ${ppsfs.length} recent sale comps say buyers pay per `

@@ -671,3 +671,21 @@ test("a successful import from the panel closes it and reports the result", asyn
     "the confirmed mapping did not reach the server");
   assert.match(doc.getElementById("res").innerHTML, /Imported 1 comp/);
 });
+
+test("skipped # lines are reported, not dropped silently", async () => {
+  // The template ships its rules as # lines, so this clause fires on the
+  // ordinary path. It is here for the other one: a broker whose own export has
+  // a row starting with # must see that it did not import.
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200,
+      { ok: true, imported: 3, skipped: 0, commented: 10 })),
+  });
+  await chooseFile(doc, MAPPABLE_CSV);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+
+  const html = doc.getElementById("res").innerHTML;
+  assert.match(html, /Imported 3 comps/);
+  assert.match(html, /10 note lines ignored/);
+  assert.ok(html.indexOf("msg ok") >= 0, "ignoring our own notes is not a failure");
+});

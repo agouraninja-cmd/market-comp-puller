@@ -130,6 +130,32 @@ function parseCsv(text) {
   return rows.filter((r) => r.some((c) => String(c).trim() !== ""));
 }
 
+/**
+ * A guidance or example line rather than a comp.
+ *
+ * Our own template ships its rules as `#` lines (see templateCsv), which is
+ * how they survive the broker's first edit — they used to live in the example
+ * row's `notes` cell and died the moment that row was typed over.
+ *
+ * ONLY THE FIRST CELL IS EXAMINED, and that is the load-bearing part: it lets
+ * an example row sit fully populated under its correct headers and still be
+ * inert, so the file we hand a broker can never plant a fake comp in their own
+ * book of business. They activate a row by typing an address over the `#`,
+ * which is the same keystroke as filling the cell in.
+ *
+ * Never applied to the header row — that is row 0, and a file whose first
+ * column is literally headed "#" must still parse.
+ *
+ * A comment is SKIPPED, not rejected: parseUpload counts them separately and
+ * reports the count, because this module's rule is that a row is either stored
+ * or explained. A broker's own export with a `#` row is refused today too (by
+ * normalizeRow's "has no street number"), and the count is what keeps that
+ * visible instead of trading a loud rejection for a silent drop.
+ */
+function isCommentRow(cells) {
+  return String((cells && cells[0]) == null ? "" : cells[0]).trim().startsWith("#");
+}
+
 // Header names are matched case-insensitively with spaces, hyphens and
 // underscores treated alike, so "Property Type", "property-type" and
 // "PROPERTY_TYPE" all land on `property_type`. This is NOT the clever
@@ -521,7 +547,10 @@ function inspectCsv(csvText, { samples = 3 } = {}) {
     seen.add(h);
   }
 
-  const body = table.slice(1);
+  // Comment lines are not rows a broker is mapping. Left in, the address
+  // column's samples read "# Required: address, property_type, ..." and the
+  // row count is a dozen too high on our own template.
+  const body = table.slice(1).filter((cells) => !isCommentRow(cells));
   const sampleMap = {};
   for (let c = 0; c < normalized.length; c++) {
     if (!normalized[c]) continue;
@@ -688,7 +717,7 @@ function normalizeRow(raw) {
  * wrong-file mistake rather than a data mistake.
  */
 function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, mapping = null } = {}) {
-  const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0 };
+  const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0, commented: 0 };
   const table = parseCsv(csvText);
   if (!table.length) {
     return { ...empty, errors: ["That file is empty."] };
@@ -730,9 +759,14 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
   const seen = new Set();
   let skipped = 0;
   let duplicates = 0;
+  let commented = 0;
 
+  // Iterate the WHOLE body and skip inside the loop rather than filtering
+  // comments out first: line numbers are the raw body index, and a filtered
+  // array would renumber every error away from what Excel shows the broker.
   body.forEach((cells, i) => {
     const lineNo = i + 2;                      // header is line 1
+    if (isCommentRow(cells)) { commented++; return; }
     const obj = {};
     headers.forEach((h, c) => { if (h) obj[h] = cells[c]; });
 
@@ -755,13 +789,27 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     errors.push(`…and more. Showing the first ${maxErrors}.`);
   }
 
+  // The untouched template: every line is one of ours. Without this the route
+  // falls through to its generic "nothing in that file could be imported",
+  // which does not tell the broker that the `#` lines are the template's own
+  // notes or where their own rows are supposed to go.
+  if (!rows.length && !skipped && commented) {
+    errors.push(
+      "Every line in that file starts with # — those are the template's own notes. " +
+      "Type your comps in below them, or over the example rows."
+    );
+  }
+
   return {
     ok: rows.length > 0,
     rows,
     errors,
-    total: body.length,
+    // Data rows only. This is the number the broker compares `imported`
+    // against, and "imported 3 of 16" on a three-comp file reads as data loss.
+    total: body.length - commented,
     skipped,
     duplicates,
+    commented,
   };
 }
 
@@ -778,28 +826,75 @@ function csvCell(v) {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** The template a broker downloads, as CSV text. One example row, clearly fake. */
+/**
+ * The template a broker downloads, as CSV text.
+ *
+ * A header row, the rules as `#` lines, then three inert example rows.
+ *
+ * THE RULES RIDE IN THE FILE, and that is the whole design. They used to live
+ * in the single example row's `notes` cell, where the broker's first edit
+ * deleted them — and the file, not the page, is what is open in Excel hours
+ * later when the question actually arises. isCommentRow skips every line
+ * below, so the broker may delete them or leave them.
+ *
+ * They also have to stay TRUE. The old text said "no $ signs", which is
+ * false: parseMoney strips `$` and commas, parseNumber accepts "45,000 SF",
+ * parsePercent accepts "6.25%". Asking a broker to strip what we already
+ * strip costs them an afternoon and costs us their trust the first time they
+ * notice. Only shorthand (1.2M) is genuinely refused.
+ *
+ * Every `#` line is emitted as ONE cell through csvCell, so a line containing
+ * commas is quoted and Excel shows it as a single run of text rather than
+ * shrapnel across twelve columns.
+ *
+ * NOTHING HERE IMPORTS. Each example carries `#` in the address cell, so our
+ * own file can never plant a fake comp in a broker's book — see isCommentRow.
+ */
 function templateCsv() {
-  const example = {
-    address: "1234 W Mission Blvd, Ontario, CA",
-    property_type: "Industrial",
-    transaction: "sale",
-    deal_date: "2025-03-14",
-    price: "12500000",
-    size_sqft: "84000",
-    cap_rate: "5.75",
-    tenancy: "Single tenant",
-    year_built: "1998",
-    notes: "Dates are YYYY-MM-DD. Prices are plain numbers - no $ signs, no 1.2M.",
-    // Decimal degrees, and both or neither. Shown filled in because a blank
-    // example column reads as "leave this alone", and these are the two that
-    // keep a private address from being sent out to place its map pin.
-    lat: "34.0709",
-    lng: "-117.6509",
-  };
+  const notes = [
+    "Lines starting with # are ignored on import. Delete them or leave them.",
+    "Required: address, property_type, transaction, deal_date. Everything else is optional - a deal with an undisclosed price still counts.",
+    `property_type: one of ${PROPERTY_TYPES.join(", ")}.`,
+    "transaction: sale or lease.",
+    "deal_date: 2025-03-14. Slash dates work too and are read US style, month first: 3/14/2025 means 14 March 2025.",
+    "price and size_sqft: $1,250,000 and 45,000 SF are both fine. 1.2M is not - write it out in full.",
+    "cap_rate: 5.75 or 5.75%.",
+    // Filled in on the sale example rather than left blank, because a blank
+    // column reads as "leave this alone" and these two are what keep a private
+    // address from being sent to a third party to place its map pin.
+    "lat and lng: decimal degrees, both or neither. Supplying them keeps this address off third-party geocoders.",
+    `You can add any of these columns too: ${OPTIONAL_SPEC_COLUMNS.join(", ")}.`,
+    "The rows below are examples. Type your own address over the # to use one, or delete them.",
+  ];
+
+  // A priced sale, a lease, and a sale with an undisclosed price. The last two
+  // exist because /vault's first-run copy promises both are welcome and the
+  // template used to demonstrate neither.
+  const examples = [
+    {
+      address: "#", property_type: "Industrial", transaction: "sale",
+      deal_date: "2025-03-14", price: "12500000", size_sqft: "84000",
+      cap_rate: "5.75", tenancy: "Single tenant", year_built: "1998",
+      notes: "Sold fully leased.", lat: "34.0709", lng: "-117.6509",
+    },
+    {
+      address: "#", property_type: "Office", transaction: "lease",
+      deal_date: "2025-06-01", size_sqft: "12500",
+      tenancy: "Multi-tenant", year_built: "2004",
+      notes: "5-year term, $28.50/SF NNN. Leave price blank on a lease.",
+    },
+    {
+      address: "#", property_type: "Retail", transaction: "sale",
+      deal_date: "2024-11-20", size_sqft: "9400",
+      tenancy: "Single tenant", year_built: "1986",
+      notes: "Price undisclosed - the deal still counts.",
+    },
+  ];
+
   return [
     TEMPLATE_COLUMNS.map(csvCell).join(","),
-    TEMPLATE_COLUMNS.map((c) => csvCell(example[c])).join(","),
+    ...notes.map((n) => csvCell(`# ${n}`)),
+    ...examples.map((e) => TEMPLATE_COLUMNS.map((c) => csvCell(e[c])).join(",")),
   ].join("\n") + "\n";
 }
 
@@ -964,6 +1059,7 @@ module.exports = {
   creditName,
   submissionRowFrom,
   parseCsv,
+  isCommentRow,
   normalizeHeader,
   normalizedHeaderRow,
   suggestMapping,

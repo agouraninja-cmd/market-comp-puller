@@ -1479,6 +1479,30 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the reason migration 019 has no SQL backfill (`marketOf()` is JS).
     Routes go through `requireBroker`. Manual adds log a PII-free `bov`
     analytics event. Lapse locks the log, never deletes it.
+  - **The template carries its own rules, as `#` lines** (2026-08-10; spec
+    `docs/superpowers/specs/2026-08-10-vault-template-self-documenting-design.md`).
+    `isCommentRow` skips any body row whose FIRST cell starts with `#`, and
+    `templateCsv` ships the required columns, the six property types, the
+    date format, what the number parsers really accept, and the optional
+    per-type columns as exactly those lines. They used to live in the single
+    example row's `notes` cell, where the broker's first edit deleted them.
+    Four rules. **Only the first cell decides**, which is what lets the three
+    example rows sit fully populated under their correct headers with `#` in
+    the address cell — so the file we hand a broker can never plant a fake
+    comp in their own book, and they activate a row by typing an address over
+    the `#`. **The skip is counted, never silent**: `parseUpload` returns
+    `commented`, the route passes it through, and `/vault` says "N note lines
+    ignored" — a broker's own export with a `#` row is refused today anyway
+    (no street number), and this keeps that visible rather than trading a
+    loud rejection for a silent drop. **`total` counts data rows only**
+    (body minus comments), because it is what `imported` is compared
+    against and "imported 3 of 16" reads as data loss. And **the guidance is
+    pinned to the constants by a test** — every `PROPERTY_TYPES` value and
+    every `OPTIONAL_SPEC_COLUMNS` name must appear in the template, so adding
+    a per-type field through the `add-comp-field` skill fails the build until
+    the template names it. Keep the text TRUE: `parseMoney` strips `$` and
+    commas, `parseNumber` accepts `45,000 SF`, `parsePercent` accepts
+    `6.25%`; the old template said "no $ signs" and was simply wrong.
   - **The CSV column mapper** (2026-08-10; spec
     `docs/superpowers/specs/2026-08-10-vault-csv-column-mapper-design.md`).
     A broker uploads their own export and maps its columns once. `POST

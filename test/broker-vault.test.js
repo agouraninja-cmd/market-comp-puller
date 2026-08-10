@@ -14,7 +14,8 @@ const assert = require("node:assert");
 const {
   parseCsv, normalizeHeader, parseMoney, parseNumber, parsePercent, parseDate,
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
-  templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, MAX_ROWS_PER_UPLOAD,
+  templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, PROPERTY_TYPES,
+  isCommentRow, MAX_ROWS_PER_UPLOAD,
   canPublish, creditName, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
@@ -341,17 +342,121 @@ test("a file whose rows are all bad reports ok:false", () => {
   assert.equal(out.skipped, 1);
 });
 
-test("the template parses cleanly through our own importer", () => {
-  // If the example row we hand a broker cannot be re-imported, the first thing
-  // they ever do fails.
-  const out = parseUpload(templateCsv());
+// --- comment rows ------------------------------------------------------------
+//
+// The template's own rules ride in the file as `#` lines, so they survive the
+// broker's first edit instead of dying with the example row that used to carry
+// them in its `notes` cell.
+
+test("a row whose first cell starts with # is not data", () => {
+  const out = parseUpload([
+    "address,property_type,transaction,deal_date",
+    "# Required: address, property_type, transaction, deal_date.",
+    "1 Main St,Industrial,sale,2025-03-14",
+  ].join("\n"));
   assert.equal(out.ok, true, JSON.stringify(out.errors));
   assert.equal(out.rows.length, 1);
-  assert.equal(out.skipped, 0);
+  assert.equal(out.commented, 1);
+  assert.equal(out.skipped, 0, "a comment is not a rejected row");
+  assert.deepEqual(out.errors, []);
+});
+
+test("comment rows are excluded from the total the broker compares against", () => {
+  // "Imported 1 of 3" on a one-comp file reads as data loss.
+  const out = parseUpload([
+    "address,property_type,transaction,deal_date",
+    "# a note",
+    "# another note",
+    "1 Main St,Industrial,sale,2025-03-14",
+  ].join("\n"));
+  assert.equal(out.total, 1);
+  assert.equal(out.commented, 2);
+});
+
+test("only the FIRST cell decides, so a comment may carry values", () => {
+  // This is what lets an example row sit fully populated under its correct
+  // headers and still be inert.
+  assert.equal(isCommentRow(["#", "Industrial", "sale"]), true);
+  assert.equal(isCommentRow(["  # spaced", "x"]), true);
+  assert.equal(isCommentRow(["1 Main St", "#", "sale"]), false);
+  assert.equal(isCommentRow([]), false);
+  assert.equal(isCommentRow(null), false);
+});
+
+test("a comment row does not shift the line numbers below it", () => {
+  // Errors are quoted in the numbering Excel shows, so a skipped comment must
+  // still consume its line.
+  const out = parseUpload([
+    "address,property_type,transaction,deal_date",   // line 1
+    "# a note",                                      // line 2
+    "1 Main St,Warehouse,sale,2025-03-14",           // line 3
+  ].join("\n"));
+  assert.equal(out.errors.length, 1);
+  assert.match(out.errors[0], /^Line 3:/);
+});
+
+test("a file that is nothing but comments says so", () => {
+  // The untouched template. Without this the route falls through to its
+  // generic "nothing could be imported", which does not tell the broker that
+  // the # lines are ours and where their own rows go.
+  const out = parseUpload(templateCsv());
+  assert.equal(out.ok, false);
+  assert.equal(out.rows.length, 0);
+  assert.equal(out.errors.length, 1);
+  assert.match(out.errors[0], /starts with #/);
+  assert.match(out.errors[0], /example rows/);
+});
+
+test("the template's example rows import cleanly once activated", () => {
+  // Replaces the old "the template parses cleanly through our own importer"
+  // test and keeps its point: the first thing a broker does must not fail.
+  // Typing an address over the `#` is the only edit an example row needs.
+  let n = 0;
+  const activated = templateCsv()
+    .split("\n")
+    // Quoted, the way Excel writes a cell containing commas — an address
+    // pasted in bare would shift every column right and prove nothing.
+    .map((line) => (line.startsWith("#,") ? `"${++n} Example St, Ontario, CA"${line.slice(1)}` : line))
+    .join("\n");
+  assert.ok(n >= 3, `expected 3+ example rows to activate, found ${n}`);
+
+  const out = parseUpload(activated);
+  assert.equal(out.ok, true, JSON.stringify(out.errors));
+  assert.equal(out.rows.length, n);
+  assert.equal(out.skipped, 0, JSON.stringify(out.errors));
+
+  // The three examples exist to show the cases the first-run copy promises are
+  // welcome, so pin them: a priced sale, a lease, and an undisclosed price.
+  assert.ok(out.rows.some((r) => r.transaction === "sale" && r.price > 0), "no priced sale example");
+  assert.ok(out.rows.some((r) => r.transaction === "lease"), "no lease example");
+  assert.ok(out.rows.some((r) => r.price == null), "no undisclosed-price example");
 });
 
 test("the template's headers are exactly the columns we document", () => {
   assert.deepEqual(parseCsv(templateCsv())[0], TEMPLATE_COLUMNS);
+});
+
+test("the template's guidance names every type and every optional column", () => {
+  // The test that keeps the file from going stale. Adding a per-type field
+  // through the add-comp-field skill now fails the build until the template
+  // tells brokers they may bring it.
+  const csv = templateCsv();
+  for (const t of PROPERTY_TYPES) {
+    assert.ok(csv.includes(t), `the template never names the ${t} property type`);
+  }
+  for (const c of OPTIONAL_SPEC_COLUMNS) {
+    assert.ok(csv.includes(c), `the template never names the optional ${c} column`);
+  }
+});
+
+test("the template does not repeat the cleanup the importer already does", () => {
+  // It used to say "no $ signs", which is false: parseMoney strips $ and
+  // commas, parseNumber accepts "45,000 SF", parsePercent accepts "6.25%".
+  // Telling a broker to strip them is asking for work we do not need.
+  assert.equal(parseMoney("$1,250,000").value, 1250000);
+  assert.equal(parseNumber("45,000 SF").value, 45000);
+  assert.equal(parsePercent("6.25%").value, 6.25);
+  assert.ok(!/no \$ signs/i.test(templateCsv()));
 });
 
 test("parseUpload never throws on garbage", () => {
@@ -788,6 +893,18 @@ test("a file with an unrecognised column is not clean even though it would impor
 
 test("our own template IS clean and skips the screen", () => {
   assert.equal(inspectCsv(templateCsv()).cleanTemplate, true);
+});
+
+test("the mapping screen never offers a comment line as a sample value", () => {
+  // Otherwise the address column's samples read "# Required: address, ..." and
+  // the row count is a dozen too high.
+  const r = inspectCsv([
+    "address,property_type,transaction,deal_date",
+    "# Required: address, property_type, transaction, deal_date.",
+    "1 Main St,Industrial,sale,2025-03-14",
+  ].join("\n"));
+  assert.deepEqual(r.samples.address, ["1 Main St"]);
+  assert.equal(r.rowCount, 1);
 });
 
 test("a trailing empty header does not spoil cleanliness", () => {

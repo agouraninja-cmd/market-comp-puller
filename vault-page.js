@@ -1300,6 +1300,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
         if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
         if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
+        // The template's own # notes, normally. Said out loud anyway: a broker
+        // whose export happens to have a # row needs to see it did not import,
+        // and a skip nobody is told about is the one thing this module does
+        // not do.
+        if(j.commented)bits.push(j.commented+" note line"+(j.commented===1?"":"s")+" ignored");
         $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errList(j)+"</div>";
         load();
       })

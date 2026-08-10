@@ -11148,6 +11148,11 @@ const server = http.createServer((req, res) => {
             total: parsed.total,
             skipped: parsed.skipped,
             duplicates: parsed.duplicates,
+            // Lines starting with # — the template's own notes, or a row in
+            // the broker's export that looks like one. Passed through so the
+            // page can say they were ignored rather than dropping them
+            // silently; see isCommentRow in broker-vault.js.
+            commented: parsed.commented,
             errors: parsed.errors,
           });
         } catch (err) {

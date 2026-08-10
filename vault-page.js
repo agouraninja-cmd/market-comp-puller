@@ -223,6 +223,15 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .step h3{font-family:var(--serif);font-weight:500;font-size:var(--t3);margin:0 0 var(--s3)}
 .step p{margin:0 0 var(--s3);color:var(--ink-2)}
 .step .fine{color:var(--ink-3);font-size:var(--t5)}
+/* The owner's 2026-08-10 restructure: cards carry three short bullets and
+   fold their fine print into a collapsed disclosure. Same vars as .fine so
+   the disclosure reads as the fine print it replaced. */
+.step ul{margin:0 0 var(--s3);padding-left:18px;color:var(--ink-2)}
+.step ul li{margin:2px 0}
+.step details{margin:0 0 var(--s4)}
+.step details summary{cursor:pointer;color:var(--ink-3);font-size:var(--t5);user-select:none;list-style-position:inside}
+.step details summary:hover{color:var(--ink-2)}
+.step details .fine{margin:var(--s3) 0 0}
 /* The template link is an <a> styled as a button, so it needs the same box the
    <button>s get — .btn alone leaves it inline and underlined. */
 a.btn{display:inline-block;text-decoration:none;color:#fff}
@@ -251,8 +260,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 </div></header>
 <main><div class="wrap">
   <h1 class="h">Broker Vault</h1>
-  <p class="sub">Your own comp data, private to you. Upload a spreadsheet and it comes back
-    organized.</p>
+  <p class="sub">Your own private comp data.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
@@ -316,19 +324,27 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <div class="step">
           <span class="stepn">1</span>
           <div>
-            <h3>Bring your own comps</h3>
-            <p>Your closed deals become a private comp set that only you can see. They
-              appear inside your own valuation reports, badged &ldquo;From your vault&rdquo;,
-              and they count toward the number at the top of the report. They are never
-              read into CompNinja&rsquo;s public records, never included in an export or a
-              shared link, and never shown to another broker.</p>
-            <!-- The friction this removes is fear, not typing: a broker looking at a
-                 ten-column template assumes all ten are mandatory and that a deal with
-                 an undisclosed price cannot go in. Neither is true, and saying so is
-                 what makes the first upload feel possible. -->
-            <p class="fine">Four columns are required: address, property type, sale or
-              lease, and the date. Everything else is optional, so undisclosed deals
-              still count.</p>
+            <h3>Build your comp set</h3>
+            <p>Upload closed deals.</p>
+            <ul>
+              <li>Appears in your reports</li>
+              <li>Transforms data into an organized set</li>
+              <li>Never visible to others</li>
+            </ul>
+            <!-- The friction the disclosure removes is fear, not typing: a broker
+                 looking at a ten-column template assumes all ten are mandatory and
+                 that a deal with an undisclosed price cannot go in. Neither is
+                 true — but at the owner's request (2026-08-10) the reassurance is
+                 folded away until asked for, so the card itself stays three lines. -->
+            <details>
+              <summary>Required columns &amp; privacy details</summary>
+              <p class="fine">Four columns are required: address, property type, sale or
+                lease, and the date. Everything else is optional, so undisclosed deals
+                still count.</p>
+              <p class="fine">Your comps are never read into CompNinja&rsquo;s public
+                records, never included in an export or a shared link, and never shown
+                to another broker.</p>
+            </details>
             <div class="row" style="margin-top:var(--s4)">
               <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
               <button class="btn ghost" id="frPick">Choose a spreadsheet</button>
@@ -339,14 +355,33 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <div class="step">
           <span class="stepn">2</span>
           <div>
-            <h3>Or just tell us where you work</h3>
-            <p>Add the markets you cover and you will start seeing property owners in them
-              who have asked for a valuation. Their details stay anonymous until you ask
-              for an introduction, and CompNinja makes the introduction by hand.</p>
-            <p class="fine">Nothing to upload. This works on an empty vault.</p>
-            <div class="row" style="margin-top:var(--s4)">
-              <button class="btn ghost" id="frCoverage">Choose your markets</button>
-            </div>
+            <h3>Or watch your markets for leads</h3>
+            <p>Nothing to upload. Works on an empty vault.</p>
+            <ul>
+              <li>See owners requesting valuations in your markets</li>
+              <li>Identities stay anonymous until you request an intro</li>
+              <li>CompNinja makes the introduction by hand</li>
+            </ul>
+            <details>
+              <summary>How markets work</summary>
+              <p class="fine">Add the markets you cover. You&rsquo;ll start seeing property
+                owners there who&rsquo;ve asked for a valuation. Their details stay
+                anonymous until you ask for an introduction.</p>
+            </details>
+            <!-- The ONE market-adding form on the page. applyFirstRun moves this
+                 node down into #leads once the vault has content, because this
+                 whole card hides then and a broker must always have somewhere to
+                 add a market. One node, relocated — never a second copy that
+                 would drift from the coverage rules. -->
+            <div id="covFormHome"><div id="covForm">
+              <div class="row">
+                <label>Market <input id="covMarket" type="text" placeholder="City, ST"/></label>
+                <label>Type <select id="covType"></select></label>
+                <button class="btn ghost" id="covAdd">Watch this market</button>
+              </div>
+              <p class="fine" style="margin-top:var(--s3)">Removing every market re-fills
+                earned ones on your next visit.</p>
+            </div></div>
           </div>
         </div>
       </div>
@@ -418,17 +453,15 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <div class="empty hide" id="none">Nothing here yet. Upload a spreadsheet above.</div>
     </section>
 
+    <!-- Display only since 2026-08-10: the market-adding form (#covForm) lives
+         in Start-here step 2 on a first run and is moved to the top of this
+         section by applyFirstRun once the vault has content. Do not add a
+         second form here — one node, relocated, is the rule. -->
     <section id="leads">
       <h2>Leads in your markets</h2>
       <p class="sub" style="margin-top:0">Property owners requesting a Broker Opinion of Value
-        in markets you cover. Details are anonymized; request an introduction and the
-        CompNinja team connects you. Removing every market re-fills the earned ones on your next visit.</p>
+        show up here for any market you&rsquo;re watching.</p>
       <div class="row" id="covRow"></div>
-      <div class="row" style="margin-top:var(--s4)">
-        <label>Market <input id="covMarket" type="text" placeholder="City, ST"/></label>
-        <label>Type <select id="covType"></select></label>
-        <button class="btn ghost" id="covAdd">Watch this market</button>
-      </div>
       <div id="leadMsg"></div>
       <!-- Hidden while there are no rows: a header row with nothing under it is
            the same "is this broken?" signal the empty comps table gave, and a
@@ -932,6 +965,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     firstRunCounts=[compCount,uploadCount];
     var first=compCount===0&&uploadCount===0;
     $("firstRun").className=first?"":"hide";
+    // The market form is ONE node, placed wherever the broker can see it:
+    // its home (#covFormHome) in Start-here step 2 on a first run, the top of
+    // the leads section otherwise (step 2 is hidden then, and a broker with a
+    // full book must still be able to add a market). appendChild/insertBefore
+    // MOVE an attached node, so no copy ever exists — and deleting the last
+    // import walks it home again, since this function re-applies both ways.
+    if(first)$("covFormHome").appendChild($("covForm"));
+    else $("leads").insertBefore($("covForm"),$("covRow"));
     // The uploader lives in both places on first run, so the plain "Add comps"
     // section stands down and step 1 owns it. Both buttons drive the same
     // <input type=file>, so there is still only one upload path.
@@ -982,7 +1023,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
         ' <button data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
         '" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
-    }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add one below, or submit comps to earn them.</span>';
+    }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
   }
   // covCount lets an empty inbox tell two situations apart: nothing to show
   // because there is no coverage yet (the covRow hint above already says so,
@@ -1476,14 +1517,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // Step 1's button is the same door as #pick — one <input type=file>, so an
   // upload started here lands in the same handler and the same result message.
   $("frPick").addEventListener("click",function(){ $("file").click() });
-  // Step 2 does not duplicate the coverage form; it takes the broker to the one
-  // that already exists and puts the cursor in it. A second copy of that input
-  // would be a second thing to keep in step with the coverage rules.
-  $("frCoverage").addEventListener("click",function(){
-    $("leads").scrollIntoView({behavior:"smooth",block:"start"});
-    // After the scroll settles, so focus does not fight the animation.
-    setTimeout(function(){ $("covMarket").focus(); },420);
-  });
   $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.add("over"); })});

@@ -224,6 +224,12 @@ function stubElement() {
     classList,
     addEventListener(t, fn) { (on[t] = on[t] || []).push(fn); },
     removeEventListener() {},
+    // applyFirstRun relocates the one #covForm node between step 2 and the
+    // leads section. This harness is an id-keyed bag with no notion of
+    // position, so relocation is a no-op here on purpose — elements stay
+    // reachable by id either way, which is all these tests read.
+    appendChild() {},
+    insertBefore() {},
     // What the browser would do when the broker clicks / picks a file.
     fire(t, ev) { (on[t] || []).forEach((fn) => fn(ev || {})); },
     querySelectorAll(sel) {

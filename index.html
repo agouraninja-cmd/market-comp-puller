@@ -6234,6 +6234,10 @@
   function applyDetectedType(next, label) {
     const prevType = propertyTypeSel.value;
     const prevMonths = selectedLookbackMonths();
+    // Captured now, not read at Undo time. The note outlives an address edit,
+    // so reading the field inside the handler would file the correction under
+    // whatever address the visitor had moved on to.
+    const forAddress = document.getElementById("address").value.trim();
     // Mirror the manual-change path exactly: a type-appropriate lookback was
     // just as wrong as the type it came from. (renderSubjectFields inside is
     // safe — it is guarded on no details entered.)
@@ -6257,6 +6261,10 @@
       typeResolution = "explicit";    // they've now decided — never guess again
       renderTypeStatus();
       typeAutoNote.textContent = "";
+      // The one accuracy signal this feature can produce. `next` — the type the
+      // detector asserted, not the one being restored — so `undone` shares a
+      // denominator with `applied` and the two are comparable per type.
+      logTypeAutofill(forAddress, "undone", next);
     });
     typeAutoNote.appendChild(msg);
     typeAutoNote.appendChild(undo);
@@ -12272,6 +12280,11 @@
   // an ask does. The dialog_pick counter measures how often the dialog is what
   // decides the type, so a confirm on an already-resolved type is not one.
   let dialogAskedType = false;
+  // How the type reached the dialog already resolved, and what it was. Both
+  // captured at open time, for the same reason dialogAskedType is: by the time
+  // Run fires, the pick has overwritten the select and the resolution.
+  let dialogResolvedBy = null;
+  let dialogResolvedType = "";
 
   function setConfirmRunEnabled(on) {
     document.getElementById("confirmRunBtn").disabled = !on;
@@ -12346,6 +12359,8 @@
     // is picked — the whole point is that nothing silently runs Industrial.
     dialogTypePick = null;
     dialogAskedType = typeResolution === null;
+    dialogResolvedBy = typeResolution;
+    dialogResolvedType = propertyTypeSel.value;
     const typeResolvedEl = document.getElementById("confirmTypeResolved");
     const typeButtonsEl = document.getElementById("confirmTypeButtons");
     typeButtonsEl.classList.add("hidden");
@@ -12422,6 +12437,8 @@
     // Escape or "edit address" resolves nothing, so the next submit asks again.
     dialogTypePick = null;
     dialogAskedType = false;
+    dialogResolvedBy = null;
+    dialogResolvedType = "";
   }
 
   function cancelConfirmModal() {
@@ -12446,6 +12463,16 @@
       // dialog had already resolved is not a decision the dialog made, and
       // counting it would overstate the ratio this log exists to measure.
       if (dialogAskedType) logTypeAutofill(document.getElementById("address").value.trim(), "dialog_pick", dialogTypePick);
+      // The dialog's own correction path, and the ONLY one an `agreed` guess
+      // has (it changes nothing on screen, so it has no Undo link to offer).
+      // Restricted to "detected": a remembered type is the visitor's own
+      // earlier pick, so overturning it is a change of mind, not a detector
+      // error, and counting it would corrupt the precision figure this exists
+      // to produce. Logged as the type the detector asserted, matching the
+      // Undo link.
+      else if (dialogResolvedBy === "detected" && dialogTypePick !== dialogResolvedType) {
+        logTypeAutofill(document.getElementById("address").value.trim(), "undone", dialogResolvedType);
+      }
     }
     closeConfirmModal();
     if (key) {

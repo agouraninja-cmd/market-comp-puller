@@ -720,8 +720,17 @@ git commit -m "Vault: export the whole book as a CSV that re-imports"
 - Test: `test/vault-page.test.js`
 
 **Interfaces:**
-- Consumes: `PATCH`/`DELETE /api/vault/comp`
+- Consumes: `PATCH` / `DELETE /api/vault/comp?id=`
 - Produces: an Edit and a Delete control on each comp row
+
+**Read the page before writing.** It was restructured on 2026-08-10 (Direction U) and the notes below are verified against the current file, not the version this plan was first drafted from.
+
+- The comps table is `#tbl` inside `#compsSec`. Its `<thead>` currently ends with `<th data-k="published">Public</th>`; rows are built in the `$("tbody").innerHTML = rows.map(...)` block and end with a publish `<button data-pub="…">`.
+- There is **already a delegated click handler on `#tbody`** for `button[data-pub]`. It early-returns when the click was not on a pub button, so a second delegated listener beside it is safe and is the pattern to follow. Do not rewrite the existing one.
+- `load()` takes **no arguments**. `{noseed:true}` belongs to the leads and BOV lists, not here.
+- The table footer is built as `<tr><td class="lab" colspan="7">…</td><td class="num">…</td><td></td></tr>` — nine cells for nine columns. **Adding a tenth column means adding one more `<td></td>` to that footer row**, or the median row silently misaligns under the wrong heading.
+
+**The trap this task will otherwise fall into:** `#res`, the obvious message target, lives **inside `#addSec`**, which is a panel that ships CLOSED. A row-action message written there is invisible to a broker who never opened the uploader. Give the row actions their own message element inside `#compsSec` (e.g. `<p id="compMsg" class="msg hide"></p>` above the table) rather than reusing `#res` or opening the uploader to show a message.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -729,32 +738,43 @@ git commit -m "Vault: export the whole book as a CSV that re-imports"
 // in test/vault-page.test.js, alongside the existing cases
 test("each comp row offers an edit and a delete", () => {
   const html = renderVaultHTML(BOOT, CHROME);
-  assert.ok(html.includes("compEdit"), "rows need an edit control");
-  assert.ok(html.includes("compDelete"), "rows need a delete control");
+  assert.ok(html.includes("data-edit"), "rows need an edit control");
+  assert.ok(html.includes("data-del-comp"), "rows need a delete control");
 });
 
 test("deleting a comp is confirmed before it is sent", () => {
   const html = renderVaultHTML(BOOT, CHROME);
-  assert.ok(/confirm\(/.test(html), "a hard delete with no undo must be confirmed");
+  assert.ok(/Delete this comp/.test(html),
+    "a hard delete with no undo must be confirmed by name");
 });
 
-test("the page warns that editing a published comp unpublishes it", () => {
+test("row-action messages do not write into the closed uploader panel", () => {
   const html = renderVaultHTML(BOOT, CHROME);
-  assert.ok(/unpublish/i.test(html),
+  assert.ok(html.includes('id="compMsg"'),
+    "#res lives inside #addSec, which ships closed, so a message written there is invisible");
+});
+
+test("the page says an edit unpublishes a published comp", () => {
+  const html = renderVaultHTML(BOOT, CHROME);
+  assert.ok(/unpublish|withdrawn from the public/i.test(html),
     "a broker must not discover the retraction later");
 });
 
-test("the emitted script still parses with the row actions in it", () => {
-  // The whole page is one template literal, so a stray ${ or a single
-  // backslash emits broken JavaScript and a blank workspace rather than
-  // failing loudly. This compiles what the page actually emits.
+test("the comps table footer still spans every column", () => {
   const html = renderVaultHTML(BOOT, CHROME);
-  const script = extractScript(html);   // the helper the existing tests use
+  const heads = (html.match(/<th[^>]*data-k=/g) || []).length;
+  const foot = /colspan="(\d+)"/.exec(html.slice(html.indexOf("tblFoot")));
+  assert.ok(heads >= 9, "the header should still declare its columns");
+  assert.ok(foot, "the footer should still declare a colspan");
+});
+
+test("the emitted script still parses with the row actions in it", () => {
+  const script = extractScript(renderVaultHTML(BOOT, CHROME));
   assert.doesNotThrow(() => new Function(script));
 });
 ```
 
-Reuse the existing suite's `BOOT`, `CHROME` and script-extraction helpers rather than inventing new ones.
+Reuse the suite's existing `BOOT`, `CHROME` and script-extraction helpers rather than inventing new ones. If the existing tests name them differently, follow the file.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -763,26 +783,48 @@ Expected: FAIL on the missing controls.
 
 - [ ] **Step 3: Implement**
 
-In the comps table row builder, add a trailing actions cell with `compEdit`/`compDelete` buttons carrying `data-id`. Add handlers:
+Add one trailing header cell and one trailing body cell, plus the footer's extra `<td></td>`. The body cell carries both controls:
 
 ```js
+'<td class="rowact">' +
+  '<button class="lnk" data-edit="'+esc(c.id)+'">Edit</button> ' +
+  '<button class="lnk danger" data-del-comp="'+esc(c.id)+'">Delete</button>' +
+'</td>'
+```
+
+Then a second delegated listener on `#tbody`, beside the publish one:
+
+```js
+$("tbody").addEventListener("click",function(e){
+  var d=e.target.closest("button[data-del-comp]");
+  if(d)return deleteComp(d.getAttribute("data-del-comp"));
+  var b=e.target.closest("button[data-edit]");
+  if(b)return openEditor(b.getAttribute("data-edit"));
+});
+
+function compMsg(text,bad){
+  var el=$("compMsg");
+  el.className=text?("msg "+(bad?"bad":"ok")):"msg hide";
+  el.textContent=text||"";
+}
+
 async function deleteComp(id){
+  // Hard delete, no undo: confirm by name rather than with a generic prompt.
   if(!confirm("Delete this comp? This cannot be undone."))return;
-  var r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{method:"DELETE"});
+  var r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
+    {method:"DELETE",credentials:"same-origin"});
   var j=await r.json().catch(function(){return{};});
-  if(!r.ok)return msg(j.error||"Could not delete that comp.");
-  // ?noseed=1 for the same reason the BOV list passes it after a delete:
-  // a reload that reseeds would resurrect the row just removed.
-  load({noseed:true});
-  msg(j.unpublished?"Deleted, and withdrawn from the public corpus.":"Deleted.");
+  if(!r.ok)return compMsg(j.error||"Could not delete that comp.",true);
+  load();
+  compMsg(j.unpublished
+    ? "Deleted, and withdrawn from the public records."
+    : "Deleted.");
 }
 ```
 
-The edit control swaps the row for an inline form pre-filled from the comp, and sends **only changed fields** so an untouched field cannot be rewritten by a stale value the page happened to be holding:
+`openEditor(id)` swaps the row for an inline form pre-filled from the comp already in `comps`, and sends **only changed fields**, so an untouched field cannot be rewritten by a stale value the page was holding:
 
 ```js
-// The fields the inline editor exposes. Same names as the CSV columns, which
-// is what lets the server hand the patch straight to validateEdit.
 var EDIT_FIELDS=["address","property_type","transaction","deal_date",
                  "price","size_sqft","cap_rate","tenancy","year_built","notes"];
 
@@ -796,25 +838,28 @@ async function saveComp(id,before){
   });
   if(!any){closeEditor();return;}
   var r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
-    method:"PATCH",headers:{"content-type":"application/json"},
-    body:JSON.stringify(patch)});
+    method:"PATCH",credentials:"same-origin",
+    headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
   var j=await r.json().catch(function(){return{};});
-  // 409 and 400 both carry a sentence written for the broker. Show it as it
-  // is rather than replacing it with a generic failure — "You already have
-  // this comp." tells them what to do and "Could not save" does not.
-  if(!r.ok)return msg(j.error||"Could not save that change.");
+  // 400 and 409 both carry a sentence written for the broker, and the 400
+  // lists EVERY problem with the row rather than the first. Show it whole:
+  // "You already have this comp." tells them what to do, "Could not save"
+  // does not.
+  if(!r.ok)return compMsg(j.error||"Could not save that change.",true);
   closeEditor();
-  load({noseed:true});
-  msg(j.unpublished
-    ? "Saved. This comp was published, so it has been withdrawn from the public corpus — publish it again when you are happy with it."
+  load();
+  compMsg(j.unpublished
+    ? "Saved. This comp was published, so it has been withdrawn from the public records — publish it again when you are happy with it."
     : "Saved.");
 }
 ```
 
+Keep `credentials:"same-origin"` on every fetch, matching the file's existing calls.
+
 - [ ] **Step 4: Run the tests**
 
 Run: `npm test`
-Expected: PASS.
+Expected: PASS, green overall.
 
 - [ ] **Step 5: Commit**
 
@@ -830,6 +875,11 @@ git commit -m "Vault page: fix or remove one comp without touching the import"
 **Files:**
 - Modify: `vault-page.js`
 - Test: `test/vault-page.test.js`
+
+**Read the page before writing.** Two structural facts, both verified against the current file:
+
+- **`#addSec` is a closed panel, not a section.** `setAddOpen()` is the single writer of its visibility, and it carries the label and `aria-expanded` with it. The add-one-comp form belongs **inside** that panel, beside the uploader, because both are "put a comp in the book" actions and the panel is already the book deck's one action.
+- **There is exactly ONE `<input type=file>` on the page**, and both the first-run step and the deck action call `$("file").click()`. Do not add another. Two inputs would mean two values and two change handlers, and an upload started from one would be invisible to the other's result message.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -854,6 +904,12 @@ test("the export button says it exports everything", () => {
     "the label must remove any ambiguity about the dashboard filter");
 });
 
+test("the export is a plain link, so it works without the page's script", () => {
+  const html = renderVaultHTML(BOOT, CHROME);
+  assert.ok(/href="\/api\/vault\/export\.csv"/.test(html),
+    "a plain href lets the cookie ride along and the browser handle the download");
+});
+
 test("the emitted script still parses with the add form in it", () => {
   const script = extractScript(renderVaultHTML(BOOT, CHROME));
   assert.doesNotThrow(() => new Function(script));
@@ -867,14 +923,12 @@ Expected: FAIL on the missing form fields.
 
 - [ ] **Step 3: Implement**
 
-Add the form inside the existing `#addSec` section. Do **not** add a second `<input type=file>`: step 1's button and "Add comps" both already call `$("file").click()`, and two inputs would mean two values and two change handlers, with an upload started from one invisible to the other's result message.
-
-Field ids are `addComp_<column>`, so the submit handler can build the row generically and the server can hand it straight to `normalizeRow`:
+Field ids are `addComp_<column>`, so the submit handler builds the row generically and the server hands it straight to `normalizeRow`:
 
 ```js
 // Per-type columns, mirroring TYPE_COMP_FIELDS in server.js. A field the
-// chosen type does not use is not rendered, so a broker is never asked for an
-// Industrial clear height on a Multifamily deal.
+// chosen type does not use is not rendered, so a broker is never asked for
+// an Industrial clear height on a Multifamily deal.
 var TYPE_FIELDS={
   Industrial:["clear_height","dock_doors"],
   Office:["building_class","floor_plate"],
@@ -890,29 +944,34 @@ var BASE_FIELDS=["address","property_type","transaction","deal_date",
 async function addComp(){
   var body={};
   BASE_FIELDS.concat(TYPE_FIELDS[$("addComp_property_type").value]||[])
-    .forEach(function(f){var el=$("addComp_"+f); if(el&&el.value.trim())body[f]=el.value.trim();});
-  var r=await fetch("/api/vault/comp",{method:"POST",
+    .forEach(function(f){
+      var el=$("addComp_"+f);
+      if(el&&el.value.trim())body[f]=el.value.trim();
+    });
+  var r=await fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
     headers:{"content-type":"application/json"},body:JSON.stringify(body)});
   var j=await r.json().catch(function(){return{};});
   // The server returns EVERY problem with the row, not just the first, so a
   // broker fixing a form gets one complete list. Show it whole.
-  if(!r.ok)return msg(j.error||"Could not save that comp.");
+  if(!r.ok)return compMsg(j.error||"Could not save that comp.",true);
   BASE_FIELDS.forEach(function(f){var el=$("addComp_"+f); if(el)el.value="";});
-  load({noseed:true});
-  msg("Added.");
+  load();
+  compMsg("Added.");
 }
 ```
 
-Export is a plain anchor. The session cookie rides along and the browser handles the download with no JavaScript, which also means it keeps working if the page's script has failed:
+The export is a plain anchor, placed where a broker looks for their book rather than inside the closed uploader — the comps section's header area:
 
 ```html
 <a class="btn" href="/api/vault/export.csv">Export all comps (CSV)</a>
 ```
 
+A plain href is right here: the session cookie rides along, the browser handles the download, and it keeps working even if the page's script has failed.
+
 - [ ] **Step 4: Run the tests**
 
 Run: `npm test`
-Expected: PASS.
+Expected: PASS, green overall.
 
 - [ ] **Step 5: Commit**
 
@@ -922,7 +981,6 @@ git commit -m "Vault page: add one comp, and take the whole book with you"
 ```
 
 ---
-
 ### Task 9: Drive it in a browser, then devlog
 
 The vault page is ~550 lines of browser JS inside a template literal. A green suite does not prove the page works; the tests compile the script, they do not run the flows.

@@ -196,6 +196,20 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
    container would render them at ~40px, which is the heavy-saturated-block
    look the rest of this page avoids. Below 600px it scales down as normal. */
 .chart svg{display:block;width:100%;max-width:600px;height:auto}
+/* The year chart is generated SVG (drawChart, further down this file), not
+   markup here -- so these classes are the only place its colours live now.
+   Fixed 2026-08-10 fix round 2: they used to be inline fill/stroke hex on
+   the generated elements, which is invisible to the raw-hex regression test
+   (that test only scans THIS block) and, worse, a presentation ATTRIBUTE
+   like fill="var(--ink)" is not reliably honoured -- only a stylesheet rule
+   or a style="" attribute is. Putting them here is what makes the endpoint
+   label (the one number this panel exists to show) actually themed instead
+   of staying ink-on-white at 1.14:1 against a dark card. */
+.chart-grid{stroke:var(--line)}
+.chart-axis{fill:var(--ink-3)}
+.chart-bar{fill:var(--ink-mute)}
+.chart-bar.hi{fill:var(--red-fill)}
+.chart-endpoint{fill:var(--ink)}
 .rep{border-top:1px solid var(--hair);padding:var(--s3) 0;font-size:var(--t5)}
 .rep .addr{font-weight:600}
 .rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums}
@@ -988,10 +1002,17 @@ ${THEME_BOOT}
 
     var s='<svg viewBox="0 0 '+W+" "+H+'" role="img" aria-label="Median price per square foot by year">';
     // Recessive hairline grid, solid (never dashed), one step off the surface.
+    // Colours ride on CSS classes (.chart-grid / .chart-axis / .chart-bar /
+    // .chart-endpoint, declared in the <style> block above), not inline
+    // fill/stroke hex -- a presentation ATTRIBUTE like fill="var(--ink)" is
+    // not reliably supported, and more importantly, a hex literal sitting in
+    // THIS generated markup is exactly what the raw-hex regression test
+    // cannot see (it only scans the <style> block). Classes put the colour
+    // back inside what that test — and any future one like it — covers.
     [0,max/2,max].forEach(function(v){
-      s+='<line x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
-        '" stroke="#E4E2DA" stroke-width="1"/>';
-      s+='<text x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#68707E" '+
+      s+='<line class="chart-grid" x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
+        '" stroke-width="1"/>';
+      s+='<text class="chart-axis" x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" '+
         'font-family="Inter, sans-serif" style="font-variant-numeric:tabular-nums">'+psf0(v)+"</text>";
     });
     pts.forEach(function(p,i){
@@ -1002,14 +1023,14 @@ ${THEME_BOOT}
       // and the tooltip should not require landing on the mark itself.
       s+='<rect x="'+(L+band*i).toFixed(1)+'" y="'+T+'" width="'+band.toFixed(1)+'" height="'+plotH+
         '" fill="transparent"><title>'+esc(tip)+"</title></rect>";
-      s+='<path d="'+bar(cx-bw/2,y(p.med),bw,h,4)+'" fill="'+(last?"#B91C1C":"#5A6473")+
+      s+='<path class="chart-bar'+(last?" hi":"")+'" d="'+bar(cx-bw/2,y(p.med),bw,h,4)+
         '" fill-opacity="'+(last?"1":"0.85")+'" pointer-events="none"/>';
-      s+='<text x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#68707E" '+
+      s+='<text class="chart-axis" x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" '+
         'font-family="Inter, sans-serif">'+esc(p.year)+"</text>";
       // The endpoint is the one worth reading without hovering.
       if(last){
-        s+='<text x="'+cx.toFixed(1)+'" y="'+(y(p.med)-7).toFixed(1)+'" text-anchor="middle" font-size="12" '+
-          'font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">'+psf0(p.med)+"</text>";
+        s+='<text class="chart-endpoint" x="'+cx.toFixed(1)+'" y="'+(y(p.med)-7).toFixed(1)+'" text-anchor="middle" font-size="12" '+
+          'font-weight="600" font-family="Inter, sans-serif">'+psf0(p.med)+"</text>";
       }
     });
     s+="</svg>";

@@ -418,34 +418,61 @@ test("index.html's theme boot script and toggle handler mirror server.js's THEME
     };
   }
 
+  // facts() above checks PRESENCE only -- it would still pass if one copy's
+  // ternary picked "dark"/"light" in the opposite order, because the same
+  // two strings are still present somewhere in the text; deepEqual on sets
+  // of used values cannot see which branch produced which. That is exactly
+  // the drift that matters most here: an inverted `dark ? "dark" : "light"`
+  // (instead of the correct `dark ? "light" : "dark"`) stores the CURRENT
+  // theme instead of the NEW one on every toggle, so the visitor's choice
+  // never actually sticks across a reload, while every fact above still
+  // matches. ternaries() extracts the true/false branch of every
+  // `? "dark"|"light" : "dark"|"light"` ternary, IN ORDER, so the two
+  // copies are compared on the relationship, not just the vocabulary.
+  // Proved this catches the inversion by temporarily editing index.html's
+  // toggle to `dark ? "dark" : "light"` and re-running this test: it failed
+  // with a clear branch-order mismatch, and facts()-only comparison (run the
+  // same way) did not; reverted immediately after.
+  function ternaries(s) {
+    return [...s.matchAll(/\?\s*"(dark|light)"\s*:\s*"(dark|light)"/g)].map((m) => [m[1], m[2]]);
+  }
+
   const bootStart = SERVER_JS.indexOf("const THEME_BOOT =");
   assert.notEqual(bootStart, -1, "THEME_BOOT not found");
   const bootEnd = SERVER_JS.indexOf(";\n", bootStart);
-  const serverBoot = facts(SERVER_JS.slice(bootStart, bootEnd));
+  const serverBootText = SERVER_JS.slice(bootStart, bootEnd);
+  const serverBoot = facts(serverBootText);
 
   const indexHead = INDEX.slice(0, INDEX.indexOf("<style>"));
   const indexBootStart = indexHead.indexOf("<script>(function(){try{var t=localStorage");
   assert.notEqual(indexBootStart, -1, "index.html's boot script not found");
   const indexBootEnd = indexHead.indexOf("</script>", indexBootStart);
-  const indexBoot = facts(indexHead.slice(indexBootStart, indexBootEnd));
+  const indexBootText = indexHead.slice(indexBootStart, indexBootEnd);
+  const indexBoot = facts(indexBootText);
 
   assert.deepEqual(indexBoot, serverBoot,
     "index.html's boot script disagrees with THEME_BOOT (storage key / stored values / attribute / element)");
+  assert.deepEqual(ternaries(indexBootText), ternaries(serverBootText),
+    "index.html's boot script picks \"dark\"/\"light\" in a different branch order than THEME_BOOT -- one of them has an inverted ternary");
 
   const navStart = SERVER_JS.indexOf("const ACCOUNT_NAV_JS =");
   assert.notEqual(navStart, -1, "ACCOUNT_NAV_JS not found");
   const toggleAt = SERVER_JS.indexOf(`$("themeToggle")`, navStart);
   assert.notEqual(toggleAt, -1, "the shared theme toggle handler not found in ACCOUNT_NAV_JS");
   const toggleEnd = SERVER_JS.indexOf("catch(e){}});", toggleAt);
-  const serverToggle = facts(SERVER_JS.slice(toggleAt, toggleEnd));
+  const serverToggleText = SERVER_JS.slice(toggleAt, toggleEnd);
+  const serverToggle = facts(serverToggleText);
 
   const toggleAppAt = INDEX.indexOf(`getElementById("themeToggleApp")`);
   assert.notEqual(toggleAppAt, -1, "index.html's themeToggleApp handler not found");
   const toggleAppEnd = INDEX.indexOf("});", INDEX.indexOf("catch (e) {}", toggleAppAt));
-  const indexToggle = facts(INDEX.slice(toggleAppAt, toggleAppEnd));
+  const indexToggleText = INDEX.slice(toggleAppAt, toggleAppEnd);
+  const indexToggle = facts(indexToggleText);
 
   assert.deepEqual(indexToggle, serverToggle,
     "index.html's toggle handler disagrees with the shared toggle handler (storage key / stored values / attribute / element)");
+  assert.deepEqual(ternaries(indexToggleText), ternaries(serverToggleText),
+    "index.html's toggle handler picks \"dark\"/\"light\" in a different branch order than the shared toggle handler -- one of them has an inverted ternary, which means the visitor's choice would not survive a reload");
 });
 
 test("the vault takes its tokens from theme.js rather than its own copy", () => {
@@ -459,11 +486,15 @@ test("the vault takes its tokens from theme.js rather than its own copy", () => 
 
 test("no raw hex colour remains in vault-page.js's style block outside the deliberate allowlist", () => {
   // 2026-08-10 fix round 1: the "no sweep needed" claim in this task's brief
-  // was wrong -- 23 raw hex values sat in vault-page.js's <style> block,
-  // invisible to every other test here because the "no undefined variable"
-  // test only scans var() usage and index.html's own raw-hex test (above)
-  // is scoped to index.html only. This is the vault's equivalent of that
-  // test, so the same class of regression can't recur here unnoticed either.
+  // was wrong -- 20 raw hex values needed sweeping in vault-page.js's
+  // <style> block (3 more, all `color:#fff` text-on-red, were already
+  // correct and are the allowlist below; the 2 paired theme-color META TAGS
+  // outside this block were correct from the start and were never part of
+  // the count), invisible to every other test here because the "no
+  // undefined variable" test only scans var() usage and index.html's own
+  // raw-hex test (above) is scoped to index.html only. This is the vault's
+  // equivalent of that test, so the same class of regression can't recur
+  // here unnoticed either.
   const styleStart = VAULT_JS.indexOf("<style>");
   const styleEnd = VAULT_JS.indexOf("</style>");
   assert.notEqual(styleStart, -1, "vault-page.js's <style> tag not found");
@@ -509,6 +540,41 @@ test("no raw hex colour remains in vault-page.js's style block outside the delib
     }
   }
   assert.deepEqual(offenders, [], `raw hex colour(s) outside the token system in vault-page.js: ${offenders.join(", ")}`);
+});
+
+test("no raw hex colour remains in vault-page.js's generated markup (the JS half)", () => {
+  // 2026-08-10 fix round 2: the round-1 test above only ever scanned the
+  // <style> block, so it had nothing to say about the year-over-year chart
+  // (drawChart, further down this file) building its own SVG in JavaScript
+  // with six hardcoded fill/stroke hex literals on the generated elements --
+  // invisible in dark mode (the endpoint label, the one number the panel
+  // exists to show, measured 1.14:1 against --card dark before the fix).
+  // This is the fourth time in this project colour hid outside whatever
+  // surface was swept, so the fix is structural: the chart now sets a CSS
+  // class per element (.chart-grid / .chart-axis / .chart-bar / .chart-bar.hi
+  // / .chart-endpoint, all declared in the <style> block and covered by the
+  // test above) instead of an inline fill="var(...)" attribute, which is not
+  // reliably honoured anyway. This test is the other half of making that
+  // stick: it scans everything AFTER </style> -- every template string that
+  // builds HTML or SVG markup -- for a bare hex literal, so a color future
+  // generated markup adds by mistake fails the build instead of quietly
+  // shipping unthemed.
+  const styleEnd = VAULT_JS.indexOf("</style>");
+  assert.notEqual(styleEnd, -1, "vault-page.js's </style> tag not found");
+  const jsHalf = VAULT_JS.slice(styleEnd);
+
+  // Empty on purpose: nothing in the generated markup has a legitimate raw
+  // hex today. If one is ever added deliberately (e.g. a colour that can't
+  // be a CSS class for some structural reason), name it here the same way
+  // the style-block allowlist above does, keyed loosely since generated
+  // markup has no single "property:" shape the way a CSS declaration does.
+  const ALLOWLIST = new Set([]);
+
+  const offenders = [...jsHalf.matchAll(/#[0-9A-Fa-f]{3,8}\b/g)]
+    .map((m) => m[0].toLowerCase())
+    .filter((hex) => !ALLOWLIST.has(hex));
+  assert.deepEqual(offenders, [],
+    `raw hex colour(s) in vault-page.js's generated markup, outside the <style> block: ${offenders.join(", ")}`);
 });
 
 test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {

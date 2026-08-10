@@ -503,10 +503,7 @@ test("the target dropdown speaks English, not column names", async () => {
     "raw snake_case identifiers are still being shown to the broker");
 });
 
-test("a required field with no column to claim it says what to do about it", async () => {
-  // The CoStar sale-comps case: no deal-type column, because every row is a
-  // sale. Import can never be enabled, and before this the whole explanation
-  // was "Still needed: transaction".
+test("a missing required field is named in the broker's own vocabulary", async () => {
   const { doc } = await runPage([comp({})]);
   await chooseFile(doc, DIRTY_CSV);
 
@@ -517,6 +514,37 @@ test("a required field with no column to claim it says what to do about it", asy
     "the missing field is named in the broker's vocabulary, not as `transaction`");
   assert.ok(msg.indexOf("transaction") < 0 && msg.indexOf("deal_date") < 0,
     "raw field names leaked into the message: " + msg);
+});
+
+test("no add-a-column advice while the broker still has an unmapped column", async () => {
+  // The regression this pins. DIRTY_CSV has Deal ("Sale") and Closed (a date)
+  // sitting unmapped in the table above, either of which satisfies a required
+  // field in one click — our alias table simply does not recognise their
+  // names. Keying the advice on "did WE guess a column" rather than "does the
+  // BROKER have one left" told them to go edit a spreadsheet that was fine,
+  // on exactly the common export this advice was written for.
+  const { doc } = await runPage([comp({})]);
+  await chooseFile(doc, DIRTY_CSV);
+
+  const msg = doc.getElementById("mapMsg").textContent;
+  assert.match(msg, /Still needed:/, "the missing fields must still be named");
+  assert.ok(msg.indexOf("no column saying") < 0,
+    "told the broker to add a deal-type column while an unmapped one was on screen: " + msg);
+  assert.ok(msg.indexOf("Nothing in your file looks like") < 0,
+    "told the broker to add a column while an unmapped one was on screen: " + msg);
+});
+
+test("a genuinely unclaimable required field says what to do about it", async () => {
+  // The CoStar sale-comps case: no deal-type column, because every row is a
+  // sale. Here every column the file HAS is mapped and `transaction` is still
+  // missing, so no dropdown can rescue it and Cancel was the only exit.
+  const { doc } = await runPage([comp({})]);
+  await chooseFile(doc, "Property Address,Type,Sale Date\n1 Main St,Industrial,2026-01-05\n");
+
+  assert.equal(doc.getElementById("mapIgnored").textContent, "Every column is mapped.",
+    "this test only means something if the file has no spare column left");
+  assert.equal(doc.getElementById("mapGo").disabled, true);
+  const msg = doc.getElementById("mapMsg").textContent;
   assert.match(msg, /no column saying whether each deal was a sale or a lease/,
     "the dead end is not explained");
   assert.match(msg, /values Sale or Lease, then upload again/,

@@ -1417,13 +1417,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     });
     if(missing.length){
       lines.push("Still needed: "+missing.map(tLabel).join(", ")+".");
-      // Unclaimable, not merely unclaimed: nothing in the file even resembles
-      // this field (we suggested nothing for it and found no tie to break),
-      // so there is no dropdown left that would fix it.
-      var offered=Object.keys(mapInfo.suggested||{}).map(function(k){return mapInfo.suggested[k]});
-      var stuck=missing.filter(function(t){
-        return offered.indexOf(t)<0&&(mapInfo.ambiguous||[]).indexOf(t)<0;
-      });
+      // Unclaimable, not merely unclaimed. The question is whether the BROKER
+      // has a column left to give this field, not whether WE managed to guess
+      // one: a file can carry a perfectly good "Deal" column that no alias
+      // recognises. While any column is still unmapped, a dropdown above fixes
+      // this, and the extra sentence would be a confidently wrong instruction
+      // to go edit a spreadsheet that was already fine.
+      var anyFree=(mapInfo.normalized||[]).some(function(n){ return n&&!m[n] });
+      var stuck=anyFree?[]:missing;
       stuck.filter(function(t){return NO_COLUMN_HELP[t]}).forEach(function(t){
         lines.push(NO_COLUMN_HELP[t]);
       });

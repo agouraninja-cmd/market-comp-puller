@@ -13,6 +13,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const dns = require("dns");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
 const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot } = require("./market-snapshot");
@@ -93,6 +94,9 @@ const BOVSVC = require("./bov-log");
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
 const { isAggregateAddress } = AUDIT;
+// Dead-at-birth source-link check rules. Pure and tested, like the modules
+// above; server.js owns the network half (checkSourceLinks below).
+const LINKCHECK = require("./link-check");
 // Valuation backtest — hold-one-out accuracy scoring over the comp corpus.
 // Pure and tested, like the three modules above; server.js owns the database
 // read, the memo and the route (GET /api/accuracy).
@@ -3963,6 +3967,96 @@ function mergeLaneReports(primary, records, maxComps) {
   return primary;
 }
 
+// ---------------------------------------------------------------------------
+// Dead-at-birth source-link check. Rules in link-check.js (pure, tested);
+// this is the network half. Model-supplied URLs are fetched from OUR server,
+// so the DNS answer is checked against private ranges before any request
+// leaves the box. Everything fails open: a link-check problem must never
+// cost a report. Spec: docs/superpowers/specs/2026-08-09-source-link-check-design.md
+// ---------------------------------------------------------------------------
+const LINK_CHECK_BUDGET_MS = 2500;   // total, shared by every URL in the batch
+const LINK_CHECK_MAX_URLS = 12;
+const LINK_CHECK_UA = "CompNinjaLinkCheck/1.0 (+https://compninja.co)";
+
+function privateAddress(addr, family) {
+  if (family === 4) {
+    const p = String(addr).split(".").map(Number);
+    return p[0] === 0 || p[0] === 10 || p[0] === 127 ||
+      (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+      (p[0] === 192 && p[1] === 168) || (p[0] === 169 && p[1] === 254);
+  }
+  const a = String(addr).toLowerCase();
+  return a === "::" || a === "::1" || a.startsWith("fe80") ||
+    a.startsWith("fc") || a.startsWith("fd") || a.startsWith("::ffff:");
+}
+
+async function checkSourceLinks(comps) {
+  const verdicts = {};
+  let blocked = 0;
+  const urls = [];
+  try {
+    const seen = new Set();
+    for (const c of comps || []) {
+      const url = String((c && c.source_url) || "").trim();
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      if (!LINKCHECK.checkableUrl(url)) continue;
+      if (LINKCHECK.hostClass(url) === "blocked") { blocked += 1; continue; }
+      if (urls.length < LINK_CHECK_MAX_URLS) urls.push(url);
+    }
+    if (!urls.length) return { verdicts, checked: 0, blocked };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LINK_CHECK_BUDGET_MS);
+    await Promise.all(urls.map(async (url) => {
+      try {
+        const host = new URL(url).hostname;
+        let addrs;
+        try {
+          addrs = await dns.promises.lookup(host, { all: true });
+        } catch (e) {
+          if (e && e.code === "ENOTFOUND") verdicts[url] = LINKCHECK.verdictFor({ dnsNotFound: true });
+          return;   // any other DNS failure: no verdict, i.e. unknown
+        }
+        if (!addrs.length || addrs.some((a) => privateAddress(a.address, a.family))) return;
+        const opts = { redirect: "follow", signal: controller.signal, headers: { "user-agent": LINK_CHECK_UA } };
+        let r = await fetch(url, { ...opts, method: "HEAD" });
+        if (r.status === 405) {
+          r = await fetch(url, { ...opts, method: "GET" });
+          try { if (r.body) await r.body.cancel(); } catch (_) {}
+        }
+        verdicts[url] = LINKCHECK.verdictFor({ status: r.status });
+      } catch (_) { /* abort, TLS, socket: unknown */ }
+    }));
+    clearTimeout(timer);
+    return { verdicts, checked: urls.length, blocked };
+  } catch (_) {
+    return { verdicts: {}, checked: 0, blocked };
+  }
+}
+
+async function applySourceLinkCheck(report, type, address) {
+  try {
+    const comps = report && Array.isArray(report.comps) ? report.comps : [];
+    if (!comps.length) return;
+    const { verdicts, checked, blocked } = await checkSourceLinks(comps);
+    if (checked + blocked === 0) return;   // nothing checkable cited
+    const vals = Object.values(verdicts);
+    const dead = vals.filter((v) => v === "dead").length;
+    const live = vals.filter((v) => v === "live").length;
+    const unknown = checked - dead - live;
+    const demoted = LINKCHECK.applyLinkVerdicts(report, verdicts);
+    if (demoted) {
+      console.log(`🔗 ${demoted} comp(s) demoted: source link dead at harvest (${checked} checked, ${blocked} blocked-host, ${unknown} unknown)`);
+    }
+    // Counts ride the source column: the analytics schema is fixed, and a
+    // migration for four integers is not worth the outage class it risks.
+    logEvent("link_check", { prop_type: type, market: marketOf(address),
+      source: `checked${checked}-dead${dead}-unknown${unknown}-blocked${blocked}` });
+  } catch (err) {
+    console.warn("Source link check skipped:", err && err.message);
+  }
+}
+
 async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null, stats = null) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
@@ -3993,10 +4087,17 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
       });
 
     const [primary, records] = await Promise.all([primaryCall, recordsCall]);
-    return mergeLaneReports(primary, records, maxComps);
+    const merged = mergeLaneReports(primary, records, maxComps);
+    // Dead-at-birth link check runs on the FINISHED report, inside getComps,
+    // so /api/comps and the Explorer both inherit it and every downstream
+    // surface (cache, harvest, snapshot, gate, share) sees the same badges.
+    await applySourceLinkCheck(merged, type, address);
+    return merged;
   }
 
-  return solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
+  const report = await solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
+  await applySourceLinkCheck(report, type, address);
+  return report;
 }
 
 // Stamps every progress event with which attempt produced it, so the client can

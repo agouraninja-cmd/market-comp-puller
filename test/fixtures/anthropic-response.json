@@ -1,0 +1,16 @@
+{
+  "id": "msg_fixture",
+  "stop_reason": "end_turn",
+  "content": [
+    { "type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": { "query": "industrial sales Dallas TX" } },
+    { "type": "web_search_tool_result", "tool_use_id": "srvtoolu_1", "content": [{ "type": "web_search_result", "url": "https://example.com/a" }] },
+    { "type": "text", "text": "Here is the report." },
+    { "type": "text", "text": "{\"comps\":[]}" }
+  ],
+  "usage": {
+    "input_tokens": 3300,
+    "output_tokens": 4100,
+    "cache_read_input_tokens": 26400,
+    "cache_creation_input_tokens": 3300
+  }
+}

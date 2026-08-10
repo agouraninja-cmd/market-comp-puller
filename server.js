@@ -5758,6 +5758,13 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
 details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:var(--ink)}
 details.q summary::-webkit-details-marker{display:none}
+/* This chevron's stroke color is %2394a3b8 -- #94A3B8 URL-encoded inside an
+   inline SVG data URI. It stands in for --ink-3 and can't be tokenized:
+   var() cannot reach inside a data: URI. It happens to be exactly --ink-3's
+   DARK value (theme.js), which is a coincidence, not a fix -- it's why this
+   chevron reads correctly in both themes today. If --ink-3's dark value
+   ever changes, this literal silently stops matching and needs updating by
+   hand; it will not error, just drift. */
 details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
 details.q[open] summary::after{transform:rotate(180deg)}

@@ -146,6 +146,27 @@ dependency. `.env` is git-ignored — never commit it.
   endpoint is disabled. Without Supabase configured, leads live only in
   `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
   **It is also the admin identity for comped Pro** — see "Admin access" below.
+- `TESTER_PASSKEY` — optional shared passkey that comps Pro to a **signed-in**
+  account (the beta-tester door). Unset = `POST /api/redeem-passkey` 404s and
+  the pricing modal's "Have a code?" row never renders, so this is inert on any
+  deployment that never configured it. **It is not `ADMIN_KEY`**: that key also
+  unlocks `/admin`, `/dev` and `/contacts`, so it can never be the thing handed
+  to testers. Redeeming sets `users.pro_tester` (migration 022), so the grant
+  follows the ACCOUNT across devices, survives a passkey rotation, and is
+  revoked one tester at a time with a one-row `update users set pro_tester =
+  false where email = …` rather than by rotating the code for everyone.
+  Rules live in `entitlements.js`, so `npm test` covers them; four of them
+  matter. It grants everything Pro **except the broker vault** — the vault is a
+  private-data workspace with an upload endpoint, and a passkey shared with a
+  wider group is a bigger surface than "try Pro's reports". It **cannot switch
+  a dark deployment on** (`PRO_ENABLED` still wins, same as the admin branch).
+  Its `status` is `"tester"`, never `"active"`, so the UI never offers a
+  billing portal to an account with no Stripe customer. And unlike the admin
+  branch it is **checked as a fallback after the subscription**, not as an
+  early short-circuit: a tester who later subscribes gets their real Stripe
+  status and their billing portal, and comped access resumes if that
+  subscription lapses. A tester is also NOT the `internal` bypass in
+  `/api/comps`, which stays header-only.
 - `RESEND_API_KEY` — optional. When set, every stored lead AND every broker
   comp submission fires an email notification via Resend's REST API (plain
   fetch, free tier is plenty). Fire-and-forget: a failing provider is logged
@@ -457,6 +478,11 @@ Four rules, all in `entitlements.js` and covered by `npm test`:
 a free user" button on the plan card does. Keep that button working: the team is
 permanently on the far side of the paywall, so it is the only way anyone
 internal ever renders one.
+
+This is not the only comped-Pro door: `TESTER_PASSKEY` (above) comps Pro to a
+signed-in account without any dashboard access, and stores the grant on the
+user row rather than in a cookie. Admin wins outright and skips the billing
+reads; a tester deliberately yields to a real subscription.
 
 `MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`

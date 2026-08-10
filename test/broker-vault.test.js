@@ -22,6 +22,7 @@ const {
   validateMapping, applyHeaderMapping,
   inspectCsv, normalizedHeaderRow,
   validateEdit, EDITABLE_FIELDS,
+  exportColumns, exportCsv,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -585,6 +586,77 @@ test("parseUpload never throws on garbage", () => {
   for (const v of [null, undefined, 42, " ", "]]]"]) {
     assert.doesNotThrow(() => parseUpload(v));
   }
+});
+
+// --- export ------------------------------------------------------------
+//
+// exportColumns/exportCsv are the reverse of the importer: a broker's own
+// stored comps, turned back into the CSV shape parseUpload reads. The rule
+// they exist to enforce is TEMPLATE_COLUMNS-alone-is-not-the-answer: the
+// optional per-type columns (clear_height, units, lot_acres and nine more)
+// are real, imported, stored data, and an export that dropped them would
+// hand a broker a book missing the very fields they typed in.
+
+test("an export with no per-type data is exactly the template columns", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1250000, size_sqft: 10000,
+  }];
+  assert.deepEqual(exportColumns(rows), TEMPLATE_COLUMNS);
+});
+
+test("an export carries the per-type columns that hold data, and only those", () => {
+  const rows = [
+    { address: "1 A St, Boise, ID", property_type: "Industrial",
+      transaction: "sale", deal_date: "2025-01-02", clear_height: "32'" },
+    { address: "2 B St, Boise, ID", property_type: "Industrial",
+      transaction: "sale", deal_date: "2025-01-03", dock_doors: null },
+  ];
+  const cols = exportColumns(rows);
+  assert.ok(cols.includes("clear_height"), "a populated per-type column must survive the round trip");
+  assert.ok(!cols.includes("dock_doors"), "an empty per-type column must not add a dead column");
+  assert.deepEqual(cols.slice(0, TEMPLATE_COLUMNS.length), TEMPLATE_COLUMNS,
+    "the template columns lead, in their own order");
+});
+
+test("the export round-trips back through the importer", () => {
+  // Coordinates are the case that matters most: if lat/lng do not survive
+  // this trip, a re-import strips a private address's coordinates and the
+  // next report sends that address out to a third-party geocoder.
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1250000,
+    size_sqft: 10000, cap_rate: 5.75, tenancy: "Single tenant",
+    year_built: "1998", notes: "Sold, fully leased", clear_height: "32'",
+    lat: 43.6150, lng: -116.2023,
+  }];
+  const parsed = parseUpload(exportCsv(rows));
+  assert.equal(parsed.rows.length, 1, parsed.errors && parsed.errors.join("; "));
+  const r = parsed.rows[0];
+  assert.equal(r.address, "100 Main St, Boise, ID");
+  assert.equal(r.price, 1250000);
+  assert.equal(r.size_sqft, 10000);
+  assert.equal(r.clear_height, "32'");
+  assert.equal(r._lat, 43.6150, "coordinates must survive, or a re-import sends the address to a geocoder");
+  assert.equal(r._lng, -116.2023);
+});
+
+test("a note containing a comma survives the export", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Retail",
+    transaction: "sale", deal_date: "2025-03-14", notes: 'Sold "as is", quickly',
+  }];
+  const parsed = parseUpload(exportCsv(rows));
+  assert.equal(parsed.rows[0].notes, 'Sold "as is", quickly');
+});
+
+test("the export emits no comment lines", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Retail",
+    transaction: "sale", deal_date: "2025-03-14",
+  }];
+  assert.ok(!exportCsv(rows).split("\n").some((l) => l.startsWith("#")),
+    "the template teaches; an export carries data");
 });
 
 // --- publishing ------------------------------------------------------------

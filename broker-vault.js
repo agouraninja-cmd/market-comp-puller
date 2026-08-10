@@ -938,6 +938,51 @@ function templateCsv() {
   ].join("\n") + "\n";
 }
 
+// --- export --------------------------------------------------------------
+//
+// The reverse of templateCsv: a broker's OWN stored comps, turned back into
+// the shape parseUpload reads, so "export, fix fifty rows in Excel,
+// re-import" is a real workflow rather than a one-way trip.
+
+/**
+ * The columns one export needs.
+ *
+ * TEMPLATE_COLUMNS alone is NOT the answer, and assuming it was is the bug
+ * this function exists to prevent. The optional per-type columns
+ * (clear_height, units, lot_acres and nine more) are importable and stored, so
+ * an export without them would hand a broker a book with every clear height
+ * gone — silently, which is the failure mode the whole vault is written
+ * against. They are appended only when something actually carries data, so a
+ * book with no per-type fields gets no trailing empty columns.
+ */
+function exportColumns(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const used = OPTIONAL_SPEC_COLUMNS.filter((c) =>
+    list.some((r) => r && r[c] != null && String(r[c]).trim() !== ""));
+  return [...TEMPLATE_COLUMNS, ...used];
+}
+
+/**
+ * A broker's own comps as CSV, in the shape our own importer reads.
+ *
+ * The round trip is the requirement: export, fix fifty rows in Excel,
+ * re-import with no mapping screen (a file already in our column names skips
+ * it). A test runs the output of this function back through parseUpload.
+ *
+ * `lat`/`lng` must already be lifted onto each row from the joined property —
+ * they are not columns on broker_comps. Omitting them would strip a private
+ * address's coordinates on re-import and send it out to a third-party
+ * geocoder on the next report.
+ */
+function exportCsv(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const cols = exportColumns(list);
+  return [
+    cols.map(csvCell).join(","),
+    ...list.map((r) => cols.map((c) => csvCell(r ? r[c] : "")).join(",")),
+  ].join("\n") + "\n";
+}
+
 // --- publishing: the one sanctioned door through the privacy wall ------------
 //
 // Ecosystem Plan §4. A broker flips one of their own comps to public and gets
@@ -1120,6 +1165,8 @@ module.exports = {
   parseUpload,
   csvCell,
   templateCsv,
+  exportColumns,
+  exportCsv,
   TEMPLATE_COLUMNS,
   OPTIONAL_SPEC_COLUMNS,
   PROPERTY_TYPES,

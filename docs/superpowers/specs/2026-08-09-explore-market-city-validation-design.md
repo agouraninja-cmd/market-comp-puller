@@ -66,13 +66,20 @@ its own; the caller passes `fetch`, the same dependency-injection style
 
 - `checkCity(fetchFn, city, state)` → `Promise<"ok" | "unknown" | "unavailable">`.
   Calls `https://api.zippopotam.us/us/{ST}/{city}` with a ~4s timeout per
-  request. Maps: 200 → `ok`, 404 → `unknown` (after the variant retry below),
-  anything else or a throw → `unavailable`.
+  request. Maps: 200 → `ok`, 404 → `unknown` (after the variant retries
+  below), anything else or a throw → `unavailable`.
 - `cityVariants(city)` → the ordered, deduped list of names to try: as typed,
-  then one normalized variant (periods and apostrophes stripped, a leading
-  "St " expanded to "Saint "). Two outbound requests maximum, deterministic.
-  The retry exists because a false 404 on a punctuation variant of a real
-  city would refuse a legitimate market.
+  then a punctuation-to-space variant, then a punctuation-stripped variant
+  (periods, apostrophes and hyphens either become a space or are removed
+  entirely; each variant also collapses whitespace and expands a leading
+  "St " to "Saint "), deduped case-insensitively against what's already in
+  the list. Three outbound requests maximum, deterministic. Two variants
+  exist, not one, because measured GeoNames/Zippopotam behavior is
+  inconsistent about what happens to punctuation in a place name: it usually
+  becomes a space ("Coeur D Alene", "O Fallon", "Winston Salem" all answer
+  200) but sometimes strips to nothing instead ("Lees Summit" answers 200).
+  A false 404 on either variant of a real city would refuse a legitimate
+  market.
 
 server.js owns the memo and the real fetch: an in-memory Map keyed
 `ST|city.toLowerCase()` caches `ok` and `unknown` verdicts for the process
@@ -94,16 +101,17 @@ typo. No index.html edit, no tailwind regen.
 
 ## Analytics
 
-A refusal logs a PII-free `explore_reject` event
-(`prop_type` + `market: "City, ST"` as typed), so `/admin` can show how often
-the check fires and whether it is ever refusing legitimate cities. Failures
-to log follow `logEvent`'s existing fire-and-forget rules.
+A refusal logs a PII-free `explore_reject` event (`prop_type` +
+`market: "City, ST"` as typed, plus `source: "explore"` matching this
+route's other events), so `/admin` can show how often the check fires and
+whether it is ever refusing legitimate cities. Failures to log follow
+`logEvent`'s existing fire-and-forget rules.
 
 ## Testing
 
 `city-check.js` joins `npm test` with a shimmed fetch (the zero-cost
 fetch-shim pattern from the corpus-first work): all three verdict mappings,
-the 404-then-variant-retry behavior, the two-request cap, and
+the 404-then-variant-retry behavior, the three-request cap, and
 `cityVariants` generation.
 
 Deliberately **no** routes-test coverage: `test/routes.test.js` boots a real

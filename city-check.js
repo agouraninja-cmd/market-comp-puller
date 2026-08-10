@@ -11,23 +11,31 @@
 //
 // Spec: docs/superpowers/specs/2026-08-09-explore-market-city-validation-design.md
 
-// Ordered, deduped list of names to try: as typed, then ONE normalized
-// variant (periods and apostrophes stripped, whitespace collapsed, a leading
-// "St " expanded to "Saint "). The retry exists because a false 404 on a
-// punctuation variant of a real city would refuse a legitimate market —
-// worse than the typo pages this module exists to stop.
+// Ordered, deduped list of names to try: as typed, then a punctuation-to-space
+// variant, then a punctuation-stripped variant (each with whitespace
+// collapsed and a leading "St " expanded to "Saint "), deduped
+// case-insensitively against what's already in the list. Up to three
+// requests total. Two variants exist because measured GeoNames/Zippopotam
+// behavior is inconsistent about what happens to punctuation in a place
+// name: it usually becomes a space ("Coeur D Alene", "O Fallon", "Winston
+// Salem" all answer 200) but sometimes strips to nothing instead ("Lees
+// Summit" answers 200). A false 404 on either variant of a real city would
+// refuse a legitimate market — worse than the typo pages this module exists
+// to stop.
 function cityVariants(city) {
   const typed = String(city || "").trim();
-  const normalized = typed
-    .replace(/[.']/g, "")
-    .replace(/\s+/g, " ")
-    .replace(/^st /i, "Saint ")
-    .trim();
-  if (!normalized || normalized.toLowerCase() === typed.toLowerCase()) return [typed];
-  return [typed, normalized];
+  if (!typed) return [];
+  const expand = (s) => s.replace(/\s+/g, " ").replace(/^st /i, "Saint ").trim();
+  const spaced = expand(typed.replace(/[.'\-]/g, " "));
+  const stripped = expand(typed.replace(/[.'\-]/g, ""));
+  const out = [typed];
+  for (const v of [spaced, stripped]) {
+    if (v && !out.some((o) => o.toLowerCase() === v.toLowerCase())) out.push(v);
+  }
+  return out;
 }
 
-// "ok" | "unknown" | "unavailable". Two outbound requests maximum.
+// "ok" | "unknown" | "unavailable". Three outbound requests maximum.
 // 200 = the city exists. 404 = this name doesn't; try the next variant.
 // Anything else — 5xx, a weird status, a thrown timeout/network error —
 // is "unavailable", INCLUDING a throw after a 404: the truth is unknown,

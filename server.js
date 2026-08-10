@@ -9110,7 +9110,7 @@ const server = http.createServer((req, res) => {
         // Spec: docs/superpowers/specs/2026-08-09-explore-market-city-validation-design.md
         const cityVerdict = await checkExploreCity(req, cityOk, stateOk);
         if (cityVerdict === "unknown") {
-          logEvent("explore_reject", { prop_type: typeOk, market: `${cityOk}, ${stateOk}` });
+          logEvent("explore_reject", { prop_type: typeOk, market: `${cityOk}, ${stateOk}`, source: "explore" });
           return sendJson(res, 400, {
             error: `We couldn't find a city called "${cityOk}" in ${stateOk}. Check the spelling, or run a valuation for a specific property instead.`,
           });

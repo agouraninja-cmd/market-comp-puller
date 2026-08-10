@@ -28,14 +28,37 @@ test("cityVariants: plain city has no variant", () => {
   assert.deepEqual(CITYCHECK.cityVariants("Los Angeles"), ["Los Angeles"]);
 });
 
-test("cityVariants: punctuation and St-expansion produce ONE normalized variant", () => {
+test("cityVariants: St-expansion collapses the space and strip variants together", () => {
   assert.deepEqual(CITYCHECK.cityVariants("St. Louis"), ["St. Louis", "Saint Louis"]);
   assert.deepEqual(CITYCHECK.cityVariants("St Louis"), ["St Louis", "Saint Louis"]);
-  assert.deepEqual(CITYCHECK.cityVariants("Coeur d'Alene"), ["Coeur d'Alene", "Coeur dAlene"]);
 });
 
 test("cityVariants: variant equal to the input (case-insensitive) is deduped", () => {
   assert.deepEqual(CITYCHECK.cityVariants("Saint Louis"), ["Saint Louis"]);
+});
+
+test("cityVariants: punctuation-to-space and punctuation-stripped differ, producing three variants", () => {
+  assert.deepEqual(CITYCHECK.cityVariants("Coeur d'Alene"), [
+    "Coeur d'Alene",
+    "Coeur d Alene",
+    "Coeur dAlene",
+  ]);
+  assert.deepEqual(CITYCHECK.cityVariants("Winston-Salem"), [
+    "Winston-Salem",
+    "Winston Salem",
+    "WinstonSalem",
+  ]);
+  assert.deepEqual(CITYCHECK.cityVariants("O'Fallon"), ["O'Fallon", "O Fallon", "OFallon"]);
+  assert.deepEqual(CITYCHECK.cityVariants("Lee's Summit"), [
+    "Lee's Summit",
+    "Lee s Summit",
+    "Lees Summit",
+  ]);
+});
+
+test("cityVariants: empty or whitespace-only input has no variants", () => {
+  assert.deepEqual(CITYCHECK.cityVariants(""), []);
+  assert.deepEqual(CITYCHECK.cityVariants("   "), []);
 });
 
 test("checkCity: 200 on the first try is ok, one call, correct URL", async () => {
@@ -59,10 +82,29 @@ test("checkCity: 404 then 200 on the normalized variant is ok, two calls", async
   ]);
 });
 
-test("checkCity: every variant 404 is unknown, capped at two calls", async () => {
-  const f = stubFetch([{ status: 404 }, { status: 404 }]);
-  assert.equal(await CITYCHECK.checkCity(f, "St. Bosie", "ID"), "unknown");
-  assert.equal(f.calls.length, 2);
+// "St. Bosie" is NOT usable for a three-variant cap test: its punctuation-to-
+// space and punctuation-stripped forms both collapse to "Saint Bosie" once
+// the leading "St " expansion runs, leaving only two distinct variants
+// (verified by hand: see the "St-expansion collapses" test above). "O'Bosie"
+// has no "St " prefix, so its two normalized forms stay distinct.
+test("checkCity: every variant 404 is unknown, capped at three calls", async () => {
+  const f = stubFetch([{ status: 404 }, { status: 404 }, { status: 404 }]);
+  assert.equal(await CITYCHECK.checkCity(f, "O'Bosie", "ID"), "unknown");
+  assert.deepEqual(f.calls, [
+    "https://api.zippopotam.us/us/ID/O'Bosie",
+    "https://api.zippopotam.us/us/ID/O%20Bosie",
+    "https://api.zippopotam.us/us/ID/OBosie",
+  ]);
+});
+
+test("checkCity: 404 then 404 then 200 on the third variant is ok, three calls", async () => {
+  const f = stubFetch([{ status: 404 }, { status: 404 }, { status: 200 }]);
+  assert.equal(await CITYCHECK.checkCity(f, "Coeur d'Alene", "ID"), "ok");
+  assert.deepEqual(f.calls, [
+    "https://api.zippopotam.us/us/ID/Coeur%20d'Alene",
+    "https://api.zippopotam.us/us/ID/Coeur%20d%20Alene",
+    "https://api.zippopotam.us/us/ID/Coeur%20dAlene",
+  ]);
 });
 
 test("checkCity: a single-variant city that 404s is unknown after one call", async () => {

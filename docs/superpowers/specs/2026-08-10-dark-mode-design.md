@@ -69,43 +69,77 @@ single source of truth. It exports `THEME_TOKENS` (semantic name → `{ light,
 dark }`) and `rootCss()`, which emits the `:root` and `[data-theme="dark"]`
 custom-property blocks.
 
+### 4.0 The vocabulary already exists — adopt it, don't invent one
+
+`vault-page.js` and all four admin dashboards already declare an identical
+`:root` token block, five pages deep:
+
+```css
+--ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
+--red:#B91C1C;--red-deep:#991B1B;--green:#15803D;
+--paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
+```
+
+`theme.js` therefore **adopts these names and their exact light values**
+rather than introducing a parallel set. Three consequences, all good:
+
+- `vault-page.js` needs no find-and-replace at all. It swaps its literal
+  `:root` block for `${THEME_CSS}` and inherits dark mode.
+- The light theme provably cannot shift on those pages, because no light value
+  changes.
+- The out-of-scope dashboards (§1) become nearly free to add later, since they
+  already consume these names. That strengthens leaving them out now rather
+  than arguing for pulling them in.
+
+New tokens are added only where the existing set has a genuine gap. They use
+role names (`--ink-body`, `--ink-mute`, `--ink-faint`) rather than extending
+the `--ink-N` ramp, because `--ink-2` is already `#4C5665` and renumbering it
+would silently restyle five shipped pages.
+
 | Token | Role | Light | Dark |
 |---|---|---|---|
 | `--paper` | page background | `#FBFBF9` | `#020617` |
-| `--card` | card / panel surface | `#fff` | `#0F172A` |
-| `--panel` | lifted surface (table head, chips, hover rows) | `#F5F4EF` `#F1F0EC` `#F8FAFC` `#FCFBF8` | `#1E293B` |
-| `--panel-2` | second lifted step (hover on panel) | — | `#334155` |
-| `--rule-strong` | primary border (×100) | `#D8D4C9` | `#334155` |
-| `--rule` | border | `#E4E2DA` `#E7E3DA` | `#273244` |
-| `--rule-hair` | hairline / divider | `#ECEAE3` `#F0EFE9` `#EFEDE7` | `#1E293B` |
+| `--card` | *new* — card surface, distinct from paper | `#fff` | `#0F172A` |
+| `--wash` | lifted surface (table head, chips, hover rows) | `#F5F4EF` `#F1F0EC` `#F8FAFC` `#FCFBF8` | `#1E293B` |
+| `--wash-2` | *new* — hover step above `--wash` | `#F5F4EF` | `#334155` |
+| `--edge` | primary border (×100) | `#D8D4C9` | `#334155` |
+| `--line` | border | `#E4E2DA` `#E7E3DA` | `#273244` |
+| `--hair` | hairline / divider | `#F0EFE9` `#ECEAE3` `#EFEDE7` | `#1E293B` |
 | `--ink` | primary text (×151) | `#1A2433` | `#E2E8F0` |
-| `--ink-2` | secondary text | `#374253` `#46536A` | `#CBD5E1` |
-| `--ink-3` | tertiary text | `#4C5665` `#5A6473` | `#AEBACB` |
-| `--muted` | muted text (×154) | `#68707E` | `#94A3B8` |
-| `--muted-warm` | muted on warm ground | `#8A8577` | `#94A3B8` |
-| `--faint` | faint text | `#8F99A8` `#9AA2AD` `#8A93A0` | `#7C8899` |
-| `--fainter` | outlines, disabled | `#B8C0CC` `#D5DAE2` | `#475569` |
-| `--brand-text` | link / accent text | `#B91C1C` | `#F87171` |
-| `--brand-text-hover` | link hover | `#991B1B` | `#FCA5A5` |
-| `--brand-fill` | filled button | `#B91C1C` | `#DC2626` |
-| `--brand-fill-hover` | filled button hover | `#991B1B` | `#B91C1C` |
-| `--ok-text` / `--ok-bg` / `--ok-rule` | verified, positive | `#06603A` `#E7F5EE` `#BFE5D2` | `#6EE7B7` `#0C2B21` `#155E43` |
-| `--warn-text` / `--warn-bg` / `--warn-rule` | caution | `#8A6D1A` `#FBF3DC` `#EDDFB0` | `#FCD34D` `#2A2410` `#5B4A16` |
-| `--err-bg` | error tint | `#FCF1EF` | `#2A1517` |
-| `--slab` | surfaces already dark in light mode | `#1A2433` / slate-900 | `#1E293B` |
+| `--ink-body` | *new* — secondary text (×40) | `#374253` `#46536A` | `#CBD5E1` |
+| `--ink-2` | tertiary text (×22) | `#4C5665` | `#C2CCDA` |
+| `--ink-mute` | *new* — muted text (×50) | `#5A6473` | `#AEBACB` |
+| `--ink-3` | muted text, the workhorse (×154) | `#68707E` `#8A8577` | `#94A3B8` |
+| `--ink-faint` | *new* — faint text | `#9AA2AD` `#8F99A8` `#8A93A0` | `#7C8899` |
+| `--ink-4` | outlines, disabled | `#C7CBD2` `#B8C0CC` `#D5DAE2` | `#475569` |
+| `--red` | link / accent **text** | `#B91C1C` | `#F87171` |
+| `--red-deep` | link text hover | `#991B1B` | `#FCA5A5` |
+| `--red-fill` | *new* — filled button background | `#B91C1C` | `#DC2626` |
+| `--red-fill-hover` | *new* — filled button hover | `#991B1B` | `#B91C1C` |
+| `--green` | positive | `#15803D` | `#34D399` |
+| `--ok-text` / `--ok-bg` / `--ok-rule` | *new* — verified | `#06603A` `#E7F5EE` `#BFE5D2` | `#6EE7B7` `#0C2B21` `#155E43` |
+| `--warn-text` / `--warn-bg` / `--warn-rule` | *new* — caution | `#8A6D1A` `#FBF3DC` `#EDDFB0` | `#FCD34D` `#2A2410` `#5B4A16` |
+| `--err-bg` | *new* — error tint | `#FCF1EF` | `#2A1517` |
+| `--slab` | *new* — surfaces already dark in light mode | `#1A2433` / slate-900 | `#1E293B` |
 
-`theme.js` carries the **complete** enumeration; the table above lists the
-dominant light values per token. The remaining low-count values — the
-server-side tints `#F7EFDC`, `#E3F2EA`, `#EAEEF4` and the deep status inks
-`#04452A`, `#7A5B12` — fold into the nearest token above (`--warn-bg`,
-`--ok-bg`, `--panel`, `--ok-text`, `--warn-text` respectively). No light value
-present anywhere in scope is left unmapped; §10.1 is the test that enforces
-that.
+`theme.js` carries the **complete** enumeration; the table lists the dominant
+light values per token. The remaining low-count values — the server-side tints
+`#F7EFDC`, `#E3F2EA`, `#EAEEF4` and the deep status inks `#04452A`, `#7A5B12`
+— fold into the nearest token above (`--warn-bg`, `--ok-bg`, `--wash`,
+`--ok-text`, `--warn-text` respectively). No light value present anywhere in
+scope is left unmapped; §10.1 is the test that enforces that.
 
-`--panel-2` has no light-mode source value. It exists only in dark mode, as the
-hover step above `--panel`, because in light mode that hover is expressed by
-darkening toward `#EFEDE7` while in dark mode it must lighten. Its light-mode
-declaration is the same as `--panel`, so nothing changes today.
+`--wash-2` has the same light value as `--wash`, so it changes nothing today.
+It exists because in light mode a hover above a washed surface *darkens*, while
+in dark mode it must *lighten* — one token cannot express both directions.
+
+### 4.2 The one migration `--red` forces
+
+Splitting `--red` into text and fill is not purely additive for the pages that
+already use these names. `vault-page.js` has one `background:var(--red)`, which
+must become `var(--red-fill)` or a Pro upgrade button turns pale pink in dark
+mode. Task 5 changes exactly that one declaration; §10 pins it with an
+assertion that no in-scope stylesheet uses `var(--red)` as a background.
 
 ### 4.1 Two rules the table encodes that a naive inversion gets wrong
 
@@ -128,12 +162,16 @@ broken and it is invisible unless looked for.
 
 ### 5.1 Server-rendered pages: variables, directly
 
-`MARKET_CSS`, `HOW_CSS`, `ACCOUNT_NAV_CSS` and `vault-page.js`'s CSS are plain
-CSS with class selectors, so they consume the tokens directly:
-`color:#1A2433` becomes `color:var(--ink)`. Mechanical, ~35 distinct
-find-and-replaces. Each block is a template literal, so it interpolates
-`${THEME.rootCss()}` at the top — the variable declarations cannot drift from
-`theme.js` because they are not copied.
+`MARKET_CSS`, `HOW_CSS` and `ACCOUNT_NAV_CSS` are plain CSS with class
+selectors and raw hex, so they consume the tokens directly: `color:#1A2433`
+becomes `color:var(--ink)`. Mechanical, ~35 distinct find-and-replaces. Each
+block is a template literal, so it interpolates `${THEME_CSS}` at the top — the
+variable declarations cannot drift from `theme.js` because they are not copied.
+
+`vault-page.js` is a special case and needs no find-and-replace: it is already
+fully tokenized against the vocabulary in §4.0. It swaps its literal `:root`
+block for `${THEME_CSS}` (passed in alongside `CN_LOGO` and `MARKET_CSS`, the
+argument bag it already takes) and makes the one `--red-fill` change from §4.2.
 
 ### 5.2 `index.html`: a bridge layer
 
@@ -275,6 +313,10 @@ database, no server):
    never templated. Pin it.
 4. **Print isolation.** Assert the bridge block is inside `@media screen` and
    that no `[data-theme` selector appears inside the `@media print` block.
+5. **The `--red` split holds.** Assert no in-scope stylesheet uses
+   `var(--red)` or `var(--red-deep)` as a `background`. This is the §4.2
+   migration, and the failure is a pale-pink button that only appears in dark
+   mode on one page, which is exactly the kind of thing manual review misses.
 
 Beyond the suite, the finished UI is driven in a real browser in both themes
 across: the app's search form and a rendered report, a market page,
@@ -298,10 +340,10 @@ as one commit.
 | File | Change |
 |---|---|
 | `theme.js` | **new** — pure token table + `rootCss()` |
-| `test/theme.test.js` | **new** — the four assertions in §10 |
+| `test/theme.test.js` | **new** — the five assertions in §10 |
 | `index.html` | `:root` blocks, ~75-rule bridge, boot script, toggle, `var()` in inline CSS, `onclone` theme strip, dark tiles + pin recolor |
 | `server.js` | `require("./theme")`; `MARKET_CSS`, `HOW_CSS`, `ACCOUNT_NAV_CSS` to `var()`; toggle in `accountNavSlots()` + `ACCOUNT_NAV_JS`; boot script in two `<head>`s |
-| `vault-page.js` | boot script in its `<head>`; its own CSS to `var()` |
+| `vault-page.js` | boot script in its `<head>`; literal `:root` → `${THEME_CSS}`; one `--red-fill` fix (§4.2). Already tokenized, so no sweep |
 | `devlog.json` | one `feature` entry |
 
 No migration. No new environment variable. No npm dependency. No Tailwind

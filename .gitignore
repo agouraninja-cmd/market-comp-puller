@@ -60,3 +60,10 @@ compninja-ai-costs.csv
 # macOS Finder metadata. Committed once by accident on 2026-08-06 in the
 # PR #40 merge; ignored so it cannot happen again.
 .DS_Store
+
+# Playwright MCP scratch output (page snapshots, console logs, screenshots).
+# The browser tooling writes it into the repo root on every run, so it sat
+# there untracked and growing. This checkout is shared by several sessions and
+# its first rule is never to `git add -A`; an untracked pile in the root is a
+# standing invitation to break that rule exactly once.
+.playwright-mcp/

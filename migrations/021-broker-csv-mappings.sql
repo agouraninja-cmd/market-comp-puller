@@ -23,3 +23,8 @@ create table if not exists broker_csv_mappings (
 );
 
 alter table broker_csv_mappings enable row level security;
+
+-- Verify (zero rows = schema complete):
+--   select t from unnest(array['broker_csv_mappings']) as t
+--   where not exists (select 1 from information_schema.tables
+--                     where table_schema = 'public' and table_name = t);

@@ -1600,7 +1600,15 @@ private row has not earned. Two rules matter when editing anything down here:
    live ONLY in `meta.curation.added`, never in `data.comps`, so no server
    path (share, portfolio, harvest) ever ingests a user-authored comp into
    the corpus. The valuation math reads `includedComps()`; the table shows
-   excluded rows greyed as an audit trail. The "Avg $/SF" stat tile and the
+   excluded rows greyed as an audit trail. Since 2026-08-09 the curation cell
+   also carries a screen-only outlier chip (`buildOutlierChip`): an included
+   sale comp whose displayed $/SF sits more than 25% outside the hero's
+   displayed band (`VALUATION.outlierOf`, the same 25% rule as the vault gut
+   check, `⚠`-paired) reads "{pct}% above/below the range". Chips derive at
+   render from `currentPsfBand` (stashed by `renderOwnerHero`, one computation
+   for both surfaces), are never stored, never print or capture, and never
+   render on shared views; below 4 sale comps the band is the full spread, so
+   they cannot fire. The "Avg $/SF" stat tile and the
    market comparison read the MODEL's market-level figure and deliberately
    do not change with curation. Subject inputs
    persist in each report's `meta` (saved reports re-render without the

@@ -44,9 +44,10 @@ per-SF Low-High band the hero displays. `renderOwnerHero` stashes the band
 it rendered (module-level, cleared when no estimate exists); the table and
 card renderers read the stash. One computation, so the hero and the markers
 cannot disagree, and the arithmetic is verifiable from numbers visible on
-the page. The comparison uses displayed (untrended, unweighted) $/SF on
-both sides, deliberately: the marker must be checkable by a reader with a
-calculator, not an artifact of internal weighting.
+the page. The comparison uses displayed $/SF on both sides (the comp side
+raw and unweighted; the band exactly as the hero shows it), deliberately: the
+marker must be checkable by a reader with a calculator, not an artifact of
+internal weighting.
 
 Consequences, all deliberate:
 

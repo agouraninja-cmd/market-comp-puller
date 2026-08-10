@@ -25,6 +25,11 @@ const {
   exportColumns, exportCsv, exportRowsWithCoords,
 } = require("../broker-vault");
 
+// Shared with vault-api.test.js: parses the columns a table actually has out
+// of the migration files, so this check fails the build on a real schema
+// drift instead of trusting a second hand-written column list.
+const { migrationColumns } = require("./helpers/migration-columns");
+
 // --- CSV reading -----------------------------------------------------------
 
 test("a quoted field keeps its commas", () => {
@@ -1296,4 +1301,86 @@ test("the full round trip: a $ column mapped through the mapping screen actually
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].price, 100);
   assert.equal(result.rows[0].address, "1 A St, Boise, ID");
+});
+
+// --- write payloads vs the real schema ---------------------------------------
+//
+// The one failure this repo has actually suffered here (CLAUDE.md, "Comp
+// corpus"): PostgREST 400ing on an unknown column, silently, for weeks,
+// because nothing checked the write shape against the live table. The edit
+// (PATCH /api/vault/comp) and add (POST /api/vault/comp) routes in server.js
+// both write `PROPS.stripCarriedKeys({ ...row })` plus a few server-set
+// fields (user_id, market, and property_id on an address change) — this pins
+// every key either payload can carry against broker_comps' real columns, so a
+// field added here without a matching migration fails the build instead of
+// 400ing a broker's edit at runtime.
+//
+// `lat`/`lng` (in EDITABLE_FIELDS, via TEMPLATE_COLUMNS) and `_lat`/`_lng`
+// (in a fully-populated normalizeRow result) are excluded on purpose: they
+// are not broker_comps columns by design (see the long comment above
+// normalizeRow's coordinate handling) and are stripped by
+// PROPS.stripCarriedKeys before either route ever writes the row. Excluding
+// them here is not loosening the check — the route code that actually
+// removes them is what makes it safe to exclude them, and vault-coordinates
+// tests pin that removal directly.
+
+function fullyPopulatedEditInput() {
+  const row = {
+    address: "100 Main St, Boise, ID",
+    property_type: "Industrial",
+    transaction: "sale",
+    deal_date: "2026-03-14",
+    price: "1,000,000",
+    size_sqft: "10,000",
+    cap_rate: "6.25%",
+    tenancy: "Single",
+    year_built: "1998",
+    notes: "Solid building.",
+    lat: "43.6",
+    lng: "-116.2",
+  };
+  for (const key of OPTIONAL_SPEC_COLUMNS) row[key] = "x";
+  return row;
+}
+
+test("every EDITABLE_FIELDS entry a route can actually write is a real broker_comps column", () => {
+  const cols = migrationColumns("broker_comps");
+  // lat/lng never reach the table: they ride the request as EDITABLE_FIELDS
+  // entries but are lifted into _lat/_lng by normalizeRow and then stripped
+  // by PROPS.stripCarriedKeys before the write. Every other EDITABLE_FIELDS
+  // entry is written verbatim.
+  const writable = EDITABLE_FIELDS.filter((f) => f !== "lat" && f !== "lng");
+  const missing = writable.filter((f) => !cols.includes(f));
+  assert.deepEqual(missing, [],
+    `EDITABLE_FIELDS claims field(s) broker_comps does not have: ${missing.join(", ")}. ` +
+    `A column here that the table does not have will 400 the whole write at runtime -- ` +
+    `this test is the only thing standing between that and a silent production failure.`);
+});
+
+test("every key a fully-populated normalizeRow result carries is a real broker_comps column", () => {
+  const cols = migrationColumns("broker_comps");
+  const { ok, row, errors } = normalizeRow(fullyPopulatedEditInput());
+  assert.equal(ok, true, (errors || []).join(" | "));
+  // _lat/_lng are the carried, non-column keys PROPS.stripCarriedKeys removes
+  // before either write route sends the row to PostgREST.
+  const keys = Object.keys(row).filter((k) => k !== "_lat" && k !== "_lng");
+  const missing = keys.filter((k) => !cols.includes(k));
+  assert.deepEqual(missing, [],
+    `normalizeRow produced field(s) broker_comps does not have: ${missing.join(", ")}. ` +
+    `A column here that the table does not have will 400 the whole write at runtime -- ` +
+    `this test is the only thing standing between that and a silent production failure.`);
+});
+
+test("the server-set fields the edit and add routes stamp onto every row are real broker_comps columns", () => {
+  const cols = migrationColumns("broker_comps");
+  // user_id and market are added by both routes; property_id is added (set to
+  // null) by the edit route only, on an address change. All three are
+  // assembled onto the row before the SAME write PROPS.stripCarriedKeys
+  // guards, so they carry the identical risk as every EDITABLE_FIELDS column.
+  const serverSet = ["user_id", "market", "property_id"];
+  const missing = serverSet.filter((f) => !cols.includes(f));
+  assert.deepEqual(missing, [],
+    `The routes stamp field(s) broker_comps does not have: ${missing.join(", ")}. ` +
+    `A column here that the table does not have will 400 the whole write at runtime -- ` +
+    `this test is the only thing standing between that and a silent production failure.`);
 });

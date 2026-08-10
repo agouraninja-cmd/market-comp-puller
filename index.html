@@ -2543,12 +2543,33 @@
   // everywhere regardless — a house was handed a hero reading "WHAT THIS
   // BUILDING IS WORTH" (owner feedback 2026-08-10), which reads as boilerplate
   // written for somebody else's asset class, and on Land there is no building
-  // at all. Only the two odd types are listed; everything else really is a
-  // building. Keep this in step with SIZE_LABELS above: they answer the same
-  // question about the same six types, and a type added to one without the
-  // other produces a form that calls it a home and a hero that calls it a
-  // building.
-  const ASSET_NOUN = { Residential: "home", Land: "property" };
+  // at all.
+  //
+  // Related to SIZE_LABELS above but deliberately NOT equal to it: Multifamily
+  // and Retail keep "Building size (SF)" as the FIELD label, because that
+  // really is the building square footage the valuation divides by, even
+  // though the asset above it is called a property. Check both when adding a
+  // type, and expect them to differ.
+  //
+  // Only Industrial and Office fall through to "building", because those two
+  // genuinely ARE one building. The other four are named:
+  //   Residential  home      - also covers condos and townhomes, which have no
+  //                            type of their own; a condo is a home.
+  //   Land         property  - there is no building at all.
+  //   Multifamily  property  - an apartment community is not one building, and
+  //                            the type also covers duplexes, so neither
+  //                            "apartment building" nor "apartment community"
+  //                            is true across the range. It is also the unit
+  //                            the report already prices on (ALT_BASIS).
+  //   Retail       property  - right for a single-tenant pad AND for a strip or
+  //                            anchored center; "building" is only right for
+  //                            the first, "center" only for the second.
+  const ASSET_NOUN = {
+    Residential: "home",
+    Land: "property",
+    Multifamily: "property",
+    Retail: "property",
+  };
   const assetNoun = (type) => ASSET_NOUN[type] || "building";
   // Spelled out rather than `assetNoun(type) + "s"`, which produced
   // "propertys" on Land the first time this shipped. Three known nouns, so a

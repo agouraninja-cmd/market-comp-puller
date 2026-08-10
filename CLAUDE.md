@@ -1779,11 +1779,22 @@ private row has not earned. Two rules matter when editing anything down here:
    `setHeroTitle` in index.html).** The report called every subject a
    "building", so a house got a hero reading "WHAT THIS BUILDING IS WORTH"
    and a pointer to "Building Size" beside a field labelled *Property size*
-   (owner feedback 2026-08-10). Residential is a `home`, Land is a
-   `property`, the other four are `building`s. Three rules: **keep it in step
-   with `SIZE_LABELS`**, which answers the same question about the same six
-   types, so a type added to one without the other produces a form and a hero
-   that disagree; **plurals come from `ASSET_NOUN_PLURAL`, never `noun + "s"`**
+   (owner feedback 2026-08-10). Residential is a `home` (which also covers
+   **condos and townhomes** — they have no type of their own, and a condo is a
+   home); Land, **Multifamily** and **Retail** are a `property`; only
+   Industrial and Office fall through to `building`, because only those two
+   genuinely are one. Multifamily is deliberately NOT "apartment building" or
+   "apartment community" (owner's call, 2026-08-10): the type spans duplexes
+   and 300-unit garden communities and neither phrase is true across that
+   range, while `property` is also the unit the report already prices on
+   (`ALT_BASIS`). Retail is `property` for the same both-shapes reason —
+   "building" fits only a single-tenant pad, "center" only an anchored center.
+   Three rules: **it is related to `SIZE_LABELS` but deliberately not equal to
+   it** — Multifamily and Retail keep "Building size (SF)" as the FIELD label
+   because that really is the building square footage the valuation divides
+   by, even though the asset above it is called a property; check both when
+   adding a type, and expect them to differ; **plurals come from
+   `ASSET_NOUN_PLURAL`, never `noun + "s"`**
    (that shipped "propertys" on Land); and **the hero heading is set at TWO
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
    hero on screen a minute before the real render repaints it, so without the

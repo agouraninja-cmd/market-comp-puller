@@ -5656,7 +5656,9 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
   .hdr nav{gap:24px}
   .stats{grid-template-columns:repeat(4,1fr)}
   .stat{padding:20px}
-  .stat:nth-child(3){border-right:1px solid #E4E2DA}
+  /* Four across: rule between every pair, so the divider the two-column
+     layout only needs after 1 and 3 also lands between 2 and 3. */
+  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid #E4E2DA}
   .steps{grid-template-columns:repeat(3,1fr)}
   .step{border-bottom:0;border-right:1px solid #ECEAE3}
   .step:last-child{border-right:0}

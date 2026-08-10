@@ -3831,13 +3831,18 @@ function clientErrorMessage(err) {
 // SEARCH_PROVIDER=gemini this call still fires on a parse failure and still
 // targets Anthropic, so a Gemini-backed run whose JSON fails to parse
 // attempts an Anthropic repair before falling to Gemini's own full retry.
-// It does not crash: with no ANTHROPIC_API_KEY set, fetch() drops the
-// undefined x-api-key header rather than throwing, the call 401s, and the
-// existing failure path (every error here surfaces to the caller) falls
-// through to solo()'s full re-search, which does go through PROVIDER
-// correctly. The cost is a wasted ~40s round trip and, if ANTHROPIC_API_KEY
-// happens to also be set, a real cross-provider repair call that nothing
-// here flags. Left as a known gap for phase 2's validation gate rather than
+// It does not crash, and it can never actually succeed under Gemini, which
+// makes it inert rather than merely inconsistent. Node's fetch does NOT
+// drop an undefined header value; it stringifies it, so with no
+// ANTHROPIC_API_KEY set the request carries a literal `x-api-key: "undefined"`
+// and Anthropic answers 401. If ANTHROPIC_API_KEY also happens to be set,
+// the request still fails, because MODEL is this module's constant and
+// under Gemini it holds a Gemini model id ("gemini-3.6-flash" by default),
+// which Anthropic 404s on as an unrecognized model. Either way the existing
+// failure path (every error here surfaces to the caller) falls through to
+// solo()'s full re-search, which does go through PROVIDER correctly. The
+// only cost is a wasted round trip against the repair call's own 90s
+// timeout. Left as a known gap for phase 2's validation gate rather than
 // generalized in this task.
 async function repairCompJson(brokenText, maxTokens) {
   const controller = new AbortController();
@@ -3927,7 +3932,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // deadline derived from it would be arbitrary. Budget the worst case (a full
   // 10-search run) instead of a number that was silently ignored.
   const deadlineUses = PROVIDER.capabilities.searchBudget ? searchUses : 10;
-  const callDeadlineMs = searchTimeoutMsFor(deadlineUses, body.max_tokens);
+  const callDeadlineMs = searchTimeoutMsFor(deadlineUses, PROVIDER.deadlineTokens(body));
   const timer = setTimeout(() => controller.abort(), callDeadlineMs);
   // Two very different failures used to raise the SAME error with no way to
   // tell them apart, in the message OR in the log:
@@ -4113,7 +4118,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     if (!(err instanceof SyntaxError) || text.length <= 500) throw err;
     let repaired;
     try {
-      repaired = await repairCompJson(text, body.max_tokens);
+      repaired = await repairCompJson(text, PROVIDER.deadlineTokens(body));
     } catch (repairErr) {
       console.warn("Comp JSON repair call failed; falling back to the full retry.", repairErr && repairErr.message);
       throw err;

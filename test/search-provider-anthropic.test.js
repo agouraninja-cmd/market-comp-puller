@@ -58,3 +58,13 @@ test("costOf prices cache reads far below fresh input", () => {
   assert.ok(cheap < dear / 5, `cache read ${cheap} should be far under input ${dear}`);
   assert.ok(Math.abs(P.costOf({ input_tokens: 0, output_tokens: 1e6, cache_read_tokens: 0, cache_write_tokens: 0 }) - 15) < 0.001);
 });
+
+test("deadlineTokens reads the real max_tokens cap off the body", () => {
+  assert.equal(P.deadlineTokens({ max_tokens: 10000 }), 10000);
+  assert.equal(P.deadlineTokens({ max_tokens: 8000 }), 8000);
+});
+
+test("deadlineTokens falls back to 8000 when the body is missing or has no cap", () => {
+  assert.equal(P.deadlineTokens(undefined), 8000);
+  assert.equal(P.deadlineTokens({}), 8000);
+});

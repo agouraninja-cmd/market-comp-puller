@@ -95,6 +95,16 @@ function costOf(usage) {
   ) / 1e6;
 }
 
+// NOT max_output_tokens. That ceiling (24k-32k) is sized to cover thought
+// tokens, not wall clock, so deriving a deadline from it gives about 9 minutes
+// on a model measured at roughly 37 seconds per report. A measured call spent
+// 4,207 in / 928 out / 6,473 thought, so about 7,400 output-equivalent tokens
+// is the real figure; 12,000 leaves headroom without inventing a 9 minute
+// ceiling.
+function deadlineTokens() {
+  return 12000;
+}
+
 module.exports = {
   name: "gemini",
   logLabel: "Gemini",
@@ -106,5 +116,6 @@ module.exports = {
   parseResponse,
   normalizeUsage,
   costOf,
+  deadlineTokens,
   USD_PER_MTOK,
 };

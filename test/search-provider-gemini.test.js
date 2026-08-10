@@ -16,7 +16,7 @@ test("declares that it cannot cap the search budget", () => {
 
 test("exports the same surface as the Anthropic module", () => {
   for (const k of ["name", "logLabel", "defaultModel", "apiKeyEnv", "capabilities", "buildRequestBody",
-                   "requestInit", "parseResponse", "normalizeUsage", "costOf"]) {
+                   "requestInit", "parseResponse", "normalizeUsage", "costOf", "deadlineTokens"]) {
     assert.ok(k in P, `missing export: ${k}`);
     assert.equal(typeof P[k], typeof A[k], `export ${k} differs in type from anthropic`);
   }
@@ -58,4 +58,13 @@ test("normalizeUsage folds thought tokens into output, because Gemini bills them
 test("costOf reproduces the measured per-report figure within a cent", () => {
   const cost = P.costOf(P.normalizeUsage(FIXTURE.usage));
   assert.ok(Math.abs(cost - 0.0618) < 0.01, `expected about $0.0618, got $${cost.toFixed(4)}`);
+});
+
+test("deadlineTokens returns a fixed figure, never max_output_tokens", () => {
+  assert.equal(P.deadlineTokens(), 12000);
+  // Must ignore the request body entirely: max_output_tokens (24k-32k) is
+  // sized for thought tokens, not wall clock, and reading it here is the
+  // exact bug this export exists to prevent.
+  assert.equal(P.deadlineTokens({ max_output_tokens: 32000 }), 12000);
+  assert.equal(P.deadlineTokens(undefined), 12000);
 });

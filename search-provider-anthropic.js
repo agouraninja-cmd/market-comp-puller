@@ -96,6 +96,12 @@ function costOf(usage) {
   ) / 1e6;
 }
 
+// The token figure the call deadline should assume. Anthropic's cap is a real
+// output ceiling, so the cap itself is the right basis.
+function deadlineTokens(body) {
+  return (body && body.max_tokens) || 8000;
+}
+
 module.exports = {
   name: "anthropic",
   logLabel: "Anthropic",
@@ -107,5 +113,6 @@ module.exports = {
   parseResponse,
   normalizeUsage,
   costOf,
+  deadlineTokens,
   USD_PER_MTOK,
 };

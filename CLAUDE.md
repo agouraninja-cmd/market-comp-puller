@@ -1775,6 +1775,62 @@ private row has not earned. Two rules matter when editing anything down here:
    count is the only unambiguous proof, since a fallback write still logs a
    `+N` line and still returns a normal-looking report.
 
+3a. **Per-type vocabulary (`ASSET_NOUN` / `assetNoun` / `assetNounPlural` /
+   `setHeroTitle` in index.html).** The report called every subject a
+   "building", so a house got a hero reading "WHAT THIS BUILDING IS WORTH"
+   and a pointer to "Building Size" beside a field labelled *Property size*
+   (owner feedback 2026-08-10). Residential is a `home`, Land is a
+   `property`, the other four are `building`s. Three rules: **keep it in step
+   with `SIZE_LABELS`**, which answers the same question about the same six
+   types, so a type added to one without the other produces a form and a hero
+   that disagree; **plurals come from `ASSET_NOUN_PLURAL`, never `noun + "s"`**
+   (that shipped "propertys" on Land); and **the hero heading is set at TWO
+   seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
+   hero on screen a minute before the real render repaints it, so without the
+   second one a house sits under the previous report's noun for the whole
+   search. The basis line reads its field name from `SIZE_LABELS[meta.type]`
+   and **not** from `#targetSizeLabel`, because a shared report renders
+   somebody else's type into a form still labelled for whatever this visitor
+   last searched.
+
+3b. **The lookback hint is recomputed, never written once**
+   (`refreshLookbackHint` in index.html). It used to be set only by
+   `applyRecommendedLookback`, so moving the window off the recommendation
+   left "Recommended for Industrial" under a 6-month selection — the label
+   asserting that the reader's own override was our advice. It now derives
+   from `selectedLookbackMonths()` and **clears entirely on any deviation**.
+   A first pass reworded it instead ("24 months recommended for Industrial",
+   which is at least true) and the owner rejected that: the complaint is about
+   a recommendation label still sitting under a window the reader deliberately
+   changed, and rewording leaves one sitting there. The note is a caption for
+   the default, not standing advice. It hangs off **three** seams and needs all of them: the select's
+   `change`, the custom box's `input` (which changes the window without
+   touching the select), and `setLookbackControls`. It is also called from
+   `syncSubjectFieldsToType`, because both startup restores (`?type=` and
+   `lastPropertyType`) set the type through that function alone and would
+   otherwise leave the hint naming the page-load default type. That call
+   refreshes the HINT only and deliberately never applies the recommended
+   WINDOW: a restore is not a fresh decision, and a deep link may carry its
+   own lookback.
+
+3c. **`subject_last_sale` — the subject's own prior sale** (2026-08-10). The
+   report never looked up whether the subject itself had recently traded, so
+   a Bensalem property that sold a year earlier for $12.45M got a report that
+   never mentioned it. The model returns `{ date, price, source_url }` and
+   `renderSubjectLastSale` draws one line under the approaches. Four rules.
+   **It costs no extra search by construction**: the ask rides on the
+   `SUBJECT SIZE` step, whose assessor/parcel/listing pages already carry the
+   sale history, and when `wantsSize` is false the wording drops to
+   opportunistic rather than buying a search out of the comp budget. **It is
+   evidence, not a fourth figure** — never put it in the ledger, because a
+   years-old price shown big reads as a current valuation. **It is normalized
+   server-side** (`normalizeSubjectLastSale`): no date means the whole field
+   is dropped (a price with no date is unplaceable in time), and a non-http
+   `source_url` is discarded before it can become an anchor href. **It is not
+   a comp** — the prompt forbids it appearing in `comps`, and it is never
+   harvested into `comp_corpus`, which holds comps and not a property's own
+   sale of itself.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

@@ -3124,6 +3124,20 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // Calibrate the comp search radius to market density (a user suggestion):
     // "within 5 miles" means something very different in Dallas vs. Boise.
     `RADIUS: Scale how far "comparable" reaches to the market's size and density. In a large, dense metro (e.g. Dallas, Phoenix, Los Angeles), keep comps within the immediate submarket, a few miles out. In a smaller or rural market (e.g. Boise, Pocatello), widen the radius as needed to find enough genuinely comparable transactions, and note in "summary" when you reach beyond the immediate area.${note ? ' Respect the market note above where it specifies where to look.' : ''}`,
+    // Residential overrides the rule above rather than tuning it, because the
+    // rule above is written for commercial assets, where a buyer really will
+    // weigh a warehouse two towns over. Houses are not priced that way: value
+    // is set by the immediate neighborhood, and the "widen it in a smaller
+    // market" license is exactly what produced comps miles from a Gurnee IL
+    // house while Zillow showed five on its own streets (owner feedback
+    // 2026-08-10). Stated as a ceiling with an explicit "fewer is better"
+    // clause, because otherwise the model reads the 3-comp floor as license to
+    // reach: a 3-comp report from the subdivision beats an 8-comp report from
+    // across the county, and the count rules elsewhere in this prompt do not
+    // say that on their own.
+    type === "Residential"
+      ? `NEIGHBORHOOD (Residential, overrides RADIUS above): a home's value is set by its own neighborhood, so comps must come from the subject's immediate area — the same subdivision, or within roughly one mile, and on the same side of any boundary a buyer would notice (school attendance area, a highway or river, a distinctly different price tier). Do NOT widen to the wider town, county, or metro to reach a comp count: returning 3 comps from the subject's own streets is BETTER than returning 8 that include homes miles away, and a distant comp drags the estimate toward a neighborhood the subject is not in. Only reach past about a mile when the immediate area genuinely has fewer than 3 sales in the window; when you do, say so in "summary" and say roughly how far you went.`
+      : "",
     ``,
     `TASK: Find 3 to ${maxComps} RECENT ${
       txFocus === "sales"  ? "comparable closed SALES" :
@@ -3154,7 +3168,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // The neighbor guard matters: adjacent parcels' sizes surface readily in
     // search results, and a wrong "found" size is worse than an honest "".
     wantsSize
-      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size.`
+      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off the property's own last sale date and price for "subject_last_sale" below - the same record usually carries both, so it costs you nothing here and is one of the most valuable things in the report.`
       : "",
     typeGuidance[type] || "",
     // Size class moves $/SF (economies of scale) — steer comp selection
@@ -3204,6 +3218,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       `  "price_discovery": { "direction": "", "note": "" },`,
     ]),
     ...(wantsSize ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
+    // Not gated on compsOnly like the other narrative fields: on a lane split
+    // the records lane is the one opening assessor pages, so it is the lane
+    // that can actually see a sale history. Asked of whichever lane is looking
+    // (wantsSize) and of the sole/primary lane regardless; mergeLaneReports
+    // carries whichever one answers.
+    ...(wantsSize || !compsOnly ? [`  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -3239,6 +3259,17 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 short sentences, under about 200 characters total, on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
     ]),
     ...(wantsSize ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
+    // The subject's OWN last arm's-length sale is the single strongest piece of
+    // evidence about what it is worth, and the report was not asking for it at
+    // all: a Bensalem PA property that had sold a year earlier for $12.45M got
+    // a report that never mentioned it (owner feedback 2026-08-10). Costs no
+    // extra search on purpose — the assessor/parcel/listing pages the SUBJECT
+    // SIZE step already opens are the same pages that carry the sale history,
+    // so this is a "note it while you are there", never a lookup of its own.
+    // That is also why it is phrased as opportunistic when wantsSize is false:
+    // with the size already known there is no subject search to ride along on,
+    // and buying one would come out of the comp budget.
+    ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent closed sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000", "source_url" = the page that states it. This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
   ].join("\n");
 }
 
@@ -3255,6 +3286,34 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
 const { normalizeTrendPct, reconcilePricePerSqft } = RPARSE;
+
+// The subject's own last sale is model-written free text headed for a report
+// surface, a cache entry and a share, so it is normalized to a known shape
+// once here rather than defended against at every read. Rules:
+//   - anything that is not an object, or that carries no DATE, becomes null.
+//     A price with no date is unplaceable in time and reads as a current
+//     valuation of the subject, which is the one thing this must never be
+//     mistaken for; a date with no price is still worth showing, so that
+//     asymmetry is deliberate.
+//   - the URL is kept only when it is http(s). The client renders it as a
+//     link, and a javascript: or data: URL from model output must never get
+//     that far.
+//   - fields are clipped, not rejected on length: this is one short line of
+//     provenance and a long value is a formatting problem, not a lie.
+// Deliberately NOT harvested into comp_corpus: that table holds comps, and a
+// subject's own sale is not a comp of itself.
+function normalizeSubjectLastSale(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_last_sale;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) { delete parsed.subject_last_sale; return parsed; }
+  const str = (v) => String(v == null ? "" : v).trim();
+  const date = str(raw.date).slice(0, 40);
+  if (!date) { delete parsed.subject_last_sale; return parsed; }
+  let url = str(raw.source_url).slice(0, 500);
+  if (!/^https?:\/\//i.test(url)) url = "";
+  parsed.subject_last_sale = { date, price: str(raw.price).slice(0, 40), source_url: url };
+  return parsed;
+}
 
 // Credit the contributing broker on any verified comp the model included, by
 // matching its (faithfully-copied) address back to the submitted comp. Closes
@@ -4000,7 +4059,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   const finishReport = (raw) =>
     attachVerifiedAttribution(
-      reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type))))),
+      normalizeSubjectLastSale(
+        reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
       verifiedComps);
   try {
     return finishReport(text);
@@ -4066,6 +4126,12 @@ function mergeLaneReports(primary, records, maxComps) {
   if (records.subject_size_sqft && !primary.subject_size_sqft) {
     primary.subject_size_sqft = records.subject_size_sqft;
     primary.subject_size_source = records.subject_size_source || "";
+  }
+  // Same reasoning for the subject's own last sale, and the records lane is
+  // the likelier finder of the two — it is the one reading assessor and deed
+  // pages, which is where a sale history lives.
+  if (records.subject_last_sale && records.subject_last_sale.date && !(primary.subject_last_sale || {}).date) {
+    primary.subject_last_sale = records.subject_last_sale;
   }
 
   console.log(`Lane merge: ${a.length} listing-lane + ${fresh.length} records-lane comp(s), ${records.comps.length - fresh.length} duplicate(s) dropped, ${primary.comps.length} kept.`);

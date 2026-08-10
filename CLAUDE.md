@@ -857,6 +857,23 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (edit its `TARGETS` list; it runs one cached search per market against a
   locally-running server and keeps only markets with ≥3 priced sale comps, so
   no thin pages). `sitemap.xml` lists `/`, `/markets`, and every market page.
+- `POST /api/explore-market` — the **Market Explorer**: generates a
+  `/market/<slug>` page on demand from the header search on the app page
+  (one billed search per genuinely new market; results meeting the seed
+  quality bar publish permanently to the Supabase `market_pages` table,
+  thinner ones get a 30-minute in-memory `/market-preview/` page). Since
+  2026-08-09 it **validates the city is real before the billed leg**:
+  `city-check.js` (pure, tested) asks Zippopotam's keyless city endpoint
+  and refuses unknown cities with a friendly 400 that never consumes the
+  guest's free search or an `explore:` limiter slot. Three name variants
+  are tried — as typed, punctuation-to-space, punctuation-stripped, each
+  with leading "St "/"Ft "/"Mt " expanded — because measured GeoNames data
+  is inconsistent about punctuation ("Coeur D Alene" answers 200 but "Lees
+  Summit" is the stripped form); **do not "simplify" this to one variant**,
+  strip-only shipped first and falsely refused Winston-Salem and Coeur
+  d'Alene. Fails OPEN on validator outages (`DAILY_SEARCH_CAP` backstops);
+  `ok`/`unknown` verdicts memoize per process, `unavailable` never does.
+  Spec: `docs/superpowers/specs/2026-08-09-explore-market-city-validation-design.md`.
 - `GET /admin`, `GET /api/stats` — a small analytics dashboard. Every search,
   lead, share, and comp submission is logged as a **PII-free** event (`ts`,
   `kind`, `prop_type`, `market` = city+state only, `source`, `cached`) via

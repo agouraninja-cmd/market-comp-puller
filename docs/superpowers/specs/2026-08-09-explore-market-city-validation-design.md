@@ -72,8 +72,10 @@ its own; the caller passes `fetch`, the same dependency-injection style
   then a punctuation-to-space variant, then a punctuation-stripped variant
   (periods, apostrophes and hyphens either become a space or are removed
   entirely; each variant also collapses whitespace and expands a leading
-  "St " to "Saint "), deduped case-insensitively against what's already in
-  the list. Three outbound requests maximum, deterministic. Two variants
+  "St "/"Ft "/"Mt " to "Saint "/"Fort "/"Mount " — GeoNames spells all
+  three out, live-verified on "Ft. Worth" and "Mt. Vernon", both refused
+  before the expansion), deduped case-insensitively against what's already
+  in the list. Three outbound requests maximum, deterministic. Two variants
   exist, not one, because measured GeoNames/Zippopotam behavior is
   inconsistent about what happens to punctuation in a place name: it usually
   becomes a space ("Coeur D Alene", "O Fallon", "Winston Salem" all answer

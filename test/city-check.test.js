@@ -33,6 +33,22 @@ test("cityVariants: St-expansion collapses the space and strip variants together
   assert.deepEqual(CITYCHECK.cityVariants("St Louis"), ["St Louis", "Saint Louis"]);
 });
 
+// "Ft. Worth" and "Mt. Vernon" were live-verified refused before this
+// expansion existed: GeoNames only knows "Fort Worth" / "Mount Vernon", and
+// both punctuation variants of the abbreviation 404. Same rule as "St ".
+test("cityVariants: Ft- and Mt-expansion, same shape as St", () => {
+  assert.deepEqual(CITYCHECK.cityVariants("Ft. Worth"), ["Ft. Worth", "Fort Worth"]);
+  assert.deepEqual(CITYCHECK.cityVariants("Ft Worth"), ["Ft Worth", "Fort Worth"]);
+  assert.deepEqual(CITYCHECK.cityVariants("Mt. Vernon"), ["Mt. Vernon", "Mount Vernon"]);
+  assert.deepEqual(CITYCHECK.cityVariants("Mt Vernon"), ["Mt Vernon", "Mount Vernon"]);
+});
+
+test("cityVariants: expansion only fires on the leading word", () => {
+  // A city merely STARTING with those letters must not be rewritten.
+  assert.deepEqual(CITYCHECK.cityVariants("Stanton"), ["Stanton"]);
+  assert.deepEqual(CITYCHECK.cityVariants("Fruitland"), ["Fruitland"]);
+});
+
 test("cityVariants: variant equal to the input (case-insensitive) is deduped", () => {
   assert.deepEqual(CITYCHECK.cityVariants("Saint Louis"), ["Saint Louis"]);
 });

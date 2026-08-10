@@ -49,11 +49,14 @@ detects.
 
 1. Lowercase, commas to spaces, split on whitespace, drop empties.
 2. **Unsupported type** (land, residential) → `unsupported-type`, as today.
-3. **Zip:** a five-digit token → `{ reason: "zip", zip, type }` immediately,
-   carrying the type if one was also typed.
-4. **Type:** exact match against the four Explorer types, then
-   `TYPE_SYNONYMS`, including two-word synonyms ("shopping center") matched
-   against adjacent token pairs. Matched tokens are removed.
+3. **Type:** two-word synonyms first (adjacent token pairs, "shopping
+   center", "office building"), then an exact match against the four
+   Explorer types, then one-word synonyms. Matched tokens are removed.
+   **Pairs must precede the exact match**: "office building Boise ID" would
+   otherwise match the bare "office", leaving "building" glued to the city.
+4. **Zip:** a five-digit token → `{ reason: "zip", zip, type }`. This comes
+   after the type step so the intent can carry a type the visitor also
+   typed ("warehouse 83301").
 5. **State, BEFORE filler stripping:** try the last two remaining tokens as
    a full state name ("new mexico"), then the last token as a full name
    ("idaho"), then the last token as an abbreviation ("id").

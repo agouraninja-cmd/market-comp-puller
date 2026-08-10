@@ -10735,6 +10735,12 @@ const server = http.createServer((req, res) => {
             required: VAULT.REQUIRED_TARGETS,
           });
         } catch (e) {
+          // Same guard as /api/vault/upload's, and it matters more here: V8
+          // QUOTES the input in a JSON.parse error ("Unexpected token 'a',
+          // \"address,pr\"... is not valid JSON"), so letting a malformed body
+          // reach the log below would print a fragment of a broker's private
+          // CSV into Render's logs. A bad body is the client's error anyway.
+          if (e instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault inspect failed:", e.message);
           sendJson(res, 500, { error: "That file could not be read." });
         }

@@ -18,7 +18,7 @@ const {
   canPublish, creditName, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
-  validateMapping,
+  validateMapping, applyHeaderMapping,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -696,4 +696,55 @@ test("a column mapped to nothing is normal, not an error", () => {
 test("a non-object mapping is refused rather than treated as empty", () => {
   assert.equal(validateMapping(null, HEADERS).ok, false);
   assert.equal(validateMapping("address", HEADERS).ok, false);
+});
+
+// --- column mapping: applying it ------------------------------------------
+
+test("mapped headers become template names and the rest are neutralised", () => {
+  const out = applyHeaderMapping(
+    ["property_address", "sale_price", "listing_broker"],
+    { property_address: "address", sale_price: "price" }
+  );
+  assert.deepEqual(out, ["address", "price", "_ignored_2"]);
+});
+
+// The reason unmapped columns are RENAMED rather than left alone: a file can
+// contain a literal `price` column that the broker deliberately did NOT map,
+// having chosen a different one. Left as-is it would collide and the row
+// builder would silently take whichever came last.
+test("an unmapped column named like a field cannot shadow the mapped one", () => {
+  const out = applyHeaderMapping(
+    ["price", "sale_price"],
+    { sale_price: "price" }
+  );
+  assert.deepEqual(out, ["_ignored_0", "price"]);
+});
+
+test("a mapped upload parses to the same rows as the template version", () => {
+  // The address is quoted because it contains commas (like every other
+  // multi-comma address literal elsewhere in this file) — an unquoted address
+  // here would split into extra CSV cells and misalign every column.
+  const mapped = parseUpload(
+    "Property Address,Type,Deal,Closed,Sale Price\n" +
+    "\"1234 W Main St, Boise, ID\",Industrial,Sale,2026-02-01,\"$2,450,000\"\n",
+    { mapping: { property_address: "address", type: "property_type",
+                 deal: "transaction", closed: "deal_date", sale_price: "price" } }
+  );
+  const template = parseUpload(
+    "address,property_type,transaction,deal_date,price\n" +
+    "\"1234 W Main St, Boise, ID\",Industrial,Sale,2026-02-01,\"$2,450,000\"\n"
+  );
+  assert.equal(mapped.ok, true, mapped.errors.join(" | "));
+  assert.deepEqual(mapped.rows, template.rows);
+});
+
+test("no mapping means byte-identical behaviour to before", () => {
+  const csv = "address,property_type,transaction,deal_date\n1 A St, Boise, ID,Land,Sale,2026-01-01\n";
+  assert.deepEqual(parseUpload(csv, { mapping: null }), parseUpload(csv));
+});
+
+test("an invalid mapping refuses the whole upload and writes nothing", () => {
+  const r = parseUpload("Foo,Bar\n1,2\n", { mapping: { foo: "price" } });
+  assert.equal(r.ok, false);
+  assert.equal(r.rows.length, 0);
 });

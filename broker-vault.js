@@ -254,6 +254,19 @@ function validateMapping(mapping, headers) {
   return { ok: errors.length === 0, errors };
 }
 
+/**
+ * Rename a header row per a confirmed mapping. Unmapped columns are renamed to
+ * a name nothing matches, rather than left alone: a file may contain a literal
+ * `price` column the broker chose NOT to map, and leaving it would collide
+ * with the column they did map.
+ */
+function applyHeaderMapping(headers, mapping) {
+  const m = mapping && typeof mapping === "object" ? mapping : {};
+  return (Array.isArray(headers) ? headers : []).map((h, i) =>
+    Object.prototype.hasOwnProperty.call(m, h) ? m[h] : `_ignored_${i}`
+  );
+}
+
 // --- value readers -----------------------------------------------------------
 
 const text = (v, max = MAX_TEXT) =>
@@ -579,16 +592,24 @@ function normalizeRow(raw) {
  * comps. A file with NO readable header is a hard failure, because that is a
  * wrong-file mistake rather than a data mistake.
  */
-function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100 } = {}) {
+function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, mapping = null } = {}) {
   const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0 };
   const table = parseCsv(csvText);
   if (!table.length) {
     return { ...empty, errors: ["That file is empty."] };
   }
 
-  const headers = table[0].map(normalizeHeader);
+  let headers = table[0].map(normalizeHeader);
+  if (mapping) {
+    // Validate BEFORE applying: an invalid mapping must refuse the upload, not
+    // import a partial one. Same stance as every other refusal in this module.
+    const check = validateMapping(mapping, table[0]);
+    if (!check.ok) return { ...empty, errors: check.errors };
+    headers = applyHeaderMapping(headers, mapping);
+  }
   // `address` is the one column nothing works without, so it doubles as the
-  // "is this even the template?" check.
+  // "is this even the template?" check. With a mapping applied it is always
+  // present, because validateMapping requires it.
   if (!headers.includes("address")) {
     return {
       ...empty,
@@ -846,6 +867,7 @@ module.exports = {
   normalizeHeader,
   suggestMapping,
   validateMapping,
+  applyHeaderMapping,
   parseMoney,
   parseNumber,
   parseCoord,

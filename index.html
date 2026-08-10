@@ -874,6 +874,26 @@
       </div>
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+
+      <!-- Comped access for beta testers. Hidden until /api/config resolves,
+           and shown only to a signed-in non-Pro visitor: the grant is stored
+           on an account, so there is nothing to attach it to signed out. -->
+      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <button id="passkeyToggle" type="button" aria-expanded="false"
+          class="text-sm text-[#68707E] hover:text-[#374253] underline">
+          Have a code?
+        </button>
+        <div id="passkeyForm" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
+          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Access code"
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <button id="passkeySubmit" type="button"
+            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+            Redeem
+          </button>
+        </div>
+        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
+      </div>
+
       <p class="text-xs text-[#68707E] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms</a>.
       </p>
@@ -9776,12 +9796,15 @@
   // Comped team access. Pro, but with nothing behind it at Stripe — so every
   // billing control has to be kept away from it, not just re-labelled.
   function isAdminPro() { return Boolean(proConfig && proConfig.admin); }
+  // Comped beta-tester access. Also Pro with nothing behind it at Stripe.
+  function isTesterPro() { return Boolean(proConfig && proConfig.tester); }
   // "none" means no Stripe customer has ever existed for this user, so the
   // portal would 400. Any other state means there is something to manage —
-  // except "admin", which is comped and likewise has no customer to manage.
+  // except "admin"/"tester", which are comped and likewise have no customer
+  // to manage.
   function hasBillingHistory() {
     return Boolean(currentUser) && proConfig && proConfig.status
-      && proConfig.status !== "none" && !isAdminPro();
+      && proConfig.status !== "none" && !isAdminPro() && !isTesterPro();
   }
 
   function showPricingError(msg) {
@@ -9962,6 +9985,12 @@
         detail: "Full Pro access while your admin key is unlocked. Nothing is billed, and there's no subscription behind it.",
       };
     }
+    if (p.tester) {
+      return {
+        title: "Pro — comped (beta tester)",
+        detail: "Full Pro access as a beta tester. Nothing is billed, and there's no subscription behind it. The private broker vault isn't included.",
+      };
+    }
     if (p.isPro && p.status === "grace") {
       const until = p.graceUntil ? new Date(p.graceUntil) : null;
       return {
@@ -10019,6 +10048,12 @@
     if (typeof renderLockedNotice === "function") renderLockedNotice();
 
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
+
+    // The redeem row: signed-in, not already Pro. Deliberately NOT gated on
+    // billingLive() — a code is exactly what someone uses on a deployment
+    // with no Stripe keys, the same exception the vault link makes.
+    document.getElementById("passkeyRow")
+      .classList.toggle("hidden", !currentUser || pro);
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already
@@ -10276,6 +10311,52 @@
   }
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
+
+  document.getElementById("passkeyToggle").addEventListener("click", (e) => {
+    const form = document.getElementById("passkeyForm");
+    const open = form.classList.toggle("hidden");
+    e.currentTarget.setAttribute("aria-expanded", String(!open));
+    if (!open) document.getElementById("passkeyInput").focus();
+  });
+
+  async function submitPasskey() {
+    const input = document.getElementById("passkeyInput");
+    const btn = document.getElementById("passkeySubmit");
+    const msg = document.getElementById("passkeyMsg");
+    const code = input.value.trim();
+    if (!code) return;
+    msg.classList.add("hidden");
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Checking…";
+    try {
+      const r = await fetch("/api/redeem-passkey", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passkey: code }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Could not redeem that code.");
+      input.value = "";
+      // Re-read /api/config so every entitlement-driven surface updates in
+      // place — the same seam used after a checkout return and a sign-in.
+      await refreshProConfig();
+      closePricingModal();
+    } catch (ex) {
+      msg.textContent = ex.message;
+      msg.className = "mt-2 text-sm text-red-700";
+      msg.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
+  document.getElementById("passkeySubmit").addEventListener("click", submitPasskey);
+  document.getElementById("passkeyInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submitPasskey(); }
+  });
+
   // The Direction-J comparison table, behind a disclosure: the modal's job is
   // a decision, the table is the spec sheet for whoever wants it.
   document.getElementById("pricingCompareBtn").addEventListener("click", (e) => {

@@ -229,6 +229,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       /* divide-* sets border-colour on CHILDREN, so the selector must match
          Tailwind's own shape or it silently does nothing. */
       [data-theme="dark"] .divide-\[\#F0EFE9\] > :not([hidden]) ~ :not([hidden]) { border-color: var(--hair) }
+
+      /* Leaflet's own chrome (zoom/layers controls, attribution, popups) --
+         not a Tailwind utility, so it needs its own rules rather than a
+         class-name bridge entry. The tile layer and pins theme separately
+         in JS (see basemapUrl()/pinColors() above renderMap in the script
+         below); this is the surrounding control/popup furniture only. */
+      [data-theme="dark"] .leaflet-control-attribution,
+      [data-theme="dark"] .leaflet-bar a {
+        background: var(--card); color: var(--ink-3); border-color: var(--edge);
+      }
+      [data-theme="dark"] .leaflet-bar a:hover { background: var(--wash) }
+      [data-theme="dark"] .leaflet-popup-content-wrapper,
+      [data-theme="dark"] .leaflet-popup-tip { background: var(--card); color: var(--ink) }
     }
 
     /* ------------------------------------------------------------------------
@@ -2578,6 +2591,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>
               <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
             </svg>
+            <!-- .rd-wordmark's default colours (var(--ink) / var(--red))
+                 are for the wordmark on the page background, which themes.
+                 This one sits on bg-[#1A2433] -- a slab that is dark in
+                 BOTH themes (light: #1A2433, dark mode's own --slab:
+                 #1E293B; see the "surfaces already dark in light mode
+                 lift" comment in theme.js) -- so white text and this
+                 bright accent red read correctly regardless of site theme,
+                 the same reasoning already applied to plain text-white
+                 elsewhere on this dark footer. Left literal on purpose;
+                 not a missed dark-mode case. -->
             <span class="rd-wordmark uppercase" style="color:#fff">Comp<b style="color:#EF4444">Ninja</b></span>
           </div>
           <p class="mt-3 leading-relaxed text-[#8F99A8]">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage: we connect you with local brokers for opinions of value. Comparables derive from publicly available data; verify independently before underwriting.</p>
@@ -6645,7 +6668,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const undo = document.createElement("button");
     undo.type = "button";
     undo.textContent = "Undo";
-    undo.style.cssText = "text-decoration:underline;color:#B91C1C;background:none;border:0;padding:0;font:inherit;cursor:pointer";
+    undo.style.cssText = "text-decoration:underline;color:var(--red);background:none;border:0;padding:0;font:inherit;cursor:pointer";
     undo.addEventListener("click", () => {
       propertyTypeSel.value = prevType;
       // selectedLookbackMonths() returns null for a half-typed custom window —
@@ -6967,7 +6990,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           `alt="" onerror="this.style.display='none'">`;
       }
     }
-    return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:#e2e8f0">` +
+    // The placeholder container behind the stitched tiles is chrome, not
+    // photo, so it themes; the red point-marker on the photo and the Esri
+    // caption chip below stay literal in both themes -- they sit on the
+    // photograph itself, whose colours a site theme has no business
+    // changing (same reasoning as the Street View caption chip elsewhere).
+    const p = pinColors();
+    return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:${p.aerialBg}">` +
       imgs +
       `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
       `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
@@ -7017,6 +7046,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (e.target.parentElement === document.getElementById("reportArea")) e.target.classList.add("entrance-done");
   });
 
+  // CartoDB serves light_all and dark_all at the same URL shape, keyless,
+  // under the same terms, so this is a one-word swap. The pins change with
+  // it -- see pinColors() below.
+  const isDark = () => document.documentElement.getAttribute("data-theme") === "dark";
+  const basemapUrl = () =>
+    `https://{s}.basemaps.cartocdn.com/${isDark() ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`;
+  // The comp roundel is dark-on-white for a light basemap. On a dark
+  // basemap that is invisible, so it inverts. The subject pin keeps its
+  // brand red either way -- it is the one mark that must never change
+  // meaning -- and only its border flips. aerialBg is the keyless aerial
+  // popup's placeholder container (visible only while its Esri tiles are
+  // loading or on a failed tile) matched to the popup chrome around it --
+  // the point marker drawn ON that photo, and the Street View caption chip
+  // beside it, stay literal in both themes on purpose (see aerialThumb):
+  // they sit on a photograph, whose own colours don't change with the site
+  // theme, the same reasoning as the caption chip.
+  const pinColors = () => isDark()
+    ? { pinInk: "#E2E8F0", pinInkText: "#0F172A", pinEdge: "#0F172A", pinSubject: "#EF4444", aerialBg: "#1E293B" }
+    : { pinInk: "#1e293b", pinInkText: "#fff",    pinEdge: "#fff",    pinSubject: "#DC2626", aerialBg: "#e2e8f0" };
+
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
     const gen = ++mapGeneration;
@@ -7064,7 +7113,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // "Map" — Carto Positron, muted light-gray so the pins carry the color;
     // "Satellite" — Esri photorealistic imagery with a street/place label
     // overlay. The choice persists and is reapplied on every report's map.
-    const streetLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    const streetLayer = L.tileLayer(basemapUrl(), {
       maxZoom: 18,
       crossOrigin: "anonymous",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -7349,9 +7398,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       });
     };
     const addSubjMarker = (lat, lng) => {
+      const p = pinColors();
       const subjIcon = L.divIcon({
         className: "",
-        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
+        html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${p.pinSubject};transform:rotate(-45deg);border:2px solid ${p.pinEdge};box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>`,
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
@@ -7364,9 +7414,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     };
     const addCompMarker = (c, lat, lng) => {
       // Each pin carries the comp's report-wide number, matching its table row.
+      const p = pinColors();
       const dotIcon = L.divIcon({
         className: "",
-        html: '<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#1e293b;color:#fff;font:600 11px Inter,sans-serif;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.35)">' + (c._num || "") + '</div>',
+        html: `<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${p.pinInk};color:${p.pinInkText};font:600 11px Inter,sans-serif;border:2px solid ${p.pinEdge};box-shadow:0 1px 3px rgb(0 0 0/.35)">` + (c._num || "") + '</div>',
         iconSize: [20, 20], iconAnchor: [10, 10],
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
@@ -7496,6 +7547,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // Corrected coordinates ride along in the saved copy of the report.
       if (!meta.sample && !meta.fromHistory && !meta.shared) saveHistory(meta, parsed);
     })();
+  }
+
+  // Called by the theme toggle. Both the tile layer and every pin are
+  // built from the theme, so a report already on screen has to redraw.
+  // renderMap is idempotent, so re-running it is the whole implementation.
+  // Guarded because the toggle also exists on a page with no report yet.
+  // Deliberately NOT passed isRetry -- that third argument drives the
+  // geocode-retry path, and forcing it here would re-run geocoding (an
+  // async network round trip) on every theme toggle.
+  function refreshMapTheme() {
+    if (currentParsed) renderMap(currentParsed, currentMeta);
   }
 
   // ----------------------------------------------------------------------------
@@ -12856,14 +12918,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } else {
       mapEl.classList.remove("hidden");
       confirmMapInstance = L.map("confirmMap", { scrollWheelZoom: false, zoomControl: false });
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer(basemapUrl(), {
         maxZoom: 18,
         crossOrigin: "anonymous",
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       }).addTo(confirmMapInstance);
+      const p = pinColors();
       const pinIcon = L.divIcon({
         className: "",
-        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
+        html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${p.pinSubject};transform:rotate(-45deg);border:2px solid ${p.pinEdge};box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>`,
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       L.marker([geo.lat, geo.lng], { icon: pinIcon }).addTo(confirmMapInstance);

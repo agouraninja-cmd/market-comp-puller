@@ -577,6 +577,20 @@ test("no raw hex colour remains in vault-page.js's generated markup (the JS half
     `raw hex colour(s) in vault-page.js's generated markup, outside the <style> block: ${offenders.join(", ")}`);
 });
 
+test("a dark basemap never ships without the pin recolour", () => {
+  // The comp roundel is drawn to read against a LIGHT basemap. On
+  // dark_all it disappears. These two must land together. pinColors()'s
+  // returned keys are named pinInk/pinInkText/pinEdge/pinSubject (not the
+  // brief's generic ink/edge/subject) specifically so this substring check
+  // is a real, load-bearing fact about the code rather than an incidental
+  // one -- "pinInk" only appears in the file because the pin-recolour
+  // function actually declares a property by that name.
+  const dark = INDEX.includes("dark_all");
+  const pins = INDEX.includes("pinInk") || INDEX.includes("--pin-ink");
+  assert.equal(dark, pins,
+    "dark_all tiles and the pin recolour must ship together, not one without the other");
+});
+
 test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {
   // Found live during 2026-08-10 fix round 1: a comment reading
   // "--ok-*/--err-* triads" contains the literal sequence "*/" mid-sentence

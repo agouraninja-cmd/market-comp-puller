@@ -129,7 +129,12 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = "claude-sonnet-4-6";
+// Overridable so the eval harness can score one model against another
+// (run-eval.js). Unset everywhere in production, which keeps this exactly
+// the constant it has always been. If the API 404s on a model id, list the
+// live ones via GET https://api.anthropic.com/v1/models and update this
+// default.
+const MODEL = (process.env.MODEL || "claude-sonnet-4-6").trim();
 
 // Optional shared password. If set, visitors must enter it before searching.
 // Leave it unset to keep the app open.
@@ -8878,7 +8883,7 @@ const server = http.createServer((req, res) => {
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream, fresh } = JSON.parse(body || "{}");
         // Entitlements are resolved BEFORE anything else reads the body's
         // knobs: the lookback ceiling below depends on them, and every exit
         // from here on serializes through gateReport().
@@ -8896,6 +8901,13 @@ const server = http.createServer((req, res) => {
         // would publish four comps. ADMIN_KEY is the existing internal
         // credential (same one the leads/corpus CSV downloads use).
         const internal = ADMIN_KEY && req.headers["x-admin-key"] === ADMIN_KEY;
+        // The eval harness needs a genuinely fresh search: a cached report
+        // would score the model that WROTE it, silently reporting "no
+        // difference" between two models. Internal callers only, and it
+        // skips the cache READ only, never the write. Both read paths are
+        // guarded below, because the derivable-window path can serve a
+        // report derived from the previous run's entry just as easily.
+        const skipCache = internal && fresh === true;
         // Opt in via the body, not Accept: the body is already parsed, and
         // gen-market-seed.js (the other /api/comps caller) simply never sends
         // the flag, so it keeps getting one plain JSON body.
@@ -9025,7 +9037,7 @@ const server = http.createServer((req, res) => {
         const consumeGuestSearch = (headersOpen) =>
           consumeGuestSearchFor(guestGate, req, res, headersOpen);
 
-        const cached = await getCachedSearch(cacheKey);
+        const cached = skipCache ? null : await getCachedSearch(cacheKey);
         if (cached) {
           // Legacy cache entries predate $/SF reconciliation — correct them at
           // read time (idempotent, so re-hitting the in-memory object is fine).
@@ -9042,7 +9054,7 @@ const server = http.createServer((req, res) => {
         // one, so a cached longer-window report for the same request can be
         // filtered down to this window instead of paying for a fresh search
         // (see findDerivableReport for the quality floors).
-        const dw = await findDerivableReport({
+        const dw = skipCache ? null : await findDerivableReport({
           address: addressOk, type: typeOk, note: noteOk,
           maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
           verifiedComps, subjectDetails: detailsOk,
@@ -12890,6 +12902,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
+  if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)

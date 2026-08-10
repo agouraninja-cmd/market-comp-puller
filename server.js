@@ -3776,7 +3776,7 @@ function noteUpstreamFailure(status, detail) {
   const billing = status === 401 || status === 403 ||
     /credit balance|purchase credits|billing|payment/i.test(msg);
   if (!billing) {
-    console.error(`Anthropic call failed (${status}): ${msg.slice(0, 200)}`);
+    console.error(`${PROVIDER.logLabel} call failed (${status}): ${msg.slice(0, 200)}`);
     return;
   }
 
@@ -3945,8 +3945,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const timedOut = (cause) => {
     const waited = ((Date.now() - startedAt) / 1000).toFixed(1);
     console.error(cause === "idle"
-      ? `Anthropic call [${lane}] ABORTED: no data for ${STREAM_IDLE_MS / 1000}s (idle watchdog) after ${waited}s. The call may have been alive and billed.`
-      : `Anthropic call [${lane}] ABORTED: exceeded its ${(callDeadlineMs / 1000).toFixed(0)}s deadline after ${waited}s.`);
+      ? `${PROVIDER.logLabel} call [${lane}] ABORTED: no data for ${STREAM_IDLE_MS / 1000}s (idle watchdog) after ${waited}s. The call may have been alive and billed.`
+      : `${PROVIDER.logLabel} call [${lane}] ABORTED: exceeded its ${(callDeadlineMs / 1000).toFixed(0)}s deadline after ${waited}s.`);
     const e = new Error("The search took too long and was stopped. Please try again.");
     e.timeoutCause = cause;
     return e;
@@ -3979,8 +3979,23 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   let stopReason = "";
 
   if (!useStream) {
-    clearTimeout(timer);
-    const parsed = PROVIDER.parseResponse(await r.json());
+    // fetch() resolves at the HEADERS, not the body — the streaming branch
+    // below already knows this (its own clearTimeout sits in a `finally`
+    // after the read loop). Clearing the timer here, before `await r.json()`,
+    // left the body read with no deadline and no abort coverage; that was a
+    // tolerable gap when non-streaming was only the STREAM_ANTHROPIC=off
+    // debug path, but it is now the ONLY path for a whole provider (Gemini
+    // has no STREAM_IDLE_MS watchdog either), so a wedged call could hang
+    // forever with nothing to time it out.
+    let parsed;
+    try {
+      parsed = PROVIDER.parseResponse(await r.json());
+    } catch (err) {
+      if (err && err.name === "AbortError") throw timedOut("deadline");
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     text = parsed.text;
     searches = parsed.searches;
     usage = parsed.usage;
@@ -7252,14 +7267,16 @@ function render(d){
   var upAlarm = (u.failures||0) ? (
     "<div class='card alarm'>"+
     "<h2>"+
-    (u.billing?"Comp search is DOWN &mdash; Anthropic API billing":"Anthropic calls are failing")+"</h2>"+
+    (u.billing?"Comp search is DOWN &mdash; ${PROVIDER.logLabel} API billing":"${PROVIDER.logLabel} calls are failing")+"</h2>"+
     (u.billing
       ? "<p><b>The API credit balance is exhausted or the key is not entitled, so every search "+
         "is failing site-wide.</b> Buy credits at <code>console.anthropic.com</code> &rarr; Plans &amp; "+
         "Billing for the org that owns <code>ANTHROPIC_API_KEY</code>, and switch on auto-reload. "+
         "This is <b>not</b> covered by a Claude Pro or Team subscription &mdash; API credits are a "+
-        "separate prepaid balance. No redeploy needed; the next search picks it up.</p>"
-      : "<p>Some Anthropic calls are returning errors. If these are 429s or 529s the site is "+
+        "separate prepaid balance. No redeploy needed; the next search picks it up. (This paragraph "+
+        "describes Anthropic's own billing; if the active search provider is ${PROVIDER.logLabel} "+
+        "and it is not Anthropic, check that provider's own billing console instead.)</p>"
+      : "<p>Some ${PROVIDER.logLabel} calls are returning errors. If these are 429s or 529s the site is "+
         "just busy and retries absorb it; anything else is worth reading below.</p>")+
     "<p class=muted>"+esc(u.failures||0)+" failure(s) since the last restart"+
     (u.lastStatus?" &middot; last status "+esc(u.lastStatus):"")+
@@ -9404,8 +9421,8 @@ function renderAlerts(d){
   var up=al&&al.upstream,co=al&&al.corpus;
   if(up&&up.failures){
     out.push(up.billing
-      ? 'Comp search is DOWN: the Anthropic API is refusing every call for billing reasons. <a href="/admin">Details on Analytics</a>'
-      : plural(up.failures,"Anthropic call failure","Anthropic call failures")+' since the last restart'+(up.lastStatus?" (last status "+esc(up.lastStatus)+")":"")+'. <a href="/admin">Details on Analytics</a>');
+      ? 'Comp search is DOWN: the ${PROVIDER.logLabel} API is refusing every call for billing reasons. <a href="/admin">Details on Analytics</a>'
+      : plural(up.failures,"${PROVIDER.logLabel} call failure","${PROVIDER.logLabel} call failures")+' since the last restart'+(up.lastStatus?" (last status "+esc(up.lastStatus)+")":"")+'. <a href="/admin">Details on Analytics</a>');
   }
   if(co&&co.broken){
     out.push('Comp corpus is not persisting'+(co.schemaMismatch?", likely a missing column (check migrations/APPLIED.md)":"")+'. <a href="/admin">Details on Analytics</a>');
@@ -9538,9 +9555,9 @@ const server = http.createServer((req, res) => {
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
-        if (!API_KEY) {
+        if (!providerApiKey()) {
           return sendJson(res, 500, {
-            error: "Server is missing the ANTHROPIC_API_KEY environment variable.",
+            error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.`,
           });
         }
         // Validated/clamped so arbitrary client values can't reshape the prompt.
@@ -9665,7 +9682,7 @@ const server = http.createServer((req, res) => {
           // Legacy cache entries predate $/SF reconciliation — correct them at
           // read time (idempotent, so re-hitting the in-memory object is fine).
           reconcilePricePerSqft(cached);
-          console.log(`Cache hit (no Anthropic call): ${addressOk} — ${typeOk}`);
+          console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
@@ -9683,7 +9700,7 @@ const server = http.createServer((req, res) => {
           verifiedComps, subjectDetails: detailsOk,
         }, monthsOk, txFocusOk, maxCompsOk);
         if (dw) {
-          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no Anthropic call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
+          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
           // Side effects mirror a direct cache hit, fed the PARENT payload —
           // the harvester dedupes, and the fuller comp list is the better feed.
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
@@ -9885,8 +9902,8 @@ const server = http.createServer((req, res) => {
             error: "Market generation is limited to a few per visitor per 15 minutes. Try again shortly, or run a valuation for a specific property instead.",
           });
         }
-        if (!API_KEY) {
-          return sendJson(res, 500, { error: "Server is missing the ANTHROPIC_API_KEY environment variable." });
+        if (!providerApiKey()) {
+          return sendJson(res, 500, { error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.` });
         }
 
         const job = joinExploreJob(slug, (emit) => (async () => {
@@ -13542,7 +13559,7 @@ const server = http.createServer((req, res) => {
     // test can verify the responder is ITS child and not a foreign server on
     // the same port — two concurrent suite runs once cross-talked exactly
     // that way. Absent in production, where the env var is never set.
-    return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY),
+    return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
       provider: PROVIDER.name, search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
@@ -14030,8 +14047,8 @@ server.listen(PORT, () => {
   loadDynamicMarketPages().then((n) => {
     console.log(`🧭 Market Explorer: ${n} visitor-generated page(s) loaded (${DB_CONFIGURED ? "Supabase market_pages" : path.basename(DYNAMIC_MARKETS_FILE) + " — EPHEMERAL on most hosts; run the market_pages DDL in Supabase for durable storage"}).`);
   });
-  if (!API_KEY) {
-    console.warn("⚠  ANTHROPIC_API_KEY is not set — /api/comps will return an error until you set it.");
+  if (!providerApiKey()) {
+    console.warn(`⚠  ${PROVIDER.apiKeyEnv} is not set — /api/comps will return an error until you set it.`);
   }
   console.log(APP_PASSWORD
     ? "🔒 Password gate ENABLED (APP_PASSWORD is set)."

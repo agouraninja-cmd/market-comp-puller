@@ -117,6 +117,13 @@ function costOf(usage) {
 // 4,207 in / 928 out / 6,473 thought, so about 7,400 output-equivalent tokens
 // is the real figure; 12,000 leaves headroom without inventing a 9 minute
 // ceiling.
+//
+// This figure is load-bearing beyond just sizing the deadline: this provider
+// has no streaming capability, so STREAM_IDLE_MS (server.js's per-chunk idle
+// watchdog) never applies to it, that watchdog only exists inside the
+// streaming branch. On Gemini's non-streaming path, the deadline derived from
+// this number is the ONLY thing standing between a wedged call and a request
+// that hangs forever.
 function deadlineTokens() {
   return 12000;
 }

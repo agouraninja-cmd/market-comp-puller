@@ -574,7 +574,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
            #addSec, a panel that ships CLOSED — a message written there is
            invisible to a broker who never opened the uploader. Edit and
            Delete get their own target instead. -->
-      <p id="compMsg" class="msg hide"></p>
+      <p id="compMsg" class="msg hide" aria-live="polite"></p>
       <div class="tw"><table id="tbl">
         <thead><tr>
           <th data-k="address">Address</th><th data-k="market">Market</th>
@@ -1833,6 +1833,15 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // an Industrial clear height on a Multifamily deal. The map's own keys are
   // also the property-type list the select offers, so there is one list to
   // keep in step rather than two.
+  // ⚠ A FOURTH copy of the per-type field map. TYPE_COMP_FIELDS in
+  // server.js is the source of truth (VAULT.PROPERTY_TYPES/
+  // OPTIONAL_SPEC_COLUMNS in broker-vault.js are its mirror for the vault); a
+  // field added there through the add-comp-field skill will import, store,
+  // export and display correctly but never appear on this form unless this
+  // map is updated too. test/vault-page.test.js pins Object.keys(TYPE_FIELDS)
+  // against VAULT.PROPERTY_TYPES and the union of its values against
+  // VAULT.OPTIONAL_SPEC_COLUMNS, so drift here fails the build instead of
+  // shipping silently.
   var TYPE_FIELDS={
     Industrial:["clear_height","dock_doors"],
     Office:["building_class","floor_plate"],
@@ -1893,8 +1902,17 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       if(el&&el.value.trim())body[f]=el.value.trim();
     });
     var b=$("addCompBtn"); b.disabled=true;
-    var r=await fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
-      headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    var r;
+    try{
+      r=await fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    }catch(err){
+      // A rejected fetch (offline, DNS, a dropped connection) never reaches
+      // the r.ok check below, and without this the button was left disabled
+      // forever — the form was dead until reload.
+      b.disabled=false;
+      return addCompMsg("That didn't reach the server. Nothing was changed.",true);
+    }
     var j=await r.json().catch(function(){return{};});
     b.disabled=false;
     // The server returns EVERY problem with the row, not just the first, so
@@ -1978,16 +1996,16 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){
-          $("res").innerHTML='<div class="msg bad">'+esc(o.j.error||"That didn\\'t go through.")+"</div>";
+          compMsg(o.j.error||"That didn't go through.",true);
         }else if(o.j.published&&o.j.creditedTo){
-          $("res").innerHTML='<div class="msg ok">Published, credited to '+esc(o.j.creditedTo)+".</div>";
+          compMsg("Published, credited to "+o.j.creditedTo+".");
         }else{
-          $("res").innerHTML="";
+          compMsg("");
         }
         load();
       })
       .catch(function(){ b.disabled=false;
-        $("res").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+        compMsg("That didn't reach the server. Nothing was changed.",true); });
   });
 
   // ---- Row edit / delete -----------------------------------------------
@@ -2014,8 +2032,15 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   async function deleteComp(id){
     // Hard delete, no undo: confirm by name rather than with a generic prompt.
     if(!confirm("Delete this comp? This cannot be undone."))return;
-    var r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
-      {method:"DELETE",credentials:"same-origin"});
+    var r;
+    try{
+      r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
+        {method:"DELETE",credentials:"same-origin"});
+    }catch(err){
+      // On a flaky connection this used to give the broker no signal at all —
+      // the click just went nowhere.
+      return compMsg("That didn't reach the server. Nothing was changed.",true);
+    }
     var j=await r.json().catch(function(){return{};});
     if(!r.ok)return compMsg(j.error||"Could not delete that comp.",true);
     load();
@@ -2035,9 +2060,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       if(v!==was){patch[f]=v;any=true;}
     });
     if(!any){closeEditor();return;}
-    var r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
-      method:"PATCH",credentials:"same-origin",
-      headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
+    var r;
+    try{
+      r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
+        method:"PATCH",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
+    }catch(err){
+      return compMsg("That didn't reach the server. Nothing was changed.",true);
+    }
     var j=await r.json().catch(function(){return{};});
     // 400 and 409 both carry a sentence written for the broker, and a 400
     // lists EVERY problem with the row rather than just the first. Show it

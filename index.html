@@ -2443,6 +2443,10 @@
   let showUsd = false;
   let currentComps = [];
   let lastValuation = null;          // {low, likely, high, median_psf} from the last hero render
+  // The per-SF band the hero last displayed, stashed for the table's
+  // screen-only outlier chips. One computation feeds both surfaces, so the
+  // hero and the chips can never disagree. Null when no estimate rendered.
+  let currentPsfBand = null;
   let pendingPortfolioRefresh = null; // {id, address, type} of a portfolio item awaiting a fresh billed report
   let currentMeta = null;
   let currentParsed = null;   // last rendered report, for client-side recomputes
@@ -3659,6 +3663,7 @@
     const psfBand = val
       ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
       : null;
+    currentPsfBand = psfBand;
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
     const weighNote = " Recent, similar-size, well-sourced comps count more"
@@ -10152,6 +10157,24 @@
     return btn;
   }
 
+  // Screen-only outlier chip: the curation aid for the person deciding what
+  // to exclude. Rendered ONLY into the curation cell (whose existence is
+  // already gated on curationControlsAllowed(), i.e. never a shared view)
+  // and additionally no-print/no-capture, so it cannot reach a print, a PNG,
+  // or anyone the report is sent to. Derived at render time from the same
+  // band the hero displays; nothing is stored.
+  function buildOutlierChip(comp) {
+    if (!currentPsfBand || isExcluded(comp) || comp.locked) return null;
+    if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return null;
+    const o = VALUATION.outlierOf(salePsfOf(comp), currentPsfBand);
+    if (!o) return null;
+    const chip = document.createElement("span");
+    chip.className = "rd-chip no-print no-capture whitespace-nowrap";
+    chip.textContent = `${o.pct}% ${o.dir} the range`;
+    chip.title = `This sale sits ${o.pct}% ${o.dir} the ${formatUsd(currentPsfBand.low, { maximumFractionDigits: 0 })}-${formatUsd(currentPsfBand.high, { maximumFractionDigits: 0 })}/SF range the estimate uses. Worth a look; Exclude removes it from the math.`;
+    return chip;
+  }
+
   // ----------------------------------------------------------------------------
   // "From CompNinja's records" — corpus rows for this market+type, offered for
   // one-click addition into the curated set. Pure read; zero AI cost. Hidden
@@ -10571,6 +10594,8 @@
       if (showCuration) {
         const actionTd = document.createElement("td");
         actionTd.className = "no-print no-capture px-4 py-3 align-top text-right whitespace-nowrap";
+        const chip = buildOutlierChip(comp);
+        if (chip) { chip.classList.add("mr-2"); actionTd.appendChild(chip); }
         actionTd.appendChild(buildCurationControl(comp));
         tr.appendChild(actionTd);
       }
@@ -10743,6 +10768,8 @@
       if (showCuration) {
         const ctrlWrap = document.createElement("div");
         ctrlWrap.className = "no-print no-capture cur-ctrl shrink-0 ml-1.5 mt-0.5";
+        const chip = buildOutlierChip(comp);
+        if (chip) { chip.classList.add("mr-2"); ctrlWrap.appendChild(chip); }
         ctrlWrap.appendChild(buildCurationControl(comp));
         head.appendChild(ctrlWrap);
       }

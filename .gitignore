@@ -67,3 +67,6 @@ compninja-ai-costs.csv
 # its first rule is never to `git add -A`; an untracked pile in the root is a
 # standing invitation to break that rule exactly once.
 .playwright-mcp/
+
+# SDD scratch: ledgers, briefs, review packages. Recreated per run.
+.superpowers/

@@ -52,7 +52,7 @@
 
 **Interfaces:**
 - Consumes: nothing (first task)
-- Produces: a module exporting `name`, `defaultModel`, `logLabel`, `capabilities`,
+- Produces: a module exporting `name`, `defaultModel`, `logLabel`, `apiKeyEnv`, `capabilities`,
   `buildRequestBody({model, prompt, maxComps, searchUses, stream})`,
   `requestInit({apiKey})`, `parseResponse(data)`, `normalizeUsage(raw)`, `costOf(usage)`.
   Normalized usage shape is `{input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}`.
@@ -253,6 +253,7 @@ function costOf(usage) {
 module.exports = {
   name: "anthropic",
   logLabel: "Anthropic",
+  apiKeyEnv: "ANTHROPIC_API_KEY",
   defaultModel: "claude-sonnet-4-6",
   capabilities,
   buildRequestBody,
@@ -412,7 +413,7 @@ git commit -m "Wire Anthropic search through the provider module, no behavior ch
 
 **Interfaces:**
 - Consumes: nothing from Task 1 at runtime, but must export the identical surface so `server.js` can hold either.
-- Produces: the same nine exports as Task 1.
+- Produces: the same ten exports as Task 1, including `apiKeyEnv: "GEMINI_API_KEY"`.
 
 - [ ] **Step 1: Record the fixture**
 
@@ -461,7 +462,7 @@ test("declares that it cannot cap the search budget", () => {
 });
 
 test("exports the same surface as the Anthropic module", () => {
-  for (const k of ["name", "logLabel", "defaultModel", "capabilities", "buildRequestBody",
+  for (const k of ["name", "logLabel", "defaultModel", "apiKeyEnv", "capabilities", "buildRequestBody",
                    "requestInit", "parseResponse", "normalizeUsage", "costOf"]) {
     assert.ok(k in P, `missing export: ${k}`);
     assert.equal(typeof P[k], typeof A[k], `export ${k} differs in type from anthropic`);
@@ -616,6 +617,7 @@ function costOf(usage) {
 module.exports = {
   name: "gemini",
   logLabel: "Gemini",
+  apiKeyEnv: "GEMINI_API_KEY",
   defaultModel: "gemini-3.6-flash",
   capabilities,
   buildRequestBody,
@@ -648,7 +650,7 @@ git commit -m "Add pure Gemini search-provider module (not yet wired)"
 - Modify: `CLAUDE.md` (document the new env var)
 
 **Interfaces:**
-- Consumes: Task 1 and Task 3 modules, both satisfying the same nine-export contract.
+- Consumes: Task 1 and Task 3 modules, both satisfying the same ten-export contract.
 - Produces: `SEARCH_PROVIDER` env var; `PROVIDER` now resolved from a registry.
 
 - [ ] **Step 1: Replace the fixed require with a registry**
@@ -672,20 +674,27 @@ if (!PROVIDER) {
 const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
 ```
 
-- [ ] **Step 2: Select the API key by provider capability, not by name**
+- [ ] **Step 2: Select the API key from the provider's declared env var**
 
-`API_KEY` is currently the Anthropic key. Add, next to it:
+Each provider declares which environment variable holds its key
+(`apiKeyEnv`, added in Tasks 1 and 3), so `server.js` never tests a provider
+name to choose a credential. Add next to the existing `API_KEY`:
 
 ```js
-const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || "").trim();
-// Each provider authenticates with its own key. Reading this off the provider
-// object keeps the choice in one place.
-const providerApiKey = () => (PROVIDER.name === "gemini" ? GEMINI_API_KEY : API_KEY);
+// The provider names its own credential var, so this stays a lookup rather
+// than a branch. Testing PROVIDER.name here would be the first crack in the
+// never-branch-on-name rule, and credential selection is exactly where such
+// exceptions look most reasonable.
+const providerApiKey = () => (process.env[PROVIDER.apiKeyEnv] || "").trim();
 ```
 
-Then change Task 2's `PROVIDER.requestInit({ apiKey: API_KEY })` to `PROVIDER.requestInit({ apiKey: providerApiKey() })`.
+Then change Task 2's `PROVIDER.requestInit({ apiKey: API_KEY })` to
+`PROVIDER.requestInit({ apiKey: providerApiKey() })`.
 
-This is the one place a provider name is legitimately read, because it is choosing a credential rather than a behavior. Everything else must branch on `capabilities`.
+Leave the existing `const API_KEY = process.env.ANTHROPIC_API_KEY;` alone: it is
+read elsewhere in `server.js` (the `hasKey` health field among them) and is
+unrelated to provider selection. For the Anthropic provider `providerApiKey()`
+returns the same value.
 
 - [ ] **Step 3: Branch the deadline on the capability**
 
@@ -904,7 +913,7 @@ git commit -m "Record Gemini full-pipeline validation results"
 
 **Deliberately deferred**, per the spec's own phasing: `costOf` is exported and unit-tested in Tasks 1 and 3 but not yet wired into the analytics event or the `/admin` tile, which is phase 3. Streaming parity is phase 4, which is why `search-provider-gemini.js` declares `streaming: false` and Task 4 Step 4 forces the non-streaming path. Fallback is phase 5 and appears nowhere here.
 
-**Type consistency.** Both modules export the identical nine-name surface, asserted directly by the second test in Task 3. Normalized usage is `{input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}` in Tasks 1, 2, 3 and 4 consistently. `parseResponse` returns `{text, searches, stopReason, usage}` in both.
+**Type consistency.** Both modules export the identical ten-name surface, asserted directly by the second test in Task 3. Normalized usage is `{input_tokens, output_tokens, cache_read_tokens, cache_write_tokens}` in Tasks 1, 2, 3 and 4 consistently. `parseResponse` returns `{text, searches, stopReason, usage}` in both.
 
 **Two defects found and fixed during this review, worth recording because they
 were both in the plan rather than in the code.** Task 5 originally asserted on

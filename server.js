@@ -6374,6 +6374,9 @@ function renderPrivacyPageHTML(signedIn) {
     `<li><strong>Anthropic</strong> performs the AI-assisted comparable search. It receives the ` +
     `property address, property type, and the building attributes you enter. It does not receive the ` +
     `financial inputs described in Section 2.</li>` +
+    `<li><strong>Google</strong> (Gemini) may perform the AI-assisted comparable search. It receives ` +
+    `the same information as Anthropic above, and does not receive the financial inputs described in ` +
+    `Section 2.</li>` +
     `<li><strong>Supabase</strong> provides database hosting, and <strong>Render</strong> provides ` +
     `application hosting.</li>` +
     `<li><strong>Stripe</strong> processes subscription payments. Card details are provided by you ` +

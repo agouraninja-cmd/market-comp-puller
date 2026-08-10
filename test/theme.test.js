@@ -372,3 +372,20 @@ test("no raw hex colour remains in index.html's style block outside :root/dark d
   }
   assert.deepEqual(offenders, [], `raw hex colour(s) outside the token system: ${offenders.join(", ")}`);
 });
+
+test("index.html sets the theme before first paint", () => {
+  const head = INDEX.slice(0, INDEX.indexOf("<style>"));
+  assert.ok(head.includes(`setAttribute("data-theme"`), "no boot script in <head>");
+  assert.ok(head.includes("prefers-color-scheme"), "boot script ignores the OS preference");
+});
+
+test("the PNG export is never dark", () => {
+  // html2canvas CLONES the document, so data-theme would ride along into
+  // the capture. A dark PNG pasted into a client's light deck reads as
+  // broken. The existing onclone hook strips it.
+  const clone = INDEX.slice(INDEX.indexOf("onclone:"), INDEX.indexOf("onclone:") + 800);
+  assert.ok(clone.includes(`removeAttribute("data-theme")`),
+    "onclone does not strip data-theme -- the PNG export would render dark");
+  assert.ok(INDEX.includes(`backgroundColor: "#FBFBF9"`),
+    "the PNG background is no longer the light paper");
+});

@@ -7,7 +7,17 @@
   <meta name="description" content="Enter any commercial property address and get recent sale and lease comps in under a minute. Free reports with maps, price per square foot, and PDF export." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://market-comp-puller.onrender.com/" />
-  <meta name="theme-color" content="#FBFBF9" />
+  <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)" />
+  <!-- Sets data-theme before the first frame. Render-blocking and inline on
+       purpose: anything deferred paints light first and flashes white on a
+       dark page. try/catch because localStorage throws outright in a Safari
+       private window, and a theme preference must never blank the app.
+       This is also the rollback lever -- nothing else ever sets data-theme,
+       so short-circuiting this script disables dark mode everywhere. -->
+  <script>(function(){try{var t=localStorage.getItem("theme");
+if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
   <!-- Social sharing previews -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CompNinja" />
@@ -1265,6 +1275,11 @@
              items on every screen; My Desk and Sign in are actions and stay
              visible. Mirrored (as a no-JS <details>) on the server-rendered
              market / brokers / how-it-works headers in server.js. -->
+        <button id="themeToggleApp" type="button" class="hover:text-[#1A2433] leading-none"
+          aria-label="Switch colour theme" title="Switch colour theme">
+          <svg viewBox="0 0 20 20" class="w-4 h-4" aria-hidden="true"><path fill="currentColor"
+            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
+        </button>
         <div id="exploreMenuWrap" class="relative">
           <button id="exploreMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
             class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
@@ -8147,6 +8162,19 @@
   document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
   document.getElementById("acctMenuBtn").addEventListener("click", () =>
     document.getElementById("acctMenu").classList.toggle("hidden"));
+  // The theme toggle. Two states: it flips and remembers. The OS
+  // preference is only the INITIAL default (see the boot script in
+  // <head>); once someone clicks, their explicit choice wins forever.
+  const themeToggleApp = document.getElementById("themeToggleApp");
+  if (themeToggleApp) themeToggleApp.addEventListener("click", () => {
+    const el = document.documentElement;
+    const dark = el.getAttribute("data-theme") === "dark";
+    if (dark) el.removeAttribute("data-theme"); else el.setAttribute("data-theme", "dark");
+    try { localStorage.setItem("theme", dark ? "light" : "dark"); } catch (e) {}
+    // The map's basemap is chosen per theme, so an open report must
+    // re-tile. renderMap() is idempotent and cheap; see Task 7.
+    if (typeof refreshMapTheme === "function") refreshMapTheme();
+  });
   document.getElementById("exploreMenuBtn").addEventListener("click", () => {
     const menu = document.getElementById("exploreMenu");
     menu.classList.toggle("hidden");
@@ -12210,6 +12238,13 @@
         // so without this override the whole capture paints transparent —
         // the export was a correctly-sized blank PNG.
         onclone: (doc) => {
+          // html2canvas clones the document, so data-theme rides along and
+          // the export would come out dark. A dark PNG pasted into a
+          // client's light deck reads as broken, so every export is light
+          // regardless of what the sender is looking at. The @media print
+          // block is protected differently -- the whole dark bridge lives
+          // inside @media screen, which a print run never sees.
+          doc.documentElement.removeAttribute("data-theme");
           const s = doc.createElement("style");
           s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }";
           doc.head.appendChild(s);

@@ -31,6 +31,8 @@
   const MIN_CORPUS_PPSF = 4;
   const MIN_CORPUS_CAP = 3;
   const MIN_BROKER_CAP = 2;
+  // ⚠ Same product rule as valuation.js's OUTLIER_PCT and outlierOf
+  // (the report table's screen-only outlier chips). Change the two together.
   const OUTLIER_PCT = 0.25;
 
   // Corpus provenance too weak to benchmark against: an estimate is a guess

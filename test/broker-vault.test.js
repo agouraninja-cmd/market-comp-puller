@@ -14,9 +14,12 @@ const assert = require("node:assert");
 const {
   parseCsv, normalizeHeader, parseMoney, parseNumber, parsePercent, parseDate,
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
-  templateCsv, TEMPLATE_COLUMNS, MAX_ROWS_PER_UPLOAD,
+  templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, MAX_ROWS_PER_UPLOAD,
   canPublish, creditName, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
+  suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
+  validateMapping, applyHeaderMapping,
+  inspectCsv, normalizedHeaderRow,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -557,4 +560,359 @@ test("enforceVerifiedFlags never throws on garbage", () => {
     assert.doesNotThrow(() => enforceVerifiedFlags(v, null));
   }
   assert.doesNotThrow(() => enforceVerifiedFlags([null, undefined, 5], [null]));
+});
+
+// --- column mapping: suggestions ------------------------------------------
+//
+// The module's standing rule is that we do not GUESS a broker's column names.
+// Suggesting is different from guessing only because the broker confirms it
+// against real sample values. The rule that keeps the difference real is the
+// ambiguity rule: when two columns could be the same field, we suggest
+// neither and make them choose.
+
+test("an alias resolves to its template field", () => {
+  const { mapping } = suggestMapping(["Property Address", "Sale Price", "SF"]);
+  assert.equal(mapping.property_address, "address");
+  assert.equal(mapping.sale_price, "price");
+  assert.equal(mapping.sf, "size_sqft");
+});
+
+test("a literal template name maps to itself", () => {
+  const { mapping } = suggestMapping(["address", "deal_date", "price"]);
+  assert.equal(mapping.address, "address");
+  assert.equal(mapping.deal_date, "deal_date");
+  assert.equal(mapping.price, "price");
+});
+
+test("TWO columns claiming one field suggest NEITHER", () => {
+  const { mapping, ambiguous } = suggestMapping(["Sale Price", "Purchase Price"]);
+  assert.equal(mapping.sale_price, undefined);
+  assert.equal(mapping.purchase_price, undefined);
+  assert.ok(ambiguous.includes("price"),
+    "the broker must be told which field was left for them to pick");
+});
+
+test("an exact template name beats an alias for the same field", () => {
+  const { mapping, ambiguous } = suggestMapping(["price", "Sale Price"]);
+  assert.equal(mapping.price, "price", "the literal column wins");
+  assert.equal(mapping.sale_price, undefined);
+  assert.equal(ambiguous.includes("price"), false,
+    "an exact match resolves the tie rather than creating one");
+});
+
+test("an unrecognised header suggests nothing and is not an error", () => {
+  const { mapping, ambiguous } = suggestMapping(["Broker Remarks 2", "address"]);
+  assert.equal(mapping.broker_remarks_2, undefined);
+  assert.deepEqual(ambiguous, []);
+});
+
+test("an empty header is ignored entirely", () => {
+  const { mapping } = suggestMapping(["address", ""]);
+  assert.equal(Object.keys(mapping).length, 1);
+});
+
+test("no alias is claimed by two different fields", () => {
+  const seen = new Map();
+  for (const [target, list] of Object.entries(HEADER_ALIASES)) {
+    for (const a of list) {
+      assert.equal(seen.has(a), false,
+        `"${a}" is an alias for both ${seen.get(a)} and ${target}`);
+      seen.set(a, target);
+    }
+  }
+});
+
+test("no alias collides with a literal field name", () => {
+  for (const [target, list] of Object.entries(HEADER_ALIASES)) {
+    for (const a of list) {
+      assert.equal(MAPPABLE_TARGETS.includes(a), false,
+        `"${a}" (alias for ${target}) is also a literal field name`);
+    }
+  }
+});
+
+test("suggestMapping(null) returns empty results rather than throwing", () => {
+  const { mapping, ambiguous } = suggestMapping(null);
+  assert.deepEqual(mapping, {});
+  assert.deepEqual(ambiguous, []);
+});
+
+test("two headers normalizing to the same string mark that target ambiguous", () => {
+  // Headers that normalize to "price": "price", "Price", "PRICE", "Sale Price" (if it were an alias)
+  // Using two aliases that both map to price: one existing and one hypothetical
+  // Actually, let's use headers that normalize to different targets to test collision.
+  // Better: use two columns that normalize to the exact same string (e.g., with spaces and hyphens)
+  const { mapping, ambiguous } = suggestMapping(["Sale Price", "sale-price"]);
+  // Both normalize to "sale_price" which is an alias for "price"
+  assert.equal(mapping.sale_price, undefined, "ambiguous alias should not be suggested");
+  assert.ok(ambiguous.includes("price"), "price target should be marked ambiguous");
+});
+
+// --- column mapping: refusals ------------------------------------------------
+//
+// These are the cases where a mapping could put a real number in the wrong
+// column. Every one refuses with a message naming the problem, in keeping with
+// the module's stance everywhere else.
+
+const HEADERS = ["Property Address", "Type", "Deal", "Closed", "Sale Price"];
+const GOOD = {
+  property_address: "address", type: "property_type",
+  deal: "transaction", closed: "deal_date", sale_price: "price",
+};
+
+test("a complete mapping is accepted", () => {
+  assert.deepEqual(validateMapping(GOOD, HEADERS), { ok: true, errors: [] });
+});
+
+test("a missing required field is refused and named", () => {
+  const { property_address, ...rest } = GOOD;
+  const r = validateMapping(rest, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /address/);
+});
+
+test("two columns claiming one field is refused", () => {
+  const r = validateMapping({ ...GOOD, type: "price" }, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /price/);
+});
+
+test("an unknown target is refused, not ignored", () => {
+  const r = validateMapping({ ...GOOD, sale_price: "profit" }, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /profit/);
+});
+
+test("a column that is not in the file is refused", () => {
+  const r = validateMapping({ ...GOOD, ghost_column: "notes" }, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /ghost_column/);
+});
+
+test("a column mapped to nothing is normal, not an error", () => {
+  const r = validateMapping(GOOD, [...HEADERS, "Listing Broker", "MLS ID"]);
+  assert.equal(r.ok, true);
+});
+
+test("a non-object mapping is refused rather than treated as empty", () => {
+  assert.equal(validateMapping(null, HEADERS).ok, false);
+  assert.equal(validateMapping("address", HEADERS).ok, false);
+});
+
+// --- column mapping: applying it ------------------------------------------
+
+test("mapped headers become template names and the rest are neutralised", () => {
+  const out = applyHeaderMapping(
+    ["property_address", "sale_price", "listing_broker"],
+    { property_address: "address", sale_price: "price" }
+  );
+  assert.deepEqual(out, ["address", "price", "_ignored_2"]);
+});
+
+// The reason unmapped columns are RENAMED rather than left alone: a file can
+// contain a literal `price` column that the broker deliberately did NOT map,
+// having chosen a different one. Left as-is it would collide and the row
+// builder would silently take whichever came last.
+test("an unmapped column named like a field cannot shadow the mapped one", () => {
+  const out = applyHeaderMapping(
+    ["price", "sale_price"],
+    { sale_price: "price" }
+  );
+  assert.deepEqual(out, ["_ignored_0", "price"]);
+});
+
+test("a mapped upload parses to the same rows as the template version", () => {
+  // The address is quoted because it contains commas (like every other
+  // multi-comma address literal elsewhere in this file) — an unquoted address
+  // here would split into extra CSV cells and misalign every column.
+  const mapped = parseUpload(
+    "Property Address,Type,Deal,Closed,Sale Price\n" +
+    "\"1234 W Main St, Boise, ID\",Industrial,Sale,2026-02-01,\"$2,450,000\"\n",
+    { mapping: { property_address: "address", type: "property_type",
+                 deal: "transaction", closed: "deal_date", sale_price: "price" } }
+  );
+  const template = parseUpload(
+    "address,property_type,transaction,deal_date,price\n" +
+    "\"1234 W Main St, Boise, ID\",Industrial,Sale,2026-02-01,\"$2,450,000\"\n"
+  );
+  assert.equal(mapped.ok, true, mapped.errors.join(" | "));
+  assert.deepEqual(mapped.rows, template.rows);
+});
+
+test("no mapping means byte-identical behaviour to before", () => {
+  const csv = "address,property_type,transaction,deal_date\n1 A St, Boise, ID,Land,Sale,2026-01-01\n";
+  assert.deepEqual(parseUpload(csv, { mapping: null }), parseUpload(csv));
+});
+
+test("an invalid mapping refuses the whole upload and writes nothing", () => {
+  const r = parseUpload("Foo,Bar\n1,2\n", { mapping: { foo: "price" } });
+  assert.equal(r.ok, false);
+  assert.equal(r.rows.length, 0);
+});
+
+// --- column mapping: inspection -------------------------------------------
+
+// Addresses contain commas, so an unquoted one silently becomes multiple CSV
+// columns and every field after it shifts. Quoted here (and below) so the
+// fixture is not misleading to the next reader.
+const REAL_EXPORT =
+  "Property Address,Type,Deal,Closed,Sale Price,SF,Listing Broker\n" +
+  "\"1234 W Main St, Boise, ID\",Industrial,Sale,2026-02-01,\"$2,450,000\",18400,Jane Doe\n" +
+  "\"55 N 9th St, Boise, ID\",Industrial,Sale,2026-01-14,\"$1,100,000\",9000,\n";
+
+test("inspection returns raw headers for display and normalised keys for mapping", () => {
+  const r = inspectCsv(REAL_EXPORT);
+  assert.equal(r.ok, true);
+  assert.equal(r.headers[0], "Property Address");
+  assert.equal(r.normalized[0], "property_address");
+  assert.equal(r.rowCount, 2);
+});
+
+test("samples are real values, skipping blanks, capped at the limit", () => {
+  const r = inspectCsv(REAL_EXPORT, { samples: 3 });
+  assert.deepEqual(r.samples.sale_price, ["$2,450,000", "$1,100,000"]);
+  assert.deepEqual(r.samples.listing_broker, ["Jane Doe"], "the blank second value is skipped");
+});
+
+test("a real export is not a clean template", () => {
+  assert.equal(inspectCsv(REAL_EXPORT).cleanTemplate, false);
+});
+
+// This is the SILENT failure the mapping screen exists to catch: only four
+// fields are required, so this file imports today with every size null and
+// nothing saying so.
+test("a file with an unrecognised column is not clean even though it would import", () => {
+  const r = inspectCsv("address,property_type,transaction,deal_date,Sq Ft\n\"1 A St, Boise, ID\",Land,Sale,2026-01-01,900\n");
+  assert.equal(r.cleanTemplate, false, "Sq Ft is unrecognised, so the broker must be asked");
+});
+
+test("our own template IS clean and skips the screen", () => {
+  assert.equal(inspectCsv(templateCsv()).cleanTemplate, true);
+});
+
+test("a trailing empty header does not spoil cleanliness", () => {
+  const r = inspectCsv("address,property_type,transaction,deal_date,\n\"1 A St, Boise, ID\",Land,Sale,2026-01-01,\n");
+  assert.equal(r.cleanTemplate, true);
+});
+
+test("duplicate column names are refused, because a mapping keys on the name", () => {
+  const r = inspectCsv("Price,Price\n1,2\n");
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Price/);
+});
+
+test("an empty file is refused with a sentence", () => {
+  assert.equal(inspectCsv("").ok, false);
+});
+
+// Excel writes a UTF-8 BOM on "Save as CSV". parseCsv already strips it, and
+// this pins that the mapper inherits that rather than offering the broker a
+// first column mysteriously named "﻿Property Address".
+test("a BOM-led file inspects normally", () => {
+  const r = inspectCsv("﻿Property Address,Type\n\"1 A St, Boise, ID\",Land\n");
+  assert.equal(r.ok, true);
+  assert.equal(r.normalized[0], "property_address");
+  assert.equal(r.suggested.property_address, "address");
+});
+
+// A header with a comma in it only survives if it was quoted, and the mapping
+// keys on the normalised name, so this pins that quoting is respected.
+test("a quoted header carrying a comma is read as one column", () => {
+  const r = inspectCsv('"Address, Full",Type\n"1 A St, Boise, ID",Land\n');
+  assert.equal(r.headers.length, 2);
+  assert.equal(r.normalized[0], "address_full");
+});
+
+// A header can have real content ("$") and still normalize away to nothing,
+// since normalizeHeader strips every non-alphanumeric character. That used
+// to make the column vanish entirely -- not shown, not mappable, not named
+// in an "ignored" list -- which is exactly the silent-drop failure this
+// feature exists to catch. It is not hypothetical: the comment above
+// TEMPLATE_COLUMNS names "$" as a header brokers actually use for price.
+test("a header that normalizes away entirely gets a synthetic, visible key rather than vanishing", () => {
+  const r = inspectCsv("$,Type,Deal,Closed\n100,Land,Sale,2026-01-01\n");
+  assert.equal(r.ok, true);
+  assert.equal(r.headers[0], "$");
+  assert.equal(r.normalized[0], "column_0");
+  assert.deepEqual(r.samples.column_0, ["100"]);
+});
+
+test("a truly blank header is still excluded, and two trailing blanks do not collide", () => {
+  const r = inspectCsv(
+    "address,property_type,transaction,deal_date,,\n" +
+    "\"1 A St, Boise, ID\",Land,Sale,2026-01-01,,\n"
+  );
+  assert.equal(r.ok, true);
+  assert.equal(r.normalized[4], "");
+  assert.equal(r.normalized[5], "");
+  assert.equal(r.cleanTemplate, true, "the two blank trailing headers are not unrecognised columns");
+});
+
+test("cleanTemplate is false for a file containing a $ column", () => {
+  const r = inspectCsv(
+    "address,property_type,transaction,deal_date,$\n" +
+    "\"1 A St, Boise, ID\",Land,Sale,2026-01-01,100\n"
+  );
+  assert.equal(r.cleanTemplate, false);
+});
+
+// The duplicate check must fire for a real collision INVOLVING a synthetic
+// key too, not just between two ordinary header names: a "$" column's
+// synthetic key is "column_0", so a file that also has a literal "column_0"
+// header collides with it rather than silently importing both as one.
+test("a synthetic key collides with a literal column of the same name, and is refused", () => {
+  const r = inspectCsv("$,column_0\n100,200\n");
+  assert.equal(r.ok, false);
+  assert.match(r.error, /column_0/);
+});
+
+// --- column mapping: normalizedHeaderRow, the one shared vector ------------
+//
+// inspectCsv, validateMapping and parseUpload all route header normalization
+// through this one function now, specifically so a mapping built against
+// inspectCsv's synthetic `column_N` key is recognized end-to-end rather than
+// only on the mapping screen.
+
+test("normalizedHeaderRow: a header that normalizes to nothing gets column_<i>, a truly blank header stays empty, an ordinary header is untouched", () => {
+  assert.deepEqual(
+    normalizedHeaderRow(["$", "Address", "  ", "Sale Price"]),
+    ["column_0", "address", "", "sale_price"]
+  );
+});
+
+test("normalizedHeaderRow: two trailing blank headers do not collide with each other or with anything else", () => {
+  assert.deepEqual(
+    normalizedHeaderRow(["address", "property_type", "", ""]),
+    ["address", "property_type", "", ""]
+  );
+});
+
+// The full round trip: a broker maps a "$" column (shown on the inspection
+// screen under its synthetic key) to price, and the file actually imports
+// with the price landing in the right field. This is the case that was
+// broken before validateMapping/parseUpload were routed through the same
+// normalizedHeaderRow inspectCsv uses -- a mapping keyed on "column_0" used
+// to be refused with 'The file has no column called "column_0".'
+test("the full round trip: a $ column mapped through the mapping screen actually imports, price landing in price", () => {
+  const rawHeaders = ["$", "Type", "Deal", "Closed", "Prop Address"];
+  const csv =
+    "$,Type,Deal,Closed,Prop Address\n" +
+    // Quoted: the address contains commas.
+    "100,Land,Sale,2026-01-01,\"1 A St, Boise, ID\"\n";
+  const mapping = {
+    column_0: "price",
+    type: "property_type",
+    deal: "transaction",
+    closed: "deal_date",
+    prop_address: "address",
+  };
+
+  const validated = validateMapping(mapping, rawHeaders);
+  assert.equal(validated.ok, true, validated.errors.join(" | "));
+
+  const result = parseUpload(csv, { mapping });
+  assert.equal(result.ok, true, result.errors.join(" | "));
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].price, 100);
+  assert.equal(result.rows[0].address, "1 A St, Boise, ID");
 });

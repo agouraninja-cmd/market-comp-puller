@@ -217,3 +217,37 @@ test("valueFromComps falls back to salePsfOf when readValue is not a function", 
   assert.equal(withUndefined.psfMid, 250);
   assert.equal(withUndefined.psfHigh, 350);
 });
+
+test("outlierOf: inside the band and at the edges is null", () => {
+  const band = { low: 100, high: 200 };
+  assert.equal(V.outlierOf(150, band), null);
+  assert.equal(V.outlierOf(100, band), null);
+  assert.equal(V.outlierOf(200, band), null);
+  // Outside the band but within 25% of the edge: still null.
+  assert.equal(V.outlierOf(249, band), null);   // 24.5% above 200
+  assert.equal(V.outlierOf(76, band), null);    // 24% below 100
+});
+
+test("outlierOf: beyond 25% of the nearest edge flags with direction and pct", () => {
+  const band = { low: 100, high: 200 };
+  assert.deepEqual(V.outlierOf(276, band), { dir: "above", pct: 38 });  // (276-200)/200
+  assert.deepEqual(V.outlierOf(70, band), { dir: "below", pct: 30 });   // (100-70)/100
+});
+
+test("outlierOf: exactly 25% past an edge is null (strict inequality)", () => {
+  const band = { low: 100, high: 200 };
+  assert.equal(V.outlierOf(250, band), null);
+  assert.equal(V.outlierOf(75, band), null);
+});
+
+test("outlierOf: degenerate and junk inputs are null", () => {
+  assert.equal(V.outlierOf(NaN, { low: 100, high: 200 }), null);
+  assert.equal(V.outlierOf(0, { low: 100, high: 200 }), null);
+  assert.equal(V.outlierOf(-5, { low: 100, high: 200 }), null);
+  assert.equal(V.outlierOf(150, null), null);
+  assert.equal(V.outlierOf(150, { low: 0, high: 0 }), null);
+  assert.equal(V.outlierOf(150, { low: 200, high: 100 }), null);  // inverted band
+  // Single-point band: 25% rule still applies around the point.
+  assert.deepEqual(V.outlierOf(130, { low: 100, high: 100 }), { dir: "above", pct: 30 });
+  assert.equal(V.outlierOf(120, { low: 100, high: 100 }), null);
+});

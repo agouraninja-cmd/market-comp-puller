@@ -109,3 +109,51 @@ test("US_STATES holds the 50 states plus DC", () => {
   assert.ok(M.US_STATES.has("DC"));
   assert.ok(!M.US_STATES.has("ON"), "provinces are not US states");
 });
+
+// --- Metro groups: neighboring suburbs that share a submarket --------
+
+test("metroOf returns the metro for a member city and null otherwise", () => {
+  assert.equal(M.metroOf("Meridian, ID"), "Boise, ID");
+  assert.equal(M.metroOf("Boise, ID"), "Boise, ID");
+  assert.equal(M.metroOf("Pocatello, ID"), null);
+  assert.equal(M.metroOf("Nowhere, XX"), null);
+  assert.equal(M.metroOf(""), null);
+  assert.equal(M.metroOf(null), null);
+});
+
+test("metroOf tolerates casing and spacing variants of a real key", () => {
+  assert.equal(M.metroOf("meridian, id"), "Boise, ID");
+  assert.equal(M.metroOf("  Meridian,ID "), "Boise, ID");
+});
+
+test("siblingMarkets excludes the market itself and is empty when ungrouped", () => {
+  const sibs = M.siblingMarkets("Meridian, ID");
+  assert.ok(sibs.includes("Boise, ID"));
+  assert.ok(sibs.includes("Nampa, ID"));
+  assert.ok(!sibs.includes("Meridian, ID"));
+  assert.deepEqual(M.siblingMarkets("Pocatello, ID"), []);
+  assert.deepEqual(M.siblingMarkets(null), []);
+});
+
+// The trap this catches: the corpus is keyed by marketOf's output, and the
+// lookup is an exact string match. A typo or a lowercase city in the table
+// simply never matches, and the feature looks like it works while doing
+// nothing at all.
+test("every METRO_GROUPS entry is exactly what marketOf produces for it", () => {
+  for (const [metro, members] of Object.entries(M.METRO_GROUPS)) {
+    assert.equal(M.marketOf(metro), metro, `metro key ${metro}`);
+    for (const m of members) {
+      assert.equal(M.marketOf(m), m, `member ${m} of ${metro}`);
+    }
+  }
+});
+
+test("no city belongs to two metros", () => {
+  const seen = new Set();
+  for (const members of Object.values(M.METRO_GROUPS)) {
+    for (const m of members) {
+      assert.ok(!seen.has(m), `${m} appears in two groups`);
+      seen.add(m);
+    }
+  }
+});

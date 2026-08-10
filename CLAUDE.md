@@ -212,7 +212,12 @@ dependency. `.env` is git-ignored — never commit it.
   `x-admin-key` callers bypass. Enforced in `/api/comps` **and
   `/api/explore-market`** (403 + `signin_required: true`, which the client
   turns into the account modal) — the Explorer runs the same billed search
-  pipeline as a report, so it spends the same single allowance; a market
+  pipeline as a report, so it spends the same single allowance, but only
+  when that search PUBLISHES a page (`published: true`); a thin-data
+  preview (`published: false`) does not consume it, because the preview
+  lives only in memory behind a 30-minute TTL and dies on redeploy, so
+  charging the visitor's one free search for it is the same empty-handed
+  outcome as the 422 a thin market already returns. A market
   page that already exists is still served free and ungated above the
   check, since that's a database read, not a search. `/api/config` carries
   `guestSearch: { limit, used }` for the form hint and syncs the cookie the
@@ -283,10 +288,18 @@ dependency. `.env` is git-ignored — never commit it.
   the handler's `guardComp` closure anonymizes events past the visitor's
   `maxComps` entitlement to `{ locked: true }` so gated comp identities never
   reach a free browser, even transiently), `retry`. Front-end:
-  `readProgressStream` +`applyProgress` in
-  index.html, driving the existing loading card; `comp` events render as
-  plain text lines via `addLoadingCompLine` (5 most recent + a "+N more"
-  lock line). Three fallback layers, all
+  `readProgressStream` + `applyProgress` in index.html. Since 2026-08-09 the
+  streamed events assemble the REAL report surfaces (`beginAssembly` /
+  `assemblyComp` / `assemblySummary` / `resetAssembly`): the first `comp` or
+  summary `field` event reveals `#results` with only the `data-assemble` cards
+  visible (hero as a counts-only placeholder, never a dollar figure; summary;
+  core-column comp table + "+ N more found · unlock with Pro" lock line),
+  everything else hidden under `.asm-hidden` until `renderResults` repaints
+  wholesale.
+  Assembly never touches the `hidden` class except on
+  `#results`/`#ownerHero`/`#loadingSkeletons`;
+  every exit (result, error, `retry`) funnels through `resetAssembly` riding on
+  `hideLoadingCard`. Three fallback layers, all
   load-bearing — the old wall-clock simulation still starts on submit and is
   cancelled by the first real event; a non-SSE content-type falls back to
   `res.json()`; and an 8-second silence watchdog restarts the simulation,
@@ -445,9 +458,11 @@ a free user" button on the plan card does. Keep that button working: the team is
 permanently on the far side of the paywall, so it is the only way anyone
 internal ever renders one.
 
-`MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
+`MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`
 with the key and update the constant — an earlier model ID was retired.
+
+**Measuring a model or prompt change** (2026-08-09, contamination doors closed and a database refusal added 2026-08-10). `run-eval.js` puts the 12 fixed targets in `eval-set.json` through real searches and scores each report with the pure, tested `eval-score.js` (priced sale comps and whether a valuation was possible at all, provenance weighted with `valuation.js`'s own `TIER_WEIGHT`, aggregate-address and out-of-window and off-market rates, narrative lengths against the 2026-08-03 caps, wall clock). It is a SCORECARD, not an assertion suite: nothing has a pass/fail threshold, because a dozen stochastic searches are noisy, and the product is `--compare` between two runs. Summaries land in `docs/evals/`, timestamped in the filename so a same-day, same-label rerun can never silently clobber a possibly-good baseline (committed, so history accumulates); raw reports go to the git-ignored `eval-runs/`. Several things make it trustworthy and must not be undone. The run sends `fresh: true`, an internal-only flag that skips BOTH cache read paths (the exact hit and the derivable-window one), because a cached report would score the model that wrote it and report a false "no difference". Before every run the runner also wipes two local files and records both in the summary: `comp-corpus.jsonl` (`corpusWiped`), because `corpusRowsForMarket` reads that file fallback even with no database configured, so a previous run's harvest would otherwise hand the next run corpus coverage and a smaller search budget; and `subject-sizes.json` (`subjectSizesWiped`), because no eval target supplies `subjectSizeSqft`, so a previous run's building-size lookup would otherwise be found by `findKnownSubjectSize`, again shrinking the search budget and also silently backfilling `subject_size_sqft` regardless of what the run's own model did. The subject-size wipe is not the whole fix: `findKnownSubjectSize` also keeps an in-memory `subjectSizesMem` Map that a file delete cannot clear, so **the server must be restarted, not just have its files wiped, between two runs that are being compared** (the corpus read hits disk on every call with no in-memory layer, so it does not need this). A model comparison already forces a restart because `MODEL` is read once at server startup; this restart rule mainly matters for an A/A run pair meant to measure noise, where nothing else would force one. Before spending anything, the runner also probes the target with `GET /api/stats` (the admin key) and reads `introRequests.db`: a confirmed `true`, a failed probe, or the field simply missing all refuse the run and name the risk, because isolation (`SUPABASE_URL` blank on the server under test) is enforced only by however that server was launched, and a database the runner can see is a database it would both write into and read stale corpus coverage from; only a confirmed `false` proceeds. `EVAL_SKIP_DB_CHECK=1` is the deliberate override for someone who has already verified the database really is disposable. And the runner must target a server started from a separate worktree with `SUPABASE_URL` blank, so every write lands in that worktree's own fallback files instead of production's corpus, market pages, and cache: on Windows this is a documented trap, because in PowerShell `$env:SUPABASE_URL = ""` DELETES the variable rather than emptying it, so server.js's `.env` loader (which only fills vars that are `undefined`) silently restores whatever the worktree's own `.env` holds. Copy ONLY the `ANTHROPIC_API_KEY` line into the eval worktree's `.env`, never the whole file, and prefer a `node -e` launcher that sets `process.env.SUPABASE_URL = ""` (and `SUPABASE_SERVICE_KEY`) explicitly before requiring `./server.js`. A full run costs about $4.30, a model comparison about $8.60. The accuracy backtest (`/api/accuracy`) is the other half of the picture and answers a different question: it scores the reconciliation math over comps already harvested, never what a search found.
 
 ## Architecture
 
@@ -477,7 +492,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (`isAggregateAddress`), is forced to `estimate` no matter what the model
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
-  normalization is a guarantee. **Cached**: identical requests
+  normalization is a guarantee. **Source-link check (2026-08-09).** After the
+  report is parsed and normalized, and before the cache write, harvest, market
+  snapshot, and the `gate()` funnel, `applySourceLinkCheck` (server.js) checks
+  each comp's `source_url`: max 12 unique URLs in parallel under one 2.5s
+  budget, HEAD with a GET-on-405 fallback, redirects never followed (one hop
+  could steer past the DNS guard; a 3xx counts as live), DNS resolved first and
+  private/loopback answers refused (the URLs are model-supplied, so this is an
+  SSRF guard, not a nicety). Rules live in the pure, tested **`link-check.js`**:
+  bot-walled hosts (loopnet, cityfeet, propertyshark, commercialsearch, costar,
+  crexi, zillow, redfin, realtor) are never fetched and never demoted; only
+  DNS-gone/404/410 count as dead; a dead-linked comp is demoted to `estimate`
+  (dead at birth usually means the citation was never real), keeping its
+  `source_url` as the audit trail; broker-`verified` comps are exempt. It runs
+  inside `getComps`, so the Explorer inherits it and the served report, cache,
+  corpus, and shares all agree; the backtest and corpus retrieval need no
+  changes because `estimate` is already excluded from both. Fails open on any
+  error. Counts ride a `link_check` analytics event packed into the `source`
+  column (the analytics schema is fixed). Link rot on existing corpus rows
+  deliberately does nothing; the sweep is deferred (see the spec).
+  **Cached**: identical requests
   within a 30-day TTL (7 days until 2026-08-03 — widened as a cost lever) are
   served from the `search_cache` layer (Supabase table
   `search_cache`, keyed by a SHA-256 of address+type+note+window+size+a
@@ -730,6 +764,25 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   parse. Verified end-to-end 2026-07-27 on both a 24-month and the default
   12-month lookback. Note the threshold is per market **and** property type, so
   it only pays off when traffic repeats in the same market.
+  **Metro matching (2026-08-10).** Corpus-first retrieval, and ONLY it, also
+  reads the subject market's immediate neighbors from `market.js`'s curated
+  `METRO_GROUPS`, so a Meridian search can draw on Boise's rows. Those come
+  back as a separate `nearby` list and get their own prompt block, worded more
+  narrowly than the exact-market one (use only when the target's own city is
+  thin, report the address exactly as given, prefer a same-city comp when both
+  are comparable). The exact-market block's "never include one clearly in a
+  different city" rule stays intact and absolute. **`coverage` remains
+  exact-market only**, so `corpusIsStrong` and the search budget cannot be
+  moved by a nearby row; that is the whole safety property, and it is why the
+  two counts are kept separate rather than summed. `corpusRowsForMarket` itself
+  returns the same rows for its four other callers (watchlist feed, vault gut
+  check, `/api/corpus-comps`, Address Explorer), now also carrying their own
+  market value; retrieval calls the new `corpusRowsForMarkets` directly
+  instead. Rollback is `CORPUS_METRO=off`. Adding
+  a metro group is a data edit in `market.js`; the rule is adjacent suburbs
+  sharing one submarket, never a whole statistical area, and a test pins every
+  entry against `marketOf` because an exact-match key that never matches is
+  invisible.
 - `GET /how-it-works` — the standalone proof/FAQ page, reached from the header
   nav (the old "Methodology" item) and the footer. Holds the four blocks that
   used to sit below the fold on the home page: the stat strip, the sample-report
@@ -860,6 +913,23 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (edit its `TARGETS` list; it runs one cached search per market against a
   locally-running server and keeps only markets with ≥3 priced sale comps, so
   no thin pages). `sitemap.xml` lists `/`, `/markets`, and every market page.
+- `POST /api/explore-market` — the **Market Explorer**: generates a
+  `/market/<slug>` page on demand from the header search on the app page
+  (one billed search per genuinely new market; results meeting the seed
+  quality bar publish permanently to the Supabase `market_pages` table,
+  thinner ones get a 30-minute in-memory `/market-preview/` page). Since
+  2026-08-09 it **validates the city is real before the billed leg**:
+  `city-check.js` (pure, tested) asks Zippopotam's keyless city endpoint
+  and refuses unknown cities with a friendly 400 that never consumes the
+  guest's free search or an `explore:` limiter slot. Three name variants
+  are tried — as typed, punctuation-to-space, punctuation-stripped, each
+  with leading "St "/"Ft "/"Mt " expanded — because measured GeoNames data
+  is inconsistent about punctuation ("Coeur D Alene" answers 200 but "Lees
+  Summit" is the stripped form); **do not "simplify" this to one variant**,
+  strip-only shipped first and falsely refused Winston-Salem and Coeur
+  d'Alene. Fails OPEN on validator outages (`DAILY_SEARCH_CAP` backstops);
+  `ok`/`unknown` verdicts memoize per process, `unavailable` never does.
+  Spec: `docs/superpowers/specs/2026-08-09-explore-market-city-validation-design.md`.
 - `GET /admin`, `GET /api/stats` — a small analytics dashboard. Every search,
   lead, share, and comp submission is logged as a **PII-free** event (`ts`,
   `kind`, `prop_type`, `market` = city+state only, `source`, `cached`) via
@@ -1395,6 +1465,47 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the reason migration 019 has no SQL backfill (`marketOf()` is JS).
     Routes go through `requireBroker`. Manual adds log a PII-free `bov`
     analytics event. Lapse locks the log, never deletes it.
+  - **The CSV column mapper** (2026-08-10; spec
+    `docs/superpowers/specs/2026-08-10-vault-csv-column-mapper-design.md`).
+    A broker uploads their own export and maps its columns once. `POST
+    /api/vault/inspect` reports headers, real sample values and a suggested
+    mapping; `/api/vault/upload` takes an optional `mapping`, and absent it
+    behaves byte for byte as before. Five rules a future editor will
+    otherwise break: **a target is suggested only when exactly ONE column
+    claims it**, which is how the old "we do not guess column names"
+    decision survives (two columns aliasing to `price` suggest neither);
+    **the screen is always shown unless every header is already one of
+    ours**, because only four fields are required per row, so a file with
+    an unrecognised "Sq Ft" column imports today with every size null and
+    nothing saying so; **unmapped columns are renamed `_ignored_<i>` rather
+    than left alone**, or a literal `price` column the broker chose not to
+    map would shadow the one they did; **the remembered mapping is only
+    ever a pre-selection**, never auto-applied, which is what makes it safe
+    to key on the broker rather than on a fingerprint of their header row
+    (if the screen is ever made skippable on a remembered mapping, that
+    stops being true and the header signature becomes necessary); and
+    **the normalized header vector is produced in exactly one place**,
+    `normalizedHeaderRow(rawHeaders)`, and `inspectCsv`, `validateMapping`
+    and `parseUpload` all route through it rather than calling
+    `normalizeHeader` directly. A header can be real and still normalize to
+    nothing — `normalizeHeader` strips every non-alphanumeric character, so
+    a column headed `$`, `#`, `%` or `($)` (the comment above
+    `TEMPLATE_COLUMNS` already names `$` as a header brokers use for price)
+    reduces to `""` and would vanish from the mapping screen entirely: not
+    listed, not mappable, not even named in the "will be ignored" line. That
+    is the exact silent-drop failure this feature exists to prevent, so such
+    a header now gets a positional `column_<i>` key instead; a truly blank
+    header still yields `""` and stays excluded, so trailing commas still
+    cost nothing. Computing the vector separately in any one of the three
+    call sites is what broke the round trip the first time this shipped: the
+    inspection screen offered `column_0` as a mappable source, and the
+    import route, keying its own copy off a bare `normalizeHeader` map,
+    refused it as a column the file did not have. `suggestMapping`
+    deliberately does NOT route through `normalizedHeaderRow` — it only
+    produces optional suggestions, never a required key, and a synthetic
+    `column_N` can never match a semantic alias like `sale_price`, so
+    running it through the positional fallback would only manufacture
+    suggestions nobody could recognise.
 - **Broker lead inbox** (v1, 2026-08-05). DDL in
   `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead
@@ -1436,7 +1547,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
-CSV / PNG / Print-to-PDF exporters. Contains **no secrets**.
+CSV / PNG / Print-to-PDF exporters. The main form's second slot is the
+Building size (SF) field; the property type is chosen at the verification
+step, and the confirm dialog blocks the run until a type is resolved.
+Contains **no secrets**.
 
 **Private comps in the front end** (the display half of blended comps, 2026-08-06;
 server half and spec are under the broker vault above). A comp the server flags
@@ -1571,7 +1685,19 @@ private row has not earned. Two rules matter when editing anything down here:
    denominator; the market band `market_opex_range` itself is market data and
    stays): private finances, stripped from shares. The DCF's
    four assumptions (hold/growth/discount/exit cap) are opinions, not
-   finances, and stay in shares. The one deliberate exception for all of
+   finances, and stay in shares. So is the owner's own **cap rate**
+   (`meta.subject.capRate`, the Refine field that replaced Price max on
+   2026-08-10): browser-only like the NOI it divides, never in the
+   `/api/comps` body and so never in the cache key, but NOT stripped by
+   `/api/share` — it discloses nothing alone, because every surface it drives
+   needs the NOI that already is stripped. It adds a second income-approach
+   line beside the market's (`incomeApproachEntries` — one builder, 0-2
+   entries, every hero branch spreads it so the two lines cannot drift or be
+   ordered differently), carries the income approach outright when the model
+   returned no `market_cap_rate_range`, and seeds the DCF at seed time only.
+   A single rate renders a single figure: it is deliberately never widened
+   into a band, since an invented spread would be indistinguishable on
+   screen from one the comps earned. The one deliberate exception for all of
    these private figures (NOI, debt, rent roll, gross income) is the
    signed-in **portfolio**: a saved report's `meta.subject`
    and `meta.assumptions` are stored in the owner's own authenticated
@@ -1583,7 +1709,37 @@ private row has not earned. Two rules matter when editing anything down here:
    live ONLY in `meta.curation.added`, never in `data.comps`, so no server
    path (share, portfolio, harvest) ever ingests a user-authored comp into
    the corpus. The valuation math reads `includedComps()`; the table shows
-   excluded rows greyed as an audit trail. The "Avg $/SF" stat tile and the
+   excluded rows greyed as an audit trail. Since 2026-08-09 the curation cell
+   also carries a screen-only outlier chip (`buildOutlierChip`): an included
+   sale comp whose displayed $/SF sits more than 25% outside the hero's
+   displayed band (`VALUATION.outlierOf`, the same 25% rule as the vault gut
+   check, `⚠`-paired) reads "{pct}% above/below the range". Chips derive at
+   render from `currentPsfBand` (stashed by `renderOwnerHero`, one computation
+   for both surfaces), are never stored, never print or capture, and never
+   render on shared views; below 4 sale comps the band is the full spread, so
+   they cannot fire. The hero's **comp scatter** (`renderCompScatter`, shipped
+   2026-08-09) reads the same stash: a hairline number line under the ledger
+   with one tick per sale comp at its own displayed $/SF, a tint spanning
+   Low-High and a red mark at Likely, so the agreement the trust line asserts
+   in words is visible. Four rules. **The axis spans the comps, not the
+   band** — the band is the weighted interquartile range, so with 4+ comps
+   roughly half of them sit OUTSIDE it by construction and an axis clipped to
+   Low-High would hide half the evidence; the band is drawn inside the axis as
+   the tint instead. **Ticks use the DISPLAYED figure**, never the
+   trend-indexed weighted one the band is computed from, which is what stops a
+   tick sitting outside the tint while `buildOutlierChip` calls that same comp
+   in-range. **It only draws where the ledger above quotes the same unit** (so
+   the per-unit/per-acre branch passes its own values through the same generic
+   renderer, and the income-approach branch draws nothing) and only when
+   `band.trimmed`, the same 4-comp floor as the chips. **It prints and
+   captures on purpose**, being the evidence for the figures above it: hence
+   no flex gap and no transform anywhere inside it, `print-color-adjust:
+   exact` (every mark on the line is a background colour, and paper drops
+   those by default — the file's only use of that property), and
+   `ownerScatter` in `beginAssembly`'s `asm-hidden` list so the previous
+   report's line can't hang under the next report's placeholder. Spec:
+   `docs/superpowers/specs/2026-08-09-hero-comp-scatter-design.md`.
+   The "Avg $/SF" stat tile and the
    market comparison read the MODEL's market-level figure and deliberately
    do not change with curation. Subject inputs
    persist in each report's `meta` (saved reports re-render without the
@@ -1602,11 +1758,31 @@ private row has not earned. Two rules matter when editing anything down here:
    - **`cacheKeyFor` includes the details**, appended only when non-empty so
      existing cache entries keep their keys. Without this a 48-unit and a
      6-unit building at one address collide and are served each other's comps.
-   - **Assigning `#propertyType.value` does not fire `change`.** Every
-     programmatic type change (localStorage restore, recent-search chips,
-     shared-report restore, market-explorer parse) must call
-     `syncSubjectFieldsToType()`, or the inputs keep the previous type's
-     fields. The localStorage restore runs long after the initial paint.
+   - **The type dropdown is gone from the visible form** (2026-08-08): a hidden
+     `#propertyType` select remains the single source of truth, and the type is
+     resolved at verification — OSM detection, per-address memory
+     (localStorage `addrType.v1`), or a required pick in the confirm dialog
+     (`typeResolution` in index.html: null | "detected" | "remembered" |
+     "explicit"). The three resolved values split on **who** decided, because
+     only a human's decision may outlive the address it was made about:
+     `"explicit"` (a picker, a chip, a saved or shared report) survives address
+     edits, while `"detected"` (OSM tags) and `"remembered"` (recalled from
+     `addrType.v1`) are machine states about ONE address and both reset to null
+     on an address change, after which that address's own memory then its own
+     detection are consulted. Marking a recall explicit let address A's type
+     survive onto address B, suppress B's memory, and overwrite it at submit.
+     Every programmatic type change must go through `setTypeProgrammatic()` (or
+     call `syncSubjectFieldsToType()` and mark `typeResolution` itself), or the
+     subject inputs keep the previous type's fields. That function is a
+     **no-op when the type is unchanged** — it resets the lookback window and
+     re-renders (i.e. empties) the subject inputs, which is right after a
+     change and destructive without one; the confirm dialog's "change" door
+     pre-selects the current type, so a plain confirm used to wipe a typed
+     lookback and typed details moments before the billed search. The select
+     fires no `change` events anymore; nothing may rely on them. The
+     `lastPropertyType` restore at startup is likewise guarded on
+     `typeResolution === null`: a repeat visitor's hint may not overrule a
+     decision a deep link or a restored report already made.
    - **The subject-edit listener replaces `meta.subject` wholesale**, so it
      re-reads `details` from the DOM rather than merging — anything not
      re-read is lost on the next keystroke.

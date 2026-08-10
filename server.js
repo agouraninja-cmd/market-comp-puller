@@ -13,6 +13,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const dns = require("dns");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
 const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot } = require("./market-snapshot");
@@ -56,12 +57,17 @@ const VAULTAPI = require("./vault-api");
 // Pure and dual-exported like valuation.js — the /vault page runs this SAME
 // copy, so a tested verdict and a rendered verdict can't quietly diverge.
 const GUTCHECK = require("./gut-check");
+
+// The outbound email letterhead — pure, tested. sendOutboundEmail wraps every
+// customer-facing email's text in this HTML shell; see the note on that
+// function before changing how it is applied.
+const EMAILSHELL = require("./email-shell");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
 // which stay US-only on purpose (the module recognizes Canadian provinces
 // internally, for the key only).
-const { marketOf, marketForLog, US_STATES } = require("./market");
+const { marketOf, marketForLog, US_STATES, siblingMarkets } = require("./market");
 // The /api/comps parse pipeline's pure pieces, extracted one function at a
 // time as each gains tests (see its header for what still lives here). New
 // pipeline normalizers belong THERE. expandCompKeys is wrapped below where
@@ -88,6 +94,9 @@ const BOVSVC = require("./bov-log");
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
 const { isAggregateAddress } = AUDIT;
+// Dead-at-birth source-link check rules. Pure and tested, like the modules
+// above; server.js owns the network half (checkSourceLinks below).
+const LINKCHECK = require("./link-check");
 // Valuation backtest — hold-one-out accuracy scoring over the comp corpus.
 // Pure and tested, like the three modules above; server.js owns the database
 // read, the memo and the route (GET /api/accuracy).
@@ -96,6 +105,7 @@ const BACKTEST = require("./backtest");
 // disclaimer) that can be applied to a report they hold an entitlement for.
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
 const BRANDING = require("./branding.js");
+const CITYCHECK = require("./city-check");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -119,7 +129,12 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = "claude-sonnet-4-6";
+// Overridable so the eval harness can score one model against another
+// (run-eval.js). Unset everywhere in production, which keeps this exactly
+// the constant it has always been. If the API 404s on a model id, list the
+// live ones via GET https://api.anthropic.com/v1/models and update this
+// default.
+const MODEL = (process.env.MODEL || "claude-sonnet-4-6").trim();
 
 // Optional shared password. If set, visitors must enter it before searching.
 // Leave it unset to keep the app open.
@@ -1610,21 +1625,41 @@ function noteCorpusFailure(kind, err) {
 function corpusNum(v) { const n = Number(String(v || "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; }
 // Corpus rows for one watched market: DB rows (when configured) + any rows
 // that fell back to the file, newest first.
-async function corpusRowsForMarket(market, property_type, limit) {
+async function corpusRowsForMarkets(markets, property_type, limit) {
+  const wanted = (Array.isArray(markets) ? markets : [markets]).filter(Boolean);
+  if (!wanted.length) return [];
   let dbRows = [];
   if (DB_CONFIGURED) {
     try {
+      // The single-market form stays byte-identical to what has always
+      // shipped. Local dev has no database, so the in.() form below can only
+      // be exercised in production; keeping the common path untouched means a
+      // malformed widened query costs the nearby rows and nothing else.
+      // Market keys CONTAIN A COMMA ("Boise, ID"), which is also PostgREST's
+      // in.() separator, so each value is quoted and percent-encoded while the
+      // separators stay literal.
+      const filter = wanted.length === 1
+        ? `market=eq.${encodeURIComponent(wanted[0])}`
+        : `market=in.(${wanted.map((m) => `"${encodeURIComponent(String(m))}"`).join(",")})`;
       dbRows = await sbRequest("GET",
-        `comp_corpus?market=eq.${encodeURIComponent(market)}&property_type=eq.${encodeURIComponent(property_type)}` +
+        `comp_corpus?${filter}&property_type=eq.${encodeURIComponent(property_type)}` +
         `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
-        `${ALL_TYPE_COMP_FIELDS.join(",")},source_url,source_type,verified&order=ts.desc&limit=${limit}`) || [];
+        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified&order=ts.desc&limit=${limit}`) || [];
     } catch (e) { noteCorpusFailure("read", e); }
   }
+  const want = new Set(wanted);
   const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
-    .filter((r) => r && r.market === market && r.property_type === property_type);
+    .filter((r) => r && want.has(r.market) && r.property_type === property_type);
   return [...dbRows, ...fileRows]
     .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
     .slice(0, limit);
+}
+
+// One watched market. Unchanged contract: every existing caller (the
+// watchlist feed, the vault gut check, /api/corpus-comps, the Address
+// Explorer) gets exactly the rows it always did.
+async function corpusRowsForMarket(market, property_type, limit) {
+  return corpusRowsForMarkets([market], property_type, limit);
 }
 
 // Whole-corpus read for the audit: no market or type filter, newest first,
@@ -1712,15 +1747,19 @@ async function accuracyReport(force) {
 // ---------------------------------------------------------------------------
 async function retrieveCorpusComps(market, type, months, maxComps) {
   try {
+    const sibs = CORPUS_METRO ? siblingMarkets(market) : [];
     const rows = await corpusRowsForMarket(market, type, 300);
-    if (!rows.length) return { comps: [], coverage: 0, fresh: false };
+    // A second, separate read so the shared single-market helper keeps its
+    // exact contract for its four other callers.
+    const nearbyRows = sibs.length ? await corpusRowsForMarkets(sibs, type, 300) : [];
+    if (!rows.length && !nearbyRows.length) return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
 
     // Window filter in year-fraction space (parseDealDate returns e.g. 2024.5).
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
     const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
 
-    const usable = rows.filter((r) => {
+    const isUsable = (r) => {
       // Only feed higher-confidence provenance; a rough guess ("estimate") or a
       // news mention shouldn't seed a report.
       const st = String(r.source_type || "").toLowerCase();
@@ -1728,7 +1767,11 @@ async function retrieveCorpusComps(market, type, months, maxComps) {
       const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
       const d = parseDealDate(r.deal_date);
       return Boolean(priced) && d != null && d >= cutoffFrac;
-    });
+    };
+    const usable = rows.filter(isUsable);
+    // Nearby rows clear the identical bar: provenance better than estimate or
+    // news, a parseable price, and a deal date inside the requested window.
+    const nearbyUsable = nearbyRows.filter(isUsable);
 
     // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
     // freshest we hold for this market. Stale coverage → fall back to the web.
@@ -1743,10 +1786,18 @@ async function retrieveCorpusComps(market, type, months, maxComps) {
     const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
     const fresh = Boolean(newest && (now - newest) < 75 * 24 * 3600 * 1000);
 
-    return { comps: usable.slice(0, maxComps * 2), coverage: usable.length, fresh };
+    return {
+      comps: usable.slice(0, maxComps * 2),
+      // coverage stays EXACT-market only: corpusIsStrong and the search budget
+      // read it, and nearby rows must never buy a smaller budget.
+      coverage: usable.length,
+      fresh,
+      nearby: nearbyUsable.slice(0, maxComps),
+      nearbyCount: nearbyUsable.length,
+    };
   } catch (e) {
     console.error("Corpus retrieval failed (falling back to full search):", e.message);
-    return { comps: [], coverage: 0, fresh: false };
+    return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
   }
 }
 
@@ -1785,6 +1836,11 @@ function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
 // shallow lanes both rediscover the easy comps. Left switchable so the
 // trade can be re-measured on real traffic rather than two test addresses.
 const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SEARCH || ""));
+
+// Corpus metro matching: offer a thin market the comps we hold in its
+// immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a
+// reason to search less. Default ON; `off` restores exact-market matching.
+const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
@@ -2636,7 +2692,7 @@ async function harvestComps(type, searchAddress, payload) {
 
 // Thin-data Explorer previews: shown once to the visitor who generated them,
 // in-memory only (losing them on restart is fine — the search cache makes a
-// re-explore free for 7 days).
+// re-explore free for its 30-day TTL, widened from 7 days on 2026-08-03).
 const previewPagesMem = new Map(); // slug -> { payload, ts }
 const PREVIEW_TTL_MS = 30 * 60 * 1000;
 
@@ -2707,7 +2763,7 @@ const STATE_NAMES = {
 //                       in Resend; until then these calls silently no-op
 //                       (with a console line so tests can see the skip).
 // ---------------------------------------------------------------------------
-function sendEmail(to, subject, text, { from, replyTo } = {}) {
+function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
   if (!RESEND_API_KEY) return;
   fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -2717,6 +2773,7 @@ function sendEmail(to, subject, text, { from, replyTo } = {}) {
       to: [to],
       subject,
       text,
+      ...(html ? { html } : {}),
       ...(replyTo ? { reply_to: replyTo } : {}),
     }),
     signal: AbortSignal.timeout(8000),
@@ -2736,13 +2793,17 @@ function notifyByEmail(subject, fields) {
   sendEmail(LEAD_NOTIFY_EMAIL, subject, text);
 }
 
-// Outbound mail to a lead or broker. Replies route to the owner.
+// Outbound mail to a lead or broker. Replies route to the owner. Every
+// outbound send gains the letterhead HTML part (email-shell.js) built from
+// the SAME text — the text stays the source of truth and the fallback part,
+// so a call site edits its copy in one place and plain-text clients lose
+// nothing. Owner-facing notifyByEmail stays deliberately plain.
 function sendOutboundEmail(to, subject, text) {
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
     return;
   }
-  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL });
+  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
 }
 
 // The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
@@ -2905,7 +2966,7 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -2995,6 +3056,19 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Include each one that is genuinely comparable to the target and inside the date window, copying its details faithfully (keep its source_url, and set "source_type" to match where it came from). Use web search only to (a) confirm the target's building size, (b) fill gaps if fewer than ${maxComps} of these are comparable, or (c) surface more recent transactions. When one of these and a fresh web result describe the same deal, keep only one. Set "verified": false on these unless they also appear in the verified list above. Never include one that is clearly in a different city or submarket than the target.`,
   ].join("\n") : "";
 
+  // Nearby-metro rows get their OWN block rather than joining the list above,
+  // so that block's closing rule ("never include one that is clearly in a
+  // different city or submarket") stays intact and absolute for exact-market
+  // comps. Widening retrieval without this would hand the model rows and then
+  // tell it to discard them.
+  const nearbyBlock = (corpusNearby && corpusNearby.length) ? [
+    ``,
+    `NEARBY COMPS (${[...new Set(corpusNearby.map((c) => c.market).filter(Boolean))].join(", ")}): our prior research surfaced these in other cities in the same metro area as the target. They are already sourced.`,
+    ...corpusNearby.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
+    `Use these only when the target's own city is thin on genuinely comparable transactions, and only for ones a buyer would actually weigh against the target. Report each address exactly as given so the report shows the city the comp is really in; never restate it as the target's city. Set "verified": false on these, and keep the source_url. Prefer a comp in the target's own city over one of these whenever both are comparable.`,
+  ].join("\n") : "";
+
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
     ``,
@@ -3057,6 +3131,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       : "",
     verifiedBlock,
     corpusBlock,
+    nearbyBlock,
     ``,
     LANE_GUIDANCE[lane] || "",
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
@@ -3670,7 +3745,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
       role: "user",
       content: [{
         type: "text",
-        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails, lane),
+        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby, subjectDetails, lane),
         cache_control: { type: "ephemeral" },
       }],
     }],
@@ -3953,6 +4028,118 @@ function mergeLaneReports(primary, records, maxComps) {
   return primary;
 }
 
+// ---------------------------------------------------------------------------
+// Dead-at-birth source-link check. Rules in link-check.js (pure, tested);
+// this is the network half. Model-supplied URLs are fetched from OUR server,
+// so the DNS answer is checked against private ranges before any request
+// leaves the box. Everything fails open: a link-check problem must never
+// cost a report. Spec: docs/superpowers/specs/2026-08-09-source-link-check-design.md
+// ---------------------------------------------------------------------------
+const LINK_CHECK_BUDGET_MS = 2500;   // total, shared by every URL in the batch
+const LINK_CHECK_MAX_URLS = 12;
+const LINK_CHECK_UA = "CompNinjaLinkCheck/1.0 (+https://compninja.co)";
+
+// dns.promises.lookup takes no AbortSignal, so a slow or unreachable
+// nameserver could otherwise stall a check past LINK_CHECK_BUDGET_MS and add
+// unbounded latency to a user-facing search. Race it against a timer instead;
+// the underlying lookup keeps running in the threadpool after the race is
+// lost, which is accepted here because it is bounded to this one batch.
+function lookupWithTimeout(host, ms) {
+  return Promise.race([
+    dns.promises.lookup(host, { all: true }),
+    new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error("dns timeout"), { code: "ETIMEOUT" })), ms).unref()),
+  ]);
+}
+
+function privateAddress(addr, family) {
+  if (family === 4) {
+    const p = String(addr).split(".").map(Number);
+    return p[0] === 0 || p[0] === 10 || p[0] === 127 ||
+      (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+      (p[0] === 192 && p[1] === 168) || (p[0] === 169 && p[1] === 254) ||
+      (p[0] === 100 && p[1] >= 64 && p[1] <= 127);   // CGNAT, 100.64.0.0/10
+  }
+  const a = String(addr).toLowerCase();
+  // Link-local is fe80::/10, which spans the fe8/fe9/fea/feb prefixes, not
+  // just fe80 literally.
+  return a === "::" || a === "::1" || /^fe[89ab]/.test(a) ||
+    a.startsWith("fc") || a.startsWith("fd") || a.startsWith("::ffff:");
+}
+
+async function checkSourceLinks(comps) {
+  const verdicts = {};
+  let blocked = 0;
+  const urls = [];
+  try {
+    const seen = new Set();
+    for (const c of comps || []) {
+      const url = String((c && c.source_url) || "").trim();
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      if (!LINKCHECK.checkableUrl(url)) continue;
+      if (LINKCHECK.hostClass(url) === "blocked") { blocked += 1; continue; }
+      if (urls.length < LINK_CHECK_MAX_URLS) urls.push(url);
+    }
+    if (!urls.length) return { verdicts, checked: 0, blocked };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LINK_CHECK_BUDGET_MS);
+    await Promise.all(urls.map(async (url) => {
+      try {
+        const host = new URL(url).hostname;
+        let addrs;
+        try {
+          addrs = await lookupWithTimeout(host, LINK_CHECK_BUDGET_MS);
+        } catch (e) {
+          if (e && e.code === "ENOTFOUND") verdicts[url] = LINKCHECK.verdictFor({ dnsNotFound: true });
+          return;   // any other DNS failure (including our own timeout): no verdict, i.e. unknown
+        }
+        if (!addrs.length || addrs.some((a) => privateAddress(a.address, a.family))) return;
+        // Never follow redirects: the DNS guard above only checked the
+        // ORIGINAL hostname, and a public host answering a 3xx to an
+        // internal address (169.254.169.254, 127.0.0.1, ...) would bypass it
+        // if fetch chased the Location header itself. A 3xx status flows
+        // through LINKCHECK.verdictFor unchanged and counts as "live" — the
+        // original URL did answer, and under-claiming death matches the
+        // doctrine.
+        const opts = { redirect: "manual", signal: controller.signal, headers: { "user-agent": LINK_CHECK_UA } };
+        let r = await fetch(url, { ...opts, method: "HEAD" });
+        if (r.status === 405) {
+          r = await fetch(url, { ...opts, method: "GET" });
+          try { if (r.body) await r.body.cancel(); } catch (_) {}
+        }
+        verdicts[url] = LINKCHECK.verdictFor({ status: r.status });
+      } catch (_) { /* abort, TLS, socket: unknown */ }
+    }));
+    clearTimeout(timer);
+    return { verdicts, checked: urls.length, blocked };
+  } catch (_) {
+    return { verdicts: {}, checked: 0, blocked };
+  }
+}
+
+async function applySourceLinkCheck(report, type, address) {
+  try {
+    const comps = report && Array.isArray(report.comps) ? report.comps : [];
+    if (!comps.length) return;
+    const { verdicts, checked, blocked } = await checkSourceLinks(comps);
+    if (checked + blocked === 0) return;   // nothing checkable cited
+    const vals = Object.values(verdicts);
+    const dead = vals.filter((v) => v === "dead").length;
+    const live = vals.filter((v) => v === "live").length;
+    const unknown = checked - dead - live;
+    const demoted = LINKCHECK.applyLinkVerdicts(report, verdicts);
+    if (demoted) {
+      console.log(`🔗 ${demoted} comp(s) demoted: source link dead at harvest (${checked} checked, ${dead} dead, ${blocked} blocked-host, ${unknown} unknown)`);
+    }
+    // Counts ride the source column: the analytics schema is fixed, and a
+    // migration for four integers is not worth the outage class it risks.
+    logEvent("link_check", { prop_type: type, market: marketOf(address),
+      source: `checked${checked}-dead${dead}-unknown${unknown}-blocked${blocked}` });
+  } catch (err) {
+    console.warn("Source link check skipped:", err && err.message);
+  }
+}
+
 async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null, stats = null) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
@@ -3983,10 +4170,17 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
       });
 
     const [primary, records] = await Promise.all([primaryCall, recordsCall]);
-    return mergeLaneReports(primary, records, maxComps);
+    const merged = mergeLaneReports(primary, records, maxComps);
+    // Dead-at-birth link check runs on the FINISHED report, inside getComps,
+    // so /api/comps and the Explorer both inherit it and every downstream
+    // surface (cache, harvest, snapshot, gate, share) sees the same badges.
+    await applySourceLinkCheck(merged, type, address);
+    return merged;
   }
 
-  return solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
+  const report = await solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
+  await applySourceLinkCheck(report, type, address);
+  return report;
 }
 
 // Stamps every progress event with which attempt produced it, so the client can
@@ -4220,10 +4414,10 @@ function accountNavSlots({ desk = true } = {}) {
 }
 
 // Pricing lives in a modal that exists only in index.html, so from here it is
-// the /#pricing deep link — the same shape /brokers already uses for
+// the /?pricing=1 door — the same shape as /?submit=comp, needed for
 // /#submit-comp, not a new pattern. index.html opens the modal and clears the
 // hash. Rendered inside the Explore dropdown, last, matching index.html.
-const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/#pricing" hidden>Pricing</a>`;
+const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/?pricing=1" hidden>Pricing</a>`;
 
 const ACCOUNT_NAV_JS =
   `<script>(function(){` +
@@ -4246,7 +4440,7 @@ const ACCOUNT_NAV_JS =
   `show($("navUpgrade"),live&&!isPro);` +
   `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin);` +
   `});` +
-  `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/#pricing";});` +
+  `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
   `bill.disabled=true;bill.textContent="Opening\\u2026";` +
   `fetch("/api/billing-portal",{method:"POST"}).then(function(r){return r.json();}).then(function(d){` +
@@ -4318,10 +4512,34 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
    divides evenly (which the mesh needs to avoid a half-empty row) is out. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
 .tile{background:#fff;border:1px solid #E4E2DA;border-radius:6px;padding:16px 18px}
-.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#8A93A0;font-weight:600}
+.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#68707E;font-weight:600}
 .tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
   color:#1A2433;font-variant-numeric:tabular-nums}
-.tile .n{font-size:12.5px;color:#8A93A0;margin-top:2px}
+.tile .n{font-size:12.5px;color:#68707E;margin-top:2px}
+/* Ledger stat strip (Direction G, owner-approved 2026-08-09): the market
+   page's headline figures as one ruled ledger line, the same geometry the
+   report hero and the vault book line use — median emphasized on warmer
+   paper, red label. The .tiles grid above stays for its OTHER consumers
+   (the Explorer preview page and the /markets client tiles); only the
+   market page itself moved to the ledger. */
+.ledger{display:flex;border:1px solid #D8D4C9;border-radius:6px;overflow:hidden;background:#fff;margin:22px 0}
+.lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid #ECEAE3}
+.lcell:last-child{border-right:0}
+.lcell.mid{background:#FCFBF8}
+.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600}
+.lcell.mid .k{color:#B91C1C}
+.lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
+  color:#1A2433;font-variant-numeric:tabular-nums}
+.lcell.mid .v{font-size:29px}
+.lcell .n{font-size:12px;color:#68707E;margin-top:2px}
+@media(max-width:700px){.ledger{flex-direction:column}.lcell{border-right:0;border-bottom:1px solid #ECEAE3}.lcell:last-child{border-bottom:0}}
+/* Statement comps table (Direction H, same approval): ink header rule and a
+   median closing row under a double rule. Scoped to table.stmt so the other
+   marketShell pages (brokers, vault, the markets directory) keep their own
+   table look. */
+table.stmt th{background:none;border-bottom:2px solid #1A2433}
+table.stmt tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600;color:#1A2433}
+table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600}
 /* Cards. Headings stay serif at reading size rather than the uppercase
    micro-label used elsewhere — these are sentence-length ("What's driving
    Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
@@ -4337,7 +4555,7 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
    crush to ~40px per column on a phone. */
 table{width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 td:first-child,th:first-child{min-width:180px}
-th{background:#F5F4EF;color:#8A93A0;text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
+th{background:#F5F4EF;color:#68707E;text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
   text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #D8D4C9}
 td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .scroll{overflow-x:auto;border:1px solid #E4E2DA;border-radius:6px;margin:18px 0;background:#fff}
@@ -4356,12 +4574,18 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .cta .alt:hover{color:#1A2433}
 .btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:#991B1B;color:#fff}
+/* Header-sized variant, for the auth controls in the market bar. Mirrors the
+   same rule in HOW_CSS so the two site headers sit at the same height. The nav
+   rule below it exists because .hdr nav a would otherwise grey the button out.
+   No backticks in here: this whole block is a template literal. */
+.btn.sm{padding:7px 14px;font-size:13px}
+.hdr nav a.btn{color:#fff}.hdr nav a.btn:hover{color:#fff}
 .related{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .related a{background:#fff;border:1px solid #D8D4C9;border-radius:4px;padding:6px 14px;font-size:13px;color:#374253}
-.related a:hover{border-color:#8A93A0;color:#1A2433}
+.related a:hover{border-color:#68707E;color:#1A2433}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
 .mcard{display:block;background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:18px 20px;color:inherit}
-.mcard:hover{border-color:#8A93A0}
+.mcard:hover{border-color:#68707E}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
 .mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
@@ -4374,11 +4598,12 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .mfilter{margin-top:24px;max-width:420px}
 .mfilter input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #D8D4C9;border-radius:6px;
-  padding:10px 12px;font-family:inherit;font-size:14px;color:#1A2433}
-.mfilter input::placeholder{color:#8A93A0}
+  padding:10px 12px;font-family:inherit;font-size:16px;color:#1A2433}
+/* 16px: anything smaller makes iOS Safari zoom on focus and stay zoomed. */
+.mfilter input::placeholder{color:#68707E}
 .mfilter input:focus{outline:none;border-color:#B91C1C;box-shadow:0 0 0 1px #B91C1C}
 .mcount{color:#5A6473;font-size:13px;margin-top:10px;min-height:1.2em}
-.disc{color:#8A93A0;font-size:12.5px;margin-top:26px}
+.disc{color:#68707E;font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
 .legal{max-width:72ch}
@@ -4412,7 +4637,18 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 }
 ${ACCOUNT_NAV_CSS}`;
 
-const MARKET_BAR =
+// The shared header for every server-rendered page. Takes `signedIn` for the
+// same reason renderHowItWorksHTML does, and the rule recorded there governs
+// here too: these pages are the site's entry points from Google, so an
+// anonymous visitor needs both auth doors (before 2026-08-08 there were none
+// at all, and a returning customer landing on a market page had nowhere to
+// click), while a member must not be told to create an account they have.
+// Decided on cookie PRESENCE, never getSessionUser(), because these pages
+// render synchronously and that helper reads the database. Presentation only:
+// a forged cookie changes which buttons are drawn and nothing else.
+// Callers must pair this with sendShellPage()'s headers, or the cached
+// anonymous copy is re-served to someone who has just signed in.
+const marketBar = (signedIn = false) =>
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
@@ -4424,10 +4660,13 @@ const MARKET_BAR =
   `<div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>` +
   `<a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
   `<a href="/1031-exchange">1031 Guide</a></div></details>` +
-  // My Desk / Sign in / the account circle, all hidden until ACCOUNT_NAV_JS
-  // knows the visitor. See the ACCOUNT_NAV_CSS header for why these hydrate
-  // rather than render per session.
-  `${accountNavSlots()}</nav>` +
+  (signedIn
+    ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
+    : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
+  // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
+  // needs the member's email, which is a DB read this synchronous render must
+  // never make. desk:false: this bar renders My Desk / Log in itself, above.
+  `${accountNavSlots({ desk: false })}</nav>` +
   `</div></header>${ACCOUNT_NAV_JS}` +
   // Close the dropdown when the visitor clicks anywhere else (scoped to the
   // header nav so it can never touch other <details> on a page, e.g. FAQs).
@@ -4581,7 +4820,7 @@ async function fetchSubmissionsForEmail(email) {
   return rows.filter((r) => String(r.broker_email || "").trim().toLowerCase() === target);
 }
 
-function renderBrokerProfileHTML(profile, subs) {
+function renderBrokerProfileHTML(profile, subs, signedIn) {
   const display = String(profile.display_name || "").trim() || "Verified contributor";
   const firm = String(profile.company || "").trim();
   const headline = firm || display;
@@ -4901,7 +5140,7 @@ function brandGraph() {
   ];
 }
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn }) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
@@ -4920,10 +5159,57 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     (head || "") +
-    `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${MARKET_BAR}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
-function renderMarketPageHTML(slug, p, opts = {}) {
+// The one place that serves a marketShell page, so the header swap and the
+// caching that keeps it honest can never drift apart. The `vary` is the half
+// that looks redundant on a page with a static body and is not: without it a
+// browser re-serves the hour-old signed-out copy after the visitor signs in,
+// so the people who just created an account are exactly the ones still being
+// told to create one. Same contract as /how-it-works; CLAUDE.md records why.
+// The visitor-facing 404. Market slugs are indexed and explorer pages come
+// and go, so a stale search result is a normal arrival — it used to be met
+// with text/plain "Not found", an unbranded white page with no way anywhere.
+// HTML only for the surfaces a person reaches: /api/* and non-GET requests
+// keep the plain body (machine callers parse it), and the ADMIN_KEY-gated
+// routes keep their own plain 404s — that camouflage is deliberate and
+// test-pinned. The status stays 404: crawlers must still drop the URL.
+function sendNotFound(req, res, message) {
+  if (req.method !== "GET" || req.url.split("?")[0].startsWith("/api/")) {
+    res.writeHead(404, { "content-type": "text/plain" });
+    return res.end("Not found");
+  }
+  const body =
+    `<section style="padding:56px 0"><div class="kicker">404</div>` +
+    `<h1>${escHtml(message || "This page doesn't exist.")}</h1>` +
+    `<p style="color:#4C5665;max-width:56ch">The address may have moved, or the report behind it may have been ` +
+    `regenerated under a newer market page. Everything current is one click away.</p>` +
+    `<p style="margin-top:18px"><a class="btn" href="/">Run a free valuation &rarr;</a></p>` +
+    `<p style="margin-top:14px"><a href="/markets">Browse every market we cover &rarr;</a></p></section>`;
+  res.writeHead(404, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(marketShell({
+    title: "Page not found | CompNinja",
+    description: "That page doesn't exist.",
+    canonical: `${SITE_URL}/`,
+    noindex: true,
+    body,
+    signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+  }));
+}
+
+function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
+  const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
+  res.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": signedIn ? "no-store" : `public, max-age=${maxAge}`,
+    vary: "cookie",
+    ...(headers || {}),
+  });
+  res.end(render(signedIn));
+}
+
+function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const title = marketTitle(p);
   const canonical = marketUrl(slug);
   const rangeTxt = p.ppsf.low === p.ppsf.high ? usd0(p.ppsf.median) : `${usd0(p.ppsf.low)}–${usd0(p.ppsf.high)}`;
@@ -4931,13 +5217,18 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     `Recent ${p.type.toLowerCase()} sale comps in ${p.city}, ${p.state}: about ${usd0(p.ppsf.median)}/SF ` +
     `(typical ${rangeTxt}/SF) across ${p.ppsf.count} recent sales. Get a free instant valuation of your property.`;
 
+  // Ledger stat strip (Direction G). The median leads and is emphasized; the
+  // old "Comps window" tile is deliberately gone, not restyled — a date range
+  // is context, not a headline figure (it set a whole date span at display
+  // size, which wrapped), and the .sub line above already states the same
+  // window at text size. Two or three cells always divide the row cleanly,
+  // which the old auto-fit tile grid could not promise.
   const tiles = [
-    ["Median price / SF", usd0(p.ppsf.median), `across ${p.ppsf.count} recent sales`],
-    ["Typical range", `${rangeTxt}`, "middle of the market, $/SF"],
-    (p.cap_rate_low && p.cap_rate_high) ? ["Cap rate range", `${escHtml(p.cap_rate_low)}–${escHtml(p.cap_rate_high)}`, "stabilized deals"] : null,
-    p.date_range ? ["Comps window", escHtml(p.date_range), "most recent sales & leases"] : null,
-  ].filter(Boolean).map(([k, v, n]) =>
-    `<div class="tile"><div class="k">${escHtml(k)}</div><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`).join("");
+    ["Median price / SF", usd0(p.ppsf.median), `across ${p.ppsf.count} recent sales`, true],
+    ["Typical range", `${rangeTxt}`, "middle of the market, $/SF", false],
+    (p.cap_rate_low && p.cap_rate_high) ? ["Cap rate range", `${escHtml(p.cap_rate_low)}–${escHtml(p.cap_rate_high)}`, "stabilized deals", false] : null,
+  ].filter(Boolean).map(([k, v, n, mid]) =>
+    `<div class="lcell${mid ? " mid" : ""}"><span class="k">${escHtml(k)}</span><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`).join("");
 
   const drivers = (p.value_drivers || []).length
     ? `<div class="card"><h2>What's driving ${escHtml(p.type)} prices in ${escHtml(p.city)}</h2>` +
@@ -4974,7 +5265,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
         const cx = Math.round(x(i)), cy = Math.round(y(b.medianPsf));
         return `<circle cx="${cx}" cy="${cy}" r="4" fill="${i === buckets.length - 1 ? "#B91C1C" : "#1A2433"}"/>` +
           `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="#1A2433">${usd0(b.medianPsf)}</text>` +
-          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#8A93A0">${escHtml(b.label)} &middot; ${b.count}</text>`;
+          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#68707E">${escHtml(b.label)} &middot; ${b.count}</text>`;
       }).join("") +
       `</svg>`;
   }
@@ -5049,11 +5340,24 @@ function renderMarketPageHTML(slug, p, opts = {}) {
       ? `<td>${escHtml(c.address)} ${badge}</td>`
       : `<td>${escHtml(c[col.key] || "")}</td>`)).join("") + "</tr>";
   }).join("");
+  // Statement closing row (Direction H): the sales median under a double
+  // rule — quoting p.ppsf, the page's OWN headline statistic, so the table's
+  // closing figure and the median cell above it can never disagree (they are
+  // the same number from the same seed). The figure rides in the label as
+  // well as under the $/SF column because the table scrolls sideways on
+  // phones; same reasoning as the report's renderTableFoot. Hidden when the
+  // page has fewer than two recent sales, per the under-claim rule.
+  const psfIdx = compCols.findIndex((col) => col.key === "price_per_sqft");
+  const restCols = compCols.length - psfIdx - 1;
+  const medianRow = (p.ppsf && p.ppsf.count >= 2 && psfIdx > 0)
+    ? `<tfoot><tr><td class="tl" colspan="${psfIdx}">Median of ${p.ppsf.count} recent sales &middot; ${usd0(p.ppsf.median)}/SF</td>` +
+      `<td>${usd0(p.ppsf.median)}</td>${restCols > 0 ? `<td colspan="${restCols}"></td>` : ""}</tr></tfoot>`
+    : "";
   const compsTable = compRows
     ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
-      `<div class="scroll"><table><thead><tr>` +
+      `<div class="scroll"><table class="stmt"><thead><tr>` +
       compCols.map((col) => `<th>${escHtml(col.label)}</th>`).join("") +
-      `</tr></thead><tbody>${compRows}</tbody></table></div></div>`
+      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div></div>`
     : "";
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
@@ -5175,7 +5479,7 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     `<h1>${escHtml(title)}</h1>` +
     `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
     previewBanner +
-    `<div class="tiles">${tiles}</div>` +
+    `<div class="ledger">${tiles}</div>` +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     intelCard +
@@ -5185,7 +5489,16 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     brokersCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
     `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
-    `<a class="btn" href="/">Get my free valuation &rarr;</a>` +
+    // The loudest CTA on the site's biggest SEO surface, so it carries the
+    // market the visitor is standing in. It used to be a bare href="/", which
+    // under the wall answers an anonymous visitor with the landing page: they
+    // ask to value their building and get another marketing page, then have
+    // to find "Create account" a second time. The `alt` link directly below
+    // already did this properly; the big button was the one ignoring it.
+    // A member skips the signup door (index.html ignores ?auth= when signed
+    // in anyway) and just arrives with the type prefilled.
+    `<a class="btn" href="${escHtml(
+      (signedIn ? "/?" : "/?auth=signup&") + "type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
     // The Address Explorer deep link (spec 2026-08-03, "Deep link" section).
     // auth=signup is the one query form ACCOUNT_WALL never 302s, so this same
     // static href serves everyone: anonymous visitors get the signup modal
@@ -5203,10 +5516,11 @@ function renderMarketPageHTML(slug, p, opts = {}) {
     jsonLd: opts.preview ? null : jsonLd,
     noindex: Boolean(opts.preview),
     head: mapHead,
+    signedIn,
   });
 }
 
-function renderMarketDirectoryHTML() {
+function renderMarketDirectoryHTML(signedIn) {
   const merged = allMarketPages();
   // Curated seed pages first (in seed-file order), explorer-generated after,
   // alphabetically — the hand-picked markets stay the face of the directory.
@@ -5288,7 +5602,7 @@ function renderMarketDirectoryHTML() {
     filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
-  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd });
+  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn });
 }
 
 
@@ -5348,26 +5662,71 @@ h3{font-size:15px;font-weight:600;color:#1A2433;margin:0 0 6px}
 .sub{color:#4C5665;font-size:14px;max-width:60ch;margin:4px 0 20px}
 section{padding:48px 0}
 .band{background:#F5F4EF;box-shadow:0 0 0 100vmax #F5F4EF;clip-path:inset(0 -100vmax)}
-.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600;margin-bottom:2px}
+.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600;margin-bottom:2px}
 /* Stat strip */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid #E4E2DA;border-bottom:1px solid #E4E2DA}
 .stat{padding:18px}
 .stat:nth-child(1),.stat:nth-child(3){border-right:1px solid #E4E2DA}
 .stat .n{font-size:22px;font-weight:600;color:#1A2433;font-variant-numeric:tabular-nums}
-.stat .l{font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
-/* Sample-report exhibit */
+.stat .l{font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+/* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
+   the ONLY place a visitor sees the product before signing up, so it is built
+   as a faithful miniature of the real report rather than a layout of its own:
+   title block, ink-ruled sections, the value ledger, and the comp table
+   closing on its double-ruled median. Keep it in step with index.html's
+   .rd-ledger and #compsTable rules — when the report changes shape, this
+   exhibit is what tells visitors it did. */
 .exhibit{border:1px solid #D8D4C9;background:#fff;border-radius:6px;overflow:hidden}
-.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#8A93A0;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between}
-.exrow{display:flex;flex-direction:column}
-.exside{padding:24px;border-bottom:1px solid #ECEAE3}
-.exmain{padding:24px;flex:1;overflow-x:auto}
-.big{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:32px;margin-top:2px;font-variant-numeric:tabular-nums}
-.psf{font-size:13px;color:#5A6473;margin-bottom:16px}
+.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.exbody{padding:20px}
+.exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;letter-spacing:-.005em}
+.exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:#5A6473;margin-top:6px;padding-bottom:12px;border-bottom:1px solid #ECEAE3}
+.exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid #ECEAE3}
+.exmeta span:last-child{border-right:0;margin-right:0;padding-right:0}
+.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:#68707E}
+.exsec{margin-top:16px}
+.secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid #1A2433;padding-bottom:4px;margin-bottom:9px}
+.seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#1A2433}
+.secnote{font-size:9.5px;color:#68707E;text-align:right}
+.ledger{display:flex;border:1px solid #D8D4C9;border-radius:5px;overflow:hidden}
+.lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid #ECEAE3}
+.lcell:last-child{border-right:0}
+.lcell.mid{background:#FCFBF8}
+.lcell.mid .lab{color:#B91C1C}
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+.lcell.mid .fig{font-size:22px}
+.psf{font-size:10.5px;color:#68707E;margin-top:2px}
 .drv{font-size:13px;color:#374253;padding:7px 0;border-top:1px solid #F0EFE9;display:flex;gap:8px}
+.drv:first-of-type{border-top:0}
 .drv b{color:#B91C1C;font-weight:700}
+.exscroll{overflow-x:auto}
 table.comps{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-table.comps th{text-align:left;color:#8A93A0;font-weight:600;padding:7px 8px 7px 0;border-bottom:1px solid #D8D4C9;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
+table.comps th{text-align:left;color:#68707E;font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid #1A2433;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
 table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid #F0EFE9;white-space:nowrap}
+table.comps th.n,table.comps td.n{text-align:right}
+table.comps tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600}
+table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473}
+/* Hero (Direction E): the claim on the left, the product itself on the right —
+   the exhibit used to sit below the fold while half this row was empty.
+   Stacks claim-first below 900px, so a phone loses nothing but the order. */
+.hero2{display:grid;grid-template-columns:1fr;gap:28px}
+.hero2 h1.h{max-width:none}
+.hero2 .lead{max-width:48ch}
+@media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
+/* The hero's copy is the same document at a smaller scale: the answer and a
+   few comps, where the exhibit below carries the whole file. */
+.exmini .cap{padding:9px 14px;font-size:10px}
+.exmini .exbody{padding:16px}
+.exmini .exaddr{font-size:15px}
+.exmini .lcell{padding:9px 11px}
+.exmini .fig{font-size:15px}
+.exmini .lcell.mid .fig{font-size:19px}
+.mrows{margin-top:12px;border-top:1px solid #ECEAE3;padding-top:8px}
+.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid #F0EFE9;font-variant-numeric:tabular-nums}
+.mrow:last-of-type{border-bottom:0}
+.mrow .a{color:#1A2433;font-weight:500}
+.mrow .badge{margin-left:6px}
+.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600;border-top:1px solid #1A2433;border-bottom:3px double #1A2433;padding:6px 0;margin-top:2px}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:#06603A;background:#E3F2EA}
 .badge.p{color:#46536A;background:#EAEEF4}
@@ -5419,17 +5778,15 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
   .hdr nav{gap:24px}
   .stats{grid-template-columns:repeat(4,1fr)}
   .stat{padding:20px}
-  .stat:nth-child(3){border-right:1px solid #E4E2DA}
+  /* Four across: rule between every pair, so the divider the two-column
+     layout only needs after 1 and 3 also lands between 2 and 3. */
+  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid #E4E2DA}
   .steps{grid-template-columns:repeat(3,1fr)}
   .step{border-bottom:0;border-right:1px solid #ECEAE3}
   .step:last-child{border-right:0}
   h1.h{font-size:42px}
   footer .wrap{flex-direction:row}
   footer .right{flex-shrink:0}
-}
-@media (min-width:1024px){
-  .exrow{flex-direction:row}
-  .exside{width:38%;border-bottom:0;border-right:1px solid #ECEAE3}
 }
 ${ACCOUNT_NAV_CSS}`;
 
@@ -5439,13 +5796,16 @@ ${ACCOUNT_NAV_CSS}`;
 const HOW_FAQ = [
   ["What is a comp in commercial real estate?",
    "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command."],
-  // Rewritten 2026-08-09: the old answer ("free and there is no
-  // subscription") predated the Pro launch and the account wall, so the FAQ
-  // was contradicting the pricing page. Deliberately names NO dollar amounts —
-  // prices live in the pricing modal and the $20 one-off is already
-  // hard-coded in two places; a third would be one more thing to drift.
+  // This answer reaches Google twice: as the visible accordion and inside the
+  // FAQPage JSON-LD below. It claimed "there is no subscription" for months
+  // after Pro went on sale, so the search result was actively denying the
+  // product. Keep it true to entitlements.js (4 comps, 36 months free) and to
+  // the pricing modal in index.html, which are the numbers being charged.
+  // (Both sides of the 2026-08-08 merge rewrote this entry; this is the
+  // upstream version, kept because naming the real numbers beat vagueness —
+  // it now owes an update whenever the prices move.)
   ["How much does a comp report cost?",
-   "Reports are free with a free account. A free report opens with the full value range and the strongest comps itemized; a Pro subscription unlocks every comparable, a longer lookback, unlimited exports, and the Broker Vault. You can also unlock a single report once, with no subscription. Current rates are under Pricing in the menu."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. The free report itemizes four comps and looks back three years. Pro, at $129 a month, removes both limits and adds unlimited exports and your own branding on the report. If you only need one building, a single report unlocks on its own for $20."],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -5469,10 +5829,14 @@ const HOW_FAQ = [
 // canonical URL, and room to grow into a real contributor hub.
 // Rendered through marketShell (MARKET_CSS/BAR/FOOTER) like /markets and
 // /broker/<slug>, so it does NOT depend on the purged tailwind.css.
-// The "Submit a comp" CTA points at /#submit-comp: the submission form is the
-// modal that lives in index.html, and one form beats two copies of it.
+// The "Submit a comp" CTA points at /?submit=comp: the submission form is the
+// modal that lives in index.html, and one form beats two copies of it. It is a
+// QUERY, not the /#submit-comp fragment it used to be, because ACCOUNT_WALL
+// decides what "/" serves on the server and a fragment never reaches it, so
+// the hash link left every logged-out broker on the landing page with no modal
+// and no anchor. See the wall's door list in the static handler.
 // ---------------------------------------------------------------------------
-function renderBrokersPageHTML() {
+function renderBrokersPageHTML(signedIn) {
   const title = "For Commercial Real Estate Brokers | CompNinja";
   const canonical = `${SITE_URL}/brokers`;
   // Trimmed to the ~160 characters Google renders; it was 180.
@@ -5510,7 +5874,7 @@ function renderBrokersPageHTML() {
   //   - The BOV card must NAME the feature ("Broker Opinion of Value") — the
   //     old card described it without ever saying what it was called.
   //   - "For members" is the paid tier's home on this page: vault + pricing
-  //     (/#pricing, the deep-link idiom — the modal lives in index.html).
+  //     (/?pricing=1, the ?submit=comp door idiom — the modal lives in index.html).
   //   - Compliance line stays: we connect, we never broker.
   const body =
     `<h1>The comps get better because brokers make them better.</h1>` +
@@ -5534,16 +5898,16 @@ function renderBrokersPageHTML() {
     `Contributors with a public profile also get a page of their own listing their verified comps ` +
     `and coverage.</p>` +
     `<p style="margin:0"><a href="/vault">Open your vault &rarr;</a> &nbsp;&middot;&nbsp; ` +
-    `<a href="/#pricing">See pricing &rarr;</a></p></div>` +
+    `<a href="/?pricing=1">See pricing &rarr;</a></p></div>` +
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
-    `<a class="btn" href="/#submit-comp">Submit a comp</a>` +
+    `<a class="btn" href="/?submit=comp">Submit a comp</a>` +
     `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p>` +
     `<p style="margin:0"><a class="alt" href="/1031-exchange">Client weighing a 1031? Send them our exchange guide &rarr;</a></p></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
-  return marketShell({ title, description, canonical, body, jsonLd });
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn });
 }
 
 // ---------------------------------------------------------------------------
@@ -5559,7 +5923,7 @@ function renderBrokersPageHTML() {
 // ---------------------------------------------------------------------------
 const LEGAL_UPDATED = "August 3, 2026";
 
-function renderTermsPageHTML() {
+function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
   const canonical = `${SITE_URL}/terms`;
   const description =
@@ -5632,10 +5996,10 @@ function renderTermsPageHTML() {
     `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
     `</div>`;
 
-  return marketShell({ title, description, canonical, body });
+  return marketShell({ title, description, canonical, body, signedIn });
 }
 
-function renderPrivacyPageHTML() {
+function renderPrivacyPageHTML(signedIn) {
   const title = "Privacy Policy | CompNinja";
   const canonical = `${SITE_URL}/privacy`;
   const description =
@@ -5740,7 +6104,7 @@ function renderPrivacyPageHTML() {
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
     `</div>`;
 
-  return marketShell({ title, description, canonical, body });
+  return marketShell({ title, description, canonical, body, signedIn });
 }
 
 function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
@@ -5764,22 +6128,66 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     "How a CompNinja report is built: live searches of public records and listings, " +
     "a source badge on every comp, and a value range for your building.";
 
+  // Both numbers were wrong in opposite directions until 2026-08-08: "3–6"
+  // undersold a product whose search asks for up to 12 comps, and "~40s"
+  // oversold one whose model alone spends 40–70s writing (a corpus-strong
+  // 2-search run still clocked 74s). Promising 40 and delivering 75 costs
+  // trust on the very first search — the one the visitor is timing.
   const stats = [
-    ["Free", "Every report"],
-    ["3&ndash;6", "Cited comps per report"],
-    ["~40s", "Search to report"],
+    // "To start", not "Every report": every report IS free to run, but the
+    // strip sits two scrolls above an FAQ describing $129/mo Pro and a $20
+    // report unlock, and "free / every report" reads as denying both. Same
+    // wording the approved Direction E card carried.
+    ["Free", "To start"],
+    ["Up to 12", "Cited comps per report"],
+    ["~1 min", "Search to report"],
     ["100%", "Sources disclosed"],
   ].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
 
   // Illustrative sample, clearly captioned as such — the same exhibit that
   // used to sit on the home page. Figures are representative, not a live pull.
-  const sampleComps = [
-    ["9020 Center Ave", "May 26", "21,400", "$238", `<span class="badge v">Verified &middot; via Ridgeline CRE</span>`],
-    ["11215 4th St", "Mar 26", "18,750", "$226", `<span class="badge p">Public record</span>`],
-    ["8933 Utica Ave", "Feb 26", "24,100", "$219", `<span class="badge li">Listing</span>`],
-    ["10722 Arrow Route", "Dec 25", "19,900", "$214", `<span class="badge p">Public record</span>`],
-    ["12190 6th St", "Nov 25", "26,300", "$208", `<span class="badge li">Listing</span>`],
-  ].map((r) => `<tr>${r.map((c, i) => `<td>${i === 4 ? c : escHtml(c)}</td>`).join("")}</tr>`).join("");
+  // ONE illustrative comp set feeds both the hero's compact exhibit and the
+  // full one below, so the two can never quote different numbers at each
+  // other. The figures are also internally honest, which the previous set was
+  // not: SAMPLE_MEDIAN is the real median of these five $/SF values, the
+  // "Likely" value equals that median x the subject size (21,600 SF), and Low
+  // and High are the size x the cheapest and dearest comp. A visitor who
+  // checks the arithmetic finds it holds, and that is the whole pitch of the
+  // page it sits on.
+  const SAMPLE_SIZE_SQFT = "21,600";
+  const SAMPLE_MEDIAN = "$219";
+  const SAMPLE_COMPS = [
+    { addr: "9020 Center Ave", sold: "May 26", sf: "21,400", psf: "$238",
+      badge: `<span class="badge v">Verified &middot; via Ridgeline CRE</span>`, short: `<span class="badge v">Verified</span>` },
+    { addr: "11215 4th St", sold: "Mar 26", sf: "18,750", psf: "$226",
+      badge: `<span class="badge p">Public record</span>`, short: `<span class="badge p">Public record</span>` },
+    { addr: "8933 Utica Ave", sold: "Feb 26", sf: "24,100", psf: "$219",
+      badge: `<span class="badge li">Listing</span>`, short: `<span class="badge li">Listing</span>` },
+    { addr: "10722 Arrow Route", sold: "Dec 25", sf: "19,900", psf: "$214",
+      badge: `<span class="badge p">Public record</span>`, short: `<span class="badge p">Public record</span>` },
+    { addr: "12190 6th St", sold: "Nov 25", sf: "26,300", psf: "$208",
+      badge: `<span class="badge li">Listing</span>`, short: `<span class="badge li">Listing</span>` },
+  ];
+  const sampleComps = SAMPLE_COMPS.map((c) =>
+    `<tr><td>${escHtml(c.addr)}</td><td>${escHtml(c.sold)}</td><td class="n">${escHtml(c.sf)}</td>` +
+    `<td class="n">${escHtml(c.psf)}</td><td>${c.badge}</td></tr>`).join("");
+  // The hero shows the answer and the first few comps; the exhibit below
+  // carries the whole file.
+  const sampleMiniRows = SAMPLE_COMPS.slice(0, 3).map((c) =>
+    `<div class="mrow"><span class="a">${escHtml(c.addr)}${c.short}</span><span>${escHtml(c.psf)}</span></div>`).join("");
+  // Low / Likely / High, as the report itself renders them: Likely IS the
+  // comp median, which is why it carries that label in the sub-line.
+  const sampleLedger = [
+    ["Low", "$4,580,000", "at $212/SF"],
+    ["Likely", "$4,730,000", `at ${SAMPLE_MEDIAN}/SF`],
+    ["High", "$5,140,000", "at $238/SF"],
+  ];
+  // The full exhibit names the statistic under "Likely"; the hero's compact
+  // copy leaves it off, because its own median row says it one line below and
+  // the extra words wrap the cell to two lines at that width.
+  const ledgerCells = (nameMedian) => sampleLedger.map(([lab, fig, sub], i) =>
+    `<div class="lcell${i === 1 ? " mid" : ""}"><span class="lab">${lab}</span><div class="fig">${fig}</div>` +
+    `<div class="psf">${sub}${nameMedian && i === 1 ? " &middot; comp median" : ""}</div></div>`).join("");
 
   const steps = [
     ["I.", "Search live",
@@ -5894,15 +6302,29 @@ ${ACCOUNT_NAV_JS}
 <main>
   <div class="wrap">
     <section style="padding-bottom:32px">
-      <h1 class="h">A report you can hand to someone who will argue with it.</h1>
-      <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
-        subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
-      <div class="heroCta">
-        ${signedIn
-          ? `<a class="btn" href="/">Run a report</a>
-        <span class="alt">You're signed in. Reports are free.</span>`
-          : `<a class="btn" href="/?auth=signup">Create a free account</a>
-        <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
+      <div class="hero2">
+        <div>
+          <h1 class="h">A report you can hand to someone who will argue with it.</h1>
+          <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
+            subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
+          <div class="heroCta">
+            ${signedIn
+              ? `<a class="btn" href="/">Run a report</a>
+            <span class="alt">You're signed in. Reports are free.</span>`
+              : `<a class="btn" href="/?auth=signup">Create a free account</a>
+            <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
+          </div>
+        </div>
+        <div class="exhibit exmini">
+          <div class="cap"><span>Sample report &middot; Industrial</span><span>Illustrative</span></div>
+          <div class="exbody">
+            <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
+            <div class="exmeta plain">${SAMPLE_SIZE_SQFT} SF from public record &middot; 24-month lookback</div>
+            <div class="ledger">${ledgerCells(false)}</div>
+            <div class="mrows">${sampleMiniRows}</div>
+            <div class="mmed"><span>Median of 5 sale comps</span><span>${SAMPLE_MEDIAN}/SF</span></div>
+          </div>
+        </div>
       </div>
     </section>
     <div class="stats">${stats}</div>
@@ -5916,21 +6338,28 @@ ${ACCOUNT_NAV_JS}
         both, with a confidence badge on every source.</p>
       <div class="exhibit">
         <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
-        <div class="exrow">
-          <div class="exside">
-            <div class="lab">Estimated value</div>
-            <div class="big">$4.6M&ndash;$5.3M</div>
-            <div class="psf">$212&ndash;$245 / SF &middot; 21,600 SF (public record)</div>
-            <div class="lab" style="margin-bottom:4px">What's driving prices</div>
+        <div class="exbody">
+          <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
+          <div class="exmeta"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF (public record)</span><span>24-month lookback</span><span>5 comparables</span></div>
+          <div class="exsec">
+            <div class="secrule"><span class="seclab">What This Building Is Worth</span><span class="secnote">from 5 comparable sales</span></div>
+            <div class="ledger">${ledgerCells(true)}</div>
+          </div>
+          <div class="exsec">
+            <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
             <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
             <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
-            <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9–6.4%</div>
+            <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
           </div>
-          <div class="exmain">
-            <table class="comps">
-              <thead><tr><th>Address</th><th>Sold</th><th>SF</th><th>$/SF</th><th>Source</th></tr></thead>
-              <tbody>${sampleComps}</tbody>
-            </table>
+          <div class="exsec">
+            <div class="secrule"><span class="seclab">Comparable Properties</span><span class="secnote">source badged per comp</span></div>
+            <div class="exscroll">
+              <table class="comps">
+                <thead><tr><th>Address</th><th>Sold</th><th class="n">SF</th><th class="n">$/SF</th><th>Source</th></tr></thead>
+                <tbody>${sampleComps}</tbody>
+                <tfoot><tr><td class="tl" colspan="3">Median of 5 sale comps &middot; ${SAMPLE_MEDIAN}/SF</td><td class="n">${SAMPLE_MEDIAN}</td><td></td></tr></tfoot>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -5938,7 +6367,7 @@ ${ACCOUNT_NAV_JS}
         <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
         <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
         <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <span style="color:#8A93A0">Badges under-claim, never over-claim.</span>
+        <span style="color:#68707E">Badges under-claim, never over-claim.</span>
       </div>
     </section>
   </div>
@@ -6122,6 +6551,7 @@ function aggregateStats(rows) {
         attempts: a.length,
         applied: n("applied"),
         agreed: n("agreed"),
+        dialogPick: n("dialog_pick"),
         noAddressMatch: n("no_address_match"),
         ambiguous: n("ambiguous"),
         failed: n("failed"),
@@ -6252,7 +6682,7 @@ function renderAdminHTML() {
    The one page-local token is --red-wash, the alarm card's tint. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;--red-wash:#FCF3F2;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -6396,7 +6826,7 @@ function render(d){
   var t=d.totals, hit=t.searches?Math.round(t.cached/t.searches*100):0;
   var c=d.corpus||{hits:0,billedReport:0,pct:0,health:{}};
   // Absent on a stale /api/stats from before this tile existed.
-  var ta=d.typeAutofill||{attempts:0,applied:0,agreed:0,noAddressMatch:0,ambiguous:0,failed:0,pct:0};
+  var ta=d.typeAutofill||{attempts:0,applied:0,agreed:0,dialogPick:0,noAddressMatch:0,ambiguous:0,failed:0,pct:0};
   // null only on a stale /api/stats response from before the cost tiles existed.
   // Render an em-dash rather than $0.00, which would read as "searches are free".
   var sp=d.spend||null;
@@ -6480,10 +6910,10 @@ function render(d){
     "<div class=tile><div class=k>Billed</div><div class=v>"+t.billed+"</div></div>"+
     "<div class=tile><div class=k>Cache hit rate</div><div class=v>"+hit+"%</div></div>"+
     "<div class=tile><div class=k>Corpus hit rate</div><div class=v>"+c.pct+"%</div><div class=muted style='margin-top:2px'>"+c.hits+" of "+c.billedReport+" billed</div></div>"+
-    "<div class=tile title='applied = set the type. agreed = already correct. no match = OpenStreetMap has no building at that house number. ambiguous = building mapped but untyped. failed = Overpass down or rate-limiting us.'>"+
+    "<div class=tile title='applied = set the type. agreed = already correct. dialog_pick = the visitor picked it in the confirm dialog. no match = OpenStreetMap has no building at that house number. ambiguous = building mapped but untyped. failed = Overpass down or rate-limiting us.'>"+
       "<div class=k>Type autofill</div><div class=v>"+ta.pct+"%</div>"+
       "<div class=muted style='margin-top:2px'>"+ta.applied+" applied of "+ta.attempts+"</div>"+
-      (ta.attempts?"<div class=muted style='margin-top:2px'>"+ta.agreed+" agreed &middot; "+ta.noAddressMatch+
+      (ta.attempts?"<div class=muted style='margin-top:2px'>"+ta.agreed+" agreed &middot; "+(ta.dialogPick||0)+" dialog &middot; "+ta.noAddressMatch+
         " no match &middot; "+ta.ambiguous+" ambiguous &middot; "+ta.failed+" failed</div>":"")+
     "</div>"+
     "<div class=tile><div class=k>Avg comp search</div><div class=v>"+(sp?money(sp.avgReport):"&mdash;")+"</div><div class=muted style='margin-top:2px'>"+
@@ -6938,7 +7368,7 @@ function renderDevHubHTML() {
    a loose hex — the fix dot, the note grey, both footer greys — is a token. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --note:#5F5E5A;--foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -7520,7 +7950,7 @@ function renderContactsHTML() {
    at a glance), the one place this page steps outside the token palette. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -7604,7 +8034,7 @@ h1.h{font-size:var(--t1);line-height:1.15;margin:var(--s4) 0 0}
 .st-contacted{background:#FEF3C7;color:#8A6100}
 .st-following-up{background:#FFE8D9;color:#9A4A12}
 .st-client{background:#DCFCE7;color:#166534}
-.st-dead{background:#F1F0EC;color:#8A93A0}
+.st-dead{background:#F1F0EC;color:#68707E}
 .empty{text-align:center;color:var(--ink-3);font-size:var(--t4);padding:var(--s7) 0}
 footer{background:var(--ink);color:var(--foot-ink);font-size:var(--t5)}
 footer .wrap{padding:var(--s7) var(--s6);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
@@ -8254,7 +8684,7 @@ function renderHqHTML() {
    red reserved for interaction. */
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;--red-pale:#E8B4B4;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --foot-ink:#B8C0CC;--foot-link:#D5DAE2;
@@ -8619,6 +9049,24 @@ try{var sk=sessionStorage.getItem(KEYK);load(sk||"");}catch(e){load("");}
 </body></html>`;
 }
 
+// Real-city verdicts for the Explorer, memoized for the process lifetime:
+// a city doesn't pop into or out of existence, and a restart clears any
+// data-gap mistake. "unavailable" is deliberately never cached — the next
+// request retries the service. The memo is consulted BEFORE the rate
+// limiter so repeat lookups of known cities stay free; the limiter only
+// bounds outbound Zippopotam calls, and tripping it fails OPEN (this is a
+// guardrail on our own spend, not a service the visitor is owed).
+const cityVerdictMem = new Map(); // "ST|city" -> "ok" | "unknown"
+async function checkExploreCity(req, city, state) {
+  const key = `${state}|${city.toLowerCase()}`;
+  if (cityVerdictMem.has(key)) return cityVerdictMem.get(key);
+  if (rateLimited("exploreCheck:" + clientIp(req), 10, 15 * 60 * 1000)) return "unavailable";
+  const verdict = await CITYCHECK.checkCity(
+    (url) => fetch(url, { signal: AbortSignal.timeout(4000) }), city, state);
+  if (verdict !== "unavailable") cityVerdictMem.set(key, verdict);
+  return verdict;
+}
+
 const server = http.createServer((req, res) => {
   // --- API endpoint ---
   if (req.method === "POST" && req.url === "/api/comps") {
@@ -8640,7 +9088,7 @@ const server = http.createServer((req, res) => {
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream, fresh } = JSON.parse(body || "{}");
         // Entitlements are resolved BEFORE anything else reads the body's
         // knobs: the lookback ceiling below depends on them, and every exit
         // from here on serializes through gateReport().
@@ -8658,6 +9106,13 @@ const server = http.createServer((req, res) => {
         // would publish four comps. ADMIN_KEY is the existing internal
         // credential (same one the leads/corpus CSV downloads use).
         const internal = ADMIN_KEY && req.headers["x-admin-key"] === ADMIN_KEY;
+        // The eval harness needs a genuinely fresh search: a cached report
+        // would score the model that WROTE it, silently reporting "no
+        // difference" between two models. Internal callers only, and it
+        // skips the cache READ only, never the write. Both read paths are
+        // guarded below, because the derivable-window path can serve a
+        // report derived from the previous run's entry just as easily.
+        const skipCache = internal && fresh === true;
         // Opt in via the body, not Accept: the body is already parsed, and
         // gen-market-seed.js (the other /api/comps caller) simply never sends
         // the flag, so it keeps getting one plain JSON body.
@@ -8787,7 +9242,7 @@ const server = http.createServer((req, res) => {
         const consumeGuestSearch = (headersOpen) =>
           consumeGuestSearchFor(guestGate, req, res, headersOpen);
 
-        const cached = await getCachedSearch(cacheKey);
+        const cached = skipCache ? null : await getCachedSearch(cacheKey);
         if (cached) {
           // Legacy cache entries predate $/SF reconciliation — correct them at
           // read time (idempotent, so re-hitting the in-memory object is fine).
@@ -8804,7 +9259,7 @@ const server = http.createServer((req, res) => {
         // one, so a cached longer-window report for the same request can be
         // filtered down to this window instead of paying for a fresh search
         // (see findDerivableReport for the quality floors).
-        const dw = await findDerivableReport({
+        const dw = skipCache ? null : await findDerivableReport({
           address: addressOk, type: typeOk, note: noteOk,
           maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
           verifiedComps, subjectDetails: detailsOk,
@@ -8844,6 +9299,12 @@ const server = http.createServer((req, res) => {
         const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
         if (corpusIsStrong(corpus)) {
           console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
+        }
+        if (corpus.nearbyCount) {
+          // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
+          // total, so report both rather than let the count overstate what
+          // the model was actually offered.
+          console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
         }
 
         // Everything above this line answers in plain JSON — the password gate,
@@ -8984,6 +9445,23 @@ const server = http.createServer((req, res) => {
           });
         }
 
+        // Real-city check, BEFORE the explore limiter so a typo answers 400
+        // without eating one of the visitor's three real-search slots — and
+        // before the billed job, which is the whole point: "industrial Bosie
+        // ID" must never spend ~$0.36 or publish a misspelled /market/ page.
+        // "unavailable" (service down or exploreCheck limiter tripped) falls
+        // through and the search runs exactly as before this check existed;
+        // DAILY_SEARCH_CAP still backstops spend. A 400 here never consumes
+        // the guest's free search (consumeGuestSearchFor keys on status 200).
+        // Spec: docs/superpowers/specs/2026-08-09-explore-market-city-validation-design.md
+        const cityVerdict = await checkExploreCity(req, cityOk, stateOk);
+        if (cityVerdict === "unknown") {
+          logEvent("explore_reject", { prop_type: typeOk, market: `${cityOk}, ${stateOk}`, source: "explore" });
+          return sendJson(res, 400, {
+            error: `We couldn't find a city called "${cityOk}" in ${stateOk}. Check the spelling, or run a valuation for a specific property instead.`,
+          });
+        }
+
         if (rateLimited("explore:" + clientIp(req), 3, 15 * 60 * 1000)) {
           return sendJson(res, 429, {
             error: "Market generation is limited to a few per visitor per 15 minutes. Try again shortly, or run a valuation for a specific property instead.",
@@ -9036,6 +9514,13 @@ const server = http.createServer((req, res) => {
               return { status: 200, body: { url: `/market/${slug}`, slug, published: true } };
             }
             previewPagesMem.set(slug, { payload: snapshot, ts: Date.now() });
+            // Thin markets are invisible in analytics otherwise: a preview and a
+            // published page log the same `search` row. Since a preview no
+            // longer spends the visitor's free search (see the consume line
+            // below), the thin-market rate is what says whether previews are
+            // becoming a spend sink, and whether MIN_PRICED_SALE_COMPS sits in
+            // the right place. PII-free, same shape as `explore_reject`.
+            logEvent("explore_preview", { prop_type: typeOk, market: address, source: "explore", cached });
             return { status: 200, body: { url: `/market-preview/${slug}`, slug, published: false, pricedSaleCount } };
         })());
         // The SSE opens on the FIRST progress event, not up front. At this
@@ -9060,11 +9545,20 @@ const server = http.createServer((req, res) => {
         } finally {
           job.listeners.delete(onEvent);
         }
-        // Spent only when a result was actually served — a published page or a
-        // thin-data preview, both of which cost a real search and return real
-        // content. A 422 thin market, a 429 daily cap or an upstream failure
-        // must never burn the visitor's free search.
-        if (status === 200) consumeGuestSearchFor(guestGate, req, res, Boolean(sse));
+        // Spent only when a PERMANENT page was published. A thin-data preview
+        // returns 200 with a URL, but it lives only in previewPagesMem behind a
+        // 30-minute TTL and dies on every restart, so charging the visitor's one
+        // free search for it handed them an artifact that was often already
+        // gone. It is the same empty-handed outcome as a 422 thin market, a 429
+        // daily cap or an upstream failure, none of which consume either.
+        // Keeping the allowance also makes the preview self-healing: exploring
+        // that market again is a search_cache hit, so it costs nothing upstream
+        // and regenerates the page.
+        // The covered-market short circuit never reaches this line — it returns
+        // from above the guest gate, and serving an existing page stays free.
+        if (status === 200 && out.published === true) {
+          consumeGuestSearchFor(guestGate, req, res, Boolean(sse));
+        }
         if (sse) return sse.finish(status === 200 ? "result" : "error",
           status === 200 ? out : { error: out.error });
         return sendJson(res, status, out);
@@ -10324,6 +10818,41 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // The broker's last confirmed CSV column mapping. A convenience only: it
+  // pre-fills the mapping screen, which they still confirm, so a stale mapping
+  // can never import the wrong thing. Both halves swallow their errors for that
+  // reason — losing it costs a few seconds, and failing an upload over it would
+  // cost the broker their spreadsheet.
+  async function getCsvMapping(userId) {
+    if (!DB_CONFIGURED || !userId) return null;
+    try {
+      const rows = await sbRequest("GET",
+        `broker_csv_mappings?user_id=eq.${encodeURIComponent(userId)}&select=mapping&limit=1`);
+      const m = rows && rows[0] && rows[0].mapping;
+      return m && typeof m === "object" && !Array.isArray(m) ? m : null;
+    } catch (e) {
+      console.warn("csv mapping read failed:", e.message);
+      return null;
+    }
+  }
+
+  async function saveCsvMapping(userId, mapping) {
+    if (!DB_CONFIGURED || !userId) return;
+    if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return;
+    try {
+      // Name the conflict target explicitly, matching every other
+      // merge-duplicates upsert in this file — do not "simplify" this back
+      // to PostgREST's implicit primary-key default; an unverified default
+      // makes this fail silently into the catch below with nothing
+      // reaching the broker.
+      await sbRequest("POST", "broker_csv_mappings?on_conflict=user_id",
+        [{ user_id: userId, mapping, updated_at: new Date().toISOString() }],
+        { prefer: "resolution=merge-duplicates,return=minimal" });
+    } catch (e) {
+      console.warn("csv mapping write failed:", e.message);
+    }
+  }
+
   // --- Broker vault (v1) ----------------------------------------------------
   //
   // A broker's private comp store. Plan:
@@ -10386,6 +10915,58 @@ const server = http.createServer((req, res) => {
       })().catch((err) => {
         console.error("vault template error:", err.message);
         sendJson(res, 500, { error: "Could not build the template." });
+      });
+      return;
+    }
+
+    // Read a broker's own CSV and report its shape, so they can map their
+    // columns onto ours. Stores NOTHING: a broker who cancels leaves no trace.
+    // The only persistence it touches is READING their remembered mapping.
+    if (req.method === "POST" && path === "/api/vault/inspect") {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 8e6 && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const user = await openVault();
+          if (!user) return;
+          // Its own limiter key: inspecting is cheap and a broker may retry the
+          // screen several times while an import is one deliberate act.
+          if (rateLimited("vaultinspect:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const { csv } = JSON.parse(body || "{}");
+          const info = VAULT.inspectCsv(String(csv || ""));
+          if (!info.ok) return sendJson(res, 400, { error: info.error });
+          sendJson(res, 200, {
+            headers: info.headers,
+            normalized: info.normalized,
+            samples: info.samples,
+            suggested: info.suggested,
+            ambiguous: info.ambiguous,
+            remembered: await getCsvMapping(user.id),
+            cleanTemplate: info.cleanTemplate,
+            rowCount: info.rowCount,
+            // Served rather than hard-coded in vault-page.js so the dropdown
+            // cannot drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS.
+            // Adding a per-type field stays a one-place change.
+            targets: VAULT.MAPPABLE_TARGETS,
+            required: VAULT.REQUIRED_TARGETS,
+          });
+        } catch (e) {
+          // Same guard as /api/vault/upload's, and it matters more here: V8
+          // QUOTES the input in a JSON.parse error ("Unexpected token 'a',
+          // \"address,pr\"... is not valid JSON"), so letting a malformed body
+          // reach the log below would print a fragment of a broker's private
+          // CSV into Render's logs. A bad body is the client's error anyway.
+          if (e instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault inspect failed:", e.message);
+          sendJson(res, 500, { error: "That file could not be read." });
+        }
       });
       return;
     }
@@ -10489,8 +11070,12 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
 
-          const { filename, csv } = JSON.parse(body || "{}");
-          const parsed = VAULT.parseUpload(csv);
+          const { filename, csv, mapping } = JSON.parse(body || "{}");
+          // `mapping` absent means today's behaviour byte for byte, so
+          // gen-market-seed.js and any existing caller are unaffected.
+          // parseUpload validates it and refuses the whole file if it is
+          // wrong, which is why nothing is checked here.
+          const parsed = VAULT.parseUpload(csv, { mapping: mapping || null });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -10514,6 +11099,10 @@ const server = http.createServer((req, res) => {
             { prefer: "return=representation" });
           const uploadId = batch && batch[0] && batch[0].id;
           if (!uploadId) throw new Error("broker_uploads insert returned no id");
+
+          // Saved only once the import actually succeeded, so a mapping that
+          // produced nothing usable is never offered back to them next time.
+          if (mapping) saveCsvMapping(user.id, mapping);
 
           // `market` is attached HERE, with server.js's own marketOf() and no
           // other parse, so broker_comps.market agrees byte for byte with
@@ -11674,7 +12263,7 @@ const server = http.createServer((req, res) => {
       try {
         if (rateLimited("tafill:" + clientIp(req), 60)) return;
         const p = JSON.parse(body || "{}");
-        const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed"];
+        const OUTCOMES = ["applied", "agreed", "no_address_match", "ambiguous", "failed", "dialog_pick"];
         const outcome = OUTCOMES.indexOf(String(p.outcome || "")) >= 0 ? String(p.outcome) : null;
         if (!outcome) return;
         const TYPES = ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"];
@@ -12068,9 +12657,28 @@ const server = http.createServer((req, res) => {
     // /desk stays a redirect — it is a personal workspace with no anonymous
     // rendering, and its target is now the front door at `/`.
     if (ACCOUNT_WALL && !parseCookies(req)[SESSION_COOKIE]) {
-      const auth = new URLSearchParams(req.url.split("?")[1] || "").get("auth");
+      const qs = new URLSearchParams(req.url.split("?")[1] || "");
+      const auth = qs.get("auth");
+      // The third door, alongside ?auth=. /brokers' "Submit a comp" CTA used
+      // to be /#submit-comp, which cannot work: the wall decides server-side
+      // and a fragment is never sent, so a broker landed on the wall's
+      // landing page, which has no comp modal and no such anchor. A broker
+      // contributing a comp is exactly who this site wants and the only one
+      // who does not yet have a reason to hold an account, so the form opens
+      // without one (POST /api/comp-submission has never required a session).
+      // An allowlist of one literal value, like ?auth=, never "any submit".
+      const submit = qs.get("submit");
+      // The fourth door: ?pricing=1, for the Pricing links in the
+      // server-rendered headers and on /brokers. Same reasoning as
+      // ?submit=comp — the pricing modal lives only in index.html, and the
+      // /#pricing fragment this shipped with dies at the wall because a
+      // fragment never reaches the server. A signed-out visitor weighing the
+      // price is exactly who must not be bounced to a page with no prices on
+      // it; checkout itself still requires the account (401 → signup modal).
+      const pricing = qs.get("pricing");
       const shared = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath);
-      if (!shared && auth !== "signup" && auth !== "signin") {
+      if (!shared && auth !== "signup" && auth !== "signin" && submit !== "comp"
+          && pricing !== "1") {
         if (staticPath === "/desk") {
           res.writeHead(302, { location: "/", "cache-control": "no-store" });
           return res.end();
@@ -12118,6 +12726,9 @@ const server = http.createServer((req, res) => {
     // script calls the global GUTCHECK, so this file must never be stale
     // relative to the page that depends on it.
     "/gut-check.js": { file: "gut-check.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Same maxAge: 0 rule again: index.html's Market Explorer calls the
+    // global EXPLOREQ, so this file must never be stale relative to it.
+    "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
@@ -12201,8 +12812,7 @@ const server = http.createServer((req, res) => {
   // shell. Education, never advice: the compliance strings are pinned by
   // test/guide-1031.test.js. ---
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(marketShell({
+    return sendShellPage(req, res, (signedIn) => marketShell({
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,
       canonical: `${SITE_URL}/1031-exchange`,
@@ -12212,6 +12822,7 @@ const server = http.createServer((req, res) => {
         "@context": "https://schema.org",
         "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
       }),
+      signedIn,
     }));
   }
 
@@ -12219,31 +12830,27 @@ const server = http.createServer((req, res) => {
   // content, same hour-long cache as /how-it-works. Sits above the
   // /broker/<slug> profile matcher below so the two stay adjacent. ---
   if (req.method === "GET" && req.url.split("#")[0] === "/brokers") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderBrokersPageHTML());
+    return sendShellPage(req, res, (signedIn) => renderBrokersPageHTML(signedIn));
   }
 
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
   // resolves; Stripe checkout settings and campaign links both send query
   // strings. Same hour cache as the other static pages. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/terms") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderTermsPageHTML());
+    return sendShellPage(req, res, (signedIn) => renderTermsPageHTML(signedIn));
   }
   if (req.method === "GET" && req.url.split("?")[0] === "/privacy") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderPrivacyPageHTML());
+    return sendShellPage(req, res, (signedIn) => renderPrivacyPageHTML(signedIn));
   }
 
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && req.url === "/markets") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderMarketDirectoryHTML());
+    return sendShellPage(req, res, (signedIn) => renderMarketDirectoryHTML(signedIn));
   }
   const marketMatch = req.method === "GET" && req.url.match(/^\/market\/([a-z0-9-]{3,80})$/);
   if (marketMatch) {
     const page = getMarketPage(marketMatch[1]);
-    if (!page) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Market not found"); }
+    if (!page) return sendNotFound(req, res, "That market page isn't here anymore.");
     // Stale-while-revalidate: serve from the current credit cache and kick a
     // background refresh when it's old — the response never waits on the DB.
     if (Date.now() - MARKET_CREDIT.fetchedAt > MARKET_CREDIT_TTL_MS) refreshMarketCredit();
@@ -12251,10 +12858,9 @@ const server = http.createServer((req, res) => {
     // background refresh when it is old, render from whatever is cached now.
     // The response never waits, and an empty map simply renders no section.
     if (Date.now() - BROKER_DIRECTORY.fetchedAt > BROKER_DIRECTORY_TTL_MS) refreshBrokerDirectory();
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
-    return res.end(renderMarketPageHTML(marketMatch[1], page, {
+    return sendShellPage(req, res, (signedIn) => renderMarketPageHTML(marketMatch[1], page, {
       brokers: brokersCoveringMarket(`${page.city}, ${page.state}`, page.type),
-    }));
+    }, signedIn));
   }
 
   // --- Public broker profiles — opt-in pages for verified contributors ---
@@ -12265,15 +12871,17 @@ const server = http.createServer((req, res) => {
         res.writeHead(429, { "content-type": "text/plain" });
         return res.end("Too many requests.");
       }
-      if (!DB_CONFIGURED) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+      if (!DB_CONFIGURED) return sendNotFound(req, res, "That broker profile isn't here.");
       const rows = await sbRequest("GET",
         `broker_profiles?slug=eq.${encodeURIComponent(brokerMatch[1])}&public=eq.true&limit=1`);
       const profile = rows && rows[0];
-      if (!profile) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+      // Also the door a broker who has just toggled their profile OFF sends
+      // people through — the page must not read as an error in their name.
+      if (!profile) return sendNotFound(req, res, "That broker profile isn't public anymore.");
       const subs = await fetchSubmissionsForEmail(profile.email);
       // Short max-age so toggling a profile off propagates within minutes.
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" });
-      return res.end(renderBrokerProfileHTML(profile, subs));
+      return sendShellPage(req, res,
+        (signedIn) => renderBrokerProfileHTML(profile, subs, signedIn), { maxAge: 300 });
     })().catch((err) => {
       console.error("broker page error:", err);
       res.writeHead(500, { "content-type": "text/plain" });
@@ -12290,15 +12898,13 @@ const server = http.createServer((req, res) => {
     const entry = previewPagesMem.get(previewMatch[1]);
     if (!entry || Date.now() - entry.ts > PREVIEW_TTL_MS) {
       previewPagesMem.delete(previewMatch[1]);
-      res.writeHead(404, { "content-type": "text/plain" });
-      return res.end("Preview expired; explore the market again from the homepage.");
+      return sendNotFound(req, res, "This preview has expired. Explore the market again for a fresh one.");
     }
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderMarketPageHTML(previewMatch[1], entry.payload, { preview: true }));
+    // A preview belongs to whoever generated it, so it is already no-store and
+    // noindexed at every layer; it still renders the member's own chrome.
+    return sendShellPage(req, res,
+      (signedIn) => renderMarketPageHTML(previewMatch[1], entry.payload, { preview: true }, signedIn),
+      { maxAge: 0, headers: { "x-robots-tag": "noindex, nofollow" } });
   }
 
   // --- Development hub: repo-committed changelog + editable future ideas.
@@ -12625,12 +13231,12 @@ const server = http.createServer((req, res) => {
     );
   }
 
-  res.writeHead(404, { "content-type": "text/plain" });
-  res.end("Not found");
+  sendNotFound(req, res);
 });
 
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
+  if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)

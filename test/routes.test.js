@@ -217,6 +217,7 @@ test("bare environment", async (t) => {
       ["POST",   "/api/vault/upload"],
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/vault/benchmarks"],
+      ["POST",   "/api/vault/inspect"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {
@@ -240,6 +241,19 @@ test("bare environment", async (t) => {
     // repo to distrust.
     const r = await fetch(srv.base + "/api/vault");
     assert.notEqual(r.status, 404, "/api/vault should exist and refuse, not be absent");
+  });
+
+  // The mapper's own route. It reads no vault rows, but it answers through the
+  // same gate as everything else here on purpose: a fifth route is a fifth
+  // chance for openVault's three refusals to drift, which is what this file is
+  // for. /api/vault/benchmarks set the precedent.
+  await t.test("/api/vault/inspect is gated like the rest of the vault", async () => {
+    const r = await fetch(srv.base + "/api/vault/inspect", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ csv: "address\n1 A St, Boise, ID\n" }),
+    });
+    assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
   });
 
   // NOT COVERED HERE, and deliberately: the 403-not-a-broker and
@@ -297,6 +311,20 @@ test("bare environment", async (t) => {
   // link to read straight off GET /api/shared — even on a public link, and
   // even on the invited+anonymized path that is supposed to be the one place
   // no address or price travels.
+  //
+  // The sweep below is `!JSON.stringify(payload).includes("742")` — three
+  // digits against the whole payload, which is the right paranoia for a
+  // privacy leak and is only sound while every byte of that payload is fixed
+  // test data. It was not: /api/share stamps
+  // `safeMeta.generatedAt = meta.generatedAt || Date.now()`, so a request that
+  // sent no generatedAt put a 13-digit epoch millisecond in the payload, and
+  // roughly one run in a hundred produced a millisecond containing "742".
+  // That is exactly what failed CI run #244 (2026-08-10, commit 7075b4a, a
+  // two-line HTML edit) and passed on a re-run of the identical commit — and
+  // because `npm start`'s prestart runs this suite, a 1% flake here can abort
+  // a real Render deploy. So the browser's own generatedAt is sent, which is
+  // what a real share always carries, and the clock never enters the payload.
+  const SHARE_GENERATED_AT = 1773964800000; // 2026-03-20T00:00:00Z, fixed
   await t.test("an excluded private comp's address and price never reach a public share", async () => {
     // The exact key format compKeyOf() in index.html builds — server.js's own
     // corpusKeyOf() matches it byte for byte and is what the fix reads.
@@ -313,6 +341,7 @@ test("bare environment", async (t) => {
         },
         meta: {
           address: "1 Public Ave, Boise, ID", type: "Industrial",
+          generatedAt: SHARE_GENERATED_AT,
           curation: { excluded: [excludedKey], added: [] },
         },
       }),
@@ -324,6 +353,14 @@ test("bare environment", async (t) => {
     assert.equal(shared.status, 200);
     const payload = await shared.json();
     const raw = JSON.stringify(payload);
+
+    // The tripwire for that pin. If a later change makes /api/share
+    // re-stamp its own clock instead of honouring the browser's generatedAt,
+    // this fails deterministically on the very first run — rather than
+    // silently re-arming a 1-in-100 flake in the substring sweep below, which
+    // is the failure this test already cost a CI run and a re-run to find.
+    assert.equal(payload.meta.generatedAt, SHARE_GENERATED_AT,
+      "the payload must carry the generatedAt it was sent — a server clock reading here makes the sweep below nondeterministic");
 
     assert.ok(!raw.includes("742"), "the private comp's street number must not reach a public share, curation included");
     assert.ok(!raw.includes("4250000"), "the private comp's exact price must not reach a public share, curation included");
@@ -566,6 +603,42 @@ test("admin gating", async (t) => {
     const body = await r.json();
     assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
+  });
+
+  // The confirm dialog's type picker logs outcome "dialog_pick". The route's
+  // allowlist and the stats aggregation are two separate places, and a word
+  // accepted by one but uncounted by the other is invisible: /admin's tile
+  // would under-report while the events pile up correctly in the table. This
+  // is a real round trip (POST the ping, then observe the counter move) so it
+  // fails if EITHER place falls out of step with the other — a test that only
+  // reads the stats shape would pass even with the allowlist rejecting the
+  // outcome.
+  await t.test("the type-autofill block counts the confirm dialog's picks", async () => {
+    const before = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(before.status, 200);
+    const startCount = (await before.json()).typeAutofill.dialogPick;
+    assert.equal(typeof startCount, "number");
+
+    const post = await fetch(srv.base + "/api/type-autofill", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ outcome: "dialog_pick", type: "Industrial", address: "123 Test St, Dallas, TX" }),
+    });
+    assert.equal(post.status, 204);
+
+    // The route answers 204 before the event is written (logEvent's
+    // storeRow(...) is fire-and-forget), so an immediate re-read can race the
+    // append. Poll instead of a fixed sleep.
+    let dialogPick = startCount;
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+      dialogPick = (await r.json()).typeAutofill.dialogPick;
+      if (dialogPick === startCount + 1) break;
+      await new Promise((res) => setTimeout(res, 75));
+    }
+    assert.equal(dialogPick, startCount + 1,
+      "dialogPick did not increase by exactly 1 after posting outcome:\"dialog_pick\"");
   });
 
   await t.test("the ?key= form still works for machine callers", async () => {

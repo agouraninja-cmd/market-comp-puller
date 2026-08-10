@@ -14,6 +14,9 @@ server.out.log
 server.err.log
 *.log
 
+# Raw per-target reports from run-eval.js (the committed summary lives in docs/evals/)
+eval-runs/
+
 # Local Claude Code settings
 .claude/*
 # ...except skills, which are project knowledge rather than local config

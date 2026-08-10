@@ -32,14 +32,14 @@ function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
   return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Your vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
+<title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
 <meta name="theme-color" content="#FBFBF9"/>
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <style>
 *{box-sizing:border-box}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#8A93A0;--ink-4:#C7CBD2;
+  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
   --red:#B91C1C;--red-deep:#991B1B;
   --green:#15803D;
   --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
@@ -66,7 +66,6 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s7) 0 var(--s9)}
-.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
 h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var(--t1);line-height:1.15}
 .sub{color:var(--ink-2);max-width:62ch;margin:var(--s4) 0 0}
 /* The trust line. A broker does not hand over their book of business because
@@ -114,7 +113,9 @@ h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(-
 .btn.ghost:hover{background:var(--wash);color:var(--ink)}
 .row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
 select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink)}
+  font-family:inherit;font-size:16px;background:#fff;color:var(--ink)}
+/* 16px, not var(--t5): iOS Safari zooms on focus for any input under 16px
+   and stays zoomed — on a data-entry page that means every filter tap. */
 table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
    every header on this page — the broker's own book of record earns the same
@@ -144,12 +145,15 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .up{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);
   padding:var(--s4) 0;border-bottom:1px solid var(--hair);font-size:var(--t5)}
 .up .meta{color:var(--ink-3)}
-.up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--t5);padding:0}
+/* Padding + offsetting negative margin: a real tap target on the one control
+   that DELETES an import, without moving the row's baseline layout. */
+.up button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-family:inherit;font-size:var(--t5);
+  padding:var(--s3) var(--s3);margin:calc(-1 * var(--s3)) calc(-1 * var(--s3))}
 .up button:hover{color:var(--red)}
 /* Publish state as the statement's badge chip (Vault B): green tint only once
    published — the deliberate act, not the default. The tints are the report
    table's own Verified-badge pair, so one green means one thing site-wide. */
-.pubbtn{background:#fff;border:1px solid var(--edge);border-radius:3px;padding:1.5px 7px;
+.pubbtn{background:#fff;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;
   font-family:inherit;font-size:var(--t6);font-weight:600;line-height:1.4;color:var(--ink-2);
   cursor:pointer;white-space:nowrap}
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
@@ -233,6 +237,12 @@ a.btn:hover{color:#fff}
    (No backticks in this file's comments: the whole page is one template
    literal, so a backtick here ends it and the module stops parsing.) */
 #firstRun.hide + #addSec{border-top:0;padding-top:0}
+/* Same rule, one section along. The mapping panel is only ever visible while
+   #addSec is hidden (it replaces the uploader), so its own section+section
+   divider would always be drawn under something invisible — and on a first
+   run, where everything above is hidden too, it lands as a stray line across
+   the top of the workspace. */
+#addSec.hide + #mapSec{border-top:0;padding-top:0}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
@@ -240,10 +250,9 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
 </div></header>
 <main><div class="wrap">
-  <p class="kicker">Broker workspace</p>
-  <h1 class="h">Your vault</h1>
+  <h1 class="h">Broker Vault</h1>
   <p class="sub">Your own comp data, private to you. Upload a spreadsheet and it comes back
-    organized &mdash; sortable and filterable by property and by market.</p>
+    organized.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
@@ -302,8 +311,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
          ------------------------------------------------------------------ -->
     <section id="firstRun" class="hide">
       <h2>Start here</h2>
-      <p class="sub" style="margin-top:0">Two ways to get something out of this today. The
-        second one takes about ten seconds and needs no spreadsheet.</p>
 
       <div class="steps">
         <div class="step">
@@ -353,6 +360,26 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
       </div>
       <div id="res"></div>
+    </section>
+
+    <!-- Sits AFTER #addSec, not between it and #firstRun: the divider rule
+         above #firstRun.hide + #addSec is drawn from DOM adjacency, and a
+         section wedged in between silently breaks it. See the CSS comment. -->
+    <section id="mapSec" class="hide">
+      <h2>Match your columns</h2>
+      <p class="sub" style="margin-top:0">We found <span id="mapRows">0</span> rows.
+        Tell us which of your columns is which, then import. Nothing is saved until you do.</p>
+      <p class="note hide" id="mapAmbig"></p>
+      <div class="tw"><table id="mapTable">
+        <thead><tr><th>Your column</th><th>Maps to</th><th>Sample values</th></tr></thead>
+        <tbody id="mapBody"></tbody>
+      </table></div>
+      <p class="note" id="mapIgnored"></p>
+      <p id="mapMsg" class="msg bad hide"></p>
+      <div class="row">
+        <button class="btn" id="mapGo">Import</button>
+        <button class="btn ghost" id="mapCancel">Cancel</button>
+      </div>
     </section>
 
     <section id="compsSec">
@@ -815,7 +842,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     [0,max/2,max].forEach(function(v){
       s+='<line x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
         '" stroke="#E4E2DA" stroke-width="1"/>';
-      s+='<text x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#8A93A0" '+
+      s+='<text x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#68707E" '+
         'font-family="Inter, sans-serif" style="font-variant-numeric:tabular-nums">'+psf0(v)+"</text>";
     });
     pts.forEach(function(p,i){
@@ -828,7 +855,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         '" fill="transparent"><title>'+esc(tip)+"</title></rect>";
       s+='<path d="'+bar(cx-bw/2,y(p.med),bw,h,4)+'" fill="'+(last?"#B91C1C":"#5A6473")+
         '" fill-opacity="'+(last?"1":"0.85")+'" pointer-events="none"/>';
-      s+='<text x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#8A93A0" '+
+      s+='<text x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#68707E" '+
         'font-family="Inter, sans-serif">'+esc(p.year)+"</text>";
       // The endpoint is the one worth reading without hovering.
       if(last){
@@ -896,7 +923,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // Everything hidden here is hidden because it is EMPTY, not because it is
   // unimportant: an empty table with a header row and a "nothing here yet" line
   // reads as a broken page, and the vault had three of them stacked up.
+  //
+  // It also remembers the counts it was last called with, so closeMapper can
+  // put the page back by RE-APPLYING this function rather than keeping a
+  // second copy of the first-run rule that would drift from it.
+  var firstRunCounts=[0,0];
   function applyFirstRun(compCount,uploadCount){
+    firstRunCounts=[compCount,uploadCount];
     var first=compCount===0&&uploadCount===0;
     $("firstRun").className=first?"":"hide";
     // The uploader lives in both places on first run, so the plain "Add comps"
@@ -1173,38 +1206,271 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .catch(function(){ $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
   });
 
+  var pending = null;   // {name, csv} held while the broker maps
+
+  function doImport(name, csv, mapping, onOk){
+    // Whether this import came from the mapping screen decides where its
+    // result can be SEEN: #res lives inside #addSec, which is hidden while
+    // the panel is open, so a failure written there would be invisible.
+    var viaMapper=!!mapInfo;
+    $("pick").disabled=true;
+    if(viaMapper){ $("mapGo").disabled=true; $("mapGo").textContent="Importing\\u2026"; }
+    $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
+    var payload={filename:name,csv:csv};
+    if(mapping)payload.mapping=mapping;
+    // Line-numbered problems are the point: a broker fixing a spreadsheet
+    // needs to know WHICH row, in the numbering Excel shows them.
+    function errList(j){
+      return (j.errors&&j.errors.length)?"<ul>"+j.errors.map(function(e){
+        return "<li>"+esc(e)+"</li>"}).join("")+"</ul>":"";
+    }
+    // A failed import must never cost the broker their mapping. parseUpload
+    // refuses the whole file only when NOT ONE row survived, which is exactly
+    // the mismapped-column case (a text column onto price, a day-first date
+    // onto deal_date), so this is the moment the screen is most needed. The
+    // panel stays open with every dropdown as they left it.
+    function failed(msg,errs){
+      $("pick").disabled=false;
+      if(viaMapper&&mapInfo){
+        $("mapGo").textContent="Import";
+        $("mapGo").disabled=false;
+        $("mapMsg").innerHTML=esc(msg)+errs;
+        $("mapMsg").classList.remove("hide");
+        $("res").innerHTML="";
+      }else{
+        $("res").innerHTML='<div class="msg bad">'+esc(msg)+errs+"</div>";
+      }
+    }
+    fetch("/api/vault/upload",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        var j=o.j||{};
+        if(o.s!==200){ failed(j.error||"That file could not be imported.",errList(j)); return; }
+        $("pick").disabled=false;
+        if(viaMapper)$("mapGo").textContent="Import";
+        // Only now, with rows actually stored, is it safe to throw the
+        // mapping away — and it has to happen BEFORE the summary is written,
+        // since closing the panel is what makes #res visible again.
+        if(onOk)onOk();
+        var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
+        if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
+        if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
+        $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errList(j)+"</div>";
+        load();
+      })
+      .catch(function(){ failed("The upload did not reach the server. Nothing was saved.",""); });
+  }
+
   function upload(file){
     if(!file)return;
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
     fr.onload=function(){
-      fetch("/api/vault/upload",{method:"POST",credentials:"same-origin",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({filename:file.name,csv:String(fr.result||"")})})
+      var csv=String(fr.result||"");
+      fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify({csv:csv})})
         .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
         .then(function(o){
           $("pick").disabled=false;
-          var j=o.j||{};
-          // Line-numbered problems are the point: a broker fixing a spreadsheet
-          // needs to know WHICH row, in the numbering Excel shows them.
-          var errs=(j.errors&&j.errors.length)?"<ul>"+j.errors.map(function(e){
-            return "<li>"+esc(e)+"</li>"}).join("")+"</ul>":"";
           if(o.s!==200){
-            $("res").innerHTML='<div class="msg bad">'+esc(j.error||"That file could not be imported.")+errs+"</div>";
+            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"That file could not be read.")+"</div>";
             return;
           }
-          var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
-          if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
-          if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
-          $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errs+"</div>";
-          load();
+          // A file already in our own column names skips the screen entirely.
+          if(o.j.cleanTemplate){ doImport(file.name,csv,null); return; }
+          pending={name:file.name,csv:csv};
+          openMapper(o.j);
         })
+        // Deliberately NOT a silent fallback to a strict upload: that would
+        // reintroduce the old rejection message under a different cause.
         .catch(function(){ $("pick").disabled=false;
-          $("res").innerHTML='<div class="msg bad">The upload did not reach the server. Nothing was saved.</div>'; });
+          $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
     };
     fr.readAsText(file);
   }
+
+  var mapInfo=null;
+
+  // The dropdown's LIST is served by /api/vault/inspect (targets), so it can
+  // never drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS. This only
+  // decides how each served value is SPOKEN: a broker meeting this screen for
+  // the first time should not have to read twenty-four database identifiers.
+  // Anything without a label falls back to its raw value, so a per-type field
+  // added later still appears rather than vanishing.
+  var TARGET_LABELS={
+    address:"Address", property_type:"Property type", transaction:"Sale or lease",
+    deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",
+    tenancy:"Tenancy", year_built:"Year built", notes:"Notes",
+    lat:"Latitude", lng:"Longitude",
+    clear_height:"Clear height", dock_doors:"Dock doors",
+    building_class:"Building class", floor_plate:"Floor plate",
+    center_type:"Center type", anchor_tenant:"Anchor tenant",
+    units:"Units", price_per_unit:"Price per unit",
+    lot_acres:"Lot (acres)", price_per_acre:"Price per acre", zoning:"Zoning",
+    beds_baths:"Beds / baths"
+  };
+  function tLabel(t){ return TARGET_LABELS[t]||t }
+  // A required field can be unclaimable rather than merely unclaimed: a CoStar
+  // or MLS SALE-comps export carries no deal-type column at all, because every
+  // row is a sale. Value transformation is deliberately out of scope, so no
+  // dropdown rescues that file and "Still needed: Sale or lease" with a dead
+  // Import button and a Cancel button is the whole conversation. These say
+  // what is wrong and what to do about it, in the broker's own words.
+  var NO_COLUMN_HELP={
+    transaction:"Your file has no column saying whether each deal was a sale or a lease. Add one with values Sale or Lease, then upload again."
+  };
+  // The raw header the broker actually sees in their spreadsheet, for a
+  // normalized key. column_4 is our own synthetic name for a header that
+  // normalizes to nothing (a "$" price column); it exists nowhere in their
+  // world, so it may key a <select> but must never be shown to them.
+  function rawHeader(n){
+    var i=(mapInfo.normalized||[]).indexOf(n);
+    return i<0?n:String((mapInfo.headers||[])[i]);
+  }
+
+  function openMapper(info){
+    mapInfo=info;
+    $("res").innerHTML="";
+    $("mapRows").textContent=String(info.rowCount);
+    // Remembered beats suggested: it is the broker's own previous decision.
+    var start={};
+    Object.keys(info.suggested||{}).forEach(function(k){ start[k]=info.suggested[k] });
+    Object.keys(info.remembered||{}).forEach(function(k){
+      if(info.normalized.indexOf(k)>=0)start[k]=info.remembered[k];
+    });
+    var rows=info.normalized.map(function(n,i){
+      if(!n)return "";
+      var opts=['<option value="">&mdash; ignore &mdash;</option>'].concat(
+        (info.targets||[]).map(function(t){
+          return '<option value="'+esc(t)+'"'+(start[n]===t?" selected":"")+">"+esc(tLabel(t))+"</option>";
+        })).join("");
+      var samp=(info.samples[n]||[]).map(esc).join("<br>");
+      return "<tr><td>"+esc(info.headers[i])+'</td><td><select data-src="'+esc(n)+'">'+opts+
+             '</select></td><td class="note">'+samp+"</td></tr>";
+    }).join("");
+    $("mapBody").innerHTML=rows;
+    // Ambiguity is a decision we deliberately did NOT make for them (two
+    // columns could each be the price, so neither is pre-selected). Saying so
+    // is the difference between a considered blank and an oversight.
+    var preset=Object.keys(start).map(function(k){return start[k]});
+    var amb=(info.ambiguous||[]).filter(function(t){return preset.indexOf(t)<0});
+    if(amb.length){
+      $("mapAmbig").textContent="More than one of your columns could be the "+
+        amb.map(function(t){return tLabel(t).toLowerCase()}).join(", ")+
+        ", so we left "+(amb.length===1?"that one":"those")+" for you to choose.";
+      $("mapAmbig").classList.remove("hide");
+    }else{
+      $("mapAmbig").textContent="";
+      $("mapAmbig").classList.add("hide");
+    }
+    $("mapSec").classList.remove("hide");
+    $("addSec").classList.add("hide");
+    // Hidden too, or a first-run broker — which the FIRST broker through this
+    // door is by definition — keeps "Start here" on screen above the panel
+    // that replaced step 1. closeMapper puts it back.
+    $("firstRun").classList.add("hide");
+    Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
+      s.addEventListener("change",refreshMapper);
+    });
+    refreshMapper();
+    $("mapSec").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  function currentMapping(){
+    var m={};
+    Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
+      if(s.value)m[s.getAttribute("data-src")]=s.value;
+    });
+    return m;
+  }
+
+  function refreshMapper(){
+    var m=currentMapping(), claimed=Object.keys(m).map(function(k){return m[k]});
+    var missing=(mapInfo.required||[]).filter(function(t){return claimed.indexOf(t)<0});
+    // Naming the ignored columns is half the point: importing while quietly
+    // dropping a column is the silent failure this screen exists to end. It
+    // names the RAW header, never the normalized key — "column_4" is our
+    // internal name for their "$" column and means nothing to them.
+    var ignored=(mapInfo.normalized||[]).filter(function(n){return n&&!m[n]}).map(rawHeader);
+    $("mapIgnored").textContent=ignored.length
+      ? "Will be ignored: "+ignored.join(", ")
+      : "Every column is mapped.";
+
+    // The second half of validateMapping's contract, which the server enforces
+    // and this screen used not to mirror: two columns claiming one field is
+    // refused server-side, and openMapper can produce it without the broker
+    // doing anything odd (suggested and remembered are each duplicate-free,
+    // their union is not). Import must not be offered for a mapping we know
+    // will be refused.
+    var by={}, dupes=[];
+    Object.keys(m).forEach(function(k){
+      var t=m[k];
+      if(!by[t]){ by[t]=[]; } else if(dupes.indexOf(t)<0){ dupes.push(t); }
+      by[t].push(rawHeader(k));
+    });
+
+    var lines=[];
+    dupes.forEach(function(t){
+      lines.push(by[t].join(" and ")+" are both mapped to "+tLabel(t)+". Pick one.");
+    });
+    if(missing.length){
+      lines.push("Still needed: "+missing.map(tLabel).join(", ")+".");
+      // Unclaimable, not merely unclaimed. The question is whether the BROKER
+      // has a column left to give this field, not whether WE managed to guess
+      // one: a file can carry a perfectly good "Deal" column that no alias
+      // recognises. While any column is still unmapped, a dropdown above fixes
+      // this, and the extra sentence would be a confidently wrong instruction
+      // to go edit a spreadsheet that was already fine.
+      var anyFree=(mapInfo.normalized||[]).some(function(n){ return n&&!m[n] });
+      var stuck=anyFree?[]:missing;
+      stuck.filter(function(t){return NO_COLUMN_HELP[t]}).forEach(function(t){
+        lines.push(NO_COLUMN_HELP[t]);
+      });
+      // The rest share one sentence rather than one each: three near-identical
+      // lines under a dead button is noise, not help.
+      var rest=stuck.filter(function(t){return !NO_COLUMN_HELP[t]});
+      if(rest.length){
+        lines.push("Nothing in your file looks like the "+
+          rest.map(function(t){return tLabel(t).toLowerCase()}).join(" or ")+", so "+
+          (rest.length===1?"that column has":"those columns have")+
+          " to be added before this file can be imported.");
+      }
+    }
+    if(lines.length){
+      $("mapMsg").textContent=lines.join(" ");
+      $("mapMsg").classList.remove("hide");
+      $("mapGo").disabled=true;
+    }else{
+      $("mapMsg").textContent="";
+      $("mapMsg").classList.add("hide");
+      $("mapGo").disabled=false;
+    }
+  }
+
+  function closeMapper(){
+    $("mapSec").classList.add("hide");
+    // NOT an unconditional un-hide of #addSec: applyFirstRun deliberately
+    // hides it on a first run, where step 1 owns the uploader, and restoring
+    // it there leaves "Choose a spreadsheet" twice on one page. Re-applying
+    // the same function is what keeps that rule in one place.
+    applyFirstRun(firstRunCounts[0],firstRunCounts[1]);
+    pending=null; mapInfo=null;
+  }
+
+  $("mapGo").addEventListener("click",function(){
+    if(!pending)return;
+    var p=pending;
+    // The panel closes on SUCCESS only. Closing here would clear the mapping,
+    // the held file and every dropdown before knowing whether the import
+    // worked, leaving a re-pick and a full re-map as the only way back.
+    doImport(p.name,p.csv,currentMapping(),closeMapper);
+  });
+  $("mapCancel").addEventListener("click",function(){
+    closeMapper();
+    $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
+  });
 
   $("pick").addEventListener("click",function(){ $("file").click() });
   // Step 1's button is the same door as #pick — one <input type=file>, so an

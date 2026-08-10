@@ -167,6 +167,21 @@ function proEnabledFor(user) {
   return PRO_ENABLED && ENT.inAudience(user, PRO_AUDIENCE);
 }
 
+// Optional shared passkey that comps Pro to a signed-in account (the beta
+// tester door). Deliberately NOT ADMIN_KEY: that key also unlocks /admin,
+// /dev and /contacts, so handing it to testers would hand out the analytics,
+// the lead list and the dev tools along with it. Unset = POST
+// /api/redeem-passkey does not exist (404), which is what keeps this inert on
+// any deployment that never configured it.
+//
+// Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
+// devices and survives a passkey rotation — and revoking one tester is a
+// one-row UPDATE, without changing the passkey for everyone else. See the
+// comped-tester branch in entitlements.js for what it grants (everything Pro
+// except the broker vault) and what it cannot override (PRO_ENABLED, and a
+// real paid subscription).
+const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
+
 // Stripe. Keys live only in the environment — never in the repo, never in a
 // response, never in the browser. The price IDs are not secret (they identify
 // a product, they do not authorize anything), but they are configured rather
@@ -866,6 +881,20 @@ async function updateUserPassword(id, password_hash) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.password_hash = password_hash; await saveAccountStore(); }
 }
+// Grants comped Pro to one account (the redeemed tester passkey).
+//
+// THROWS on a Supabase failure rather than returning false, unlike the
+// fire-and-forget writes elsewhere in this file: the caller answers the
+// visitor with "you're in", and a swallowed failure there means someone is
+// told they have Pro that they do not have and cannot get by trying again.
+async function setUserTester(id) {
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { pro_tester: true });
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.pro_tester = true; await saveAccountStore(); }
+}
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -936,7 +965,17 @@ async function getSessionUser(req) {
   if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
   try {
     const user = await findUserById(sess.user_id);
-    return user ? { id: user.id, email: user.email, name: user.name || "" } : null;
+    return user ? {
+      id: user.id,
+      email: user.email,
+      name: user.name || "",
+      // The comped-tester flag. Narrowing this object is deliberate (it is what
+      // stops a password hash reaching a caller), which means a new entitlement
+      // input has to be added HERE or it never reaches computeEntitlements at
+      // all — the feature would be silently inert with nothing failing.
+      // Boolean() so a missing column (deploy-then-migrate) reads as false.
+      pro_tester: Boolean(user.pro_tester),
+    } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
 // Route guard: replies 401 itself; callers bail on null.
@@ -1296,8 +1335,13 @@ async function getEntitlements(user, reportId, admin = false) {
     findReportPurchase(user && user.id, reportId),
     getExportUsage(user && user.id, ENT.usagePeriod(now)),
   ]);
+  // Deliberately NOT a short-circuit above the DB reads, unlike the admin
+  // branch: a tester may also be a paying subscriber, and entitlements.js
+  // resolves the comped branch only when there is no live subscription to
+  // prefer. Reading the subscription is what makes that possible.
+  const tester = Boolean(user && user.pro_tester);
   return ENT.computeEntitlements({
-    user, subscription, purchase, usage, reportId, now, enabled: true,
+    user, subscription, purchase, usage, reportId, now, enabled: true, tester,
   });
 }
 

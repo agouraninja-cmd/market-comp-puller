@@ -11636,6 +11636,61 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // Add ONE comp by hand. A broker who closed a deal on Tuesday should not
+    // have to author a CSV to record it.
+    //
+    // Runs the IDENTICAL row parser the upload path uses. Two entry doors, one
+    // set of rules — a form handler with its own validation would quietly
+    // accept the "1.2M" and the Excel serial dates that broker-vault.js exists
+    // to refuse.
+    if (req.method === "POST" && path === "/api/vault/comp") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultadd:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const result = VAULT.normalizeRow(JSON.parse(body || "{}"));
+          if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+
+          const row = result.row;
+          // normalizeRow never sets user_id, and PROPS.propertyRowsFrom
+          // silently skips any row missing it — without this line the
+          // property-dimension link would quietly no-op rather than fail
+          // visibly. Same trap the edit route hit; same fix.
+          row.user_id = user.id;
+          // upload_id stays null: this comp belongs to no import. The column
+          // is already nullable, which is why this feature needs no
+          // migration. A hand-added comp therefore can never be removed by
+          // deleting an import — per-comp delete (Task 4) is the only way.
+          row.market = marketOf(row.address);
+
+          const clash = await sbRequest("GET",
+            `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&dedupe_key=eq.${encodeURIComponent(row.dedupe_key)}&limit=1`);
+          if (clash && clash.length) {
+            return sendJson(res, 409, { error: "You already have this comp." });
+          }
+
+          // Same split as the upload and edit routes: the insert gets the
+          // stripped row, the property link gets the one still carrying
+          // `_lat`/`_lng`.
+          const saved = await sbRequest("POST", "broker_comps",
+            [PROPS.stripCarriedKeys({ ...row })], { prefer: "return=representation" });
+          await linkVaultProperties(user.id, [row]);
+          return sendJson(res, 201, { ok: true, comp: VAULTAPI.toApiComp((saved && saved[0]) || null) });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault comp add failed:", err.message);
+          sendJson(res, 502, { error: "Could not save that comp. Please try again." });
+        }
+      });
+      return;
+    }
+
     // Undo one import. The comps cascade with the batch row.
     if (req.method === "DELETE" && path === "/api/vault/upload") {
       (async () => {

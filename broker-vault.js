@@ -142,6 +142,33 @@ function normalizeHeader(name) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+/**
+ * The normalized header vector for a raw header row.
+ *
+ * A header can be non-empty and still normalize to "": normalizeHeader strips
+ * every non-alphanumeric character, so "$", "#", "%" and "($)" all reduce to
+ * nothing. Those columns are real and often meaningful — the comment above
+ * TEMPLATE_COLUMNS names "$" as a header brokers use for price — so each gets
+ * a positional synthetic key rather than silently disappearing from the
+ * mapping screen, which is the exact failure this feature exists to prevent.
+ *
+ * A TRULY blank header keeps its "" and stays excluded, so trailing commas
+ * still cost nothing and two trailing blanks still do not collide.
+ *
+ * This is the ONE place that decision is made. `inspectCsv`, `validateMapping`
+ * and `parseUpload` all route through it rather than each calling
+ * `normalizeHeader` directly, because a mapping built against one of these and
+ * checked or applied against another is exactly how a broker's "$" column
+ * would pass the mapping screen and then fail (or silently vanish) on import.
+ */
+function normalizedHeaderRow(rawHeaders) {
+  return (Array.isArray(rawHeaders) ? rawHeaders : []).map((h, i) => {
+    const n = normalizeHeader(h);
+    if (n) return n;
+    return String(h == null ? "" : h).trim() ? `column_${i}` : "";
+  });
+}
+
 // --- column mapping --------------------------------------------------------
 //
 // Aliases a broker's own export is likely to use, keyed on normalizeHeader
@@ -225,9 +252,11 @@ function validateMapping(mapping, headers) {
     return { ok: false, errors: ["No column mapping was supplied."] };
   }
 
-  const present = new Set(
-    (Array.isArray(headers) ? headers : []).map(normalizeHeader).filter(Boolean)
-  );
+  // normalizedHeaderRow, not a bare normalizeHeader map: a header like "$"
+  // that normalizes away entirely still gets a positional `column_N` key
+  // over there, and this set has to agree or a mapping built against
+  // inspectCsv's own output is refused as "no column called column_0".
+  const present = new Set(normalizedHeaderRow(headers).filter(Boolean));
   const claimedBy = new Map();
 
   for (const [source, target] of Object.entries(mapping)) {
@@ -470,20 +499,12 @@ function inspectCsv(csvText, { samples = 3 } = {}) {
   if (!table.length) return { ...empty, error: "That file is empty." };
 
   const headers = table[0];
-  // A header can have real content and still normalize away to nothing --
-  // normalizeHeader strips every non-alphanumeric character, so "$", "#",
-  // "%" and "($)" all become "". Left as "" the column would vanish from
-  // `normalized`/`samples` below with nothing saying so -- precisely the
-  // silent-drop failure this whole feature exists to catch, and not
-  // hypothetical: the comment above TEMPLATE_COLUMNS names "$" as a header
-  // brokers actually use for price. A header that is ACTUALLY blank (empty
-  // or only whitespace) keeps today's behaviour and is excluded, not given a
-  // synthetic key.
-  const normalized = headers.map((h, i) => {
-    const n = normalizeHeader(h);
-    if (n) return n;
-    return String(h == null ? "" : h).trim() ? `column_${i}` : "";
-  });
+  // normalizedHeaderRow gives a header with real content that normalizes
+  // away entirely (e.g. "$") a positional `column_N` key rather than letting
+  // it vanish; `validateMapping` and `parseUpload` route through the SAME
+  // helper, so a mapping built against what this returns is recognized
+  // end-to-end rather than only on the inspection screen.
+  const normalized = normalizedHeaderRow(headers);
 
   // A mapping is keyed on the normalised header name, so two columns sharing
   // one name have no way to be told apart. Refuse rather than pick. The
@@ -673,7 +694,12 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     return { ...empty, errors: ["That file is empty."] };
   }
 
-  let headers = table[0].map(normalizeHeader);
+  // normalizedHeaderRow, not a bare map(normalizeHeader): applyHeaderMapping
+  // below has to be fed the SAME vector validateMapping just checked the
+  // mapping against, or a mapping keyed on a synthetic `column_N` (a "$"
+  // column, say) would pass validation and then be neutralized to
+  // `_ignored_N` here because this array never produced that key to match.
+  let headers = normalizedHeaderRow(table[0]);
   if (mapping) {
     // Validate BEFORE applying: an invalid mapping must refuse the upload, not
     // import a partial one. Same stance as every other refusal in this module.
@@ -939,6 +965,7 @@ module.exports = {
   submissionRowFrom,
   parseCsv,
   normalizeHeader,
+  normalizedHeaderRow,
   suggestMapping,
   validateMapping,
   applyHeaderMapping,

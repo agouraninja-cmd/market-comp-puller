@@ -19,7 +19,7 @@ const {
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
-  inspectCsv,
+  inspectCsv, normalizedHeaderRow,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -864,4 +864,55 @@ test("a synthetic key collides with a literal column of the same name, and is re
   const r = inspectCsv("$,column_0\n100,200\n");
   assert.equal(r.ok, false);
   assert.match(r.error, /column_0/);
+});
+
+// --- column mapping: normalizedHeaderRow, the one shared vector ------------
+//
+// inspectCsv, validateMapping and parseUpload all route header normalization
+// through this one function now, specifically so a mapping built against
+// inspectCsv's synthetic `column_N` key is recognized end-to-end rather than
+// only on the mapping screen.
+
+test("normalizedHeaderRow: a header that normalizes to nothing gets column_<i>, a truly blank header stays empty, an ordinary header is untouched", () => {
+  assert.deepEqual(
+    normalizedHeaderRow(["$", "Address", "  ", "Sale Price"]),
+    ["column_0", "address", "", "sale_price"]
+  );
+});
+
+test("normalizedHeaderRow: two trailing blank headers do not collide with each other or with anything else", () => {
+  assert.deepEqual(
+    normalizedHeaderRow(["address", "property_type", "", ""]),
+    ["address", "property_type", "", ""]
+  );
+});
+
+// The full round trip: a broker maps a "$" column (shown on the inspection
+// screen under its synthetic key) to price, and the file actually imports
+// with the price landing in the right field. This is the case that was
+// broken before validateMapping/parseUpload were routed through the same
+// normalizedHeaderRow inspectCsv uses -- a mapping keyed on "column_0" used
+// to be refused with 'The file has no column called "column_0".'
+test("the full round trip: a $ column mapped through the mapping screen actually imports, price landing in price", () => {
+  const rawHeaders = ["$", "Type", "Deal", "Closed", "Prop Address"];
+  const csv =
+    "$,Type,Deal,Closed,Prop Address\n" +
+    // Quoted: the address contains commas.
+    "100,Land,Sale,2026-01-01,\"1 A St, Boise, ID\"\n";
+  const mapping = {
+    column_0: "price",
+    type: "property_type",
+    deal: "transaction",
+    closed: "deal_date",
+    prop_address: "address",
+  };
+
+  const validated = validateMapping(mapping, rawHeaders);
+  assert.equal(validated.ok, true, validated.errors.join(" | "));
+
+  const result = parseUpload(csv, { mapping });
+  assert.equal(result.ok, true, result.errors.join(" | "));
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].price, 100);
+  assert.equal(result.rows[0].address, "1 A St, Boise, ID");
 });

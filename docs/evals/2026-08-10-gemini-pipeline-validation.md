@@ -99,8 +99,23 @@ Three causes, all now understood:
   Anthropic search would cost by comparison.
 - **Grounding is free at this volume** (5,000 queries/month included) and is not
   modelled in `costOf`. That stops being true at scale.
+- **This run had BOTH keys set, so it never tested a Gemini-only deployment.**
+  The eval server carried `ANTHROPIC_API_KEY` alongside `GEMINI_API_KEY`. The
+  final whole-branch review caught why that matters: `/api/comps` and
+  `/api/explore-market` still gated on `ANTHROPIC_API_KEY`, so a deployment
+  configured the way CLAUDE.md documents (Gemini plus only `GEMINI_API_KEY`)
+  would have refused every search with a 500 naming the wrong variable. A
+  12/12 scorecard is only possible *because* the Anthropic key happened to be
+  present. Fixed after the gate, and separately verified by booting with no
+  Anthropic key at all and confirming the request reaches the Gemini call.
+  The lesson generalizes: a green validation run proves the configuration you
+  ran, not the configuration you documented.
 - **Not a decision to switch.** `SEARCH_PROVIDER` still defaults to `anthropic`.
   This gate authorizes building phases 3 to 5, nothing more.
+- **The privacy policy names Anthropic as the sole AI processor.** Customer
+  facing and unchanged by this branch. It needs a deliberate decision before any
+  public Gemini-default deployment, and that is a content and legal call rather
+  than a code change.
 
 ## Defects this phase caught
 

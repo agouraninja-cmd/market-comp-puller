@@ -212,7 +212,12 @@ dependency. `.env` is git-ignored — never commit it.
   `x-admin-key` callers bypass. Enforced in `/api/comps` **and
   `/api/explore-market`** (403 + `signin_required: true`, which the client
   turns into the account modal) — the Explorer runs the same billed search
-  pipeline as a report, so it spends the same single allowance; a market
+  pipeline as a report, so it spends the same single allowance, but only
+  when that search PUBLISHES a page (`published: true`); a thin-data
+  preview (`published: false`) does not consume it, because the preview
+  lives only in memory behind a 30-minute TTL and dies on redeploy, so
+  charging the visitor's one free search for it is the same empty-handed
+  outcome as the 422 a thin market already returns. A market
   page that already exists is still served free and ungated above the
   check, since that's a database read, not a search. `/api/config` carries
   `guestSearch: { limit, used }` for the form hint and syncs the cookie the

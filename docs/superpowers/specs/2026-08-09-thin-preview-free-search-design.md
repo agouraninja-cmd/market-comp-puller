@@ -86,8 +86,14 @@ free and unlimited.
 ## Analytics
 
 A PII-free `explore_preview` event (`prop_type`, `market: "City, ST"`,
-`source: "explore"`) is logged when a preview is served, mirroring
-`explore_reject`'s shape and fitting the fixed analytics columns.
+`source: "explore"`, `cached`) is logged when a preview is served, fitting
+the fixed analytics columns. `cached` is the fourth dimension, and it is
+not optional: without it a free cache-hit regeneration (which this design
+deliberately makes common — see "It becomes self-healing" above) is
+indistinguishable from a fresh billed thin search, so the spend-sink
+question this event exists to answer could not be answered. `explore_reject`
+is not the right template for this field, because it fires before billing
+is even attempted, where `cached` would be meaningless.
 
 It exists because this change makes previews free to guests, so the
 thin-market rate becomes the number worth watching: it says whether

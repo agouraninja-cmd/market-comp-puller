@@ -9291,6 +9291,13 @@ const server = http.createServer((req, res) => {
               return { status: 200, body: { url: `/market/${slug}`, slug, published: true } };
             }
             previewPagesMem.set(slug, { payload: snapshot, ts: Date.now() });
+            // Thin markets are invisible in analytics otherwise: a preview and a
+            // published page log the same `search` row. Since a preview no
+            // longer spends the visitor's free search (see the consume line
+            // below), the thin-market rate is what says whether previews are
+            // becoming a spend sink, and whether MIN_PRICED_SALE_COMPS sits in
+            // the right place. PII-free, same shape as `explore_reject`.
+            logEvent("explore_preview", { prop_type: typeOk, market: address, source: "explore", cached });
             return { status: 200, body: { url: `/market-preview/${slug}`, slug, published: false, pricedSaleCount } };
         })());
         // The SSE opens on the FIRST progress event, not up front. At this
@@ -9315,11 +9322,20 @@ const server = http.createServer((req, res) => {
         } finally {
           job.listeners.delete(onEvent);
         }
-        // Spent only when a result was actually served — a published page or a
-        // thin-data preview, both of which cost a real search and return real
-        // content. A 422 thin market, a 429 daily cap or an upstream failure
-        // must never burn the visitor's free search.
-        if (status === 200) consumeGuestSearchFor(guestGate, req, res, Boolean(sse));
+        // Spent only when a PERMANENT page was published. A thin-data preview
+        // returns 200 with a URL, but it lives only in previewPagesMem behind a
+        // 30-minute TTL and dies on every restart, so charging the visitor's one
+        // free search for it handed them an artifact that was often already
+        // gone. It is the same empty-handed outcome as a 422 thin market, a 429
+        // daily cap or an upstream failure, none of which consume either.
+        // Keeping the allowance also makes the preview self-healing: exploring
+        // that market again is a search_cache hit, so it costs nothing upstream
+        // and regenerates the page.
+        // The covered-market short circuit never reaches this line — it returns
+        // from above the guest gate, and serving an existing page stays free.
+        if (status === 200 && out.published === true) {
+          consumeGuestSearchFor(guestGate, req, res, Boolean(sse));
+        }
         if (sse) return sse.finish(status === 200 ? "result" : "error",
           status === 200 ? out : { error: out.error });
         return sendJson(res, status, out);

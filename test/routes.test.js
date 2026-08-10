@@ -943,5 +943,23 @@ test("tester passkey", async (t) => {
     const again = await redeem(PASSKEY, cookie);
     assert.equal(again.status, 200);
     assert.equal((await again.json()).already, true);
+
+    // The idempotency check must run BEFORE the secret compare, not after:
+    // once someone already has access, even a WRONG code must still answer
+    // "already: true" rather than "incorrect code" (which would happen if a
+    // rotated or mistyped passkey were compared first). This is the only
+    // assertion that actually pins the ordering the route's comment claims —
+    // the same-correct-code idempotency check above would still pass if a
+    // future edit swapped the two checks.
+    //
+    // Call budget: this brings the route's per-IP total in this test to 5
+    // (anon, wrong, ok, again, this one), exactly the 5-per-15-minute limit
+    // (rateLimited blocks only when hits > max, so the 5th still goes
+    // through). There is no headroom left in this test for another
+    // /api/redeem-passkey call — a new case needs its own boot() or a fresh
+    // client IP.
+    const wrongAfter = await redeem("still-not-the-passkey", cookie);
+    assert.equal(wrongAfter.status, 200);
+    assert.equal((await wrongAfter.json()).already, true);
   });
 });

@@ -10841,8 +10841,12 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
 
-          const { filename, csv } = JSON.parse(body || "{}");
-          const parsed = VAULT.parseUpload(csv);
+          const { filename, csv, mapping } = JSON.parse(body || "{}");
+          // `mapping` absent means today's behaviour byte for byte, so
+          // gen-market-seed.js and any existing caller are unaffected.
+          // parseUpload validates it and refuses the whole file if it is
+          // wrong, which is why nothing is checked here.
+          const parsed = VAULT.parseUpload(csv, { mapping: mapping || null });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -10866,6 +10870,10 @@ const server = http.createServer((req, res) => {
             { prefer: "return=representation" });
           const uploadId = batch && batch[0] && batch[0].id;
           if (!uploadId) throw new Error("broker_uploads insert returned no id");
+
+          // Saved only once the import actually succeeded, so a mapping that
+          // produced nothing usable is never offered back to them next time.
+          if (mapping) saveCsvMapping(user.id, mapping);
 
           // `market` is attached HERE, with server.js's own marketOf() and no
           // other parse, so broker_comps.market agrees byte for byte with

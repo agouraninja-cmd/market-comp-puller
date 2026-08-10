@@ -254,6 +254,20 @@ test("bare environment", async (t) => {
   // link to read straight off GET /api/shared — even on a public link, and
   // even on the invited+anonymized path that is supposed to be the one place
   // no address or price travels.
+  //
+  // The sweep below is `!JSON.stringify(payload).includes("742")` — three
+  // digits against the whole payload, which is the right paranoia for a
+  // privacy leak and is only sound while every byte of that payload is fixed
+  // test data. It was not: /api/share stamps
+  // `safeMeta.generatedAt = meta.generatedAt || Date.now()`, so a request that
+  // sent no generatedAt put a 13-digit epoch millisecond in the payload, and
+  // roughly one run in a hundred produced a millisecond containing "742".
+  // That is exactly what failed CI run #244 (2026-08-10, commit 7075b4a, a
+  // two-line HTML edit) and passed on a re-run of the identical commit — and
+  // because `npm start`'s prestart runs this suite, a 1% flake here can abort
+  // a real Render deploy. So the browser's own generatedAt is sent, which is
+  // what a real share always carries, and the clock never enters the payload.
+  const SHARE_GENERATED_AT = 1773964800000; // 2026-03-20T00:00:00Z, fixed
   await t.test("an excluded private comp's address and price never reach a public share", async () => {
     // The exact key format compKeyOf() in index.html builds — server.js's own
     // corpusKeyOf() matches it byte for byte and is what the fix reads.
@@ -270,6 +284,7 @@ test("bare environment", async (t) => {
         },
         meta: {
           address: "1 Public Ave, Boise, ID", type: "Industrial",
+          generatedAt: SHARE_GENERATED_AT,
           curation: { excluded: [excludedKey], added: [] },
         },
       }),
@@ -281,6 +296,14 @@ test("bare environment", async (t) => {
     assert.equal(shared.status, 200);
     const payload = await shared.json();
     const raw = JSON.stringify(payload);
+
+    // The tripwire for that pin. If a later change makes /api/share
+    // re-stamp its own clock instead of honouring the browser's generatedAt,
+    // this fails deterministically on the very first run — rather than
+    // silently re-arming a 1-in-100 flake in the substring sweep below, which
+    // is the failure this test already cost a CI run and a re-run to find.
+    assert.equal(payload.meta.generatedAt, SHARE_GENERATED_AT,
+      "the payload must carry the generatedAt it was sent — a server clock reading here makes the sweep below nondeterministic");
 
     assert.ok(!raw.includes("742"), "the private comp's street number must not reach a public share, curation included");
     assert.ok(!raw.includes("4250000"), "the private comp's exact price must not reach a public share, curation included");

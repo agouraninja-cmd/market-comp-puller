@@ -3978,6 +3978,18 @@ const LINK_CHECK_BUDGET_MS = 2500;   // total, shared by every URL in the batch
 const LINK_CHECK_MAX_URLS = 12;
 const LINK_CHECK_UA = "CompNinjaLinkCheck/1.0 (+https://compninja.co)";
 
+// dns.promises.lookup takes no AbortSignal, so a slow or unreachable
+// nameserver could otherwise stall a check past LINK_CHECK_BUDGET_MS and add
+// unbounded latency to a user-facing search. Race it against a timer instead;
+// the underlying lookup keeps running in the threadpool after the race is
+// lost, which is accepted here because it is bounded to this one batch.
+function lookupWithTimeout(host, ms) {
+  return Promise.race([
+    dns.promises.lookup(host, { all: true }),
+    new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error("dns timeout"), { code: "ETIMEOUT" })), ms).unref()),
+  ]);
+}
+
 function privateAddress(addr, family) {
   if (family === 4) {
     const p = String(addr).split(".").map(Number);
@@ -4012,13 +4024,20 @@ async function checkSourceLinks(comps) {
         const host = new URL(url).hostname;
         let addrs;
         try {
-          addrs = await dns.promises.lookup(host, { all: true });
+          addrs = await lookupWithTimeout(host, LINK_CHECK_BUDGET_MS);
         } catch (e) {
           if (e && e.code === "ENOTFOUND") verdicts[url] = LINKCHECK.verdictFor({ dnsNotFound: true });
-          return;   // any other DNS failure: no verdict, i.e. unknown
+          return;   // any other DNS failure (including our own timeout): no verdict, i.e. unknown
         }
         if (!addrs.length || addrs.some((a) => privateAddress(a.address, a.family))) return;
-        const opts = { redirect: "follow", signal: controller.signal, headers: { "user-agent": LINK_CHECK_UA } };
+        // Never follow redirects: the DNS guard above only checked the
+        // ORIGINAL hostname, and a public host answering a 3xx to an
+        // internal address (169.254.169.254, 127.0.0.1, ...) would bypass it
+        // if fetch chased the Location header itself. A 3xx status flows
+        // through LINKCHECK.verdictFor unchanged and counts as "live" — the
+        // original URL did answer, and under-claiming death matches the
+        // doctrine.
+        const opts = { redirect: "manual", signal: controller.signal, headers: { "user-agent": LINK_CHECK_UA } };
         let r = await fetch(url, { ...opts, method: "HEAD" });
         if (r.status === 405) {
           r = await fetch(url, { ...opts, method: "GET" });

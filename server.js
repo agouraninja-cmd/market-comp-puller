@@ -507,7 +507,11 @@ function sendCsvDownload(req, res, table, file, cols, filename) {
     return sendJson(res, 401, { error: "Unauthorized." });
   }
   readRows(table, file, cols).then((rows) => {
-    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    // guardFormula: these files hold visitor-typed (lead name/company) and
+    // model-supplied (comp notes) text and are opened in the owner's Excel —
+    // a cell starting with `=`/`+`/`-`/`@` would execute there. Quoting alone
+    // does not prevent that; see the function's own header.
+    const esc = (v) => `"${VAULT.guardFormula(String(v ?? "")).replace(/"/g, '""')}"`;
     const lines = rows.map((o) => cols.map((c) => esc(o[c])).join(","));
     res.writeHead(200, {
       "content-type": "text/csv; charset=utf-8",
@@ -7001,6 +7005,25 @@ function aggregateStats(rows) {
         undonePct: asserted ? Math.round((n("undone") / asserted) * 1000) / 10 : 0,
       };
     })(),
+    // Vault funnel (2026-08-10): visits by outcome, template downloads, and
+    // import attempts by outcome. Exists because the vault had zero uploads
+    // and nothing saying WHERE brokers fall off — never reaching /vault, the
+    // Pro 403, or a refused import are three different problems. Events are
+    // market-free by rule (a broker's markets are their private book), so
+    // there is no by-market cut here and must never be.
+    vault: (() => {
+      const visits = rows.filter((r) => r.kind === "vault_visit");
+      const v = (o) => visits.filter((r) => (r.source || "") === o).length;
+      const imports = rows.filter((r) => r.kind === "vault_import");
+      const src = (re) => imports.filter((r) => re.test(r.source || "")).length;
+      return {
+        visits: visits.length,
+        open: v("ok"), signin: v("signin"), locked: v("locked"),
+        templates: rows.filter((r) => r.kind === "vault_template").length,
+        imports: imports.length,
+        imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
+      };
+    })(),
     // Anthropic call failures since the last restart. Customers only ever see
     // a generic "temporarily unavailable" now, so this is the only place the
     // real reason shows up outside the logs.
@@ -7347,6 +7370,22 @@ function render(d){
         "Each also emailed you when it arrived; this list is the record that survives a dropped email.</p>"+
         "<table>"+introRows+"</table>")+
     "</div>";
+  // Vault funnel (2026-08-10). undefined = stale /api/stats from before the
+  // events existed. Three drop-off points, three lines: reaching the page,
+  // getting past the gate, and an import our parser or storage refused.
+  // Deliberately no by-market cut — vault events are market-free by rule.
+  var vf=d.vault;
+  var vaultCard=(vf===undefined)?"":
+    "<div class=card><h2>Vault funnel</h2>"+
+    (!vf.visits&&!vf.imports&&!vf.templates
+      ? "<p class=muted>No /vault visits yet &mdash; events land from the 2026-08-10 deploy onward. "+
+        "When this stays zero, brokers are not finding the page at all.</p>"
+      : "<p><b>"+vf.visits+"</b> page visit(s) &mdash; "+vf.open+" opened a vault &middot; "+
+        vf.signin+" not signed in &middot; "+vf.locked+" hit the Pro gate</p>"+
+        "<p>"+vf.templates+" template download(s) &middot; "+vf.imports+" import attempt(s)"+
+        (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
+          (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
+    "</div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
@@ -7397,6 +7436,7 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     introCard+
+    vaultCard+
     (!sp ? "" :
     "<div class=card><h2>About the cost tiles</h2><div class=muted>Estimates, not billed amounts &mdash; no invoice is read. "+
     "A comp (report) search is assumed "+money(sp.listPriceReport)+"; a corpus-assisted one runs a much smaller web-search budget, so the "+
@@ -8688,7 +8728,10 @@ function render(){
 // Built here rather than server-side so the admin key never rides in a URL.
 function exportCsv(){
   var cols=["name","company","role","phone","email","market","category","status","notes","created_at","updated_at"];
-  var esq=function(v){return '"'+String(v==null?"":v).replace(/"/g,'""')+'"';};
+  // Leading '=/+/-/@' would be a live formula when this opens in Excel, and
+  // the book holds visitor-typed text (lead names ride in). Same guard as
+  // broker-vault.js guardFormula, inlined because this runs in the browser.
+  var esq=function(v){var s=String(v==null?"":v);if(/^[=+@-]/.test(s)&&!/^-?[0-9.]+$/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
   var rows=ROWS.filter(matches).map(function(c){return cols.map(function(k){return esq(c[k]);}).join(",");});
   var blob=new Blob([[cols.join(",")].concat(rows).join("\\r\\n")],{type:"text/csv;charset=utf-8"});
   var a=document.createElement("a");
@@ -11414,6 +11457,10 @@ const server = http.createServer((req, res) => {
     if (req.method === "GET" && path === "/api/vault/template") {
       (async () => {
         if (!(await openVault())) return;
+        // Funnel step between visiting and importing: a broker who took the
+        // template and never came back is a different loss than one who never
+        // saw the page. No market/PII, same as every vault event.
+        logEvent("vault_template", {});
         res.writeHead(200, {
           "content-type": "text/csv; charset=utf-8",
           "content-disposition": 'attachment; filename="compninja-comp-template.csv"',
@@ -11587,6 +11634,11 @@ const server = http.createServer((req, res) => {
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
+            // A whole-file rejection is the funnel's sharpest signal: a
+            // broker TRIED and our parser refused everything. `source` packs
+            // the row count (the link_check precedent — the analytics schema
+            // is fixed); no market or filename may ride along.
+            logEvent("vault_import", { source: `rejected:${parsed.total}` });
             return sendJson(res, 400, {
               error: parsed.errors[0] || "Nothing in that file could be imported.",
               errors: parsed.errors,
@@ -11649,6 +11701,11 @@ const server = http.createServer((req, res) => {
             `${parsed.skipped ? `, ${parsed.skipped} skipped` : ""}` +
             `${parsed.duplicates ? `, ${parsed.duplicates} duplicate(s) in file` : ""}`);
 
+          // ok:<imported>/<total> — the gap between the two numbers is rows
+          // our parser skipped, which is the per-row half of the rejection
+          // signal above.
+          logEvent("vault_import", { source: `ok:${parsed.rows.length}/${parsed.total}` });
+
           return sendJson(res, 200, {
             ok: true,
             uploadId,
@@ -11666,6 +11723,9 @@ const server = http.createServer((req, res) => {
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault upload failed:", err.message);
+          // Parsed fine, storage failed — our fault, not theirs, and the one
+          // outcome that loses a broker who did everything right.
+          logEvent("vault_import", { source: "store_failed" });
           return sendJson(res, 502, {
             error: "That import could not be saved — nothing was stored. Please try again.",
           });
@@ -13986,6 +14046,17 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         console.error("vault boot failed:", err.message);
       }
+      // Vault funnel: with zero uploads to date, "does anyone even reach the
+      // page, and what stops them" is the question. Deliberately PII-free AND
+      // market-free — a broker's markets are their private book, so unlike
+      // search events nothing here may carry one. `source` is the boot
+      // outcome: ok / signin (401) / locked (the Pro 403) / nodb / error.
+      logEvent("vault_visit", { source:
+        !boot ? "error"
+        : boot.s === 200 ? "ok"
+        : boot.s === 401 ? "signin"
+        : boot.s === 403 ? "locked"
+        : "nodb" });
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",

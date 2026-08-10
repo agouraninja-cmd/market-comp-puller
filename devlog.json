@@ -1817,5 +1817,11 @@
     "type": "feature",
     "title": "Comped Pro for beta testers with a shared passkey",
     "details": "A signed-in visitor can redeem a code in the pricing modal for full Pro access — everything except the private broker vault. Separate from the admin key, which also unlocks the internal dashboards. The grant is stored on the account, so it follows a tester across devices and one tester can be revoked without changing the code for everyone."
+  },
+  {
+    "date": "2026-08-10",
+    "type": "improvement",
+    "title": "Vault funnel on /admin, and CSV exports can no longer carry live formulas",
+    "details": "Two smaller hardening passes. The vault now logs four PII-free funnel events (page visit by outcome, template download, import by outcome) and /admin shows them as their own card, so with zero uploads to date the question of WHERE brokers fall off — never finding /vault, the Pro gate, or a refused import — finally has an answer; the events deliberately carry no market, since a broker’s markets are their private book. And every CSV the app emits (vault export, admin lead/corpus/submission downloads, the contacts book) now neutralizes cells starting with =, +, - or @, which Excel would otherwise execute as formulas; plain numbers are exempt so exported longitudes still re-import cleanly."
   }
 ]

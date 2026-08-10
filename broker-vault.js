@@ -867,15 +867,41 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
 }
 
 /**
+ * Neutralize spreadsheet formula injection: a cell starting with `=`, `+`,
+ * `-` or `@` is a FORMULA to Excel, LibreOffice and Google Sheets — quoting
+ * does not help, because the quotes are gone by the time the cell is
+ * interpreted. `=HYPERLINK(...)` in a comp's notes would execute on the
+ * broker's own machine when they open their export, and the admin CSVs carry
+ * visitor-typed and model-supplied text opened in the owner's Excel.
+ *
+ * The guard is the standard leading apostrophe, with one exception: a cell
+ * that is entirely a plain number is left alone, because every exported
+ * longitude starts with `-` and an apostrophe there would fail parseCoord on
+ * re-import and strip the building's location. The exception must match the
+ * WHOLE cell — `-2+cmd|...` starts with a digit-after-minus but is still a
+ * live payload, so a prefix test is not enough. Text that trips the guard
+ * (`- great location`) was already broken in Excel (#NAME?), so the
+ * apostrophe renders it correctly rather than corrupting anything; it does
+ * survive a re-import into the stored value, which is the accepted trade for
+ * never emitting a live formula.
+ */
+function guardFormula(s) {
+  return /^[=+\-@]/.test(s) && !/^-?[0-9.]+$/.test(s) ? "'" + s : s;
+}
+
+/**
  * Quote a cell for CSV output: wrap in quotes when it contains a comma, a
  * quote or a newline, and double any embedded quotes.
  *
  * Not optional for the template — the example address contains two commas, so
  * writing it bare shifts every column right and the first thing a broker does
  * with our own file fails validation. (It did; there is a test.)
+ *
+ * Formula-guarded first (see guardFormula) — every CSV this module emits is
+ * opened in a spreadsheet by design, so there is no un-guarded variant.
  */
 function csvCell(v) {
-  const s = String(v == null ? "" : v);
+  const s = guardFormula(String(v == null ? "" : v));
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -1217,6 +1243,7 @@ module.exports = {
   EDITABLE_FIELDS,
   isUuid,
   parseUpload,
+  guardFormula,
   csvCell,
   templateCsv,
   exportColumns,

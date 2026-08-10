@@ -23,6 +23,7 @@ const {
   inspectCsv, normalizedHeaderRow,
   validateEdit, EDITABLE_FIELDS, isUuid,
   exportColumns, exportCsv, exportRowsWithCoords,
+  guardFormula, csvCell,
 } = require("../broker-vault");
 
 // Shared with vault-api.test.js: parses the columns a table actually has out
@@ -685,6 +686,48 @@ test("the export emits no comment lines", () => {
   }];
   assert.ok(!exportCsv(rows).split("\n").some((l) => l.startsWith("#")),
     "the template teaches; an export carries data");
+});
+
+// --- formula injection -----------------------------------------------------
+//
+// A cell starting with = + - @ is a FORMULA to Excel/Sheets/LibreOffice, and
+// quoting does not defuse it — the quotes are gone by the time the cell is
+// interpreted. Every CSV this module writes is opened in a spreadsheet by
+// design (the export by the broker, the admin downloads by the owner), so a
+// hostile note must never leave here executable.
+
+test("a cell starting with a formula character is neutralized", () => {
+  assert.equal(guardFormula("=HYPERLINK(\"http://evil\")"), "'=HYPERLINK(\"http://evil\")");
+  assert.equal(guardFormula("@SUM(A1)"), "'@SUM(A1)");
+  assert.equal(guardFormula("+cmd|' /C calc'!A0"), "'+cmd|' /C calc'!A0");
+  assert.equal(guardFormula("- great location"), "'- great location");
+});
+
+test("a plain number is never guarded — every longitude starts with a minus", () => {
+  // An apostrophe on "-116.2023" would fail parseCoord on re-import and
+  // strip the building's stored location.
+  assert.equal(guardFormula("-116.2023"), "-116.2023");
+  assert.equal(csvCell(-116.2023), "-116.2023");
+  assert.equal(guardFormula("5.75"), "5.75");
+});
+
+test("digit-after-minus is not enough — the number exception matches the whole cell", () => {
+  // "-2+cmd|..." starts like a number and is still a live payload.
+  assert.equal(guardFormula("-2+cmd|' /C calc'!A0"), "'-2+cmd|' /C calc'!A0");
+});
+
+test("a hostile note leaves exportCsv neutralized, and the trade is the apostrophe surviving re-import", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Retail",
+    transaction: "sale", deal_date: "2025-03-14", notes: "=cmd|' /C calc'!A0",
+  }];
+  const out = exportCsv(rows);
+  assert.ok(out.includes("'=cmd"), "the note must carry the guard in the file");
+  // The accepted trade (see guardFormula's header): the apostrophe is stored
+  // on re-import rather than the formula coming back to life on the next
+  // export. If this assertion ever changes, the export must still never
+  // round-trip back to a bare leading "=".
+  assert.equal(parseUpload(out).rows[0].notes, "'=cmd|' /C calc'!A0");
 });
 
 // --- exportRowsWithCoords: the property-coordinate join --------------------

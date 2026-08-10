@@ -1258,6 +1258,57 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
   All four go through one `openVault()` helper: 401 not signed in → 403 not a
   broker (`canUseVault`) → 503 no database.
+  - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
+    /api/vault/comp?id=` fixes or removes one stored comp; `POST
+    /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
+    should not have to author a CSV); `GET /api/vault/export.csv` downloads
+    the whole book. **`EDITABLE_FIELDS` in `broker-vault.js` is an
+    allowlist**, not a second validator — `validateEdit(existing, patch)`
+    merges the patch over the stored row and reruns it through
+    `normalizeRow`, the same function every imported row goes through, so a
+    hand-typed "1.2M" or an Excel serial date fails an edit exactly as it
+    fails an upload.
+    **Editing or deleting a PUBLISHED comp retracts it** (`retractPublishedComp`)
+    — deletes the `comp_submissions` row and clears `published`/
+    `published_at`/`published_submission_id` — and **the retraction happens
+    only AFTER validation succeeds**, never before. It shipped the other way
+    round first: retracting ahead of `JSON.parse`/`validateEdit`/the
+    collision check meant a broker's REJECTED edit (typing "1.2M", the exact
+    input the vault exists to refuse) still pulled the comp from the public
+    records and stripped its firm credit before the 400 was ever returned —
+    the broker saw only a parse error and had no way to know what had
+    happened, and if the submission had already been approved, republishing
+    creates a fresh PENDING row needing manual owner re-approval, so the
+    credit does not come back on its own. DELETE has no validation step that
+    can fail, so it stays retract-first.
+    **An address edit nulls `property_id`** before the write, specifically
+    when `row.address_key !== comp.address_key`, never on an untouched
+    address. `linkVaultProperties`' relink PATCH only ever fills a NULL
+    `property_id` (`property_id=is.null`, so a re-import can't rewrite a
+    link that already looks correct) — left non-null after an address
+    change, a comp would keep pointing at the OLD building forever and
+    `attachPropertyCoords` would stitch the old building's coordinates onto
+    the corrected address in every future report.
+    **The export must be complete or refuse.** It does NOT build on
+    `vaultReadPayload`, which hard-caps at 1000 rows; it pages until an
+    EMPTY page comes back, advancing the offset by the rows actually
+    returned rather than by the page size, because PostgREST can honor a
+    project-level Max Rows setting by returning fewer rows than requested
+    with no error — treating a short page as "done" would silently truncate
+    at whatever that cap is. It orders by `deal_date.desc,id.asc`
+    specifically because `deal_date` alone is day-granularity and ties
+    across many rows in an imported book; Postgres only guarantees stable
+    OFFSET/LIMIT paging when the ORDER BY produces a unique row order, so a
+    non-unique sort key can drop (or duplicate) a comp on a page boundary.
+    It also JOINS `broker_properties` for `lat`/`lng` and every populated
+    per-type column (`clear_height`, `units`, `lot_acres`, etc.) — omit
+    either and a re-import silently drops that comp's specs or sends a
+    private address back out to a third-party geocoder, which migration 017
+    and `parseCoord` exist to prevent.
+    No migration was needed for any of this: `broker_comps.upload_id` was
+    already nullable (a hand-added comp belongs to no import, so it can only
+    ever be removed per-comp, never by deleting an import), and every new
+    field these routes touch already had a column.
   - **Blended comps** (server half, 2026-08-06). A broker's own vault comps
     appear inside **their own** reports, flagged `private: true` with
     `source_type: "broker_vault"`, plus a top-level `private_count`. Rules in

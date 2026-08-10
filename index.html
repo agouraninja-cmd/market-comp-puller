@@ -10126,10 +10126,12 @@
     updateExportAllowance();
 
     const card = document.getElementById("billingCard");
-    // Admins see the card even where billing isn't live (a dev box with no
-    // Stripe keys): comped Pro applies there too, so the way back out of it
-    // has to as well.
-    const showCard = Boolean(currentUser) && (live || isAdminPro());
+    // Comped visitors (admins and beta testers) see the card even where
+    // billing isn't live (a dev box with no Stripe keys): comped Pro applies
+    // there too, so the way back out of it has to as well. Any future comped
+    // path needs the same OR here, or its plan-card copy is unreachable on a
+    // Stripe-less deployment.
+    const showCard = Boolean(currentUser) && (live || isAdminPro() || isTesterPro());
     card.classList.toggle("hidden", !showCard);
     if (showCard) {
       const copy = billingStatusCopy();
@@ -10137,6 +10139,7 @@
       document.getElementById("billingDetail").textContent = copy.detail;
       document.getElementById("billingUpgradeBtn").classList.toggle("hidden", pro);
       document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
+      // Admin-only: it clears the cn_admin cookie, which a tester never has.
       document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
     }
   }

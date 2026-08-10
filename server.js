@@ -2966,7 +2966,7 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -3056,6 +3056,19 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Include each one that is genuinely comparable to the target and inside the date window, copying its details faithfully (keep its source_url, and set "source_type" to match where it came from). Use web search only to (a) confirm the target's building size, (b) fill gaps if fewer than ${maxComps} of these are comparable, or (c) surface more recent transactions. When one of these and a fresh web result describe the same deal, keep only one. Set "verified": false on these unless they also appear in the verified list above. Never include one that is clearly in a different city or submarket than the target.`,
   ].join("\n") : "";
 
+  // Nearby-metro rows get their OWN block rather than joining the list above,
+  // so that block's closing rule ("never include one that is clearly in a
+  // different city or submarket") stays intact and absolute for exact-market
+  // comps. Widening retrieval without this would hand the model rows and then
+  // tell it to discard them.
+  const nearbyBlock = (corpusNearby && corpusNearby.length) ? [
+    ``,
+    `NEARBY COMPS (${[...new Set(corpusNearby.map((c) => c.market).filter(Boolean))].join(", ")}): our prior research surfaced these in cities immediately neighboring the target, in the same metro area. They are already sourced.`,
+    ...corpusNearby.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
+    `Use these only when the target's own city is thin on genuinely comparable transactions, and only for ones a buyer would actually weigh against the target. Report each address exactly as given so the report shows the city the comp is really in; never restate it as the target's city. Set "verified": false on these, and keep the source_url. Prefer a comp in the target's own city over one of these whenever both are comparable.`,
+  ].join("\n") : "";
+
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
     ``,
@@ -3118,6 +3131,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       : "",
     verifiedBlock,
     corpusBlock,
+    nearbyBlock,
     ``,
     LANE_GUIDANCE[lane] || "",
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
@@ -3731,7 +3745,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
       role: "user",
       content: [{
         type: "text",
-        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, subjectDetails, lane),
+        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby, subjectDetails, lane),
         cache_control: { type: "ephemeral" },
       }],
     }],

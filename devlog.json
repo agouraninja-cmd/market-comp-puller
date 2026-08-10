@@ -260,5 +260,8 @@
   {"date":"2026-08-09","type":"improvement","title":"Dead source links demote a comp's badge before anyone sees it","details":"Each fresh report now checks its comps' source URLs (bot-walled hosts exempt, one 2.5s budget). A link that is already dead at harvest time was probably never real, so that comp's badge drops to Estimate everywhere at once: the served report, the cache, and the permanent corpus. Links that rot later change nothing."},
   { "date": "2026-08-09", "type": "improvement",
     "title": "Outlier comps get a quiet flag while you curate",
-    "details": "A sale comp priced more than 25% outside the report's own value band now carries a small chip saying so, next to its Exclude button. It is a curation aid for you only: it never prints, never exports, and never appears on a shared link. The same 25% rule the vault gut check uses." }
+    "details": "A sale comp priced more than 25% outside the report's own value band now carries a small chip saying so, next to its Exclude button. It is a curation aid for you only: it never prints, never exports, and never appears on a shared link. The same 25% rule the vault gut check uses." },
+  { "date": "2026-08-09", "type": "improvement",
+    "title": "Search quality can finally be measured instead of guessed at",
+    "details": "A new eval harness runs a fixed set of 12 addresses through real searches and scores what came back: how many priced sale comps, whether a valuation was possible at all, how good the sources were, how many comps sat outside the window or the market. Two runs can be compared, so a model upgrade or a prompt change is now a decision with numbers behind it. Nothing customer-facing changed." }
 ]

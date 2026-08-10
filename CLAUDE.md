@@ -453,9 +453,11 @@ a free user" button on the plan card does. Keep that button working: the team is
 permanently on the far side of the paywall, so it is the only way anyone
 internal ever renders one.
 
-`MODEL` is hard-coded in `server.js` as `claude-sonnet-4-6`. If the API returns a
+`MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`
 with the key and update the constant — an earlier model ID was retired.
+
+**Measuring a model or prompt change** (2026-08-09). `run-eval.js` puts the 12 fixed targets in `eval-set.json` through real searches and scores each report with the pure, tested `eval-score.js` (priced sale comps and whether a valuation was possible at all, provenance weighted with `valuation.js`'s own `TIER_WEIGHT`, aggregate-address and out-of-window and off-market rates, narrative lengths against the 2026-08-03 caps, wall clock). It is a SCORECARD, not an assertion suite: nothing has a pass/fail threshold, because a dozen stochastic searches are noisy, and the product is `--compare` between two runs. Summaries land in `docs/evals/` (committed, so history accumulates); raw reports go to the git-ignored `eval-runs/`. Two things make it trustworthy and must not be undone: the run sends `fresh: true`, an internal-only flag that skips BOTH cache read paths (the exact hit and the derivable-window one), because a cached report would score the model that wrote it and report a false "no difference"; the runner also deletes the local `comp-corpus.jsonl` before each run and records `corpusWiped` in the summary, because `corpusRowsForMarket` reads that file fallback even with no database configured, so a previous run's harvest would otherwise hand the next run corpus coverage and a smaller search budget; and the runner must target a server started from a separate worktree with `SUPABASE_URL` blank, so every write lands in that worktree's own fallback files instead of production's corpus, market pages, and cache. A full run costs about $4.30, a model comparison about $8.60. The accuracy backtest (`/api/accuracy`) is the other half of the picture and answers a different question: it scores the reconciliation math over comps already harvested, never what a search found.
 
 ## Architecture
 

@@ -129,3 +129,30 @@ test("no in-scope stylesheet paints a background with the TEXT red", () => {
     }
   }
 });
+
+test("every in-scope server page can set the theme before first paint", () => {
+  // The snippet is render-blocking and lives in <head> on purpose: anything
+  // deferred paints the light theme first and flashes white on a dark page.
+  assert.ok(SERVER_JS.includes("const THEME_BOOT ="), "THEME_BOOT not declared");
+  // marketShell covers /markets, /market/<slug>, /brokers, /broker/<slug>,
+  // /1031-exchange, /terms, /privacy. The how-it-works render covers / and
+  // /how-it-works.
+  const shell = SERVER_JS.slice(SERVER_JS.indexOf("function marketShell("));
+  assert.ok(shell.slice(0, 2000).includes("THEME_BOOT"), "marketShell lacks the boot script");
+  // vault-page.js is deliberately NOT checked here yet. This task (Task 3)
+  // does not touch vault-page.js -- see its Files list -- and the boot
+  // script lands there in Task 6, next in the task order. Asserting on it
+  // now would fail `npm test` on a file this task neither edits nor is
+  // allowed to stage. Task 6 must add that assertion here once it lands
+  // THEME_BOOT (or an equivalent inline script) in vault-page.js's <head>.
+});
+
+test("the toggle is rendered once per page, in the shared nav", () => {
+  const slots = SERVER_JS.slice(SERVER_JS.indexOf("function accountNavSlots("));
+  assert.ok(slots.slice(0, 1500).includes(`id="themeToggle"`), "no toggle in accountNavSlots");
+  // accountNavSlots is the ONE place it may live. A second copy in
+  // marketBar or the how-it-works header would render two toggles on the
+  // pages that call both.
+  const occurrences = SERVER_JS.split(`id="themeToggle"`).length - 1;
+  assert.equal(occurrences, 1, "themeToggle is declared more than once in server.js");
+});

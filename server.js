@@ -4383,6 +4383,27 @@ const CN_LOGO_LIGHT =
 const THEME = require("./theme.js");
 const THEME_CSS = THEME.rootCss();
 
+// Sets data-theme before the first frame. Render-blocking and inline on
+// purpose: anything deferred or async paints the light theme first, and a
+// white flash on a dark page is worse than having no dark mode at all.
+// Wrapped in try/catch because localStorage throws outright in a Safari
+// private window, and a theme preference must never be able to blank a page.
+//
+// It reads PRESENCE of an explicit choice, falling back to the OS. This is
+// also the feature's rollback lever: nothing else in the codebase ever sets
+// data-theme, so short-circuiting this one string disables dark mode on
+// every surface at once.
+const THEME_BOOT =
+  `<script>(function(){try{var t=localStorage.getItem("theme");` +
+  `if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";` +
+  `if(t==="dark")document.documentElement.setAttribute("data-theme","dark");` +
+  `}catch(e){}})();</script>\n`;
+
+// Paired so the mobile browser chrome agrees with the page it frames.
+const THEME_META =
+  `<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>\n` +
+  `<meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)"/>\n`;
+
 const ACCOUNT_NAV_CSS = `
 /* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.
    Load-bearing: .hdr nav .dd a sets display:block, which out-specifies the
@@ -4401,12 +4422,24 @@ const ACCOUNT_NAV_CSS = `
 .hdr nav .dd button:hover{background:var(--wash);color:var(--ink)}
 .hdr nav .dd .up{color:var(--red);font-weight:500}
 .hdr nav .dd a.vault{font-weight:500}
+/* Theme toggle. Sits in the nav row and reads as one of its links, not as a
+   switch widget -- this header is deliberately calm. */
+.hdr nav #themeToggle{display:inline-flex;align-items:center;padding:0;border:0;background:none;
+  color:var(--ink-3);cursor:pointer;line-height:0}
+.hdr nav #themeToggle:hover{color:var(--ink)}
 `;
 
 // The nav slots. `desk: false` for /how-it-works, which already renders its own
 // My Desk / Log in server-side and would otherwise show two of each.
 function accountNavSlots({ desk = true } = {}) {
-  return (desk
+  // The theme toggle. Rendered here and nowhere else -- the pages that use
+  // this helper each render exactly one nav, so a second copy anywhere
+  // would double it. Not hidden like the account slots: it needs no
+  // knowledge of the visitor, so it is correct on the very first frame.
+  return `<button id="themeToggle" type="button" aria-label="Switch colour theme" title="Switch colour theme">` +
+    `<svg viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
+    `d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg></button>` +
+    (desk
     ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
     : "") +
@@ -4468,6 +4501,10 @@ const ACCOUNT_NAV_JS =
   `var out=$("navSignOut");if(out)out.addEventListener("click",function(){` +
   `fetch("/api/account/logout",{method:"POST"}).catch(function(){}).then(function(){` +
   `location.reload();});});` +
+  `var th=$("themeToggle");if(th)th.addEventListener("click",function(){` +
+  `var el=document.documentElement,dark=el.getAttribute("data-theme")==="dark";` +
+  `if(dark){el.removeAttribute("data-theme");}else{el.setAttribute("data-theme","dark");}` +
+  `try{localStorage.setItem("theme",dark?"light":"dark");}catch(e){}});` +
   `})();</script>`;
 
 // Research Desk system — the same palette and type as the landing page and
@@ -5171,9 +5208,12 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    `${THEME_META}` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     (head || "") +
-    `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `<style>${MARKET_CSS}</style>\n` +
+    THEME_BOOT +
+    `</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -6672,7 +6712,6 @@ ${ACCOUNT_NAV_JS}
     `<title>${escHtml(title)} | CompNinja</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
     `<meta name="robots" content="index, follow"/>\n<link rel="canonical" href="${canonical}"/>\n` +
-    `<meta name="theme-color" content="#FBFBF9"/>\n` +
     `<meta property="og:type" content="website"/>\n<meta property="og:site_name" content="CompNinja"/>\n` +
     `<meta property="og:title" content="${escHtml(title)}"/>\n` +
     `<meta property="og:description" content="${escHtml(description)}"/>\n` +
@@ -6682,8 +6721,10 @@ ${ACCOUNT_NAV_JS}
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    `${THEME_META}` +
     `<script type="application/ld+json">${jsonLd}</script>\n` +
     `<style>${HOW_CSS}</style>\n` +
+    THEME_BOOT +
     // The ONE thing that arms the scroll choreography. Every rule that hides
     // anything is scoped under html.anim, so a visitor with JS off — or a
     // crawler, or anyone whose network drops this byte — gets the finished

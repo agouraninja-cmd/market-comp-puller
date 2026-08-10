@@ -429,6 +429,17 @@ dependency. `.env` is git-ignored — never commit it.
   product is live but unbuyable and the deployment looks perfectly healthy,
   which is why startup logs it loudly. Rules live in `entitlements.js`
   (`parseAudience` / `inAudience`), so `npm test` covers them.
+- `SEARCH_PROVIDER` — optional `gemini` (**default since 2026-08-10**) or `anthropic`. Picks which
+  vendor runs the comp search. An unrecognized value **exits at boot** rather
+  than silently falling back, the same no-fallthrough rule `/api/checkout`'s
+  `PLANS` map follows. `MODEL` still overrides the chosen provider's default
+  model, so existing `MODEL=` deployments are unaffected. Gemini authenticates
+  with `GEMINI_API_KEY` and needs a **paid-tier** Google project: search
+  grounding 429s on the free tier, and the error names no project. Gemini
+  cannot cap its search rounds (`google_search` takes no `max_uses`), so
+  corpus-first retrieval remains a quality lever there but stops being a cost
+  lever. Server code must branch on `PROVIDER.capabilities.*`, never on
+  `PROVIDER.name`.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 ### Admin access — comped Pro for the team

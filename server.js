@@ -129,12 +129,44 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// The provider registry. Each module satisfies the same ten-export contract
+// (name, logLabel, apiKeyEnv, defaultModel, capabilities, buildRequestBody,
+// requestInit, parseResponse, normalizeUsage, costOf). Explicit map with NO
+// fallthrough: an unrecognized value must fail loudly at boot rather than
+// silently serve a provider nobody chose. Same rule the /api/checkout PLANS
+// table follows, and for the same reason.
+const SEARCH_PROVIDERS = {
+  anthropic: require("./search-provider-anthropic"),
+  gemini: require("./search-provider-gemini"),
+};
+// Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
+// measured it better on every scored metric of the 12-target eval AND 3.9x
+// cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
+// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
+// deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
+// PAID-tier Google project: a free-tier key authenticates and runs the model
+// but 429s on every grounded search, which looks like a half-working site.
+const SEARCH_PROVIDER_NAME = (process.env.SEARCH_PROVIDER || "gemini").trim().toLowerCase();
+const PROVIDER = SEARCH_PROVIDERS[SEARCH_PROVIDER_NAME];
+if (!PROVIDER) {
+  console.error(`⛔ SEARCH_PROVIDER="${SEARCH_PROVIDER_NAME}" is not one of: ${Object.keys(SEARCH_PROVIDERS).join(", ")}`);
+  process.exit(1);
+}
 // Overridable so the eval harness can score one model against another
 // (run-eval.js). Unset everywhere in production, which keeps this exactly
 // the constant it has always been. If the API 404s on a model id, list the
 // live ones via GET https://api.anthropic.com/v1/models and update this
 // default.
-const MODEL = (process.env.MODEL || "claude-sonnet-4-6").trim();
+// MODEL still overrides, so an existing MODEL=... deployment is unaffected.
+const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
+
+// The provider names its own credential var, so this stays a lookup rather
+// than a branch. Testing PROVIDER.name here would be the first crack in the
+// never-branch-on-name rule, and credential selection is exactly where such
+// exceptions look most reasonable.
+const providerApiKey = () => (process.env[PROVIDER.apiKeyEnv] || "").trim();
 
 // Optional shared password. If set, visitors must enter it before searching.
 // Leave it unset to keep the app open.
@@ -3752,25 +3784,34 @@ function noteUpstreamFailure(status, detail) {
   const billing = status === 401 || status === 403 ||
     /credit balance|purchase credits|billing|payment/i.test(msg);
   if (!billing) {
-    console.error(`Anthropic call failed (${status}): ${msg.slice(0, 200)}`);
+    console.error(`${PROVIDER.logLabel} call failed (${status}): ${msg.slice(0, 200)}`);
     return;
   }
 
   UPSTREAM_HEALTH.billing = true;
+  // This alert names the ACTIVE provider, not Anthropic. It fires from the one
+  // shared noteUpstreamFailure, so before SEARCH_PROVIDER existed it could only
+  // ever mean Anthropic; now a Gemini 401 would otherwise push the owner an
+  // actively wrong diagnosis mid-outage, telling them to go buy credits from a
+  // vendor that is not failing. The remedy differs per provider too, which is
+  // why the fix line is per-provider rather than one generic sentence.
+  // The remedy differs per vendor, so each provider carries its own. Reading it
+  // off the module keeps this a lookup: an `if (PROVIDER.name === ...)` here
+  // would be the first crack in the never-branch-on-name rule, and per-vendor
+  // copy is exactly where that exception looks most reasonable.
+  const billingFix = PROVIDER.billingHelp;
   console.error(
-    `Anthropic API is refusing every call for BILLING reasons (${status}). Comp search is ` +
-    `DOWN site-wide until the Console org that owns ANTHROPIC_API_KEY has credits again — ` +
-    `console.anthropic.com -> Plans & Billing. A comped Claude Pro/Team seat does not fund ` +
-    `this; API credits are a separate prepaid balance. Detail: ${msg.slice(0, 200)}`);
+    `${PROVIDER.logLabel} API is refusing every call for BILLING reasons (${status}). Comp ` +
+    `search is DOWN site-wide until ${PROVIDER.apiKeyEnv}'s billing is fixed. ${billingFix} ` +
+    `Detail: ${msg.slice(0, 200)}`);
   if (upstreamAlertSent) return;
   upstreamAlertSent = true;
-  sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja is DOWN: Anthropic API billing",
-    `Every comp search is failing. The Anthropic API returned ${status}:\n\n` +
+  sendEmail(LEAD_NOTIFY_EMAIL, `CompNinja is DOWN: ${PROVIDER.logLabel} API billing`,
+    `Every comp search is failing. The ${PROVIDER.logLabel} API returned ${status}:\n\n` +
     `  ${msg.slice(0, 300)}\n\n` +
-    `This is the Console API credit balance for the org that owns ANTHROPIC_API_KEY, which is\n` +
-    `billed separately from any Claude Pro/Team subscription — a comped seat does not cover it.\n\n` +
-    `Fix: console.anthropic.com -> Plans & Billing -> buy credits, and turn on auto-reload so\n` +
-    `this cannot happen silently again. Nothing needs redeploying; the next search will work.\n\n` +
+    `The active search provider is ${PROVIDER.name}, authenticated with ${PROVIDER.apiKeyEnv}.\n\n` +
+    `Fix: ${billingFix}\n\n` +
+    `Nothing needs redeploying; the next search will work.\n\n` +
     `Customers are currently seeing a generic "temporarily unavailable" message, not this one.`);
 }
 
@@ -3778,7 +3819,7 @@ function noteUpstreamFailure(status, detail) {
 // reader what to do next. Never the upstream text.
 function upstreamError(status, detail) {
   noteUpstreamFailure(status, detail);
-  const err = new Error(`Anthropic API error (${status}). ${detail || ""}`.trim());
+  const err = new Error(`${PROVIDER.logLabel} API error (${status}). ${detail || ""}`.trim());
   err.upstream = true;
   err.userMessage = (status === 429 || status === 529)
     ? "Our comp search is unusually busy right now. Please try again in a minute."
@@ -3800,6 +3841,26 @@ function clientErrorMessage(err) {
 // price of a small completion (~$0.05, ~40s) instead of solo()'s full
 // ~$0.35/~90s re-search. Every failure path here surfaces to the caller,
 // which falls back to that full retry, so this can only ever save.
+//
+// Deliberately Anthropic-only for now, and NOT routed through PROVIDER: it
+// hardcodes api.anthropic.com, the three Anthropic headers, and reads
+// API_KEY (ANTHROPIC_API_KEY) directly rather than providerApiKey(). Under
+// SEARCH_PROVIDER=gemini this call still fires on a parse failure and still
+// targets Anthropic, so a Gemini-backed run whose JSON fails to parse
+// attempts an Anthropic repair before falling to Gemini's own full retry.
+// It does not crash, and it can never actually succeed under Gemini, which
+// makes it inert rather than merely inconsistent. Node's fetch does NOT
+// drop an undefined header value; it stringifies it, so with no
+// ANTHROPIC_API_KEY set the request carries a literal `x-api-key: "undefined"`
+// and Anthropic answers 401. If ANTHROPIC_API_KEY also happens to be set,
+// the request still fails, because MODEL is this module's constant and
+// under Gemini it holds a Gemini model id ("gemini-3.6-flash" by default),
+// which Anthropic 404s on as an unrecognized model. Either way the existing
+// failure path (every error here surfaces to the caller) falls through to
+// solo()'s full re-search, which does go through PROVIDER correctly. The
+// only cost is a wasted round trip against the repair call's own 90s
+// timeout. Left as a known gap for phase 2's validation gate rather than
+// generalized in this task.
 async function repairCompJson(brokenText, maxTokens) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000);
@@ -3837,43 +3898,18 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
-  const body = {
+  // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
+  // non-streaming path rather than ask for a mode it doesn't support.
+  const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
+  const body = PROVIDER.buildRequestBody({
     model: MODEL,
-    // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
-    // text plus the final JSON. The per-comp schema has grown (clear_height/
-    // dock_doors, tenancy, year_built, per-comp notes), so 3200 could
-    // get cut off mid-array on a busy 8-comp Industrial report. Billing is by
-    // actual tokens generated, not this cap, so raising it costs nothing on
-    // the (much more common) shorter reports — and leaving it high is what
-    // keeps the notes cap a QUALITY instruction rather than a hard truncation
-    // that could sever the JSON mid-array.
-    // A 10-12 comp report is a third longer than the 8-comp JSON this was
-    // sized for — give it headroom so the closing brace never gets cut off.
-    max_tokens: maxComps > 8 ? 10000 : 8000,
-    // The subject-size lookup gets two extra searches so it doesn't crowd out
-    // the comp searches themselves. When we already hold recent comps for this
-    // market (corpus-strong), the budget drops hard — that reuse is the saving.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchUses }],
-    // The web_search loop re-runs model inference on EVERY round — one per
-    // search plus the final report — and each round re-reads this whole prompt
-    // at full input price. Measured at ~3,300 tokens, an 8-search report paid
-    // for it nine times over. cache_control makes rounds 2..N read it at ~0.1x.
-    // It works because caching is a PREFIX match and the prompt is byte-
-    // identical across a request's rounds: only the search results appended
-    // AFTER it grow. Sonnet's minimum cacheable prefix is 1,024 tokens and this
-    // prompt is ~3x that, so it always qualifies — but a future prompt trim
-    // that took it under 1,024 would silently stop caching, with no error.
-    messages: [{
-      role: "user",
-      content: [{
-        type: "text",
-        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby, subjectDetails, lane),
-        cache_control: { type: "ephemeral" },
-      }],
-    }],
-  };
-
-  if (STREAM_ANTHROPIC) body.stream = true;
+    prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
+                        subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
+                        subjectDetails, lane),
+    maxComps,
+    searchUses,
+    stream: useStream,
+  });
   const say = typeof onProgress === "function" ? onProgress : () => {};
 
   // Live comp lines for the loading card. Only calls that report progress get
@@ -3909,7 +3945,11 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // NOT be cleared right after the await, or the whole read loop would run
   // unguarded and a wedged upstream would hang forever. It is cleared in the
   // finally that wraps the reading, further down.
-  const callDeadlineMs = searchTimeoutMsFor(searchUses, body.max_tokens);
+  // A provider that cannot cap search rounds never honored searchUses, so a
+  // deadline derived from it would be arbitrary. Budget the worst case (a full
+  // 10-search run) instead of a number that was silently ignored.
+  const deadlineUses = PROVIDER.capabilities.searchBudget ? searchUses : 10;
+  const callDeadlineMs = searchTimeoutMsFor(deadlineUses, PROVIDER.deadlineTokens(body));
   const timer = setTimeout(() => controller.abort(), callDeadlineMs);
   // Two very different failures used to raise the SAME error with no way to
   // tell them apart, in the message OR in the log:
@@ -3922,21 +3962,18 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const timedOut = (cause) => {
     const waited = ((Date.now() - startedAt) / 1000).toFixed(1);
     console.error(cause === "idle"
-      ? `Anthropic call [${lane}] ABORTED: no data for ${STREAM_IDLE_MS / 1000}s (idle watchdog) after ${waited}s. The call may have been alive and billed.`
-      : `Anthropic call [${lane}] ABORTED: exceeded its ${(callDeadlineMs / 1000).toFixed(0)}s deadline after ${waited}s.`);
+      ? `${PROVIDER.logLabel} call [${lane}] ABORTED: no data for ${STREAM_IDLE_MS / 1000}s (idle watchdog) after ${waited}s. The call may have been alive and billed.`
+      : `${PROVIDER.logLabel} call [${lane}] ABORTED: exceeded its ${(callDeadlineMs / 1000).toFixed(0)}s deadline after ${waited}s.`);
     const e = new Error("The search took too long and was stopped. Please try again.");
     e.timeoutCause = cause;
     return e;
   };
   let r;
   try {
-    r = await fetch("https://api.anthropic.com/v1/messages", {
+    const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
+    r = await fetch(init.url, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: init.headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -3958,18 +3995,28 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   let usage = {};
   let stopReason = "";
 
-  if (!STREAM_ANTHROPIC) {
-    clearTimeout(timer);
-    const data = await r.json();
-    searches = (data.content || []).filter((b) => b.type === "server_tool_use").length;
-    usage = data.usage || {};
-    stopReason = data.stop_reason;
-    // Web search responses contain multiple block types — keep ONLY text blocks.
-    text = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
+  if (!useStream) {
+    // fetch() resolves at the HEADERS, not the body — the streaming branch
+    // below already knows this (its own clearTimeout sits in a `finally`
+    // after the read loop). Clearing the timer here, before `await r.json()`,
+    // left the body read with no deadline and no abort coverage; that was a
+    // tolerable gap when non-streaming was only the STREAM_ANTHROPIC=off
+    // debug path, but it is now the ONLY path for a whole provider (Gemini
+    // has no STREAM_IDLE_MS watchdog either), so a wedged call could hang
+    // forever with nothing to time it out.
+    let parsed;
+    try {
+      parsed = PROVIDER.parseResponse(await r.json());
+    } catch (err) {
+      if (err && err.name === "AbortError") throw timedOut("deadline");
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+    text = parsed.text;
+    searches = parsed.searches;
+    usage = parsed.usage;
+    stopReason = parsed.stopReason;
   } else {
     // Rebuild exactly what the non-streaming branch above produces: the text
     // blocks, in index order, joined with "\n" and trimmed. Anything else and
@@ -3989,7 +4036,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                               e.message || e.type || "unknown");
         }
         if (ev.type === "message_start") {
-          usage = (ev.message && ev.message.usage) || {};
+          usage = PROVIDER.normalizeUsage(ev.message && ev.message.usage);
           say({ phase: "start" });
         } else if (ev.type === "content_block_start") {
           const cb = ev.content_block || {};
@@ -4045,7 +4092,15 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
           }
         } else if (ev.type === "message_delta") {
           stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          if (ev.usage) usage = { ...usage, ...ev.usage };
+          // normalizeUsage always emits all four keys, filling absent ones
+          // with 0 (Number(undefined) || 0). A message_delta frame carries
+          // only output_tokens, so a plain spread would zero the input and
+          // cache counts that message_start already established. Overwrite
+          // only the keys this delta actually carried.
+          if (ev.usage) {
+            const d = PROVIDER.normalizeUsage(ev.usage);
+            for (const k of Object.keys(d)) if (d[k]) usage[k] = d[k];
+          }
         }
       }
     } catch (err) {
@@ -4071,7 +4126,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // should land near (rounds - 1) x the prompt size. A run that logs 0 read AND
   // 0 write is a silent miss — the usual cause is the prompt slipping under the
   // 1,024-token cacheable minimum, which raises no error.
-  console.log(`Anthropic call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_input_tokens || 0} read / ${usage.cache_creation_input_tokens || 0} write · stop=${stopReason}`);
+  console.log(`${PROVIDER.logLabel} call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_tokens || 0} read / ${usage.cache_write_tokens || 0} write · stop=${stopReason}`);
   if (stats) { stats.searches = searches; stats.out_tokens = usage.output_tokens || 0; }
 
   if (!text) throw new Error("The model returned no text content to parse.");
@@ -4095,7 +4150,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     if (!(err instanceof SyntaxError) || text.length <= 500) throw err;
     let repaired;
     try {
-      repaired = await repairCompJson(text, body.max_tokens);
+      repaired = await repairCompJson(text, PROVIDER.deadlineTokens(body));
     } catch (repairErr) {
       console.warn("Comp JSON repair call failed; falling back to the full retry.", repairErr && repairErr.message);
       throw err;
@@ -7229,14 +7284,16 @@ function render(d){
   var upAlarm = (u.failures||0) ? (
     "<div class='card alarm'>"+
     "<h2>"+
-    (u.billing?"Comp search is DOWN &mdash; Anthropic API billing":"Anthropic calls are failing")+"</h2>"+
+    (u.billing?"Comp search is DOWN &mdash; ${PROVIDER.logLabel} API billing":"${PROVIDER.logLabel} calls are failing")+"</h2>"+
     (u.billing
       ? "<p><b>The API credit balance is exhausted or the key is not entitled, so every search "+
         "is failing site-wide.</b> Buy credits at <code>console.anthropic.com</code> &rarr; Plans &amp; "+
         "Billing for the org that owns <code>ANTHROPIC_API_KEY</code>, and switch on auto-reload. "+
         "This is <b>not</b> covered by a Claude Pro or Team subscription &mdash; API credits are a "+
-        "separate prepaid balance. No redeploy needed; the next search picks it up.</p>"
-      : "<p>Some Anthropic calls are returning errors. If these are 429s or 529s the site is "+
+        "separate prepaid balance. No redeploy needed; the next search picks it up. (This paragraph "+
+        "describes Anthropic's own billing; if the active search provider is ${PROVIDER.logLabel} "+
+        "and it is not Anthropic, check that provider's own billing console instead.)</p>"
+      : "<p>Some ${PROVIDER.logLabel} calls are returning errors. If these are 429s or 529s the site is "+
         "just busy and retries absorb it; anything else is worth reading below.</p>")+
     "<p class=muted>"+esc(u.failures||0)+" failure(s) since the last restart"+
     (u.lastStatus?" &middot; last status "+esc(u.lastStatus):"")+
@@ -9381,8 +9438,8 @@ function renderAlerts(d){
   var up=al&&al.upstream,co=al&&al.corpus;
   if(up&&up.failures){
     out.push(up.billing
-      ? 'Comp search is DOWN: the Anthropic API is refusing every call for billing reasons. <a href="/admin">Details on Analytics</a>'
-      : plural(up.failures,"Anthropic call failure","Anthropic call failures")+' since the last restart'+(up.lastStatus?" (last status "+esc(up.lastStatus)+")":"")+'. <a href="/admin">Details on Analytics</a>');
+      ? 'Comp search is DOWN: the ${PROVIDER.logLabel} API is refusing every call for billing reasons. <a href="/admin">Details on Analytics</a>'
+      : plural(up.failures,"${PROVIDER.logLabel} call failure","${PROVIDER.logLabel} call failures")+' since the last restart'+(up.lastStatus?" (last status "+esc(up.lastStatus)+")":"")+'. <a href="/admin">Details on Analytics</a>');
   }
   if(co&&co.broken){
     out.push('Comp corpus is not persisting'+(co.schemaMismatch?", likely a missing column (check migrations/APPLIED.md)":"")+'. <a href="/admin">Details on Analytics</a>');
@@ -9515,9 +9572,9 @@ const server = http.createServer((req, res) => {
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
-        if (!API_KEY) {
+        if (!providerApiKey()) {
           return sendJson(res, 500, {
-            error: "Server is missing the ANTHROPIC_API_KEY environment variable.",
+            error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.`,
           });
         }
         // Validated/clamped so arbitrary client values can't reshape the prompt.
@@ -9642,7 +9699,7 @@ const server = http.createServer((req, res) => {
           // Legacy cache entries predate $/SF reconciliation — correct them at
           // read time (idempotent, so re-hitting the in-memory object is fine).
           reconcilePricePerSqft(cached);
-          console.log(`Cache hit (no Anthropic call): ${addressOk} — ${typeOk}`);
+          console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
@@ -9660,7 +9717,7 @@ const server = http.createServer((req, res) => {
           verifiedComps, subjectDetails: detailsOk,
         }, monthsOk, txFocusOk, maxCompsOk);
         if (dw) {
-          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no Anthropic call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
+          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
           // Side effects mirror a direct cache hit, fed the PARENT payload —
           // the harvester dedupes, and the fuller comp list is the better feed.
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
@@ -9862,8 +9919,8 @@ const server = http.createServer((req, res) => {
             error: "Market generation is limited to a few per visitor per 15 minutes. Try again shortly, or run a valuation for a specific property instead.",
           });
         }
-        if (!API_KEY) {
-          return sendJson(res, 500, { error: "Server is missing the ANTHROPIC_API_KEY environment variable." });
+        if (!providerApiKey()) {
+          return sendJson(res, 500, { error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.` });
         }
 
         const job = joinExploreJob(slug, (emit) => (async () => {
@@ -13519,7 +13576,8 @@ const server = http.createServer((req, res) => {
     // test can verify the responder is ITS child and not a foreign server on
     // the same port — two concurrent suite runs once cross-talked exactly
     // that way. Absent in production, where the env var is never set.
-    return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY),
+    return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
+      provider: PROVIDER.name, search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
@@ -13999,14 +14057,15 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
+  console.log(`🔀 Search provider: ${PROVIDER.name} (model ${MODEL}${PROVIDER.capabilities.searchBudget ? "" : ", no search-budget cap"})`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)
   loadDynamicMarketPages().then((n) => {
     console.log(`🧭 Market Explorer: ${n} visitor-generated page(s) loaded (${DB_CONFIGURED ? "Supabase market_pages" : path.basename(DYNAMIC_MARKETS_FILE) + " — EPHEMERAL on most hosts; run the market_pages DDL in Supabase for durable storage"}).`);
   });
-  if (!API_KEY) {
-    console.warn("⚠  ANTHROPIC_API_KEY is not set — /api/comps will return an error until you set it.");
+  if (!providerApiKey()) {
+    console.warn(`⚠  ${PROVIDER.apiKeyEnv} is not set — /api/comps will return an error until you set it.`);
   }
   console.log(APP_PASSWORD
     ? "🔒 Password gate ENABLED (APP_PASSWORD is set)."

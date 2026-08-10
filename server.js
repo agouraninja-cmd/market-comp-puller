@@ -129,12 +129,14 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
+const PROVIDER = require("./search-provider-anthropic");
 // Overridable so the eval harness can score one model against another
 // (run-eval.js). Unset everywhere in production, which keeps this exactly
 // the constant it has always been. If the API 404s on a model id, list the
 // live ones via GET https://api.anthropic.com/v1/models and update this
 // default.
-const MODEL = (process.env.MODEL || "claude-sonnet-4-6").trim();
+// MODEL still overrides, so an existing MODEL=... deployment is unaffected.
+const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
 
 // Optional shared password. If set, visitors must enter it before searching.
 // Leave it unset to keep the app open.
@@ -3837,43 +3839,15 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
-  const body = {
+  const body = PROVIDER.buildRequestBody({
     model: MODEL,
-    // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
-    // text plus the final JSON. The per-comp schema has grown (clear_height/
-    // dock_doors, tenancy, year_built, per-comp notes), so 3200 could
-    // get cut off mid-array on a busy 8-comp Industrial report. Billing is by
-    // actual tokens generated, not this cap, so raising it costs nothing on
-    // the (much more common) shorter reports — and leaving it high is what
-    // keeps the notes cap a QUALITY instruction rather than a hard truncation
-    // that could sever the JSON mid-array.
-    // A 10-12 comp report is a third longer than the 8-comp JSON this was
-    // sized for — give it headroom so the closing brace never gets cut off.
-    max_tokens: maxComps > 8 ? 10000 : 8000,
-    // The subject-size lookup gets two extra searches so it doesn't crowd out
-    // the comp searches themselves. When we already hold recent comps for this
-    // market (corpus-strong), the budget drops hard — that reuse is the saving.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchUses }],
-    // The web_search loop re-runs model inference on EVERY round — one per
-    // search plus the final report — and each round re-reads this whole prompt
-    // at full input price. Measured at ~3,300 tokens, an 8-search report paid
-    // for it nine times over. cache_control makes rounds 2..N read it at ~0.1x.
-    // It works because caching is a PREFIX match and the prompt is byte-
-    // identical across a request's rounds: only the search results appended
-    // AFTER it grow. Sonnet's minimum cacheable prefix is 1,024 tokens and this
-    // prompt is ~3x that, so it always qualifies — but a future prompt trim
-    // that took it under 1,024 would silently stop caching, with no error.
-    messages: [{
-      role: "user",
-      content: [{
-        type: "text",
-        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby, subjectDetails, lane),
-        cache_control: { type: "ephemeral" },
-      }],
-    }],
-  };
-
-  if (STREAM_ANTHROPIC) body.stream = true;
+    prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
+                        subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
+                        subjectDetails, lane),
+    maxComps,
+    searchUses,
+    stream: STREAM_ANTHROPIC,
+  });
   const say = typeof onProgress === "function" ? onProgress : () => {};
 
   // Live comp lines for the loading card. Only calls that report progress get
@@ -3930,13 +3904,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   };
   let r;
   try {
-    r = await fetch("https://api.anthropic.com/v1/messages", {
+    const init = PROVIDER.requestInit({ apiKey: API_KEY });
+    r = await fetch(init.url, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: init.headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -3960,16 +3931,11 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!STREAM_ANTHROPIC) {
     clearTimeout(timer);
-    const data = await r.json();
-    searches = (data.content || []).filter((b) => b.type === "server_tool_use").length;
-    usage = data.usage || {};
-    stopReason = data.stop_reason;
-    // Web search responses contain multiple block types — keep ONLY text blocks.
-    text = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
+    const parsed = PROVIDER.parseResponse(await r.json());
+    text = parsed.text;
+    searches = parsed.searches;
+    usage = parsed.usage;
+    stopReason = parsed.stopReason;
   } else {
     // Rebuild exactly what the non-streaming branch above produces: the text
     // blocks, in index order, joined with "\n" and trimmed. Anything else and
@@ -3989,7 +3955,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                               e.message || e.type || "unknown");
         }
         if (ev.type === "message_start") {
-          usage = (ev.message && ev.message.usage) || {};
+          usage = PROVIDER.normalizeUsage(ev.message && ev.message.usage);
           say({ phase: "start" });
         } else if (ev.type === "content_block_start") {
           const cb = ev.content_block || {};
@@ -4045,7 +4011,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
           }
         } else if (ev.type === "message_delta") {
           stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          if (ev.usage) usage = { ...usage, ...ev.usage };
+          if (ev.usage) usage = { ...usage, ...PROVIDER.normalizeUsage(ev.usage) };
         }
       }
     } catch (err) {
@@ -4071,7 +4037,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // should land near (rounds - 1) x the prompt size. A run that logs 0 read AND
   // 0 write is a silent miss — the usual cause is the prompt slipping under the
   // 1,024-token cacheable minimum, which raises no error.
-  console.log(`Anthropic call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_input_tokens || 0} read / ${usage.cache_creation_input_tokens || 0} write · stop=${stopReason}`);
+  console.log(`${PROVIDER.logLabel} call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_tokens || 0} read / ${usage.cache_write_tokens || 0} write · stop=${stopReason}`);
   if (stats) { stats.searches = searches; stats.out_tokens = usage.output_tokens || 0; }
 
   if (!text) throw new Error("The model returned no text content to parse.");

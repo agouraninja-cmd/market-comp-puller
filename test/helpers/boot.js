@@ -45,6 +45,12 @@ async function boot(env) {
       PORT: String(port),
       TEST_BOOT_ID: bootId,
       ANTHROPIC_API_KEY: "",
+      // Blanked for the same reason as the Anthropic key, and it became
+      // load-bearing the day SEARCH_PROVIDER started defaulting to gemini: with
+      // this unset the child inherits a real key from the developer's .env, the
+      // missing-key guard stops firing, and a suite this file guarantees to be
+      // free would start making BILLED search calls.
+      GEMINI_API_KEY: "",
       ADMIN_KEY: "",
       APP_PASSWORD: "",
       SUPABASE_URL: "",

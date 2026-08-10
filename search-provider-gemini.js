@@ -132,6 +132,13 @@ module.exports = {
   name: "gemini",
   logLabel: "Gemini",
   apiKeyEnv: "GEMINI_API_KEY",
+  // See the note on the Anthropic module. Gemini's failure mode is different
+  // enough to be worth spelling out: a free-tier key authenticates and runs the
+  // model fine, then 429s on every GROUNDED search, so the site looks half alive.
+  billingHelp:
+    "aistudio.google.com/apikey, and the Google Cloud billing account behind the project " +
+    "that owns GEMINI_API_KEY. Search grounding requires a PAID-tier project: a free-tier " +
+    "key authenticates and runs the model but 429s on every grounded search.",
   defaultModel: "gemini-3.6-flash",
   capabilities,
   buildRequestBody,

@@ -1,6 +1,22 @@
 [
-  {"date":"2026-08-10","type":"feature","title":"Multi-provider comp search (Anthropic + Gemini)","details":"The Anthropic search call is now behind a pure provider interface (search-provider-anthropic.js, search-provider-gemini.js), selected by SEARCH_PROVIDER (default anthropic, no fallthrough on an unrecognized value) — server.js owns all I/O and branches on the provider's capabilities, never its name. On the 12-target eval, Gemini scored cheaper and faster than the current Anthropic model with no accuracy regression, so this lays the groundwork for switching the default once real traffic confirms it."},
-  {"date":"2026-08-10","type":"fix","title":"The summary can no longer claim verified comps the table does not show","details":"A reviewer reported a report whose summary described verified comps while every badge in the table read Estimate, News or Listing. Root cause: \"verified\" was in the comp shape the model fills even when we had offered it no broker comps to match against, so it awarded itself the badge - measured live at 4 of 5 comps on a market with zero broker submissions. The badge was always safe (enforceVerifiedFlags cleared them) but nothing revisited the prose the model had already written around them. Two fixes: the field is now only present when broker comps were actually offered, so there is nothing to over-claim; and scrubUnearnedVerifiedClaims (pure, tested) rewrites the verified word family in summary, value_drivers, market_trend, price_discovery and per-comp notes whenever the finished report carries no verified comp. It fires only at zero, because with even one real badge the word is accurate and rewriting it would lose information, and it rewrites rather than deletes so the required honesty caveats survive."},
+  {
+    "date": "2026-08-10",
+    "type": "improvement",
+    "title": "Gemini 3.6 Flash is now the default comp-search model",
+    "details": "Measured on the 12-target eval through the real pipeline: better on every scored metric than Claude Sonnet 4.6 (valuation possible 82% → 100%, priced sales 4.8 → 5.3, provenance 0.73 → 0.77, aggregate-padding rate 19% → 8.5%), while running 1.6x faster (56s vs 87s) and 3.9x cheaper ($0.092 vs $0.36 per report). Rollback is a single env var, SEARCH_PROVIDER=anthropic — no code change, no redeploy. Requires GEMINI_API_KEY on a paid-tier Google project: a free-tier key runs the model but 429s on every grounded search."
+  },
+  {
+    "date": "2026-08-10",
+    "type": "feature",
+    "title": "Multi-provider comp search (Anthropic + Gemini)",
+    "details": "The Anthropic search call is now behind a pure provider interface (search-provider-anthropic.js, search-provider-gemini.js), selected by SEARCH_PROVIDER (default anthropic, no fallthrough on an unrecognized value) — server.js owns all I/O and branches on the provider's capabilities, never its name. On the 12-target eval, Gemini scored cheaper and faster than the current Anthropic model with no accuracy regression, so this lays the groundwork for switching the default once real traffic confirms it."
+  },
+  {
+    "date": "2026-08-10",
+    "type": "fix",
+    "title": "The summary can no longer claim verified comps the table does not show",
+    "details": "A reviewer reported a report whose summary described verified comps while every badge in the table read Estimate, News or Listing. Root cause: \"verified\" was in the comp shape the model fills even when we had offered it no broker comps to match against, so it awarded itself the badge - measured live at 4 of 5 comps on a market with zero broker submissions. The badge was always safe (enforceVerifiedFlags cleared them) but nothing revisited the prose the model had already written around them. Two fixes: the field is now only present when broker comps were actually offered, so there is nothing to over-claim; and scrubUnearnedVerifiedClaims (pure, tested) rewrites the verified word family in summary, value_drivers, market_trend, price_discovery and per-comp notes whenever the finished report carries no verified comp. It fires only at zero, because with even one real badge the word is accurate and rewriting it would lose information, and it rewrites rather than deletes so the required honesty caveats survive."
+  },
   {
     "date": "2026-08-10",
     "type": "feature",

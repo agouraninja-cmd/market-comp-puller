@@ -912,7 +912,11 @@ test("market explorer with the guest gate disabled", async (t) => {
     // Past the gate, stopped by the absent API key — never 403.
     assert.equal(r.status, 500);
     const j = await r.json();
-    assert.match(j.error, /ANTHROPIC_API_KEY/);
+    // Deliberately vendor-agnostic: the guard names whichever provider is
+    // active (PROVIDER.apiKeyEnv), so pinning one vendor here would make an
+    // unrelated SEARCH_PROVIDER default change look like a gate regression.
+    // What this test cares about is the SHAPE: a missing-key 500, not a 403.
+    assert.match(j.error, /is missing the \w+_API_KEY/);
   });
 });
 
@@ -1048,12 +1052,26 @@ test("SEARCH_PROVIDER wiring", async (t) => {
     } finally { srv.stop(); }
   });
 
-  await t.test("the default is anthropic, with a search budget", async () => {
-    const srv = await boot({});
+  await t.test("anthropic reports that it CAN cap the search budget", async () => {
+    // The other half of the capability assertion. Both states have to be pinned:
+    // a server.js that hardcoded either value would pass one of these two and
+    // fail the other, which is what makes the pair meaningful rather than one
+    // assertion that happens to match a constant.
+    const srv = await boot({ SEARCH_PROVIDER: "anthropic" });
     try {
       const body = await (await fetch(srv.base + "/healthz")).json();
       assert.equal(body.provider, "anthropic");
       assert.equal(body.search_budget, true);
+    } finally { srv.stop(); }
+  });
+
+  await t.test("the default provider is gemini", async () => {
+    // Flipped from anthropic on 2026-08-10 after the phase 2 validation gate.
+    // Pinned deliberately: the default decides what every real search costs and
+    // which vendor a deployment depends on, so it should never change silently.
+    const srv = await boot({});
+    try {
+      assert.equal((await (await fetch(srv.base + "/healthz")).json()).provider, "gemini");
     } finally { srv.stop(); }
   });
 

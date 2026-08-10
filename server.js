@@ -140,7 +140,15 @@ const SEARCH_PROVIDERS = {
   anthropic: require("./search-provider-anthropic"),
   gemini: require("./search-provider-gemini"),
 };
-const SEARCH_PROVIDER_NAME = (process.env.SEARCH_PROVIDER || "anthropic").trim().toLowerCase();
+// Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
+// measured it better on every scored metric of the 12-target eval AND 3.9x
+// cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
+// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
+// deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
+// PAID-tier Google project: a free-tier key authenticates and runs the model
+// but 429s on every grounded search, which looks like a half-working site.
+const SEARCH_PROVIDER_NAME = (process.env.SEARCH_PROVIDER || "gemini").trim().toLowerCase();
 const PROVIDER = SEARCH_PROVIDERS[SEARCH_PROVIDER_NAME];
 if (!PROVIDER) {
   console.error(`⛔ SEARCH_PROVIDER="${SEARCH_PROVIDER_NAME}" is not one of: ${Object.keys(SEARCH_PROVIDERS).join(", ")}`);
@@ -3781,20 +3789,29 @@ function noteUpstreamFailure(status, detail) {
   }
 
   UPSTREAM_HEALTH.billing = true;
+  // This alert names the ACTIVE provider, not Anthropic. It fires from the one
+  // shared noteUpstreamFailure, so before SEARCH_PROVIDER existed it could only
+  // ever mean Anthropic; now a Gemini 401 would otherwise push the owner an
+  // actively wrong diagnosis mid-outage, telling them to go buy credits from a
+  // vendor that is not failing. The remedy differs per provider too, which is
+  // why the fix line is per-provider rather than one generic sentence.
+  // The remedy differs per vendor, so each provider carries its own. Reading it
+  // off the module keeps this a lookup: an `if (PROVIDER.name === ...)` here
+  // would be the first crack in the never-branch-on-name rule, and per-vendor
+  // copy is exactly where that exception looks most reasonable.
+  const billingFix = PROVIDER.billingHelp;
   console.error(
-    `Anthropic API is refusing every call for BILLING reasons (${status}). Comp search is ` +
-    `DOWN site-wide until the Console org that owns ANTHROPIC_API_KEY has credits again — ` +
-    `console.anthropic.com -> Plans & Billing. A comped Claude Pro/Team seat does not fund ` +
-    `this; API credits are a separate prepaid balance. Detail: ${msg.slice(0, 200)}`);
+    `${PROVIDER.logLabel} API is refusing every call for BILLING reasons (${status}). Comp ` +
+    `search is DOWN site-wide until ${PROVIDER.apiKeyEnv}'s billing is fixed. ${billingFix} ` +
+    `Detail: ${msg.slice(0, 200)}`);
   if (upstreamAlertSent) return;
   upstreamAlertSent = true;
-  sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja is DOWN: Anthropic API billing",
-    `Every comp search is failing. The Anthropic API returned ${status}:\n\n` +
+  sendEmail(LEAD_NOTIFY_EMAIL, `CompNinja is DOWN: ${PROVIDER.logLabel} API billing`,
+    `Every comp search is failing. The ${PROVIDER.logLabel} API returned ${status}:\n\n` +
     `  ${msg.slice(0, 300)}\n\n` +
-    `This is the Console API credit balance for the org that owns ANTHROPIC_API_KEY, which is\n` +
-    `billed separately from any Claude Pro/Team subscription — a comped seat does not cover it.\n\n` +
-    `Fix: console.anthropic.com -> Plans & Billing -> buy credits, and turn on auto-reload so\n` +
-    `this cannot happen silently again. Nothing needs redeploying; the next search will work.\n\n` +
+    `The active search provider is ${PROVIDER.name}, authenticated with ${PROVIDER.apiKeyEnv}.\n\n` +
+    `Fix: ${billingFix}\n\n` +
+    `Nothing needs redeploying; the next search will work.\n\n` +
     `Customers are currently seeing a generic "temporarily unavailable" message, not this one.`);
 }
 

@@ -429,7 +429,7 @@ dependency. `.env` is git-ignored — never commit it.
   product is live but unbuyable and the deployment looks perfectly healthy,
   which is why startup logs it loudly. Rules live in `entitlements.js`
   (`parseAudience` / `inAudience`), so `npm test` covers them.
-- `SEARCH_PROVIDER` — optional `anthropic` (default) or `gemini`. Picks which
+- `SEARCH_PROVIDER` — optional `gemini` (**default since 2026-08-10**) or `anthropic`. Picks which
   vendor runs the comp search. An unrecognized value **exits at boot** rather
   than silently falling back, the same no-fallthrough rule `/api/checkout`'s
   `PLANS` map follows. `MODEL` still overrides the chosen provider's default

@@ -106,6 +106,13 @@ module.exports = {
   name: "anthropic",
   logLabel: "Anthropic",
   apiKeyEnv: "ANTHROPIC_API_KEY",
+  // What the owner must actually DO when this provider refuses every call for
+  // billing reasons. Lives here so server.js reads it rather than branching on
+  // a provider name to choose vendor-specific copy.
+  billingHelp:
+    "console.anthropic.com -> Plans & Billing -> buy credits, and turn on auto-reload. " +
+    "These are prepaid API credits billed to the Console org that owns ANTHROPIC_API_KEY; " +
+    "a comped Claude Pro or Team seat does not fund them.",
   defaultModel: "claude-sonnet-4-6",
   capabilities,
   buildRequestBody,

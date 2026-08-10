@@ -19,6 +19,7 @@ const {
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
+  inspectCsv,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -747,4 +748,77 @@ test("an invalid mapping refuses the whole upload and writes nothing", () => {
   const r = parseUpload("Foo,Bar\n1,2\n", { mapping: { foo: "price" } });
   assert.equal(r.ok, false);
   assert.equal(r.rows.length, 0);
+});
+
+// --- column mapping: inspection -------------------------------------------
+
+// Addresses contain commas, so an unquoted one silently becomes multiple CSV
+// columns and every field after it shifts. Quoted here (and below) so the
+// fixture is not misleading to the next reader.
+const REAL_EXPORT =
+  "Property Address,Type,Deal,Closed,Sale Price,SF,Listing Broker\n" +
+  "\"1234 W Main St, Boise, ID\",Industrial,Sale,2026-02-01,\"$2,450,000\",18400,Jane Doe\n" +
+  "\"55 N 9th St, Boise, ID\",Industrial,Sale,2026-01-14,\"$1,100,000\",9000,\n";
+
+test("inspection returns raw headers for display and normalised keys for mapping", () => {
+  const r = inspectCsv(REAL_EXPORT);
+  assert.equal(r.ok, true);
+  assert.equal(r.headers[0], "Property Address");
+  assert.equal(r.normalized[0], "property_address");
+  assert.equal(r.rowCount, 2);
+});
+
+test("samples are real values, skipping blanks, capped at the limit", () => {
+  const r = inspectCsv(REAL_EXPORT, { samples: 3 });
+  assert.deepEqual(r.samples.sale_price, ["$2,450,000", "$1,100,000"]);
+  assert.deepEqual(r.samples.listing_broker, ["Jane Doe"], "the blank second value is skipped");
+});
+
+test("a real export is not a clean template", () => {
+  assert.equal(inspectCsv(REAL_EXPORT).cleanTemplate, false);
+});
+
+// This is the SILENT failure the mapping screen exists to catch: only four
+// fields are required, so this file imports today with every size null and
+// nothing saying so.
+test("a file with an unrecognised column is not clean even though it would import", () => {
+  const r = inspectCsv("address,property_type,transaction,deal_date,Sq Ft\n\"1 A St, Boise, ID\",Land,Sale,2026-01-01,900\n");
+  assert.equal(r.cleanTemplate, false, "Sq Ft is unrecognised, so the broker must be asked");
+});
+
+test("our own template IS clean and skips the screen", () => {
+  assert.equal(inspectCsv(templateCsv()).cleanTemplate, true);
+});
+
+test("a trailing empty header does not spoil cleanliness", () => {
+  const r = inspectCsv("address,property_type,transaction,deal_date,\n\"1 A St, Boise, ID\",Land,Sale,2026-01-01,\n");
+  assert.equal(r.cleanTemplate, true);
+});
+
+test("duplicate column names are refused, because a mapping keys on the name", () => {
+  const r = inspectCsv("Price,Price\n1,2\n");
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Price/);
+});
+
+test("an empty file is refused with a sentence", () => {
+  assert.equal(inspectCsv("").ok, false);
+});
+
+// Excel writes a UTF-8 BOM on "Save as CSV". parseCsv already strips it, and
+// this pins that the mapper inherits that rather than offering the broker a
+// first column mysteriously named "﻿Property Address".
+test("a BOM-led file inspects normally", () => {
+  const r = inspectCsv("﻿Property Address,Type\n\"1 A St, Boise, ID\",Land\n");
+  assert.equal(r.ok, true);
+  assert.equal(r.normalized[0], "property_address");
+  assert.equal(r.suggested.property_address, "address");
+});
+
+// A header with a comma in it only survives if it was quoted, and the mapping
+// keys on the normalised name, so this pins that quoting is respected.
+test("a quoted header carrying a comma is read as one column", () => {
+  const r = inspectCsv('"Address, Full",Type\n"1 A St, Boise, ID",Land\n');
+  assert.equal(r.headers.length, 2);
+  assert.equal(r.normalized[0], "address_full");
 });

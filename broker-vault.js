@@ -456,6 +456,64 @@ function addressKey(v) {
     .trim();
 }
 
+/**
+ * Read a CSV's shape without importing it: headers, a few real values per
+ * column, and a suggested mapping. Writes nothing and decides nothing; the
+ * broker confirms what this proposes.
+ */
+function inspectCsv(csvText, { samples = 3 } = {}) {
+  const empty = {
+    ok: false, error: "", headers: [], normalized: [], samples: {},
+    suggested: {}, ambiguous: [], cleanTemplate: false, rowCount: 0,
+  };
+  const table = parseCsv(csvText);
+  if (!table.length) return { ...empty, error: "That file is empty." };
+
+  const headers = table[0];
+  const normalized = headers.map(normalizeHeader);
+
+  // A mapping is keyed on the normalised header name, so two columns sharing
+  // one name have no way to be told apart. Refuse rather than pick.
+  const seen = new Set();
+  for (let i = 0; i < normalized.length; i++) {
+    const h = normalized[i];
+    if (!h) continue;
+    if (seen.has(h)) {
+      return { ...empty, error: `Two columns are both called "${headers[i]}". Rename one and upload again.` };
+    }
+    seen.add(h);
+  }
+
+  const body = table.slice(1);
+  const sampleMap = {};
+  for (let c = 0; c < normalized.length; c++) {
+    if (!normalized[c]) continue;
+    const vals = [];
+    for (const row of body) {
+      const v = String(row[c] == null ? "" : row[c]).trim();
+      if (v) vals.push(v);
+      if (vals.length >= samples) break;
+    }
+    sampleMap[normalized[c]] = vals;
+  }
+
+  const { mapping: suggested, ambiguous } = suggestMapping(headers);
+
+  // Clean means every non-empty header is already one of ours AND the four
+  // required fields are present. Requiring EVERY header to be known is what
+  // catches the silent case: a file with an unknown "Sq Ft" column imports
+  // today with no sizes and no explanation.
+  const nonEmpty = normalized.filter(Boolean);
+  const cleanTemplate =
+    nonEmpty.every((h) => MAPPABLE_TARGETS.includes(h)) &&
+    REQUIRED_TARGETS.every((t) => nonEmpty.includes(t));
+
+  return {
+    ok: true, error: "", headers, normalized, samples: sampleMap,
+    suggested, ambiguous, cleanTemplate, rowCount: body.length,
+  };
+}
+
 // --- one row -----------------------------------------------------------------
 
 /**
@@ -868,6 +926,7 @@ module.exports = {
   suggestMapping,
   validateMapping,
   applyHeaderMapping,
+  inspectCsv,
   parseMoney,
   parseNumber,
   parseCoord,

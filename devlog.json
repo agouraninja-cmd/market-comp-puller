@@ -8,6 +8,12 @@
   {
     "date": "2026-08-10",
     "type": "improvement",
+    "title": "The 1031 guide gets its own card on /brokers",
+    "details": "Owner-directed: the guide was a fine-print link inside the submit CTA. It now has its own card below that CTA with a bordered Open the 1031 guide button (not red, the submit door keeps the loud button) and one plain line: A plain guide to the 45 and 180 day deadlines. Send it to your client. The CTA's Or run a free valuation alt link is cut, it only led back to the home page."
+  },
+  {
+    "date": "2026-08-10",
+    "type": "improvement",
     "title": "Apartment communities and retail centers are called properties, not buildings",
     "details": "Follow-on to the house-is-not-a-building fix. Multifamily and Retail were still falling through to \"building\", which is wrong for the two types that most often are not one building: a garden apartment community and a strip or anchored center. Both now read property, so the hero says \"What This Property Is Worth\". Multifamily is deliberately not \"apartment building\" or \"apartment community\" - the type spans duplexes and 300-unit communities and neither phrase is true across that range, while property is also the unit the report already prices on. Retail is property because building fits only a single-tenant pad and center only an anchored center. Industrial and Office keep building, because those genuinely are one. Condos and townhomes need nothing: they have no type of their own and ride under Residential's home, which is already right for them."
   },

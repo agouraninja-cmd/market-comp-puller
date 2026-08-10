@@ -6134,9 +6134,17 @@ function renderBrokersPageHTML(signedIn) {
 
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
-    `<a class="btn" href="/?submit=comp">Submit a comp</a>` +
-    `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p>` +
-    `<p style="margin:0"><a class="alt" href="/1031-exchange">Client weighing a 1031? Send them our exchange guide &rarr;</a></p></div>` +
+    `<a class="btn" href="/?submit=comp">Submit a comp</a></div>` +
+
+    // The 1031 guide in its own card, below the submit CTA (owner
+    // 2026-08-10) — a broker mid-exchange is a different reader than one
+    // holding a comp. Bordered button, not .btn: the red button stays the
+    // submit door's alone.
+    `<div class="card"><h2>Working a 1031 exchange?</h2>` +
+    `<p>A plain guide to the 45 and 180 day deadlines. Send it to your client.</p>` +
+    `<a href="/1031-exchange" style="display:inline-block;background:#fff;border:1px solid #D8D4C9;` +
+    `color:#1A2433;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px">` +
+    `Open the 1031 guide</a></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 

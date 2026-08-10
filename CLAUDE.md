@@ -1327,20 +1327,34 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     watch. Four rules:
     - **It keys on comps AND uploads, never comps alone.** A broker whose
       import was entirely rejected, or who deleted every comp out of one, has
-      been through the door already; showing "Start here" again reads as their
-      work having been thrown away.
-    - **The trust line is hidden, not deleted, and its promise moves into the
-      panel's prose.** That line exists to let a broker watch "0 published"
-      stay at zero, which only means anything once there is something it could
-      have counted. On day one it is a 0-0 scoreboard over an empty page.
+      been through the door already; showing the first-run steps again reads as
+      their work having been thrown away.
+    - **The trust line is hidden, not deleted.** That line exists to let a
+      broker watch "0 published" stay at zero, which only means anything once
+      there is something it could have counted. On day one it is a 0-0
+      scoreboard over an empty page. The empty vault's privacy promise lives
+      in step 1's collapsed "Required columns & privacy details" disclosure
+      (the owner's 2026-08-10 restructure folded the fine print away rather
+      than deleting it — an earlier same-day pass had cut it outright, and
+      the disclosure superseded that); the trust line restates it as soon as
+      there is a comp, and the publish flow makes it again at the one point
+      where it can be acted on. The step headings are the owner's
+      ("Build your comp set" / "Or watch your markets for leads", 2026-08-10
+      spec — they superseded a same-day "Add your comps"/"Add your markets"
+      pass), each over one short line and three bullets; do not restore the
+      explanatory prose to the card face without asking — it belongs in the
+      collapsed disclosures.
     - **There is exactly ONE `<input type=file>`.** Step 1's button and the
       ordinary "Add comps" button both call `$("file").click()`. Two inputs
       would mean two values and two change handlers, and an upload started
       from one would be invisible to the other's result message. A test pins
       this.
-    - **Step 2 does not duplicate the coverage form**, it scrolls to the real
-      one and focuses it. A second copy would be a second thing to keep in
-      step with the coverage rules in `broker-leads.js`.
+    - **The coverage form is ONE relocating node** (`#covForm`). Its home is
+      step 2; `applyFirstRun` moves it to the top of the leads section once
+      the vault has content (step 2 hides then), and walks it home again if
+      the last import is deleted. Never add a second copy — it would be a
+      second thing to keep in step with the coverage rules in
+      `broker-leads.js`.
     Empty tables are hidden throughout rather than shown with a header row and
     a "nothing here yet" line — three of those stacked up was the thing that
     made a new vault read as broken rather than new.

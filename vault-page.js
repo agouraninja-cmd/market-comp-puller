@@ -273,8 +273,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     <!-- The trust line's job is to prove a number stays at zero, which only
          works once there is something it could have counted. On day one it is
          a scoreboard reading 0-0 above an empty page, so it is hidden until
-         the first import lands and #firstRun carries the privacy promise in
-         words instead. See applyFirstRun(). -->
+         the first import lands. The empty vault's privacy promise lives in
+         step 1's collapsed "Required columns & privacy details" disclosure
+         (the owner's 2026-08-10 restructure: off the card face, one click
+         away rather than gone); this line restates it the moment there is a
+         comp, and the publish flow makes it again where it can be acted on.
+         See applyFirstRun(). -->
     <div class="trust hide" id="trustLine">
       <div class="ledger">
         <div class="lcell"><span class="llab">Comps</span>
@@ -319,7 +323,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
          ------------------------------------------------------------------ -->
     <section id="firstRun" class="hide">
       <h2>Start here</h2>
-
       <div class="steps">
         <div class="step">
           <span class="stepn">1</span>
@@ -950,8 +953,8 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // ---- First run vs the real workspace --------------------------------------
   // Keyed on comps AND uploads, not comps alone. A broker whose only import was
   // entirely rejected, or who has deleted every comp out of an import, has
-  // already been through the door once — showing them "Start here" again would
-  // read as their work having been thrown away.
+  // already been through the door once — showing them the first-run steps again
+  // would read as their work having been thrown away.
   //
   // Everything hidden here is hidden because it is EMPTY, not because it is
   // unimportant: an empty table with a header row and a "nothing here yet" line
@@ -1409,8 +1412,8 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("mapSec").classList.remove("hide");
     $("addSec").classList.add("hide");
     // Hidden too, or a first-run broker — which the FIRST broker through this
-    // door is by definition — keeps "Start here" on screen above the panel
-    // that replaced step 1. closeMapper puts it back.
+    // door is by definition — keeps the first-run steps on screen above the
+    // panel that replaced step 1. closeMapper puts it back.
     $("firstRun").classList.add("hide");
     Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
       s.addEventListener("change",refreshMapper);

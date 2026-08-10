@@ -212,7 +212,12 @@ dependency. `.env` is git-ignored — never commit it.
   `x-admin-key` callers bypass. Enforced in `/api/comps` **and
   `/api/explore-market`** (403 + `signin_required: true`, which the client
   turns into the account modal) — the Explorer runs the same billed search
-  pipeline as a report, so it spends the same single allowance; a market
+  pipeline as a report, so it spends the same single allowance, but only
+  when that search PUBLISHES a page (`published: true`); a thin-data
+  preview (`published: false`) does not consume it, because the preview
+  lives only in memory behind a 30-minute TTL and dies on redeploy, so
+  charging the visitor's one free search for it is the same empty-handed
+  outcome as the 422 a thin market already returns. A market
   page that already exists is still served free and ungated above the
   check, since that's a database read, not a search. `/api/config` carries
   `guestSearch: { limit, used }` for the form hint and syncs the cookie the
@@ -1610,7 +1615,29 @@ private row has not earned. Two rules matter when editing anything down here:
    render from `currentPsfBand` (stashed by `renderOwnerHero`, one computation
    for both surfaces), are never stored, never print or capture, and never
    render on shared views; below 4 sale comps the band is the full spread, so
-   they cannot fire. The "Avg $/SF" stat tile and the
+   they cannot fire. The hero's **comp scatter** (`renderCompScatter`, shipped
+   2026-08-09) reads the same stash: a hairline number line under the ledger
+   with one tick per sale comp at its own displayed $/SF, a tint spanning
+   Low-High and a red mark at Likely, so the agreement the trust line asserts
+   in words is visible. Four rules. **The axis spans the comps, not the
+   band** — the band is the weighted interquartile range, so with 4+ comps
+   roughly half of them sit OUTSIDE it by construction and an axis clipped to
+   Low-High would hide half the evidence; the band is drawn inside the axis as
+   the tint instead. **Ticks use the DISPLAYED figure**, never the
+   trend-indexed weighted one the band is computed from, which is what stops a
+   tick sitting outside the tint while `buildOutlierChip` calls that same comp
+   in-range. **It only draws where the ledger above quotes the same unit** (so
+   the per-unit/per-acre branch passes its own values through the same generic
+   renderer, and the income-approach branch draws nothing) and only when
+   `band.trimmed`, the same 4-comp floor as the chips. **It prints and
+   captures on purpose**, being the evidence for the figures above it: hence
+   no flex gap and no transform anywhere inside it, `print-color-adjust:
+   exact` (every mark on the line is a background colour, and paper drops
+   those by default — the file's only use of that property), and
+   `ownerScatter` in `beginAssembly`'s `asm-hidden` list so the previous
+   report's line can't hang under the next report's placeholder. Spec:
+   `docs/superpowers/specs/2026-08-09-hero-comp-scatter-design.md`.
+   The "Avg $/SF" stat tile and the
    market comparison read the MODEL's market-level figure and deliberately
    do not change with curation. Subject inputs
    persist in each report's `meta` (saved reports re-render without the

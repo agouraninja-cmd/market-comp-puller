@@ -475,7 +475,11 @@ function sendCsvDownload(req, res, table, file, cols, filename) {
     return sendJson(res, 401, { error: "Unauthorized." });
   }
   readRows(table, file, cols).then((rows) => {
-    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    // guardFormula: these files hold visitor-typed (lead name/company) and
+    // model-supplied (comp notes) text and are opened in the owner's Excel —
+    // a cell starting with `=`/`+`/`-`/`@` would execute there. Quoting alone
+    // does not prevent that; see the function's own header.
+    const esc = (v) => `"${VAULT.guardFormula(String(v ?? "")).replace(/"/g, '""')}"`;
     const lines = rows.map((o) => cols.map((c) => esc(o[c])).join(","));
     res.writeHead(200, {
       "content-type": "text/csv; charset=utf-8",
@@ -8628,7 +8632,10 @@ function render(){
 // Built here rather than server-side so the admin key never rides in a URL.
 function exportCsv(){
   var cols=["name","company","role","phone","email","market","category","status","notes","created_at","updated_at"];
-  var esq=function(v){return '"'+String(v==null?"":v).replace(/"/g,'""')+'"';};
+  // Leading '=/+/-/@' would be a live formula when this opens in Excel, and
+  // the book holds visitor-typed text (lead names ride in). Same guard as
+  // broker-vault.js guardFormula, inlined because this runs in the browser.
+  var esq=function(v){var s=String(v==null?"":v);if(/^[=+@-]/.test(s)&&!/^-?[0-9.]+$/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
   var rows=ROWS.filter(matches).map(function(c){return cols.map(function(k){return esq(c[k]);}).join(",");});
   var blob=new Blob([[cols.join(",")].concat(rows).join("\\r\\n")],{type:"text/csv;charset=utf-8"});
   var a=document.createElement("a");

@@ -40,6 +40,7 @@
        won't style — see tailwind.config.js for the one-line command. -->
   <link rel="stylesheet" href="/tailwind.css" />
   <script src="/valuation.js"></script>
+  <script src="/explore-query.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -379,15 +380,14 @@
        the search field are real guidance, not decoration. Still clearly
        lighter than typed ink (#1A2433). */
     .rd-in::placeholder { color: #68707E; }
-    /* The hint strip shows exactly one size sentence: the footprint
-       "estimated" note when it is showing, otherwise the standing
-       "pulled from public records" line. Done here rather than in JS
-       because four separate call sites toggle sizeEstimateNote's .hidden
-       (typed-over, record-backed size, address change, estimate landed) and
-       none of them should have to know a second element exists. Adjacent
-       sibling, so the two spans must stay in this order in the markup
-       (they live in the strip under the settings row since Direction N). */
-    #sizeEstimateNote:not(.hidden) + #sizeHint { display: none; }
+    /* There was a mutual-exclusivity rule here (#sizeEstimateNote hiding a
+       standing #sizeHint sentence) until 2026-08-10. Both the rule and that
+       sentence are gone: the size field moved into Refine, which states the
+       same fact beside the actual input, so the standing line on the main
+       form was saying it twice. #sizeEstimateNote survives alone — four call
+       sites still toggle its .hidden (typed-over, record-backed size, address
+       change, estimate landed) and it now simply shows or doesn't, with no
+       second element to swap out and therefore no ordering constraint. */
     /* The address is the form's one required decision, so it gets the
        largest text in the frame (Direction N). Still above the 16px iOS
        zoom floor documented at .rd-in. */
@@ -1120,12 +1120,35 @@
       <form id="compForm" class="rd-form">
         <!-- Direction N (owner-approved 2026-08-09): the address gets the full
              top row alone in the largest text on the form; the everyday
-             settings share one calm row of three below; the per-cell hints
-             and the type sentence merge into ONE strip under them. -->
+             settings share one calm row of three below. Direction N's separate
+             hint STRIP under those settings is gone (2026-08-10): it was the
+             only filled row in an otherwise white card, so the page's one band
+             of grey landed on its quietest text and read as a rule cutting the
+             card in half. Its contents live under the address now, which is
+             also where they belong — both sentences describe the building the
+             address just named, not the settings they were sitting beneath. -->
         <div class="rd-row">
           <div class="rd-cell">
             <label class="rd-lab" for="address">Property address</label>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in rd-in-lg" />
+            <!-- aria-live on the type slot: the type can change without the
+                 visitor touching anything (OSM detection landing, a remembered
+                 type being recalled), and this line is the only thing that says
+                 so. Polite, not assertive — the confirm dialog restates the
+                 type with real buttons before any search runs.
+                 #sizeEstimateNote no longer has a standing sentence to hide
+                 (see the retired CSS rule in the style block), so it is a plain
+                 show/hide with no ordering constraint on what follows it. -->
+            <div class="text-xs text-[#68707E] mt-1.5">
+              <!-- A div, not the span it was in the strip: it sits directly
+                   above the type sentence now, and two inline spans would run
+                   the two together with no space the moment an estimate lands.
+                   The four call sites toggle it by id and never by tag. -->
+              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it under Refine if it's off.</div>
+              <span id="typeStatusLine" aria-live="polite"></span>
+              <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
+              <div id="typeAutoNote" class="mt-1"></div>
+            </div>
           </div>
           <!-- Still the single source of truth for the current type (and for the
                list of types every picker builds itself from), just no longer a
@@ -1206,24 +1229,6 @@
             <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="rd-in" />
           </div>
         </div>
-        <!-- The one hint strip (Direction N): every per-cell hint and the type
-             sentence merged into a single quiet line. The size pair keeps its
-             CSS mutual exclusivity (#sizeEstimateNote:not(.hidden) + #sizeHint
-             in the style block) — they MUST stay adjacent siblings, in this
-             order, because four JS call sites toggle only sizeEstimateNote's
-             .hidden and rely on that rule to swap the standing sentence out.
-             aria-live on the type slot: the type can change without the
-             visitor touching anything (OSM detection landing, a remembered
-             type being recalled), and this line is the only thing that says
-             so. Polite, not assertive — the confirm dialog restates the type
-             with real buttons before any search runs. -->
-        <div class="rd-row px-4 py-2 bg-[#FBFBF9] text-xs text-[#68707E]">
-          <span id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it under Refine if it's off.</span><span id="sizeHint">Size comes from public records automatically.</span>
-          <span id="typeStatusLine" class="ml-1" aria-live="polite"></span>
-          <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
-          <div id="typeAutoNote" class="mt-1"></div>
-        </div>
-
         <!-- Refine (optional; the address, price, lookback and focus live up
              top). Size moved back down here on 2026-08-10 when the price took
              its slot on the form: it is answered automatically on the great
@@ -9300,12 +9305,17 @@
         .then((r) => (r.ok ? r.json() : []))
         .then((list) => (markets = list))
         .catch(() => (markets = [])));
+    // ⚠ These three tables are deliberate twins of explore-query.js's
+    // EXPLORE_TYPES / NON_EXPLORE_TYPES / STATE_ABBRS: they drive the type
+    // chips, the covered-page matcher and the no-module fallback parser.
+    // Keep them in step — nothing detects drift automatically.
     const EXPLORE_TYPES = ["industrial", "office", "retail", "multifamily"];
     const NON_EXPLORE_TYPES = ["land", "residential"]; // valid report types /api/explore-market rejects
     const US_STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
     const cap = (s) => s[0].toUpperCase() + s.slice(1);
     const hide = () => {
       if (exploring) return; // generation in progress — keep the status row up
+      if (zipTimer) { clearTimeout(zipTimer); zipTimer = null; }
       resultsEl.classList.add("hidden");
       resultsEl.innerHTML = "";
     };
@@ -9357,19 +9367,45 @@
         exploreComps = 0;   // attempt 2 finds its own comps
       }
     };
-    // "industrial Boise ID" -> {type, city, state}; otherwise {reason} for a hint row.
+    // Parsing lives in the pure, tested explore-query.js (served maxAge: 0).
+    // Read defensively: if that file ever fails to load, only this dropdown
+    // degrades, and it degrades to the old exact-shape behavior rather than
+    // throwing inside a keystroke handler.
     const parseExploreQuery = (q) => {
-      let tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+      const mod = typeof EXPLOREQ !== "undefined" ? EXPLOREQ : null;
+      if (mod) return mod.parseExploreQuery(q);
+      const tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
       if (tokens.some((t) => NON_EXPLORE_TYPES.includes(t))) return { reason: "unsupported-type" };
       const type = EXPLORE_TYPES.find((t) => tokens.includes(t));
-      tokens = tokens.filter((t) => t !== type);
-      const last = tokens[tokens.length - 1] || "";
+      const rest = tokens.filter((t) => t !== type);
+      const last = rest[rest.length - 1] || "";
       const state = US_STATES.includes(last.toUpperCase()) ? last.toUpperCase() : null;
-      const city = (state ? tokens.slice(0, -1) : tokens).map(cap).join(" ");
+      const city = (state ? rest.slice(0, -1) : rest).map(cap).join(" ");
       if (!city) return { reason: "no-city" };
       if (!state) return { reason: "no-state" };
       if (!type) return { reason: "no-type", city, state };
       return { type: cap(type), city, state };
+    };
+    // Zip lookups: one per settled zip, cached for the page's life (a miss
+    // caches as null, so a bad zip is asked once). Resolved here rather than
+    // in the module, which stays pure and testable with no network.
+    const zipCache = new Map();
+    let zipTimer = null;
+    const resolveZip = (zip) => {
+      if (zipTimer) clearTimeout(zipTimer);
+      zipTimer = setTimeout(() => {
+        fetch("https://api.zippopotam.us/us/" + encodeURIComponent(zip), { signal: AbortSignal.timeout(7000) })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            const p = j && j.places && j.places[0];
+            zipCache.set(zip, p ? { city: p["place name"], state: p["state abbreviation"] } : null);
+          })
+          .catch(() => zipCache.set(zip, null))
+          // Only repaint if the visitor is still in the search box. A lookup
+          // that lands after they clicked away must never pop the dropdown
+          // back open on its own.
+          .then(() => { if (!exploring && document.activeElement === input) render(); });
+      }, 400);
     };
     // Re-shown on every failure, so the visitor always has a worked example.
     const exploreHintRow =
@@ -9456,7 +9492,24 @@
       let html = matches.map((m) =>
         `<a href="/market/${escq(m.slug)}" class="block px-3 py-1.5 text-[#46536A] hover:text-[#1A2433] hover:bg-[#FBFBF9]">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</a>`).join("");
       // Explorer rows — only when the query doesn't resolve to a covered page.
-      const p = parseExploreQuery(input.value.trim());
+      let p = parseExploreQuery(input.value.trim());
+      // A zip is an intent: swap in the resolved market, or ask for it once.
+      if (p.reason === "zip") {
+        if (zipCache.has(p.zip)) {
+          const hit = zipCache.get(p.zip);
+          // A territory or military zip (PR, AE/AA/AP) resolves fine at
+          // Zippopotam but names a state /api/explore-market rejects, so
+          // offering it would trade a hint for a confusing 400.
+          const usable = hit && US_STATES.includes(hit.state);
+          p = usable
+            ? (p.type ? { type: p.type, city: hit.city, state: hit.state }
+                      : { reason: "no-type", city: hit.city, state: hit.state })
+            : { reason: "bad-zip", zip: p.zip };
+        } else {
+          resolveZip(p.zip);
+          p = { reason: "zip-pending", zip: p.zip };
+        }
+      }
       const exactMatch = p.type && matches.some((m) =>
         m.type.toLowerCase() === p.type.toLowerCase() && m.city.toLowerCase() === p.city.toLowerCase() && m.state === p.state);
       if (p.type && !exactMatch) {
@@ -9471,6 +9524,10 @@
         html += `<div class="px-3 py-1.5 text-[#68707E]">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
       } else if (p.reason === "no-city" && !matches.length) {
         html += `<div class="px-3 py-1.5 text-[#68707E]">Search a market like “industrial Boise ID”</div>`;
+      } else if (p.reason === "zip-pending" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#68707E]">Looking up ${escq(p.zip)}…</div>`;
+      } else if (p.reason === "bad-zip" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#68707E]">We couldn't place the zip ${escq(p.zip)}. Try a market like “industrial Boise ID”</div>`;
       }
       resultsEl.innerHTML = html;
       resultsEl.classList.remove("hidden");

@@ -41,7 +41,10 @@ detects.
   - `{ reason: "no-type", city, state }` — the type chips row;
   - `{ reason: "zip", zip, type }` — index.html resolves it (see below);
   - `{ reason: "no-city" | "no-state" | "unsupported-type" }`.
-- `STATE_NAMES` — full name to abbreviation, 50 states plus DC.
+- `STATE_NAMES` — full name to abbreviation, the 50 states (DC deliberately
+  excluded: "district of columbia" is three tokens and unreachable by the one-
+  and two-token lookups, and "Washington DC" already resolves through the
+  abbreviation list).
 - `TYPE_SYNONYMS` — synonym to canonical Explorer type.
 - `FILLERS` — words dropped from the city.
 

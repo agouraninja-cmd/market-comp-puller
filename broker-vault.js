@@ -702,6 +702,36 @@ function normalizeRow(raw) {
   return errors.length ? { ok: false, errors } : { ok: true, row };
 }
 
+// The fields a broker may change. Deliberately an ALLOWLIST built from the
+// two column constants rather than "everything on the row": a patch that
+// could set user_id would be an account-takeover primitive, and one that
+// could set `published` would put a row in the public corpus without the
+// submission that credits it.
+const EDITABLE_FIELDS = Object.freeze([...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
+
+/**
+ * Validate an edit to one stored comp.
+ *
+ * NOT a second validator. It rebuilds the row's template-shaped input, applies
+ * the patch over it, and runs `normalizeRow` -- the same function every
+ * imported row goes through. That is what makes a hand-typed "1.2M" or an
+ * Excel serial date fail here exactly as it fails on import, and what keeps
+ * `dedupe_key`, `address_key` and the sales-only `price_per_sqft` rule
+ * produced by one piece of code instead of two that can drift.
+ *
+ * `existing` is the stored row (or anything with the same field names).
+ * `patch` is the browser's partial; keys outside EDITABLE_FIELDS are dropped.
+ */
+function validateEdit(existing, patch) {
+  const base = existing && typeof existing === "object" ? existing : {};
+  const p = patch && typeof patch === "object" ? patch : {};
+  const merged = {};
+  for (const f of EDITABLE_FIELDS) {
+    merged[f] = Object.prototype.hasOwnProperty.call(p, f) ? p[f] : base[f];
+  }
+  return normalizeRow(merged);
+}
+
 // --- a whole file -------------------------------------------------------------
 
 /**
@@ -1075,6 +1105,8 @@ module.exports = {
   parsePropertyType,
   addressKey,
   normalizeRow,
+  validateEdit,
+  EDITABLE_FIELDS,
   parseUpload,
   csvCell,
   templateCsv,

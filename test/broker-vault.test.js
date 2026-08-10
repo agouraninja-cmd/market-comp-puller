@@ -21,6 +21,7 @@ const {
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
   inspectCsv, normalizedHeaderRow,
+  validateEdit,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -272,6 +273,71 @@ test("garbage input does not throw", () => {
     assert.doesNotThrow(() => normalizeRow(v));
     assert.equal(normalizeRow(v).ok, false);
   }
+});
+
+// --- editing a stored row ---------------------------------------------------
+//
+// validateEdit is deliberately NOT a second validator: it merges the patch
+// over the existing row's template-shaped fields and runs it back through
+// normalizeRow, the same function every imported row goes through. These
+// tests exist to prove that wiring, not to re-test normalizeRow's parsing
+// rules -- those are covered above.
+
+test("validateEdit merges a patch over the existing comp", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1000000,
+    size_sqft: 10000, notes: "keep me",
+  };
+  const r = validateEdit(existing, { price: "$1,250,000" });
+  assert.equal(r.ok, true);
+  assert.equal(r.row.price, 1250000);
+  assert.equal(r.row.notes, "keep me", "unpatched fields survive");
+  assert.equal(r.row.price_per_sqft, 125, "$/SF recomputed from the new price");
+});
+
+test("validateEdit refuses shorthand exactly as the importer does", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14",
+  };
+  const r = validateEdit(existing, { price: "1.2M" });
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.join(" ").includes("price"), "the error names the field");
+});
+
+test("validateEdit recomputes the dedupe key when the price changes", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1000000,
+  };
+  const before = normalizeRow(existing).row.dedupe_key;
+  const after = validateEdit(existing, { price: 1250000 }).row.dedupe_key;
+  assert.notEqual(after, before);
+  assert.equal(after, normalizeRow({ ...existing, price: 1250000 }).row.dedupe_key,
+    "the edit path must produce the same key the import path would");
+});
+
+test("validateEdit leaves price_per_sqft null when a sale becomes a lease", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Office",
+    transaction: "sale", deal_date: "2025-03-14", price: 500000, size_sqft: 5000,
+  };
+  const r = validateEdit(existing, { transaction: "lease" });
+  assert.equal(r.ok, true);
+  assert.equal(r.row.price_per_sqft, null,
+    "an annual rent over size is $/SF/yr and must never enter that column");
+});
+
+test("validateEdit ignores keys that are not template fields", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14",
+  };
+  const r = validateEdit(existing, { user_id: "someone-else", published: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.row.user_id, undefined, "a patch may never set user_id");
+  assert.equal(r.row.published, undefined, "a patch may never set published");
 });
 
 // --- a whole file ----------------------------------------------------------

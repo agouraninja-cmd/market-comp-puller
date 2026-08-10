@@ -10595,6 +10595,36 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // The broker's last confirmed CSV column mapping. A convenience only: it
+  // pre-fills the mapping screen, which they still confirm, so a stale mapping
+  // can never import the wrong thing. Both halves swallow their errors for that
+  // reason — losing it costs a few seconds, and failing an upload over it would
+  // cost the broker their spreadsheet.
+  async function getCsvMapping(userId) {
+    if (!DB_CONFIGURED || !userId) return null;
+    try {
+      const rows = await sbRequest("GET",
+        `broker_csv_mappings?user_id=eq.${encodeURIComponent(userId)}&select=mapping&limit=1`);
+      const m = rows && rows[0] && rows[0].mapping;
+      return m && typeof m === "object" && !Array.isArray(m) ? m : null;
+    } catch (e) {
+      console.warn("csv mapping read failed:", e.message);
+      return null;
+    }
+  }
+
+  async function saveCsvMapping(userId, mapping) {
+    if (!DB_CONFIGURED || !userId) return;
+    if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return;
+    try {
+      await sbRequest("POST", "broker_csv_mappings",
+        [{ user_id: userId, mapping, updated_at: new Date().toISOString() }],
+        { prefer: "resolution=merge-duplicates" });
+    } catch (e) {
+      console.warn("csv mapping write failed:", e.message);
+    }
+  }
+
   // --- Broker vault (v1) ----------------------------------------------------
   //
   // A broker's private comp store. Plan:

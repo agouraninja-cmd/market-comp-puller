@@ -66,10 +66,21 @@ const THEME_TOKENS = {
 // Emits both custom-property blocks as one line. Every in-scope stylesheet
 // is a JS template literal, so this must never contain a backtick or a
 // ${ sequence -- a test pins that.
+//
+// The dark block is wrapped in @media screen and :root is left unscoped --
+// load-bearing, not decoration. Custom properties resolve by CASCADE, not by
+// media type, so every var()-driven rule in the codebase (not just the
+// Tailwind-utility bridge, which is separately wrapped in @media screen in
+// index.html) would otherwise keep reading the dark value during a print
+// run: --ink would still resolve to #E2E8F0 and print light text onto
+// forced-white paper. Scoping the DARK override to screen, rather than the
+// consuming rules, fixes every current and future var()-driven rule at the
+// source with one change, and :root must stay unscoped or print loses all
+// colour (nothing would define the light values a print run needs).
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")}}[data-theme="dark"]{${decl("dark")}}`;
+  return `:root{${decl("light")}}@media screen{[data-theme="dark"]{${decl("dark")}}}`;
 }
 
 module.exports = { THEME_TOKENS, rootCss };

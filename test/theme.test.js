@@ -62,6 +62,26 @@ test("rootCss is safe to interpolate into a template literal", () => {
   assert.equal(css.includes("${"), false);
 });
 
+test("rootCss's dark block is screen-only, so a print run never resolves dark values", () => {
+  // The OBVIOUS test here -- grep every in-scope stylesheet's @media print
+  // span for the literal text "[data-theme" -- is exactly what the print-
+  // safety tests below already do, and it is not enough. Custom properties
+  // resolve by CASCADE, not by media type: an unscoped
+  // [data-theme="dark"]{--ink:#E2E8F0} declaration keeps --ink resolving to
+  // its dark value everywhere, including inside @media print, for every
+  // var()-driven rule in the codebase -- not just the ones a Tailwind-
+  // utility bridge covers. None of THOSE rules contain the string
+  // "[data-theme" themselves (they just say `color: var(--ink)`), so a scan
+  // for that text inside the print span would stay green while a printed
+  // report came out in dark-mode colours on forced-white paper. This test
+  // checks STRUCTURE instead: the dark declaration must be nested inside
+  // @media screen, and :root must NOT be (or print loses every colour, not
+  // just the wrong ones).
+  const css = rootCss();
+  assert.match(css, /^:root\{[^}]*\}@media screen\{\[data-theme="dark"\]\{/,
+    ":root must be unscoped and the dark block must sit inside @media screen");
+});
+
 const fs = require("node:fs");
 const path = require("node:path");
 // Normalize CRLF -> LF: this checkout is on Windows (core.autocrlf), so
@@ -167,11 +187,44 @@ const INDEX_STYLE = INDEX.slice(INDEX.indexOf("<style>"), INDEX.indexOf("</style
 const NOT_DARKENED = new Set(["text-white", "hover:text-white"]);
 
 // Every colour utility index.html actually uses, base and state-variant.
+// The prefix group must list every variant actually used with a colour
+// utility in this file -- `focus-visible` was missing (fix round 2), which
+// let `.outline-[#B8C0CC]` (a bridge rule with neither the focus-visible
+// prefix nor the :focus-visible pseudo-class) match nothing in the DOM while
+// still "passing" coverage, because this scan's unprefixed fallback and the
+// bridge-selector scan below both landed on the same bare substring by
+// accident. Checked against the file directly (not from memory) with:
+//   grep -oE '(hover|focus|focus-visible|group-hover|active|disabled|
+//     checked|peer-checked|focus-within):(bg|text|border|ring|outline|
+//     decoration|divide|accent|fill|stroke)-...' index.html | sort -u
+// -- focus-visible was the only variant beyond the three already listed.
 function colorUtilities(html) {
   const P = "(?:bg|text|border|ring|outline|decoration|divide|accent|fill|stroke)";
   const V = "(?:\\[#[0-9A-Fa-f]{3,8}\\]|white|black|(?:slate|brand|red|emerald|amber|gray)-\\d{2,3})";
-  const re = new RegExp(`(?:(?:hover|focus|group-hover):)?${P}-${V}`, "g");
+  const re = new RegExp(`(?:(?:hover|focus-visible|focus|group-hover):)?${P}-${V}`, "g");
   return new Set([...html.matchAll(re)].map((m) => m[0]));
+}
+
+// Strips the Tailwind-utility bridge's OWN text before scanning for "used"
+// utilities (fix round 2, MINOR finding). Escaped selectors like
+// `.hover\:bg-slate-50:hover` contain the BARE class name as a literal
+// substring -- the backslash breaks colorUtilities' prefix match but not
+// its base P-V match -- which manufactured phantom "used" entries for
+// classes that appear nowhere in the real markup (`bg-slate-50`,
+// `ring-brand-600`, `decoration-brand-700`), and the coverage test passed
+// anyway because those three rules were added purely to satisfy a scan the
+// bridge's own text was polluting. This is the actual fix; the three dead
+// rules are gone from the bridge now that the scan no longer needs them.
+function withoutBridge(html) {
+  const bridgeAt = html.indexOf("/* ---- Dark mode bridge");
+  if (bridgeAt === -1) return html;
+  const screenAt = html.indexOf("@media screen", bridgeAt);
+  let depth = 0, started = false, i = html.indexOf("{", screenAt);
+  for (; i < html.length; i++) {
+    if (html[i] === "{") { depth++; started = true; }
+    if (html[i] === "}") { depth--; if (started && depth === 0) { i++; break; } }
+  }
+  return html.slice(0, bridgeAt) + html.slice(i);
 }
 
 test("index.html declares the same token values theme.js does", () => {
@@ -183,21 +236,41 @@ test("index.html declares the same token values theme.js does", () => {
   }
 });
 
+test("index.html's dark token block is screen-only too, mirroring rootCss's shape exactly", () => {
+  // Same blind spot as the rootCss test above, but for index.html's own
+  // literal copy, which rootCss() cannot reach -- index.html is static and
+  // server.js never templates it, so this structure has to be pinned here
+  // separately or it can drift out of sync with theme.js silently (the
+  // substring test just above would still pass: it only checks that each
+  // --token:value pair appears SOMEWHERE, not that the dark block is scoped
+  // correctly). Whitespace-tolerant because this copy is hand-formatted
+  // across multiple lines for readability, unlike rootCss()'s single line.
+  assert.match(
+    INDEX_STYLE,
+    /:root\{--paper:#FBFBF9[^]*?\}\s*@media screen\{\s*\[data-theme="dark"\]\{--paper:#020617/,
+    ":root must be unscoped and the dark token block must sit inside @media screen"
+  );
+});
+
 test("every colour utility in index.html has a dark rule", () => {
   // THE test. The known weakness of a hex-keyed bridge is that a colour
   // added later gets no dark rule and renders dark-on-dark -- and the
   // failure is silent, because light mode still looks perfect. This turns
   // it into a build failure.
-  const used = colorUtilities(INDEX);
+  const used = colorUtilities(withoutBridge(INDEX));
   // What the bridge covers. Tailwind escapes [ # ] in the emitted class
   // name, so the bridge selectors do too; unescape to compare. The
   // TRAILING pseudo-class must also come off: the markup carries
   // `hover:bg-[#F5F4EF]` while the selector is
   // `.hover\:bg-\[\#F5F4EF\]:hover`, and comparing those raw reports every
-  // state variant as missing.
+  // state variant as missing. `focus-visible` added in fix round 2 --
+  // without it, the corrected `.focus-visible\:outline-\[\#B8C0CC\]
+  // \:focus-visible` selector left a trailing ":focus-visible" on the
+  // bridged entry that never matched colorUtilities' pseudo-free output,
+  // so a CORRECT selector still failed this test until this line moved too.
   const bridged = new Set(
     [...INDEX_STYLE.matchAll(/\[data-theme="dark"\][^{]*?\.([A-Za-z0-9\\:#\[\]-]+)/g)]
-      .map((m) => m[1].replace(/\\/g, "").replace(/:(hover|focus|active|disabled|checked)$/, ""))
+      .map((m) => m[1].replace(/\\/g, "").replace(/:(focus-visible|hover|focus|active|disabled|checked)$/, ""))
   );
   const missing = [...used].filter((u) => !NOT_DARKENED.has(u) && !bridged.has(u));
   assert.deepEqual(missing, [], `utilities with no dark rule: ${missing.join(" ")}`);
@@ -278,7 +351,8 @@ test("no raw hex colour remains in index.html's style block outside :root/dark d
     "background:#f8e9dc",  // .rd-badge.e's background, same reasoning
     "color:#4c3a8c",       // .rd-badge.bv (broker vault) -- deliberately purple, not green; no matching token
     "background:#ede9f8",  // .rd-badge.bv's background, same reasoning
-    "background:#eaeef4",  // .rd-badge.p's background -- pale blue-gray, no matching token (its text colour does map, to --ink-body)
+    "color:#46536a",        // .rd-badge.p's text -- kept literal alongside its background (see the fix-round-2 note at the declaration: a half conversion measured 1.28:1)
+    "background:#eaeef4",  // .rd-badge.p's background -- pale blue-gray, no matching token
     "background:#fca5a5",  // .spread-fill's gradient start -- this is --red-deep's dark value, so tokenizing it would change the light theme
     "background:#8a929e",  // .rd-scat-tick's mark colour -- no matching token
   ]);

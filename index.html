@@ -52,7 +52,14 @@
        are the ONE place a token value is written twice. test/theme.test.js
        compares them against theme.js character for character; if you change
        a value, change it in theme.js and copy it here.
-       -------------------------------------------------------------------- */
+       The dark block is wrapped in @media screen and :root is left unscoped
+       -- mirrors theme.js's rootCss() exactly, and for the same reason:
+       custom properties resolve by CASCADE, not by media type, so an
+       unscoped dark block would still resolve --ink etc. to their dark
+       values during a print run (every var()-driven rule in this file, not
+       only the Tailwind-utility bridge below, which has its OWN separate
+       @media screen wrapper). :root must stay unscoped or print loses all
+       colour. -------------------------------------------------------------------- */
     :root{--paper:#FBFBF9;--card:#ffffff;--wash:#F5F4EF;--wash-2:#F5F4EF;--slab:#1A2433;
       --edge:#D8D4C9;--line:#E4E2DA;--hair:#F0EFE9;
       --ink:#1A2433;--ink-body:#374253;--ink-2:#4C5665;--ink-mute:#5A6473;--ink-3:#68707E;
@@ -60,6 +67,7 @@
       --red:#B91C1C;--red-deep:#991B1B;--red-fill:#B91C1C;--red-fill-hover:#991B1B;
       --green:#15803D;--ok-text:#06603A;--ok-bg:#E7F5EE;--ok-rule:#BFE5D2;
       --warn-text:#8A6D1A;--warn-bg:#FBF3DC;--warn-rule:#EDDFB0;--err-bg:#FCF1EF}
+    @media screen{
     [data-theme="dark"]{--paper:#020617;--card:#0F172A;--wash:#1E293B;--wash-2:#334155;--slab:#1E293B;
       --edge:#334155;--line:#273244;--hair:#1E293B;
       --ink:#E2E8F0;--ink-body:#CBD5E1;--ink-2:#C2CCDA;--ink-mute:#AEBACB;--ink-3:#94A3B8;
@@ -67,6 +75,7 @@
       --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
       --green:#34D399;--ok-text:#6EE7B7;--ok-bg:#0C2B21;--ok-rule:#155E43;
       --warn-text:#FCD34D;--warn-bg:#2A2410;--warn-rule:#5B4A16;--err-bg:#2A1517}
+    }
 
     /* ---- Dark mode bridge ----------------------------------------------
        index.html's colours live in Tailwind CLASS NAMES, not declarations,
@@ -122,15 +131,6 @@
       [data-theme="dark"] .hover\:bg-\[\#991B1B\]:hover { background-color: var(--red-fill-hover) }
       [data-theme="dark"] .hover\:bg-brand-700:hover    { background-color: var(--red-fill-hover) }
       [data-theme="dark"] .hover\:bg-red-50:hover       { background-color: var(--err-bg) }
-      /* bare (non-hover/focus) forms of the four named-colour classes above
-         that a hover/focus variant re-points -- not used bare in this file
-         today, but Tailwind's own escaped-colon selectors for those variants
-         (e.g. .hover\:bg-slate-50:hover) contain the bare class name as a
-         literal substring, which trips the coverage scan into treating it as
-         a used utility. Covering it here is correct either way: if a bare
-         use is ever added, it already has a rule. */
-      [data-theme="dark"] .bg-slate-50          { background-color: var(--wash-2) }
-      [data-theme="dark"] .bg-brand-700         { background-color: var(--red-fill-hover) }
 
       /* ink */
       [data-theme="dark"] .text-\[\#1A2433\] { color: var(--ink) }
@@ -142,13 +142,16 @@
       [data-theme="dark"] .text-\[\#8A8577\] { color: var(--ink-3) }
       [data-theme="dark"] .text-\[\#8F99A8\] { color: var(--ink-faint) }
       [data-theme="dark"] .text-\[\#9AA2AD\] { color: var(--ink-faint) }
-      /* --ink-4 is right for an OUTLINE (see .outline-[#B8C0CC] below) but
-         nearly invisible as TEXT on a dark surface -- its dark value #475569
-         measured 2.06:1 against the footer's dark slab, well under WCAG AA.
-         --ink-faint's dark value #7C8899 measures ~5:1 against --paper
-         instead: the text/fill split already used for --red, applied here. */
-      [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-faint) }
-      [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-faint) }
+      /* --ink-4 is right for an OUTLINE (see the focus-visible outline rule
+         below) but nearly invisible as TEXT on a dark surface -- its dark
+         value #475569 measured 2.06:1 against the footer's dark slab, well
+         under WCAG AA. --ink-faint was tried next (fix round 1) and was
+         ALSO wrong, at 4.07:1: that number was checked against --paper,
+         not against the --slab background this text actually sits on (fix
+         round 2). --ink-3's dark value (#94A3B8) measures 5.71:1 against
+         --slab, clearing AA (4.5:1 for this size/weight) with margin. */
+      [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-3) }
+      [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-3) }
       [data-theme="dark"] .hover\:text-\[\#1A2433\]:hover { color: var(--ink) }
       [data-theme="dark"] .hover\:text-\[\#374253\]:hover { color: var(--ink-body) }
 
@@ -191,14 +194,21 @@
       /* rings, outlines, decoration, accent */
       [data-theme="dark"] .focus\:ring-\[\#B91C1C\]:focus { --tw-ring-color: var(--red) }
       [data-theme="dark"] .focus\:ring-brand-600:focus    { --tw-ring-color: var(--red) }
-      [data-theme="dark"] .ring-brand-600                 { --tw-ring-color: var(--red) }
       [data-theme="dark"] .outline-\[\#B91C1C\]  { outline-color: var(--red) }
-      [data-theme="dark"] .outline-\[\#B8C0CC\]  { outline-color: var(--ink-4) }
+      /* Every real usage is focus-visible:outline-[#B8C0CC] (a keyboard-focus
+         ring on the footer links), never the bare utility -- Tailwind emits
+         .focus-visible\:outline-\[\#B8C0CC\]:focus-visible, which a selector
+         with neither the prefix nor the pseudo-class cannot match (fix
+         round 2; the old bare rule matched nothing and slipped past
+         coverage by an accident of two unrelated regexes agreeing on the
+         same bare substring). Targets --ink-3, not --ink-4: --ink-4 dark
+         (#475569) measured 1.93:1 as a focus indicator against --slab,
+         where --ink-3 dark (#94A3B8) measures ~5.7:1. */
+      [data-theme="dark"] .focus-visible\:outline-\[\#B8C0CC\]:focus-visible { outline-color: var(--ink-3) }
       [data-theme="dark"] .decoration-\[\#D8D4C9\] { text-decoration-color: var(--edge) }
       [data-theme="dark"] .decoration-\[\#46536A\] { text-decoration-color: var(--ink-body) }
       [data-theme="dark"] .decoration-brand-300    { text-decoration-color: var(--red) }
       [data-theme="dark"] .hover\:decoration-brand-700:hover { text-decoration-color: var(--red) }
-      [data-theme="dark"] .decoration-brand-700              { text-decoration-color: var(--red) }
       [data-theme="dark"] .accent-\[\#B91C1C\]   { accent-color: var(--red) }
       /* divide-* sets border-colour on CHILDREN, so the selector must match
          Tailwind's own shape or it silently does nothing. */
@@ -231,8 +241,19 @@
       background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent);
       animation: shimmer 2.2s ease-in-out infinite;
     }
-    [data-theme="dark"] .skeleton::after {
-      background: linear-gradient(90deg, transparent, rgb(255 255 255 / .06), transparent);
+    /* @media screen wrapper here for the same reason Critical 1 wraps the
+       token block and the bridge: a bare [data-theme="dark"] attribute
+       selector is not restricted by media type any more than a custom
+       property is, so without this an element with data-theme="dark" set
+       would still match during print. Practically inert today (the
+       loading skeleton only ever shows inside #loadingCard, which carries
+       no-print), but structurally identical to the bug, so it gets the
+       same fix on the same pass rather than being left as a second,
+       smaller version of it. */
+    @media screen {
+      [data-theme="dark"] .skeleton::after {
+        background: linear-gradient(90deg, transparent, rgb(255 255 255 / .06), transparent);
+      }
     }
     @keyframes shimmer { 100% { transform: translateX(100%); } }
     /* Assembling report: children of #results outside the data-assemble
@@ -294,7 +315,11 @@
     }
     .loading-ninja svg { display: block; width: 100%; height: 100%; animation: ninjaJog .38s ease-in-out infinite alternate; }
     .loading-ninja .ninja-body { fill: #334155; }
-    [data-theme="dark"] .loading-ninja .ninja-body { fill: var(--ink-3); }
+    /* @media screen wrapper: same reasoning as .skeleton::after above --
+       #loadingCard (the ninja's only container) carries no-print, so this
+       is practically inert, but structurally the same bug Critical 1
+       describes and gets the same fix. */
+    @media screen { [data-theme="dark"] .loading-ninja .ninja-body { fill: var(--ink-3); } }
     .loading-ninja .ninja-band { fill: #DC2626; }
     @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
     #loadingHeadline { transition: opacity .22s ease; }
@@ -584,10 +609,14 @@
        parent line (the badge legend uses leading-6 to keep wrapped rows apart). */
     .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
     .rd-badge.v { color: var(--ok-text); background: var(--ok-bg); }
-    /* .rd-badge.p's background (#EAEEF4, a pale blue-gray) has no matching
-       token -- flagged in task-4-report.md, left literal on purpose rather
-       than guessed. Its text colour DOES map cleanly (ink-body). */
-    .rd-badge.p { color: var(--ink-body); background: #EAEEF4; }
+    /* .rd-badge.p (a pale blue-gray pair) has no matching token -- flagged in
+       task-4-report.md, left fully literal on purpose rather than guessed.
+       Both colour AND background must be literal together: a HALF
+       conversion (text tokenized, background left at #EAEEF4) measured
+       1.28:1 in dark mode, because --ink-body's dark value (#CBD5E1, a
+       near-white meant for a near-black page) sits on this background's
+       unchanged light value. Matches the .e / .bv pattern. */
+    .rd-badge.p { color: #46536A; background: #EAEEF4; }
     .rd-badge.li { color: var(--warn-text); background: var(--warn-bg); }
     /* Full-bleed alt band — the background spans the whole viewport while the
        content stays in the centered column (the mockup's #F5F4EF section grounds).

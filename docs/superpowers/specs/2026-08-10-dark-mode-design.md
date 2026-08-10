@@ -133,20 +133,32 @@ A token system has fewer tokens than the palette had hexes, so folding is the
 point rather than a side effect — but it means a folded colour renders
 slightly differently in **light** mode, which the "light theme must not
 change" rule would otherwise forbid. Measured on the Task 2 sweep and
-approved by the owner on 2026-08-10:
+approved by the owner on 2026-08-10; extended on the same terms to Task 4's
+`index.html` sweep (the Research Desk CSS) during its fix round 2.
 
 - 28 distinct hexes across `ACCOUNT_NAV_CSS`, `MARKET_CSS` and `HOW_CSS`
   reduce to the token set; **15** of them land on a token whose light value
-  differs from the original.
+  differs from the original. Task 4's `index.html` sweep adds **4** more
+  distinct hexes at this same drift tolerance (three other folds it makes,
+  `#FCFBF8`, `#E3F2EA`, `#F7EFDC`, reuse hexes already on this list at the
+  same token and the same delta, so they are not new entries).
 - Maximum drift is **ΔRGB 25 of a possible 441 (~6%)**, and only two values
   reach it. Everything affected is a hairline, a tint, or faint secondary
   text. No folded colour is ever rendered beside its original, which is what
   makes the difference unobservable in practice rather than merely small.
 - Largest first: `#7A5B12`→`--warn-text` (25), `#8A93A0`→`--ink-faint` (25),
   `#B8C0CC`→`--ink-4` (20), `#D5DAE2`→`--line` (19), `#8F99A8` (15),
-  `#E2E8F0` (14), `#94A3B8` (13), `#EAEEF4` (10), `#ECEAE3` (9), `#46536A`
-  (8), `#E3F2EA` (6), `#F7EFDC` (6), `#F8FAFC` (4), `#E7E3DA` (3),
-  `#FCFBF8` (1).
+  `#F8FAFC`→`--wash` (15), `#E2E8F0` (14), `#F7F6F2`→`--hair` (13),
+  `#94A3B8` (13), `#FCFBF8`→`--wash` (13), `#EAEEF4` (10), `#F1EFE8`→
+  `--wash` (9), `#ECEAE3` (9), `#46536A` (8), `#E3F2EA` (6), `#F7EFDC` (6),
+  `#E7E3DA` (3), `#FCFCFA`→`--paper` (2), `#F4F3EE`→`--wash` (2).
+  ⚠ Two entries above are corrected, not new: `#F8FAFC` and `#FCFBF8` were
+  recorded in the original Task 2 report at (4) and (1), but both fold to
+  `--wash` (`#F5F4EF`), and recomputing ΔRGB against that exact value gives
+  15 and 13, shown above. Found while reconciling Task 4's new deltas
+  against this list (fix round 2); not investigated further back than
+  Task 2. Every value here, corrected or new, is comfortably inside the 25
+  bound — the correction changes the recorded number, not the conclusion.
 
 The alternative — roughly 11 extra tokens so every hex keeps its exact
 value — was considered and declined: it grows the table by 40% and adds 11

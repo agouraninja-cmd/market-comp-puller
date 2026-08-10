@@ -217,3 +217,84 @@ test("the bridge cannot reach the print stylesheet", () => {
   const screenAt = INDEX_STYLE.lastIndexOf("@media screen", bridgeAt);
   assert.notEqual(screenAt, -1, "the bridge is not inside @media screen");
 });
+
+test("no raw hex colour remains in index.html's style block outside :root/dark declarations or @media print", () => {
+  // 2026-08-10: a whole second colour system -- the "Research Desk" CSS
+  // (.rd-*, plus a handful of un-prefixed rules like .spread-fill and the
+  // loading ninja) -- went untouched by the bridge above because the
+  // coverage test only scans Tailwind CLASS NAMES. About 120 raw hex values
+  // sat there unthemed until this was caught by eye in a browser. This test
+  // is the permanent fix: any FUTURE raw hex added anywhere in this
+  // stylesheet (outside the token declarations and the print stylesheet,
+  // which is deliberately pinned light) fails the build instead of quietly
+  // rendering unthemed.
+  const anchor = "Design tokens — the whole site draws from these";
+  const anchorAt = INDEX_STYLE.indexOf(anchor);
+  assert.notEqual(anchorAt, -1, "the Design tokens comment moved or was renamed");
+  const commentOpenAt = INDEX_STYLE.lastIndexOf("/*", anchorAt);
+  let scoped = INDEX_STYLE.slice(commentOpenAt);
+
+  // @media print is pinned light on purpose (previous test) and must never
+  // be asked to theme -- exclude its whole span rather than flag its
+  // intentional literals (e.g. "body { background: #fff }").
+  const printAt = scoped.indexOf("@media print");
+  assert.notEqual(printAt, -1, "the print block vanished");
+  {
+    let depth = 0, started = false, i = scoped.indexOf("{", printAt);
+    for (; i < scoped.length; i++) {
+      if (scoped[i] === "{") { depth++; started = true; }
+      if (scoped[i] === "}") { depth--; if (started && depth === 0) { i++; break; } }
+    }
+    scoped = scoped.slice(0, printAt) + scoped.slice(i);
+  }
+
+  const noComments = scoped.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Only look inside declaration bodies ({ ... }), never selector text --
+  // an ID like #addressInput would otherwise read as a 3-digit hex colour
+  // ("#add"). insideBraces keeps everything at brace-depth >= 1 (any
+  // nesting, e.g. inside @media), which is exactly "declaration bodies".
+  function insideBraces(css) {
+    let d = 0, out = "";
+    for (const c of css) {
+      if (c === "{") { d++; out += ""; continue; }
+      if (c === "}") { d = Math.max(0, d - 1); out += ""; continue; }
+      if (d > 0) out += c;
+    }
+    return out;
+  }
+  const blocks = insideBraces(noComments).split(/[]/).filter((b) => b.trim());
+
+  // Deliberate literals, keyed by (property, hex) rather than hex alone --
+  // a NEW rule that reuses one of these hex values under a DIFFERENT
+  // property must still be caught. Each is explained in index.html at its
+  // declaration and in task-4-report.md.
+  const ALLOWLIST = new Set([
+    "color:#fff",          // text on a filled red/dark surface (::selection)
+    "box-shadow:#b91c1c",  // .rd-cell:focus-within's focus ring -- box-shadow is exempt, same as .card-hover / tileSpot
+    "fill:#334155",        // .loading-ninja .ninja-body's light-only base value, fully replaced by an explicit dark-mode rule right below it
+    "fill:#dc2626",        // .loading-ninja .ninja-band -- this IS --red-fill's dark value, so tokenizing it would change the light theme
+    "color:#9a3412",       // .rd-badge.e (estimate) -- deliberately sienna, distinct from .li's amber; no matching token
+    "background:#f8e9dc",  // .rd-badge.e's background, same reasoning
+    "color:#4c3a8c",       // .rd-badge.bv (broker vault) -- deliberately purple, not green; no matching token
+    "background:#ede9f8",  // .rd-badge.bv's background, same reasoning
+    "background:#eaeef4",  // .rd-badge.p's background -- pale blue-gray, no matching token (its text colour does map, to --ink-body)
+    "background:#fca5a5",  // .spread-fill's gradient start -- this is --red-deep's dark value, so tokenizing it would change the light theme
+    "background:#8a929e",  // .rd-scat-tick's mark colour -- no matching token
+  ]);
+
+  const offenders = [];
+  for (const block of blocks) {
+    for (const decl of block.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) {
+        const key = `${prop}:${hex.toLowerCase()}`;
+        if (!ALLOWLIST.has(key)) offenders.push(`${prop}: ${hex}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `raw hex colour(s) outside the token system: ${offenders.join(", ")}`);
+});

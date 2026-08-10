@@ -142,8 +142,13 @@
       [data-theme="dark"] .text-\[\#8A8577\] { color: var(--ink-3) }
       [data-theme="dark"] .text-\[\#8F99A8\] { color: var(--ink-faint) }
       [data-theme="dark"] .text-\[\#9AA2AD\] { color: var(--ink-faint) }
-      [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-4) }
-      [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-4) }
+      /* --ink-4 is right for an OUTLINE (see .outline-[#B8C0CC] below) but
+         nearly invisible as TEXT on a dark surface -- its dark value #475569
+         measured 2.06:1 against the footer's dark slab, well under WCAG AA.
+         --ink-faint's dark value #7C8899 measures ~5:1 against --paper
+         instead: the text/fill split already used for --red, applied here. */
+      [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-faint) }
+      [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-faint) }
       [data-theme="dark"] .hover\:text-\[\#1A2433\]:hover { color: var(--ink) }
       [data-theme="dark"] .hover\:text-\[\#374253\]:hover { color: var(--ink-body) }
 
@@ -289,7 +294,7 @@
     }
     .loading-ninja svg { display: block; width: 100%; height: 100%; animation: ninjaJog .38s ease-in-out infinite alternate; }
     .loading-ninja .ninja-body { fill: #334155; }
-    [data-theme="dark"] .loading-ninja .ninja-body { fill: #94A3B8; }
+    [data-theme="dark"] .loading-ninja .ninja-body { fill: var(--ink-3); }
     .loading-ninja .ninja-band { fill: #DC2626; }
     @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
     #loadingHeadline { transition: opacity .22s ease; }
@@ -338,15 +343,19 @@
       30%  { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 4px rgb(185 28 28 / .22); }
       100% { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(185 28 28 / 0); }
     }
-    .spread-track { position: relative; height: 5px; border-radius: 999px; background: #E4E2DA; }
+    .spread-track { position: relative; height: 5px; border-radius: 999px; background: var(--line); }
+    /* #FCA5A5 stays literal: it's --red-deep's DARK value, not its light one
+       (light red-deep is #991B1B), so mapping it to a token would change
+       this gradient's LIGHT-mode start colour, which must not happen. No
+       token has #FCA5A5 as its light value. Flagged in task-4-report.md. */
     .spread-fill {
       position: absolute; inset: 0; border-radius: 999px;
-      background: linear-gradient(90deg, #FCA5A5, #B91C1C);
+      background: linear-gradient(90deg, #FCA5A5, var(--red-fill));
       transform: scaleX(0); transform-origin: left;
     }
     .spread-marker {
       position: absolute; top: 50%; width: 2px; height: 11px;
-      background: #1A2433; border-radius: 2px; transform: translate(-50%, -50%) scaleY(0);
+      background: var(--slab); border-radius: 2px; transform: translate(-50%, -50%) scaleY(0);
     }
     #statTiles.in-view .spread-fill { animation: spreadSweep .6s ease-out .1s forwards; }
     #statTiles.in-view .spread-marker { animation: markerPop .3s ease-out .5s forwards; }
@@ -409,10 +418,10 @@
        the server never sent the values, so there is nothing here to recover
        from the DOM. The shimmer reads as "content withheld", not "loading":
        it is slow and low-contrast, and it stops for reduced-motion users. */
-    .comp-locked { background: #FCFCFA; }
+    .comp-locked { background: var(--paper); }
     .lock-bar {
       display: block; height: 9px; border-radius: 3px;
-      background: linear-gradient(90deg, #ECEAE3 0%, #F5F4EF 50%, #ECEAE3 100%);
+      background: linear-gradient(90deg, var(--hair) 0%, var(--wash) 50%, var(--hair) 100%);
       background-size: 200% 100%;
       animation: lockShimmer 3.2s ease-in-out infinite;
     }
@@ -517,27 +526,27 @@
     }
 
     /* ---------------- Research Desk landing system ---------------- */
-    .rd-kicker { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #B91C1C; font-weight: 600; }
-    .rd-h { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; }
-    .rd-hairline { border-color: #E4E2DA; }
-    .rd-wordmark { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: #1A2433; }
-    .rd-wordmark b { color: #B91C1C; font-weight: 600; }
+    .rd-kicker { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); font-weight: 600; }
+    .rd-h { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
+    .rd-hairline { border-color: var(--line); }
+    .rd-wordmark { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: var(--ink); }
+    .rd-wordmark b { color: var(--red); font-weight: 600; }
     /* Form-as-unit: bordered cells, micro labels, borderless inputs */
-    .rd-form { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; }
-    .rd-cell { padding: 11px 16px; border-right: 1px solid #ECEAE3; }
+    .rd-form { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; }
+    .rd-cell { padding: 11px 16px; border-right: 1px solid var(--hair); }
     .rd-cell:last-child { border-right: 0; }
-    .rd-row { border-bottom: 1px solid #ECEAE3; }
-    .rd-lab { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #68707E; font-weight: 600; margin-bottom: 2px; }
+    .rd-row { border-bottom: 1px solid var(--hair); }
+    .rd-lab { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 2px; }
     /* 16px is load-bearing, not a taste choice: iOS Safari auto-zooms on focus
        for any input under 16px and never zooms back out, leaving the page
        zoomed and side-scrolled after tapping the address field — the site's
        single most-tapped control. Do not "tidy" this back down. */
-    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: #1A2433; background: transparent; }
+    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: var(--ink); background: transparent; }
     /* #68707E, same as the swept caption gray: #9AA2AD measured 2.6:1, below
        even the relaxed placeholder bar, and the example addresses rotating in
        the search field are real guidance, not decoration. Still clearly
        lighter than typed ink (#1A2433). */
-    .rd-in::placeholder { color: #68707E; }
+    .rd-in::placeholder { color: var(--ink-3); }
     /* There was a mutual-exclusivity rule here (#sizeEstimateNote hiding a
        standing #sizeHint sentence) until 2026-08-10. Both the rule and that
        sentence are gone: the size field moved into Refine, which states the
@@ -566,40 +575,47 @@
        the ring off a legitimately focused address field. Same notion on both
        sides means they cannot drift apart. */
     .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
-    @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
+    @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid var(--hair); } .rd-row { border-bottom: 0; } }
     /* Card frame — shared by the live map and comps cards. (The sample-report
        exhibit that also used it now lives on /how-it-works, which is
        server-rendered with its own copy of these rules.) */
-    .rd-exhibit { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; overflow: hidden; }
+    .rd-exhibit { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; overflow: hidden; }
     /* Own line-height so the chip box stays compact even inside a roomier
        parent line (the badge legend uses leading-6 to keep wrapped rows apart). */
     .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
-    .rd-badge.v { color: #06603A; background: #E3F2EA; }
-    .rd-badge.p { color: #46536A; background: #EAEEF4; }
-    .rd-badge.li { color: #7A5B12; background: #F7EFDC; }
+    .rd-badge.v { color: var(--ok-text); background: var(--ok-bg); }
+    /* .rd-badge.p's background (#EAEEF4, a pale blue-gray) has no matching
+       token -- flagged in task-4-report.md, left literal on purpose rather
+       than guessed. Its text colour DOES map cleanly (ink-body). */
+    .rd-badge.p { color: var(--ink-body); background: #EAEEF4; }
+    .rd-badge.li { color: var(--warn-text); background: var(--warn-bg); }
     /* Full-bleed alt band — the background spans the whole viewport while the
-       content stays in the centered column (the mockup's #F5F4EF section grounds). */
-    .rd-band { background: #F5F4EF; box-shadow: 0 0 0 100vmax #F5F4EF; clip-path: inset(0 -100vmax); }
+       content stays in the centered column (the mockup's #F5F4EF section grounds).
+       The box-shadow here is a full-bleed-background TECHNIQUE, not a drop
+       shadow (it simulates a background fill outside a max-width column), so
+       unlike an ordinary elevation shadow it must track --wash too or the
+       band shows a bright light stripe across an otherwise dark page. */
+    .rd-band { background: var(--wash); box-shadow: 0 0 0 100vmax var(--wash); clip-path: inset(0 -100vmax); }
     /* Broker cards */
-    .rd-bcard { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; padding: 24px; }
+    .rd-bcard { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; padding: 24px; }
 
     /* ------------- Research Desk report tokens (live report restyle) ------------- */
     /* Neutral value tile: paper alt tone + hairline — replaces the slate-50 bubbles. */
-    .rd-tile { background: #F5F4EF; border: 1px solid #E4E2DA; border-radius: 6px; padding: 16px; }
+    .rd-tile { background: var(--wash); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
     /* Highlight tile (Likely / Hold DCF): white with a single red hairline and a
        red uppercase label — quietly distinct, editorial, not a colored bubble. */
-    .rd-tile-hi { background: #fff; border: 1px solid #B91C1C; border-radius: 6px; padding: 16px; }
-    .rd-tile-hi .rd-lab { color: #B91C1C; }
+    .rd-tile-hi { background: var(--card); border: 1px solid var(--red); border-radius: 6px; padding: 16px; }
+    .rd-tile-hi .rd-lab { color: var(--red); }
     /* Ledger hero (Direction A, owner-approved 2026-08-08): the Low/Likely/High
        tiles as one ruled ledger line — serif figures, red spent only on the
        LIKELY label. Flex without gap on purpose: #ownerHero IS captured by the
        PNG exporter, which can't render flex gap; the hairlines carry the
        separation instead. */
-    .rd-ledger { display: flex; border: 1px solid #D8D4C9; border-radius: 6px; overflow: hidden; }
-    .rd-ledger .rd-lcell { flex: 1 1 0; min-width: 0; padding: 14px 18px; border-right: 1px solid #ECEAE3; background: #fff; }
+    .rd-ledger { display: flex; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; }
+    .rd-ledger .rd-lcell { flex: 1 1 0; min-width: 0; padding: 14px 18px; border-right: 1px solid var(--hair); background: var(--card); }
     .rd-ledger .rd-lcell:last-child { border-right: 0; }
-    .rd-ledger .rd-lcell.mid { background: #FCFBF8; }
-    .rd-ledger .rd-lcell.mid .rd-lab { color: #B91C1C; }
+    .rd-ledger .rd-lcell.mid { background: var(--wash); }
+    .rd-ledger .rd-lcell.mid .rd-lab { color: var(--red); }
     .rd-lfig { font-size: 26px; }
     .rd-lcell.mid .rd-lfig { font-size: 32px; }
     /* Comp scatter (owner-approved 2026-08-09): the hairline number line under
@@ -612,12 +628,14 @@
        flex gap and no transform: html2canvas silently collapses gap, and its
        transform support is partial. Keep it that way. */
     .rd-scat { position: relative; height: 26px; }
-    .rd-scat-band { position: absolute; top: 0; height: 100%; background: #F1EFE8; border-radius: 2px; }
-    .rd-scat-rule { position: absolute; left: 0; right: 0; top: 12px; height: 1px; background: #D8D4C9; }
+    .rd-scat-band { position: absolute; top: 0; height: 100%; background: var(--wash); border-radius: 2px; }
+    .rd-scat-rule { position: absolute; left: 0; right: 0; top: 12px; height: 1px; background: var(--edge); }
+    /* #8A929E (the tick mark colour) has no matching token -- flagged in
+       task-4-report.md, left literal on purpose rather than guessed. */
     .rd-scat-tick { position: absolute; top: 7px; width: 1px; height: 12px; background: #8A929E; opacity: .55; }
-    .rd-scat-mid { position: absolute; top: 3px; width: 2px; height: 20px; background: #B91C1C; }
-    .rd-scat-midlab { position: absolute; top: -13px; width: 60px; margin-left: -30px; text-align: center; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: #B91C1C; }
-    .rd-scat-ends { display: flex; justify-content: space-between; font-size: 11px; color: #68707E; margin-top: 3px; }
+    .rd-scat-mid { position: absolute; top: 3px; width: 2px; height: 20px; background: var(--red-fill); }
+    .rd-scat-midlab { position: absolute; top: -13px; width: 60px; margin-left: -30px; text-align: center; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--red); }
+    .rd-scat-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
     /* Every mark on this line IS a background color, and browsers drop
        backgrounds on paper unless the visitor ticks "Background graphics".
        Without this the printed report shows a bare rule with no ticks, no
@@ -639,14 +657,14 @@
        exporter captures, and html2canvas silently collapses flex gap. Same
        reason the scatter above is absolute-positioned. */
     .ap-stmt { width: 100%; border-collapse: collapse; }
-    .ap-stmt th { text-align: left; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: #68707E; font-weight: 600; padding: 0 0 6px; border-bottom: 1px solid #1A2433; }
+    .ap-stmt th { text-align: left; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 0 0 6px; border-bottom: 1px solid var(--ink); }
     .ap-stmt th.num, .ap-stmt td.num { text-align: right; }
-    .ap-stmt td { padding: 9px 0; border-bottom: 1px solid #F0EFE9; vertical-align: baseline; font-size: 13px; color: #4C5665; line-height: 1.5; }
+    .ap-stmt td { padding: 9px 0; border-bottom: 1px solid var(--hair); vertical-align: baseline; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
     .ap-stmt tr:last-child td { border-bottom: 0; }
-    .ap-stmt td.num { white-space: nowrap; padding-left: 14px; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; font-variant-numeric: tabular-nums; }
-    .ap-stmt .ap-lab { font-weight: 600; color: #1A2433; }
-    .ap-stmt tr.muted td { font-size: 12px; color: #68707E; }
-    .ap-stmt tr.muted .ap-lab { color: #68707E; }
+    .ap-stmt td.num { white-space: nowrap; padding-left: 14px; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .ap-stmt .ap-lab { font-weight: 600; color: var(--ink); }
+    .ap-stmt tr.muted td { font-size: 12px; color: var(--ink-3); }
+    .ap-stmt tr.muted .ap-lab { color: var(--ink-3); }
     /* Two columns need a phone treatment. The value column is nowrap by
        design (a wrapped "$7,925,000 – $8,625,000" is unreadable), which at
        343px leaves the evidence about 150px and turns every row into a
@@ -657,7 +675,7 @@
     @media (max-width: 559.98px) {
       .ap-stmt, .ap-stmt tbody, .ap-stmt tr, .ap-stmt td { display: block; width: 100%; }
       .ap-stmt .ap-head { display: none; }
-      .ap-stmt tr { padding: 10px 0; border-bottom: 1px solid #F0EFE9; }
+      .ap-stmt tr { padding: 10px 0; border-bottom: 1px solid var(--hair); }
       .ap-stmt tr:last-child { border-bottom: 0; padding-bottom: 0; }
       .ap-stmt tr:first-of-type { padding-top: 0; }
       .ap-stmt td { padding: 0; border-bottom: 0; }
@@ -669,19 +687,22 @@
        behind the compare toggle — price sealed under the double rule, where
        this site puts a figure that is final. */
     .pr-cell { display: flex; flex-direction: column; }
-    .pr-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; font-size: 23px; margin-top: 3px; }
+    .pr-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); font-size: 23px; margin-top: 3px; }
     .rd-lcell.mid .pr-fig { font-size: 28px; }
-    .pr-per { font-size: 11px; color: #68707E; }
-    .pr-sum { font-size: 12px; color: #4C5665; margin-top: 6px; flex: 1; }
+    .pr-per { font-size: 11px; color: var(--ink-3); }
+    .pr-sum { font-size: 12px; color: var(--ink-2); margin-top: 6px; flex: 1; }
     .pr-stmt { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-    .pr-stmt th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #68707E; font-weight: 600; padding: 7px 10px; border-bottom: 2px solid #1A2433; }
+    .pr-stmt th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 7px 10px; border-bottom: 2px solid var(--ink); }
     .pr-stmt th.c, .pr-stmt td.c { text-align: center; width: 92px; }
-    .pr-stmt th.c.pro { color: #B91C1C; }
-    .pr-stmt td { padding: 7px 10px; border-bottom: 1px solid #F0EFE9; color: #374253; }
-    .pr-stmt td.c { color: #1A2433; font-weight: 500; }
-    .pr-stmt td.c .no { color: #C9CDD3; }
-    .pr-stmt col.pro-col { background: #FCFBF8; }
-    .pr-stmt tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; padding: 9px 10px; }
+    .pr-stmt th.c.pro { color: var(--red); }
+    .pr-stmt td { padding: 7px 10px; border-bottom: 1px solid var(--hair); color: var(--ink-body); }
+    .pr-stmt td.c { color: var(--ink); font-weight: 500; }
+    /* text/fill-style split, applied to --ink-4: as TEXT (this "not included"
+       mark) it must read var(--ink-faint), not var(--ink-4) -- see the
+       footer-link fix in the bridge above for the same reasoning. */
+    .pr-stmt td.c .no { color: var(--ink-faint); }
+    .pr-stmt col.pro-col { background: var(--wash); }
+    .pr-stmt tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; padding: 9px 10px; }
     .pr-stmt tfoot .fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 17px; }
     /* My Desk (Directions K+L, owner-approved 2026-08-09): the portfolio as a
        book — ledger strip, statement table closing on the combined total,
@@ -689,58 +710,64 @@
        stores — and the watchlist as a ruled briefing. .dk-rule is the
        section-head-on-an-ink-rule treatment every desk section now uses in
        place of the old floating labels. */
-    .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid #1A2433; padding-bottom: 4px; }
-    .dk-rule .rd-lab { margin-bottom: 0; color: #1A2433; letter-spacing: .12em; }
-    .dk-note { font-size: 10.5px; color: #68707E; text-align: right; }
-    .dk-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; }
+    .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid var(--ink); padding-bottom: 4px; }
+    .dk-rule .rd-lab { margin-bottom: 0; color: var(--ink); letter-spacing: .12em; }
+    .dk-note { font-size: 10.5px; color: var(--ink-3); text-align: right; }
+    .dk-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
     .dk-stmt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 560px; }
-    .dk-stmt th { text-align: left; color: #68707E; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 7px 10px 7px 0; border-bottom: 1px solid #ECEAE3; }
-    .dk-stmt td { padding: 9px 10px 9px 0; border-bottom: 1px solid #F0EFE9; color: #374253; vertical-align: middle; }
+    .dk-stmt th { text-align: left; color: var(--ink-3); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--hair); }
+    .dk-stmt td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--hair); color: var(--ink-body); vertical-align: middle; }
     .dk-stmt th.num, .dk-stmt td.num { text-align: right; }
-    .dk-stmt tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; color: #1A2433; }
-    .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: #5A6473; }
-    .dk-up { color: #047857; font-size: 11px; font-weight: 500; }
-    .dk-down { color: #B91C1C; font-size: 11px; font-weight: 500; }
-    .dk-mkt { padding: 14px 0; border-bottom: 1px solid #F0EFE9; }
+    .dk-stmt tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; color: var(--ink); }
+    .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
+    .dk-up { color: var(--ok-text); font-size: 11px; font-weight: 500; }
+    .dk-down { color: var(--red); font-size: 11px; font-weight: 500; }
+    .dk-mkt { padding: 14px 0; border-bottom: 1px solid var(--hair); }
     .dk-mkt:last-child { border-bottom: 0; }
-    .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: #1A2433; }
-    .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #B91C1C; margin-top: 6px; }
-    .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: #374253; padding: 4px 0; border-bottom: 1px solid #F7F6F2; flex-wrap: wrap; }
+    .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: var(--ink); }
+    .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
+    .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
     @media (max-width: 639.98px) {
       .rd-ledger { flex-direction: column; }
-      .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid #ECEAE3; }
+      .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid var(--hair); }
       .rd-ledger .rd-lcell:last-child { border-bottom: 0; }
     }
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
-    .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: #4C5665; background: #F0EFE9; border: 1px solid #E4E2DA; border-radius: 3px; padding: 2px 8px; }
-    .rd-chip.o { background: #fff; border-color: #D8D4C9; color: #5A6473; }
+    .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
+    .rd-chip.o { background: var(--card); border-color: var(--edge); color: var(--ink-mute); }
     /* Badge tiers the live report needs beyond the landing set: news (weakest,
        nearly typographic) + estimate (caution sienna, distinct from .li gold). */
-    .rd-badge.n { color: #5A6473; background: #F0EFE9; }
+    .rd-badge.n { color: var(--ink-mute); background: var(--wash); }
+    /* .rd-badge.e's colours (a sienna "caution" pair, deliberately distinct
+       from the amber .li badge per the comment above) have no matching
+       tokens -- flagged in task-4-report.md, left literal rather than
+       guessed or folded into --warn-*, which would erase that distinction. */
     .rd-badge.e { color: #9A3412; background: #F8E9DC; }
-    .rd-badge.u { background:#F4F3EE; color:#5A6473; border:1px solid #D8D4C9; }
+    .rd-badge.u { background: var(--wash); color: var(--ink-mute); border: 1px solid var(--edge); }
     /* A comp from the signed-in broker's own private vault. Deliberately NOT
        green: Verified is a public claim, earned by vouching for a comp in the
-       public records, and a private row has earned none of it. */
-    .rd-badge.bv { color:#4C3A8C; background:#EDE9F8; }
+       public records, and a private row has earned none of it. Its purple
+       identity (also deliberately distinct) has no matching token either --
+       flagged in task-4-report.md, left literal rather than guessed. */
+    .rd-badge.bv { color: #4C3A8C; background: #EDE9F8; }
     tr.comp-excluded td > div, .card-excluded > :not(.cur-head), .card-excluded .cur-head > :not(.cur-ctrl) { opacity:.45; }
     /* Live comps table header — the landing exhibit's editorial th at the live
        table's own geometry (padding/alignment stay in the JS-built classes).
        No background here so the sortable hover rule can win. */
-    #compsTable thead th { color: #68707E; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid #1A2433; }
+    #compsTable thead th { color: var(--ink-3); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid var(--ink); }
     /* Statement table (Direction B, owner-approved 2026-08-08): the header
        closes under a strong ink rule (above) and the table ends in a median
        row sealed with a double rule — the audited-statement mark for "this
        figure is final". Built by renderTableFoot() from the same
        valuationComps() sales median the chart and hero read, so the three
        can never disagree on one report. */
-    #compsTable tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; }
-    #compsTable tfoot .tf-lab { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: #5A6473; }
+    #compsTable tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; }
+    #compsTable tfoot .tf-lab { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-mute); }
     /* Driver rows: .rd-drv's hairline rhythm without flex gap (PNG exporter). */
-    #driversList p { border-top: 1px solid #F0EFE9; padding: 7px 0; margin: 0; }
+    #driversList p { border-top: 1px solid var(--hair); padding: 7px 0; margin: 0; }
     #driversList p:first-child { border-top: 0; }
-    #driversList b { color: #B91C1C; }
+    #driversList b { color: var(--red); }
     /* Map fullscreen: a CSS viewport takeover (works on iOS too, where the
        native Fullscreen API doesn't cover arbitrary elements). !important
        beats the container's inline 340px height; dvh tracks mobile browser
@@ -2492,7 +2519,7 @@
   </div>
 
   <!-- Site footer — navy ink, plain-English disclosure -->
-  <footer class="mt-14 no-print" style="background:#1A2433">
+  <footer class="mt-14 no-print bg-[#1A2433]">
     <div class="max-w-5xl mx-auto px-4 py-10 text-[13px] text-[#B8C0CC]">
       <div class="flex flex-col sm:flex-row justify-between gap-8">
         <div class="max-w-[68ch]">

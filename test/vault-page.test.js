@@ -769,12 +769,51 @@ test("the page says an edit unpublishes a published comp", () => {
 });
 
 test("the comps table footer still spans every column", () => {
+  // The old version of this test asserted `heads >= 9` (true regardless of
+  // the actions column) and located "the footer's colspan" with
+  // /colspan="(\d+)"/ searched from the first "tblFoot" match onward — which
+  // finds editRow's `colspan="10"` (an unrelated template literal that
+  // happens to appear first in source order after that anchor), never the
+  // footer's own `colspan="7"`. The two numbers were never actually compared.
+  // This version reads the #tbl thead's real column count and the footer's
+  // own template literal (anchored on text unique to it), so adding an
+  // eleventh column without widening the footer fails here.
   const html = renderVaultHTML(boot([comp({})]), CHROME);
-  const heads = (html.match(/<th[^>]*data-k=/g) || []).length;
-  const foot = /colspan="(\d+)"/.exec(html.slice(html.indexOf("tblFoot")));
-  assert.ok(heads >= 9, "the header should still declare its columns");
-  assert.ok(foot, "the footer should still declare a colspan");
+
+  const tblStart = html.indexOf('<table id="tbl">');
+  assert.ok(tblStart >= 0, "the comps table should still exist");
+  const theadStart = html.indexOf("<thead", tblStart);
+  const theadEnd = html.indexOf("</thead>", theadStart);
+  // (?=[ >]) so "<thead" itself (which starts with the literal text "<th")
+  // is not counted as a column.
+  const headCount = (html.slice(theadStart, theadEnd).match(/<th(?=[ >])/g) || []).length;
+
+  // Anchored on the footer's OWN opening cell, not on "tblFoot" (which also
+  // names the DOM id used elsewhere, including inside editRow's colspan).
+  const footStart = html.indexOf('<td class="lab" colspan="');
+  assert.ok(footStart >= 0, "the footer template should still declare its label cell");
+  const footEnd = html.indexOf('</tr>"', footStart);
+  assert.ok(footEnd >= 0, "the footer template should still close its row");
+  const footLiteral = html.slice(footStart, footEnd);
+
+  const colspanMatch = /colspan="(\d+)"/.exec(footLiteral);
+  assert.ok(colspanMatch, "the footer's first cell should declare a colspan");
+  const spanned = Number(colspanMatch[1]);
+  // Every OTHER <td> in the footer row covers exactly one column. The
+  // lookahead excludes the label cell matched above (the only one carrying
+  // its own colspan), so this count needs no further adjustment.
+  const otherTds = (footLiteral.match(/<td(?![^>]*colspan)/g) || []).length;
+
+  assert.strictEqual(spanned + otherTds, headCount,
+    `footer covers ${spanned + otherTds} column(s) but the header declares ${headCount}`);
 });
+
+// Proof this test can fail (per the fix-wave instructions): temporarily add
+// an 11th <th> to #tbl's thead in vault-page.js with the footer untouched —
+// this test fails (`footer covers 10 column(s) but the header declares 11`)
+// — then revert. Verified both runs; see the fix report for the exact
+// output. Left here as a comment rather than a skipped test because a real
+// 11-column header does not exist to add permanently.
 
 test("the emitted script still parses with the row actions in it", () => {
   assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
@@ -918,6 +957,32 @@ test("the export is a plain link, so it works without the page's script", () => 
 
 test("the emitted script still parses with the add form in it", () => {
   assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
+});
+
+test("the add-by-hand form's TYPE_FIELDS map has not drifted from broker-vault.js", () => {
+  // TYPE_FIELDS is a fourth copy of the per-type field map (TYPE_COMP_FIELDS
+  // in server.js is the source of truth; VAULT.PROPERTY_TYPES /
+  // OPTIONAL_SPEC_COLUMNS are its vault-side mirror). Nothing fails the build
+  // if this one falls behind: the next field added through the
+  // add-comp-field skill would import, store, export and display correctly,
+  // and simply never appear on this form. Extracted from the emitted script
+  // text (a static object literal) rather than executed, since TYPE_FIELDS
+  // lives inside the page's IIFE and is not exposed on window.
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  const m = /var TYPE_FIELDS=(\{[\s\S]*?\});/.exec(js);
+  assert.ok(m, "could not find TYPE_FIELDS in the emitted script");
+  const TYPE_FIELDS = new Function("return (" + m[1] + ");")();
+
+  assert.deepStrictEqual(
+    Object.keys(TYPE_FIELDS).sort(),
+    [...VAULT.PROPERTY_TYPES].sort(),
+    "TYPE_FIELDS' property types have drifted from VAULT.PROPERTY_TYPES");
+
+  const union = [...new Set(Object.values(TYPE_FIELDS).flat())].sort();
+  assert.deepStrictEqual(
+    union,
+    [...VAULT.OPTIONAL_SPEC_COLUMNS].sort(),
+    "TYPE_FIELDS' fields have drifted from VAULT.OPTIONAL_SPEC_COLUMNS");
 });
 
 // ---- The add form actually behaves -----------------------------------

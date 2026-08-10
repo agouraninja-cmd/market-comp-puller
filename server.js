@@ -11434,6 +11434,36 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // Take a published comp back out of the public corpus.
+    //
+    // Editing or deleting a comp privately has a public consequence: publishing
+    // wrote a comp_submissions row credited to the broker's firm. This is the
+    // same retraction the unpublish branch of /api/vault/publish performs, and
+    // it DELETES rather than marks rejected for the reason recorded there —
+    // fetchVerifiedComps selects on status, and a retracted comp should leave
+    // no public row at all.
+    //
+    // What it cannot undo: if the submission was already approved, the comp
+    // may already have been served in reports and harvested into comp_corpus.
+    // Retracting does not un-harvest those rows, and no caller should imply it
+    // does.
+    async function retractPublishedComp(userId, comp) {
+      if (!comp || !comp.published) return false;
+      if (comp.published_submission_id) {
+        await sbRequest("DELETE",
+          `comp_submissions?id=eq.${encodeURIComponent(comp.published_submission_id)}`,
+          undefined, { prefer: "return=minimal" });
+      }
+      await sbRequest("PATCH",
+        // user_id in the filter, always. Without it, knowing another broker's
+        // comp id would be enough to alter their data.
+        `broker_comps?id=eq.${encodeURIComponent(comp.id)}&user_id=eq.${encodeURIComponent(userId)}`,
+        { published: false, published_at: null, published_submission_id: null },
+        { prefer: "return=minimal" });
+      console.log(`Vault comp ${comp.id} retracted by user ${userId}`);
+      return true;
+    }
+
     // --- Publish / unpublish one comp ---------------------------------------
     //
     // Ecosystem Plan §4: the ONE sanctioned door through the privacy wall, and
@@ -11470,18 +11500,7 @@ const server = http.createServer((req, res) => {
 
           // --- unpublish ---
           if (publish === false) {
-            if (comp.published_submission_id) {
-              // Delete rather than mark rejected: fetchVerifiedComps selects on
-              // status, but a retracted comp should leave no public row at all.
-              await sbRequest("DELETE",
-                `comp_submissions?id=eq.${encodeURIComponent(comp.published_submission_id)}`,
-                undefined, { prefer: "return=minimal" });
-            }
-            await sbRequest("PATCH",
-              `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
-              { published: false, published_at: null, published_submission_id: null },
-              { prefer: "return=minimal" });
-            console.log(`Vault comp ${id} unpublished by user ${user.id}`);
+            await retractPublishedComp(user.id, comp);
             return sendJson(res, 200, { ok: true, published: false });
           }
 

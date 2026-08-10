@@ -641,6 +641,40 @@ test("admin gating", async (t) => {
       "dialogPick did not increase by exactly 1 after posting outcome:\"dialog_pick\"");
   });
 
+  // "undone" is the accuracy signal: the visitor overturning a type the
+  // detector asserted. Same round trip as above (allowlist and aggregation are
+  // still two separate places), plus the rule that makes the number readable —
+  // it is a VERDICT on an attempt, never an attempt itself, so it must leave
+  // `attempts` alone. Counted in the denominator, one wrong guess would dock
+  // the applied rate twice: once for being wrong, once for the row saying so.
+  await t.test("an undone correction counts, and does not inflate attempts", async () => {
+    const before = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(before.status, 200);
+    const start = (await before.json()).typeAutofill;
+    assert.equal(typeof start.undone, "number", "the tile needs an undone counter");
+    assert.equal(typeof start.undonePct, "number", "the tile needs a correction rate");
+
+    const post = await fetch(srv.base + "/api/type-autofill", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ outcome: "undone", type: "Office", address: "123 Test St, Dallas, TX" }),
+    });
+    assert.equal(post.status, 204);
+
+    let ta = start;
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const r = await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": ADMIN } });
+      ta = (await r.json()).typeAutofill;
+      if (ta.undone === start.undone + 1) break;
+      await new Promise((res) => setTimeout(res, 75));
+    }
+    assert.equal(ta.undone, start.undone + 1,
+      "undone did not increase by exactly 1 after posting outcome:\"undone\"");
+    assert.equal(ta.attempts, start.attempts,
+      "an undone row must not enter the attempts denominator");
+  });
+
   await t.test("the ?key= form still works for machine callers", async () => {
     const r = await fetch(srv.base + "/api/stats?key=" + encodeURIComponent(ADMIN));
     assert.equal(r.status, 200);

@@ -167,6 +167,10 @@ const HEADER_ALIASES = {
 // Every field a column may be mapped onto.
 const MAPPABLE_TARGETS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
 
+// The four fields normalizeRow refuses a row without. Kept here as one list so
+// the mapper and the row parser cannot disagree about what "required" means.
+const REQUIRED_TARGETS = ["address", "property_type", "transaction", "deal_date"];
+
 /**
  * Suggest a mapping from a file's headers onto our fields.
  *
@@ -208,6 +212,46 @@ function suggestMapping(headers) {
   }
 
   return { mapping, ambiguous };
+}
+
+/**
+ * Validate a confirmed mapping before anything is imported. Refuses rather
+ * than repairing: a mapping we quietly fixed is a mapping the broker did not
+ * actually approve.
+ */
+function validateMapping(mapping, headers) {
+  const errors = [];
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
+    return { ok: false, errors: ["No column mapping was supplied."] };
+  }
+
+  const present = new Set(
+    (Array.isArray(headers) ? headers : []).map(normalizeHeader).filter(Boolean)
+  );
+  const claimedBy = new Map();
+
+  for (const [source, target] of Object.entries(mapping)) {
+    if (!present.has(source)) {
+      errors.push(`The file has no column called "${source}".`);
+      continue;
+    }
+    if (!MAPPABLE_TARGETS.includes(target)) {
+      errors.push(`"${target}" is not a field we store.`);
+      continue;
+    }
+    if (claimedBy.has(target)) {
+      errors.push(`Two columns are both mapped to ${target}: "${claimedBy.get(target)}" and "${source}". Pick one.`);
+      continue;
+    }
+    claimedBy.set(target, source);
+  }
+
+  const missing = REQUIRED_TARGETS.filter((t) => !claimedBy.has(t));
+  if (missing.length) {
+    errors.push(`Still needed: ${missing.join(", ")}.`);
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
 // --- value readers -----------------------------------------------------------
@@ -801,6 +845,7 @@ module.exports = {
   parseCsv,
   normalizeHeader,
   suggestMapping,
+  validateMapping,
   parseMoney,
   parseNumber,
   parseCoord,
@@ -819,4 +864,5 @@ module.exports = {
   MAX_ROWS_PER_UPLOAD,
   HEADER_ALIASES,
   MAPPABLE_TARGETS,
+  REQUIRED_TARGETS,
 };

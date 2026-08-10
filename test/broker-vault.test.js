@@ -18,6 +18,7 @@ const {
   canPublish, creditName, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
+  validateMapping,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -644,4 +645,55 @@ test("two headers normalizing to the same string mark that target ambiguous", ()
   // Both normalize to "sale_price" which is an alias for "price"
   assert.equal(mapping.sale_price, undefined, "ambiguous alias should not be suggested");
   assert.ok(ambiguous.includes("price"), "price target should be marked ambiguous");
+});
+
+// --- column mapping: refusals ------------------------------------------------
+//
+// These are the cases where a mapping could put a real number in the wrong
+// column. Every one refuses with a message naming the problem, in keeping with
+// the module's stance everywhere else.
+
+const HEADERS = ["Property Address", "Type", "Deal", "Closed", "Sale Price"];
+const GOOD = {
+  property_address: "address", type: "property_type",
+  deal: "transaction", closed: "deal_date", sale_price: "price",
+};
+
+test("a complete mapping is accepted", () => {
+  assert.deepEqual(validateMapping(GOOD, HEADERS), { ok: true, errors: [] });
+});
+
+test("a missing required field is refused and named", () => {
+  const { property_address, ...rest } = GOOD;
+  const r = validateMapping(rest, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /address/);
+});
+
+test("two columns claiming one field is refused", () => {
+  const r = validateMapping({ ...GOOD, type: "price" }, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /price/);
+});
+
+test("an unknown target is refused, not ignored", () => {
+  const r = validateMapping({ ...GOOD, sale_price: "profit" }, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /profit/);
+});
+
+test("a column that is not in the file is refused", () => {
+  const r = validateMapping({ ...GOOD, ghost_column: "notes" }, HEADERS);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /ghost_column/);
+});
+
+test("a column mapped to nothing is normal, not an error", () => {
+  const r = validateMapping(GOOD, [...HEADERS, "Listing Broker", "MLS ID"]);
+  assert.equal(r.ok, true);
+});
+
+test("a non-object mapping is refused rather than treated as empty", () => {
+  assert.equal(validateMapping(null, HEADERS).ok, false);
+  assert.equal(validateMapping("address", HEADERS).ok, false);
 });

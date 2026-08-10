@@ -379,15 +379,14 @@
        the search field are real guidance, not decoration. Still clearly
        lighter than typed ink (#1A2433). */
     .rd-in::placeholder { color: #68707E; }
-    /* The hint strip shows exactly one size sentence: the footprint
-       "estimated" note when it is showing, otherwise the standing
-       "pulled from public records" line. Done here rather than in JS
-       because four separate call sites toggle sizeEstimateNote's .hidden
-       (typed-over, record-backed size, address change, estimate landed) and
-       none of them should have to know a second element exists. Adjacent
-       sibling, so the two spans must stay in this order in the markup
-       (they live in the strip under the settings row since Direction N). */
-    #sizeEstimateNote:not(.hidden) + #sizeHint { display: none; }
+    /* There was a mutual-exclusivity rule here (#sizeEstimateNote hiding a
+       standing #sizeHint sentence) until 2026-08-10. Both the rule and that
+       sentence are gone: the size field moved into Refine, which states the
+       same fact beside the actual input, so the standing line on the main
+       form was saying it twice. #sizeEstimateNote survives alone — four call
+       sites still toggle its .hidden (typed-over, record-backed size, address
+       change, estimate landed) and it now simply shows or doesn't, with no
+       second element to swap out and therefore no ordering constraint. */
     /* The address is the form's one required decision, so it gets the
        largest text in the frame (Direction N). Still above the 16px iOS
        zoom floor documented at .rd-in. */
@@ -1120,12 +1119,35 @@
       <form id="compForm" class="rd-form">
         <!-- Direction N (owner-approved 2026-08-09): the address gets the full
              top row alone in the largest text on the form; the everyday
-             settings share one calm row of three below; the per-cell hints
-             and the type sentence merge into ONE strip under them. -->
+             settings share one calm row of three below. Direction N's separate
+             hint STRIP under those settings is gone (2026-08-10): it was the
+             only filled row in an otherwise white card, so the page's one band
+             of grey landed on its quietest text and read as a rule cutting the
+             card in half. Its contents live under the address now, which is
+             also where they belong — both sentences describe the building the
+             address just named, not the settings they were sitting beneath. -->
         <div class="rd-row">
           <div class="rd-cell">
             <label class="rd-lab" for="address">Property address</label>
             <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in rd-in-lg" />
+            <!-- aria-live on the type slot: the type can change without the
+                 visitor touching anything (OSM detection landing, a remembered
+                 type being recalled), and this line is the only thing that says
+                 so. Polite, not assertive — the confirm dialog restates the
+                 type with real buttons before any search runs.
+                 #sizeEstimateNote no longer has a standing sentence to hide
+                 (see the retired CSS rule in the style block), so it is a plain
+                 show/hide with no ordering constraint on what follows it. -->
+            <div class="text-xs text-[#68707E] mt-1.5">
+              <!-- A div, not the span it was in the strip: it sits directly
+                   above the type sentence now, and two inline spans would run
+                   the two together with no space the moment an estimate lands.
+                   The four call sites toggle it by id and never by tag. -->
+              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it under Refine if it's off.</div>
+              <span id="typeStatusLine" aria-live="polite"></span>
+              <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
+              <div id="typeAutoNote" class="mt-1"></div>
+            </div>
           </div>
           <!-- Still the single source of truth for the current type (and for the
                list of types every picker builds itself from), just no longer a
@@ -1206,24 +1228,6 @@
             <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="rd-in" />
           </div>
         </div>
-        <!-- The one hint strip (Direction N): every per-cell hint and the type
-             sentence merged into a single quiet line. The size pair keeps its
-             CSS mutual exclusivity (#sizeEstimateNote:not(.hidden) + #sizeHint
-             in the style block) — they MUST stay adjacent siblings, in this
-             order, because four JS call sites toggle only sizeEstimateNote's
-             .hidden and rely on that rule to swap the standing sentence out.
-             aria-live on the type slot: the type can change without the
-             visitor touching anything (OSM detection landing, a remembered
-             type being recalled), and this line is the only thing that says
-             so. Polite, not assertive — the confirm dialog restates the type
-             with real buttons before any search runs. -->
-        <div class="rd-row px-4 py-2 bg-[#FBFBF9] text-xs text-[#68707E]">
-          <span id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it under Refine if it's off.</span><span id="sizeHint">Size comes from public records automatically.</span>
-          <span id="typeStatusLine" class="ml-1" aria-live="polite"></span>
-          <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
-          <div id="typeAutoNote" class="mt-1"></div>
-        </div>
-
         <!-- Refine (optional; the address, price, lookback and focus live up
              top). Size moved back down here on 2026-08-10 when the price took
              its slot on the form: it is answered automatically on the great

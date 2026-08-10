@@ -10696,6 +10696,52 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // Read a broker's own CSV and report its shape, so they can map their
+    // columns onto ours. Stores NOTHING: a broker who cancels leaves no trace.
+    // The only persistence it touches is READING their remembered mapping.
+    if (req.method === "POST" && path === "/api/vault/inspect") {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 8e6 && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const user = await openVault();
+          if (!user) return;
+          // Its own limiter key: inspecting is cheap and a broker may retry the
+          // screen several times while an import is one deliberate act.
+          if (rateLimited("vaultinspect:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const { csv } = JSON.parse(body || "{}");
+          const info = VAULT.inspectCsv(String(csv || ""));
+          if (!info.ok) return sendJson(res, 400, { error: info.error });
+          sendJson(res, 200, {
+            headers: info.headers,
+            normalized: info.normalized,
+            samples: info.samples,
+            suggested: info.suggested,
+            ambiguous: info.ambiguous,
+            remembered: await getCsvMapping(user.id),
+            cleanTemplate: info.cleanTemplate,
+            rowCount: info.rowCount,
+            // Served rather than hard-coded in vault-page.js so the dropdown
+            // cannot drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS.
+            // Adding a per-type field stays a one-place change.
+            targets: VAULT.MAPPABLE_TARGETS,
+            required: VAULT.REQUIRED_TARGETS,
+          });
+        } catch (e) {
+          console.error("vault inspect failed:", e.message);
+          sendJson(res, 500, { error: "That file could not be read." });
+        }
+      });
+      return;
+    }
+
     // Public market benchmarks for the /vault gut check. POST, not GET:
     // market names carry commas ("Boise, ID") and a JSON body beats
     // query-string escaping.

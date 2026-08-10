@@ -314,6 +314,11 @@ async function runPage(comps, benchResult, opts) {
     if (u.indexOf("/api/vault/upload") === 0) {
       return opts.upload ? opts.upload() : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
     }
+    if (u.indexOf("/api/vault/comp") === 0) {
+      return opts.comp
+        ? opts.comp(init, u)
+        : Promise.resolve(jsonResponse(200, { ok: true, comp: {}, unpublished: false }));
+    }
     if (u.indexOf("/api/vault?") === 0) return Promise.resolve(jsonResponse(200, bootPayload.j));
     return Promise.reject(new Error("unexpected fetch in test: " + u));
   };
@@ -733,4 +738,150 @@ test("skipped # lines are reported, not dropped silently", async () => {
   assert.match(html, /Imported 3 comps/);
   assert.match(html, /10 note lines ignored/);
   assert.ok(html.indexOf("msg ok") >= 0, "ignoring our own notes is not a failure");
+});
+
+// ---------------------------------------------------------------------------
+// Row edit / delete (task 7)
+// ---------------------------------------------------------------------------
+
+test("each comp row offers an edit and a delete", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(html.includes("data-edit"), "rows need an edit control");
+  assert.ok(html.includes("data-del-comp"), "rows need a delete control");
+});
+
+test("deleting a comp is confirmed before it is sent", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /Delete this comp/,
+    "a hard delete with no undo must be confirmed by name");
+});
+
+test("row-action messages do not write into the closed uploader panel", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(html.includes('id="compMsg"'),
+    "#res lives inside #addSec, which ships closed, so a message written there is invisible");
+});
+
+test("the page says an edit unpublishes a published comp", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /unpublish|withdrawn from the public/i,
+    "a broker must not discover the retraction later");
+});
+
+test("the comps table footer still spans every column", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const heads = (html.match(/<th[^>]*data-k=/g) || []).length;
+  const foot = /colspan="(\d+)"/.exec(html.slice(html.indexOf("tblFoot")));
+  assert.ok(heads >= 9, "the header should still declare its columns");
+  assert.ok(foot, "the footer should still declare a colspan");
+});
+
+test("the emitted script still parses with the row actions in it", () => {
+  assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
+});
+
+// ---- Row edit / delete actually behave (beyond markup + parsing) ----------
+// The tests above only prove the controls exist and the script compiles —
+// the same gap the gut check and mapper reviews found. These drive the REAL
+// emitted script through Edit -> change a field -> Save, and through Delete,
+// against a stubbed /api/vault/comp, with a stubbed global confirm() since
+// the stub DOM has no window.confirm of its own.
+
+// The stub DOM in this file does not parse rendered HTML into live elements
+// (see stubDocument above) — getElementById auto-vivifies a blank stub the
+// first time an id is touched, whatever markup was written to innerHTML. So
+// "pre-filled" is checked against the rendered markup string itself, which
+// is exactly what a real browser would parse into the input's initial
+// .value, rather than through a stub .value that the harness cannot derive
+// from HTML.
+test("Edit reveals a form pre-filled from the comp already on the page, and Cancel restores the row", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", notes: "corner lot" });
+  const { doc } = await runPage([c1]);
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  const editHtml = doc.getElementById("tbody").innerHTML;
+  assert.match(editHtml, /id="edit_address" value="100 Main St"/,
+    "the form must be pre-filled from the comp the page already holds");
+  assert.match(editHtml, /id="edit_notes" value="corner lot"/);
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-cancel-edit]' ? { getAttribute: () => "1" } : null } });
+  await tick();
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/,
+    "cancelling must put the ordinary row back");
+  assert.ok(!doc.getElementById("tbody").innerHTML.includes('id="edit_address"'),
+    "the edit form must not still be on screen after Cancel");
+});
+
+test("Save sends only the changed field, and reports the unpublish warning", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", published: true });
+  let sentBody = null;
+  const { doc } = await runPage([c1], null, {
+    comp: (init) => {
+      sentBody = JSON.parse(init.body);
+      return Promise.resolve(jsonResponse(200, { ok: true, comp: {}, unpublished: true }));
+    },
+  });
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  // Simulate what a real browser's initial-value parse of the rendered
+  // markup already gave every input, since the stub DOM cannot derive it:
+  // every field starts equal to the comp's own value, then exactly one is
+  // touched. That is what makes "only the changed field travels" a real
+  // assertion here, not an artifact of the stub starting blank.
+  const EDIT_FIELDS = ["address", "property_type", "transaction", "deal_date",
+    "price", "size_sqft", "cap_rate", "tenancy", "year_built", "notes"];
+  EDIT_FIELDS.forEach((f) => {
+    doc.getElementById("edit_" + f).value = c1[f] == null ? "" : String(c1[f]);
+  });
+  doc.getElementById("edit_notes").value = "updated note";
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-save-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  assert.deepEqual(sentBody, { notes: "updated note" },
+    "only the field that actually changed should travel in the PATCH body");
+  assert.match(doc.getElementById("compMsg").textContent, /withdrawn from the public/i,
+    "a broker must be told a published comp was retracted by the edit");
+});
+
+test("a 400 from the server shows every listed problem, not just the first", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St" });
+  const { doc } = await runPage([c1], null, {
+    comp: () => Promise.resolve(jsonResponse(400, { error: "price is not a number; deal_date is required" })),
+  });
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+  doc.getElementById("edit_price").value = "abc";
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-save-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  assert.match(doc.getElementById("compMsg").textContent, /price is not a number; deal_date is required/,
+    "the whole 400 error must render, not a generic fallback");
+  assert.ok(doc.getElementById("tbody").innerHTML.includes('id="edit_price"'),
+    "a failed save must not close the editor and lose the broker's in-progress edit");
+});
+
+test("Delete confirms, then sends DELETE and reports an ordinary removal", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", published: false });
+  const calls = [];
+  const realConfirm = global.confirm;
+  global.confirm = (msg) => { calls.push(msg); return true; };
+  try {
+    const { doc } = await runPage([c1], null, {
+      comp: () => Promise.resolve(jsonResponse(200, { ok: true, unpublished: false })),
+    });
+    doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-del-comp]' ? { getAttribute: () => "c1" } : null } });
+    await tick();
+
+    assert.match(calls[0], /Delete this comp/, "the confirm text names the destructive action");
+    assert.equal(doc.getElementById("compMsg").textContent, "Deleted.");
+  } finally {
+    global.confirm = realConfirm;
+  }
 });

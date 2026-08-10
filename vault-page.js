@@ -159,6 +159,21 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
 .pubbtn.on{border-color:transparent;background:#E3F2EA;color:#06603A}
 .pubbtn[disabled]{opacity:.5;cursor:default}
+/* Row actions: plain text links, not buttons. The row already carries one
+   button (Publish); giving Edit/Delete the same weight would put three
+   competing calls to action on one line. */
+.lnk{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;
+  color:var(--ink-3);cursor:pointer;text-decoration:underline;white-space:nowrap}
+.lnk:hover{color:var(--ink)}
+.lnk.danger{color:var(--red)}
+.lnk.danger:hover{color:var(--red-deep)}
+td.rowact{white-space:nowrap}
+/* The inline edit row: one form spanning every column, not per-cell inputs —
+   a comp carries fields (cap_rate, tenancy, year_built, notes) the table has
+   no column for at all, so a per-cell form could not hold them. */
+.editrow label{display:flex;flex-direction:column;gap:2px;font-size:var(--t6);color:var(--ink-3)}
+.editrow input{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink);width:100%}
 .hide{display:none}
 /* ---- The market rollup: the page's lead view ----------------------------
    A broker with 400 comps learns nothing from 400 rows. This is the index to
@@ -507,13 +522,18 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <summary>Properties you have more than one deal on</summary>
         <div id="repRows"></div>
       </details>
+      <!-- #res, the obvious message target for a row action, lives inside
+           #addSec, a panel that ships CLOSED — a message written there is
+           invisible to a broker who never opened the uploader. Edit and
+           Delete get their own target instead. -->
+      <p id="compMsg" class="msg hide"></p>
       <div class="tw"><table id="tbl">
         <thead><tr>
           <th data-k="address">Address</th><th data-k="market">Market</th>
           <th data-k="property_type">Type</th><th data-k="transaction">Deal</th>
           <th data-k="deal_date">Date</th><th data-k="price" class="num">Price</th>
           <th data-k="size_sqft" class="num">Size</th><th data-k="price_per_sqft" class="num">$/SF</th>
-          <th data-k="published">Public</th>
+          <th data-k="published">Public</th><th></th>
         </tr></thead><tbody id="tbody"></tbody><tfoot id="tblFoot"></tfoot>
       </table></div>
       <!-- "above" used to point at a section in plain view. The uploader is a
@@ -611,6 +631,10 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
   var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false,bovsLoaded=false;
   var bench=null,benchFailed=false,benchLoaded=false;
+  // The one comp row currently swapped for an inline edit form, or null. Only
+  // one at a time: two open forms would double the "only changed fields
+  // travel" bookkeeping in saveComp for no real benefit.
+  var editingId=null;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -733,6 +757,33 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       return '<option value="'+esc(v)+'"'+(v===cur?" selected":"")+">"+esc(v)+"</option>"}).join("");
   }
 
+  function compById(id){
+    for(var i=0;i<comps.length;i++){ if(String(comps[i].id)===String(id))return comps[i]; }
+    return null;
+  }
+
+  // Every field PATCH /api/vault/comp accepts. The whole row becomes one form
+  // spanning the table's colspan, not ten per-cell inputs: a comp carries
+  // fields (cap_rate, tenancy, year_built, notes) the table itself has no
+  // column for, so a per-cell form could never reach them.
+  var EDIT_FIELDS=["address","property_type","transaction","deal_date",
+                   "price","size_sqft","cap_rate","tenancy","year_built","notes"];
+  var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
+    deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
+    tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
+
+  function editRow(c){
+    var fields=EDIT_FIELDS.map(function(f){
+      var v=c[f]==null?"":c[f];
+      return "<label>"+esc(EDIT_LABELS[f]||f)+
+        '<input type="text" id="edit_'+f+'" value="'+escA(v)+'"/></label>';
+    }).join("");
+    return '<tr class="editrow"><td colspan="10"><div class="row">'+fields+
+      '<button class="btn ghost" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
+      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button>'+
+      "</div></td></tr>";
+  }
+
   function render(){
     var rows=view().slice().sort(function(a,b){
       var x=a[sortK],y=b[sortK];
@@ -750,6 +801,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     renderChart(rows);
     renderRepeats(rows);
     $("tbody").innerHTML=rows.map(function(c){
+      // A row being edited replaces itself with the form, rather than the
+      // form appearing beside it: two representations of the same comp on
+      // screen at once is what "only changed fields travel" was written to
+      // avoid confusion about.
+      if(editingId===c.id)return editRow(c);
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
       // it goes through a button and a confirm.
@@ -760,10 +816,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         ? ' <span class="gcOut" title="'+escA(Math.abs(gutOutliers[c.id].pct)+"% "+
             (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
         : "";
+      var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
+        '">Edit</button> <button class="lnk danger" data-del-comp="'+esc(c.id)+'">Delete</button></td>';
       return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
         "</td><td>"+esc(c.transaction)+"</td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
-        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td></tr>";
+        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+actions+"</tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
     // current view, sealed under a double rule — the same figure the market
@@ -774,7 +832,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     renderStrip(rows,vps,vmed);
     $("tblFoot").innerHTML=vps.length
       ? '<tr><td class="lab" colspan="7">Median of '+vps.length+" priced sale"+(vps.length===1?"":"s")+
-        (rows.length===comps.length?"":" in this view")+'</td><td class="num">'+psf(vmed)+"</td><td></td></tr>"
+        (rows.length===comps.length?"":" in this view")+'</td><td class="num">'+psf(vmed)+"</td><td></td><td></td></tr>"
       : "";
     Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
       var on=th.getAttribute("data-k")===sortK;
@@ -1792,6 +1850,81 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       })
       .catch(function(){ b.disabled=false;
         $("res").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+  });
+
+  // ---- Row edit / delete -----------------------------------------------
+  // #compMsg carries every result from here: #res, the natural-looking
+  // target, lives inside #addSec, a panel that ships CLOSED, so a message
+  // written there would be invisible to a broker who never opened it.
+  function compMsg(text,bad){
+    var el=$("compMsg");
+    el.className=text?("msg "+(bad?"bad":"ok")):"msg hide";
+    el.textContent=text||"";
+  }
+
+  function openEditor(id){
+    if(!compById(id))return;
+    editingId=id;
+    render();
+  }
+
+  function closeEditor(){
+    editingId=null;
+    render();
+  }
+
+  async function deleteComp(id){
+    // Hard delete, no undo: confirm by name rather than with a generic prompt.
+    if(!confirm("Delete this comp? This cannot be undone."))return;
+    var r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
+      {method:"DELETE",credentials:"same-origin"});
+    var j=await r.json().catch(function(){return{};});
+    if(!r.ok)return compMsg(j.error||"Could not delete that comp.",true);
+    load();
+    compMsg(j.unpublished
+      ? "Deleted, and withdrawn from the public records."
+      : "Deleted.");
+  }
+
+  // Sends only CHANGED fields, so an untouched input can never overwrite a
+  // value with a stale copy the page happened to be holding.
+  async function saveComp(id,before){
+    var patch={},any=false;
+    EDIT_FIELDS.forEach(function(f){
+      var el=$("edit_"+f); if(!el)return;
+      var v=el.value.trim();
+      var was=before[f]==null?"":String(before[f]);
+      if(v!==was){patch[f]=v;any=true;}
+    });
+    if(!any){closeEditor();return;}
+    var r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
+      method:"PATCH",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
+    var j=await r.json().catch(function(){return{};});
+    // 400 and 409 both carry a sentence written for the broker, and a 400
+    // lists EVERY problem with the row rather than just the first. Show it
+    // whole: "You already have this comp." tells them what to do, "Could not
+    // save" does not.
+    if(!r.ok)return compMsg(j.error||"Could not save that change.",true);
+    closeEditor();
+    load();
+    compMsg(j.unpublished
+      ? "Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it."
+      : "Saved.");
+  }
+
+  // A second delegated listener beside the publish one above, rather than a
+  // rewrite of it: each early-returns when the click was not its own kind of
+  // button, so the two coexist safely on the same element.
+  $("tbody").addEventListener("click",function(e){
+    var d=e.target.closest("button[data-del-comp]");
+    if(d)return deleteComp(d.getAttribute("data-del-comp"));
+    var s=e.target.closest("button[data-save-edit]");
+    if(s)return saveComp(s.getAttribute("data-save-edit"),compById(s.getAttribute("data-save-edit"))||{});
+    var c=e.target.closest("button[data-cancel-edit]");
+    if(c)return closeEditor();
+    var b=e.target.closest("button[data-edit]");
+    if(b)return openEditor(b.getAttribute("data-edit"));
   });
 
   $("ups").addEventListener("click",function(e){

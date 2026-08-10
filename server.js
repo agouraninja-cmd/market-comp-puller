@@ -5822,13 +5822,32 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
    this exhibit's whole pitch is that the arithmetic checks out, so every
    figure in it appears correct and stays correct. */
 .anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:0;transform:translateY(6px);transition:opacity .4s ease-out,transform .4s ease-out}
+/* The row separators fade WITH their row. A collapsed table's borders are
+   painted by the TABLE, not by the row, so a row at opacity 0 still drew its
+   own rule: the body sat there as an empty ruled grid while the text arrived,
+   which reads as a loading skeleton rather than as a report being written.
+   Transitioning the border COLOUR is what keeps this layout-neutral — a
+   border swapped for an inset box-shadow paints the same and gives up the 1px
+   of height it contributes, shortening the table as it animates. The thead
+   rule is deliberately NOT included: its header text never fades, so a rule
+   under it is correct from the first frame. */
+.anim .exhibit tbody td{border-bottom-color:transparent;transition:border-bottom-color .4s ease-out}
+.anim .exhibit tfoot td{border-top-color:transparent;border-bottom-color:transparent;transition:border-top-color .4s ease-out,border-bottom-color .4s ease-out}
 .anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr,.anim .exhibit.on .mrow{opacity:1;transform:none}
-.anim .exhibit tbody tr:nth-child(1),.anim .exhibit .mrow:nth-of-type(1){transition-delay:.40s}
-.anim .exhibit tbody tr:nth-child(2),.anim .exhibit .mrow:nth-of-type(2){transition-delay:.47s}
-.anim .exhibit tbody tr:nth-child(3),.anim .exhibit .mrow:nth-of-type(3){transition-delay:.54s}
-.anim .exhibit tbody tr:nth-child(4){transition-delay:.61s}
-.anim .exhibit tbody tr:nth-child(5){transition-delay:.68s}
-.anim .exhibit tfoot tr{transition-delay:.75s}
+.anim .exhibit.on tbody td{border-bottom-color:#F0EFE9}
+.anim .exhibit.on tfoot td{border-top-color:#1A2433;border-bottom-color:#1A2433}
+/* The delays come LAST on purpose. A transition SHORTHAND resets
+   transition-delay to 0, and the tfoot rules above match at exactly the same
+   specificity as this one, so whichever is written later wins — put the
+   shorthands after these and the footer silently loses its stagger and
+   arrives with the first row. (Caught in the browser: the footer's rule was
+   99% opaque 300ms in, when it should not have started.) */
+.anim .exhibit tbody tr:nth-child(1),.anim .exhibit tbody tr:nth-child(1) td,.anim .exhibit .mrow:nth-of-type(1){transition-delay:.40s}
+.anim .exhibit tbody tr:nth-child(2),.anim .exhibit tbody tr:nth-child(2) td,.anim .exhibit .mrow:nth-of-type(2){transition-delay:.47s}
+.anim .exhibit tbody tr:nth-child(3),.anim .exhibit tbody tr:nth-child(3) td,.anim .exhibit .mrow:nth-of-type(3){transition-delay:.54s}
+.anim .exhibit tbody tr:nth-child(4),.anim .exhibit tbody tr:nth-child(4) td{transition-delay:.61s}
+.anim .exhibit tbody tr:nth-child(5),.anim .exhibit tbody tr:nth-child(5) td{transition-delay:.68s}
+.anim .exhibit tfoot tr,.anim .exhibit tfoot td{transition-delay:.75s}
 /* Stat cells and Method steps arrive one after another. */
 .anim .stats .stat,.anim .steps .step{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
 .anim .stats.on .stat,.anim .steps.on .step{opacity:1;transform:none}
@@ -5843,10 +5862,14 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 @media (prefers-reduced-motion:reduce){
   .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1;transform:none;transition:none}
   .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none;transition:none}
+  .anim .exhibit tbody td{border-bottom-color:#F0EFE9;transition:none}
+  .anim .exhibit tfoot td{border-top-color:#1A2433;border-bottom-color:#1A2433;transition:none}
 }
 @media print{
   .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1!important;transform:none!important}
   .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none!important}
+  .anim .exhibit tbody td{border-bottom-color:#F0EFE9!important}
+  .anim .exhibit tfoot td{border-top-color:#1A2433!important;border-bottom-color:#1A2433!important}
 }
 ${ACCOUNT_NAV_CSS}`;
 

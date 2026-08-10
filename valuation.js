@@ -193,9 +193,24 @@
     };
   }
 
+  // Is this displayed $/SF an outlier against the hero's displayed band?
+  // Returns null, or { dir, pct } where pct is the integer percent distance
+  // from the NEAREST band edge (+38 means 38% above the band top).
+  // CAUTION: 25% and the nearest-edge delta semantics are the SAME product rule as
+  // gut-check.js's OUTLIER_PCT/outlierOf and its band-delta math. Change them together.
+  var OUTLIER_PCT = 0.25;
+  function outlierOf(ppsf, band) {
+    if (!band || !(ppsf > 0)) return null;
+    var low = band.low, high = band.high;
+    if (!(low > 0) || !(high > 0) || high < low) return null;
+    if (ppsf > high * (1 + OUTLIER_PCT)) return { dir: "above", pct: Math.round(((ppsf - high) / high) * 100) };
+    if (ppsf < low * (1 - OUTLIER_PCT)) return { dir: "below", pct: Math.round(((low - ppsf) / low) * 100) };
+    return null;
+  }
+
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, compWeight, trendFactor,
-    valueFromComps,
+    valueFromComps, outlierOf, OUTLIER_PCT,
   };
 });

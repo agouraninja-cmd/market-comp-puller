@@ -21,7 +21,7 @@ const {
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
   inspectCsv, normalizedHeaderRow,
-  validateEdit, EDITABLE_FIELDS,
+  validateEdit, EDITABLE_FIELDS, isUuid,
   exportColumns, exportCsv, exportRowsWithCoords,
 } = require("../broker-vault");
 
@@ -395,6 +395,29 @@ test("validateEdit never reads a patch field outside the allowlist", () => {
     "a patch key outside EDITABLE_FIELDS must never be read: one that could set " +
     "user_id is an account-takeover primitive, and one that could set published " +
     "would put a row in the public corpus without the submission that credits it");
+});
+
+// --- the comp-id shape check -------------------------------------------------
+//
+// broker_comps.id is a uuid column (migration 013), so a malformed `?id=`
+// makes PostgREST reject the query and throw, rather than simply finding no
+// row. The PATCH/DELETE routes use isUuid to answer the SAME 404 an
+// unknown-but-well-formed id gets, before ever asking the database -- a
+// malformed id and someone else's id must look identical to the caller. This
+// can only be unit-tested here: the bare-environment route suite has no
+// session, so both routes answer 401 before the id is ever inspected, and
+// cannot observe this check from the outside.
+test("isUuid accepts a real uuid", () => {
+  assert.equal(isUuid("3fa85f64-5717-4562-b3fc-2c963f66afa6"), true);
+  assert.equal(isUuid("3FA85F64-5717-4562-B3FC-2C963F66AFA6"), true, "case-insensitive");
+});
+
+test("isUuid rejects what a broken client or a prober might send", () => {
+  assert.equal(isUuid("banana"), false);
+  assert.equal(isUuid(""), false);
+  assert.equal(isUuid("3fa85f64-5717-4562-b3fc-2c963f66afa6'"), false, "trailing quote");
+  assert.equal(isUuid("1=1; DROP TABLE broker_comps;--"), false, "SQL-ish string");
+  assert.equal(isUuid("3fa85f64-5717-4562-b3fc-2c963f66afa6%00"), false, "embedded null byte");
 });
 
 // --- a whole file ----------------------------------------------------------

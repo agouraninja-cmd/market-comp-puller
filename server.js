@@ -11564,6 +11564,15 @@ const server = http.createServer((req, res) => {
           }
           const id = new URL(req.url, "http://localhost").searchParams.get("id");
           if (!id) return sendJson(res, 400, { error: "Which comp?" });
+          // broker_comps.id is a uuid column, so a malformed id (not just an
+          // unknown one) makes PostgREST reject the query and this route's
+          // catch would otherwise answer 502 — our-server-broke, when the
+          // truth is caller-sent-nonsense. Answering 404 here, identically to
+          // an id that parses but doesn't exist below, is deliberate: from
+          // the caller's side a malformed id and someone else's id are the
+          // same "not in your vault", and treating them alike is also what
+          // stops this route confirming which ids are real by status code.
+          if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That comp isn't in your vault." });
 
           const rows = await sbRequest("GET",
             `broker_comps?id=eq.${encodeURIComponent(id)}` +

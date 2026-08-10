@@ -702,6 +702,19 @@ function normalizeRow(raw) {
   return errors.length ? { ok: false, errors } : { ok: true, row };
 }
 
+// broker_comps.id is a uuid column (migration 013), so PostgREST rejects a
+// malformed `?id=` outright and the caller's fetch throws. Checking the
+// SHAPE first lets the PATCH/DELETE routes answer the same 404 an unknown-
+// but-valid id already gets, instead of letting the thrown PostgREST error
+// fall into the generic catch and answer 502 — which reads as "our server
+// broke" for what is actually "the caller sent nonsense", and would also
+// tell a prober whether it is worth trying other ids by the status code
+// alone.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v) {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+
 // The fields a broker may change. Deliberately an ALLOWLIST built from the
 // two column constants rather than "everything on the row": a patch that
 // could set user_id would be an account-takeover primitive, and one that
@@ -1202,6 +1215,7 @@ module.exports = {
   normalizeRow,
   validateEdit,
   EDITABLE_FIELDS,
+  isUuid,
   parseUpload,
   csvCell,
   templateCsv,

@@ -180,9 +180,6 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .card .fine{color:var(--ink-3);font-size:var(--t6)}
 .card .fine.pub{color:var(--green);font-weight:600}
 /* ---- Chart + repeat-property blocks ---- */
-.panel{margin-top:var(--s6)}
-.panel h3{font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;margin:0 0 var(--s3)}
 /* Capped at the viewBox width so one SVG unit is one CSS pixel: the columns
    are drawn at a 24px maximum, and letting the chart stretch to a 1040px
    container would render them at ~40px, which is the heavy-saturated-block
@@ -236,22 +233,75 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
    <button>s get — .btn alone leaves it inline and underlined. */
 a.btn{display:inline-block;text-decoration:none;color:#fff}
 a.btn:hover{color:#fff}
-/* The section+section divider is drawn from DOM adjacency, which does not know
-   about display:none. With #firstRun hidden, #addSec became "a section after a
-   section" for the first time and picked up a rule above it — a stray line
-   across the top of a returning broker's workspace. Scoped to this one pair on
-   purpose: a blanket hidden-sibling rule would also strip the divider above
-   Leads on first run, where two hidden sections sit between it and #firstRun
-   and the divider is correct.
+/* ---- Deck rules (Vault Direction U, approved 2026-08-10) -----------------
+   This page is two products sharing one scroll: the book a broker keeps, and
+   the pipeline they work. As ten peer sections every heading was the same
+   19px serif over the same hairline, so nothing said where one ended and the
+   other began, and the uploader carried the same weight as 200 comps. A deck
+   rule is the level ABOVE h2 — serif label, ink rule, and the deck's one
+   action on the right — and there are exactly two of them.
    (No backticks in this file's comments: the whole page is one template
    literal, so a backtick here ends it and the module stops parsing.) */
-#firstRun.hide + #addSec{border-top:0;padding-top:0}
-/* Same rule, one section along. The mapping panel is only ever visible while
-   #addSec is hidden (it replaces the uploader), so its own section+section
-   divider would always be drawn under something invisible — and on a first
-   run, where everything above is hidden too, it lands as a stray line across
-   the top of the workspace. */
-#addSec.hide + #mapSec{border-top:0;padding-top:0}
+.deck{display:flex;align-items:baseline;gap:var(--s4);margin:var(--s8) 0 0}
+/* Load-bearing, and the reason is pure cascade order: .hide is declared far
+   above this block, so a later single-class rule that sets display BEATS it.
+   Without this line applyFirstRun's "deck hide" leaves a stray "Your book"
+   rule across the top of an empty vault — verified in a browser, not
+   reasoned about. Same trap, same fix, on .strip below. */
+.deck.hide{display:none}
+.dlab{font-family:var(--serif);font-weight:500;font-size:var(--t2);white-space:nowrap}
+.dln{flex:1;height:0;border-top:2px solid var(--ink);transform:translateY(-5px)}
+.dact{background:none;border:0;padding:var(--s2) 0;font-family:inherit;font-size:var(--t5);
+  font-weight:600;color:var(--red);cursor:pointer;white-space:nowrap}
+.dact:hover{color:var(--red-deep)}
+/* The uploader and the column mapper stopped being sections when they moved
+   under the book deck: a section would draw the section+section divider, and
+   both of these are transient panels that a returning broker opens on
+   purpose. Being divs also means the sections after them are never "a section
+   after a hidden section", which is what the two adjacency patches this
+   replaced were for. */
+.addpanel,.mappanel{margin-top:var(--s5)}
+/* The one hidden-sibling pair left. #rollupSec hides itself when the book has
+   no markets to roll up, and the divider above #compsSec would then be drawn
+   under nothing. Scoped to this pair on purpose, exactly like the two rules
+   this replaced: a blanket hidden-sibling rule would also strip the divider
+   above BOV, where the section above it is always visible. */
+#rollupSec.hide + #compsSec{border-top:0;padding-top:0}
+/* ---- The reading strip --------------------------------------------------
+   Gut check, the year chart and the repeat-property list used to be three
+   bordered panels between the filter row and the comps, so roughly 260px of
+   analysis stood in front of the data being analysed. Their three headline
+   figures come up here in the trust line's own ledger geometry, and each cell
+   opens the full panel it summarises. Nothing was deleted; it stopped being
+   mandatory reading. */
+.strip{border:1px solid var(--edge);border-radius:var(--r);background:#fff;
+  display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s5)}
+.strip.hide{display:none}   /* see the .deck.hide note above */
+.scell{padding:var(--s4) var(--s5);border:0;border-left:1px solid var(--hair);
+  background:none;font-family:inherit;text-align:left;color:inherit}
+.scell:first-child{border-left:0}
+.scell.act{cursor:pointer}
+.scell.act:hover{background:var(--wash)}
+.slab{display:block;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:var(--s2)}
+.sfig{font-family:var(--serif);font-weight:500;font-size:22px;line-height:1.2;color:var(--ink)}
+.sfig.ok{color:var(--green)}
+.ssub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1)}
+.scell.act .ssub{color:var(--red)}
+@media (max-width:640px){
+  .strip{grid-template-columns:1fr}
+  .scell{border-left:0;border-top:1px solid var(--hair)}
+  .scell:first-child{border-top:0}
+}
+/* The three panels the strip summarises, collapsed. A details/summary carries
+   its own open state, so the strip only has to set .open — there is no second
+   copy of "is this panel showing" to drift. */
+.dbox{border:1px solid var(--line);border-radius:var(--r);background:#fff;
+  padding:var(--s3) var(--s5);margin-top:var(--s4)}
+.dbox>summary{cursor:pointer;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;user-select:none;list-style-position:inside}
+.dbox>summary:hover{color:var(--ink)}
+.dbox[open]>summary{margin-bottom:var(--s4)}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
 </style></head><body>
 <header class="hdr"><div class="wrap">
@@ -296,14 +346,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
       The figures below are drawn from those, so your full book may be larger.</p>
 
-    <!-- The lead view, deliberately above "Add comps": a broker who already has
-         a book opens this page to read it, not to upload again. It hides itself
-         when the vault is empty, so a first-time broker still lands on the
-         uploader with nothing in the way. -->
-    <section id="rollupSec" class="hide">
-      <h2>Your markets</h2>
-      <div class="cards" id="rollup"></div>
-    </section>
 
     <!-- ------------------------------------------------------------------
          First run. Shown only when the vault is genuinely empty (no comps
@@ -322,12 +364,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
          consolation prize.
          ------------------------------------------------------------------ -->
     <section id="firstRun" class="hide">
-      <h2>Start here</h2>
       <div class="steps">
         <div class="step">
           <span class="stepn">1</span>
           <div>
-            <h3>Build your comp set</h3>
+            <h3>Build your own comp set</h3>
             <p>Upload closed deals.</p>
             <ul>
               <li>Appears in your reports</li>
@@ -390,20 +431,33 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       </div>
     </section>
 
-    <section id="addSec">
-      <h2>Add comps</h2>
+    <!-- ------------------------------------------------------------------
+         The book deck. Everything from here to the pipeline rule is the
+         broker's own data: what they have, and where it came from.
+
+         "Add comps" used to be a full section ABOVE the comps table, so a
+         broker with 200 comps opened their book and was shown an uploader
+         first. It is the deck's action now, and the panel opens on click (or
+         on dragging a file anywhere over the page). The first-run panel is
+         deliberately OUTSIDE this deck: on day one there is no book, and a
+         rule reading "Your book" over an empty one is the same 0-0 scoreboard
+         the trust line is hidden to avoid.
+         ------------------------------------------------------------------ -->
+    <div class="deck hide" id="deckBook">
+      <span class="dlab">Your book</span><span class="dln"></span>
+      <button class="dact" id="addToggle" aria-expanded="false" aria-controls="addSec">+ Add comps</button>
+    </div>
+
+    <div id="addSec" class="addpanel hide">
       <div class="drop" id="drop">
         <button class="btn" id="pick">Choose a spreadsheet</button>
         <p>or drop a .csv here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
         <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
       </div>
       <div id="res"></div>
-    </section>
+    </div>
 
-    <!-- Sits AFTER #addSec, not between it and #firstRun: the divider rule
-         above #firstRun.hide + #addSec is drawn from DOM adjacency, and a
-         section wedged in between silently breaks it. See the CSS comment. -->
-    <section id="mapSec" class="hide">
+    <div id="mapSec" class="mappanel hide">
       <h2>Match your columns</h2>
       <p class="sub" style="margin-top:0">We found <span id="mapRows">0</span> rows.
         Tell us which of your columns is which, then import. Nothing is saved until you do.</p>
@@ -418,6 +472,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <button class="btn" id="mapGo">Import</button>
         <button class="btn ghost" id="mapCancel">Cancel</button>
       </div>
+    </div>
+
+    <section id="rollupSec" class="hide">
+      <h2>Your markets</h2>
+      <div class="cards" id="rollup"></div>
     </section>
 
     <section id="compsSec">
@@ -431,19 +490,23 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
       </div>
-      <div class="panel hide" id="gutBox">
-        <h3>Gut check &middot; your numbers vs the market</h3>
+      <!-- Three readings, then the data. Each cell that has a panel behind it
+           is a button that opens it; a cell with nothing behind it renders as
+           a plain figure, so the affordance is never a lie. -->
+      <div class="strip hide" id="readStrip"></div>
+      <details class="dbox hide" id="gutBox">
+        <summary>Gut check &middot; your numbers vs the market</summary>
         <div class="cards" id="gutCards"></div>
         <p class="note" id="gutNote"></p>
-      </div>
-      <div class="panel chart hide" id="chartBox">
-        <h3 id="chartTitle">Median $/SF by year</h3>
+      </details>
+      <details class="dbox chart hide" id="chartBox">
+        <summary id="chartTitle">Median $/SF by year</summary>
         <div id="chartWrap"></div>
-      </div>
-      <div class="panel hide" id="repBox">
-        <h3>Properties you have more than one deal on</h3>
+      </details>
+      <details class="dbox hide" id="repBox">
+        <summary>Properties you have more than one deal on</summary>
         <div id="repRows"></div>
-      </div>
+      </details>
       <div class="tw"><table id="tbl">
         <thead><tr>
           <th data-k="address">Address</th><th data-k="market">Market</th>
@@ -453,8 +516,31 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
           <th data-k="published">Public</th>
         </tr></thead><tbody id="tbody"></tbody><tfoot id="tblFoot"></tfoot>
       </table></div>
-      <div class="empty hide" id="none">Nothing here yet. Upload a spreadsheet above.</div>
+      <!-- "above" used to point at a section in plain view. The uploader is a
+           closed panel now, so this names the control that opens it. -->
+      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet.</div>
+      <!-- Imports is provenance for the table it now sits under, not a tenth
+           peer section at the foot of the page. Collapsed, because the one
+           thing a broker does here (remove an import) is rare and destructive,
+           and the one thing it told them at a glance (how many files) is
+           already on the ledger's Comps cell. -->
+      <details class="dbox" id="importsSec">
+        <summary>Imports</summary>
+        <div id="ups"></div>
+      </details>
     </section>
+
+    <!-- ------------------------------------------------------------------
+         The pipeline deck: work coming IN, rather than work already done.
+         Deliberately no action on this rule — the market-adding form
+         (#covForm) is relocated to the top of the leads section directly
+         beneath it, so a control here would point at something already on
+         screen. (The approved Direction U card drew one; it was redundant
+         once the form landed a line below it.)
+         ------------------------------------------------------------------ -->
+    <div class="deck hide" id="deckPipe">
+      <span class="dlab">Your pipeline</span><span class="dln"></span>
+    </div>
 
     <!-- Display only since 2026-08-10: the market-adding form (#covForm) lives
          in Start-here step 2 on a first run and is moved to the top of this
@@ -507,11 +593,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       </table></div>
       <div class="empty hide" id="noBovs">Nothing logged yet. Request an introduction above,
         or log a BOV you got elsewhere.</div>
-    </section>
-
-    <section id="importsSec">
-      <h2>Imports</h2>
-      <div id="ups"></div>
     </section>
   </div>
 </div></main>
@@ -690,6 +771,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // each other. No priced sales = no row; a double rule over a blank would
     // claim a figure that does not exist.
     var vps=psfList(rows),vmed=median(vps);
+    renderStrip(rows,vps,vmed);
     $("tblFoot").innerHTML=vps.length
       ? '<tr><td class="lab" colspan="7">Median of '+vps.length+" priced sale"+(vps.length===1?"":"s")+
         (rows.length===comps.length?"":" in this view")+'</td><td class="num">'+psf(vmed)+"</td><td></td></tr>"
@@ -774,25 +856,37 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // sample sizes and dates ride on every number, and the whole panel says
   // "untrended" once at the bottom. Divergence copy is "worth a look" —
   // never a claim the broker's data is wrong.
+  // What the reading strip's middle cell says, set by whichever branch of
+  // renderGutCheck actually ran. Deliberately a side effect rather than a
+  // changed return type: the return value is the outlier map the table reads,
+  // and widening it would touch the one caller for no gain.
+  //   null            = no verdict to show (strip cell renders a dash)
+  //   {unavailable:1} = benchmarks did not load
+  //   {inLine,total}  = how many buckets sit inside the band
+  var lastGut=null;
   function renderGutCheck(rows){
     var box=$("gutBox");
-    if(typeof GUTCHECK==="undefined"){box.className="panel hide";return {};}
+    lastGut=null;
+    if(typeof GUTCHECK==="undefined"){box.className="dbox hide";return {};}
     if(benchFailed){
+      lastGut={unavailable:true};
       // Only worth saying over comps it would have described: with the
       // current filter showing nothing, an "unavailable" line above an empty
       // table reads as a second breakage rather than a degraded extra.
-      if(!rows.length){box.className="panel hide";$("gutCards").innerHTML="";return {};}
-      box.className="panel";
+      if(!rows.length){lastGut=null;box.className="dbox hide";$("gutCards").innerHTML="";return {};}
+      box.className="dbox";
       $("gutCards").innerHTML="";
       $("gutNote").textContent="Market benchmarks are unavailable right now. Your comps are unaffected.";
       return {};
     }
-    if(!bench){box.className="panel hide";return {};}
+    if(!bench){box.className="dbox hide";return {};}
     var gc=GUTCHECK.gutCheck(rows,bench);
     var withData=gc.buckets.filter(function(b){return b.verdict!=="no_data"});
     // An all-"no data" panel reads as broken; hide it entirely instead.
-    if(!withData.length){box.className="panel hide";$("gutCards").innerHTML="";return gc.outliers;}
-    box.className="panel";
+    if(!withData.length){box.className="dbox hide";$("gutCards").innerHTML="";return gc.outliers;}
+    lastGut={total:withData.length,
+      inLine:withData.filter(function(b){return b.verdict==="in_line"}).length};
+    box.className="dbox";
     var V={in_line:"In line with the market",above:"Above the market band",below:"Below the market band"};
     $("gutCards").innerHTML=withData.map(function(b){
       var chip='<span class="gcv'+(b.verdict==="in_line"?" ok":"")+'">'+V[b.verdict]+
@@ -853,14 +947,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // trend. Below it the honest thing is to say so, not to draw one column
     // and let it imply a direction. Silence would read as a broken panel.
     if(pts.length<2||total<3){
-      box.className="panel chart";
+      box.className="dbox chart";
       $("chartTitle").textContent="Median $/SF by year";
       $("chartWrap").innerHTML='<p class="note">A price trend needs priced sales in at least two years. '+
         (total?"There "+(total===1?"is 1":"are "+total)+" here so far.":"There are none in this view yet.")+"</p>";
-      if(!rows.length)box.className="panel chart hide";
+      if(!rows.length)box.className="dbox chart hide";
       return;
     }
-    box.className="panel chart";
+    box.className="dbox chart";
     $("chartTitle").textContent="Median $/SF by year \\u00b7 "+total+" priced sales";
 
     var W=600,H=190,L=44,R=8,T=16,B=34;               // B leaves room for the year band
@@ -909,6 +1003,51 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // property would be the same table with extra chrome, since most addresses
   // appear exactly once. Hidden entirely when there are no repeats, rather
   // than shown empty.
+  // ---- The reading strip ---------------------------------------------------
+  // Three headline figures over the comps table, each one already computed by
+  // the panel it summarises — the median comes from the same psfList/median
+  // pair that seals the table's own footer, so the strip and the closing row
+  // can never quote different numbers.
+  //
+  // A cell is a BUTTON only when there is a panel behind it to open. Rendering
+  // an affordance over a hidden panel would be a control that does nothing,
+  // which is worse than a plain figure.
+  function stripCell(lab,fig,sub,target,ok){
+    var tag=target?"button":"div",
+        cls="scell"+(target?" act":""),
+        attr=target?' type="button" data-open="'+target+'"':"";
+    return "<"+tag+' class="'+cls+'"'+attr+'><span class="slab">'+lab+"</span>"+
+      '<div class="sfig'+(ok?" ok":"")+'">'+fig+"</div>"+
+      (sub?'<div class="ssub">'+sub+"</div>":"")+"</"+tag+">";
+  }
+  function renderStrip(rows,vps,vmed){
+    var box=$("readStrip");
+    // Nothing on screen means nothing to summarise. The empty-table line below
+    // says what is going on; a strip of dashes above it would not.
+    if(!rows.length){box.className="strip hide";box.innerHTML="";return;}
+    var cells=[];
+    cells.push(stripCell("Median $/SF",vps.length?psf(vmed):"&mdash;",
+      vps.length?vps.length+" priced sale"+(vps.length===1?"":"s"):"no priced sales",
+      $("chartBox").className.indexOf("hide")<0?"chartBox":""));
+    var gv="&mdash;",gs="",gok=false;
+    if(lastGut&&lastGut.unavailable){ gs="benchmarks unavailable"; }
+    else if(lastGut){
+      gok=lastGut.inLine===lastGut.total;
+      gv=lastGut.total===1
+        ? (lastGut.inLine?"In line":"Off band")
+        : lastGut.inLine+" of "+lastGut.total;
+      gs=lastGut.total===1?"with the market":"markets in line";
+    }
+    cells.push(stripCell("vs market",gv,gs,
+      $("gutBox").className.indexOf("hide")<0?"gutBox":"",gok));
+    cells.push(stripCell("Repeat properties",lastReps.props||"&mdash;",
+      lastReps.props?lastReps.deals+" deals":"none in this view",
+      lastReps.props?"repBox":""));
+    box.innerHTML=cells.join("");
+    box.className="strip";
+  }
+
+  var lastReps={props:0,deals:0};
   function renderRepeats(rows){
     var by={},order=[];
     rows.forEach(function(c){
@@ -930,7 +1069,9 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     });
     var reps=order.map(function(k){return by[k]}).filter(function(g){return g.deals.length>1})
       .sort(function(a,b){return b.deals.length-a.deals.length});
-    $("repBox").className=reps.length?"panel":"panel hide";
+    lastReps={props:reps.length,
+      deals:reps.reduce(function(s,g){return s+g.deals.length},0)};
+    $("repBox").className=reps.length?"dbox":"dbox hide";
     // Cleared, not just hidden: a filtered-out market's rows left in the DOM
     // are the wrong answer waiting for whatever un-hides this next.
     if(!reps.length){ $("repRows").innerHTML=""; return; }
@@ -964,10 +1105,21 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // put the page back by RE-APPLYING this function rather than keeping a
   // second copy of the first-run rule that would drift from it.
   var firstRunCounts=[0,0];
+  // Whether the broker has OPENED the uploader this visit. It starts closed
+  // for a returning broker (the deck's action opens it) and is a plain flag
+  // rather than a class read back off the DOM, because the mapping panel
+  // hides #addSec out from under it and reading the class there would report
+  // "closed" and lose the broker's intent when the mapper is cancelled.
+  var addOpen=false;
   function applyFirstRun(compCount,uploadCount){
     firstRunCounts=[compCount,uploadCount];
     var first=compCount===0&&uploadCount===0;
     $("firstRun").className=first?"":"hide";
+    // Both decks stand down on a first run: there is no book to head, and the
+    // pipeline rule over a single section reads as furniture. The Start-here
+    // panel is the whole page then, exactly as before.
+    $("deckBook").className=first?"deck hide":"deck";
+    $("deckPipe").className=first?"deck hide":"deck";
     // The market form is ONE node, placed wherever the broker can see it:
     // its home (#covFormHome) in Start-here step 2 on a first run, the top of
     // the leads section otherwise (step 2 is hidden then, and a broker with a
@@ -976,14 +1128,27 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // import walks it home again, since this function re-applies both ways.
     if(first)$("covFormHome").appendChild($("covForm"));
     else $("leads").insertBefore($("covForm"),$("covRow"));
-    // The uploader lives in both places on first run, so the plain "Add comps"
-    // section stands down and step 1 owns it. Both buttons drive the same
-    // <input type=file>, so there is still only one upload path.
-    $("addSec").className=first?"hide":"";
+    // The uploader is step 1's job on a first run and the book deck's action
+    // otherwise, so it is closed by default in BOTH cases and this only
+    // re-asserts whatever the broker last chose. It deliberately does not
+    // force it shut on a first run: #res lives inside this panel, so an import
+    // that failed before it could raise the comp count would have written its
+    // error into something invisible. doImport opens it for exactly that.
+    setAddOpen(addOpen);
     $("trustLine").className=first?"trust hide":"trust";
     $("compsSec").className=first?"hide":"";
-    $("importsSec").className=first?"hide":"";
+    $("importsSec").className=first?"dbox hide":"dbox";
     $("bovSec").className=first?"hide":"";
+  }
+
+  // The single writer of the uploader's visibility. The deck action's label
+  // and aria-expanded ride with it so the control can never describe a state
+  // the panel is not in.
+  function setAddOpen(open){
+    addOpen=!!open;
+    $("addSec").className=addOpen?"addpanel":"addpanel hide";
+    $("addToggle").textContent=addOpen?"Close":"+ Add comps";
+    $("addToggle").setAttribute("aria-expanded",addOpen?"true":"false");
   }
 
   function renderUploads(ups){
@@ -1257,6 +1422,10 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // result can be SEEN: #res lives inside #addSec, which is hidden while
     // the panel is open, so a failure written there would be invisible.
     var viaMapper=!!mapInfo;
+    // Not via the mapper means every word about this import — "Importing", the
+    // row counts, the line-numbered errors — is written into #res, which lives
+    // inside the uploader panel. Open it, or the broker watches nothing happen.
+    if(!viaMapper)setAddOpen(true);
     $("pick").disabled=true;
     if(viaMapper){ $("mapGo").disabled=true; $("mapGo").textContent="Importing\\u2026"; }
     $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
@@ -1531,6 +1700,37 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   ["dragleave","drop"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.remove("over"); })});
   $("drop").addEventListener("drop",function(e){ upload(e.dataTransfer.files[0]) });
+  // The dropzone now sits in a panel that is closed by default, so a file
+  // dragged at the page would have nowhere to land and the feature would look
+  // deleted. Dragging a FILE anywhere over the window opens the panel; from
+  // there #drop's own handlers above behave exactly as they always have.
+  // Guarded on the deck being visible: on a first run step 1 owns the
+  // uploader, and a second one appearing mid-drag is the duplicate this page
+  // has always refused.
+  ["dragenter","dragover"].forEach(function(ev){
+    document.addEventListener(ev,function(e){
+      var t=e.dataTransfer&&e.dataTransfer.types;
+      if(!t||Array.prototype.indexOf.call(t,"Files")<0)return;
+      e.preventDefault();
+      if(!addOpen&&$("deckBook").className.indexOf("hide")<0)setAddOpen(true);
+    });
+  });
+  $("addToggle").addEventListener("click",function(){
+    setAddOpen(!addOpen);
+    if(addOpen)$("addSec").scrollIntoView({behavior:"smooth",block:"nearest"});
+  });
+  // One delegated handler for the strip: a cell that carries data-open owns a
+  // panel, and opening it is all it does. The details element holds its own
+  // state, so there is nothing here to keep in step with it.
+  $("readStrip").addEventListener("click",function(e){
+    var el=e.target,t=null;
+    while(el&&el!==this){ if(el.getAttribute&&el.getAttribute("data-open")){t=el.getAttribute("data-open");break;} el=el.parentNode; }
+    if(!t)return;
+    var d=$(t);
+    if(!d)return;
+    d.open=true;
+    d.scrollIntoView({behavior:"smooth",block:"nearest"});
+  });
   // Filtering is local now, so these redraw rather than refetch. renderRollup
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.

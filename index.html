@@ -11282,6 +11282,16 @@
       const canvas = await html2canvas(node, {
         scale: 2, backgroundColor: "#FBFBF9", useCORS: true,
         ignoreElements: (el) => el.id === "mapCard" || el.id === "copySummaryBtn" || el.id === "bovCtaWrap" || (el.classList && el.classList.contains("no-capture")),
+        // The entrance animations (#reportArea > *, .fade-in, .row-in) start
+        // every card at opacity 0 and rely on the animation's forwards fill
+        // to reach 1. Animations never run in html2canvas's cloned document,
+        // so without this override the whole capture paints transparent —
+        // the export was a correctly-sized blank PNG.
+        onclone: (doc) => {
+          const s = doc.createElement("style");
+          s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }";
+          doc.head.appendChild(s);
+        },
       });
       const a = document.createElement("a");
       a.download = exportFileName("png");

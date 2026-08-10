@@ -186,6 +186,19 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The "Manage billing" button 400s for a comped account (no Stripe
+  // customer behind either "admin" or "tester" status) — this pins that the
+  // emitted hydration script actually excludes BOTH, matching index.html's
+  // hasBillingHistory(). A prior version excluded only pro.admin, which left
+  // a comped tester clicking a button that always fails. A markup-only check
+  // (no redemption call needed) so it costs nothing against the route's
+  // per-IP limiter.
+  await t.test("the account-nav billing button excludes comped testers, not just admins", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    assert.match(html, /pro\.status\)&&pro\.status!=="none"&&!pro\.admin&&!pro\.tester/,
+      "ACCOUNT_NAV_JS's navBilling visibility must exclude pro.tester alongside pro.admin");
+  });
+
   // /brokers' "Upgrade to Pro" link hides itself for members via the shared
   // hydration script. Two halves that must both exist or the link either
   // never hides (id missing from the script) or never renders (id missing

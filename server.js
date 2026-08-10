@@ -4418,7 +4418,8 @@ const CN_LOGO_LIGHT =
 //   Your vault          pro.canUseVault, never a plan test, and NOT gated on
 //                       `billing` — a comped admin has the vault with no Stripe
 //   Manage billing      a Stripe customer exists (status set, not "none") and
-//                       is not the comped "admin" status, which has no portal
+//                       is not the comped "admin" or "tester" status, neither
+//                       of which has a Stripe customer behind it
 const ACCOUNT_NAV_CSS = `
 /* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.
    Load-bearing: .hdr nav .dd a sets display:block, which out-specifies the
@@ -4487,7 +4488,7 @@ const ACCOUNT_NAV_JS =
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
   `show($("navUpgrade"),live&&!isPro);` +
-  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin);` +
+  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin&&!pro.tester);` +
   `});` +
   `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
@@ -13663,4 +13664,10 @@ server.listen(PORT, () => {
   } else {
     console.log("⭐ Pro tier disabled (set PRO_ENABLED=on once the Pro DDL has been run).");
   }
+  // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
+  // with migration 022 not yet run looks like a working deployment until a
+  // real tester's redemption 500s.
+  console.log(TESTER_PASSKEY
+    ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
+    : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
 });

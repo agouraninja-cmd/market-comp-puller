@@ -1027,6 +1027,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` for comped Pro on the
+  signed-in caller's account (401 if not signed in, rate-limited per IP). See
+  `TESTER_PASSKEY` above for what the grant covers.
 - `GET /dev`, `GET /api/devlog`, `GET|PUT /api/dev-ideas` — the **Development
   Hub**: an internal changelog + future-ideas page, gated by the same
   `ADMIN_KEY` (and sessionStorage key) as `/admin`, with the same triple-noindex

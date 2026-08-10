@@ -10332,6 +10332,10 @@
     const input = document.getElementById("passkeyInput");
     const btn = document.getElementById("passkeySubmit");
     const msg = document.getElementById("passkeyMsg");
+    // Re-entrancy guard: the click handler is protected by btn.disabled, but
+    // Enter-in-the-input calls this directly, so a fast double-Enter could
+    // otherwise fire two redeem requests against the route's 5-per-15min cap.
+    if (btn.disabled) return;
     const code = input.value.trim();
     if (!code) return;
     msg.classList.add("hidden");

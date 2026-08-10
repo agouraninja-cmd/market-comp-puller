@@ -5788,6 +5788,66 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
   footer .wrap{flex-direction:row}
   footer .right{flex-shrink:0}
 }
+/* ---------------------------------------------------------------------------
+   Scroll choreography (owner-approved 2026-08-10). The page draws the report
+   as you reach it: blocks fade up, the exhibit's ink rules sweep out from the
+   left, the value ledger counts up to its figures, and the comp rows deal in.
+
+   THREE RULES HOLD THIS TOGETHER.
+
+   Every hiding rule is scoped under html.anim, and the only thing that sets
+   that class is the inline script in <head>. With JS off, broken, or still
+   arriving, the page renders whole. This is the site's SEO surface AND its
+   login door, so no content may strand itself invisible behind an animation
+   that never ran — the same reason the observer's fallback path reveals
+   everything at once rather than doing nothing.
+
+   The hero deliberately does NOT fade. Its h1 is the LCP element, so hiding
+   it for 450ms would trade a real page-speed metric for decoration nobody
+   has scrolled to yet. Above the fold, only the sample exhibit moves.
+
+   data-rv marks an element the observer watches; the rv CLASS additionally
+   fades it up. They are separate because the exhibits need the trigger
+   WITHOUT the fade — their own rules, rows and figures do the moving, and a
+   parent fading at the same time would just blur all of it. */
+.anim .rv{opacity:0;transform:translateY(12px);transition:opacity .45s ease-out,transform .45s ease-out}
+.anim .rv.on{opacity:1;transform:none}
+/* Ink rules draw left to right. clip-path, not scaleX: scaling a 1.5px border
+   blurs it at fractional widths, and it would squash the label riding on the
+   same line instead of wiping it in beside the rule. */
+.anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:inset(0 100% 0 0);transition:clip-path .55s ease-out}
+.anim .exhibit.on .secrule,.anim .exhibit.on .mmed{clip-path:inset(0 0 0 0)}
+/* Comp rows deal in behind the rules. The stagger is per-row CSS rather than
+   per-element JS, so it costs nothing at runtime. Their NUMBERS never animate:
+   this exhibit's whole pitch is that the arithmetic checks out, so every
+   figure in it appears correct and stays correct. */
+.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:0;transform:translateY(6px);transition:opacity .4s ease-out,transform .4s ease-out}
+.anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr,.anim .exhibit.on .mrow{opacity:1;transform:none}
+.anim .exhibit tbody tr:nth-child(1),.anim .exhibit .mrow:nth-of-type(1){transition-delay:.40s}
+.anim .exhibit tbody tr:nth-child(2),.anim .exhibit .mrow:nth-of-type(2){transition-delay:.47s}
+.anim .exhibit tbody tr:nth-child(3),.anim .exhibit .mrow:nth-of-type(3){transition-delay:.54s}
+.anim .exhibit tbody tr:nth-child(4){transition-delay:.61s}
+.anim .exhibit tbody tr:nth-child(5){transition-delay:.68s}
+.anim .exhibit tfoot tr{transition-delay:.75s}
+/* Stat cells and Method steps arrive one after another. */
+.anim .stats .stat,.anim .steps .step{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
+.anim .stats.on .stat,.anim .steps.on .step{opacity:1;transform:none}
+.anim .stats .stat:nth-child(2),.anim .steps .step:nth-child(2){transition-delay:.07s}
+.anim .stats .stat:nth-child(3),.anim .steps .step:nth-child(3){transition-delay:.14s}
+.anim .stats .stat:nth-child(4){transition-delay:.21s}
+/* A counting figure reserves its finished width before the first tick (the
+   script measures it and sets min-width), so a number growing from 0 to
+   $4,580,000 never reflows the cell it sits in. */
+.cu{display:inline-block}
+/* Motion is decoration. These two contexts get the finished page instead. */
+@media (prefers-reduced-motion:reduce){
+  .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1;transform:none;transition:none}
+  .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none;transition:none}
+}
+@media print{
+  .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1!important;transform:none!important}
+  .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none!important}
+}
 ${ACCOUNT_NAV_CSS}`;
 
 // One Q/A array feeds both the visible FAQ block and the FAQPage JSON-LD, so
@@ -6139,10 +6199,24 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     // report unlock, and "free / every report" reads as denying both. Same
     // wording the approved Direction E card carried.
     ["Free", "To start"],
-    ["Up to 12", "Cited comps per report"],
+    ["Up to 12", "Cited comps per report", "12"],
     ["~1 min", "Search to report"],
-    ["100%", "Sources disclosed"],
-  ].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+    ["100%", "Sources disclosed", "100"],
+  ].map(([n, l, cu]) => {
+    // The third entry is the numeral that counts up on scroll. Only two of the
+    // four have one, on purpose: "Free" has no number, and counting to 1 looks
+    // like a bug rather than an effect. A cell with no numeral just fades in
+    // with the rest of the row.
+    //
+    // The numeral is named in an ATTRIBUTE and the copy is left as one plain
+    // string; the script splits it out at runtime. Wrapping it in a span here
+    // instead would break "Up to 12" into three nodes, and that phrase is a
+    // promise about the product pinned by test/public-pages.test.js — the
+    // served page has to keep saying it in one piece, to that test and to
+    // anything else reading the HTML.
+    const count = cu ? ` data-count="${cu}"` : "";
+    return `<div class="stat"><div class="n"${count}>${n}</div><div class="l">${l}</div></div>`;
+  }).join("");
 
   // Illustrative sample, clearly captioned as such — the same exhibit that
   // used to sit on the home page. Figures are representative, not a live pull.
@@ -6185,8 +6259,18 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // The full exhibit names the statistic under "Likely"; the hero's compact
   // copy leaves it off, because its own median row says it one line below and
   // the extra words wrap the cell to two lines at that width.
+  // The dollar figure counts up on scroll. Like the stat strip, it names its
+  // numeral in an attribute and leaves the copy alone — the script does the
+  // splitting, so the served page still reads "$4,580,000" as one string.
+  // Derived from the display value rather than carried as a second numeric
+  // field, so the two can never disagree; a figure that stops matching this
+  // shape simply gets no counter rather than a broken one.
+  const countAttr = (fig) => {
+    const m = /^\$([\d,]+)$/.exec(fig);
+    return m ? ` data-count="${m[1]}"` : "";
+  };
   const ledgerCells = (nameMedian) => sampleLedger.map(([lab, fig, sub], i) =>
-    `<div class="lcell${i === 1 ? " mid" : ""}"><span class="lab">${lab}</span><div class="fig">${fig}</div>` +
+    `<div class="lcell${i === 1 ? " mid" : ""}"><span class="lab">${lab}</span><div class="fig"${countAttr(fig)}>${fig}</div>` +
     `<div class="psf">${sub}${nameMedian && i === 1 ? " &middot; comp median" : ""}</div></div>`).join("");
 
   const steps = [
@@ -6315,7 +6399,7 @@ ${ACCOUNT_NAV_JS}
             <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
           </div>
         </div>
-        <div class="exhibit exmini">
+        <div class="exhibit exmini" data-rv>
           <div class="cap"><span>Sample report &middot; Industrial</span><span>Illustrative</span></div>
           <div class="exbody">
             <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
@@ -6327,16 +6411,16 @@ ${ACCOUNT_NAV_JS}
         </div>
       </div>
     </section>
-    <div class="stats">${stats}</div>
+    <div class="stats" data-rv>${stats}</div>
   </div>
 
   <div class="wrap">
-    <section>
+    <section class="rv" data-rv>
       <div class="kicker">The Report</div>
       <h2 class="h">One page that answers, then proves.</h2>
       <p class="sub">A value range for the subject, what's driving prices in the market, and the comp table behind
         both, with a confidence badge on every source.</p>
-      <div class="exhibit">
+      <div class="exhibit" data-rv>
         <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
         <div class="exbody">
           <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
@@ -6373,21 +6457,21 @@ ${ACCOUNT_NAV_JS}
   </div>
 
   <div class="band"><div class="wrap">
-    <section>
+    <section class="rv" data-rv>
       <div class="kicker">Method</div>
       <h2 class="h">How a report comes together.</h2>
-      <div class="steps">${steps}</div>
+      <div class="steps" data-rv>${steps}</div>
     </section>
   </div></div>
 
   <div class="wrap">
-    <section id="faq">
+    <section id="faq" class="rv" data-rv>
       <div class="kicker">Questions</div>
       <h2 class="h" style="margin-bottom:20px">FAQ</h2>
       ${faqBlock}
     </section>
 
-    <div class="cta">
+    <div class="cta rv" data-rv>
       <h2 class="h" style="font-size:22px">See it on your own building.</h2>
       ${signedIn
         ? `<p>Reports are free and take about a minute. Run one on your own building.</p>
@@ -6431,7 +6515,78 @@ ${ACCOUNT_NAV_JS}
       </div>
     </div>
   </div>
-</footer>`;
+</footer>
+<script>
+(function(){
+  if(!document.documentElement.classList.contains("anim"))return;
+  var targets=[].slice.call(document.querySelectorAll("[data-rv]"));
+  // Split each counting numeral into its own span HERE rather than in the
+  // served HTML, so the page as delivered still reads "Up to 12" and
+  // "$4,580,000" as single strings for crawlers, for anything grepping it,
+  // and for a visitor with no JS at all. data-count carries the numeral as it
+  // is displayed, commas and all, which is what makes it findable in the text.
+  var counters=[];
+  [].slice.call(document.querySelectorAll("[data-count]")).forEach(function(el){
+    var shown=el.getAttribute("data-count"),text=el.textContent,at=text.indexOf(shown);
+    if(at<0)return;
+    var span=document.createElement("span");
+    span.className="cu";
+    span.setAttribute("data-to",shown.replace(/,/g,""));
+    span.textContent=shown;
+    el.textContent="";
+    if(at)el.appendChild(document.createTextNode(text.slice(0,at)));
+    el.appendChild(span);
+    var tail=text.slice(at+shown.length);
+    if(tail)el.appendChild(document.createTextNode(tail));
+    counters.push(span);
+  });
+  // Measure every counter at its FINAL value first — the server rendered the
+  // real figure, and nothing has been hidden or ticked yet — then pin that
+  // width. Without this a figure counting up to $4,580,000 grows a character
+  // at a time and shoves the cell around it on every frame.
+  counters.forEach(function(el){
+    var w=el.getBoundingClientRect().width;
+    if(w)el.style.minWidth=w+"px";
+  });
+  function countUp(el){
+    var to=Number(el.getAttribute("data-to"));
+    if(!isFinite(to))return;
+    var t0=null;
+    function step(ts){
+      if(t0===null)t0=ts;
+      var p=Math.min(1,(ts-t0)/900);
+      el.textContent=Math.round(to*(1-Math.pow(1-p,3))).toLocaleString("en-US");
+      if(p<1)requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  // A counter belongs to its NEAREST watched ancestor. Without this the
+  // section wrapping an exhibit would fire the exhibit's figures too, and
+  // they would count twice from two different scroll positions.
+  targets.forEach(function(el){el._cu=[];});
+  counters.forEach(function(el){
+    var owner=el.closest?el.closest("[data-rv]"):null;
+    if(owner&&owner._cu)owner._cu.push(el);else countUp(el);
+  });
+  var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Motion turned down, or a browser without the pieces: show the finished
+  // page at once. Never do nothing — that is the one outcome that leaves
+  // content hidden, and the CSS has already hidden it by this point.
+  if(reduce||!("IntersectionObserver" in window)||!window.requestAnimationFrame){
+    targets.forEach(function(el){el.classList.add("on");});
+    return;
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(!en.isIntersecting)return;
+      en.target.classList.add("on");
+      (en.target._cu||[]).forEach(countUp);
+      io.unobserve(en.target);
+    });
+  },{threshold:.08,rootMargin:"0px 0px -40px 0px"});
+  targets.forEach(function(el){io.observe(el);});
+})();
+</script>`;
 
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
@@ -6449,7 +6604,15 @@ ${ACCOUNT_NAV_JS}
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
     `<script type="application/ld+json">${jsonLd}</script>\n` +
-    `<style>${HOW_CSS}</style>\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
+    `<style>${HOW_CSS}</style>\n` +
+    // The ONE thing that arms the scroll choreography. Every rule that hides
+    // anything is scoped under html.anim, so a visitor with JS off — or a
+    // crawler, or anyone whose network drops this byte — gets the finished
+    // page rather than a blank one. It runs in <head>, before first paint, so
+    // the class is present for the very first frame and nothing flashes in
+    // and then hides itself.
+    `<script>document.documentElement.classList.add("anim")</script>\n` +
+    `</head>\n<body>\n${body}\n</body>\n</html>\n`;
 }
 
 

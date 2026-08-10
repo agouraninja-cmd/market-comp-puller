@@ -485,7 +485,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (`isAggregateAddress`), is forced to `estimate` no matter what the model
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
-  normalization is a guarantee. **Cached**: identical requests
+  normalization is a guarantee. **Source-link check (2026-08-09).** After the
+  report is parsed and normalized, and before the cache write, harvest, market
+  snapshot, and the `gate()` funnel, `applySourceLinkCheck` (server.js) checks
+  each comp's `source_url`: max 12 unique URLs in parallel under one 2.5s
+  budget, HEAD with a GET-on-405 fallback, redirects never followed (one hop
+  could steer past the DNS guard; a 3xx counts as live), DNS resolved first and
+  private/loopback answers refused (the URLs are model-supplied, so this is an
+  SSRF guard, not a nicety). Rules live in the pure, tested **`link-check.js`**:
+  bot-walled hosts (loopnet, cityfeet, propertyshark, commercialsearch, costar,
+  crexi, zillow, redfin, realtor) are never fetched and never demoted; only
+  DNS-gone/404/410 count as dead; a dead-linked comp is demoted to `estimate`
+  (dead at birth usually means the citation was never real), keeping its
+  `source_url` as the audit trail; broker-`verified` comps are exempt. It runs
+  inside `getComps`, so the Explorer inherits it and the served report, cache,
+  corpus, and shares all agree; the backtest and corpus retrieval need no
+  changes because `estimate` is already excluded from both. Fails open on any
+  error. Counts ride a `link_check` analytics event packed into the `source`
+  column (the analytics schema is fixed). Link rot on existing corpus rows
+  deliberately does nothing; the sweep is deferred (see the spec).
+  **Cached**: identical requests
   within a 30-day TTL (7 days until 2026-08-03 — widened as a cost lever) are
   served from the `search_cache` layer (Supabase table
   `search_cache`, keyed by a SHA-256 of address+type+note+window+size+a

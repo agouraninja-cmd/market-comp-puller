@@ -32,7 +32,7 @@ function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
   return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Your vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
+<title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
 <meta name="theme-color" content="#FBFBF9"/>
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
@@ -66,7 +66,6 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
 main{flex:1;padding:var(--s7) 0 var(--s9)}
-.kicker{font-size:var(--t6);letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
 h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var(--t1);line-height:1.15}
 .sub{color:var(--ink-2);max-width:62ch;margin:var(--s4) 0 0}
 /* The trust line. A broker does not hand over their book of business because
@@ -245,10 +244,9 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
 </div></header>
 <main><div class="wrap">
-  <p class="kicker">Broker workspace</p>
-  <h1 class="h">Your vault</h1>
+  <h1 class="h">Broker Vault</h1>
   <p class="sub">Your own comp data, private to you. Upload a spreadsheet and it comes back
-    organized &mdash; sortable and filterable by property and by market.</p>
+    organized.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes

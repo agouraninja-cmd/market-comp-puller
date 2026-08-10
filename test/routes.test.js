@@ -174,6 +174,7 @@ test("bare environment", async (t) => {
       ["POST",   "/api/vault/upload"],
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/vault/benchmarks"],
+      ["POST",   "/api/vault/inspect"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {
@@ -197,6 +198,19 @@ test("bare environment", async (t) => {
     // repo to distrust.
     const r = await fetch(srv.base + "/api/vault");
     assert.notEqual(r.status, 404, "/api/vault should exist and refuse, not be absent");
+  });
+
+  // The mapper's own route. It reads no vault rows, but it answers through the
+  // same gate as everything else here on purpose: a fifth route is a fifth
+  // chance for openVault's three refusals to drift, which is what this file is
+  // for. /api/vault/benchmarks set the precedent.
+  await t.test("/api/vault/inspect is gated like the rest of the vault", async () => {
+    const r = await fetch(srv.base + "/api/vault/inspect", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ csv: "address\n1 A St, Boise, ID\n" }),
+    });
+    assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
   });
 
   // NOT COVERED HERE, and deliberately: the 403-not-a-broker and

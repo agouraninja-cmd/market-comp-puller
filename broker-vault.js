@@ -142,6 +142,160 @@ function normalizeHeader(name) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+/**
+ * The normalized header vector for a raw header row.
+ *
+ * A header can be non-empty and still normalize to "": normalizeHeader strips
+ * every non-alphanumeric character, so "$", "#", "%" and "($)" all reduce to
+ * nothing. Those columns are real and often meaningful — the comment above
+ * TEMPLATE_COLUMNS names "$" as a header brokers use for price — so each gets
+ * a positional synthetic key rather than silently disappearing from the
+ * mapping screen, which is the exact failure this feature exists to prevent.
+ *
+ * A TRULY blank header keeps its "" and stays excluded, so trailing commas
+ * still cost nothing and two trailing blanks still do not collide.
+ *
+ * This is the ONE place that decision is made. `inspectCsv`, `validateMapping`
+ * and `parseUpload` all route through it rather than each calling
+ * `normalizeHeader` directly, because a mapping built against one of these and
+ * checked or applied against another is exactly how a broker's "$" column
+ * would pass the mapping screen and then fail (or silently vanish) on import.
+ */
+function normalizedHeaderRow(rawHeaders) {
+  return (Array.isArray(rawHeaders) ? rawHeaders : []).map((h, i) => {
+    const n = normalizeHeader(h);
+    if (n) return n;
+    return String(h == null ? "" : h).trim() ? `column_${i}` : "";
+  });
+}
+
+// --- column mapping --------------------------------------------------------
+//
+// Aliases a broker's own export is likely to use, keyed on normalizeHeader
+// output. This does NOT overturn the "we do not guess" decision above
+// TEMPLATE_COLUMNS: nothing here is applied silently. A suggestion is shown
+// beside two or three of that column's real values and the broker confirms it
+// before anything is written.
+const HEADER_ALIASES = {
+  address:       ["property_address", "prop_address", "street_address", "site_address", "addr"],
+  property_type: ["type", "prop_type", "asset_type", "product_type"],
+  transaction:   ["deal_type", "transaction_type", "sale_or_lease", "lease_or_sale"],
+  deal_date:     ["sale_date", "close_date", "closing_date", "transaction_date", "sold_date", "date"],
+  price:         ["sale_price", "sales_price", "purchase_price", "sold_price"],
+  size_sqft:     ["sf", "sq_ft", "sqft", "square_feet", "square_footage", "building_sf", "building_size", "size"],
+  cap_rate:      ["cap", "going_in_cap", "cap_pct"],
+  tenancy:       ["tenancy_type"],
+  year_built:    ["yr_built", "built", "year_constructed"],
+  notes:         ["comments", "remarks", "note"],
+  lat:           ["latitude"],
+  lng:           ["longitude", "long", "lon"],
+};
+
+// Every field a column may be mapped onto.
+const MAPPABLE_TARGETS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
+
+// The four fields normalizeRow refuses a row without. Kept here as one list so
+// the mapper and the row parser cannot disagree about what "required" means.
+const REQUIRED_TARGETS = ["address", "property_type", "transaction", "deal_date"];
+
+/**
+ * Suggest a mapping from a file's headers onto our fields.
+ *
+ * The ambiguity rule is the load-bearing part: a target is suggested only when
+ * exactly ONE column claims it. "Sale Price" and "Consideration" both mean
+ * price, and breaking that tie ourselves is the failure the original decision
+ * was written to prevent.
+ */
+function suggestMapping(headers) {
+  const norm = (Array.isArray(headers) ? headers : []).map(normalizeHeader);
+
+  // Which columns claim each target, exact matches tracked separately so a
+  // literal `price` column can settle a tie an alias would otherwise create.
+  const exact = new Map();   // target -> [normalized header]
+  const alias = new Map();   // target -> [normalized header]
+  const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+
+  for (const h of norm) {
+    if (!h) continue;
+    if (MAPPABLE_TARGETS.includes(h)) { push(exact, h, h); continue; }
+    for (const [target, list] of Object.entries(HEADER_ALIASES)) {
+      if (list.includes(h)) push(alias, target, h);
+    }
+  }
+
+  const mapping = {};
+  const ambiguous = [];
+  const used = new Set();
+
+  for (const target of MAPPABLE_TARGETS) {
+    const hits = exact.get(target) || alias.get(target) || [];
+    const free = hits.filter((h) => !used.has(h));
+    if (free.length === 1) {
+      mapping[free[0]] = target;
+      used.add(free[0]);
+    } else if (free.length > 1) {
+      ambiguous.push(target);
+    }
+  }
+
+  return { mapping, ambiguous };
+}
+
+/**
+ * Validate a confirmed mapping before anything is imported. Refuses rather
+ * than repairing: a mapping we quietly fixed is a mapping the broker did not
+ * actually approve.
+ */
+function validateMapping(mapping, headers) {
+  const errors = [];
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
+    return { ok: false, errors: ["No column mapping was supplied."] };
+  }
+
+  // normalizedHeaderRow, not a bare normalizeHeader map: a header like "$"
+  // that normalizes away entirely still gets a positional `column_N` key
+  // over there, and this set has to agree or a mapping built against
+  // inspectCsv's own output is refused as "no column called column_0".
+  const present = new Set(normalizedHeaderRow(headers).filter(Boolean));
+  const claimedBy = new Map();
+
+  for (const [source, target] of Object.entries(mapping)) {
+    if (!present.has(source)) {
+      errors.push(`The file has no column called "${source}".`);
+      continue;
+    }
+    if (!MAPPABLE_TARGETS.includes(target)) {
+      errors.push(`"${target}" is not a field we store.`);
+      continue;
+    }
+    if (claimedBy.has(target)) {
+      errors.push(`Two columns are both mapped to ${target}: "${claimedBy.get(target)}" and "${source}". Pick one.`);
+      continue;
+    }
+    claimedBy.set(target, source);
+  }
+
+  const missing = REQUIRED_TARGETS.filter((t) => !claimedBy.has(t));
+  if (missing.length) {
+    errors.push(`Still needed: ${missing.join(", ")}.`);
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+/**
+ * Rename a header row per a confirmed mapping. Unmapped columns are renamed to
+ * a name nothing matches, rather than left alone: a file may contain a literal
+ * `price` column the broker chose NOT to map, and leaving it would collide
+ * with the column they did map.
+ */
+function applyHeaderMapping(headers, mapping) {
+  const m = mapping && typeof mapping === "object" ? mapping : {};
+  return (Array.isArray(headers) ? headers : []).map((h, i) =>
+    Object.prototype.hasOwnProperty.call(m, h) ? m[h] : `_ignored_${i}`
+  );
+}
+
 // --- value readers -----------------------------------------------------------
 
 const text = (v, max = MAX_TEXT) =>
@@ -331,6 +485,72 @@ function addressKey(v) {
     .trim();
 }
 
+/**
+ * Read a CSV's shape without importing it: headers, a few real values per
+ * column, and a suggested mapping. Writes nothing and decides nothing; the
+ * broker confirms what this proposes.
+ */
+function inspectCsv(csvText, { samples = 3 } = {}) {
+  const empty = {
+    ok: false, error: "", headers: [], normalized: [], samples: {},
+    suggested: {}, ambiguous: [], cleanTemplate: false, rowCount: 0,
+  };
+  const table = parseCsv(csvText);
+  if (!table.length) return { ...empty, error: "That file is empty." };
+
+  const headers = table[0];
+  // normalizedHeaderRow gives a header with real content that normalizes
+  // away entirely (e.g. "$") a positional `column_N` key rather than letting
+  // it vanish; `validateMapping` and `parseUpload` route through the SAME
+  // helper, so a mapping built against what this returns is recognized
+  // end-to-end rather than only on the inspection screen.
+  const normalized = normalizedHeaderRow(headers);
+
+  // A mapping is keyed on the normalised header name, so two columns sharing
+  // one name have no way to be told apart. Refuse rather than pick. The
+  // synthetic `column_N` keys above go through this same check, so a file
+  // that happens to ALSO have a literal "column_0" header collides with a
+  // "$" in the first column rather than silently merging the two.
+  const seen = new Set();
+  for (let i = 0; i < normalized.length; i++) {
+    const h = normalized[i];
+    if (!h) continue;
+    if (seen.has(h)) {
+      return { ...empty, error: `Two columns are both called "${headers[i]}". Rename one and upload again.` };
+    }
+    seen.add(h);
+  }
+
+  const body = table.slice(1);
+  const sampleMap = {};
+  for (let c = 0; c < normalized.length; c++) {
+    if (!normalized[c]) continue;
+    const vals = [];
+    for (const row of body) {
+      const v = String(row[c] == null ? "" : row[c]).trim();
+      if (v) vals.push(v);
+      if (vals.length >= samples) break;
+    }
+    sampleMap[normalized[c]] = vals;
+  }
+
+  const { mapping: suggested, ambiguous } = suggestMapping(headers);
+
+  // Clean means every non-empty header is already one of ours AND the four
+  // required fields are present. Requiring EVERY header to be known is what
+  // catches the silent case: a file with an unknown "Sq Ft" column imports
+  // today with no sizes and no explanation.
+  const nonEmpty = normalized.filter(Boolean);
+  const cleanTemplate =
+    nonEmpty.every((h) => MAPPABLE_TARGETS.includes(h)) &&
+    REQUIRED_TARGETS.every((t) => nonEmpty.includes(t));
+
+  return {
+    ok: true, error: "", headers, normalized, samples: sampleMap,
+    suggested, ambiguous, cleanTemplate, rowCount: body.length,
+  };
+}
+
 // --- one row -----------------------------------------------------------------
 
 /**
@@ -467,16 +687,29 @@ function normalizeRow(raw) {
  * comps. A file with NO readable header is a hard failure, because that is a
  * wrong-file mistake rather than a data mistake.
  */
-function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100 } = {}) {
+function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, mapping = null } = {}) {
   const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0 };
   const table = parseCsv(csvText);
   if (!table.length) {
     return { ...empty, errors: ["That file is empty."] };
   }
 
-  const headers = table[0].map(normalizeHeader);
+  // normalizedHeaderRow, not a bare map(normalizeHeader): applyHeaderMapping
+  // below has to be fed the SAME vector validateMapping just checked the
+  // mapping against, or a mapping keyed on a synthetic `column_N` (a "$"
+  // column, say) would pass validation and then be neutralized to
+  // `_ignored_N` here because this array never produced that key to match.
+  let headers = normalizedHeaderRow(table[0]);
+  if (mapping) {
+    // Validate BEFORE applying: an invalid mapping must refuse the upload, not
+    // import a partial one. Same stance as every other refusal in this module.
+    const check = validateMapping(mapping, table[0]);
+    if (!check.ok) return { ...empty, errors: check.errors };
+    headers = applyHeaderMapping(headers, mapping);
+  }
   // `address` is the one column nothing works without, so it doubles as the
-  // "is this even the template?" check.
+  // "is this even the template?" check. With a mapping applied it is always
+  // present, because validateMapping requires it.
   if (!headers.includes("address")) {
     return {
       ...empty,
@@ -732,6 +965,11 @@ module.exports = {
   submissionRowFrom,
   parseCsv,
   normalizeHeader,
+  normalizedHeaderRow,
+  suggestMapping,
+  validateMapping,
+  applyHeaderMapping,
+  inspectCsv,
   parseMoney,
   parseNumber,
   parseCoord,
@@ -748,4 +986,7 @@ module.exports = {
   OPTIONAL_SPEC_COLUMNS,
   PROPERTY_TYPES,
   MAX_ROWS_PER_UPLOAD,
+  HEADER_ALIASES,
+  MAPPABLE_TARGETS,
+  REQUIRED_TARGETS,
 };

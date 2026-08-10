@@ -10668,6 +10668,41 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // The broker's last confirmed CSV column mapping. A convenience only: it
+  // pre-fills the mapping screen, which they still confirm, so a stale mapping
+  // can never import the wrong thing. Both halves swallow their errors for that
+  // reason — losing it costs a few seconds, and failing an upload over it would
+  // cost the broker their spreadsheet.
+  async function getCsvMapping(userId) {
+    if (!DB_CONFIGURED || !userId) return null;
+    try {
+      const rows = await sbRequest("GET",
+        `broker_csv_mappings?user_id=eq.${encodeURIComponent(userId)}&select=mapping&limit=1`);
+      const m = rows && rows[0] && rows[0].mapping;
+      return m && typeof m === "object" && !Array.isArray(m) ? m : null;
+    } catch (e) {
+      console.warn("csv mapping read failed:", e.message);
+      return null;
+    }
+  }
+
+  async function saveCsvMapping(userId, mapping) {
+    if (!DB_CONFIGURED || !userId) return;
+    if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return;
+    try {
+      // Name the conflict target explicitly, matching every other
+      // merge-duplicates upsert in this file — do not "simplify" this back
+      // to PostgREST's implicit primary-key default; an unverified default
+      // makes this fail silently into the catch below with nothing
+      // reaching the broker.
+      await sbRequest("POST", "broker_csv_mappings?on_conflict=user_id",
+        [{ user_id: userId, mapping, updated_at: new Date().toISOString() }],
+        { prefer: "resolution=merge-duplicates,return=minimal" });
+    } catch (e) {
+      console.warn("csv mapping write failed:", e.message);
+    }
+  }
+
   // --- Broker vault (v1) ----------------------------------------------------
   //
   // A broker's private comp store. Plan:
@@ -10730,6 +10765,58 @@ const server = http.createServer((req, res) => {
       })().catch((err) => {
         console.error("vault template error:", err.message);
         sendJson(res, 500, { error: "Could not build the template." });
+      });
+      return;
+    }
+
+    // Read a broker's own CSV and report its shape, so they can map their
+    // columns onto ours. Stores NOTHING: a broker who cancels leaves no trace.
+    // The only persistence it touches is READING their remembered mapping.
+    if (req.method === "POST" && path === "/api/vault/inspect") {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 8e6 && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const user = await openVault();
+          if (!user) return;
+          // Its own limiter key: inspecting is cheap and a broker may retry the
+          // screen several times while an import is one deliberate act.
+          if (rateLimited("vaultinspect:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const { csv } = JSON.parse(body || "{}");
+          const info = VAULT.inspectCsv(String(csv || ""));
+          if (!info.ok) return sendJson(res, 400, { error: info.error });
+          sendJson(res, 200, {
+            headers: info.headers,
+            normalized: info.normalized,
+            samples: info.samples,
+            suggested: info.suggested,
+            ambiguous: info.ambiguous,
+            remembered: await getCsvMapping(user.id),
+            cleanTemplate: info.cleanTemplate,
+            rowCount: info.rowCount,
+            // Served rather than hard-coded in vault-page.js so the dropdown
+            // cannot drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS.
+            // Adding a per-type field stays a one-place change.
+            targets: VAULT.MAPPABLE_TARGETS,
+            required: VAULT.REQUIRED_TARGETS,
+          });
+        } catch (e) {
+          // Same guard as /api/vault/upload's, and it matters more here: V8
+          // QUOTES the input in a JSON.parse error ("Unexpected token 'a',
+          // \"address,pr\"... is not valid JSON"), so letting a malformed body
+          // reach the log below would print a fragment of a broker's private
+          // CSV into Render's logs. A bad body is the client's error anyway.
+          if (e instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault inspect failed:", e.message);
+          sendJson(res, 500, { error: "That file could not be read." });
+        }
       });
       return;
     }
@@ -10833,8 +10920,12 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
 
-          const { filename, csv } = JSON.parse(body || "{}");
-          const parsed = VAULT.parseUpload(csv);
+          const { filename, csv, mapping } = JSON.parse(body || "{}");
+          // `mapping` absent means today's behaviour byte for byte, so
+          // gen-market-seed.js and any existing caller are unaffected.
+          // parseUpload validates it and refuses the whole file if it is
+          // wrong, which is why nothing is checked here.
+          const parsed = VAULT.parseUpload(csv, { mapping: mapping || null });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -10858,6 +10949,10 @@ const server = http.createServer((req, res) => {
             { prefer: "return=representation" });
           const uploadId = batch && batch[0] && batch[0].id;
           if (!uploadId) throw new Error("broker_uploads insert returned no id");
+
+          // Saved only once the import actually succeeded, so a mapping that
+          // produced nothing usable is never offered back to them next time.
+          if (mapping) saveCsvMapping(user.id, mapping);
 
           // `market` is attached HERE, with server.js's own marketOf() and no
           // other parse, so broker_comps.market agrees byte for byte with

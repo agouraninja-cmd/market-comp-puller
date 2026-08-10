@@ -346,6 +346,20 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       </div>
     </section>
 
+    <section id="mapSec" class="hide">
+      <h2>Match your columns</h2>
+      <p class="sub" style="margin-top:0">We found <span id="mapRows">0</span> rows.
+        Tell us which of your columns is which, then import. Nothing is saved until you do.</p>
+      <table id="mapTable">
+        <thead><tr><th>Your column</th><th>Maps to</th><th>Sample values</th></tr></thead>
+        <tbody id="mapBody"></tbody>
+      </table>
+      <p class="note" id="mapIgnored"></p>
+      <p id="mapMsg" class="msg bad hide"></p>
+      <button class="btn" id="mapGo">Import</button>
+      <button class="btn ghost" id="mapCancel">Cancel</button>
+    </section>
+
     <section id="addSec">
       <h2>Add comps</h2>
       <div class="drop" id="drop">
@@ -1174,38 +1188,141 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .catch(function(){ $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
   });
 
+  var pending = null;   // {name, csv} held while the broker maps
+
+  function doImport(name, csv, mapping){
+    $("pick").disabled=true;
+    $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
+    var payload={filename:name,csv:csv};
+    if(mapping)payload.mapping=mapping;
+    fetch("/api/vault/upload",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        $("pick").disabled=false;
+        var j=o.j||{};
+        // Line-numbered problems are the point: a broker fixing a spreadsheet
+        // needs to know WHICH row, in the numbering Excel shows them.
+        var errs=(j.errors&&j.errors.length)?"<ul>"+j.errors.map(function(e){
+          return "<li>"+esc(e)+"</li>"}).join("")+"</ul>":"";
+        if(o.s!==200){
+          $("res").innerHTML='<div class="msg bad">'+esc(j.error||"That file could not be imported.")+errs+"</div>";
+          return;
+        }
+        var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
+        if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
+        if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
+        $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errs+"</div>";
+        load();
+      })
+      .catch(function(){ $("pick").disabled=false;
+        $("res").innerHTML='<div class="msg bad">The upload did not reach the server. Nothing was saved.</div>'; });
+  }
+
   function upload(file){
     if(!file)return;
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
     fr.onload=function(){
-      fetch("/api/vault/upload",{method:"POST",credentials:"same-origin",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({filename:file.name,csv:String(fr.result||"")})})
+      var csv=String(fr.result||"");
+      fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify({csv:csv})})
         .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
         .then(function(o){
           $("pick").disabled=false;
-          var j=o.j||{};
-          // Line-numbered problems are the point: a broker fixing a spreadsheet
-          // needs to know WHICH row, in the numbering Excel shows them.
-          var errs=(j.errors&&j.errors.length)?"<ul>"+j.errors.map(function(e){
-            return "<li>"+esc(e)+"</li>"}).join("")+"</ul>":"";
           if(o.s!==200){
-            $("res").innerHTML='<div class="msg bad">'+esc(j.error||"That file could not be imported.")+errs+"</div>";
+            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"That file could not be read.")+"</div>";
             return;
           }
-          var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
-          if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
-          if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
-          $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errs+"</div>";
-          load();
+          // A file already in our own column names skips the screen entirely.
+          if(o.j.cleanTemplate){ doImport(file.name,csv,null); return; }
+          pending={name:file.name,csv:csv};
+          openMapper(o.j);
         })
+        // Deliberately NOT a silent fallback to a strict upload: that would
+        // reintroduce the old rejection message under a different cause.
         .catch(function(){ $("pick").disabled=false;
-          $("res").innerHTML='<div class="msg bad">The upload did not reach the server. Nothing was saved.</div>'; });
+          $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
     };
     fr.readAsText(file);
   }
+
+  var mapInfo=null;
+
+  function openMapper(info){
+    mapInfo=info;
+    $("res").innerHTML="";
+    $("mapRows").textContent=String(info.rowCount);
+    // Remembered beats suggested: it is the broker's own previous decision.
+    var start={};
+    Object.keys(info.suggested||{}).forEach(function(k){ start[k]=info.suggested[k] });
+    Object.keys(info.remembered||{}).forEach(function(k){
+      if(info.normalized.indexOf(k)>=0)start[k]=info.remembered[k];
+    });
+    var rows=info.normalized.map(function(n,i){
+      if(!n)return "";
+      var opts=['<option value="">&mdash; ignore &mdash;</option>'].concat(
+        (info.targets||[]).map(function(t){
+          return '<option value="'+esc(t)+'"'+(start[n]===t?" selected":"")+">"+esc(t)+"</option>";
+        })).join("");
+      var samp=(info.samples[n]||[]).map(esc).join("<br>");
+      return "<tr><td>"+esc(info.headers[i])+'</td><td><select data-src="'+esc(n)+'">'+opts+
+             '</select></td><td class="note">'+samp+"</td></tr>";
+    }).join("");
+    $("mapBody").innerHTML=rows;
+    $("mapSec").classList.remove("hide");
+    $("addSec").classList.add("hide");
+    Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
+      s.addEventListener("change",refreshMapper);
+    });
+    refreshMapper();
+    $("mapSec").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  function currentMapping(){
+    var m={};
+    Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
+      if(s.value)m[s.getAttribute("data-src")]=s.value;
+    });
+    return m;
+  }
+
+  function refreshMapper(){
+    var m=currentMapping(), claimed=Object.keys(m).map(function(k){return m[k]});
+    var missing=(mapInfo.required||[]).filter(function(t){return claimed.indexOf(t)<0});
+    var ignored=(mapInfo.normalized||[]).filter(function(n){return n&&!m[n]});
+    // Naming the ignored columns is half the point: importing while quietly
+    // dropping a column is the silent failure this screen exists to end.
+    $("mapIgnored").textContent=ignored.length
+      ? "Will be ignored: "+ignored.join(", ")
+      : "Every column is mapped.";
+    if(missing.length){
+      $("mapMsg").textContent="Still needed: "+missing.join(", ");
+      $("mapMsg").classList.remove("hide");
+      $("mapGo").disabled=true;
+    }else{
+      $("mapMsg").classList.add("hide");
+      $("mapGo").disabled=false;
+    }
+  }
+
+  function closeMapper(){
+    $("mapSec").classList.add("hide");
+    $("addSec").classList.remove("hide");
+    pending=null; mapInfo=null;
+  }
+
+  $("mapGo").addEventListener("click",function(){
+    if(!pending)return;
+    var p=pending, m=currentMapping();
+    closeMapper();
+    doImport(p.name,p.csv,m);
+  });
+  $("mapCancel").addEventListener("click",function(){
+    closeMapper();
+    $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
+  });
 
   $("pick").addEventListener("click",function(){ $("file").click() });
   // Step 1's button is the same door as #pick — one <input type=file>, so an

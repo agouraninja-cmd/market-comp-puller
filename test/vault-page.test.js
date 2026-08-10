@@ -331,3 +331,28 @@ test("the tracker's empty state is a sentence, not an empty table", () => {
 test("the emitted script still parses with the tracker in it", () => {
   assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([]), CHROME))));
 });
+
+// ---------------------------------------------------------------------------
+// The CSV column mapper (task 8)
+// ---------------------------------------------------------------------------
+
+test("the mapping panel is present and hidden on first paint", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /id="mapSec"/);
+  assert.match(html, /<section id="mapSec" class="hide">/,
+    "it must not flash before a file is chosen");
+});
+
+test("the mapping panel names the ignored columns", () => {
+  // Silent dropping is half of what this feature fixes, so the page has to
+  // say which columns are being left out.
+  assert.match(renderVaultHTML(boot([comp({})]), CHROME), /id="mapIgnored"/);
+});
+
+test("the emitted script still parses with the mapper in it", () => {
+  // The whole page is one template literal, so a stray `${` or a
+  // single-backslash escape yields a blank workspace rather than a loud
+  // failure. This compiles what the browser would actually receive.
+  assert.doesNotThrow(() =>
+    new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
+});

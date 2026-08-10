@@ -42,11 +42,11 @@ const proEnt = computeEntitlements({
 
 // --- the gate itself -------------------------------------------------------
 
-test("free report is cut to 4 comps and says how many are locked", () => {
+test("free report is cut to 10 comps and says how many are locked", () => {
   const r = gateReport(report(Array.from({ length: 18 }, () => comp())), freeEnt, { asOfMs: NOW });
-  assert.equal(r.comps.length, 4);
-  assert.equal(r.locked_count, 14);
-  assert.equal(r.locked_basis.length, 14);
+  assert.equal(r.comps.length, 10);
+  assert.equal(r.locked_count, 8);
+  assert.equal(r.locked_basis.length, 8);
 });
 
 test("Pro gets everything and no basis rows", () => {
@@ -89,13 +89,13 @@ test("basis rows carry arithmetic only — no address, price, url, notes or coor
 
 test("a whole gated response leaks nothing about a locked comp", () => {
   const comps = [
-    ...Array.from({ length: 4 }, (_, i) => comp({ address: `${i} Visible Way, Dallas, TX`, date: "Jul 2026" })),
+    ...Array.from({ length: 10 }, (_, i) => comp({ address: `${i} Visible Way, Dallas, TX`, date: "Jul 2026" })),
     comp({ address: "999 SECRET BLVD, Dallas, TX", date: "Feb 2024", source_url: "https://secret.example" }),
   ];
   const wire = JSON.stringify(gateReport(report(comps), freeEnt, { asOfMs: NOW }));
   assert.ok(!wire.includes("SECRET"), "the locked comp's address must not appear anywhere in the response");
   assert.ok(!wire.includes("secret.example"));
-  assert.ok(wire.includes("Visible Way"), "the four visible comps still arrive in full");
+  assert.ok(wire.includes("Visible Way"), "the ten visible comps still arrive in full");
 });
 
 test("basis rows keep exactly the fields the valuation needs", () => {
@@ -120,34 +120,33 @@ test("a broker-verified locked comp keeps its tier but not its identity", () => 
   assert.ok(!("address" in row));
 });
 
-// --- which 4 get shown -----------------------------------------------------
+// --- which 10 get shown ------------------------------------------------------
 
 test("sales fill the free slots before leases", () => {
   const comps = [
     comp({ transaction: "Lease", address: "L1", date: "Jul 2026" }),
     comp({ transaction: "Lease", address: "L2", date: "Jul 2026" }),
-    comp({ transaction: "Sale", address: "S1", date: "Jan 2025" }),
-    comp({ transaction: "Sale", address: "S2", date: "Jan 2025" }),
-    comp({ transaction: "Sale", address: "S3", date: "Jan 2025" }),
-    comp({ transaction: "Sale", address: "S4", date: "Jan 2025" }),
+    comp({ transaction: "Lease", address: "L3", date: "Jul 2026" }),
+    ...Array.from({ length: 10 }, (_, i) =>
+      comp({ transaction: "Sale", address: `S${i + 1}`, date: "Jan 2025" })),
   ];
   const r = gateReport(report(comps), freeEnt, { asOfMs: NOW });
   const shown = r.comps.map((c) => c.address);
-  assert.deepEqual(shown, ["S1", "S2", "S3", "S4"],
+  assert.deepEqual(shown, Array.from({ length: 10 }, (_, i) => `S${i + 1}`),
     "even though the leases are far more recent, the valuation is sales-based");
 });
 
 test("leases fill the slots sales cannot", () => {
   const comps = [
-    comp({ transaction: "Lease", address: "L1" }),
-    comp({ transaction: "Lease", address: "L2" }),
     comp({ transaction: "Sale", address: "S1" }),
-    comp({ transaction: "Lease", address: "L3" }),
-    comp({ transaction: "Lease", address: "L4" }),
+    comp({ transaction: "Sale", address: "S2" }),
+    comp({ transaction: "Sale", address: "S3" }),
+    ...Array.from({ length: 10 }, (_, i) => comp({ transaction: "Lease", address: `L${i + 1}` })),
   ];
   const r = gateReport(report(comps), freeEnt, { asOfMs: NOW });
-  assert.equal(r.comps.length, 4);
-  assert.ok(r.comps.some((c) => c.address === "S1"), "the only sale is always shown");
+  assert.equal(r.comps.length, 10);
+  assert.ok(["S1", "S2", "S3"].every((a) => r.comps.some((c) => c.address === a)),
+    "every sale is always shown");
 });
 
 test("best-first: recent, well-sourced, similar-size comps win the slots", () => {

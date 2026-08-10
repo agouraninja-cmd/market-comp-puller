@@ -720,7 +720,7 @@
            FREE_MAX_LOOKBACK_MONTHS moves again, this paragraph, the Pro bullet
            and both plan-card strings all have to move with it. -->
       <p id="pricingSubtitle" class="text-sm text-[#68707E] mt-1">
-        Free reports look back 3 years and itemize four of the comps found.
+        Free reports look back 3 years and itemize ten of the comps found.
         Pro widens the search to ten years — the change that actually surfaces more
         transactions — and itemizes every one it finds, with the sources.
       </p>
@@ -736,7 +736,7 @@
           <span class="rd-lab">Free</span>
           <div class="pr-fig">$0</div>
           <div class="pr-per">forever</div>
-          <p class="pr-sum">The same value range Pro sees, four itemized comps, a 3-year window.</p>
+          <p class="pr-sum">The same value range Pro sees, ten itemized comps, a 3-year window.</p>
           <p class="text-xs text-[#68707E] mt-3">Your current plan</p>
         </div>
         <!-- Pro monthly -->
@@ -815,7 +815,7 @@
            rule. The first row leads with what the tiers SHARE — the full-set
            value range — the same honesty rule the free report itself keeps
            (comp-gate.js's locked_basis). Numbers here restate
-           entitlements.js (4 comps, 36 months, 5 exports/month with an
+           entitlements.js (10 comps, 36 months, 5 exports/month with an
            account) and must move with it, like the subtitle above. -->
       <button id="pricingCompareBtn" type="button" aria-expanded="false"
         class="text-xs text-[#68707E] hover:text-[#1A2433] underline decoration-[#D8D4C9] mt-3">Compare plans in detail</button>
@@ -825,7 +825,7 @@
           <thead><tr><th>Every report includes</th><th class="c">Free</th><th class="c pro">Pro</th></tr></thead>
           <tbody>
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
-            <tr><td>Comps itemized, with sources</td><td class="c">4</td><td class="c">All found</td></tr>
+            <tr><td>Comps itemized, with sources</td><td class="c">10</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
             <tr><td>CSV, image, PDF and Excel exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
             <tr><td>Private vault for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
@@ -9996,9 +9996,9 @@
       // Nothing deletes vault rows on lapse — the only delete paths are the
       // broker's own "remove this import" and account deletion — so saying so
       // is a statement of fact, not a reassurance we cannot keep.
-      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
+      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 10 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
     }
-    return { title: "Free", detail: "Reports itemize 4 comps and look back 3 years. The valuation still uses every comp we find." };
+    return { title: "Free", detail: "Reports itemize 10 comps and look back 3 years. The valuation still uses every comp we find." };
   }
 
   // Single owner of every billing control's visibility. Called after both

@@ -132,7 +132,7 @@ test("non-admins carry admin:false, so the UI can read one field", () => {
 
 // --- anonymous and free ----------------------------------------------------
 
-test("anonymous visitor: 4 comps, 12 months, one export", () => {
+test("anonymous visitor: FREE_MAX_COMPS comps, 12 months, one export", () => {
   const e = ent({ user: null });
   assert.equal(e.plan, "anonymous");
   assert.equal(e.pro, false);
@@ -160,7 +160,7 @@ test("the Address Explorer is Pro-only once the tier is on", () => {
     false, "expired");
 });
 
-test("free account: 4 comps and three exports a month", () => {
+test("free account: FREE_MAX_COMPS comps and three exports a month", () => {
   const e = ent({ user: USER });
   assert.equal(e.plan, "free");
   assert.equal(e.maxComps, FREE_MAX_COMPS);

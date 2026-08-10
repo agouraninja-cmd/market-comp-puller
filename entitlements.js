@@ -16,11 +16,11 @@
 // date, or a missing row all resolve to the free tier rather than to Pro.
 // ---------------------------------------------------------------------------
 
-// Free tier. 4 comps is the conversion driver — a free report is still a real
+// Free tier. 10 comps is the conversion driver — a free report is still a real
 // report (the valuation is computed from the FULL comp set; see the
 // locked-basis rows in server.js), but the itemized list is short enough that
 // a professional wants the rest.
-const FREE_MAX_COMPS = 4;
+const FREE_MAX_COMPS = 10;
 // Free lookback stops at 36 months — WIDENED from 12 on 2026-08-04, and the
 // reason matters more than the number.
 //

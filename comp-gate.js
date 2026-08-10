@@ -3,7 +3,7 @@
 // for the ones they don't.
 //
 // The rule this enforces: the itemized LIST is gated, the VALUATION is not.
-// A free report shows 4 comps but its headline value range is computed from
+// A free report shows 10 comps but its headline value range is computed from
 // every comp the search found, because an inaccurate free number would cost
 // more in credibility than the tier earns in subscriptions.
 //

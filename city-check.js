@@ -13,7 +13,9 @@
 
 // Ordered, deduped list of names to try: as typed, then a punctuation-to-space
 // variant, then a punctuation-stripped variant (each with whitespace
-// collapsed and a leading "St " expanded to "Saint "), deduped
+// collapsed and a leading "St "/"Ft "/"Mt " expanded to "Saint "/"Fort "/
+// "Mount " — GeoNames spells all three out, live-verified on Ft. Worth and
+// Mt. Vernon, both refused before the expansion existed), deduped
 // case-insensitively against what's already in the list. Up to three
 // requests total. Two variants exist because measured GeoNames/Zippopotam
 // behavior is inconsistent about what happens to punctuation in a place
@@ -25,7 +27,11 @@
 function cityVariants(city) {
   const typed = String(city || "").trim();
   if (!typed) return [];
-  const expand = (s) => s.replace(/\s+/g, " ").replace(/^st /i, "Saint ").trim();
+  const expand = (s) => s.replace(/\s+/g, " ")
+    .replace(/^st /i, "Saint ")
+    .replace(/^ft /i, "Fort ")
+    .replace(/^mt /i, "Mount ")
+    .trim();
   const spaced = expand(typed.replace(/[.'\-]/g, " "));
   const stripped = expand(typed.replace(/[.'\-]/g, ""));
   const out = [typed];

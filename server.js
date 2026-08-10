@@ -2646,7 +2646,7 @@ async function harvestComps(type, searchAddress, payload) {
 
 // Thin-data Explorer previews: shown once to the visitor who generated them,
 // in-memory only (losing them on restart is fine — the search cache makes a
-// re-explore free for 7 days).
+// re-explore free for its 30-day TTL, widened from 7 days on 2026-08-03).
 const previewPagesMem = new Map(); // slug -> { payload, ts }
 const PREVIEW_TTL_MS = 30 * 60 * 1000;
 

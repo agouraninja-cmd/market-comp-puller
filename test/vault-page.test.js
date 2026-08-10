@@ -959,7 +959,9 @@ test("Add comp posts the base fields typed into the form, then clears them and r
 
   assert.equal(doc.getElementById("addComp_address").value, "",
     "a successful add must clear the form for the next comp");
-  assert.equal(doc.getElementById("compMsg").textContent, "Added.");
+  // Its own message, not compMsg: see the placement/routing tests below for
+  // why the two must not share a channel.
+  assert.equal(doc.getElementById("addCompMsg").textContent, "Added.");
 });
 
 test("a 400 from adding a comp shows every listed problem, not just the first, and keeps the form filled", async () => {
@@ -971,10 +973,50 @@ test("a 400 from adding a comp shows every listed problem, not just the first, a
   doc.getElementById("addCompBtn").fire("click", {});
   await tick();
 
-  assert.match(doc.getElementById("compMsg").textContent, /price is not a number; deal_date is required/,
+  assert.match(doc.getElementById("addCompMsg").textContent, /price is not a number; deal_date is required/,
     "the whole 400 error must render, not a generic fallback");
   assert.equal(doc.getElementById("addComp_address").value, "500 Elm St",
     "a failed add must not clear the broker's in-progress entry");
+});
+
+// ---- Fix round 1: the add-comp result must land where the broker can see
+// it, not in #compMsg -------------------------------------------------------
+//
+// #compMsg sits at the top of #compsSec. The add form lives inside #addSec,
+// well above it in document order, with #mapSec and #rollupSec (the market
+// rollup cards, for any broker who already has a book) rendering in
+// between. Reusing #compMsg for this form's result would leave it below the
+// fold for exactly the broker "add one by hand" is for: no scroll, no focus
+// move, nothing on screen to say the click did anything.
+
+test("the add form's message element lives INSIDE the add panel, not in #compsSec", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const panel = /<details class="dbox" id="addOneSec">[\s\S]*?<\/details>/.exec(html);
+  assert.ok(panel, "could not find the add-one-comp panel");
+  assert.match(panel[0], /id="addCompMsg"/,
+    "the add form's own message element must be inside the panel, beside its button");
+  assert.doesNotMatch(panel[0], /id="compMsg"/,
+    "the row-actions message element belongs to #compsSec, not this panel");
+});
+
+test("adding a comp writes to #addCompMsg, and leaves #compMsg untouched", async () => {
+  const { doc } = await runPage([], null, {
+    comp: () => Promise.resolve(jsonResponse(400, { error: "deal_date is required" })),
+  });
+
+  doc.getElementById("addComp_address").value = "500 Elm St";
+  doc.getElementById("addCompBtn").fire("click", {});
+  await tick();
+
+  assert.match(doc.getElementById("addCompMsg").textContent, /deal_date is required/,
+    "the add form's failure must be visible right where the broker clicked");
+  // The stub DOM does not parse rendered HTML into live elements (see
+  // stubDocument above), so #compMsg's initial "msg hide" from the markup
+  // is not reproduced here; what this harness CAN prove is that addComp()
+  // never touches it, i.e. it is left exactly as the page's own JS left it
+  // (never written), not reset to some failure state.
+  assert.equal(doc.getElementById("compMsg").textContent, "",
+    "the row-actions message must not be borrowed for the add form's result");
 });
 
 test("choosing a property type reveals that type's own fields, and switching types swaps them", async () => {

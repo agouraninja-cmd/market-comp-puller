@@ -501,6 +501,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
           <div class="row" id="addTypeFields" style="width:100%"></div>
           <button class="btn ghost" id="addCompBtn" type="button">Add comp</button>
         </div>
+        <!-- Its own message, NOT #compMsg. #compMsg sits at the top of
+             #compsSec, well below this panel in document order — for a
+             broker who already has a book, the market rollup and gut-check
+             cards render in between, so a message written there can land
+             out of view of the button that was just clicked, with no
+             scroll and nothing on screen to say the click did anything.
+             aria-live announces it without moving focus. -->
+        <p id="addCompMsg" class="msg hide" aria-live="polite"></p>
       </details>
     </div>
 
@@ -1858,6 +1866,22 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   $("addComp_property_type").addEventListener("change",renderAddTypeFields);
   renderAddTypeFields();
 
+  // A second message channel, deliberately not compMsg. compMsg sits at the
+  // top of #compsSec, and the add form lives inside #addSec, well above it
+  // in document order with the market rollup and gut-check panels between
+  // them for any broker who already has a book — exactly the broker "add
+  // one by hand" is for. Writing the result there would leave it below the
+  // fold with no scroll, no focus move and nothing on screen to say the
+  // click did anything. This one lives right under the button that caused
+  // it instead, and carries aria-live so a screen reader still announces it
+  // without a focus jump. compMsg itself is untouched: it is still exactly
+  // right for the row-level edit/delete controls a few pixels above it.
+  function addCompMsg(text,bad){
+    var el=$("addCompMsg");
+    el.className=text?("msg "+(bad?"bad":"ok")):"msg hide";
+    el.textContent=text||"";
+  }
+
   async function addComp(){
     var typeFields=TYPE_FIELDS[$("addComp_property_type").value]||[];
     var body={};
@@ -1875,7 +1899,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     b.disabled=false;
     // The server returns EVERY problem with the row, not just the first, so
     // a broker fixing the form gets one complete list. Show it whole.
-    if(!r.ok)return compMsg(j.error||"Could not save that comp.",true);
+    if(!r.ok)return addCompMsg(j.error||"Could not save that comp.",true);
     // property_type and transaction are left alone: a broker adding several
     // comps of the same type/deal kind in a row should not have to reselect
     // them each time. Re-rendering the type fields for the still-selected
@@ -1887,7 +1911,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     });
     renderAddTypeFields();
     load();
-    compMsg("Added.");
+    addCompMsg("Added.");
   }
   $("addCompBtn").addEventListener("click",addComp);
 

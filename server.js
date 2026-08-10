@@ -11548,6 +11548,91 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // --- Edit / delete one comp ---------------------------------------------
+    //
+    // Both are user_id-scoped in the read AND in the write: without it,
+    // knowing another broker's comp id is enough to change their data.
+    if ((req.method === "PATCH" || req.method === "DELETE") && path === "/api/vault/comp") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultedit:" + clientIp(req), 120)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const id = new URL(req.url, "http://localhost").searchParams.get("id");
+          if (!id) return sendJson(res, 400, { error: "Which comp?" });
+
+          const rows = await sbRequest("GET",
+            `broker_comps?id=eq.${encodeURIComponent(id)}` +
+            `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
+          const comp = rows && rows[0];
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+
+          // A published comp is retracted before either operation. Owner's
+          // decision: an edit leaves it unpublished so republishing is a
+          // deliberate act by someone looking at the corrected row.
+          const unpublished = await retractPublishedComp(user.id, comp);
+
+          if (req.method === "DELETE") {
+            await sbRequest("DELETE",
+              `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+              undefined, { prefer: "return=minimal" });
+            return sendJson(res, 200, { ok: true, unpublished });
+          }
+
+          const result = VAULT.validateEdit(comp, JSON.parse(body || "{}"));
+          if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+
+          const row = result.row;
+          // marketOf lives in server.js and must agree byte for byte with
+          // comp_corpus.market, so a comp published later needs no translation.
+          row.market = marketOf(row.address);
+          // linkVaultProperties (and PROPS.propertyRowsFrom underneath it) skip
+          // any row missing user_id — the same field the upload route stamps
+          // onto every row before either write, below.
+          row.user_id = user.id;
+
+          // A collision is answered by name rather than surfaced as a 500 from
+          // the unique (user_id, dedupe_key) constraint. `id=neq` excludes the
+          // comp being edited, or every no-op save would collide with itself.
+          const clash = await sbRequest("GET",
+            `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&dedupe_key=eq.${encodeURIComponent(row.dedupe_key)}` +
+            `&id=neq.${encodeURIComponent(id)}&limit=1`);
+          if (clash && clash.length) {
+            return sendJson(res, 409, { error: "You already have this comp." });
+          }
+
+          // Exactly the upload route's order and argument shapes: the PATCH
+          // gets the STRIPPED row (`_lat`/`_lng` are carried between functions
+          // and are not columns on broker_comps — PostgREST 400s the whole
+          // write on an unknown column), while linkVaultProperties gets the
+          // row that still carries them, because PROPS.propertyRowsFrom reads
+          // them off it.
+          const saved = await sbRequest("PATCH",
+            `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+            PROPS.stripCarriedKeys({ ...row }), { prefer: "return=representation" });
+          // Two arguments, never three, and it never throws: the property
+          // dimension is an index onto a broker's book, not part of it. A
+          // failed link costs a join, a failed edit costs the broker their
+          // correction.
+          await linkVaultProperties(user.id, [row]);
+          return sendJson(res, 200, {
+            ok: true, unpublished,
+            comp: VAULTAPI.toApiComp((saved && saved[0]) || null),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault comp edit failed:", err.message);
+          sendJson(res, 502, { error: "Could not save that change. Please try again." });
+        }
+      });
+      return;
+    }
+
     // Undo one import. The comps cascade with the batch row.
     if (req.method === "DELETE" && path === "/api/vault/upload") {
       (async () => {

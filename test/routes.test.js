@@ -275,6 +275,35 @@ test("bare environment", async (t) => {
     assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
   });
 
+  // Per-comp edit/delete and add are new doors into the same private table as
+  // every other vault route, so they get the same 401-before-anything-else
+  // proof: openVault must refuse before the id in the query string, or the
+  // JSON body, is ever read.
+  await t.test("the comp edit routes refuse an anonymous caller", async () => {
+    for (const method of ["PATCH", "DELETE"]) {
+      const r = await fetch(srv.base + "/api/vault/comp?id=00000000-0000-0000-0000-000000000000", {
+        method,
+        headers: { "content-type": "application/json" },
+        body: method === "PATCH" ? JSON.stringify({ price: 1 }) : undefined,
+      });
+      assert.equal(r.status, 401, method + " must refuse before it reads anything");
+    }
+  });
+
+  await t.test("the add-comp route refuses an anonymous caller", async () => {
+    const r = await fetch(srv.base + "/api/vault/comp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ address: "1 A St, Boise, ID" }),
+    });
+    assert.equal(r.status, 401);
+  });
+
+  await t.test("the vault export refuses an anonymous caller", async () => {
+    const r = await fetch(srv.base + "/api/vault/export.csv");
+    assert.equal(r.status, 401);
+  });
+
   // NOT COVERED HERE, and deliberately: the 403-not-a-broker and
   // 200-for-an-entitled-broker paths. Both need a real session, which needs a
   // database, and this file's rule is that nothing it runs touches an external

@@ -40,6 +40,7 @@
        won't style — see tailwind.config.js for the one-line command. -->
   <link rel="stylesheet" href="/tailwind.css" />
   <script src="/valuation.js"></script>
+  <script src="/explore-query.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -9249,19 +9250,41 @@
         exploreComps = 0;   // attempt 2 finds its own comps
       }
     };
-    // "industrial Boise ID" -> {type, city, state}; otherwise {reason} for a hint row.
+    // Parsing lives in the pure, tested explore-query.js (served maxAge: 0).
+    // Read defensively: if that file ever fails to load, only this dropdown
+    // degrades, and it degrades to the old exact-shape behavior rather than
+    // throwing inside a keystroke handler.
     const parseExploreQuery = (q) => {
-      let tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
-      if (tokens.some((t) => NON_EXPLORE_TYPES.includes(t))) return { reason: "unsupported-type" };
+      const mod = typeof EXPLOREQ !== "undefined" ? EXPLOREQ : null;
+      if (mod) return mod.parseExploreQuery(q);
+      const tokens = q.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
       const type = EXPLORE_TYPES.find((t) => tokens.includes(t));
-      tokens = tokens.filter((t) => t !== type);
-      const last = tokens[tokens.length - 1] || "";
+      const rest = tokens.filter((t) => t !== type);
+      const last = rest[rest.length - 1] || "";
       const state = US_STATES.includes(last.toUpperCase()) ? last.toUpperCase() : null;
-      const city = (state ? tokens.slice(0, -1) : tokens).map(cap).join(" ");
+      const city = (state ? rest.slice(0, -1) : rest).map(cap).join(" ");
       if (!city) return { reason: "no-city" };
       if (!state) return { reason: "no-state" };
       if (!type) return { reason: "no-type", city, state };
       return { type: cap(type), city, state };
+    };
+    // Zip lookups: one per settled zip, cached for the page's life (a miss
+    // caches as null, so a bad zip is asked once). Resolved here rather than
+    // in the module, which stays pure and testable with no network.
+    const zipCache = new Map();
+    let zipTimer = null;
+    const resolveZip = (zip) => {
+      if (zipTimer) clearTimeout(zipTimer);
+      zipTimer = setTimeout(() => {
+        fetch("https://api.zippopotam.us/us/" + encodeURIComponent(zip), { signal: AbortSignal.timeout(7000) })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            const p = j && j.places && j.places[0];
+            zipCache.set(zip, p ? { city: p["place name"], state: p["state abbreviation"] } : null);
+          })
+          .catch(() => zipCache.set(zip, null))
+          .then(() => { if (!exploring) render(); });
+      }, 400);
     };
     // Re-shown on every failure, so the visitor always has a worked example.
     const exploreHintRow =
@@ -9348,7 +9371,20 @@
       let html = matches.map((m) =>
         `<a href="/market/${escq(m.slug)}" class="block px-3 py-1.5 text-[#46536A] hover:text-[#1A2433] hover:bg-[#FBFBF9]">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</a>`).join("");
       // Explorer rows — only when the query doesn't resolve to a covered page.
-      const p = parseExploreQuery(input.value.trim());
+      let p = parseExploreQuery(input.value.trim());
+      // A zip is an intent: swap in the resolved market, or ask for it once.
+      if (p.reason === "zip") {
+        if (zipCache.has(p.zip)) {
+          const hit = zipCache.get(p.zip);
+          p = hit
+            ? (p.type ? { type: p.type, city: hit.city, state: hit.state }
+                      : { reason: "no-type", city: hit.city, state: hit.state })
+            : { reason: "bad-zip", zip: p.zip };
+        } else {
+          resolveZip(p.zip);
+          p = { reason: "zip-pending", zip: p.zip };
+        }
+      }
       const exactMatch = p.type && matches.some((m) =>
         m.type.toLowerCase() === p.type.toLowerCase() && m.city.toLowerCase() === p.city.toLowerCase() && m.state === p.state);
       if (p.type && !exactMatch) {
@@ -9363,6 +9399,10 @@
         html += `<div class="px-3 py-1.5 text-[#68707E]">The Explorer covers Industrial, Office, Retail and Multifamily markets.</div>`;
       } else if (p.reason === "no-city" && !matches.length) {
         html += `<div class="px-3 py-1.5 text-[#68707E]">Search a market like “industrial Boise ID”</div>`;
+      } else if (p.reason === "zip-pending" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#68707E]">Looking up ${escq(p.zip)}…</div>`;
+      } else if (p.reason === "bad-zip" && !matches.length) {
+        html += `<div class="px-3 py-1.5 text-[#68707E]">We couldn't place the zip ${escq(p.zip)}. Try a market like “industrial Boise ID”</div>`;
       }
       resultsEl.innerHTML = html;
       resultsEl.classList.remove("hidden");

@@ -1158,27 +1158,13 @@
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
         <div class="rd-row grid grid-cols-1 sm:grid-cols-3">
-          <div class="rd-cell">
-            <!-- The size held this slot until 2026-08-10 and was being answered
-                 automatically twice over (public records server-side, the OSM
-                 footprint estimate during the confirm dialog), so the slot went
-                 to the one optional input that lights up a whole report surface
-                 that is otherwise dark: renderComparison() hides itself unless
-                 it has BOTH a size and a price, so without a price nobody ever
-                 sees their own $/SF against the market's, or the over/under
-                 verdict. Still optional — the address is this form's only
-                 required field. One input, because two inputs around a "to"
-                 inside a third-of-a-row cell is exactly what clipped the size
-                 range; the max lives in Refine. -->
-            <!-- "Asking price", not "Your price": a bare "your price" invites
-                 the price they PAID years ago, and a historical number would
-                 make the comparison card announce a nonsense over/under against
-                 today's market. Measured against the cell's real 184px (171px
-                 at the sm breakpoint): the old "Asking / expected price ($)"
-                 wrapped to two lines here and pushed this input below the
-                 Lookback and Focus inputs beside it. -->
-            <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-            <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="rd-in" />
+          <div class="rd-cell" id="txFocusWrap">
+            <label class="rd-lab" for="txFocus">Focus</label>
+            <select id="txFocus" class="rd-in">
+              <option value="both" selected>Sales &amp; leases</option>
+              <option value="sales">Sales only</option>
+              <option value="leases">Leases only</option>
+            </select>
           </div>
           <div class="rd-cell">
             <label class="rd-lab" for="lookback">Lookback</label>
@@ -1195,13 +1181,29 @@
             </div>
             <div id="lookbackHint" class="text-xs text-[#68707E] mt-1"></div>
           </div>
-          <div class="rd-cell" id="txFocusWrap">
-            <label class="rd-lab" for="txFocus">Focus</label>
-            <select id="txFocus" class="rd-in">
-              <option value="both" selected>Sales &amp; leases</option>
-              <option value="sales">Sales only</option>
-              <option value="leases">Leases only</option>
-            </select>
+          <div class="rd-cell">
+            <!-- The size held this slot until 2026-08-10 and was being answered
+                 automatically twice over (public records server-side, the OSM
+                 footprint estimate during the confirm dialog), so the slot went
+                 to the one optional input that lights up a whole report surface
+                 that is otherwise dark: renderComparison() hides itself unless
+                 it has BOTH a size and a price, so without a price nobody ever
+                 sees their own $/SF against the market's, or the over/under
+                 verdict. Still optional — the address is this form's only
+                 required field. One input, because two inputs around a "to"
+                 inside a third-of-a-row cell is exactly what clipped the size
+                 range; the max lives in Refine. Moved to the last slot
+                 2026-08-10: it's the one optional field of the three, and
+                 Focus/Lookback are the everyday controls that belong up front. -->
+            <!-- "Asking price", not "Your price": a bare "your price" invites
+                 the price they PAID years ago, and a historical number would
+                 make the comparison card announce a nonsense over/under against
+                 today's market. Measured against the cell's real 184px (171px
+                 at the sm breakpoint): the old "Asking / expected price ($)"
+                 wrapped to two lines here and pushed this input below the
+                 Lookback and Focus inputs beside it. -->
+            <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+            <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="rd-in" />
           </div>
         </div>
         <!-- The one hint strip (Direction N): every per-cell hint and the type

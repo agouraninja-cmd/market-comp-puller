@@ -1299,10 +1299,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       import was entirely rejected, or who deleted every comp out of one, has
       been through the door already; showing "Start here" again reads as their
       work having been thrown away.
-    - **The trust line is hidden, not deleted, and its promise moves into the
-      panel's prose.** That line exists to let a broker watch "0 published"
-      stay at zero, which only means anything once there is something it could
-      have counted. On day one it is a 0-0 scoreboard over an empty page.
+    - **The trust line is hidden, not deleted.** That line exists to let a
+      broker watch "0 published" stay at zero, which only means anything once
+      there is something it could have counted. On day one it is a 0-0
+      scoreboard over an empty page. Its promise used to move into the panel's
+      prose; the owner cut that paragraph on 2026-08-10 (it was the longest
+      block on a panel whose only job is to reach a first upload), so an empty
+      vault now makes **no** privacy claim by design — the trust line makes it
+      as soon as there is a comp, and the publish flow makes it again at the
+      one point where it can be acted on. Both steps are headed as plain
+      instructions ("Add your comps" / "Add your markets"); do not restore the
+      explanatory prose without asking.
     - **There is exactly ONE `<input type=file>`.** Step 1's button and the
       ordinary "Add comps" button both call `$("file").click()`. Two inputs
       would mean two values and two change handlers, and an upload started

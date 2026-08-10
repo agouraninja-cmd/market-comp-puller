@@ -265,8 +265,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     <!-- The trust line's job is to prove a number stays at zero, which only
          works once there is something it could have counted. On day one it is
          a scoreboard reading 0-0 above an empty page, so it is hidden until
-         the first import lands and #firstRun carries the privacy promise in
-         words instead. See applyFirstRun(). -->
+         the first import lands. #firstRun used to restate the privacy promise
+         in words to cover that gap; the owner cut that prose on 2026-08-10
+         because it was the longest block on a panel whose job is to get to a
+         first upload. So an empty vault deliberately makes no privacy claim:
+         this line makes it the moment there is a comp, and the publish flow
+         makes it again where it can be acted on. See applyFirstRun(). -->
     <div class="trust hide" id="trustLine">
       <div class="ledger">
         <div class="lcell"><span class="llab">Comps</span>
@@ -316,12 +320,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <div class="step">
           <span class="stepn">1</span>
           <div>
-            <h3>Bring your own comps</h3>
-            <p>Your closed deals become a private comp set that only you can see. They
-              appear inside your own valuation reports, badged &ldquo;From your vault&rdquo;,
-              and they count toward the number at the top of the report. They are never
-              read into CompNinja&rsquo;s public records, never included in an export or a
-              shared link, and never shown to another broker.</p>
+            <h3>Add your comps</h3>
             <!-- The friction this removes is fear, not typing: a broker looking at a
                  ten-column template assumes all ten are mandatory and that a deal with
                  an undisclosed price cannot go in. Neither is true, and saying so is
@@ -339,7 +338,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <div class="step">
           <span class="stepn">2</span>
           <div>
-            <h3>Or just tell us where you work</h3>
+            <h3>Add your markets</h3>
             <p>Add the markets you cover and you will start seeing property owners in them
               who have asked for a valuation. Their details stay anonymous until you ask
               for an introduction, and CompNinja makes the introduction by hand.</p>

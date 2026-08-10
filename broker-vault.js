@@ -470,10 +470,26 @@ function inspectCsv(csvText, { samples = 3 } = {}) {
   if (!table.length) return { ...empty, error: "That file is empty." };
 
   const headers = table[0];
-  const normalized = headers.map(normalizeHeader);
+  // A header can have real content and still normalize away to nothing --
+  // normalizeHeader strips every non-alphanumeric character, so "$", "#",
+  // "%" and "($)" all become "". Left as "" the column would vanish from
+  // `normalized`/`samples` below with nothing saying so -- precisely the
+  // silent-drop failure this whole feature exists to catch, and not
+  // hypothetical: the comment above TEMPLATE_COLUMNS names "$" as a header
+  // brokers actually use for price. A header that is ACTUALLY blank (empty
+  // or only whitespace) keeps today's behaviour and is excluded, not given a
+  // synthetic key.
+  const normalized = headers.map((h, i) => {
+    const n = normalizeHeader(h);
+    if (n) return n;
+    return String(h == null ? "" : h).trim() ? `column_${i}` : "";
+  });
 
   // A mapping is keyed on the normalised header name, so two columns sharing
-  // one name have no way to be told apart. Refuse rather than pick.
+  // one name have no way to be told apart. Refuse rather than pick. The
+  // synthetic `column_N` keys above go through this same check, so a file
+  // that happens to ALSO have a literal "column_0" header collides with a
+  // "$" in the first column rather than silently merging the two.
   const seen = new Set();
   for (let i = 0; i < normalized.length; i++) {
     const h = normalized[i];

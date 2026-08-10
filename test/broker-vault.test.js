@@ -822,3 +822,46 @@ test("a quoted header carrying a comma is read as one column", () => {
   assert.equal(r.headers.length, 2);
   assert.equal(r.normalized[0], "address_full");
 });
+
+// A header can have real content ("$") and still normalize away to nothing,
+// since normalizeHeader strips every non-alphanumeric character. That used
+// to make the column vanish entirely -- not shown, not mappable, not named
+// in an "ignored" list -- which is exactly the silent-drop failure this
+// feature exists to catch. It is not hypothetical: the comment above
+// TEMPLATE_COLUMNS names "$" as a header brokers actually use for price.
+test("a header that normalizes away entirely gets a synthetic, visible key rather than vanishing", () => {
+  const r = inspectCsv("$,Type,Deal,Closed\n100,Land,Sale,2026-01-01\n");
+  assert.equal(r.ok, true);
+  assert.equal(r.headers[0], "$");
+  assert.equal(r.normalized[0], "column_0");
+  assert.deepEqual(r.samples.column_0, ["100"]);
+});
+
+test("a truly blank header is still excluded, and two trailing blanks do not collide", () => {
+  const r = inspectCsv(
+    "address,property_type,transaction,deal_date,,\n" +
+    "\"1 A St, Boise, ID\",Land,Sale,2026-01-01,,\n"
+  );
+  assert.equal(r.ok, true);
+  assert.equal(r.normalized[4], "");
+  assert.equal(r.normalized[5], "");
+  assert.equal(r.cleanTemplate, true, "the two blank trailing headers are not unrecognised columns");
+});
+
+test("cleanTemplate is false for a file containing a $ column", () => {
+  const r = inspectCsv(
+    "address,property_type,transaction,deal_date,$\n" +
+    "\"1 A St, Boise, ID\",Land,Sale,2026-01-01,100\n"
+  );
+  assert.equal(r.cleanTemplate, false);
+});
+
+// The duplicate check must fire for a real collision INVOLVING a synthetic
+// key too, not just between two ordinary header names: a "$" column's
+// synthetic key is "column_0", so a file that also has a literal "column_0"
+// header collides with it rather than silently importing both as one.
+test("a synthetic key collides with a literal column of the same name, and is refused", () => {
+  const r = inspectCsv("$,column_0\n100,200\n");
+  assert.equal(r.ok, false);
+  assert.match(r.error, /column_0/);
+});

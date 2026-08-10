@@ -313,3 +313,62 @@ test("reconcile never throws on junk comps", () => {
   const parsed = { comps: [null, "x", {}] };
   assert.equal(RP.reconcilePricePerSqft(parsed), parsed);
 });
+
+// --- scrubUnearnedVerifiedClaims -------------------------------------------
+// "Verified" is a badge only the server awards. When the finished report holds
+// no verified comp, narrative that claims verification contradicts the comp
+// table the reader is looking at (reported live: the summary claimed verified
+// comps while every badge read Estimate / News / Listing).
+
+test("scrub rewrites a verification claim when no comp earned the badge", () => {
+  const parsed = {
+    summary: "Three verified sales support the range.",
+    comps: [{ verified: false }, {}],
+  };
+  RP.scrubUnearnedVerifiedClaims(parsed);
+  assert.equal(parsed.summary, "Three confirmed sales support the range.");
+});
+
+test("scrub leaves the word alone when a comp really is verified", () => {
+  const parsed = {
+    summary: "Three verified sales support the range.",
+    comps: [{ verified: false }, { verified: true }],
+  };
+  RP.scrubUnearnedVerifiedClaims(parsed);
+  assert.equal(parsed.summary, "Three verified sales support the range.",
+    "one real badge makes the word accurate; rewriting it would lose information");
+});
+
+test("scrub covers every narrative surface, including per-comp notes", () => {
+  const parsed = {
+    summary: "Verified data is thin.",
+    market_trend: "Prices verified against county records rose.",
+    value_drivers: ["Verified sales are scarce", "Supply is tight"],
+    price_discovery: { direction: "flat", note: "Needs verification." },
+    comps: [{ verified: false, notes: "Price verified via the listing." }],
+  };
+  RP.scrubUnearnedVerifiedClaims(parsed);
+  assert.equal(parsed.summary, "Confirmed data is thin.");
+  assert.equal(parsed.market_trend, "Prices confirmed against county records rose.");
+  assert.deepEqual(parsed.value_drivers, ["Confirmed sales are scarce", "Supply is tight"]);
+  assert.equal(parsed.price_discovery.note, "Needs confirmation.");
+  assert.equal(parsed.comps[0].notes, "Price confirmed via the listing.");
+});
+
+test("scrub preserves capitalization and handles the whole word family", () => {
+  const parsed = { summary: "Verified. unverified. VERIFIED. verification. broker-verified.", comps: [] };
+  RP.scrubUnearnedVerifiedClaims(parsed);
+  assert.equal(parsed.summary, "Confirmed. unconfirmed. CONFIRMED. confirmation. confirmed.");
+});
+
+test("scrub matches whole words only, so it cannot corrupt a longer token", () => {
+  const parsed = { summary: "See veriflex.com and the reverified-holdings deal.", comps: [] };
+  RP.scrubUnearnedVerifiedClaims(parsed);
+  assert.equal(parsed.summary, "See veriflex.com and the reverified-holdings deal.");
+});
+
+test("scrub never throws on junk", () => {
+  assert.equal(RP.scrubUnearnedVerifiedClaims(null), null);
+  const parsed = { comps: [null, "x", {}], summary: undefined, value_drivers: "not an array" };
+  assert.equal(RP.scrubUnearnedVerifiedClaims(parsed), parsed);
+});

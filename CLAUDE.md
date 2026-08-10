@@ -518,7 +518,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (`isAggregateAddress`), is forced to `estimate` no matter what the model
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
-  normalization is a guarantee. **Source-link check (2026-08-09).** After the
+  normalization is a guarantee.
+  **"Verified" is a reserved word (2026-08-10).** It names a badge only the
+  server awards (a broker vouched, our team reviewed), so the model must
+  never write it. Two layers, the same requests-vs-guarantee split: the
+  `verified` field is **only in the comp shape when broker comps were
+  actually offered** (`hasVerified` in `buildPrompt`) — with none offered it
+  could only ever be false, and asking for it made the model award itself the
+  badge, measured live at 4 of 5 comps on a market with zero submissions; and
+  `scrubUnearnedVerifiedClaims` (pure, tested, in report-parse.js) rewrites
+  the verified word family in `summary`/`value_drivers`/`market_trend`/
+  `price_discovery`/comp `notes` whenever the finished report carries no
+  verified comp. `enforceVerifiedFlags` always kept the BADGES honest; what
+  was broken was that nothing revisited the prose the model wrote around
+  them, so a summary described verified comps while every badge read
+  Estimate/News/Listing. Three rules: the scrub is **outermost** in
+  `finishReport` because it counts the FINAL flags (inside
+  `attachVerifiedAttribution` it would read the model's own claims); it fires
+  **only at zero** verified comps, since one real badge makes the word
+  accurate; and it **rewrites rather than deletes**, because cutting a clause
+  can take the summary's required honesty caveat with it. Keep the summary
+  rule's own caveat examples free of the word too — they said "scarce
+  verified data" and contradicted this rule on the same prompt.
+  **Source-link check (2026-08-09).** After the
   report is parsed and normalized, and before the cache write, harvest, market
   snapshot, and the `gate()` funnel, `applySourceLinkCheck` (server.js) checks
   each comp's `source_url`: max 12 unique URLs in parallel under one 2.5s

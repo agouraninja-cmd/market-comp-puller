@@ -3058,14 +3058,25 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   const S = SHORT_COMP_KEYS;
   const typeFields = typeSpec ? typeSpec.fields.map((f) => `"${S[f]}": "", `).join("") : ``;
   const buildingFields = isLand ? `` : `"${S.tenancy}": "", "${S.year_built}": "", `;
-  const compShape = `{ "${S.address}": "", "${S.date}": "", "${S.transaction}": "", "${S.size_sqft}": "", ${typeFields}"${S.price_or_rate}": "", "${S.price_per_sqft}": "", "${S.cap_rate}": "", ${buildingFields}"${S.notes}": "", "${S.source_url}": "", "${S.source_type}": "", "${S.verified}": false }`;
+  // "verified" is only offerable when we actually handed the model broker
+  // comps to match against. With none offered the field can only ever be
+  // false, and asking for it invites the model to award itself the badge:
+  // measured on a live Gurnee run, 4 of 5 comps came back "verified": true
+  // with zero broker submissions in that market. enforceVerifiedFlags cleared
+  // them (the badge is safe either way), but the model had already written a
+  // summary describing comps it believed were verified, and nothing revisits
+  // prose — which is exactly the contradiction a reviewer reported. Removing
+  // the field is the root fix; the narrative scrub below is the guarantee.
+  const hasVerified = !!(verifiedComps && verifiedComps.length);
+  const verifiedField = hasVerified ? `, "${S.verified}": false` : ``;
+  const compShape = `{ "${S.address}": "", "${S.date}": "", "${S.transaction}": "", "${S.size_sqft}": "", ${typeFields}"${S.price_or_rate}": "", "${S.price_per_sqft}": "", "${S.cap_rate}": "", ${buildingFields}"${S.notes}": "", "${S.source_url}": "", "${S.source_type}": ""${verifiedField} }`;
   // Legend restricted to the fields this type's shape actually carries, so
   // the prompt never teaches keys the shape doesn't use.
   const legendFields = ["address", "date", "transaction", "size_sqft",
     ...(typeSpec ? typeSpec.fields : []),
     "price_or_rate", "price_per_sqft", "cap_rate",
     ...(isLand ? [] : ["tenancy", "year_built"]),
-    "notes", "source_url", "source_type", "verified"];
+    "notes", "source_url", "source_type", ...(hasVerified ? ["verified"] : [])];
   const compKeyLegend = legendFields.map((f) => `"${S[f]}"=${f}`).join(", ");
 
   // Trusted internal comps get their own prompt section when any exist.
@@ -3247,9 +3258,17 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // patterns - restating comp figures the table already carries, and
     // narrating the search the "search_radius" field already carries. The
     // honesty caveats other rules REQUIRE in summary keep a designated slot.
-    ...(compsOnly ? [] : [`"summary" = plain English a non-professional understands: at most THREE short sentences, under about 450 characters total, in this order: (1) the single thing an owner most needs to know about this market right now; (2) the market-level read your comps support - market-level figures like a $/SF spread or a vacancy rate are welcome; (3) only if a rule above requires it, that caveat in ONE compact clause (comps beyond the window, a widened radius, a size mismatch, scarce verified data). Do NOT put in "summary": any individual comp's address, price, size, or date (the comp table carries those); lists of tenant or company names; or any account of your search process beyond that single caveat clause.`]),
+    ...(compsOnly ? [] : [`"summary" = plain English a non-professional understands: at most THREE short sentences, under about 450 characters total, in this order: (1) the single thing an owner most needs to know about this market right now; (2) the market-level read your comps support - market-level figures like a $/SF spread or a vacancy rate are welcome; (3) only if a rule above requires it, that caveat in ONE compact clause (comps beyond the window, a widened radius, a size mismatch, thin or weakly-sourced data). Do NOT put in "summary": any individual comp's address, price, size, or date (the comp table carries those); lists of tenant or company names; or any account of your search process beyond that single caveat clause.`]),
     `"currency" = the ISO 4217 code of the currency ALL prices in this report are quoted in. For a target property in the United States use "USD". For a target property in any other country, quote EVERY price figure (each comp's "price_or_rate" and "price_per_sqft", any type-specific price fields like "price_per_unit" and "price_per_acre", plus "avg_price_per_sqft") in that country's local currency, set "currency" to its code (e.g. "CAD", "MXN", "GBP"), and set "usd_rate" to the current value of 1 unit of that currency in US dollars as a plain number string (e.g. "0.73" for CAD), using the exchange rate your web search finds. When currency is "USD", set "usd_rate" to "". Never mix currencies within one report.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
+    // "Verified" is a specific badge in this product, meaning a local broker
+    // vouched for the comp and our team reviewed it. Only the server can award
+    // it. A model using the word loosely in prose ("verified through county
+    // records") reads to a customer as that badge, and when the comp table
+    // shows only Listing and Estimate badges the report contradicts itself -
+    // reported by a reviewer as "the summary says there are verified comps but
+    // then you're not showing any".
+    `RESERVED WORD: do NOT use "verified", "verification", or "broker-verified" anywhere in "summary", "value_drivers", "market_trend", or "price_discovery". Those words name a specific badge in this report that only we can award, and using them for anything else makes the report contradict its own comp table. Describe where figures came from in plain terms instead ("county records show", "confirmed against the listing").`,
     ...(compsOnly ? [] : [
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
@@ -3285,7 +3304,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
-const { normalizeTrendPct, reconcilePricePerSqft } = RPARSE;
+const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -4057,11 +4076,16 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
+  // scrubUnearnedVerifiedClaims is OUTERMOST on purpose: it decides by counting
+  // the final `verified` flags, so it has to run after attachVerifiedAttribution
+  // has cleared the unearned ones. Inside that call it would read the model's
+  // own claims and conclude the narrative was justified.
   const finishReport = (raw) =>
-    attachVerifiedAttribution(
-      normalizeSubjectLastSale(
-        reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
-      verifiedComps);
+    scrubUnearnedVerifiedClaims(
+      attachVerifiedAttribution(
+        normalizeSubjectLastSale(
+          reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
+        verifiedComps));
   try {
     return finishReport(text);
   } catch (err) {

@@ -292,6 +292,73 @@ function reconcilePricePerSqft(parsed) {
   return parsed;
 }
 
+// "Verified" is a badge only the server awards (a local broker vouched for the
+// comp and our team reviewed it). The model is told not to use the word in
+// narrative, but a prompt rule is a request and this is the guarantee: when the
+// finished report carries NO verified comp, any narrative claim of verification
+// is contradicted by the comp table the reader is looking at. Reported by a
+// reviewer as "the summary says there are verified comps but then you're not
+// showing any", where the badges read Estimate / News / Listing.
+//
+// Three deliberate limits:
+//   - It only fires at ZERO verified comps. With even one, the word is accurate
+//     and useful, and rewriting it would make the report LESS informative.
+//   - It rewrites rather than deletes. Cutting a clause can strip the honesty
+//     caveat the summary rules require in that same sentence; swapping the one
+//     loaded word keeps the meaning and the sentence intact.
+//   - Whole words only, case preserved, so "unverified" -> "unconfirmed" and a
+//     sentence-initial "Verified" keeps its capital.
+// Must run AFTER the badges are enforced, since it reads the final flags.
+const VERIFIED_WORD_SWAPS = [
+  [/\bunverified\b/gi, "unconfirmed"],
+  [/\bbroker-verified\b/gi, "confirmed"],
+  [/\bverifications\b/gi, "confirmations"],
+  [/\bverification\b/gi, "confirmation"],
+  [/\bverifiable\b/gi, "confirmable"],
+  [/\bverifies\b/gi, "confirms"],
+  [/\bverified\b/gi, "confirmed"],
+  [/\bverify\b/gi, "confirm"],
+];
+
+// Preserve the original's capitalization so a sentence-initial word stays
+// capitalized and an all-caps one stays shouted.
+function matchCase(source, replacement) {
+  if (source === source.toUpperCase() && source !== source.toLowerCase()) return replacement.toUpperCase();
+  if (source[0] === source[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1);
+  return replacement;
+}
+
+function scrubVerifiedWords(text) {
+  if (typeof text !== "string" || !text) return text;
+  let out = text;
+  for (const [re, to] of VERIFIED_WORD_SWAPS) {
+    out = out.replace(re, (m) => matchCase(m, to));
+  }
+  return out;
+}
+
+function scrubUnearnedVerifiedClaims(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const comps = Array.isArray(parsed.comps) ? parsed.comps : [];
+  // A real badge anywhere in the report makes the word legitimate.
+  if (comps.some((c) => c && c.verified === true)) return parsed;
+
+  parsed.summary = scrubVerifiedWords(parsed.summary);
+  parsed.market_trend = scrubVerifiedWords(parsed.market_trend);
+  if (Array.isArray(parsed.value_drivers)) {
+    parsed.value_drivers = parsed.value_drivers.map((v) => scrubVerifiedWords(v));
+  }
+  if (parsed.price_discovery && typeof parsed.price_discovery === "object") {
+    parsed.price_discovery.note = scrubVerifiedWords(parsed.price_discovery.note);
+  }
+  // Per-comp notes are narrative too, and sit in the same table as the badges
+  // they would be contradicting, which is the tightest possible collision.
+  for (const c of comps) {
+    if (c && typeof c === "object") c.notes = scrubVerifiedWords(c.notes);
+  }
+  return parsed;
+}
+
 module.exports = {
   extractFirstJsonObject,
   parseCompJson,
@@ -305,4 +372,5 @@ module.exports = {
   parseSizeSqft,
   parsePsf,
   reconcilePricePerSqft,
+  scrubUnearnedVerifiedClaims,
 };

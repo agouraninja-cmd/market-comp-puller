@@ -7250,6 +7250,8 @@
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
   let pendingSharedReload = false;  // signin_required on /r/<id>: reload this URL once signed in
+  let pendingMarketExplore = null;  // {type, city, state} the guest gate refused; resumes after sign-in
+  let runPendingMarketExplore = null; // assigned by the Market Explorer IIFE (explore() is private to it)
   let acctMode = "signin";          // signin | signup | forgot | reset
   let resetToken = "";
 
@@ -7344,6 +7346,7 @@
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
     pendingCheckoutPlan = null;   // ...and must not open Stripe Checkout later either
     pendingSharedReload = false;  // ...and a cancelled sign-in must not reload the page later
+    pendingMarketExplore = null;  // ...and a cancelled gate must not fire a surprise market search later
     document.getElementById("acctModal").classList.add("hidden");
   }
 
@@ -7437,18 +7440,21 @@
         return;
       }
       // Capture the pending flags BEFORE closing: closeAcctModal clears them
-      // (so a cancelled nudge can't fire a surprise save, or a surprise
-      // checkout, after a later sign-in).
+      // (so a cancelled nudge can't fire a surprise save, a surprise
+      // checkout, or a surprise market search, after a later sign-in).
       const firePendingSave = pendingPortfolioSave;
       const firePendingPlan = pendingCheckoutPlan;
+      const firePendingExplore = pendingMarketExplore;
       pendingPortfolioSave = false;
       pendingCheckoutPlan = null;
+      pendingMarketExplore = null;
       // Only rows that still hold their report can be imported.
       const saved = historyWithReports();
       // A pending checkout wins over the import offer: the next thing that
       // happens is a redirect to Stripe, which would abandon the import prompt
-      // mid-question anyway.
-      if (isUp && saved.length && !firePendingPlan) {
+      // mid-question anyway. A pending explore wins over it for the same
+      // reason — it ends in a redirect to the market page it builds.
+      if (isUp && saved.length && !firePendingPlan && !firePendingExplore) {
         document.getElementById("acctImportCount").textContent = String(saved.length);
         document.getElementById("acctForm").classList.add("hidden");
         document.getElementById("acctImport").classList.remove("hidden");
@@ -7462,6 +7468,11 @@
         openPricingModal();
         startCheckout(firePendingPlan,
           document.querySelector('.pricing-buy[data-plan="' + firePendingPlan + '"]'));
+      } else if (firePendingExplore && runPendingMarketExplore) {
+        // Checkout wins when both are set — the Stripe redirect abandons
+        // everything else anyway. Otherwise the search the guest gate
+        // interrupted resumes now, through the Explorer IIFE's seam.
+        runPendingMarketExplore(firePendingExplore);
       }
     } catch (ex) {
       err.textContent = ex.message;
@@ -9059,6 +9070,10 @@
             // hide() empties the dropdown but leaves attributes behind, and a
             // stale aria-busy would mute every later match list to a reader.
             resultsEl.removeAttribute("aria-busy");
+            // Park the refused search: it resumes automatically after the
+            // sign-in this modal asks for. closeAcctModal clears it, so a
+            // dismissed modal can never fire it later.
+            pendingMarketExplore = { type, city, state };
             guestSearch = guestSearch || { limit: 1, used: 1 };
             guestSearch.used = guestSearch.limit;
             renderGuestSearchHint();
@@ -9141,6 +9156,13 @@
     document.addEventListener("mousedown", (e) => {
       if (!resultsEl.contains(e.target) && e.target !== input) hide();
     });
+    // The account modal fires a gate-interrupted search back through this
+    // seam once the visitor signs in — explore() is private to this IIFE.
+    // The input refill is context only; explore() reads the object.
+    runPendingMarketExplore = (q) => {
+      input.value = `${q.type.toLowerCase()} ${q.city} ${q.state}`;
+      explore(q);
+    };
   })();
 
   // Copy the market summary for pasting into an email or memo.

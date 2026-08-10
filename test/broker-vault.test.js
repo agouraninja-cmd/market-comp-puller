@@ -363,6 +363,39 @@ test("EDITABLE_FIELDS is exactly the two column constants, and excludes the fiel
   }
 });
 
+// The two tests above still do not prove validateEdit's MERGE actually
+// consults EDITABLE_FIELDS -- pinning the constant's value catches someone
+// widening it, but not someone who leaves it untouched and swaps the merge
+// itself for `{ ...existing, ...patch }`. normalizeRow would still drop the
+// forbidden keys from its RESULT (it builds `row` field by field and never
+// spreads `src`), so that regression is invisible to every test above it.
+// The allowlist's only observable behavior, once the result can't tell the
+// difference, is that it never even READS a key outside the list. Trap the
+// read with a getter: the allowlist loop iterates EDITABLE_FIELDS and so
+// never names these keys, while a spread reads every enumerable own property
+// on the patch and trips them immediately.
+test("validateEdit never reads a patch field outside the allowlist", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1000000,
+  };
+  const touched = [];
+  const patch = { price: 1250000 };
+  for (const k of ["user_id", "published", "published_submission_id", "id", "upload_id"]) {
+    Object.defineProperty(patch, k, {
+      enumerable: true, configurable: true,
+      get() { touched.push(k); return "tampered"; },
+    });
+  }
+  const r = validateEdit(existing, patch);
+  assert.equal(r.ok, true);
+  assert.equal(r.row.price, 1250000, "the allowlisted field still applies");
+  assert.deepEqual(touched, [],
+    "a patch key outside EDITABLE_FIELDS must never be read: one that could set " +
+    "user_id is an account-takeover primitive, and one that could set published " +
+    "would put a row in the public corpus without the submission that credits it");
+});
+
 // --- a whole file ----------------------------------------------------------
 
 const FILE = [

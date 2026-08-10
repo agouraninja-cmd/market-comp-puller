@@ -12413,6 +12413,10 @@ const server = http.createServer((req, res) => {
           // the routes re-resolve entitlements server-side, so editing this
           // response relabels a plan card and unlocks nothing.
           tester: ent.tester === true,
+          // Whether this deployment has a tester passkey at all, so the pricing
+          // modal can hide a redeem row that could only ever fail. NOT a secret and
+          // not an entitlement: it says a door exists, never what opens it.
+          testerPasskey: Boolean(TESTER_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,

@@ -10049,11 +10049,17 @@
 
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
 
-    // The redeem row: signed-in, not already Pro. Deliberately NOT gated on
-    // billingLive() — a code is exactly what someone uses on a deployment
-    // with no Stripe keys, the same exception the vault link makes.
+    // The redeem row: signed-in, not already Pro, AND this deployment actually
+    // has a passkey configured. Deliberately NOT gated on billingLive() — a
+    // code is exactly what someone uses on a deployment with no Stripe keys,
+    // the same exception the vault link makes. The testerPasskey check exists
+    // because /api/config's `tester` flag only reports whether THIS user has
+    // already redeemed, not whether a passkey exists at all — without it, a
+    // deployment that never set TESTER_PASSKEY still showed a row that could
+    // only ever fail on submit.
+    const hasPasskey = Boolean(proConfig && proConfig.testerPasskey);
     document.getElementById("passkeyRow")
-      .classList.toggle("hidden", !currentUser || pro);
+      .classList.toggle("hidden", !currentUser || pro || !hasPasskey);
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already

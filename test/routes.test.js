@@ -889,6 +889,13 @@ test("tester passkey", async (t) => {
       body: JSON.stringify({ passkey: "anything" }),
     });
     assert.equal(r.status, 404, "an unconfigured deployment must not answer this route");
+
+    // /api/config must say so too, so the pricing modal can hide the "Have a
+    // code?" row rather than show a control that can only ever fail. A plain
+    // /api/config fetch, not a redeem call, so it costs nothing against the
+    // route's per-IP limiter.
+    const cfg = await (await fetch(srv.base + "/api/config")).json();
+    assert.equal(cfg.pro.testerPasskey, false);
   });
 
   await t.test("configured: refuses anonymous and wrong codes, accepts the right one", async () => {
@@ -925,6 +932,10 @@ test("tester passkey", async (t) => {
     const before = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
     assert.equal(before.pro.tester, false);
     assert.equal(before.pro.isPro, false);
+    // A configured deployment reports the door exists, independent of
+    // whether THIS caller has redeemed it — that is what lets the pricing
+    // modal show the row before anyone has typed a code.
+    assert.equal(before.pro.testerPasskey, true);
 
     // The right code, signed in.
     const ok = await redeem(PASSKEY, cookie);

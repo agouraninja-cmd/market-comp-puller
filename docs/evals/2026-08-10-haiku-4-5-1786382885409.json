@@ -1,0 +1,323 @@
+{
+  "label": "haiku-4-5",
+  "model": "(server default)",
+  "ranAt": "2026-08-10T17:28:05.409Z",
+  "base": "http://localhost:3182",
+  "setSize": 12,
+  "corpusWiped": false,
+  "subjectSizesWiped": false,
+  "summary": {
+    "targets": 12,
+    "scored": 12,
+    "failures": 0,
+    "failedTargets": [],
+    "metrics": {
+      "comps": 4.333333333333333,
+      "pricedSales": 2.5833333333333335,
+      "provenanceScore": 0.5132275132275131,
+      "estimateRate": 0.3088624338624339,
+      "aggregateRate": 0,
+      "inWindowRate": 0.5685185185185184,
+      "marketMatchRate": 0.546957671957672,
+      "sizeRate": 0.5833333333333334,
+      "summaryChars": 493.4166666666667,
+      "valueDriversChars": 269.5,
+      "marketTrendChars": 104.08333333333333,
+      "priceDiscoveryChars": 150.58333333333334,
+      "durationMs": 36153.916666666664
+    },
+    "valuationPossibleRate": 0.5833333333333334,
+    "subjectSizeFoundRate": 0.3333333333333333
+  },
+  "results": [
+    {
+      "target": "Industrial / 1200 W Industrial Blvd, Dallas, TX",
+      "ok": true,
+      "metrics": {
+        "comps": 9,
+        "pricedSales": 3,
+        "valuationPossible": true,
+        "provenanceScore": 0.6111111111111112,
+        "tierCounts": {
+          "estimate": 4,
+          "news": 5
+        },
+        "estimateRate": 0.4444444444444444,
+        "aggregateRate": 0,
+        "inWindowRate": 0.8888888888888888,
+        "marketMatchRate": 0.4444444444444444,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 497,
+        "valueDriversChars": 239,
+        "marketTrendChars": 128,
+        "priceDiscoveryChars": 144,
+        "durationMs": 40860
+      }
+    },
+    {
+      "target": "Industrial / 4050 E Franklin Rd, Nampa, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 6,
+        "pricedSales": 3,
+        "valuationPossible": true,
+        "provenanceScore": 0.7333333333333334,
+        "tierCounts": {
+          "listing": 4,
+          "estimate": 2
+        },
+        "estimateRate": 0.3333333333333333,
+        "aggregateRate": 0,
+        "inWindowRate": 0.8333333333333334,
+        "marketMatchRate": 1,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 486,
+        "valueDriversChars": 245,
+        "marketTrendChars": 81,
+        "priceDiscoveryChars": 196,
+        "durationMs": 40329
+      }
+    },
+    {
+      "target": "Industrial / 1010 Yellowstone Ave, Pocatello, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 2,
+        "pricedSales": 0,
+        "valuationPossible": false,
+        "provenanceScore": 0.7,
+        "tierCounts": {
+          "news": 2
+        },
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 1,
+        "marketMatchRate": 1,
+        "sizeRate": 0,
+        "subjectSizeFound": false,
+        "summaryChars": 566,
+        "valueDriversChars": 243,
+        "marketTrendChars": 109,
+        "priceDiscoveryChars": 0,
+        "durationMs": 27477
+      }
+    },
+    {
+      "target": "Office / 500 W Madison St, Chicago, IL",
+      "ok": true,
+      "metrics": {
+        "comps": 7,
+        "pricedSales": 3,
+        "valuationPossible": true,
+        "provenanceScore": 0.9142857142857143,
+        "tierCounts": {
+          "public_record": 3,
+          "listing": 4
+        },
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 0.42857142857142855,
+        "marketMatchRate": 1,
+        "sizeRate": 1,
+        "subjectSizeFound": true,
+        "summaryChars": 644,
+        "valueDriversChars": 568,
+        "marketTrendChars": 210,
+        "priceDiscoveryChars": 363,
+        "durationMs": 47132
+      }
+    },
+    {
+      "target": "Office / 3300 N Central Ave, Phoenix, AZ",
+      "ok": true,
+      "metrics": {
+        "comps": 6,
+        "pricedSales": 6,
+        "valuationPossible": true,
+        "provenanceScore": 0.65,
+        "tierCounts": {
+          "news": 2,
+          "public_record": 1,
+          "estimate": 3
+        },
+        "estimateRate": 0.5,
+        "aggregateRate": 0,
+        "inWindowRate": 1,
+        "marketMatchRate": 0.8333333333333334,
+        "sizeRate": 1,
+        "subjectSizeFound": true,
+        "summaryChars": 616,
+        "valueDriversChars": 363,
+        "marketTrendChars": 125,
+        "priceDiscoveryChars": 260,
+        "durationMs": 74401
+      }
+    },
+    {
+      "target": "Retail / 8500 Beverly Blvd, Los Angeles, CA",
+      "ok": true,
+      "metrics": {
+        "comps": 7,
+        "pricedSales": 4,
+        "valuationPossible": true,
+        "provenanceScore": 0.7000000000000001,
+        "tierCounts": {
+          "news": 2,
+          "estimate": 3,
+          "public_record": 2
+        },
+        "estimateRate": 0.42857142857142855,
+        "aggregateRate": 0,
+        "inWindowRate": 0.5714285714285714,
+        "marketMatchRate": 0.2857142857142857,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 796,
+        "valueDriversChars": 404,
+        "marketTrendChars": 171,
+        "priceDiscoveryChars": 203,
+        "durationMs": 40957
+      }
+    },
+    {
+      "target": "Retail / 2100 S Federal Hwy, Fort Lauderdale, FL",
+      "ok": true,
+      "metrics": {
+        "comps": 2,
+        "pricedSales": 2,
+        "valuationPossible": true,
+        "provenanceScore": 0.5,
+        "tierCounts": {
+          "estimate": 2
+        },
+        "estimateRate": 1,
+        "aggregateRate": 0,
+        "inWindowRate": 0.5,
+        "marketMatchRate": 0,
+        "sizeRate": 1,
+        "subjectSizeFound": true,
+        "summaryChars": 659,
+        "valueDriversChars": 350,
+        "marketTrendChars": 136,
+        "priceDiscoveryChars": 228,
+        "durationMs": 33463
+      }
+    },
+    {
+      "target": "Multifamily / 1600 Peachtree St NE, Atlanta, GA",
+      "ok": true,
+      "metrics": {
+        "comps": 0,
+        "pricedSales": 0,
+        "valuationPossible": false,
+        "provenanceScore": 0,
+        "tierCounts": {},
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 0,
+        "marketMatchRate": 0,
+        "sizeRate": 0,
+        "subjectSizeFound": false,
+        "summaryChars": 0,
+        "valueDriversChars": 0,
+        "marketTrendChars": 0,
+        "priceDiscoveryChars": 0,
+        "durationMs": 22410
+      }
+    },
+    {
+      "target": "Multifamily / 700 E Riverside Dr, Austin, TX",
+      "ok": true,
+      "metrics": {
+        "comps": 3,
+        "pricedSales": 0,
+        "valuationPossible": false,
+        "provenanceScore": 0.5,
+        "tierCounts": {
+          "estimate": 3
+        },
+        "estimateRate": 1,
+        "aggregateRate": 0,
+        "inWindowRate": 1,
+        "marketMatchRate": 1,
+        "sizeRate": 0,
+        "subjectSizeFound": false,
+        "summaryChars": 598,
+        "valueDriversChars": 421,
+        "marketTrendChars": 171,
+        "priceDiscoveryChars": 241,
+        "durationMs": 32245
+      }
+    },
+    {
+      "target": "Land / 12500 S Pflumm Rd, Olathe, KS",
+      "ok": true,
+      "metrics": {
+        "comps": 0,
+        "pricedSales": 0,
+        "valuationPossible": false,
+        "provenanceScore": 0,
+        "tierCounts": {},
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 0,
+        "marketMatchRate": 0,
+        "sizeRate": 0,
+        "subjectSizeFound": true,
+        "summaryChars": 398,
+        "valueDriversChars": 0,
+        "marketTrendChars": 0,
+        "priceDiscoveryChars": 0,
+        "durationMs": 24842
+      }
+    },
+    {
+      "target": "Residential / 742 N 5th St, Boise, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 10,
+        "pricedSales": 10,
+        "valuationPossible": true,
+        "provenanceScore": 0.8499999999999999,
+        "tierCounts": {
+          "listing": 10
+        },
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 0.6,
+        "marketMatchRate": 1,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 661,
+        "valueDriversChars": 190,
+        "marketTrendChars": 118,
+        "priceDiscoveryChars": 172,
+        "durationMs": 32334
+      }
+    },
+    {
+      "target": "Industrial / 1 Innovation Way, Cheyenne, WY",
+      "ok": true,
+      "metrics": {
+        "comps": 0,
+        "pricedSales": 0,
+        "valuationPossible": false,
+        "provenanceScore": 0,
+        "tierCounts": {},
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 0,
+        "marketMatchRate": 0,
+        "sizeRate": 0,
+        "subjectSizeFound": false,
+        "summaryChars": 0,
+        "valueDriversChars": 211,
+        "marketTrendChars": 0,
+        "priceDiscoveryChars": 0,
+        "durationMs": 17397
+      }
+    }
+  ]
+}

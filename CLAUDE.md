@@ -1414,6 +1414,47 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the reason migration 019 has no SQL backfill (`marketOf()` is JS).
     Routes go through `requireBroker`. Manual adds log a PII-free `bov`
     analytics event. Lapse locks the log, never deletes it.
+  - **The CSV column mapper** (2026-08-10; spec
+    `docs/superpowers/specs/2026-08-10-vault-csv-column-mapper-design.md`).
+    A broker uploads their own export and maps its columns once. `POST
+    /api/vault/inspect` reports headers, real sample values and a suggested
+    mapping; `/api/vault/upload` takes an optional `mapping`, and absent it
+    behaves byte for byte as before. Five rules a future editor will
+    otherwise break: **a target is suggested only when exactly ONE column
+    claims it**, which is how the old "we do not guess column names"
+    decision survives (two columns aliasing to `price` suggest neither);
+    **the screen is always shown unless every header is already one of
+    ours**, because only four fields are required per row, so a file with
+    an unrecognised "Sq Ft" column imports today with every size null and
+    nothing saying so; **unmapped columns are renamed `_ignored_<i>` rather
+    than left alone**, or a literal `price` column the broker chose not to
+    map would shadow the one they did; **the remembered mapping is only
+    ever a pre-selection**, never auto-applied, which is what makes it safe
+    to key on the broker rather than on a fingerprint of their header row
+    (if the screen is ever made skippable on a remembered mapping, that
+    stops being true and the header signature becomes necessary); and
+    **the normalized header vector is produced in exactly one place**,
+    `normalizedHeaderRow(rawHeaders)`, and `inspectCsv`, `validateMapping`
+    and `parseUpload` all route through it rather than calling
+    `normalizeHeader` directly. A header can be real and still normalize to
+    nothing — `normalizeHeader` strips every non-alphanumeric character, so
+    a column headed `$`, `#`, `%` or `($)` (the comment above
+    `TEMPLATE_COLUMNS` already names `$` as a header brokers use for price)
+    reduces to `""` and would vanish from the mapping screen entirely: not
+    listed, not mappable, not even named in the "will be ignored" line. That
+    is the exact silent-drop failure this feature exists to prevent, so such
+    a header now gets a positional `column_<i>` key instead; a truly blank
+    header still yields `""` and stays excluded, so trailing commas still
+    cost nothing. Computing the vector separately in any one of the three
+    call sites is what broke the round trip the first time this shipped: the
+    inspection screen offered `column_0` as a mappable source, and the
+    import route, keying its own copy off a bare `normalizeHeader` map,
+    refused it as a column the file did not have. `suggestMapping`
+    deliberately does NOT route through `normalizedHeaderRow` — it only
+    produces optional suggestions, never a required key, and a synthetic
+    `column_N` can never match a semantic alias like `sale_price`, so
+    running it through the positional fallback would only manufacture
+    suggestions nobody could recognise.
 - **Broker lead inbox** (v1, 2026-08-05). DDL in
   `migrations/015-broker-lead-inbox.sql` (**run before deploying**). Rules
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead

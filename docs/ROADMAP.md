@@ -45,6 +45,10 @@ intent, the devlog states history.
   should be bought with evidence from the first real broker book, not
   estimated. Nothing is wasted by waiting: `geo_source` already allows
   `'census'`, so step 2 lands as a pure addition with no migration change.
+  **Unblocked 2026-08-10** by the CSV column mapper: real broker exports can
+  now be imported, and `lat`/`lng` are mappable columns, so section 7's
+  premise is finally measurable rather than estimated. Read it off the first
+  few real books before deciding.
 - **Corpus browse page** (the deferred half of friend-feedback #9). Gated
   on the density milestone: 10+ market/type buckets holding 8+
   provenance-good comps from organic traffic; the `corpus_offer` events on

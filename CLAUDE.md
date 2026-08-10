@@ -1300,11 +1300,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     across many rows in an imported book; Postgres only guarantees stable
     OFFSET/LIMIT paging when the ORDER BY produces a unique row order, so a
     non-unique sort key can drop (or duplicate) a comp on a page boundary.
-    It also JOINS `broker_properties` for `lat`/`lng` and every populated
-    per-type column (`clear_height`, `units`, `lot_acres`, etc.) — omit
-    either and a re-import silently drops that comp's specs or sends a
-    private address back out to a third-party geocoder, which migration 017
-    and `parseCoord` exist to prevent.
+    It also JOINS `broker_properties` for `lat`/`lng` — those are not
+    columns on `broker_comps` — and separately carries every populated
+    per-type column (`clear_height`, `units`, `lot_acres`, etc.), which ARE
+    columns on `broker_comps` and ride along for free because the paging
+    query passes no `select=`; `VAULT.exportColumns` then appends only the
+    ones actually populated. Omit either source and a re-import silently
+    drops that comp's specs or sends a private address back out to a
+    third-party geocoder, which migration 017 and `parseCoord` exist to
+    prevent.
     No migration was needed for any of this: `broker_comps.upload_id` was
     already nullable (a hand-added comp belongs to no import, so it can only
     ever be removed per-comp, never by deleting an import), and every new

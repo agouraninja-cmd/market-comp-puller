@@ -379,14 +379,19 @@
        the search field are real guidance, not decoration. Still clearly
        lighter than typed ink (#1A2433). */
     .rd-in::placeholder { color: #68707E; }
-    /* The building-size cell shows exactly one hint line: the footprint
+    /* The hint strip shows exactly one size sentence: the footprint
        "estimated" note when it is showing, otherwise the standing
-       "we'll pull it from public records" line. Done here rather than in JS
+       "pulled from public records" line. Done here rather than in JS
        because four separate call sites toggle sizeEstimateNote's .hidden
        (typed-over, record-backed size, address change, estimate landed) and
        none of them should have to know a second element exists. Adjacent
-       sibling, so the two <p>s must stay in this order in the markup. */
+       sibling, so the two spans must stay in this order in the markup
+       (they live in the strip under the settings row since Direction N). */
     #sizeEstimateNote:not(.hidden) + #sizeHint { display: none; }
+    /* The address is the form's one required decision, so it gets the
+       largest text in the frame (Direction N). Still above the 16px iOS
+       zoom floor documented at .rd-in. */
+    .rd-in-lg { font-size: 17px; }
     select.rd-in { appearance: auto; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
@@ -1052,61 +1057,14 @@
     <!-- Search form — one bordered unit -->
     <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
       <form id="compForm" class="rd-form">
-        <div class="rd-row grid grid-cols-1 sm:grid-cols-[2.2fr_1fr]">
+        <!-- Direction N (owner-approved 2026-08-09): the address gets the full
+             top row alone in the largest text on the form; the everyday
+             settings share one calm row of three below; the per-cell hints
+             and the type sentence merge into ONE strip under them. -->
+        <div class="rd-row">
           <div class="rd-cell">
-            <div class="flex items-baseline justify-between">
-              <label class="rd-lab" for="address">Property address</label>
-              <!-- Pro-gated (applyExplorerGating). Free users don't see this
-                   link at all — the owner's call is that the Address Explorer
-                   is discovered only through the Upgrade-to-Pro card, which
-                   lists it as a Pro perk. Stays exactly as written here while
-                   the tier is dark, which is the pre-Pro behavior PRO_ENABLED
-                   promises. -->
-              <button id="exploreAddrLink" type="button" class="text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">No address? Explore a market</button>
-            </div>
-            <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
-            <!-- The property type lives under the address it describes, as a
-                 sentence rather than a control: it is a fact about THIS
-                 building, and the confirm dialog is where it gets settled.
-                 The picker is revealed on demand so someone who wants to
-                 decide up front still can. -->
-            <!-- aria-live: the type can change without the visitor touching
-                 anything (OSM detection landing, an address's remembered type
-                 being recalled), and this line is the only thing that says so.
-                 Sighted users see it rewrite itself; without this, a screen
-                 reader user got no announcement at all. Polite, not assertive:
-                 it is never urgent, and the confirm dialog restates the type
-                 with real buttons before any search runs. -->
-            <div id="typeStatusLine" class="text-xs text-[#68707E] mt-1" aria-live="polite"></div>
-            <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
-            <div id="typeAutoNote" class="text-xs text-[#68707E] mt-1"></div>
-          </div>
-          <div class="rd-cell">
-            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
-            <!-- Placeholders stay SHORT because this cell is the 1fr column of
-                 a 2.2fr/1fr grid and then splits again into two inputs around
-                 a "to". Measured at the sm breakpoint the box is ~69px of
-                 usable text width, so "auto from records" (135px) and "max
-                 (optional)" (108px) both clipped mid-word — the first rendering
-                 as "auto from recc", which reads as a typo on the busiest
-                 screen the site has. Anything longer than about four characters
-                 will clip again there; the sentence belongs in the hint below,
-                 which has the whole cell width to sit in. -->
-            <div class="flex items-center gap-2">
-              <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="rd-in" />
-              <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
-              <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max" class="rd-in" />
-            </div>
-            <p id="sizeEstimateNote" class="hidden text-xs text-[#68707E] mt-1">Estimated from the building's footprint - edit if it's off.</p>
-            <!-- The default state of the line above, and the home of the copy
-                 the placeholder can no longer carry. The two are mutually
-                 exclusive in CSS (see #sizeHint in the style block) rather than
-                 in JS on purpose: four separate places already toggle
-                 sizeEstimateNote's .hidden, and a fifth element for each of
-                 them to remember is exactly the kind of coupling that goes
-                 stale. It also steadies the layout — the footprint note used to
-                 ADD a line when it appeared. -->
-            <p id="sizeHint" class="text-xs text-[#68707E] mt-1">Leave blank and we'll pull it from public records.</p>
+            <label class="rd-lab" for="address">Property address</label>
+            <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in rd-in-lg" />
           </div>
           <!-- Still the single source of truth for the current type (and for the
                list of types every picker builds itself from), just no longer a
@@ -1138,7 +1096,14 @@
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
-        <div class="rd-row grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.4fr]">
+        <div class="rd-row grid grid-cols-1 sm:grid-cols-3">
+          <div class="rd-cell">
+            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
+            <!-- One input now; the optional max moved into "+ Refine" below.
+                 The placeholder stays SHORT ("auto") — this cell is a third of
+                 the row and long placeholders have clipped here before. -->
+            <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="rd-in" />
+          </div>
           <div class="rd-cell">
             <label class="rd-lab" for="lookback">Lookback</label>
             <select id="lookback" class="rd-in">
@@ -1162,19 +1127,34 @@
               <option value="leases">Leases only</option>
             </select>
           </div>
-          <div class="rd-cell">
-            <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-            <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="rd-in" />
-          </div>
+        </div>
+        <!-- The one hint strip (Direction N): every per-cell hint and the type
+             sentence merged into a single quiet line. The size pair keeps its
+             CSS mutual exclusivity (#sizeEstimateNote:not(.hidden) + #sizeHint
+             in the style block) — they MUST stay adjacent siblings, in this
+             order, because four JS call sites toggle only sizeEstimateNote's
+             .hidden and rely on that rule to swap the standing sentence out.
+             aria-live on the type slot: the type can change without the
+             visitor touching anything (OSM detection landing, a remembered
+             type being recalled), and this line is the only thing that says
+             so. Polite, not assertive — the confirm dialog restates the type
+             with real buttons before any search runs. -->
+        <div class="rd-row px-4 py-2 bg-[#FBFBF9] text-xs text-[#68707E]">
+          <span id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint - edit it up top if it's off.</span><span id="sizeHint">Size is pulled from public records when left blank.</span>
+          <span id="typeStatusLine" class="ml-1" aria-live="polite"></span>
+          <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
+          <div id="typeAutoNote" class="mt-1"></div>
         </div>
 
-        <!-- Subject property (optional; size now lives up in row 1) -->
+        <!-- Refine (optional; size and type live up top). Direction N folded
+             the size max and the market note in here beside price and NOI —
+             all four ride the search or the analysis, none are required. -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <span id="subjectSummary">+ Your property details <span class="text-[#68707E] font-normal">(price, NOI: optional, sharpens the estimate)</span></span>
+            <span id="subjectSummary">+ Refine <span class="text-[#68707E] font-normal">(price, NOI, size range, market note: optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3">Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size is up top; it's pulled from public records automatically when left blank.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3">Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size and property type come from public records automatically when left alone.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
@@ -1188,6 +1168,15 @@
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
                 <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 <p class="text-xs text-[#68707E] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
+              </div>
+              <div>
+                <label class="rd-lab" for="targetSizeMax">Size max (SF)</label>
+                <input id="targetSizeMax" type="number" min="0" step="any" placeholder="e.g. 60000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                <p class="text-xs text-[#68707E] mt-1">Optional upper bound; pairs with the size on the form to make a range.</p>
+              </div>
+              <div>
+                <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+                <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
               </div>
               <div id="subjectTypeFields" class="contents"></div>
             </div>
@@ -1205,6 +1194,16 @@
           <button id="sampleBtn" type="button"
             class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
             View a sample report
+          </button>
+          <!-- Pro-gated (applyExplorerGating). Free users don't see this
+               link at all — the owner's call is that the Address Explorer
+               is discovered only through the Upgrade-to-Pro card, which
+               lists it as a Pro perk. Direction N moved it down here with
+               the other secondary actions; while the tier is dark it shows
+               for everyone, the pre-Pro behavior PRO_ENABLED promises. -->
+          <button id="exploreAddrLink" type="button"
+            class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
+            No address? Explore a market
           </button>
         </div>
       </form>
@@ -2363,7 +2362,7 @@
   };
 
   // "Building size" is wrong for two types; Land has no income to report.
-  const SIZE_LABELS = { Land: "Lot size (SF)", Residential: "Living area (SF)" };
+  const SIZE_LABELS = { Land: "Lot size (SF)", Residential: "Property size (SF)" };
   const SUBJ_INPUT_CLASS = "w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none";
 
   function renderSubjectFields(type) {

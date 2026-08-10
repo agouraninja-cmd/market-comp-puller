@@ -456,3 +456,84 @@ test("the vault takes its tokens from theme.js rather than its own copy", () => 
     "vault-page.js still declares its own literal :root token block");
   assert.ok(VAULT_JS.includes("THEME_CSS"), "vault-page.js does not interpolate THEME_CSS");
 });
+
+test("no raw hex colour remains in vault-page.js's style block outside the deliberate allowlist", () => {
+  // 2026-08-10 fix round 1: the "no sweep needed" claim in this task's brief
+  // was wrong -- 23 raw hex values sat in vault-page.js's <style> block,
+  // invisible to every other test here because the "no undefined variable"
+  // test only scans var() usage and index.html's own raw-hex test (above)
+  // is scoped to index.html only. This is the vault's equivalent of that
+  // test, so the same class of regression can't recur here unnoticed either.
+  const styleStart = VAULT_JS.indexOf("<style>");
+  const styleEnd = VAULT_JS.indexOf("</style>");
+  assert.notEqual(styleStart, -1, "vault-page.js's <style> tag not found");
+  const style = VAULT_JS.slice(styleStart, styleEnd);
+
+  // vault-page.js carries no @media print block (unlike index.html), so
+  // there is no print span to carve out here.
+  const noComments = style.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Same brace-depth walk as index.html's test: only declaration BODIES,
+  // never selector text (an id like #tbl would otherwise read as a hex).
+  function insideBraces(css) {
+    let d = 0, out = "";
+    for (const c of css) {
+      if (c === "{") { d++; out += ""; continue; }
+      if (c === "}") { d = Math.max(0, d - 1); out += ""; continue; }
+      if (d > 0) out += c;
+    }
+    return out;
+  }
+  const blocks = insideBraces(noComments).split(/[]/).filter((b) => b.trim());
+
+  // The only deliberate literals left after the round-1 sweep: white TEXT
+  // sitting on the filled red .btn (and its a.btn twin) -- that surface
+  // stays dark in dark mode, so the text must stay literal white, not
+  // lighten with --red. Keyed by (property, hex), matching index.html's
+  // allowlist shape.
+  const ALLOWLIST = new Set([
+    "color:#fff", // .btn / a.btn / a.btn:hover -- text on --red-fill, a surface that stays dark
+  ]);
+
+  const offenders = [];
+  for (const block of blocks) {
+    for (const decl of block.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) {
+        const key = `${prop}:${hex.toLowerCase()}`;
+        if (!ALLOWLIST.has(key)) offenders.push(key);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `raw hex colour(s) outside the token system in vault-page.js: ${offenders.join(", ")}`);
+});
+
+test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {
+  // Found live during 2026-08-10 fix round 1: a comment reading
+  // "--ok-*/--err-* triads" contains the literal sequence "*/" mid-sentence
+  // (the trailing * of "--ok-*" immediately followed by the "/" of
+  // "/--err-*"), which is a real CSS comment terminator. It closed the
+  // comment three sentences early; the leftover comment TEXT then parsed as
+  // CSS, and the browser's recovery silently dropped every rule after it
+  // (verified via the live page's CSSOM: .hide and everything past .msg
+  // were simply absent, with no console error) -- #app never hid, so a
+  // signed-out visitor saw the whole workspace shell. `/* */` cannot nest,
+  // so a stray "*/" inside comment prose is exactly as dangerous here as a
+  // stray backtick is to the outer JS template literal (the hazard this
+  // file's own comments already warn about), and nothing else catches it:
+  // test/vault-page.test.js compiles the emitted JS, not this CSS. Simple
+  // open/close count parity is enough to catch the exact failure mode
+  // (a comment that closes somewhere other than intended still balances
+  // open/close *counts* only if it reopens correctly after -- this file's
+  // comments are never nested, so a mismatch here is unambiguous).
+  const styleStart = VAULT_JS.indexOf("<style>");
+  const styleEnd = VAULT_JS.indexOf("</style>");
+  const style = VAULT_JS.slice(styleStart, styleEnd);
+  const opens = (style.match(/\/\*/g) || []).length;
+  const closes = (style.match(/\*\//g) || []).length;
+  assert.equal(opens, closes,
+    `vault-page.js's style block has ${opens} "/*" but ${closes} "*/" -- a comment closes early or never closes`);
+});

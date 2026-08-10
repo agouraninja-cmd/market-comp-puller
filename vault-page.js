@@ -76,11 +76,14 @@ h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var
    exists to prove. Figure size is the 26px the approved card set, not a
    token from this page's scale. */
 .trust{margin:var(--s7) 0 0}
-.ledger{border:1px solid var(--edge);border-radius:var(--r);background:#fff;
+.ledger{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden}
 .lcell{padding:var(--s4) var(--s5);border-left:1px solid var(--hair)}
 .lcell:first-child{border-left:0}
-.lcell.mid{background:#FCFBF8}
+/* #FCFBF8 has no exact token; folded to --wash (ΔRGB 13, within the
+   project's approved 25 bound -- same fold Task 4 already made for the same
+   literal in index.html, see task-4-report.md's light-mode drift audit). */
+.lcell.mid{background:var(--wash)}
 .llab{display:block;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;margin-bottom:var(--s2)}
 .lcell.mid .llab{color:var(--green)}
@@ -100,7 +103,7 @@ section{margin-top:var(--s8)}
 section+section{border-top:1px solid var(--line);padding-top:var(--s7)}
 h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(--s5)}
 .drop{border:1px dashed var(--edge);border-radius:var(--r);padding:var(--s7);text-align:center;
-  background:#fff;transition:border-color .12s,background .12s}
+  background:var(--card);transition:border-color .12s,background .12s}
 .drop.over{border-color:var(--red);background:var(--wash)}
 .drop p{margin:var(--s3) 0 0;color:var(--ink-2);font-size:var(--t5)}
 .btn{background:var(--red-fill);color:#fff;border:0;border-radius:var(--r);padding:var(--s3) var(--s5);
@@ -111,7 +114,7 @@ h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(-
 .btn.ghost:hover{background:var(--wash);color:var(--ink)}
 .row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
 select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:16px;background:#fff;color:var(--ink)}
+  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink)}
 /* 16px, not var(--t5): iOS Safari zooms on focus for any input under 16px
    and stays zoomed — on a data-entry page that means every filter tap. */
 table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
@@ -135,8 +138,14 @@ tfoot td{padding:var(--s3) var(--s4) var(--s3) 0;border-top:1px solid var(--ink)
 tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
 .tw{overflow-x:auto}
 .msg{margin-top:var(--s5);padding:var(--s4) var(--s5);border-radius:var(--r);font-size:var(--t5);border:1px solid}
-.msg.ok{background:#F0FAF3;border-color:#BFE3CB;color:#14532D}
-.msg.bad{background:#FDF2F2;border-color:#F0C7C7;color:#7F1D1D}
+/* Folded onto the shared --ok- and --err- triads (2026-08-10 fix round 1).
+   None of these three literals were exact matches for the existing tokens
+   (deltas measured: bg 11.45, border 7.28, color 23.11 -- all within the
+   project's approved 25 ΔRGB bound); .msg.bad's own trio is what completes
+   --err-text/--err-rule in theme.js, so its light values ARE the exact
+   literals this replaces. */
+.msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
+.msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
 .empty{color:var(--ink-3);padding:var(--s7) 0;text-align:center}
@@ -151,11 +160,15 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 /* Publish state as the statement's badge chip (Vault B): green tint only once
    published — the deliberate act, not the default. The tints are the report
    table's own Verified-badge pair, so one green means one thing site-wide. */
-.pubbtn{background:#fff;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;
+.pubbtn{background:var(--card);border:1px solid var(--edge);border-radius:3px;padding:6px 10px;
   font-family:inherit;font-size:var(--t6);font-weight:600;line-height:1.4;color:var(--ink-2);
   cursor:pointer;white-space:nowrap}
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
-.pubbtn.on{border-color:transparent;background:#E3F2EA;color:#06603A}
+/* #06603A is --ok-text's light value exactly (ΔRGB 0); #E3F2EA is the same
+   literal Task 2/4 already folded into --ok-bg for the report table's own
+   Verified badge (ΔRGB 6.4, within the approved bound) -- this is that same
+   precedent, not a new one. */
+.pubbtn.on{border-color:transparent;background:var(--ok-bg);color:var(--ok-text)}
 .pubbtn[disabled]{opacity:.5;cursor:default}
 .hide{display:none}
 /* ---- The market rollup: the page's lead view ----------------------------
@@ -166,11 +179,11 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
    the map, and a map that hides everything but your current street is not a
    map. Clicking one drives the filter instead. */
 .cards{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
-.card{border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:var(--s4) var(--s5);
+.card{border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:var(--s4) var(--s5);
   text-align:left;font-family:inherit;font-size:var(--t5);color:var(--ink);cursor:pointer;
   display:flex;flex-direction:column;gap:var(--s1);transition:border-color .12s,background .12s}
 .card:hover{border-color:var(--ink-3);background:var(--wash)}
-.card.on{border-color:var(--red);background:#fff;box-shadow:inset 0 0 0 1px var(--red)}
+.card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red)}
 .card .mk{font-weight:600;font-size:var(--t4);line-height:1.3}
 .card .ty{color:var(--ink-3);font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
 .card .big{font-family:var(--serif);font-size:var(--t2);font-weight:500;margin-top:var(--s2)}
@@ -191,7 +204,7 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
    Verdict chips stay in the page's existing voice: the pubbtn border style,
    ink for facts, green only for "in line" (the calm state), never red for a
    divergence — above/below is "worth a look", not an error. */
-.gc{border:1px solid var(--line);border-radius:var(--r);background:#fff;
+.gc{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
   padding:var(--s4) var(--s5);font-size:var(--t5);display:flex;
   flex-direction:column;gap:var(--s2)}
 .gc .mk{font-weight:600;font-size:var(--t4)}
@@ -199,7 +212,13 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .gcv{display:inline-block;border:1px solid var(--edge);border-radius:var(--r);
   padding:1px var(--s3);font-size:var(--t6);color:var(--ink-2);font-weight:600;
   align-self:flex-start;margin-top:var(--s2)}
-.gcv.ok{border-color:#BFE3CB;background:#F0FAF3;color:var(--green)}
+/* border/background folded onto --ok-rule/--ok-bg (deltas 7.28 / 11.45,
+   within the approved bound); color was already var(--green), a DIFFERENT
+   existing token, left exactly as-is -- swapping it to --ok-text would move
+   this rule's light value (--green light #15803D vs --ok-text light
+   #06603A are different colours, not a near-hex fold) and nothing asked for
+   that. */
+.gcv.ok{border-color:var(--ok-rule);background:var(--ok-bg);color:var(--green)}
 .gc .fine{color:var(--ink-3);font-size:var(--t6)}
 .gcOut{display:inline-block;margin-left:var(--s2);font-size:var(--t6);
   letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
@@ -272,7 +291,7 @@ a.btn:hover{color:#fff}
    figures come up here in the trust line's own ledger geometry, and each cell
    opens the full panel it summarises. Nothing was deleted; it stopped being
    mandatory reading. */
-.strip{border:1px solid var(--edge);border-radius:var(--r);background:#fff;
+.strip{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s5)}
 .strip.hide{display:none}   /* see the .deck.hide note above */
 .scell{padding:var(--s4) var(--s5);border:0;border-left:1px solid var(--hair);
@@ -294,7 +313,7 @@ a.btn:hover{color:#fff}
 /* The three panels the strip summarises, collapsed. A details/summary carries
    its own open state, so the strip only has to set .open — there is no second
    copy of "is this panel showing" to drift. */
-.dbox{border:1px solid var(--line);border-radius:var(--r);background:#fff;
+.dbox{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
   padding:var(--s3) var(--s5);margin-top:var(--s4)}
 .dbox>summary{cursor:pointer;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;user-select:none;list-style-position:inside}

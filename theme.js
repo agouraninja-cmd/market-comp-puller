@@ -60,7 +60,23 @@ const THEME_TOKENS = {
   "warn-text":      { light: "#8A6D1A", dark: "#FCD34D" },
   "warn-bg":        { light: "#FBF3DC", dark: "#2A2410" },
   "warn-rule":      { light: "#EDDFB0", dark: "#5B4A16" },
+  // err-text/err-rule complete the triad err-bg started alone (only a
+  // background existed until the vault's .msg.bad needed all three, 2026-08-10
+  // fix round 1). Light values are the exact literals vault-page.js already
+  // used, so light mode does not move. err-text's dark value reuses --red's
+  // dark value outright (6.23:1 against err-bg dark) rather than inventing a
+  // new red -- the message IS an error, so borrowing the brand's own error
+  // red keeps the palette from growing a second one. err-rule's dark value
+  // was chosen to clear 4.5:1 (4.80:1) as asked, which is a stricter bar than
+  // its siblings actually clear: --ok-rule and --warn-rule measure only
+  // ~1.9:1 and ~1.8:1 against their own dark backgrounds (they read as
+  // subtle hairlines, not text). Held here to 4.5:1 as instructed, so
+  // --err-rule renders visibly brighter/more saturated than --ok-rule/
+  // --warn-rule side by side -- worth a look if that inconsistency reads as
+  // odd next to them in practice.
+  "err-text":       { light: "#7F1D1D", dark: "#F87171" },
   "err-bg":         { light: "#FCF1EF", dark: "#2A1517" },
+  "err-rule":       { light: "#F0C7C7", dark: "#C27070" },
 };
 
 // Emits both custom-property blocks as one line. Every in-scope stylesheet

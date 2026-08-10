@@ -707,6 +707,16 @@ function normalizeRow(raw) {
 // could set user_id would be an account-takeover primitive, and one that
 // could set `published` would put a row in the public corpus without the
 // submission that credits it.
+//
+// This matters even though normalizeRow already builds its `row` by explicit
+// field-by-field assignment and never spreads its input, so today a patch
+// carrying user_id or published would be dropped by normalizeRow alone with
+// no allowlist at all. EDITABLE_FIELDS is defense in depth against a future
+// normalizeRow that spreads `src` for convenience -- the moment it does, this
+// allowlist is the only thing still standing between a patch and those
+// columns. The "EDITABLE_FIELDS itself" test below is what keeps this
+// allowlist honest, since nothing about a merged row's SHAPE can tell
+// "properly filtered" apart from "normalizeRow happened to drop it anyway".
 const EDITABLE_FIELDS = Object.freeze([...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
 
 /**

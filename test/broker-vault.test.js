@@ -21,7 +21,7 @@ const {
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
   inspectCsv, normalizedHeaderRow,
-  validateEdit,
+  validateEdit, EDITABLE_FIELDS,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -338,6 +338,29 @@ test("validateEdit ignores keys that are not template fields", () => {
   assert.equal(r.ok, true);
   assert.equal(r.row.user_id, undefined, "a patch may never set user_id");
   assert.equal(r.row.published, undefined, "a patch may never set published");
+});
+
+// The test above proves a patch cannot set user_id/published, but it cannot
+// tell "properly allowlisted" apart from "no allowlist at all, saved only by
+// normalizeRow's explicit field-by-field construction (which never spreads
+// its input)". Swap validateEdit's merge for `{ ...existing, ...patch }` --
+// no EDITABLE_FIELDS restriction whatsoever -- and the test above still
+// passes, because normalizeRow drops the unknown keys either way. So pin the
+// allowlist ITSELF: widening it, or deleting the filtering, must fail here
+// even if every row-shape assertion elsewhere in this file stays green.
+test("EDITABLE_FIELDS is exactly the two column constants, and excludes the fields a patch must never touch", () => {
+  assert.deepEqual(EDITABLE_FIELDS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
+  // A patch that could set user_id would be an account-takeover primitive
+  // (it retargets the row to another broker's account); one that could set
+  // published (or the columns that go with it) would put a row in the public
+  // corpus without the submission that credits it.
+  const forbidden = [
+    "user_id", "published", "published_at", "published_submission_id",
+    "id", "upload_id", "market", "dedupe_key", "address_key",
+  ];
+  for (const f of forbidden) {
+    assert.ok(!EDITABLE_FIELDS.includes(f), `EDITABLE_FIELDS must not include "${f}"`);
+  }
 });
 
 // --- a whole file ----------------------------------------------------------

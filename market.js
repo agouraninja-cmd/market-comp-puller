@@ -90,4 +90,55 @@ function marketForLog(value) {
   return MARKET_SHAPE.test(s) ? s : "";
 }
 
-module.exports = { marketOf, marketForLog, US_STATES };
+// ---------------------------------------------------------------------------
+// Metro groups. Corpus-first retrieval uses these to offer a thin market the
+// comps we already hold in its immediate neighbors: a Meridian search sees
+// Boise's rows rather than starting cold ten miles away.
+//
+// THE RULE FOR ADDING A GROUP: adjacent suburbs that genuinely share one CRE
+// submarket, never a whole census statistical area. A group that is too wide
+// hands a search comps from thirty miles away, which is worse than no corpus
+// help at all. Every key and member must be exactly what marketOf() produces
+// (title-cased city, uppercase state); a test pins that, because an exact
+// string match that never matches is invisible.
+//
+// Deliberately short. Grow it when traffic shows a market that needs it, one
+// reviewed group at a time.
+// ---------------------------------------------------------------------------
+const METRO_GROUPS = {
+  // The owner's home market: small adjacent cities that trade as one.
+  "Boise, ID": ["Boise, ID", "Meridian, ID", "Nampa, ID", "Caldwell, ID",
+    "Eagle, ID", "Garden City, ID", "Star, ID", "Kuna, ID"],
+  // Inland Empire warehouse corridor: one industrial market in practice, and
+  // the site's deepest seeded coverage. Riverside is deliberately NOT here;
+  // it is its own submarket and has its own seeded page.
+  "Ontario, CA": ["Ontario, CA", "Rancho Cucamonga, CA", "Fontana, CA",
+    "Rialto, CA", "Jurupa Valley, CA", "Eastvale, CA", "Mira Loma, CA"],
+  // The Valley. The widest group here and so the first one to trim if
+  // marketMatchRate drops after this ships.
+  "Phoenix, AZ": ["Phoenix, AZ", "Tempe, AZ", "Mesa, AZ", "Chandler, AZ",
+    "Glendale, AZ", "Tolleson, AZ", "Goodyear, AZ", "Avondale, AZ"],
+};
+
+// Reverse index, built once: "Meridian, ID" -> "Boise, ID".
+const METRO_OF = {};
+for (const [metro, members] of Object.entries(METRO_GROUPS)) {
+  for (const m of members) METRO_OF[m] = metro;
+}
+
+// Normalizes through marketOf so a caller's casing or spacing cannot miss.
+function metroOf(marketKey) {
+  const key = marketOf(marketKey);
+  return METRO_OF[key] || null;
+}
+
+// The other members of this market's metro. Empty for an ungrouped market,
+// which is what keeps the caller's behavior identical to today.
+function siblingMarkets(marketKey) {
+  const key = marketOf(marketKey);
+  const metro = METRO_OF[key];
+  if (!metro) return [];
+  return METRO_GROUPS[metro].filter((m) => m !== key);
+}
+
+module.exports = { marketOf, marketForLog, US_STATES, METRO_GROUPS, metroOf, siblingMarkets };

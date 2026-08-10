@@ -186,6 +186,25 @@ test("bare environment", async (t) => {
     }
   });
 
+  // /brokers' "Upgrade to Pro" link hides itself for members via the shared
+  // hydration script. Two halves that must both exist or the link either
+  // never hides (id missing from the script) or never renders (id missing
+  // from the page); each alone passes a glance.
+  await t.test("/brokers upgrade link is wired to the entitlements hydration", async () => {
+    const html = await (await fetch(srv.base + "/brokers")).text();
+    assert.match(html, /id="upgradeProLink"/, "the link lost its id");
+    assert.match(html, /\$\("upgradeProLink"\)/,
+      "ACCOUNT_NAV_JS no longer decides this link's visibility");
+  });
+
+  // The route matched req.url without stripping the query, so
+  // /brokers?utm_source=x 404'd — the exact regression this file pins for
+  // every other page, found on /brokers 2026-08-10.
+  await t.test("/brokers survives a query string", async () => {
+    const r = await fetch(srv.base + "/brokers?utm_source=newsletter");
+    assert.equal(r.status, 200, "a campaign link to /brokers must not 404");
+  });
+
   // /how-it-works renders My Desk server-side (2026-08-08) AND takes the
   // shared circle, so it is the one page that can end up with two of them.
   // accountNavSlots({ desk: false }) is what prevents that.

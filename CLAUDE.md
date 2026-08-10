@@ -1292,10 +1292,54 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     which owns the entitlement gate**; `vault-page.js` only decides how that
     data is drawn. Keep it that way — a read that happened there would be a
     read outside the gate.
-  - **The vault DASHBOARD** (2026-08-06). `/vault` leads with a market rollup —
+  - **TWO DECKS, not ten peer sections** (Vault Direction U, approved and
+    shipped 2026-08-10; card `vault/direction-u-two-decks.html`). The page is
+    two products sharing one scroll, so it carries exactly two deck rules —
+    serif label, ink rule, the deck's one action — and they are the level
+    ABOVE `h2`. **Your book** holds the uploader, the market rollup and the
+    comps; **Your pipeline** holds leads and the BOV tracker. Five rules:
+    - **`#addSec` is a panel, not a section, and ships CLOSED.** "Add comps"
+      was a section above the comps table, so a broker with 200 comps opened
+      their book and was handed an uploader. It is the book deck's action now.
+      `setAddOpen()` is the single writer of its visibility (the label and
+      `aria-expanded` ride with it); `applyFirstRun` only re-asserts the flag
+      and deliberately does **not** force it shut, because `#res` lives inside
+      the panel and an import that failed before it could raise the comp count
+      would otherwise write its error into something invisible. `doImport`
+      opens it for exactly that reason on the non-mapper path.
+    - **Dragging a file anywhere over the page opens it.** `#drop` is inside
+      that closed panel, so without the document-level `dragenter`/`dragover`
+      handler drag-and-drop would silently stop existing. It is guarded on the
+      book deck being visible, so a first run still shows one uploader.
+    - **`.deck.hide` and `.strip.hide` are load-bearing.** Both classes set
+      `display`, and both are declared BELOW `.hide` in the same stylesheet, so
+      a plain `deck hide` loses the cascade and leaves a stray "Your book" rule
+      across an empty vault. Found in a browser, not by reading. Same trap as
+      `ACCOUNT_NAV_CSS`'s `[hidden]` line.
+    - **`#firstRun` sits OUTSIDE both decks**, and both decks hide on a first
+      run: a rule reading "Your book" over an empty one is the same 0-0
+      scoreboard the trust line is hidden to avoid.
+    - **One hidden-sibling CSS patch, `#rollupSec.hide + #compsSec`.** It
+      replaced two others (`#firstRun.hide + #addSec`, `#addSec.hide +
+      #mapSec`), which stopped being needed once those two became divs. Keep
+      such rules scoped to the specific pair — a blanket hidden-sibling rule
+      also strips dividers that are correct.
+  - **The vault DASHBOARD** (2026-08-06, re-ranked 2026-08-10). `/vault` leads
+    with a market rollup —
     one card per `market` + `property_type`, the same pair the lead coverage
     below it is keyed on — then a median-$/SF-by-year chart and a
-    repeat-property list, all three scoped by one filter row. Four rules:
+    repeat-property list, all three scoped by one filter row. **Since Direction
+    U those three are collapsed `<details class="dbox">` under a three-cell
+    reading strip** (`renderStrip`), not three bordered panels in front of the
+    table: measured on a seeded book the comps table moved from 4363px down
+    the document to 1101px. Two rules for the strip. Its median comes from the
+    same `psfList`/`median` pair that seals the table's own footer, so the two
+    can never quote different figures. And a cell is a `<button>` **only** when
+    the panel behind it is actually showing — an affordance over a hidden panel
+    is a control that does nothing. `renderGutCheck` and `renderRepeats` feed it
+    through the module-level `lastGut`/`lastReps` rather than a changed return
+    type, because the return value is the outlier map the table reads. Four
+    further rules:
     - **The page fetches `?limit=1000` and filters in the BROWSER.** It used to
       re-query with `market=`/`type=` params, which cannot work now: the rollup
       counts the whole book, and server-side filtering leaves the browser

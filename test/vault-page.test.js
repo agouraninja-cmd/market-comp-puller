@@ -122,8 +122,8 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
   // before any script runs.
   const html = renderVaultHTML(boot([]), CHROME);
   assert.match(html, /<section id="rollupSec" class="hide">/);
-  assert.match(html, /id="chartBox"[^>]*class="panel chart hide"|class="panel chart hide" id="chartBox"/);
-  assert.match(html, /id="repBox"[^>]*class="panel hide"|class="panel hide" id="repBox"/);
+  assert.match(html, /id="chartBox"[^>]*class="dbox chart hide"|class="dbox chart hide" id="chartBox"/);
+  assert.match(html, /id="repBox"[^>]*class="dbox hide"|class="dbox hide" id="repBox"/);
 });
 
 // ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ test("the gut-check panel ships hidden and lives inside the filtered section", (
   const html = renderVaultHTML(boot([]), CHROME);
   // Inside #compsSec (so applyFirstRun's hide covers it) and hidden until
   // renderGutCheck reveals it — same pattern as #chartBox / #repBox.
-  assert.match(html, /id="gutBox"[^>]*class="panel hide"|class="panel hide" id="gutBox"/);
+  assert.match(html, /id="gutBox"[^>]*class="dbox hide"|class="dbox hide" id="gutBox"/);
   const comps_ix = html.indexOf('<section id="compsSec">');
   const gut_ix = html.indexOf('id="gutBox"');
   const chart_ix = html.indexOf('id="chartBox"');
@@ -364,7 +364,7 @@ test("renderGutCheck renders real verdict cards and marks an outlier row, execut
 
   const { doc } = await runPage([a1, a2, b1], () => Promise.resolve(jsonResponse(200, { buckets })));
 
-  assert.equal(doc.getElementById("gutBox").className, "panel",
+  assert.equal(doc.getElementById("gutBox").className, "dbox",
     "the panel must unhide once real benchmark data lands");
 
   const cards = doc.getElementById("gutCards").innerHTML;
@@ -388,11 +388,56 @@ test("renderGutCheck renders real verdict cards and marks an outlier row, execut
     "the outlier row is flagged with the real outliers[id].dir/pct gutCheck computed");
 });
 
+// ---- The reading strip (Vault Direction U, 2026-08-10) --------------------
+// Three headline figures replacing three bordered panels above the table. The
+// risk it carries is quoting a number that disagrees with the panel behind it,
+// so these pin it against the SAME footer the table seals with, and against
+// the real gut-check verdict rather than a restatement of it.
+test("the reading strip quotes the table's own median and opens the panel behind each cell", async () => {
+  const a1 = comp({ id: "c1", address: "100 Main St", market: "Boise, ID", property_type: "Industrial",
+    transaction: "sale", price_per_sqft: 98, deal_date: "2025-01-05" });
+  const a2 = comp({ id: "c2", address: "200 Second St", market: "Boise, ID", property_type: "Industrial",
+    transaction: "sale", price_per_sqft: 102, deal_date: "2026-02-10" });
+  const buckets = [{ market: "Boise, ID", type: "Industrial",
+    corpus: { count: 5, q1_ppsf: 90, q3_ppsf: 110, newest_deal_date: "2026-01-15" },
+    snapshot: { ppsf: { low: 85, high: 115 }, generatedAt: "2026-07-01" } }];
+
+  const { doc } = await runPage([a1, a2], () => Promise.resolve(jsonResponse(200, { buckets })));
+  const strip = doc.getElementById("readStrip");
+  assert.equal(strip.className, "strip", "the strip unhides once there are rows");
+
+  // $100 is the median of 98 and 102, and it is the figure the table's own
+  // closing row states. One computation feeds both; a second would drift.
+  assert.match(strip.innerHTML, /\$100/, "the strip states the median of the current view");
+  assert.match(doc.getElementById("tblFoot").innerHTML, /\$100/,
+    "and the closing row states the same one");
+
+  // Two years of priced sales, so the chart has something to draw and its cell
+  // becomes a control. The gut check found a bucket, so does its cell.
+  assert.match(strip.innerHTML, /data-open="chartBox"/, "the median cell opens the year chart");
+  assert.match(strip.innerHTML, /data-open="gutBox"/, "the verdict cell opens the gut check");
+  assert.match(strip.innerHTML, /In line/, "one bucket in the band reads as a verdict, not a count");
+  assert.match(strip.innerHTML, /class="sfig ok"/, "all-in-line is the one calm state that earns green");
+
+  // No repeat properties in this book, so that cell has no panel behind it and
+  // must NOT render as a button. An affordance over a hidden panel is a
+  // control that does nothing.
+  assert.doesNotMatch(strip.innerHTML, /data-open="repBox"/,
+    "a cell with nothing behind it must not offer to open it");
+  assert.equal(doc.getElementById("repBox").className, "dbox hide");
+});
+
+test("the reading strip hides itself rather than showing dashes over an empty table", async () => {
+  const { doc } = await runPage([], () => Promise.resolve(jsonResponse(200, { buckets: [] })));
+  assert.equal(doc.getElementById("readStrip").className, "strip hide");
+  assert.equal(doc.getElementById("readStrip").innerHTML, "");
+});
+
 test("the gut check degrades to a one-line note when the benchmarks fetch fails, and the comps table still renders", async () => {
   const c1 = comp({ id: "c1", address: "100 Main St", market: "Boise, ID", property_type: "Industrial" });
   const { doc } = await runPage([c1], () => Promise.reject(new Error("network down")));
 
-  assert.equal(doc.getElementById("gutBox").className, "panel",
+  assert.equal(doc.getElementById("gutBox").className, "dbox",
     "the panel unhides to show the failure note rather than staying blank");
   assert.equal(doc.getElementById("gutCards").innerHTML, "", "no cards render on a failed fetch");
   assert.match(doc.getElementById("gutNote").textContent, /unavailable/i);
@@ -435,7 +480,7 @@ test("the emitted script still parses with the tracker in it", () => {
 test("the mapping panel is present and hidden on first paint", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.match(html, /id="mapSec"/);
-  assert.match(html, /<section id="mapSec" class="hide">/,
+  assert.match(html, /<div id="mapSec" class="mappanel hide">/,
     "it must not flash before a file is chosen");
 });
 

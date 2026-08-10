@@ -4431,6 +4431,11 @@ const ACCOUNT_NAV_JS =
   `var pro=(res[0]||{}).pro||{},me=res[1];` +
   `var live=Boolean(pro.billing),isPro=Boolean(pro.isPro);` +
   `show($("navPricing"),live&&!isPro);` +
+  // Page-level upgrade links (e.g. /brokers' Pro card) share Pricing's rule
+  // but default VISIBLE in the markup: most visitors are not Pro, so the
+  // common case never waits on this fetch. A member (or a dark deployment)
+  // sees it wink out once entitlements land.
+  `var upl=$("upgradeProLink");if(upl)upl.hidden=!live||isPro;` +
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
   `if(!me)return;` +
   `var lab=String(me.name||me.email||"").trim();` +
@@ -5926,7 +5931,6 @@ function renderBrokersPageHTML(signedIn) {
   const description =
     "Submit a comp and it carries your firm's name on every report that uses it. " +
     "Contributing brokers also get introduced to owners weighing a sale.";
-  const introHref = `mailto:${LEAD_NOTIFY_EMAIL}?subject=${encodeURIComponent("Broker introduction: CompNinja")}`;
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -5950,38 +5954,73 @@ function renderBrokersPageHTML(signedIn) {
     ],
   });
 
-  // Rewritten 2026-08-09 from the owner's notes: the page had "way too much
-  // writing" and TWO submit-a-comp doors. Rules of this copy —
-  //   - ONE submit door: the bottom CTA button. Card 1 pitches, it does not
-  //     link; adding a second door back is the regression.
-  //   - The BOV card must NAME the feature ("Broker Opinion of Value") — the
-  //     old card described it without ever saying what it was called.
-  //   - "For members" is the paid tier's home on this page: vault + pricing
-  //     (/?pricing=1, the ?submit=comp door idiom — the modal lives in index.html).
+  // Reworked 2026-08-10 (owner-approved wireframe). The standing rules from
+  // the 2026-08-09 pass still hold —
+  //   - ONE submit door: the bottom CTA button. Nothing above it links to
+  //     the form; adding a second door back is the regression.
   //   - Compliance line stays: we connect, we never broker.
+  // What the rework adds —
+  //   - The h1 is the BROKER'S payoff, not our product story.
+  //   - The Verified badge is SHOWN (the report's own .badge.v chip), not
+  //     described. Seeing the reward beats reading about it.
+  //   - Free vs Pro is an explicit ladder: contribute → intros + profile
+  //     (free), subscribe → the vault (Pro), told in the vault page's own
+  //     three verbs so the two pages tell one story.
+  //   - A proof line of real credited firms from MARKET_CREDIT. It renders
+  //     NOTHING while the data is thin — no fake logos, ever.
+
+  // Proof: up to four real firm · market credits. byMarket keys are
+  // lowercased "city, st"; re-case for display (title-case city, upper state).
+  const credits = [];
+  for (const [market, firms] of Object.entries(MARKET_CREDIT.byMarket)) {
+    const [city = "", st = ""] = market.split(", ");
+    const display = city.replace(/\b\w/g, (c) => c.toUpperCase()) + (st ? ", " + st.toUpperCase() : "");
+    for (const firm of firms) credits.push(`${escHtml(firm)} &middot; ${escHtml(display)}`);
+    if (credits.length >= 4) break;
+  }
+  const proof = credits.length
+    ? `<p class="disc" style="margin:22px 0 0">Recently credited: ${credits.slice(0, 4).join(" &ensp;&bull;&ensp; ")}</p>`
+    : "";
+
   const body =
-    `<h1>The comps get better because brokers make them better.</h1>` +
-    `<p class="sub">CompNinja reports are built from public records, listings, and live search. ` +
-    `The comps brokers confirm are the ones buyers and owners trust most. Those comps carry ` +
-    `the contributor's name wherever they appear.</p>` +
+    `<h1>Your comps, your name, on every report that uses them.</h1>` +
+    `<p class="sub">We build valuation reports from public data. Comps confirmed by a local ` +
+    `broker rank highest, and they carry that broker's name.</p>` +
+
+    // Owner 2026-08-10: no step band — the hero and the two cards carry the
+    // page. Cards are bullets, not paragraphs. The Verified chip (the
+    // report's own .badge, green inlined — NOT class="badge v", whose .v
+    // would collide with .tile/.card stat styling) leads the free card, so
+    // the reward is still shown rather than described.
     `<div class="grid">` +
-    `<div class="card"><h2>Submit a comp, get the credit.</h2>` +
-    `<p>Every submission is hand-reviewed. Approved comps carry a green ` +
-    `<strong>Verified &middot; via your firm</strong> badge — the highest provenance tier in a ` +
-    `report, above public record, listing, news, and estimate — on every report that uses them.</p></div>` +
-    `<div class="card"><h2>Owners here ask for Broker Opinions of Value. We hand those to you.</h2>` +
-    `<p>When an owner requests a free BOV on their building, we match the request with brokers ` +
-    `active in that market and property type and make the introduction. Not cold leads — owners ` +
-    `in the middle of a decision.</p>` +
-    `<p style="margin:0"><a href="${introHref}">Get introduced &rarr;</a></p></div>` +
+    // Owner 2026-08-10: the old card ("Free, earned by contributing" + a
+    // dangling "Get introduced" mailto) read as fragments. This one states
+    // the trade in plain words, and the action stays the ONE submit door
+    // below — no mailto here; introductions come to contributors, they are
+    // not something a visitor applies for.
+    `<div class="card"><h2>What you get for submitting comps</h2>` +
+    `<ul>` +
+    `<li>Every report that uses one of your comps shows ` +
+    `<span class="badge" style="color:#06603A;background:#E3F2EA">Verified &middot; via Your Firm</span></li>` +
+    `<li>When an owner in your market wants a broker&rsquo;s opinion of value, we introduce them to you</li>` +
+    `<li>A public profile page with your verified comps</li>` +
+    `</ul></div>` +
+    `<div class="card"><h2>Pro: the Broker Vault</h2>` +
+    `<ul>` +
+    `<li>Upload and organize your comp book</li>` +
+    `<li>Watch your markets for leads</li>` +
+    `<li>Exclusively private to you</li>` +
+    `</ul>` +
+    // The upgrade link hides itself for members: ACCOUNT_NAV_JS reads
+    // /api/config's pro block and sets [hidden] on this id (also when
+    // billing isn't live, so it can't dead-end). Server-side would need a
+    // DB read this cached synchronous render must never make.
+    `<p style="margin:14px 0 0"><a href="/vault">Open your vault &rarr;</a>` +
+    `<span id="upgradeProLink"> &nbsp;&middot;&nbsp; ` +
+    `<a href="/?pricing=1">Upgrade to Pro &rarr;</a></span></p></div>` +
     `</div>` +
-    `<div class="card"><h2>For members: the Broker Vault</h2>` +
-    `<p>A Pro subscription opens your private vault: upload your own comp book and it folds into ` +
-    `your reports, benchmarked against the market &mdash; visible to you and no one else. ` +
-    `Contributors with a public profile also get a page of their own listing their verified comps ` +
-    `and coverage.</p>` +
-    `<p style="margin:0"><a href="/vault">Open your vault &rarr;</a> &nbsp;&middot;&nbsp; ` +
-    `<a href="/?pricing=1">See pricing &rarr;</a></p></div>` +
+    proof +
+
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
     `<a class="btn" href="/?submit=comp">Submit a comp</a>` +
@@ -13044,10 +13083,16 @@ const server = http.createServer((req, res) => {
     }));
   }
 
-  // --- Brokers — the contributor-facing page (header + footer nav). Static
-  // content, same hour-long cache as /how-it-works. Sits above the
-  // /broker/<slug> profile matcher below so the two stay adjacent. ---
-  if (req.method === "GET" && req.url.split("#")[0] === "/brokers") {
+  // --- Brokers — the contributor-facing page (header + footer nav). Same
+  // hour-long cache as /how-it-works. Sits above the /broker/<slug> profile
+  // matcher below so the two stay adjacent. ---
+  // Path-only match (split at "?" like /terms), or /brokers?utm_source=x
+  // 404s — found 2026-08-10 when a cache-busting query string hit a 404.
+  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/brokers") {
+    // The proof line reads MARKET_CREDIT; same stale-while-revalidate kick
+    // as the market pages, so the render never waits on the DB and the line
+    // simply doesn't appear until the cache has filled once.
+    if (Date.now() - MARKET_CREDIT.fetchedAt > MARKET_CREDIT_TTL_MS) refreshMarketCredit();
     return sendShellPage(req, res, (signedIn) => renderBrokersPageHTML(signedIn));
   }
 

@@ -54,14 +54,29 @@ test("the first-run panel ships hidden", () => {
   assert.match(html(), /<section id="firstRun" class="hide">/);
 });
 
-test("every section the first run hides ships hidden or is toggled by id", () => {
+test("every element the first run hides ships hidden or is toggled by id", () => {
   const page = html();
   // The trust line ships hidden: on day one it is a 0-0 scoreboard.
   assert.match(page, /<div class="trust hide" id="trustLine">/);
-  // The rest are toggled by id, so they must HAVE ids to toggle.
+  // Both deck rules ship hidden with it, and for the same reason: a rule
+  // reading "Your book" over an empty one is that scoreboard again.
+  assert.match(page, /<div class="deck hide" id="deckBook">/);
+  assert.match(page, /<div class="deck hide" id="deckPipe">/);
+  // The rest are toggled by id, so they must HAVE ids to toggle. Since
+  // Direction U neither addSec nor importsSec is a <section> — one is a panel
+  // under the book deck, the other a disclosure under the comps table — so
+  // this pins the id, which is what the toggling actually needs.
   for (const id of ["addSec", "compsSec", "importsSec"]) {
-    assert.match(page, new RegExp('<section id="' + id + '"'), id + " has no id to toggle");
+    assert.match(page, new RegExp('id="' + id + '"'), id + " has no id to toggle");
   }
+});
+
+test("the uploader ships closed, so the book is what a returning broker sees", () => {
+  // "Add comps" was a section above the comps table until 2026-08-10. It is
+  // the book deck's action now and opens on click; shipping it open would put
+  // the uploader back in front of the data it was moved out of.
+  assert.match(html(), /<div id="addSec" class="addpanel hide">/);
+  assert.match(html(), /id="addToggle"[^>]*aria-expanded="false"/);
 });
 
 test("the leads table ships hidden, so a header row never stands alone", () => {

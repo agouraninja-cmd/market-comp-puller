@@ -25,7 +25,7 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return
 // (server.js already carries a "keep the two in step" warning about exactly
 // that hazard elsewhere). Passing them keeps one source of truth and means
 // this file never has to reach back into server.js.
-function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
+function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS, THEME_CSS, THEME_BOOT }) {
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
@@ -33,16 +33,14 @@ function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
-<meta name="theme-color" content="#FBFBF9"/>
+<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
+<meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)"/>
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <style>
 *{box-sizing:border-box}
+${THEME_CSS}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
-  --red:#B91C1C;--red-deep:#991B1B;
-  --green:#15803D;
-  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --serif:Georgia,'Times New Roman',serif;
   --r:4px;
   --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
@@ -105,9 +103,9 @@ h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(-
   background:#fff;transition:border-color .12s,background .12s}
 .drop.over{border-color:var(--red);background:var(--wash)}
 .drop p{margin:var(--s3) 0 0;color:var(--ink-2);font-size:var(--t5)}
-.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s3) var(--s5);
+.btn{background:var(--red-fill);color:#fff;border:0;border-radius:var(--r);padding:var(--s3) var(--s5);
   font-weight:600;font-size:var(--t4);font-family:inherit;cursor:pointer}
-.btn:hover{background:var(--red-deep)}
+.btn:hover{background:var(--red-fill-hover)}
 .btn[disabled]{background:var(--ink-4);cursor:default}
 .btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--edge)}
 .btn.ghost:hover{background:var(--wash);color:var(--ink)}
@@ -303,7 +301,9 @@ a.btn:hover{color:#fff}
 .dbox>summary:hover{color:var(--ink)}
 .dbox[open]>summary{margin-bottom:var(--s4)}
 footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
-</style></head><body>
+</style>
+${THEME_BOOT}
+</head><body>
 <header class="hdr"><div class="wrap">
   <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
   <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>

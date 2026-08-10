@@ -4459,6 +4459,13 @@ const THEME_CSS = THEME.rootCss();
 // also the feature's rollback lever: nothing else in the codebase ever sets
 // data-theme, so short-circuiting this one string disables dark mode on
 // every surface at once.
+//
+// ⚠ index.html hand-copies this script into its own <head> (it is a static
+// file server.js never templates, so it cannot interpolate THEME_BOOT).
+// Nothing keeps the two copies in step but this comment and the "index.html's
+// theme boot script and toggle handler mirror server.js" test in
+// test/theme.test.js -- edit both together or a visitor's theme flips as they
+// move between the app and a market page.
 const THEME_BOOT =
   `<script>(function(){try{var t=localStorage.getItem("theme");` +
   `if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";` +
@@ -4567,6 +4574,11 @@ const ACCOUNT_NAV_JS =
   `var out=$("navSignOut");if(out)out.addEventListener("click",function(){` +
   `fetch("/api/account/logout",{method:"POST"}).catch(function(){}).then(function(){` +
   `location.reload();});});` +
+  // ⚠ index.html hand-copies this toggle handler onto its own #themeToggleApp
+  // button (it is a static file server.js never templates). Nothing keeps
+  // the two copies in step but this comment and the "index.html's theme boot
+  // script and toggle handler mirror server.js" test in test/theme.test.js --
+  // same storage key, same stored values, same attribute, same element.
   `var th=$("themeToggle");if(th)th.addEventListener("click",function(){` +
   `var el=document.documentElement,dark=el.getAttribute("data-theme")==="dark";` +
   `if(dark){el.removeAttribute("data-theme");}else{el.setAttribute("data-theme","dark");}` +
@@ -13555,7 +13567,7 @@ const server = http.createServer((req, res) => {
         "cache-control": "no-store",
         "x-robots-tag": "noindex, nofollow",
       });
-      res.end(renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }));
+      res.end(renderVaultHTML(boot, { CN_LOGO, MARKET_CSS, THEME_CSS, THEME_BOOT }));
     })();
     return;
   }

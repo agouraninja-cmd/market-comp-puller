@@ -14,7 +14,11 @@
        dark page. try/catch because localStorage throws outright in a Safari
        private window, and a theme preference must never blank the app.
        This is also the rollback lever -- nothing else ever sets data-theme,
-       so short-circuiting this script disables dark mode everywhere. -->
+       so short-circuiting this script disables dark mode everywhere.
+       ⚠ This is a hand-copy of server.js's THEME_BOOT constant -- this file
+       is static and server.js never templates it. Nothing keeps the two in
+       step but this comment and the "index.html's theme boot script and
+       toggle handler mirror server.js" test in test/theme.test.js. -->
   <script>(function(){try{var t=localStorage.getItem("theme");
 if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
 if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
@@ -8165,6 +8169,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // The theme toggle. Two states: it flips and remembers. The OS
   // preference is only the INITIAL default (see the boot script in
   // <head>); once someone clicks, their explicit choice wins forever.
+  // ⚠ This is a hand-copy of server.js's ACCOUNT_NAV_JS toggle handler --
+  // this file is static and server.js never templates it. Nothing keeps the
+  // two in step but this comment and the "index.html's theme boot script and
+  // toggle handler mirror server.js" test in test/theme.test.js -- same
+  // storage key, same stored values, same attribute, same element.
   const themeToggleApp = document.getElementById("themeToggleApp");
   if (themeToggleApp) themeToggleApp.addEventListener("click", () => {
     const el = document.documentElement;

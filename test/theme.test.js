@@ -134,14 +134,12 @@ test("no in-scope stylesheet paints a background with the TEXT red", () => {
   // on one page -- exactly what manual review misses. --red-fill exists
   // for backgrounds.
   //
-  // VAULT_JS is deliberately NOT checked here yet. It already has
-  // `.btn{background:var(--red)}` (shipped 2026-08-06, long before this
-  // project), and spec section 4.2 assigns fixing that one declaration to
-  // the vault task, not this one -- adding the check here would fail
-  // `npm test` on a file this task neither touches nor is allowed to stage.
-  // Re-add VAULT_JS to this array once that task lands.
+  // VAULT_JS is included: Task 6 fixed its one offending declaration
+  // (`.btn{background:var(--red)}`, shipped 2026-08-06, long before this
+  // project) to `--red-fill` / `--red-fill-hover`, so this file is now held
+  // to the same rule as every other in-scope stylesheet.
   const blocks = [
-    cssBlock("MARKET_CSS"), cssBlock("HOW_CSS"), cssBlock("ACCOUNT_NAV_CSS"),
+    cssBlock("MARKET_CSS"), cssBlock("HOW_CSS"), cssBlock("ACCOUNT_NAV_CSS"), VAULT_JS,
   ];
   for (const css of blocks) {
     for (const m of css.matchAll(/background[^;{}]*var\((--red|--red-deep)\)/g)) {
@@ -155,16 +153,24 @@ test("every in-scope server page can set the theme before first paint", () => {
   // deferred paints the light theme first and flashes white on a dark page.
   assert.ok(SERVER_JS.includes("const THEME_BOOT ="), "THEME_BOOT not declared");
   // marketShell covers /markets, /market/<slug>, /brokers, /broker/<slug>,
-  // /1031-exchange, /terms, /privacy. The how-it-works render covers / and
-  // /how-it-works.
+  // /1031-exchange, /terms, /privacy.
   const shell = SERVER_JS.slice(SERVER_JS.indexOf("function marketShell("));
   assert.ok(shell.slice(0, 2000).includes("THEME_BOOT"), "marketShell lacks the boot script");
-  // vault-page.js is deliberately NOT checked here yet. This task (Task 3)
-  // does not touch vault-page.js -- see its Files list -- and the boot
-  // script lands there in Task 6, next in the task order. Asserting on it
-  // now would fail `npm test` on a file this task neither edits nor is
-  // allowed to stage. Task 6 must add that assertion here once it lands
-  // THEME_BOOT (or an equivalent inline script) in vault-page.js's <head>.
+  // renderHowItWorksHTML covers / and /how-it-works, and is a SEPARATE shell
+  // from marketShell -- checking one is not evidence about the other. A
+  // future edit that removed the boot script from just this function would
+  // otherwise pass the suite and reintroduce a white flash on / and
+  // /how-it-works. Bounded by the NEXT top-level function rather than a
+  // fixed character window: this function is long (it also carries HOW_FAQ
+  // and the scroll-choreography script), so a short window like marketShell's
+  // would land before THEME_BOOT and produce a false failure.
+  const howStart = SERVER_JS.indexOf("function renderHowItWorksHTML(");
+  const howEnd = SERVER_JS.indexOf("\nfunction ", howStart + 10);
+  const howShell = SERVER_JS.slice(howStart, howEnd);
+  assert.ok(howShell.includes("THEME_BOOT"), "renderHowItWorksHTML lacks the boot script");
+  // vault-page.js: Task 6 landed THEME_BOOT in its <head> (interpolated, not
+  // a literal copy -- see the "vault takes its tokens from theme.js" test).
+  assert.ok(VAULT_JS.includes("THEME_BOOT"), "vault-page.js lacks the boot script");
 });
 
 test("the toggle is rendered once per page, in the shared nav", () => {
@@ -388,4 +394,65 @@ test("the PNG export is never dark", () => {
     "onclone does not strip data-theme -- the PNG export would render dark");
   assert.ok(INDEX.includes(`backgroundColor: "#FBFBF9"`),
     "the PNG background is no longer the light paper");
+});
+
+test("index.html's theme boot script and toggle handler mirror server.js's THEME_BOOT and toggle logic", () => {
+  // index.html is static -- server.js never templates it -- so its boot
+  // script and its #themeToggleApp click handler are hand-copies of
+  // THEME_BOOT and ACCOUNT_NAV_JS's toggle handler. Nothing keeps the two in
+  // step but a paired ⚠ comment at each of the four declarations; this test
+  // is the actual guardrail. It checks the facts that matter -- same
+  // localStorage key, same stored values, same attribute, same element --
+  // rather than requiring byte-identical text, since the two live in
+  // different quoting/scripting contexts (index.html's hand-written
+  // multi-line JS vs server.js's concatenated template-literal strings), and
+  // the two toggle handlers additionally differ in unrelated ways (var vs
+  // const, a jQuery-style $() lookup vs getElementById, index.html's also
+  // re-tiling the map) that a stricter comparison would falsely flag.
+  function facts(s) {
+    return {
+      storageKey: [...new Set([...s.matchAll(/localStorage\.(?:get|set)Item\(\s*"([^"]+)"/g)].map((m) => m[1]))],
+      attribute: [...new Set([...s.matchAll(/(?:setAttribute|removeAttribute)\(\s*"([^"]+)"/g)].map((m) => m[1]))],
+      element: s.includes("document.documentElement"),
+      values: { dark: s.includes(`"dark"`), light: s.includes(`"light"`) },
+    };
+  }
+
+  const bootStart = SERVER_JS.indexOf("const THEME_BOOT =");
+  assert.notEqual(bootStart, -1, "THEME_BOOT not found");
+  const bootEnd = SERVER_JS.indexOf(";\n", bootStart);
+  const serverBoot = facts(SERVER_JS.slice(bootStart, bootEnd));
+
+  const indexHead = INDEX.slice(0, INDEX.indexOf("<style>"));
+  const indexBootStart = indexHead.indexOf("<script>(function(){try{var t=localStorage");
+  assert.notEqual(indexBootStart, -1, "index.html's boot script not found");
+  const indexBootEnd = indexHead.indexOf("</script>", indexBootStart);
+  const indexBoot = facts(indexHead.slice(indexBootStart, indexBootEnd));
+
+  assert.deepEqual(indexBoot, serverBoot,
+    "index.html's boot script disagrees with THEME_BOOT (storage key / stored values / attribute / element)");
+
+  const navStart = SERVER_JS.indexOf("const ACCOUNT_NAV_JS =");
+  assert.notEqual(navStart, -1, "ACCOUNT_NAV_JS not found");
+  const toggleAt = SERVER_JS.indexOf(`$("themeToggle")`, navStart);
+  assert.notEqual(toggleAt, -1, "the shared theme toggle handler not found in ACCOUNT_NAV_JS");
+  const toggleEnd = SERVER_JS.indexOf("catch(e){}});", toggleAt);
+  const serverToggle = facts(SERVER_JS.slice(toggleAt, toggleEnd));
+
+  const toggleAppAt = INDEX.indexOf(`getElementById("themeToggleApp")`);
+  assert.notEqual(toggleAppAt, -1, "index.html's themeToggleApp handler not found");
+  const toggleAppEnd = INDEX.indexOf("});", INDEX.indexOf("catch (e) {}", toggleAppAt));
+  const indexToggle = facts(INDEX.slice(toggleAppAt, toggleAppEnd));
+
+  assert.deepEqual(indexToggle, serverToggle,
+    "index.html's toggle handler disagrees with the shared toggle handler (storage key / stored values / attribute / element)");
+});
+
+test("the vault takes its tokens from theme.js rather than its own copy", () => {
+  // vault-page.js was already tokenized against this exact vocabulary,
+  // which is why theme.js adopted its names instead of inventing new ones.
+  // It must not keep a literal copy that can drift.
+  assert.equal(/:root\{\s*--ink:#/.test(VAULT_JS), false,
+    "vault-page.js still declares its own literal :root token block");
+  assert.ok(VAULT_JS.includes("THEME_CSS"), "vault-page.js does not interpolate THEME_CSS");
 });

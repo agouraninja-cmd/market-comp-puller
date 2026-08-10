@@ -64,8 +64,9 @@ A new `corpusRowsForMarkets(markets, property_type, limit)` does the widened
 read (`market=in.(…)`, values quoted and percent-encoded because a market key
 contains a comma), and `corpusRowsForMarket` becomes a one-line delegate so its
 four other callers — the watchlist feed, the vault gut check, `/api/corpus-comps`,
-and the Address Explorer — keep exactly the rows they always got. The
-single-market path still emits the identical `market=eq.` query, so the widened
+and the Address Explorer — get the same rows, now also carrying their own
+market value. The single-market path still emits the identical `market=eq.`
+query, so the widened
 form, which local dev cannot exercise without a database, can only ever cost the
 nearby rows and never the existing behavior.
 

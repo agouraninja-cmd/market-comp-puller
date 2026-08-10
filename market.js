@@ -114,10 +114,12 @@ const METRO_GROUPS = {
   // it is its own submarket and has its own seeded page.
   "Ontario, CA": ["Ontario, CA", "Rancho Cucamonga, CA", "Fontana, CA",
     "Rialto, CA", "Jurupa Valley, CA", "Eastvale, CA", "Mira Loma, CA"],
-  // The Valley. The widest group here and so the first one to trim if
-  // marketMatchRate drops after this ships.
-  "Phoenix, AZ": ["Phoenix, AZ", "Tempe, AZ", "Mesa, AZ", "Chandler, AZ",
-    "Glendale, AZ", "Tolleson, AZ", "Goodyear, AZ", "Avondale, AZ"],
+  // A Phoenix group was removed here on final review: this table's own
+  // header rule is adjacent suburbs that genuinely share one CRE submarket,
+  // never a whole statistical area, and a Mesa-to-Goodyear span is the
+  // latter, applied to every property type. Removing it reverts Phoenix
+  // searches to exact matching, which is today's shipped behavior, so it
+  // costs nothing. Re-add it, if ever, as one or more narrower groups.
 };
 
 // Reverse index, built once: "Meridian, ID" -> "Boise, ID".

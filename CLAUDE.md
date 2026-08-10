@@ -775,9 +775,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   exact-market only**, so `corpusIsStrong` and the search budget cannot be
   moved by a nearby row; that is the whole safety property, and it is why the
   two counts are kept separate rather than summed. `corpusRowsForMarket` itself
-  is UNCHANGED for its four other callers (watchlist feed, vault gut check,
-  `/api/corpus-comps`, Address Explorer); retrieval calls the new
-  `corpusRowsForMarkets` directly instead. Rollback is `CORPUS_METRO=off`. Adding
+  returns the same rows for its four other callers (watchlist feed, vault gut
+  check, `/api/corpus-comps`, Address Explorer), now also carrying their own
+  market value; retrieval calls the new `corpusRowsForMarkets` directly
+  instead. Rollback is `CORPUS_METRO=off`. Adding
   a metro group is a data edit in `market.js`; the rule is adjacent suburbs
   sharing one submarket, never a whole statistical area, and a test pins every
   entry against `marketOf` because an exact-match key that never matches is

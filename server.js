@@ -3063,7 +3063,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   // tell it to discard them.
   const nearbyBlock = (corpusNearby && corpusNearby.length) ? [
     ``,
-    `NEARBY COMPS (${[...new Set(corpusNearby.map((c) => c.market).filter(Boolean))].join(", ")}): our prior research surfaced these in cities immediately neighboring the target, in the same metro area. They are already sourced.`,
+    `NEARBY COMPS (${[...new Set(corpusNearby.map((c) => c.market).filter(Boolean))].join(", ")}): our prior research surfaced these in other cities in the same metro area as the target. They are already sourced.`,
     ...corpusNearby.map((c, i) =>
       `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
     `Use these only when the target's own city is thin on genuinely comparable transactions, and only for ones a buyer would actually weigh against the target. Report each address exactly as given so the report shows the city the comp is really in; never restate it as the target's city. Set "verified": false on these, and keep the source_url. Prefer a comp in the target's own city over one of these whenever both are comparable.`,
@@ -9151,7 +9151,10 @@ const server = http.createServer((req, res) => {
           console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
         }
         if (corpus.nearbyCount) {
-          console.log(`Corpus metro: offering ${corpus.nearbyCount} nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(", ")} (candidates only, budget unchanged)`);
+          // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
+          // total, so report both rather than let the count overstate what
+          // the model was actually offered.
+          console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
         }
 
         // Everything above this line answers in plain JSON — the password gate,

@@ -156,3 +156,64 @@ test("the toggle is rendered once per page, in the shared nav", () => {
   const occurrences = SERVER_JS.split(`id="themeToggle"`).length - 1;
   assert.equal(occurrences, 1, "themeToggle is declared more than once in server.js");
 });
+
+const INDEX = root("index.html");
+const INDEX_STYLE = INDEX.slice(INDEX.indexOf("<style>"), INDEX.indexOf("</style>"));
+
+// Deliberately NOT darkened. These sit on a filled red button or a dark
+// slab, both of which stay dark in dark mode, so white text remains
+// correct. Listed explicitly so the coverage test below stays honest
+// rather than being loosened.
+const NOT_DARKENED = new Set(["text-white", "hover:text-white"]);
+
+// Every colour utility index.html actually uses, base and state-variant.
+function colorUtilities(html) {
+  const P = "(?:bg|text|border|ring|outline|decoration|divide|accent|fill|stroke)";
+  const V = "(?:\\[#[0-9A-Fa-f]{3,8}\\]|white|black|(?:slate|brand|red|emerald|amber|gray)-\\d{2,3})";
+  const re = new RegExp(`(?:(?:hover|focus|group-hover):)?${P}-${V}`, "g");
+  return new Set([...html.matchAll(re)].map((m) => m[0]));
+}
+
+test("index.html declares the same token values theme.js does", () => {
+  // The one place a token is written twice, because index.html is static
+  // and server.js never templates it. Pin it or it drifts.
+  for (const [name, v] of Object.entries(THEME_TOKENS)) {
+    assert.ok(INDEX_STYLE.includes(`--${name}:${v.light}`), `index.html light --${name} missing or wrong`);
+    assert.ok(INDEX_STYLE.includes(`--${name}:${v.dark}`), `index.html dark --${name} missing or wrong`);
+  }
+});
+
+test("every colour utility in index.html has a dark rule", () => {
+  // THE test. The known weakness of a hex-keyed bridge is that a colour
+  // added later gets no dark rule and renders dark-on-dark -- and the
+  // failure is silent, because light mode still looks perfect. This turns
+  // it into a build failure.
+  const used = colorUtilities(INDEX);
+  // What the bridge covers. Tailwind escapes [ # ] in the emitted class
+  // name, so the bridge selectors do too; unescape to compare. The
+  // TRAILING pseudo-class must also come off: the markup carries
+  // `hover:bg-[#F5F4EF]` while the selector is
+  // `.hover\:bg-\[\#F5F4EF\]:hover`, and comparing those raw reports every
+  // state variant as missing.
+  const bridged = new Set(
+    [...INDEX_STYLE.matchAll(/\[data-theme="dark"\][^{]*?\.([A-Za-z0-9\\:#\[\]-]+)/g)]
+      .map((m) => m[1].replace(/\\/g, "").replace(/:(hover|focus|active|disabled|checked)$/, ""))
+  );
+  const missing = [...used].filter((u) => !NOT_DARKENED.has(u) && !bridged.has(u));
+  assert.deepEqual(missing, [], `utilities with no dark rule: ${missing.join(" ")}`);
+});
+
+test("the bridge cannot reach the print stylesheet", () => {
+  // Wrapping the bridge in @media screen is what makes the 70-line
+  // @media print block unreachable by the theme, so printing cannot
+  // regress and that block needs no edits. Removing the wrapper would
+  // print light text onto white paper.
+  const printAt = INDEX_STYLE.indexOf("@media print");
+  assert.notEqual(printAt, -1, "the print block vanished");
+  const printBlock = INDEX_STYLE.slice(printAt);
+  assert.equal(printBlock.includes("[data-theme"), false,
+    "a data-theme selector reached the print block");
+  const bridgeAt = INDEX_STYLE.indexOf(`[data-theme="dark"] .`);
+  const screenAt = INDEX_STYLE.lastIndexOf("@media screen", bridgeAt);
+  assert.notEqual(screenAt, -1, "the bridge is not inside @media screen");
+});

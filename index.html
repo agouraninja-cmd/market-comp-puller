@@ -46,6 +46,160 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
+    /* ---- Colour tokens. MIRRORED FROM theme.js ⚠ ------------------------
+       index.html is a static file server.js never templates, so unlike
+       MARKET_CSS / HOW_CSS / vault-page.js these cannot be interpolated and
+       are the ONE place a token value is written twice. test/theme.test.js
+       compares them against theme.js character for character; if you change
+       a value, change it in theme.js and copy it here.
+       -------------------------------------------------------------------- */
+    :root{--paper:#FBFBF9;--card:#ffffff;--wash:#F5F4EF;--wash-2:#F5F4EF;--slab:#1A2433;
+      --edge:#D8D4C9;--line:#E4E2DA;--hair:#F0EFE9;
+      --ink:#1A2433;--ink-body:#374253;--ink-2:#4C5665;--ink-mute:#5A6473;--ink-3:#68707E;
+      --ink-faint:#9AA2AD;--ink-4:#C7CBD2;
+      --red:#B91C1C;--red-deep:#991B1B;--red-fill:#B91C1C;--red-fill-hover:#991B1B;
+      --green:#15803D;--ok-text:#06603A;--ok-bg:#E7F5EE;--ok-rule:#BFE5D2;
+      --warn-text:#8A6D1A;--warn-bg:#FBF3DC;--warn-rule:#EDDFB0;--err-bg:#FCF1EF}
+    [data-theme="dark"]{--paper:#020617;--card:#0F172A;--wash:#1E293B;--wash-2:#334155;--slab:#1E293B;
+      --edge:#334155;--line:#273244;--hair:#1E293B;
+      --ink:#E2E8F0;--ink-body:#CBD5E1;--ink-2:#C2CCDA;--ink-mute:#AEBACB;--ink-3:#94A3B8;
+      --ink-faint:#7C8899;--ink-4:#475569;
+      --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
+      --green:#34D399;--ok-text:#6EE7B7;--ok-bg:#0C2B21;--ok-rule:#155E43;
+      --warn-text:#FCD34D;--warn-bg:#2A2410;--warn-rule:#5B4A16;--err-bg:#2A1517}
+
+    /* ---- Dark mode bridge ----------------------------------------------
+       index.html's colours live in Tailwind CLASS NAMES, not declarations,
+       so they cannot be swapped by redefining a variable the way
+       MARKET_CSS / HOW_CSS / vault-page.js are. Each utility is re-pointed
+       at a token instead. Specificity does the work with no !important:
+       a rule here is (0,2,0) against Tailwind's own (0,1,0), and the state
+       variants are matched at their own (0,3,0).
+
+       Placed here, ABOVE the print stylesheet further down, on purpose: CSS
+       media-query rules don't care about source order relative to selectors
+       they don't share, so this changes nothing about how either renders,
+       but the print-safety test in theme.test.js does a plain text scan
+       from the print block's own opening marker to the end of the
+       stylesheet for the data-theme selector -- if any part of this block
+       (including this very comment) sat below that marker in the file, the
+       scan would flag it even though nothing here is actually reachable
+       from print.
+
+       @media screen IS ALSO LOAD-BEARING, independent of the above. It is
+       what keeps the theme out of the print stylesheet further down: a
+       print run never evaluates anything in here. Do not unwrap it.
+
+       Adding a new colour utility to this file? Add its rule here too.
+       test/theme.test.js fails the build if you forget, because the
+       failure is otherwise silent -- dark-on-dark text, with light mode
+       still looking perfect. -------------------------------------------- */
+    @media screen {
+      /* surfaces */
+      [data-theme="dark"] .bg-\[\#FBFBF9\]   { background-color: var(--paper) }
+      [data-theme="dark"] .bg-white          { background-color: var(--card) }
+      [data-theme="dark"] .bg-\[\#F5F4EF\]   { background-color: var(--wash) }
+      [data-theme="dark"] .bg-\[\#F0EFE9\]   { background-color: var(--wash) }
+      [data-theme="dark"] .bg-\[\#F1F0EC\]   { background-color: var(--wash) }
+      [data-theme="dark"] .bg-\[\#E4E2DA\]   { background-color: var(--line) }
+      /* already dark in light mode -- these LIFT, or they dissolve into the page */
+      [data-theme="dark"] .bg-\[\#1A2433\]   { background-color: var(--slab) }
+      [data-theme="dark"] .bg-slate-900      { background-color: var(--slab) }
+      /* filled brand: stays saturated, white text sits on it */
+      [data-theme="dark"] .bg-\[\#B91C1C\]   { background-color: var(--red-fill) }
+      [data-theme="dark"] .bg-brand-600      { background-color: var(--red-fill) }
+      /* status tints */
+      [data-theme="dark"] .bg-\[\#E7F5EE\]   { background-color: var(--ok-bg) }
+      [data-theme="dark"] .bg-\[\#F4FAF6\]   { background-color: var(--ok-bg) }
+      [data-theme="dark"] .bg-\[\#FBF3DC\]   { background-color: var(--warn-bg) }
+      [data-theme="dark"] .bg-\[\#FBF8EF\]   { background-color: var(--warn-bg) }
+      [data-theme="dark"] .bg-\[\#FCF1EF\]   { background-color: var(--err-bg) }
+      [data-theme="dark"] .bg-red-50         { background-color: var(--err-bg) }
+      /* surface hovers */
+      [data-theme="dark"] .hover\:bg-\[\#F5F4EF\]:hover { background-color: var(--wash-2) }
+      [data-theme="dark"] .hover\:bg-\[\#FBFBF9\]:hover { background-color: var(--wash) }
+      [data-theme="dark"] .hover\:bg-slate-50:hover     { background-color: var(--wash-2) }
+      [data-theme="dark"] .hover\:bg-\[\#991B1B\]:hover { background-color: var(--red-fill-hover) }
+      [data-theme="dark"] .hover\:bg-brand-700:hover    { background-color: var(--red-fill-hover) }
+      [data-theme="dark"] .hover\:bg-red-50:hover       { background-color: var(--err-bg) }
+      /* bare (non-hover/focus) forms of the four named-colour classes above
+         that a hover/focus variant re-points -- not used bare in this file
+         today, but Tailwind's own escaped-colon selectors for those variants
+         (e.g. .hover\:bg-slate-50:hover) contain the bare class name as a
+         literal substring, which trips the coverage scan into treating it as
+         a used utility. Covering it here is correct either way: if a bare
+         use is ever added, it already has a rule. */
+      [data-theme="dark"] .bg-slate-50          { background-color: var(--wash-2) }
+      [data-theme="dark"] .bg-brand-700         { background-color: var(--red-fill-hover) }
+
+      /* ink */
+      [data-theme="dark"] .text-\[\#1A2433\] { color: var(--ink) }
+      [data-theme="dark"] .text-\[\#374253\] { color: var(--ink-body) }
+      [data-theme="dark"] .text-\[\#46536A\] { color: var(--ink-body) }
+      [data-theme="dark"] .text-\[\#4C5665\] { color: var(--ink-2) }
+      [data-theme="dark"] .text-\[\#5A6473\] { color: var(--ink-mute) }
+      [data-theme="dark"] .text-\[\#68707E\] { color: var(--ink-3) }
+      [data-theme="dark"] .text-\[\#8A8577\] { color: var(--ink-3) }
+      [data-theme="dark"] .text-\[\#8F99A8\] { color: var(--ink-faint) }
+      [data-theme="dark"] .text-\[\#9AA2AD\] { color: var(--ink-faint) }
+      [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-4) }
+      [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-4) }
+      [data-theme="dark"] .hover\:text-\[\#1A2433\]:hover { color: var(--ink) }
+      [data-theme="dark"] .hover\:text-\[\#374253\]:hover { color: var(--ink-body) }
+
+      /* brand text -- lightens for contrast; NOT the same value as the fill */
+      [data-theme="dark"] .text-\[\#B91C1C\] { color: var(--red) }
+      [data-theme="dark"] .text-brand-700    { color: var(--red) }
+      [data-theme="dark"] .text-brand-800    { color: var(--red) }
+      [data-theme="dark"] .text-red-600      { color: var(--red) }
+      [data-theme="dark"] .text-red-700      { color: var(--red) }
+      [data-theme="dark"] .text-red-800      { color: var(--red) }
+      [data-theme="dark"] .hover\:text-\[\#B91C1C\]:hover { color: var(--red) }
+      [data-theme="dark"] .hover\:text-red-700:hover      { color: var(--red) }
+      [data-theme="dark"] .hover\:text-\[\#991B1B\]:hover { color: var(--red-deep) }
+
+      /* status text */
+      [data-theme="dark"] .text-\[\#06603A\] { color: var(--ok-text) }
+      [data-theme="dark"] .text-emerald-700  { color: var(--ok-text) }
+      [data-theme="dark"] .hover\:text-\[\#04452A\]:hover { color: var(--ok-text) }
+      [data-theme="dark"] .text-\[\#8A6D1A\] { color: var(--warn-text) }
+      [data-theme="dark"] .text-\[\#7A5B12\] { color: var(--warn-text) }
+
+      /* rules */
+      [data-theme="dark"] .border-\[\#D8D4C9\] { border-color: var(--edge) }
+      [data-theme="dark"] .border-\[\#E4E2DA\] { border-color: var(--line) }
+      [data-theme="dark"] .border-\[\#ECEAE3\] { border-color: var(--hair) }
+      [data-theme="dark"] .border-\[\#EFEDE7\] { border-color: var(--hair) }
+      [data-theme="dark"] .border-\[\#F0EFE9\] { border-color: var(--hair) }
+      [data-theme="dark"] .border-\[\#1A2433\] { border-color: var(--ink) }
+      [data-theme="dark"] .border-\[\#B91C1C\] { border-color: var(--red) }
+      [data-theme="dark"] .border-brand-600    { border-color: var(--red) }
+      [data-theme="dark"] .border-brand-700    { border-color: var(--red) }
+      [data-theme="dark"] .border-\[\#BFE5D2\] { border-color: var(--ok-rule) }
+      [data-theme="dark"] .border-emerald-300  { border-color: var(--ok-rule) }
+      [data-theme="dark"] .border-\[\#EDDFB0\] { border-color: var(--warn-rule) }
+      [data-theme="dark"] .border-red-200      { border-color: var(--red) }
+      [data-theme="dark"] .hover\:border-\[\#1A2433\]:hover { border-color: var(--ink) }
+      [data-theme="dark"] .focus\:border-\[\#B91C1C\]:focus { border-color: var(--red) }
+      [data-theme="dark"] .focus\:border-brand-600:focus    { border-color: var(--red) }
+
+      /* rings, outlines, decoration, accent */
+      [data-theme="dark"] .focus\:ring-\[\#B91C1C\]:focus { --tw-ring-color: var(--red) }
+      [data-theme="dark"] .focus\:ring-brand-600:focus    { --tw-ring-color: var(--red) }
+      [data-theme="dark"] .ring-brand-600                 { --tw-ring-color: var(--red) }
+      [data-theme="dark"] .outline-\[\#B91C1C\]  { outline-color: var(--red) }
+      [data-theme="dark"] .outline-\[\#B8C0CC\]  { outline-color: var(--ink-4) }
+      [data-theme="dark"] .decoration-\[\#D8D4C9\] { text-decoration-color: var(--edge) }
+      [data-theme="dark"] .decoration-\[\#46536A\] { text-decoration-color: var(--ink-body) }
+      [data-theme="dark"] .decoration-brand-300    { text-decoration-color: var(--red) }
+      [data-theme="dark"] .hover\:decoration-brand-700:hover { text-decoration-color: var(--red) }
+      [data-theme="dark"] .decoration-brand-700              { text-decoration-color: var(--red) }
+      [data-theme="dark"] .accent-\[\#B91C1C\]   { accent-color: var(--red) }
+      /* divide-* sets border-colour on CHILDREN, so the selector must match
+         Tailwind's own shape or it silently does nothing. */
+      [data-theme="dark"] .divide-\[\#F0EFE9\] > :not([hidden]) ~ :not([hidden]) { border-color: var(--hair) }
+    }
+
     /* ------------------------------------------------------------------------
        Design tokens — the whole site draws from these; don't invent new values.
        Dark surfaces (slate only): slate-950 #020617 bookends (hero start,
@@ -66,11 +220,14 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     /* Skeleton loading — calm gray placeholders shaped like the report. The
        sweep is slow and faint on purpose; the progress bar carries the motion. */
-    .skeleton { position: relative; overflow: hidden; background: #E4E2DA; border-radius: 6px; }
+    .skeleton { position: relative; overflow: hidden; background: var(--wash); border-radius: 6px; }
     .skeleton::after {
       content: ""; position: absolute; inset: 0; transform: translateX(-100%);
       background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent);
       animation: shimmer 2.2s ease-in-out infinite;
+    }
+    [data-theme="dark"] .skeleton::after {
+      background: linear-gradient(90deg, transparent, rgb(255 255 255 / .06), transparent);
     }
     @keyframes shimmer { 100% { transform: translateX(100%); } }
     /* Assembling report: children of #results outside the data-assemble
@@ -80,7 +237,7 @@
     .asm-hidden { display: none !important; }
 
     th.sortable { cursor: pointer; user-select: none; }
-    #compsTable th.sortable:hover { background-color: #F5F4EF; color: #374253; }
+    #compsTable th.sortable:hover { background-color: var(--wash-2); color: var(--ink-body); }
 
     /* Page-load entrance — the brand bar, heading, and form drift in on first paint. */
     .enter { opacity: 0; animation: fadeIn .5s ease-out forwards; }
@@ -103,7 +260,7 @@
     .comp-num {
       display: inline-flex; align-items: center; justify-content: center;
       width: 1.25rem; height: 1.25rem; border-radius: 9999px; flex-shrink: 0;
-      background: #F5F4EF; color: #5A6473; border: 1px solid #E4E2DA;
+      background: var(--wash); color: var(--ink-mute); border: 1px solid var(--line);
       font-size: 10px; font-weight: 600; line-height: 1;
       font-variant-numeric: normal;
     }
@@ -118,7 +275,7 @@
     .reveal.revealed { opacity: 1; transform: none; }
 
     /* Brand micro-moment: ninja-red text selection. */
-    ::selection { background: #B91C1C; color: #fff; }
+    ::selection { background: var(--red-fill); color: #fff; }
 
     /* Loading card: the ninja jogs along the progress bar's leading edge while
        the search runs, and the stage headline cross-fades between steps. */
@@ -132,6 +289,7 @@
     }
     .loading-ninja svg { display: block; width: 100%; height: 100%; animation: ninjaJog .38s ease-in-out infinite alternate; }
     .loading-ninja .ninja-body { fill: #334155; }
+    [data-theme="dark"] .loading-ninja .ninja-body { fill: #94A3B8; }
     .loading-ninja .ninja-band { fill: #DC2626; }
     @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
     #loadingHeadline { transition: opacity .22s ease; }
@@ -167,7 +325,7 @@
 
     /* Export buttons briefly confirm a finished download (element+class beats
        the Tailwind color utilities without !important). */
-    button.export-done { color: #047857; background-color: #ecfdf5; border-color: #6ee7b7; }
+    button.export-done { color: var(--ok-text); background-color: var(--ok-bg); border-color: var(--ok-rule); }
 
     /* Report arrival: the Avg $/SF tile pulses a soft brand ring once, and its
        spread bar sweeps low→high with the comp average marked. Both start

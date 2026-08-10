@@ -303,6 +303,14 @@ test("bare environment", async (t) => {
     assert.equal(r.status, 401);
   });
 
+  // The whole-book export. Same gate, same order: an anonymous caller must
+  // not learn whether the vault export exists before learning they aren't
+  // signed in.
+  await t.test("the vault export refuses an anonymous caller", async () => {
+    const r = await fetch(srv.base + "/api/vault/export.csv");
+    assert.equal(r.status, 401);
+  });
+
   // NOT COVERED HERE, and deliberately: the 403-not-a-broker and
   // 200-for-an-entitled-broker paths. Both need a real session, which needs a
   // database, and this file's rule is that nothing it runs touches an external

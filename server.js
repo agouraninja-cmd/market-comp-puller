@@ -11712,6 +11712,78 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // The whole book, as the file our own importer reads. This answers the
+    // question a broker asks BEFORE their first upload: "what happens to my
+    // data if I cancel." It has to be complete, not approximately complete.
+    //
+    // NOT built from vaultReadPayload. That path hard-caps at 1000 rows
+    // (Math.min(..., 1000)) and the dashboard already fetches ?limit=1000 and
+    // filters in the browser — an export built from it would silently
+    // truncate exactly the large books that most need exporting. This pages
+    // until the vault is exhausted instead.
+    //
+    // It also JOINS broker_properties for lat/lng. Those are template columns
+    // but they are NOT columns on broker_comps; they live on the property a
+    // comp is linked to. Emitting them empty would strip a private address's
+    // coordinates on re-import and send it back out to a third-party
+    // geocoder on the next report.
+    if (req.method === "GET" && path === "/api/vault/export.csv") {
+      (async () => {
+        const user = await openVault();
+        if (!user) return;
+        if (rateLimited("vaultexp:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+        }
+        const PAGE = 1000;
+        const comps = [];
+        for (let offset = 0; ; offset += PAGE) {
+          const page = await sbRequest("GET",
+            `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&order=deal_date.desc&limit=${PAGE}&offset=${offset}`);
+          if (!page || !page.length) break;
+          comps.push(...page);
+          if (page.length < PAGE) break;
+        }
+
+        // Coordinates in TWO plain queries rather than a PostgREST embed. The
+        // embed's relationship name depends on how the FK was declared in
+        // migration 016 and would have to be discovered against a live
+        // database; a wrong guess makes the whole export 400 rather than
+        // degrade. This is one extra round trip on a download that already
+        // pages, and it is obvious what it does.
+        const propIds = [...new Set(comps.map((c) => c.property_id).filter(Boolean))];
+        const coords = new Map();
+        for (let i = 0; i < propIds.length; i += 200) {
+          const slice = propIds.slice(i, i + 200);
+          const props = await sbRequest("GET",
+            `broker_properties?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&id=in.(${slice.map(encodeURIComponent).join(",")})&select=id,lat,lng`);
+          for (const p of props || []) coords.set(p.id, p);
+        }
+        // property_id is nullable on purpose (migrate-then-deploy and
+        // deploy-then-migrate both had to work) and linkVaultProperties never
+        // throws, so some comps legitimately have no property row. Those
+        // export with empty lat/lng — correct, because they never had
+        // coordinates to lose. Do not add a geocoding fallback here.
+        const rows = comps.map((c) => {
+          const p = coords.get(c.property_id) || {};
+          return { ...c, lat: p.lat, lng: p.lng };
+        });
+
+        const csv = VAULT.exportCsv(rows);
+        res.writeHead(200, {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": 'attachment; filename="compninja-vault.csv"',
+          "cache-control": "no-store",
+        });
+        res.end(csv);
+      })().catch((err) => {
+        console.error("vault export failed:", err.message);
+        sendJson(res, 502, { error: "Could not build your export. Please try again." });
+      });
+      return;
+    }
+
     return sendJson(res, 404, { error: "Not found." });
   }
 

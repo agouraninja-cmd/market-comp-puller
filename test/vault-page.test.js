@@ -885,3 +885,114 @@ test("Delete confirms, then sends DELETE and reports an ordinary removal", async
     global.confirm = realConfirm;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Task 8: add one comp by hand, and take the whole book with you
+// ---------------------------------------------------------------------------
+
+test("the page offers an add-one-comp form with the four required fields", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  for (const f of ["address", "property_type", "transaction", "deal_date"]) {
+    assert.ok(html.includes("addComp_" + f), "the add form needs " + f);
+  }
+});
+
+test("there is still exactly one file input on the page", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const inputs = (html.match(/type=["']?file/g) || []).length;
+  assert.equal(inputs, 1,
+    "two inputs would mean two values and two change handlers");
+});
+
+test("the export button says it exports everything", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(/Export all comps/.test(html),
+    "the label must remove any ambiguity about the dashboard filter");
+});
+
+test("the export is a plain link, so it works without the page's script", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(/href="\/api\/vault\/export\.csv"/.test(html),
+    "a plain href lets the cookie ride along and the browser handle the download");
+});
+
+test("the emitted script still parses with the add form in it", () => {
+  assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
+});
+
+// ---- The add form actually behaves -----------------------------------
+// Markup-and-parses tests, above, would not have caught a submit handler
+// that reads the wrong field ids or never calls fetch at all — exactly the
+// gap the row-edit and mapper reviews found elsewhere in this file. These
+// drive the REAL emitted script through Add comp against a stubbed
+// POST /api/vault/comp.
+
+test("Add comp posts the base fields typed into the form, then clears them and reports success", async () => {
+  let sentBody = null;
+  const { doc } = await runPage([], null, {
+    comp: (init) => {
+      sentBody = JSON.parse(init.body);
+      return Promise.resolve(jsonResponse(201, { ok: true, comp: {} }));
+    },
+  });
+
+  doc.getElementById("addComp_address").value = "500 Elm St";
+  doc.getElementById("addComp_property_type").value = "Industrial";
+  doc.getElementById("addComp_transaction").value = "sale";
+  doc.getElementById("addComp_deal_date").value = "2026-03-14";
+  doc.getElementById("addComp_price").value = "1000000";
+  doc.getElementById("addComp_size_sqft").value = "10000";
+
+  doc.getElementById("addCompBtn").fire("click", {});
+  await tick();
+
+  assert.equal(sentBody.address, "500 Elm St");
+  assert.equal(sentBody.property_type, "Industrial");
+  assert.equal(sentBody.transaction, "sale");
+  assert.equal(sentBody.deal_date, "2026-03-14");
+  assert.equal(sentBody.price, "1000000");
+  assert.equal(sentBody.size_sqft, "10000");
+  // An untouched optional field must never travel as an empty string —
+  // normalizeRow would then have to tell the difference between "left
+  // blank" and "explicitly cleared", which the server side does not do.
+  assert.ok(!("notes" in sentBody), "an empty field must be omitted, not sent as \"\"");
+
+  assert.equal(doc.getElementById("addComp_address").value, "",
+    "a successful add must clear the form for the next comp");
+  assert.equal(doc.getElementById("compMsg").textContent, "Added.");
+});
+
+test("a 400 from adding a comp shows every listed problem, not just the first, and keeps the form filled", async () => {
+  const { doc } = await runPage([], null, {
+    comp: () => Promise.resolve(jsonResponse(400, { error: "price is not a number; deal_date is required" })),
+  });
+
+  doc.getElementById("addComp_address").value = "500 Elm St";
+  doc.getElementById("addCompBtn").fire("click", {});
+  await tick();
+
+  assert.match(doc.getElementById("compMsg").textContent, /price is not a number; deal_date is required/,
+    "the whole 400 error must render, not a generic fallback");
+  assert.equal(doc.getElementById("addComp_address").value, "500 Elm St",
+    "a failed add must not clear the broker's in-progress entry");
+});
+
+test("choosing a property type reveals that type's own fields, and switching types swaps them", async () => {
+  const { doc } = await runPage([]);
+
+  doc.getElementById("addComp_property_type").value = "Industrial";
+  doc.getElementById("addComp_property_type").fire("change", {});
+  await tick();
+  assert.ok(doc.getElementById("addTypeFields").innerHTML.includes("addComp_clear_height"),
+    "Industrial's own field must appear");
+  assert.ok(!doc.getElementById("addTypeFields").innerHTML.includes("addComp_units"),
+    "a Multifamily field must not appear for an Industrial comp");
+
+  doc.getElementById("addComp_property_type").value = "Multifamily";
+  doc.getElementById("addComp_property_type").fire("change", {});
+  await tick();
+  assert.ok(doc.getElementById("addTypeFields").innerHTML.includes("addComp_units"),
+    "Multifamily's own field must appear once that type is chosen");
+  assert.ok(!doc.getElementById("addTypeFields").innerHTML.includes("addComp_clear_height"),
+    "the previous type's field must not linger after switching");
+});

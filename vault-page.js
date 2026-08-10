@@ -470,6 +470,38 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
       </div>
       <div id="res"></div>
+
+      <!-- One comp at a time, through the SAME route the importer's own rows
+           land on (POST /api/vault/comp -> normalizeRow), so a hand-typed
+           comp is held to the exact rules a CSV row is: same required
+           fields, same number parsing, same duplicate check. Collapsed by
+           default beside the uploader — most brokers get here with a
+           spreadsheet, and this is the fallback for the one comp that
+           isn't in one. -->
+      <details class="dbox" id="addOneSec">
+        <summary>Or add one comp by hand</summary>
+        <div class="row" style="margin-top:var(--s4)">
+          <label>Address <input id="addComp_address" type="text"/></label>
+          <label>Type <select id="addComp_property_type"></select></label>
+          <label>Sale/lease <select id="addComp_transaction">
+            <option value="sale">Sale</option>
+            <option value="lease">Lease</option>
+          </select></label>
+          <label>Date <input id="addComp_deal_date" type="date"/></label>
+          <label>Price <input id="addComp_price" type="text" style="width:110px"/></label>
+          <label>Size (SF) <input id="addComp_size_sqft" type="text" style="width:90px"/></label>
+          <label>Cap rate <input id="addComp_cap_rate" type="text" style="width:70px" placeholder="optional"/></label>
+          <label>Tenancy <input id="addComp_tenancy" type="text" placeholder="optional"/></label>
+          <label>Year built <input id="addComp_year_built" type="text" style="width:70px" placeholder="optional"/></label>
+          <label>Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
+          <label>Lat <input id="addComp_lat" type="text" style="width:90px" placeholder="optional"/></label>
+          <label>Lng <input id="addComp_lng" type="text" style="width:90px" placeholder="optional"/></label>
+          <!-- Repopulated on every property-type change; its own nested .row
+               so the type's fields still get the same gap as the base ones. -->
+          <div class="row" id="addTypeFields" style="width:100%"></div>
+          <button class="btn ghost" id="addCompBtn" type="button">Add comp</button>
+        </div>
+      </details>
     </div>
 
     <div id="mapSec" class="mappanel hide">
@@ -498,12 +530,20 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       <h2>Your comps</h2>
       <!-- One filter row above everything it scopes: the chart, the repeat-
            property list and the table all read the same slice, so they can
-           never disagree about which comps are on screen. -->
+           never disagree about which comps are on screen. The export sits
+           here rather than inside the closed uploader, and its label says
+           "all" on purpose: this row is a FILTER, and a button reading just
+           "Export" beside a filtered view would leave a broker guessing
+           whether it exports the slice on screen or the whole book. It does
+           not: it always exports everything. It is a plain href, not a
+           fetch, so the session cookie rides along and the download still
+           works even if the page's own script has failed. -->
       <div class="row">
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
+        <a class="btn ghost" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
            is a button that opens it; a cell with nothing behind it renders as
@@ -1749,8 +1789,9 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   });
 
   $("pick").addEventListener("click",function(){ $("file").click() });
-  // Step 1's button is the same door as #pick — one <input type=file>, so an
-  // upload started here lands in the same handler and the same result message.
+  // Step 1's button is the same door as #pick — one file input on the whole
+  // page, so an upload started here lands in the same handler and the same
+  // result message.
   $("frPick").addEventListener("click",function(){ $("file").click() });
   $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
@@ -1777,6 +1818,79 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     setAddOpen(!addOpen);
     if(addOpen)$("addSec").scrollIntoView({behavior:"smooth",block:"nearest"});
   });
+
+  // ---- Add one comp by hand ----------------------------------------------
+  // Per-type columns, mirroring TYPE_COMP_FIELDS in server.js. A field the
+  // chosen type does not use is not rendered, so a broker is never asked for
+  // an Industrial clear height on a Multifamily deal. The map's own keys are
+  // also the property-type list the select offers, so there is one list to
+  // keep in step rather than two.
+  var TYPE_FIELDS={
+    Industrial:["clear_height","dock_doors"],
+    Office:["building_class","floor_plate"],
+    Retail:["center_type","anchor_tenant"],
+    Multifamily:["units","price_per_unit"],
+    Land:["lot_acres","price_per_acre","zoning"],
+    Residential:["beds_baths"],
+  };
+  var TYPE_FIELD_LABELS={clear_height:"Clear height",dock_doors:"Dock doors",
+    building_class:"Building class",floor_plate:"Floor plate",
+    center_type:"Center type",anchor_tenant:"Anchor tenant",
+    units:"Units",price_per_unit:"Price/unit",
+    lot_acres:"Lot acres",price_per_acre:"Price/acre",zoning:"Zoning",
+    beds_baths:"Beds/baths"};
+  // Everything TEMPLATE_COLUMNS/normalizeRow in broker-vault.js accepts
+  // outside the per-type fields above. Field ids are "addComp_"+this, so the
+  // submit handler below builds the row generically instead of naming every
+  // input twice.
+  var BASE_FIELDS=["address","property_type","transaction","deal_date",
+                   "price","size_sqft","cap_rate","tenancy","year_built",
+                   "notes","lat","lng"];
+  $("addComp_property_type").innerHTML=Object.keys(TYPE_FIELDS)
+    .map(function(t){return "<option>"+t+"</option>"}).join("");
+  function renderAddTypeFields(){
+    var fs=TYPE_FIELDS[$("addComp_property_type").value]||[];
+    $("addTypeFields").innerHTML=fs.map(function(f){
+      return "<label>"+esc(TYPE_FIELD_LABELS[f]||f)+
+        ' <input id="addComp_'+f+'" type="text" placeholder="optional"/></label>';
+    }).join("");
+  }
+  $("addComp_property_type").addEventListener("change",renderAddTypeFields);
+  renderAddTypeFields();
+
+  async function addComp(){
+    var typeFields=TYPE_FIELDS[$("addComp_property_type").value]||[];
+    var body={};
+    BASE_FIELDS.concat(typeFields).forEach(function(f){
+      var el=$("addComp_"+f);
+      // An untouched field is omitted rather than sent as "": normalizeRow
+      // treats "left blank" and "explicitly cleared" the same way already,
+      // and sending every empty string would just be noise on the wire.
+      if(el&&el.value.trim())body[f]=el.value.trim();
+    });
+    var b=$("addCompBtn"); b.disabled=true;
+    var r=await fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    var j=await r.json().catch(function(){return{};});
+    b.disabled=false;
+    // The server returns EVERY problem with the row, not just the first, so
+    // a broker fixing the form gets one complete list. Show it whole.
+    if(!r.ok)return compMsg(j.error||"Could not save that comp.",true);
+    // property_type and transaction are left alone: a broker adding several
+    // comps of the same type/deal kind in a row should not have to reselect
+    // them each time. Re-rendering the type fields for the still-selected
+    // type is what clears them, rather than a second field list to keep in
+    // step with TYPE_FIELDS.
+    BASE_FIELDS.forEach(function(f){
+      if(f==="property_type"||f==="transaction")return;
+      var el=$("addComp_"+f); if(el)el.value="";
+    });
+    renderAddTypeFields();
+    load();
+    compMsg("Added.");
+  }
+  $("addCompBtn").addEventListener("click",addComp);
+
   // One delegated handler for the strip: a cell that carries data-open owns a
   // panel, and opening it is all it does. The details element holds its own
   // state, so there is nothing here to keep in step with it.

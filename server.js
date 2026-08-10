@@ -10617,9 +10617,14 @@ const server = http.createServer((req, res) => {
     if (!DB_CONFIGURED || !userId) return;
     if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return;
     try {
-      await sbRequest("POST", "broker_csv_mappings",
+      // Name the conflict target explicitly, matching every other
+      // merge-duplicates upsert in this file — do not "simplify" this back
+      // to PostgREST's implicit primary-key default; an unverified default
+      // makes this fail silently into the catch below with nothing
+      // reaching the broker.
+      await sbRequest("POST", "broker_csv_mappings?on_conflict=user_id",
         [{ user_id: userId, mapping, updated_at: new Date().toISOString() }],
-        { prefer: "resolution=merge-duplicates" });
+        { prefer: "resolution=merge-duplicates,return=minimal" });
     } catch (e) {
       console.warn("csv mapping write failed:", e.message);
     }

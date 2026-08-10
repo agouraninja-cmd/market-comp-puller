@@ -67,7 +67,7 @@ const EMAILSHELL = require("./email-shell");
 // the parse. US_STATES is shared with the Explorer/market-page validators,
 // which stay US-only on purpose (the module recognizes Canadian provinces
 // internally, for the key only).
-const { marketOf, marketForLog, US_STATES } = require("./market");
+const { marketOf, marketForLog, US_STATES, siblingMarkets } = require("./market");
 // The /api/comps parse pipeline's pure pieces, extracted one function at a
 // time as each gains tests (see its header for what still lives here). New
 // pipeline normalizers belong THERE. expandCompKeys is wrapped below where
@@ -1625,21 +1625,41 @@ function noteCorpusFailure(kind, err) {
 function corpusNum(v) { const n = Number(String(v || "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; }
 // Corpus rows for one watched market: DB rows (when configured) + any rows
 // that fell back to the file, newest first.
-async function corpusRowsForMarket(market, property_type, limit) {
+async function corpusRowsForMarkets(markets, property_type, limit) {
+  const wanted = (Array.isArray(markets) ? markets : [markets]).filter(Boolean);
+  if (!wanted.length) return [];
   let dbRows = [];
   if (DB_CONFIGURED) {
     try {
+      // The single-market form stays byte-identical to what has always
+      // shipped. Local dev has no database, so the in.() form below can only
+      // be exercised in production; keeping the common path untouched means a
+      // malformed widened query costs the nearby rows and nothing else.
+      // Market keys CONTAIN A COMMA ("Boise, ID"), which is also PostgREST's
+      // in.() separator, so each value is quoted and percent-encoded while the
+      // separators stay literal.
+      const filter = wanted.length === 1
+        ? `market=eq.${encodeURIComponent(wanted[0])}`
+        : `market=in.(${wanted.map((m) => `"${encodeURIComponent(String(m))}"`).join(",")})`;
       dbRows = await sbRequest("GET",
-        `comp_corpus?market=eq.${encodeURIComponent(market)}&property_type=eq.${encodeURIComponent(property_type)}` +
+        `comp_corpus?${filter}&property_type=eq.${encodeURIComponent(property_type)}` +
         `&select=ts,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
-        `${ALL_TYPE_COMP_FIELDS.join(",")},source_url,source_type,verified&order=ts.desc&limit=${limit}`) || [];
+        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified&order=ts.desc&limit=${limit}`) || [];
     } catch (e) { noteCorpusFailure("read", e); }
   }
+  const want = new Set(wanted);
   const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
-    .filter((r) => r && r.market === market && r.property_type === property_type);
+    .filter((r) => r && want.has(r.market) && r.property_type === property_type);
   return [...dbRows, ...fileRows]
     .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
     .slice(0, limit);
+}
+
+// One watched market. Unchanged contract: every existing caller (the
+// watchlist feed, the vault gut check, /api/corpus-comps, the Address
+// Explorer) gets exactly the rows it always did.
+async function corpusRowsForMarket(market, property_type, limit) {
+  return corpusRowsForMarkets([market], property_type, limit);
 }
 
 // Whole-corpus read for the audit: no market or type filter, newest first,
@@ -1727,15 +1747,19 @@ async function accuracyReport(force) {
 // ---------------------------------------------------------------------------
 async function retrieveCorpusComps(market, type, months, maxComps) {
   try {
+    const sibs = CORPUS_METRO ? siblingMarkets(market) : [];
     const rows = await corpusRowsForMarket(market, type, 300);
-    if (!rows.length) return { comps: [], coverage: 0, fresh: false };
+    // A second, separate read so the shared single-market helper keeps its
+    // exact contract for its four other callers.
+    const nearbyRows = sibs.length ? await corpusRowsForMarkets(sibs, type, 300) : [];
+    if (!rows.length && !nearbyRows.length) return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
 
     // Window filter in year-fraction space (parseDealDate returns e.g. 2024.5).
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
     const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
 
-    const usable = rows.filter((r) => {
+    const isUsable = (r) => {
       // Only feed higher-confidence provenance; a rough guess ("estimate") or a
       // news mention shouldn't seed a report.
       const st = String(r.source_type || "").toLowerCase();
@@ -1743,7 +1767,11 @@ async function retrieveCorpusComps(market, type, months, maxComps) {
       const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
       const d = parseDealDate(r.deal_date);
       return Boolean(priced) && d != null && d >= cutoffFrac;
-    });
+    };
+    const usable = rows.filter(isUsable);
+    // Nearby rows clear the identical bar: provenance better than estimate or
+    // news, a parseable price, and a deal date inside the requested window.
+    const nearbyUsable = nearbyRows.filter(isUsable);
 
     // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
     // freshest we hold for this market. Stale coverage → fall back to the web.
@@ -1758,10 +1786,18 @@ async function retrieveCorpusComps(market, type, months, maxComps) {
     const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
     const fresh = Boolean(newest && (now - newest) < 75 * 24 * 3600 * 1000);
 
-    return { comps: usable.slice(0, maxComps * 2), coverage: usable.length, fresh };
+    return {
+      comps: usable.slice(0, maxComps * 2),
+      // coverage stays EXACT-market only: corpusIsStrong and the search budget
+      // read it, and nearby rows must never buy a smaller budget.
+      coverage: usable.length,
+      fresh,
+      nearby: nearbyUsable.slice(0, maxComps),
+      nearbyCount: nearbyUsable.length,
+    };
   } catch (e) {
     console.error("Corpus retrieval failed (falling back to full search):", e.message);
-    return { comps: [], coverage: 0, fresh: false };
+    return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
   }
 }
 
@@ -1800,6 +1836,11 @@ function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
 // shallow lanes both rediscover the easy comps. Left switchable so the
 // trade can be re-measured on real traffic rather than two test addresses.
 const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SEARCH || ""));
+
+// Corpus metro matching: offer a thin market the comps we hold in its
+// immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a
+// reason to search less. Default ON; `off` restores exact-market matching.
+const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
@@ -9094,6 +9135,9 @@ const server = http.createServer((req, res) => {
         const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
         if (corpusIsStrong(corpus)) {
           console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
+        }
+        if (corpus.nearbyCount) {
+          console.log(`Corpus metro: offering ${corpus.nearbyCount} nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(", ")} (candidates only, budget unchanged)`);
         }
 
         // Everything above this line answers in plain JSON — the password gate,

@@ -142,6 +142,74 @@ function normalizeHeader(name) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+// --- column mapping --------------------------------------------------------
+//
+// Aliases a broker's own export is likely to use, keyed on normalizeHeader
+// output. This does NOT overturn the "we do not guess" decision above
+// TEMPLATE_COLUMNS: nothing here is applied silently. A suggestion is shown
+// beside two or three of that column's real values and the broker confirms it
+// before anything is written.
+const HEADER_ALIASES = {
+  address:       ["property_address", "prop_address", "street_address", "site_address", "addr"],
+  property_type: ["type", "prop_type", "asset_type", "product_type"],
+  transaction:   ["deal_type", "transaction_type", "sale_or_lease", "lease_or_sale"],
+  deal_date:     ["sale_date", "close_date", "closing_date", "transaction_date", "sold_date", "date"],
+  price:         ["sale_price", "sales_price", "purchase_price", "sold_price"],
+  size_sqft:     ["sf", "sq_ft", "sqft", "square_feet", "square_footage", "building_sf", "building_size", "size"],
+  cap_rate:      ["cap", "going_in_cap", "cap_pct"],
+  tenancy:       ["tenancy_type"],
+  year_built:    ["yr_built", "built", "year_constructed"],
+  notes:         ["comments", "remarks", "note"],
+  lat:           ["latitude"],
+  lng:           ["longitude", "long", "lon"],
+};
+
+// Every field a column may be mapped onto.
+const MAPPABLE_TARGETS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
+
+/**
+ * Suggest a mapping from a file's headers onto our fields.
+ *
+ * The ambiguity rule is the load-bearing part: a target is suggested only when
+ * exactly ONE column claims it. "Sale Price" and "Consideration" both mean
+ * price, and breaking that tie ourselves is the failure the original decision
+ * was written to prevent.
+ */
+function suggestMapping(headers) {
+  const norm = (Array.isArray(headers) ? headers : []).map(normalizeHeader);
+
+  // Which columns claim each target, exact matches tracked separately so a
+  // literal `price` column can settle a tie an alias would otherwise create.
+  const exact = new Map();   // target -> [normalized header]
+  const alias = new Map();   // target -> [normalized header]
+  const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+
+  for (const h of norm) {
+    if (!h) continue;
+    if (MAPPABLE_TARGETS.includes(h)) { push(exact, h, h); continue; }
+    for (const [target, list] of Object.entries(HEADER_ALIASES)) {
+      if (list.includes(h)) push(alias, target, h);
+    }
+  }
+
+  const mapping = {};
+  const ambiguous = [];
+  const used = new Set();
+
+  for (const target of MAPPABLE_TARGETS) {
+    const hits = exact.get(target) || alias.get(target) || [];
+    const free = hits.filter((h) => !used.has(h));
+    if (free.length === 1) {
+      mapping[free[0]] = target;
+      used.add(free[0]);
+    } else if (free.length > 1) {
+      ambiguous.push(target);
+    }
+  }
+
+  return { mapping, ambiguous };
+}
+
 // --- value readers -----------------------------------------------------------
 
 const text = (v, max = MAX_TEXT) =>
@@ -732,6 +800,7 @@ module.exports = {
   submissionRowFrom,
   parseCsv,
   normalizeHeader,
+  suggestMapping,
   parseMoney,
   parseNumber,
   parseCoord,
@@ -748,4 +817,6 @@ module.exports = {
   OPTIONAL_SPEC_COLUMNS,
   PROPERTY_TYPES,
   MAX_ROWS_PER_UPLOAD,
+  HEADER_ALIASES,
+  MAPPABLE_TARGETS,
 };

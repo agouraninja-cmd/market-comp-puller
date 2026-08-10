@@ -17,6 +17,7 @@ const {
   templateCsv, TEMPLATE_COLUMNS, MAX_ROWS_PER_UPLOAD,
   canPublish, creditName, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
+  suggestMapping,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -557,4 +558,53 @@ test("enforceVerifiedFlags never throws on garbage", () => {
     assert.doesNotThrow(() => enforceVerifiedFlags(v, null));
   }
   assert.doesNotThrow(() => enforceVerifiedFlags([null, undefined, 5], [null]));
+});
+
+// --- column mapping: suggestions ------------------------------------------
+//
+// The module's standing rule is that we do not GUESS a broker's column names.
+// Suggesting is different from guessing only because the broker confirms it
+// against real sample values. The rule that keeps the difference real is the
+// ambiguity rule: when two columns could be the same field, we suggest
+// neither and make them choose.
+
+test("an alias resolves to its template field", () => {
+  const { mapping } = suggestMapping(["Property Address", "Sale Price", "SF"]);
+  assert.equal(mapping.property_address, "address");
+  assert.equal(mapping.sale_price, "price");
+  assert.equal(mapping.sf, "size_sqft");
+});
+
+test("a literal template name maps to itself", () => {
+  const { mapping } = suggestMapping(["address", "deal_date", "price"]);
+  assert.equal(mapping.address, "address");
+  assert.equal(mapping.deal_date, "deal_date");
+  assert.equal(mapping.price, "price");
+});
+
+test("TWO columns claiming one field suggest NEITHER", () => {
+  const { mapping, ambiguous } = suggestMapping(["Sale Price", "Purchase Price"]);
+  assert.equal(mapping.sale_price, undefined);
+  assert.equal(mapping.purchase_price, undefined);
+  assert.ok(ambiguous.includes("price"),
+    "the broker must be told which field was left for them to pick");
+});
+
+test("an exact template name beats an alias for the same field", () => {
+  const { mapping, ambiguous } = suggestMapping(["price", "Sale Price"]);
+  assert.equal(mapping.price, "price", "the literal column wins");
+  assert.equal(mapping.sale_price, undefined);
+  assert.equal(ambiguous.includes("price"), false,
+    "an exact match resolves the tie rather than creating one");
+});
+
+test("an unrecognised header suggests nothing and is not an error", () => {
+  const { mapping, ambiguous } = suggestMapping(["Broker Remarks 2", "address"]);
+  assert.equal(mapping.broker_remarks_2, undefined);
+  assert.deepEqual(ambiguous, []);
+});
+
+test("an empty header is ignored entirely", () => {
+  const { mapping } = suggestMapping(["address", ""]);
+  assert.equal(Object.keys(mapping).length, 1);
 });

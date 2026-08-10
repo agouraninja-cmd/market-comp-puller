@@ -9193,6 +9193,10 @@
         .then((r) => (r.ok ? r.json() : []))
         .then((list) => (markets = list))
         .catch(() => (markets = [])));
+    // ⚠ These three tables are deliberate twins of explore-query.js's
+    // EXPLORE_TYPES / NON_EXPLORE_TYPES / STATE_ABBRS: they drive the type
+    // chips, the covered-page matcher and the no-module fallback parser.
+    // Keep them in step — nothing detects drift automatically.
     const EXPLORE_TYPES = ["industrial", "office", "retail", "multifamily"];
     const NON_EXPLORE_TYPES = ["land", "residential"]; // valid report types /api/explore-market rejects
     const US_STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
@@ -9381,7 +9385,11 @@
       if (p.reason === "zip") {
         if (zipCache.has(p.zip)) {
           const hit = zipCache.get(p.zip);
-          p = hit
+          // A territory or military zip (PR, AE/AA/AP) resolves fine at
+          // Zippopotam but names a state /api/explore-market rejects, so
+          // offering it would trade a hint for a confusing 400.
+          const usable = hit && US_STATES.includes(hit.state);
+          p = usable
             ? (p.type ? { type: p.type, city: hit.city, state: hit.state }
                       : { reason: "no-type", city: hit.city, state: hit.state })
             : { reason: "bad-zip", zip: p.zip };

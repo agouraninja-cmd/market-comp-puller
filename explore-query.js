@@ -61,6 +61,14 @@
 
   // Words that are never part of a city name here. "the" and "a" are
   // deliberately absent: The Dalles OR is a real market.
+  //
+  // Accepted casualties, all sub-3k-population places that could never meet
+  // the publish bar: New Market (VA/MD/AL/TN/IA) parses as "New", and Sale
+  // City GA / Sale Creek TN lose their first word. The mis-parse is visible
+  // on the button before anything runs and city-check.js refuses it
+  // server-side, so it costs a friendly error rather than a billed search.
+  // There is no cheap fix: stripping only a leading run rescues "New Market"
+  // but breaks a trailing "comps", which is the commoner shape.
   const FILLERS = ["market", "markets", "comps", "comp", "properties",
     "property", "for", "sale", "in", "near"];
 

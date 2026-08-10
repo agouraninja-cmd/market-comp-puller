@@ -3802,7 +3802,7 @@ function noteUpstreamFailure(status, detail) {
 // reader what to do next. Never the upstream text.
 function upstreamError(status, detail) {
   noteUpstreamFailure(status, detail);
-  const err = new Error(`Anthropic API error (${status}). ${detail || ""}`.trim());
+  const err = new Error(`${PROVIDER.logLabel} API error (${status}). ${detail || ""}`.trim());
   err.upstream = true;
   err.userMessage = (status === 429 || status === 529)
     ? "Our comp search is unusually busy right now. Please try again in a minute."

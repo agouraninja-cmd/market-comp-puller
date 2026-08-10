@@ -33,6 +33,17 @@ test("buildRequestBody sends google_search and never sends max_uses", () => {
     "google_search rejects max_uses; sending it would be a silent lie about the budget");
 });
 
+test("buildRequestBody nests the output cap under generation_config, never top-level", () => {
+  const body = P.buildRequestBody({
+    model: "gemini-3.6-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
+  });
+  assert.equal(body.generation_config.max_output_tokens, 32000,
+    "the Interactions API only accepts the cap nested under generation_config");
+  assert.equal("max_output_tokens" in body, false,
+    "a top-level max_output_tokens 400s with Unknown parameter; this is the assertion " +
+    "that would have caught the live-pipeline defect before it shipped");
+});
+
 test("parseResponse collects text across every model_output step and skips thoughts", () => {
   const out = P.parseResponse(FIXTURE);
   assert.equal(out.text, "Here is the report.\n{\"comps\":[]}");

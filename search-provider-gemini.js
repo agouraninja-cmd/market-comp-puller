@@ -32,7 +32,15 @@ function buildRequestBody({ model, prompt, maxComps }) {
     // A measured eval call spent 6,473 thought against 928 output, so the
     // Anthropic-sized 10,000 would truncate mid-array: the exact failure that
     // nearly faked a much worse Sonnet 5 result.
-    max_output_tokens: maxComps > 8 ? 32000 : 24000,
+    //
+    // Must be NESTED under generation_config, not top-level. Verified against
+    // the live API on 2026-08-10: all four top-level spellings
+    // (max_output_tokens, maxOutputTokens, max_tokens, output_config) 400
+    // with "Unknown parameter"; only generation_config.max_output_tokens is
+    // accepted, and it is genuinely honored (a cap of 40 truncated the reply
+    // to status "incomplete" with 2 output + 34 thought tokens; a cap of
+    // 4,000 completed normally at 691 output + 130 thought).
+    generation_config: { max_output_tokens: maxComps > 8 ? 32000 : 24000 },
   };
 }
 
@@ -66,6 +74,14 @@ function parseResponse(data) {
     // inventing a number would corrupt the searches figure in the log and in
     // the analytics event.
     searches: 0,
+    // Gemini has no stop_reason field. It signals truncation through
+    // `status: "incomplete"` instead of a completed status, so that value is
+    // this provider's equivalent of Anthropic's stop_reason "max_tokens".
+    // Verified live 2026-08-10: a generation_config.max_output_tokens cap of
+    // 40 produced status "incomplete" with the text visibly cut off. Without
+    // reading this, a truncated report looks identical to a model that
+    // simply found nothing to report, a failure mode this project has
+    // already been burned by once.
     stopReason: (data && data.status) || "",
     usage: normalizeUsage(data && data.usage),
   };

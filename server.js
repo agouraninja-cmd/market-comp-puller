@@ -167,6 +167,21 @@ function proEnabledFor(user) {
   return PRO_ENABLED && ENT.inAudience(user, PRO_AUDIENCE);
 }
 
+// Optional shared passkey that comps Pro to a signed-in account (the beta
+// tester door). Deliberately NOT ADMIN_KEY: that key also unlocks /admin,
+// /dev and /contacts, so handing it to testers would hand out the analytics,
+// the lead list and the dev tools along with it. Unset = POST
+// /api/redeem-passkey does not exist (404), which is what keeps this inert on
+// any deployment that never configured it.
+//
+// Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
+// devices and survives a passkey rotation — and revoking one tester is a
+// one-row UPDATE, without changing the passkey for everyone else. See the
+// comped-tester branch in entitlements.js for what it grants (everything Pro
+// except the broker vault) and what it cannot override (PRO_ENABLED, and a
+// real paid subscription).
+const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
+
 // Stripe. Keys live only in the environment — never in the repo, never in a
 // response, never in the browser. The price IDs are not secret (they identify
 // a product, they do not authorize anything), but they are configured rather
@@ -866,6 +881,20 @@ async function updateUserPassword(id, password_hash) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.password_hash = password_hash; await saveAccountStore(); }
 }
+// Grants comped Pro to one account (the redeemed tester passkey).
+//
+// THROWS on a Supabase failure rather than returning false, unlike the
+// fire-and-forget writes elsewhere in this file: the caller answers the
+// visitor with "you're in", and a swallowed failure there means someone is
+// told they have Pro that they do not have and cannot get by trying again.
+async function setUserTester(id) {
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { pro_tester: true });
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.pro_tester = true; await saveAccountStore(); }
+}
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -936,7 +965,17 @@ async function getSessionUser(req) {
   if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
   try {
     const user = await findUserById(sess.user_id);
-    return user ? { id: user.id, email: user.email, name: user.name || "" } : null;
+    return user ? {
+      id: user.id,
+      email: user.email,
+      name: user.name || "",
+      // The comped-tester flag. Narrowing this object is deliberate (it is what
+      // stops a password hash reaching a caller), which means a new entitlement
+      // input has to be added HERE or it never reaches computeEntitlements at
+      // all — the feature would be silently inert with nothing failing.
+      // Boolean() so a missing column (deploy-then-migrate) reads as false.
+      pro_tester: Boolean(user.pro_tester),
+    } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
 // Route guard: replies 401 itself; callers bail on null.
@@ -1296,8 +1335,13 @@ async function getEntitlements(user, reportId, admin = false) {
     findReportPurchase(user && user.id, reportId),
     getExportUsage(user && user.id, ENT.usagePeriod(now)),
   ]);
+  // Deliberately NOT a short-circuit above the DB reads, unlike the admin
+  // branch: a tester may also be a paying subscriber, and entitlements.js
+  // resolves the comped branch only when there is no live subscription to
+  // prefer. Reading the subscription is what makes that possible.
+  const tester = Boolean(user && user.pro_tester);
   return ENT.computeEntitlements({
-    user, subscription, purchase, usage, reportId, now, enabled: true,
+    user, subscription, purchase, usage, reportId, now, enabled: true, tester,
   });
 }
 
@@ -3080,6 +3124,20 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // Calibrate the comp search radius to market density (a user suggestion):
     // "within 5 miles" means something very different in Dallas vs. Boise.
     `RADIUS: Scale how far "comparable" reaches to the market's size and density. In a large, dense metro (e.g. Dallas, Phoenix, Los Angeles), keep comps within the immediate submarket, a few miles out. In a smaller or rural market (e.g. Boise, Pocatello), widen the radius as needed to find enough genuinely comparable transactions, and note in "summary" when you reach beyond the immediate area.${note ? ' Respect the market note above where it specifies where to look.' : ''}`,
+    // Residential overrides the rule above rather than tuning it, because the
+    // rule above is written for commercial assets, where a buyer really will
+    // weigh a warehouse two towns over. Houses are not priced that way: value
+    // is set by the immediate neighborhood, and the "widen it in a smaller
+    // market" license is exactly what produced comps miles from a Gurnee IL
+    // house while Zillow showed five on its own streets (owner feedback
+    // 2026-08-10). Stated as a ceiling with an explicit "fewer is better"
+    // clause, because otherwise the model reads the 3-comp floor as license to
+    // reach: a 3-comp report from the subdivision beats an 8-comp report from
+    // across the county, and the count rules elsewhere in this prompt do not
+    // say that on their own.
+    type === "Residential"
+      ? `NEIGHBORHOOD (Residential, overrides RADIUS above): a home's value is set by its own neighborhood, so comps must come from the subject's immediate area — the same subdivision, or within roughly one mile, and on the same side of any boundary a buyer would notice (school attendance area, a highway or river, a distinctly different price tier). Do NOT widen to the wider town, county, or metro to reach a comp count: returning 3 comps from the subject's own streets is BETTER than returning 8 that include homes miles away, and a distant comp drags the estimate toward a neighborhood the subject is not in. Only reach past about a mile when the immediate area genuinely has fewer than 3 sales in the window; when you do, say so in "summary" and say roughly how far you went.`
+      : "",
     ``,
     `TASK: Find 3 to ${maxComps} RECENT ${
       txFocus === "sales"  ? "comparable closed SALES" :
@@ -3110,7 +3168,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // The neighbor guard matters: adjacent parcels' sizes surface readily in
     // search results, and a wrong "found" size is worse than an honest "".
     wantsSize
-      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size.`
+      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off the property's own last sale date and price for "subject_last_sale" below - the same record usually carries both, so it costs you nothing here and is one of the most valuable things in the report.`
       : "",
     typeGuidance[type] || "",
     // Size class moves $/SF (economies of scale) — steer comp selection
@@ -3160,6 +3218,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
       `  "price_discovery": { "direction": "", "note": "" },`,
     ]),
     ...(wantsSize ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
+    // Not gated on compsOnly like the other narrative fields: on a lane split
+    // the records lane is the one opening assessor pages, so it is the lane
+    // that can actually see a sale history. Asked of whichever lane is looking
+    // (wantsSize) and of the sole/primary lane regardless; mergeLaneReports
+    // carries whichever one answers.
+    ...(wantsSize || !compsOnly ? [`  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -3195,6 +3259,17 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 short sentences, under about 200 characters total, on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
     ]),
     ...(wantsSize ? [`"subject_size_sqft" = the TARGET property's building size as a plain number string like "25000". Use "" if you cannot determine it from a real source; do not guess. "subject_size_source" = where the size came from, exactly one of: "public_record" (assessor or tax record), "listing" (a listing page or brokerage flyer), "estimate".`] : []),
+    // The subject's OWN last arm's-length sale is the single strongest piece of
+    // evidence about what it is worth, and the report was not asking for it at
+    // all: a Bensalem PA property that had sold a year earlier for $12.45M got
+    // a report that never mentioned it (owner feedback 2026-08-10). Costs no
+    // extra search on purpose — the assessor/parcel/listing pages the SUBJECT
+    // SIZE step already opens are the same pages that carry the sale history,
+    // so this is a "note it while you are there", never a lookup of its own.
+    // That is also why it is phrased as opportunistic when wantsSize is false:
+    // with the size already known there is no subject search to ride along on,
+    // and buying one would come out of the comp budget.
+    ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent closed sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000", "source_url" = the page that states it. This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
   ].join("\n");
 }
 
@@ -3211,6 +3286,34 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
 const { normalizeTrendPct, reconcilePricePerSqft } = RPARSE;
+
+// The subject's own last sale is model-written free text headed for a report
+// surface, a cache entry and a share, so it is normalized to a known shape
+// once here rather than defended against at every read. Rules:
+//   - anything that is not an object, or that carries no DATE, becomes null.
+//     A price with no date is unplaceable in time and reads as a current
+//     valuation of the subject, which is the one thing this must never be
+//     mistaken for; a date with no price is still worth showing, so that
+//     asymmetry is deliberate.
+//   - the URL is kept only when it is http(s). The client renders it as a
+//     link, and a javascript: or data: URL from model output must never get
+//     that far.
+//   - fields are clipped, not rejected on length: this is one short line of
+//     provenance and a long value is a formatting problem, not a lie.
+// Deliberately NOT harvested into comp_corpus: that table holds comps, and a
+// subject's own sale is not a comp of itself.
+function normalizeSubjectLastSale(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_last_sale;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) { delete parsed.subject_last_sale; return parsed; }
+  const str = (v) => String(v == null ? "" : v).trim();
+  const date = str(raw.date).slice(0, 40);
+  if (!date) { delete parsed.subject_last_sale; return parsed; }
+  let url = str(raw.source_url).slice(0, 500);
+  if (!/^https?:\/\//i.test(url)) url = "";
+  parsed.subject_last_sale = { date, price: str(raw.price).slice(0, 40), source_url: url };
+  return parsed;
+}
 
 // Credit the contributing broker on any verified comp the model included, by
 // matching its (faithfully-copied) address back to the submitted comp. Closes
@@ -3956,7 +4059,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
 
   const finishReport = (raw) =>
     attachVerifiedAttribution(
-      reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type))))),
+      normalizeSubjectLastSale(
+        reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
       verifiedComps);
   try {
     return finishReport(text);
@@ -4022,6 +4126,12 @@ function mergeLaneReports(primary, records, maxComps) {
   if (records.subject_size_sqft && !primary.subject_size_sqft) {
     primary.subject_size_sqft = records.subject_size_sqft;
     primary.subject_size_source = records.subject_size_source || "";
+  }
+  // Same reasoning for the subject's own last sale, and the records lane is
+  // the likelier finder of the two — it is the one reading assessor and deed
+  // pages, which is where a sale history lives.
+  if (records.subject_last_sale && records.subject_last_sale.date && !(primary.subject_last_sale || {}).date) {
+    primary.subject_last_sale = records.subject_last_sale;
   }
 
   console.log(`Lane merge: ${a.length} listing-lane + ${fresh.length} records-lane comp(s), ${records.comps.length - fresh.length} duplicate(s) dropped, ${primary.comps.length} kept.`);
@@ -4374,7 +4484,8 @@ const CN_LOGO_LIGHT =
 //   Your vault          pro.canUseVault, never a plan test, and NOT gated on
 //                       `billing` — a comped admin has the vault with no Stripe
 //   Manage billing      a Stripe customer exists (status set, not "none") and
-//                       is not the comped "admin" status, which has no portal
+//                       is not the comped "admin" or "tester" status, neither
+//                       of which has a Stripe customer behind it
 const ACCOUNT_NAV_CSS = `
 /* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.
    Load-bearing: .hdr nav .dd a sets display:block, which out-specifies the
@@ -4443,7 +4554,7 @@ const ACCOUNT_NAV_JS =
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
   `show($("navUpgrade"),live&&!isPro);` +
-  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin);` +
+  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin&&!pro.tester);` +
   `});` +
   `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
@@ -5887,13 +5998,13 @@ const HOW_FAQ = [
   // This answer reaches Google twice: as the visible accordion and inside the
   // FAQPage JSON-LD below. It claimed "there is no subscription" for months
   // after Pro went on sale, so the search result was actively denying the
-  // product. Keep it true to entitlements.js (4 comps, 36 months free) and to
+  // product. Keep it true to entitlements.js (10 comps, 36 months free) and to
   // the pricing modal in index.html, which are the numbers being charged.
   // (Both sides of the 2026-08-08 merge rewrote this entry; this is the
   // upstream version, kept because naming the real numbers beat vagueness —
   // it now owes an update whenever the prices move.)
   ["How much does a comp report cost?",
-   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. The free report itemizes four comps and looks back three years. Pro, at $129 a month, removes both limits and adds unlimited exports and your own branding on the report. If you only need one building, a single report unlocks on its own for $20."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. The free report itemizes ten comps and looks back three years. Pro, at $129 a month, removes both limits and adds unlimited exports and your own branding on the report. If you only need one building, a single report unlocks on its own for $20."],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -10154,6 +10265,59 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Redeem the tester passkey: comped Pro for a signed-in account --------
+  //
+  // Refusal order mirrors the vault's openVault() and requireBroker(): the
+  // feature not existing, then the caller, then the secret.
+  //
+  // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
+  // /contacts, so it can never be the thing handed to testers; this grants
+  // Pro and nothing else, and touches neither the dashboards nor the
+  // header-only `internal` bypass in /api/comps.
+  if (req.method === "POST" && req.url === "/api/redeem-passkey") {
+    // Unset = the feature does not exist on this deployment. 404 rather than
+    // 403, matching how the ADMIN_KEY-gated routes go dark when unconfigured:
+    // a probe cannot tell a wrong code from a deployment that has no code.
+    if (!TESTER_PASSKEY) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        // Tighter than the account routes' 10: this guards a SHARED secret,
+        // and legitimate use is one redemption per person, ever.
+        if (rateLimited("passkey:" + clientIp(req), 5, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const user = await getSessionUser(req);
+        // The grant is stored on an account, so there is nothing to store it
+        // on for an anonymous caller. Checked BEFORE the secret compare so a
+        // signed-out prober cannot use this route to test codes at all.
+        if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
+        // Idempotent: a second redemption is a no-op, not an error. Also
+        // checked before the compare, so someone who already has access
+        // cannot be told "incorrect code" by a rotated passkey.
+        if (user.pro_tester) return sendJson(res, 200, { ok: true, already: true });
+        const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
+        if (!secretMatches(passkey, TESTER_PASSKEY)) {
+          return sendJson(res, 401, { error: "That code isn't right." });
+        }
+        await setUserTester(user.id);
+        console.log(`Tester passkey redeemed by ${user.email}`);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        // setUserTester throws on a failed write — never report success for a
+        // grant that did not land.
+        console.error("redeem-passkey error:", err);
+        return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
+      }
+    });
+    return;
+  }
+
   // --- Portfolio: the signed-in user's saved properties --------------------
   if (req.url === "/api/portfolio" || req.url.startsWith("/api/portfolio?")) {
     if (req.method === "GET") {
@@ -12607,6 +12771,14 @@ const server = http.createServer((req, res) => {
           // and to keep billing controls (which would 503 or 400 at Stripe)
           // away from an account that never bought anything.
           admin: ent.admin === true,
+          // Comped tester access. Presentation only, like every field here —
+          // the routes re-resolve entitlements server-side, so editing this
+          // response relabels a plan card and unlocks nothing.
+          tester: ent.tester === true,
+          // Whether this deployment has a tester passkey at all, so the pricing
+          // modal can hide a redeem row that could only ever fail. NOT a secret and
+          // not an entitlement: it says a door exists, never what opens it.
+          testerPasskey: Boolean(TESTER_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
@@ -13853,4 +14025,10 @@ server.listen(PORT, () => {
   } else {
     console.log("⭐ Pro tier disabled (set PRO_ENABLED=on once the Pro DDL has been run).");
   }
+  // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
+  // with migration 022 not yet run looks like a working deployment until a
+  // real tester's redemption 500s.
+  console.log(TESTER_PASSKEY
+    ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
+    : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
 });

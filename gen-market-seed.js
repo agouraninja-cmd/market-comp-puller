@@ -82,7 +82,7 @@ async function buildOne(t) {
       "content-type": "application/json",
       // Internal caller: identifies this script past the Pro comp gate so it
       // keeps receiving whole reports. Without it a market page would be
-      // built from the free tier's 4 comps and fail its own quality bar.
+      // built from the free tier's 10 comps and fail its own quality bar.
       ...(ADMIN_KEY ? { "x-admin-key": ADMIN_KEY } : {}),
     },
     body: JSON.stringify(body),

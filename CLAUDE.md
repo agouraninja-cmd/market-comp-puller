@@ -146,6 +146,27 @@ dependency. `.env` is git-ignored — never commit it.
   endpoint is disabled. Without Supabase configured, leads live only in
   `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
   **It is also the admin identity for comped Pro** — see "Admin access" below.
+- `TESTER_PASSKEY` — optional shared passkey that comps Pro to a **signed-in**
+  account (the beta-tester door). Unset = `POST /api/redeem-passkey` 404s and
+  the pricing modal's "Have a code?" row never renders, so this is inert on any
+  deployment that never configured it. **It is not `ADMIN_KEY`**: that key also
+  unlocks `/admin`, `/dev` and `/contacts`, so it can never be the thing handed
+  to testers. Redeeming sets `users.pro_tester` (migration 022), so the grant
+  follows the ACCOUNT across devices, survives a passkey rotation, and is
+  revoked one tester at a time with a one-row `update users set pro_tester =
+  false where email = …` rather than by rotating the code for everyone.
+  Rules live in `entitlements.js`, so `npm test` covers them; four of them
+  matter. It grants everything Pro **except the broker vault** — the vault is a
+  private-data workspace with an upload endpoint, and a passkey shared with a
+  wider group is a bigger surface than "try Pro's reports". It **cannot switch
+  a dark deployment on** (`PRO_ENABLED` still wins, same as the admin branch).
+  Its `status` is `"tester"`, never `"active"`, so the UI never offers a
+  billing portal to an account with no Stripe customer. And unlike the admin
+  branch it is **checked as a fallback after the subscription**, not as an
+  early short-circuit: a tester who later subscribes gets their real Stripe
+  status and their billing portal, and comped access resumes if that
+  subscription lapses. A tester is also NOT the `internal` bypass in
+  `/api/comps`, which stays header-only.
 - `RESEND_API_KEY` — optional. When set, every stored lead AND every broker
   comp submission fires an email notification via Resend's REST API (plain
   fetch, free tier is plenty). Fire-and-forget: a failing provider is logged
@@ -457,6 +478,11 @@ Four rules, all in `entitlements.js` and covered by `npm test`:
 a free user" button on the plan card does. Keep that button working: the team is
 permanently on the far side of the paywall, so it is the only way anyone
 internal ever renders one.
+
+This is not the only comped-Pro door: `TESTER_PASSKEY` (above) comps Pro to a
+signed-in account without any dashboard access, and stores the grant on the
+user row rather than in a cookie. Admin wins outright and skips the billing
+reads; a tester deliberately yields to a real subscription.
 
 `MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`
@@ -1001,6 +1027,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` for comped Pro on the
+  signed-in caller's account (401 if not signed in, rate-limited per IP). See
+  `TESTER_PASSKEY` above for what the grant covers.
 - `GET /dev`, `GET /api/devlog`, `GET|PUT /api/dev-ideas` — the **Development
   Hub**: an internal changelog + future-ideas page, gated by the same
   `ADMIN_KEY` (and sessionStorage key) as `/admin`, with the same triple-noindex
@@ -1800,6 +1829,73 @@ private row has not earned. Two rules matter when editing anything down here:
    by watching `select count(*) from comp_corpus` rise after a search — the row
    count is the only unambiguous proof, since a fallback write still logs a
    `+N` line and still returns a normal-looking report.
+
+3a. **Per-type vocabulary (`ASSET_NOUN` / `assetNoun` / `assetNounPlural` /
+   `setHeroTitle` in index.html).** The report called every subject a
+   "building", so a house got a hero reading "WHAT THIS BUILDING IS WORTH"
+   and a pointer to "Building Size" beside a field labelled *Property size*
+   (owner feedback 2026-08-10). Residential is a `home` (which also covers
+   **condos and townhomes** — they have no type of their own, and a condo is a
+   home); Land, **Multifamily** and **Retail** are a `property`; only
+   Industrial and Office fall through to `building`, because only those two
+   genuinely are one. Multifamily is deliberately NOT "apartment building" or
+   "apartment community" (owner's call, 2026-08-10): the type spans duplexes
+   and 300-unit garden communities and neither phrase is true across that
+   range, while `property` is also the unit the report already prices on
+   (`ALT_BASIS`). Retail is `property` for the same both-shapes reason —
+   "building" fits only a single-tenant pad, "center" only an anchored center.
+   Three rules: **it is related to `SIZE_LABELS` but deliberately not equal to
+   it** — Multifamily and Retail keep "Building size (SF)" as the FIELD label
+   because that really is the building square footage the valuation divides
+   by, even though the asset above it is called a property; check both when
+   adding a type, and expect them to differ; **plurals come from
+   `ASSET_NOUN_PLURAL`, never `noun + "s"`**
+   (that shipped "propertys" on Land); and **the hero heading is set at TWO
+   seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
+   hero on screen a minute before the real render repaints it, so without the
+   second one a house sits under the previous report's noun for the whole
+   search. The basis line reads its field name from `SIZE_LABELS[meta.type]`
+   and **not** from `#targetSizeLabel`, because a shared report renders
+   somebody else's type into a form still labelled for whatever this visitor
+   last searched.
+
+3b. **The lookback hint is recomputed, never written once**
+   (`refreshLookbackHint` in index.html). It used to be set only by
+   `applyRecommendedLookback`, so moving the window off the recommendation
+   left "Recommended for Industrial" under a 6-month selection — the label
+   asserting that the reader's own override was our advice. It now derives
+   from `selectedLookbackMonths()` and **clears entirely on any deviation**.
+   A first pass reworded it instead ("24 months recommended for Industrial",
+   which is at least true) and the owner rejected that: the complaint is about
+   a recommendation label still sitting under a window the reader deliberately
+   changed, and rewording leaves one sitting there. The note is a caption for
+   the default, not standing advice. It hangs off **three** seams and needs all of them: the select's
+   `change`, the custom box's `input` (which changes the window without
+   touching the select), and `setLookbackControls`. It is also called from
+   `syncSubjectFieldsToType`, because both startup restores (`?type=` and
+   `lastPropertyType`) set the type through that function alone and would
+   otherwise leave the hint naming the page-load default type. That call
+   refreshes the HINT only and deliberately never applies the recommended
+   WINDOW: a restore is not a fresh decision, and a deep link may carry its
+   own lookback.
+
+3c. **`subject_last_sale` — the subject's own prior sale** (2026-08-10). The
+   report never looked up whether the subject itself had recently traded, so
+   a Bensalem property that sold a year earlier for $12.45M got a report that
+   never mentioned it. The model returns `{ date, price, source_url }` and
+   `renderSubjectLastSale` draws one line under the approaches. Four rules.
+   **It costs no extra search by construction**: the ask rides on the
+   `SUBJECT SIZE` step, whose assessor/parcel/listing pages already carry the
+   sale history, and when `wantsSize` is false the wording drops to
+   opportunistic rather than buying a search out of the comp budget. **It is
+   evidence, not a fourth figure** — never put it in the ledger, because a
+   years-old price shown big reads as a current valuation. **It is normalized
+   server-side** (`normalizeSubjectLastSale`): no date means the whole field
+   is dropped (a price with no date is unplaceable in time), and a non-http
+   `source_url` is discarded before it can become an anchor href. **It is not
+   a comp** — the prompt forbids it appearing in `comps`, and it is never
+   harvested into `comp_corpus`, which holds comps and not a property's own
+   sale of itself.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

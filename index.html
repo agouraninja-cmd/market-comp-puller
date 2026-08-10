@@ -720,7 +720,7 @@
            FREE_MAX_LOOKBACK_MONTHS moves again, this paragraph, the Pro bullet
            and both plan-card strings all have to move with it. -->
       <p id="pricingSubtitle" class="text-sm text-[#68707E] mt-1">
-        Free reports look back 3 years and itemize four of the comps found.
+        Free reports look back 3 years and itemize ten of the comps found.
         Pro widens the search to ten years — the change that actually surfaces more
         transactions — and itemizes every one it finds, with the sources.
       </p>
@@ -736,7 +736,7 @@
           <span class="rd-lab">Free</span>
           <div class="pr-fig">$0</div>
           <div class="pr-per">forever</div>
-          <p class="pr-sum">The same value range Pro sees, four itemized comps, a 3-year window.</p>
+          <p class="pr-sum">The same value range Pro sees, ten itemized comps, a 3-year window.</p>
           <p class="text-xs text-[#68707E] mt-3">Your current plan</p>
         </div>
         <!-- Pro monthly -->
@@ -815,7 +815,7 @@
            rule. The first row leads with what the tiers SHARE — the full-set
            value range — the same honesty rule the free report itself keeps
            (comp-gate.js's locked_basis). Numbers here restate
-           entitlements.js (4 comps, 36 months, 5 exports/month with an
+           entitlements.js (10 comps, 36 months, 5 exports/month with an
            account) and must move with it, like the subtitle above. -->
       <button id="pricingCompareBtn" type="button" aria-expanded="false"
         class="text-xs text-[#68707E] hover:text-[#1A2433] underline decoration-[#D8D4C9] mt-3">Compare plans in detail</button>
@@ -824,8 +824,14 @@
           <colgroup><col><col><col class="pro-col"></colgroup>
           <thead><tr><th>Every report includes</th><th class="c">Free</th><th class="c pro">Pro</th></tr></thead>
           <tbody>
+            <!-- Leads the table because it is the row a reader was inventing an
+                 answer to. With only a metered EXPORT row on screen, the export
+                 counter in the report toolbar got read as a cap on running
+                 reports (owner feedback 2026-08-10). Saying the unlimited thing
+                 out loud costs one row and removes the guess. -->
+            <tr><td>Reports you can run</td><td class="c">Unlimited</td><td class="c">Unlimited</td></tr>
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
-            <tr><td>Comps itemized, with sources</td><td class="c">4</td><td class="c">All found</td></tr>
+            <tr><td>Comps itemized, with sources</td><td class="c">10</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
             <tr><td>CSV, image, PDF and Excel exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
             <tr><td>Private vault for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
@@ -874,6 +880,26 @@
       </div>
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+
+      <!-- Comped access for beta testers. Hidden until /api/config resolves,
+           and shown only to a signed-in non-Pro visitor: the grant is stored
+           on an account, so there is nothing to attach it to signed out. -->
+      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <button id="passkeyToggle" type="button" aria-expanded="false"
+          class="text-sm text-[#68707E] hover:text-[#374253] underline">
+          Have a code?
+        </button>
+        <div id="passkeyForm" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
+          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Access code"
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <button id="passkeySubmit" type="button"
+            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+            Redeem
+          </button>
+        </div>
+        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
+      </div>
+
       <p class="text-xs text-[#68707E] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms</a>.
       </p>
@@ -1248,7 +1274,7 @@
             <span id="subjectSummary">+ Details for comps <span class="text-[#68707E] font-normal">(size, NOI, cap rate, market note: optional, sharpens the match)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3">What you enter here steers which comps we pick — buildings like yours in size and specs. Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size and property type come from public records automatically, so set a size here only to override what we found.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in size and specs.</span> Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size and property type come from public records automatically, so set a size here only to override what we found.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <!-- Size is one range in one cell again, the shape it had before
@@ -1267,7 +1293,7 @@
                   <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
                   <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
-                <p class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
+                <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
               </div>
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
@@ -1726,7 +1752,7 @@
              in the browser via renderOwnerHero; NOI never leaves the page. -->
         <div id="ownerHero" data-assemble class="hidden rd-bcard print-shadow-none fade-in">
           <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">What This Building Is Worth</h2>
+            <h2 id="ownerHeroTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">What This Building Is Worth</h2>
             <span id="ownerBasis" class="text-xs text-[#68707E] text-right"></span>
           </div>
           <div class="rd-ledger">
@@ -1776,6 +1802,14 @@
                English. Built by renderOwnerHero; margins only, no flex gap
                (this block IS captured in the PNG export). -->
           <div id="ownerApproaches" class="hidden mt-4 pt-4 border-t border-[#ECEAE3]"></div>
+          <!-- The subject's OWN last sale, when the model found one. Sits with
+               the approaches rather than in the ledger on purpose: it is
+               evidence about this property, not a fourth estimate of it, and a
+               years-old price shown as a headline figure would be read as a
+               current value. Prints and captures for the same reason the
+               scatter does. Built by renderSubjectLastSale; margins only, no
+               flex gap (the PNG exporter can't render it). -->
+          <p id="ownerLastSale" class="hidden text-xs text-[#5A6473] mt-4"></p>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
@@ -2085,6 +2119,10 @@
           <p class="text-xs text-[#68707E] px-6 py-2 border-t border-[#F0EFE9]">
             Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
           </p>
+          <!-- Its own <p>, not a span inside the one above: a `hidden block`
+               pair resolves on stylesheet order, which is the trap that has
+               bitten the vault decks twice. Nothing here but `hidden`. -->
+          <p id="mapUnplaced" class="hidden text-xs font-medium text-[#4C5665] px-6 pb-2 -mt-1"></p>
         </div>
 
         <!-- Target comparison card -->
@@ -2500,6 +2538,54 @@
 
   // "Building size" is wrong for two types; Land has no income to report.
   const SIZE_LABELS = { Land: "Lot size (SF)", Residential: "Property size (SF)" };
+
+  // What to CALL the thing being valued, per type. The report said "building"
+  // everywhere regardless — a house was handed a hero reading "WHAT THIS
+  // BUILDING IS WORTH" (owner feedback 2026-08-10), which reads as boilerplate
+  // written for somebody else's asset class, and on Land there is no building
+  // at all.
+  //
+  // Related to SIZE_LABELS above but deliberately NOT equal to it: Multifamily
+  // and Retail keep "Building size (SF)" as the FIELD label, because that
+  // really is the building square footage the valuation divides by, even
+  // though the asset above it is called a property. Check both when adding a
+  // type, and expect them to differ.
+  //
+  // Only Industrial and Office fall through to "building", because those two
+  // genuinely ARE one building. The other four are named:
+  //   Residential  home      - also covers condos and townhomes, which have no
+  //                            type of their own; a condo is a home.
+  //   Land         property  - there is no building at all.
+  //   Multifamily  property  - an apartment community is not one building, and
+  //                            the type also covers duplexes, so neither
+  //                            "apartment building" nor "apartment community"
+  //                            is true across the range. It is also the unit
+  //                            the report already prices on (ALT_BASIS).
+  //   Retail       property  - right for a single-tenant pad AND for a strip or
+  //                            anchored center; "building" is only right for
+  //                            the first, "center" only for the second.
+  const ASSET_NOUN = {
+    Residential: "home",
+    Land: "property",
+    Multifamily: "property",
+    Retail: "property",
+  };
+  const assetNoun = (type) => ASSET_NOUN[type] || "building";
+  // Spelled out rather than `assetNoun(type) + "s"`, which produced
+  // "propertys" on Land the first time this shipped. Three known nouns, so a
+  // table beats a pluralization rule that would only ever be wrong.
+  const ASSET_NOUN_PLURAL = { home: "homes", property: "properties", building: "buildings" };
+  const assetNounPlural = (type) => ASSET_NOUN_PLURAL[assetNoun(type)];
+  // Title Case for the hero heading, which is CSS-uppercased anyway but is
+  // also what a screen reader and the PNG export read out.
+  const assetNounTitle = (type) => {
+    const n = assetNoun(type);
+    return n.charAt(0).toUpperCase() + n.slice(1);
+  };
+  function setHeroTitle(type) {
+    const el = document.getElementById("ownerHeroTitle");
+    if (el) el.textContent = `What This ${assetNounTitle(type)} Is Worth`;
+  }
   const SUBJ_INPUT_CLASS = "w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none";
 
   function renderSubjectFields(type) {
@@ -2534,6 +2620,15 @@
       wrap.appendChild(cell);
     });
     document.getElementById("targetSizeLabel").textContent = SIZE_LABELS[type] || "Building size (SF)";
+    // Same relabelling as the size field, for the two lines of prose around it.
+    // Land is the reason the footprint sentence is dropped rather than reworded:
+    // a parcel's size does not come from a building footprint at all.
+    const noun = assetNoun(type);
+    document.getElementById("subjectHintLead").textContent =
+      `What you enter here steers which comps we pick — ${assetNounPlural(type)} like yours in size and specs.`;
+    document.getElementById("targetSizeHint").textContent = type === "Land"
+      ? "Left blank, it comes from public records."
+      : `Left blank, it comes from public records or the ${noun}'s footprint.`;
     // Clear as well as hide: a value typed under another type would otherwise
     // still be read on submit and produce an income approach for raw land.
     // The cap rate travels with the NOI — every surface it drives needs an NOI
@@ -2564,6 +2659,14 @@
   // runs long after the initial paint.
   function syncSubjectFieldsToType() {
     renderSubjectFields(document.getElementById("propertyType").value);
+    // The lookback hint names the type, so it is part of "make the form match
+    // the type" and belongs on this seam. Both startup restores (?type= and
+    // lastPropertyType) set the select and call only this function, so without
+    // it the hint kept naming whatever type the page loaded with — a Residential
+    // form under "Recommended for Industrial". Deliberately refreshes the HINT
+    // only and never applies the recommended WINDOW: a restore is not a fresh
+    // decision, and a deep link may carry its own lookback.
+    refreshLookbackHint();
   }
 
   // Put saved detail values back into the freshly-rendered inputs. Call it
@@ -2621,7 +2724,12 @@
     const custom = lookbackSel.value === "custom";
     lookbackCustomWrap.classList.toggle("hidden", !custom);
     if (custom) lookbackCustomInput.focus();
+    refreshLookbackHint();
   });
+  // The custom box changes the window without touching the select, so it needs
+  // its own listener or the hint goes stale exactly where it is hardest to
+  // notice — while the reader is typing a number into it.
+  lookbackCustomInput.addEventListener("input", refreshLookbackHint);
 
   // Resolves the selected window to a number of months, or null if the custom
   // box is empty/out of range.
@@ -2637,6 +2745,7 @@
     lookbackSel.value = preset ? String(months) : "custom";
     lookbackCustomWrap.classList.toggle("hidden", preset);
     if (!preset) lookbackCustomInput.value = months;
+    refreshLookbackHint();
   }
 
   // Recommended lookback per property type (a user suggestion): multifamily and
@@ -2684,11 +2793,31 @@
   // instead of failing loudly. Same trap `proConfig` already carries.
   let typeResolution = null;
   const lookbackHint = document.getElementById("lookbackHint");
+  // The hint is recomputed from what the control CURRENTLY says, never written
+  // once and left. It used to be set only by applyRecommendedLookback, so
+  // moving the window off the recommendation left "Recommended for Industrial"
+  // sitting under a 6-month selection: the label claiming the reader's own
+  // override was our advice.
+  //
+  // It CLEARS on any deviation rather than rewording itself. A first pass kept
+  // the guidance alive as "24 months recommended for Industrial", which is at
+  // least true, and the owner rejected it (2026-08-10) for the same reason the
+  // original was reported: what the complaint is about is a recommendation
+  // label still sitting under a window the reader deliberately changed, and
+  // rewording it leaves one sitting there. The note is a caption for the
+  // default, not standing advice, so once the reader has made their own choice
+  // it has nothing left to say and should get out of the way.
+  function refreshLookbackHint() {
+    const type = propertyTypeSel.value;
+    const rec = RECOMMENDED_LOOKBACK[type];
+    lookbackHint.textContent = (rec && selectedLookbackMonths() === rec)
+      ? "Recommended for " + type
+      : "";
+  }
   function applyRecommendedLookback() {
     const rec = RECOMMENDED_LOOKBACK[propertyTypeSel.value];
     if (!rec) { lookbackHint.textContent = ""; return; }
-    setLookbackControls(rec);
-    lookbackHint.textContent = "Recommended for " + propertyTypeSel.value;
+    setLookbackControls(rec);   // refreshes the hint itself
   }
   // No "change" listener on the select: it is hidden, so no user event can
   // reach it, and every programmatic path goes through setTypeProgrammatic
@@ -3225,11 +3354,16 @@
         child.classList.add("asm-hidden");
       }
     })(results);
-    // Hero -> counts-only placeholder.
+    // Hero -> counts-only placeholder. The heading is set here too, not just in
+    // renderOwnerHero: assembly puts the hero on screen a minute before the
+    // real render repaints it, so without this a house sits under the previous
+    // report's noun for the whole search. The running search's type is the
+    // hidden select's own value by definition.
+    setHeroTitle(propertyTypeSel.value);
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerTrust", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -3837,11 +3971,70 @@
     wrap.classList.remove("hidden");
   }
 
+  // The subject's own most recent sale, when the model found one. This is the
+  // single strongest piece of evidence about what a property is worth and the
+  // report used to be silent about it even when it was public knowledge (owner
+  // feedback 2026-08-10: a Bensalem property that had sold a year earlier for
+  // $12.45M). Rendered as one plain sentence of PROVENANCE, never as a figure
+  // in the ledger — an old price shown big reads as a current valuation, which
+  // is the one thing it is not.
+  //
+  // Built with DOM calls rather than innerHTML because two of the three values
+  // are model-written free text and one of them is a URL. The server's
+  // normalizeSubjectLastSale already drops non-http URLs and anything with no
+  // date; this side assumes nothing about that and simply never parses HTML.
+  function renderSubjectLastSale(parsed, meta) {
+    const el = document.getElementById("ownerLastSale");
+    if (!el) return;
+    el.textContent = "";
+    el.classList.add("hidden");
+    const ls = parsed && parsed.subject_last_sale;
+    if (!ls || !ls.date) return;
+
+    // "This property", not "your property": the same line renders on a shared
+    // report, where the reader is not the owner.
+    const price = String(ls.price || "").trim();
+    let sentence = price
+      ? `This ${assetNoun(meta.type)} last sold for ${displayMoney(price)} in ${ls.date}.`
+      : `This ${assetNoun(meta.type)} last sold in ${ls.date}, at a price that was not made public.`;
+
+    // A $/SF on the prior sale is what makes it comparable to the range above,
+    // so compute it whenever both halves are known — but only from the SAME
+    // size the hero itself used, never a second guess at the size.
+    const sizeR = subjectRangeFromMeta("size");
+    const sf = sizeR ? (sizeR.min + sizeR.max) / 2
+      : (parsed ? numericValue(parsed.subject_size_sqft) : 0);
+    const paid = numericValue(price);
+    if (paid > 0 && sf > 0) {
+      sentence += ` That is ${formatUsd(paid / sf, { maximumFractionDigits: 0 })}/SF.`;
+    }
+    el.appendChild(document.createTextNode(sentence + " "));
+
+    if (ls.source_url) {
+      const a = document.createElement("a");
+      a.href = ls.source_url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = "underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+      a.textContent = "Source";
+      el.appendChild(a);
+    }
+    // Said out loud because the comp window is usually 1-3 years and this sale
+    // routinely predates it: without this the reader is left to wonder why the
+    // date does not match the window stamped on the report header.
+    el.appendChild(document.createTextNode(
+      (ls.source_url ? " · " : "") + "The subject's own sale, not one of the comps below."));
+    el.classList.remove("hidden");
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
     const card = document.getElementById("ownerHero");
     if (!meta) { card.classList.add("hidden"); return; }
+    const noun = assetNoun(meta.type);
+    setHeroTitle(meta.type);
+    renderSubjectLastSale(parsed, meta);
     // Market-level search (a city like "Boise ID", no street number) — there's
     // no building to value, so the whole hero (incl. the BOV button) hides.
     // Any user-entered subject value signals building intent and re-shows it,
@@ -4010,7 +4203,7 @@
       label: "Cost approach",
       text: "not modeled. The third classic method (land value + cost to rebuild, minus depreciation) needs "
         + "replacement-cost data that public sources don't reliably show, and it carries the least weight "
-        + "for stabilized buildings anyway.",
+        + `for stabilized ${assetNounPlural(meta.type)} anyway.`,
       muted: true,
     };
 
@@ -4068,7 +4261,7 @@
         // their NOI to type their NOI is how this line reads as broken.
         text: noi
           ? "not run: this search returned no market cap-rate range. Enter your own cap rate under 'Details for comps' and your NOI gets valued on it."
-          : "not run: enter your NOI under 'Details for comps' and the building gets valued on its income too.",
+          : `not run: enter your NOI under 'Details for comps' and the ${noun} gets valued on its income too.`,
         muted: true,
       }];
     };
@@ -4116,8 +4309,15 @@
       const compsPhrase = rr.trimmed
         ? `the middle range of ${ppsfs.length} sale comps`
         : `$/SF from ${ppsfs.length} sale comps`;
+      // The pointer names the FORM's own label for the box, which is already
+      // per-type (SIZE_LABELS), rather than a second hardcoded "Building Size"
+      // that sent a homeowner looking for a field that says something else.
+      // Read from SIZE_LABELS rather than off #targetSizeLabel: a shared report
+      // renders somebody else's type into a form still labelled for whatever
+      // this visitor last searched.
+      const sizeFieldLabel = (SIZE_LABELS[meta.type] || "Building size (SF)").replace(/\s*\(SF\)\s*$/, "");
       basisEl.textContent = srcPhrase
-        ? `${sizeLabel} (${srcPhrase}; edit Building Size above if wrong) × ${compsPhrase}`
+        ? `${sizeLabel} (${srcPhrase}; edit ${sizeFieldLabel} above if wrong) × ${compsPhrase}`
         : `${sizeLabel} × ${compsPhrase}`;
       // Trust line: provenance mix + spread in one quiet sentence. Legacy
       // saved reports predate source_type (compTier returns null) and just
@@ -4150,7 +4350,7 @@
         label: "Sales comparison approach",
         value: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)}`,
         text: `what ${ppsfs.length} recent `
-          + `sale comps say buyers pay per square foot, applied to your building's size. This is the headline range above.`,
+          + `sale comps say buyers pay per square foot, applied to your ${noun}'s size. This is the headline range above.`,
       }];
       // Sits right after the sales-comparison line because it is the same
       // comps expressed in a different unit, not a separate approach.
@@ -4286,7 +4486,7 @@
       basisEl.textContent = (rr.trimmed
         ? `The middle range of ${ppsfs.length} sale comps, per square foot. `
         : `$/SF from ${ppsfs.length} sale comps. `)
-        + "We couldn't find this building's square footage; enter it under 'Details for comps' and this becomes a total dollar value instantly.";
+        + `We couldn't find this ${noun}'s square footage; enter it under 'Details for comps' and this becomes a total dollar value instantly.`;
       trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
       renderCompScatter(ppsfs, rr, { fmt: fmtPsf, unitPhrase: "$/SF" });
@@ -4294,7 +4494,7 @@
         label: "Sales comparison approach",
         value: `${fmtPsf(rr.low)} – ${fmtPsf(rr.high)}`,
         text: `what ${ppsfs.length} recent sale comps say buyers pay per `
-          + `square foot. Enter your building's size under 'Details for comps' and this becomes a total dollar range.`,
+          + `square foot. Enter your ${noun}'s size under 'Details for comps' and this becomes a total dollar range.`,
       }];
       entries.push(...incomeApproachEntries(rr.low, rr.high));
       entries.push(costApproachEntry);
@@ -4330,7 +4530,7 @@
           : (ppsfs.length === 0
               ? "No priced sale comps came back in this window, so there's no per-square-foot range to build."
               : `Only ${ppsfs.length} priced sale comp came back in this window; a per-square-foot range needs at least two.`)
-            + (sizeR ? "" : " We also couldn't find this building's square footage.");
+            + (sizeR ? "" : ` We also couldn't find this ${noun}'s square footage.`);
       // Rescue CTA: a wider, sales-only re-run is the fix that actually worked
       // on a real thin-window case (24-month Sales & leases returned 1 priced
       // sale; 60-month sales-only returned 5 and a full range). Offered only
@@ -6481,7 +6681,12 @@
       if (est && sizeInput.value.trim() === "" && !searchInFlight) {
         sizeInput.value = est;
         sizeInput.dispatchEvent(new Event("input", { bubbles: true }));
-        document.getElementById("sizeEstimateNote").classList.remove("hidden");
+        const estNote = document.getElementById("sizeEstimateNote");
+        // Written at reveal, not in the markup: the estimate is gated to
+        // non-Land addresses but fires constantly on houses, which is exactly
+        // where "the building's footprint" reads wrong.
+        estNote.textContent = `Size estimated from the ${assetNoun(propertyTypeSel.value)}'s footprint; edit it under Details for comps if it's off.`;
+        estNote.classList.remove("hidden");
         noteMachineSize(typed, est);
       }
     } catch (_) { /* Overpass down - no estimate, exactly today */ }
@@ -6756,6 +6961,29 @@
     // markers to geocoded spots, or creates ones the model gave no coords for.
     let subjMarker = null;
     const compMarkersByNum = {};
+
+    // Which included comps ended up with no pin, and why it is worth saying so.
+    // Deliberately reads the marker map rather than re-testing the addresses:
+    // a comp can miss a pin for reasons beyond a failed geocode (the 300-mile
+    // wrong-state gate above drops one too), and what the reader needs is the
+    // list of numbers they cannot find, whatever caused it.
+    function reportUnplacedComps() {
+      const el = document.getElementById("mapUnplaced");
+      if (!el) return;
+      const missing = (includedComps() || [])
+        .filter((c) => c._num != null && !compMarkersByNum[c._num])
+        .map((c) => c._num);
+      if (!missing.length) { el.classList.add("hidden"); el.textContent = ""; return; }
+      const list = missing.length === 1
+        ? `Comp ${missing[0]}`
+        : `Comps ${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
+      // "still counted" is the load-bearing half: the valuation reads every
+      // comp, so a missing pin must never read as a dropped comp.
+      el.textContent = `${list} ${missing.length === 1 ? "isn't" : "aren't"} on the map — `
+        + `we couldn't match ${missing.length === 1 ? "that address" : "those addresses"} to a location. `
+        + `${missing.length === 1 ? "It's" : "They're"} still in the table below and still counted in the valuation.`;
+      el.classList.remove("hidden");
+    }
     // Zoom the aerial to fit the BUILDING. Geocodes land on the street
     // frontage, so a fixed tight zoom framed mostly asphalt for big
     // industrial boxes — a street view when the point was to see the
@@ -7055,6 +7283,13 @@
         }
       });
       snapMarkersToBuildings(allMarkers());
+      // Pins are final, so this is the one moment we know which comps never got
+      // one. A comp whose address will not geocode simply produced no marker
+      // and said nothing about it, so the map showed fewer comps than the table
+      // and the reader was left to wonder which ones were missing and whether
+      // the report had dropped them (owner feedback 2026-08-10: "comps 1 and 2
+      // didn't show up on the map"). Name them, and say they still count.
+      reportUnplacedComps();
       // The pins that just settled are the same coordinates the Distance
       // column reads, so fill it in now rather than leaving the table a beat
       // behind the map.
@@ -9776,12 +10011,15 @@
   // Comped team access. Pro, but with nothing behind it at Stripe — so every
   // billing control has to be kept away from it, not just re-labelled.
   function isAdminPro() { return Boolean(proConfig && proConfig.admin); }
+  // Comped beta-tester access. Also Pro with nothing behind it at Stripe.
+  function isTesterPro() { return Boolean(proConfig && proConfig.tester); }
   // "none" means no Stripe customer has ever existed for this user, so the
   // portal would 400. Any other state means there is something to manage —
-  // except "admin", which is comped and likewise has no customer to manage.
+  // except "admin"/"tester", which are comped and likewise have no customer
+  // to manage.
   function hasBillingHistory() {
     return Boolean(currentUser) && proConfig && proConfig.status
-      && proConfig.status !== "none" && !isAdminPro();
+      && proConfig.status !== "none" && !isAdminPro() && !isTesterPro();
   }
 
   function showPricingError(msg) {
@@ -9962,6 +10200,12 @@
         detail: "Full Pro access while your admin key is unlocked. Nothing is billed, and there's no subscription behind it.",
       };
     }
+    if (p.tester) {
+      return {
+        title: "Pro — comped (beta tester)",
+        detail: "Full Pro access as a beta tester. Nothing is billed, and there's no subscription behind it. The private broker vault isn't included.",
+      };
+    }
     if (p.isPro && p.status === "grace") {
       const until = p.graceUntil ? new Date(p.graceUntil) : null;
       return {
@@ -9996,9 +10240,9 @@
       // Nothing deletes vault rows on lapse — the only delete paths are the
       // broker's own "remove this import" and account deletion — so saying so
       // is a statement of fact, not a reassurance we cannot keep.
-      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 4 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
+      return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 10 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
     }
-    return { title: "Free", detail: "Reports itemize 4 comps and look back 3 years. The valuation still uses every comp we find." };
+    return { title: "Free", detail: "Reports itemize 10 comps and look back 3 years. The valuation still uses every comp we find." };
   }
 
   // Single owner of every billing control's visibility. Called after both
@@ -10019,6 +10263,18 @@
     if (typeof renderLockedNotice === "function") renderLockedNotice();
 
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
+
+    // The redeem row: signed-in, not already Pro, AND this deployment actually
+    // has a passkey configured. Deliberately NOT gated on billingLive() — a
+    // code is exactly what someone uses on a deployment with no Stripe keys,
+    // the same exception the vault link makes. The testerPasskey check exists
+    // because /api/config's `tester` flag only reports whether THIS user has
+    // already redeemed, not whether a passkey exists at all — without it, a
+    // deployment that never set TESTER_PASSKEY still showed a row that could
+    // only ever fail on submit.
+    const hasPasskey = Boolean(proConfig && proConfig.testerPasskey);
+    document.getElementById("passkeyRow")
+      .classList.toggle("hidden", !currentUser || pro || !hasPasskey);
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already
@@ -10091,10 +10347,12 @@
     updateExportAllowance();
 
     const card = document.getElementById("billingCard");
-    // Admins see the card even where billing isn't live (a dev box with no
-    // Stripe keys): comped Pro applies there too, so the way back out of it
-    // has to as well.
-    const showCard = Boolean(currentUser) && (live || isAdminPro());
+    // Comped visitors (admins and beta testers) see the card even where
+    // billing isn't live (a dev box with no Stripe keys): comped Pro applies
+    // there too, so the way back out of it has to as well. Any future comped
+    // path needs the same OR here, or its plan-card copy is unreachable on a
+    // Stripe-less deployment.
+    const showCard = Boolean(currentUser) && (live || isAdminPro() || isTesterPro());
     card.classList.toggle("hidden", !showCard);
     if (showCard) {
       const copy = billingStatusCopy();
@@ -10102,6 +10360,7 @@
       document.getElementById("billingDetail").textContent = copy.detail;
       document.getElementById("billingUpgradeBtn").classList.toggle("hidden", pro);
       document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
+      // Admin-only: it clears the cn_admin cookie, which a tester never has.
       document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
     }
   }
@@ -10276,6 +10535,56 @@
   }
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
+
+  document.getElementById("passkeyToggle").addEventListener("click", (e) => {
+    const form = document.getElementById("passkeyForm");
+    const open = form.classList.toggle("hidden");
+    e.currentTarget.setAttribute("aria-expanded", String(!open));
+    if (!open) document.getElementById("passkeyInput").focus();
+  });
+
+  async function submitPasskey() {
+    const input = document.getElementById("passkeyInput");
+    const btn = document.getElementById("passkeySubmit");
+    const msg = document.getElementById("passkeyMsg");
+    // Re-entrancy guard: the click handler is protected by btn.disabled, but
+    // Enter-in-the-input calls this directly, so a fast double-Enter could
+    // otherwise fire two redeem requests against the route's 5-per-15min cap.
+    if (btn.disabled) return;
+    const code = input.value.trim();
+    if (!code) return;
+    msg.classList.add("hidden");
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Checking…";
+    try {
+      const r = await fetch("/api/redeem-passkey", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passkey: code }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Could not redeem that code.");
+      input.value = "";
+      // Re-read /api/config so every entitlement-driven surface updates in
+      // place — the same seam used after a checkout return and a sign-in.
+      await refreshProConfig();
+      closePricingModal();
+    } catch (ex) {
+      msg.textContent = ex.message;
+      msg.className = "mt-2 text-sm text-red-700";
+      msg.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
+  document.getElementById("passkeySubmit").addEventListener("click", submitPasskey);
+  document.getElementById("passkeyInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submitPasskey(); }
+  });
+
   // The Direction-J comparison table, behind a disclosure: the modal's job is
   // a decision, the table is the spec sheet for whoever wants it.
   document.getElementById("pricingCompareBtn").addEventListener("click", (e) => {
@@ -11940,9 +12249,14 @@
     el.classList.toggle("hidden", hide);
     if (hide) return;
     const n = Number(exportsLeft);
+    // "4 exports left this month" sits in the report toolbar and was read as a
+    // cap on running REPORTS (owner feedback 2026-08-10: "I just ran 5 reports,
+    // I thought you said I could only run 4?"). Running reports is unlimited on
+    // every plan; only the downloads are metered, so the counter has to say
+    // which of the two it is counting.
     el.textContent = n === 0
-      ? "No exports left this month"
-      : `${n} export${n === 1 ? "" : "s"} left this month`;
+      ? "No downloads left this month · reports stay unlimited"
+      : `${n} download${n === 1 ? "" : "s"} left this month · reports are unlimited`;
   }
 
   async function claimExport() {

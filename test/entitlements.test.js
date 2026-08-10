@@ -130,9 +130,85 @@ test("non-admins carry admin:false, so the UI can read one field", () => {
   assert.equal(ent({ user: USER, subscription: activeSub() }).admin, false);
 });
 
+// --- comped tester access --------------------------------------------------
+//
+// "Tester" is a persistent per-account flag (users.pro_tester), set by
+// redeeming TESTER_PASSKEY. Unlike admin — which is possession of a key, i.e.
+// a staff signal — a tester is an ordinary person who may well go on to
+// actually subscribe, so these tests pin that the flag YIELDS to a real
+// subscription instead of masking it.
+
+test("tester: comped Pro from the account flag alone", () => {
+  const e = ent({ user: USER, tester: true });
+  assert.equal(e.plan, "tester");
+  assert.equal(e.pro, true);
+  assert.equal(e.tester, true);
+  assert.equal(e.maxComps, "all");
+  assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+  assert.equal(e.exportsRemaining, "unlimited");
+  assert.equal(e.canBrand, true);
+  assert.equal(e.canExploreAddresses, true);
+});
+
+test("tester status is never a Stripe status — there is no customer to manage", () => {
+  assert.equal(ent({ user: USER, tester: true }).status, "tester");
+});
+
+test("a tester does NOT get the broker vault", () => {
+  // The vault is a private-data workspace with an upload endpoint. A passkey
+  // shared with a wider group is a bigger surface than "try Pro's reports",
+  // so the vault stays admin/paid-only. This is the one place a tester is
+  // deliberately NOT equal to Pro.
+  const e = ent({ user: USER, tester: true });
+  assert.equal(e.broker, false);
+  assert.equal(e.canUseVault, false);
+});
+
+test("a real subscription always wins over the tester flag", () => {
+  // The trap this closes: if the tester branch short-circuited like admin's
+  // does, a tester who later subscribes would be stuck reading as "comped"
+  // forever — no billing portal, no real status — while being charged.
+  const e = ent({ user: USER, tester: true, subscription: activeSub() });
+  assert.equal(e.plan, "pro_monthly");
+  assert.equal(e.status, "active");
+  assert.equal(e.tester, false, "a paying subscriber is not labelled comped");
+  assert.equal(e.canUseVault, true, "and their subscription's vault is not withheld");
+});
+
+test("an expired subscription falls back to the tester flag", () => {
+  // The other side of the same rule: comped access resumes when the paid
+  // subscription lapses, rather than the lapse stripping a tester of access
+  // they had before they ever subscribed.
+  const dead = activeSub({ current_period_end: iso(NOW - 30 * DAY) });
+  const e = ent({ user: USER, tester: true, subscription: dead });
+  assert.equal(e.pro, true);
+  assert.equal(e.status, "tester");
+});
+
+test("tester without an account gets nothing — the flag lives on a user row", () => {
+  const e = ent({ user: null, tester: true });
+  assert.equal(e.plan, "anonymous");
+  assert.equal(e.pro, false);
+  assert.equal(e.maxComps, FREE_MAX_COMPS);
+});
+
+test("tester cannot switch a dark deployment back on", () => {
+  const e = computeEntitlements({ user: USER, tester: true, now: NOW, enabled: false });
+  assert.equal(e.plan, "free");
+  assert.equal(e.tester, false);
+  assert.equal(e.status, "disabled");
+});
+
+test("non-testers carry tester:false, so the UI can read one field", () => {
+  assert.equal(ent({ user: USER }).tester, false);
+  assert.equal(ent({ user: USER, admin: true }).tester, false);
+  assert.equal(ent({ user: USER, subscription: activeSub() }).tester, false);
+  assert.equal(computeEntitlements({ user: USER, now: NOW, enabled: false }).tester, false);
+});
+
 // --- anonymous and free ----------------------------------------------------
 
-test("anonymous visitor: 4 comps, 12 months, one export", () => {
+test("anonymous visitor: FREE_MAX_COMPS comps, 12 months, one export", () => {
   const e = ent({ user: null });
   assert.equal(e.plan, "anonymous");
   assert.equal(e.pro, false);
@@ -160,7 +236,7 @@ test("the Address Explorer is Pro-only once the tier is on", () => {
     false, "expired");
 });
 
-test("free account: 4 comps and three exports a month", () => {
+test("free account: FREE_MAX_COMPS comps and three exports a month", () => {
   const e = ent({ user: USER });
   assert.equal(e.plan, "free");
   assert.equal(e.maxComps, FREE_MAX_COMPS);

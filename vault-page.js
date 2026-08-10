@@ -305,8 +305,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
          ------------------------------------------------------------------ -->
     <section id="firstRun" class="hide">
       <h2>Start here</h2>
-      <p class="sub" style="margin-top:0">Two ways to get something out of this today. The
-        second one takes about ten seconds and needs no spreadsheet.</p>
 
       <div class="steps">
         <div class="step">

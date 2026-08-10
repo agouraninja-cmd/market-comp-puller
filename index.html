@@ -467,6 +467,44 @@
     .rd-scat-band, .rd-scat-rule, .rd-scat-tick, .rd-scat-mid {
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
+    /* Approach reconciliation as a statement (Direction Q, 2026-08-10). The
+       sales / income / cost lines used to be a wall of prose with each
+       indicated value buried mid-sentence; they now read as an appraiser's
+       reconciliation, evidence on the left and the figure in one right-aligned
+       serif column, in the same vocabulary Direction B gave the comp table.
+       ⚠ Deliberately NO closing double-rule total. Everywhere else on this
+       site a double rule seals a final figure, but the ledger directly ABOVE
+       this block is already that conclusion, and sealing it again here would
+       state the same number twice in one card. The double rule is not
+       available to this table.
+       ⚠ A table, not flex: this sits inside #ownerHero, which the PNG
+       exporter captures, and html2canvas silently collapses flex gap. Same
+       reason the scatter above is absolute-positioned. */
+    .ap-stmt { width: 100%; border-collapse: collapse; }
+    .ap-stmt th { text-align: left; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: #68707E; font-weight: 600; padding: 0 0 6px; border-bottom: 1px solid #1A2433; }
+    .ap-stmt th.num, .ap-stmt td.num { text-align: right; }
+    .ap-stmt td { padding: 9px 0; border-bottom: 1px solid #F0EFE9; vertical-align: baseline; font-size: 13px; color: #4C5665; line-height: 1.5; }
+    .ap-stmt tr:last-child td { border-bottom: 0; }
+    .ap-stmt td.num { white-space: nowrap; padding-left: 14px; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; font-variant-numeric: tabular-nums; }
+    .ap-stmt .ap-lab { font-weight: 600; color: #1A2433; }
+    .ap-stmt tr.muted td { font-size: 12px; color: #68707E; }
+    .ap-stmt tr.muted .ap-lab { color: #68707E; }
+    /* Two columns need a phone treatment. The value column is nowrap by
+       design (a wrapped "$7,925,000 – $8,625,000" is unreadable), which at
+       343px leaves the evidence about 150px and turns every row into a
+       fifteen-line ribbon. Under 560px the row stacks instead: evidence, then
+       the figure on its own line, still serif and still the heaviest thing in
+       the row. Block display rather than flex, deliberately — this is inside
+       the PNG-exported hero and a phone can export too. */
+    @media (max-width: 559.98px) {
+      .ap-stmt, .ap-stmt tbody, .ap-stmt tr, .ap-stmt td { display: block; width: 100%; }
+      .ap-stmt .ap-head { display: none; }
+      .ap-stmt tr { padding: 10px 0; border-bottom: 1px solid #F0EFE9; }
+      .ap-stmt tr:last-child { border-bottom: 0; padding-bottom: 0; }
+      .ap-stmt tr:first-of-type { padding-top: 0; }
+      .ap-stmt td { padding: 0; border-bottom: 0; }
+      .ap-stmt td.num { text-align: left; white-space: normal; padding: 4px 0 0; font-size: 15px; }
+    }
     /* Pricing modal (Directions I+J, owner-approved 2026-08-09): the plans as
        a rate-card ledger (reusing the hero's .rd-ledger geometry, with
        column layout for the buttons) plus the itemized Free-vs-Pro statement
@@ -3654,7 +3692,8 @@
     const plural = a.qty === 1 ? "" : "s";
     return {
       label: a.spec.label,
-      text: `${money(a.rr.low * a.qty)} – ${money(a.rr.high * a.qty)}, ${a.qty.toLocaleString()} ${a.spec.noun}${plural} at `
+      value: `${money(a.rr.low * a.qty)} – ${money(a.rr.high * a.qty)}`,
+      text: `${a.qty.toLocaleString()} ${a.spec.noun}${plural} at `
         + `${money(a.rr.low)}–${money(a.rr.high)} per ${a.spec.noun} across ${a.per.length} sale comps.`,
     };
   }
@@ -3859,18 +3898,48 @@
     const approachesEl = document.getElementById("ownerApproaches");
     approachesEl.classList.add("hidden");
     approachesEl.innerHTML = "";
+    // Direction Q: the reconciliation as a statement. An entry carrying a
+    // `value` puts that figure in the right-hand serif column and keeps its
+    // evidence on the left; an entry WITHOUT one (the "not run" / "not
+    // modeled" lines, and any future builder that never learned about the
+    // field) spans both columns and reads exactly as it did before this
+    // existed. That degradation is the point: a missing `value` costs a
+    // column alignment, never an empty cell where a number belongs.
     const renderApproaches = (entries) => {
       if (!entries.length) return;
-      entries.forEach((e, i) => {
-        const p = document.createElement("p");
-        p.className = (e.muted ? "text-xs text-[#68707E]" : "text-sm text-[#4C5665] leading-relaxed") + (i ? " mt-2" : "");
-        const b = document.createElement("strong");
-        b.className = e.muted ? "" : "text-[#1A2433]";
-        b.textContent = e.label + ": ";
-        p.appendChild(b);
-        p.appendChild(document.createTextNode(e.text));
-        approachesEl.appendChild(p);
+      const table = document.createElement("table");
+      table.className = "ap-stmt";
+      const head = document.createElement("tr");
+      head.className = "ap-head";
+      const hLab = document.createElement("th");
+      hLab.textContent = "Approach";
+      const hNum = document.createElement("th");
+      hNum.className = "num";
+      hNum.textContent = "Indicated value";
+      head.appendChild(hLab);
+      head.appendChild(hNum);
+      table.appendChild(head);
+      entries.forEach((e) => {
+        const tr = document.createElement("tr");
+        if (e.muted) tr.className = "muted";
+        const td = document.createElement("td");
+        const lab = document.createElement("span");
+        lab.className = "ap-lab";
+        lab.textContent = e.label + ": ";
+        td.appendChild(lab);
+        td.appendChild(document.createTextNode(e.text));
+        tr.appendChild(td);
+        if (e.value) {
+          const num = document.createElement("td");
+          num.className = "num";
+          num.textContent = e.value;
+          tr.appendChild(num);
+        } else {
+          td.colSpan = 2;
+        }
+        table.appendChild(tr);
       });
+      approachesEl.appendChild(table);
       approachesEl.classList.remove("hidden");
     };
     const costApproachEntry = {
@@ -3898,7 +3967,7 @@
         if (meta.type === "Land") return null;
         return {
           label: "Income approach",
-          text: "not run: enter your NOI under 'Your property details' and the building gets valued on its income too.",
+          text: "not run: enter your NOI under 'Refine' and the building gets valued on its income too.",
           muted: true,
         };
       }
@@ -3911,7 +3980,8 @@
           : "The income approach comes in lower than the sale comps, worth a second look at the NOI and cap-rate inputs before leaning on either number.";
       return {
         label: "Income approach",
-        text: `${fmtTotal(incLo)} – ${fmtTotal(incHi)}, your net operating income valued at the market's `
+        value: `${fmtTotal(incLo)} – ${fmtTotal(incHi)}`,
+        text: `your net operating income valued at the market's `
           + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
       };
     };
@@ -3991,7 +4061,8 @@
 
       const entries = [{
         label: "Sales comparison approach",
-        text: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)}, what ${ppsfs.length} recent `
+        value: `${fmtTotal(rr.low * sizeR.min)} – ${fmtTotal(rr.high * sizeR.max)}`,
+        text: `what ${ppsfs.length} recent `
           + `sale comps say buyers pay per square foot, applied to your building's size. This is the headline range above.`,
       }];
       // Sits right after the sales-comparison line because it is the same
@@ -4038,7 +4109,8 @@
       });
       const entries = [{
         label: "Sales comparison approach",
-        text: `${fmtTotal(rr.low * qty)} – ${fmtTotal(rr.high * qty)}, what ${per.length} recent sale comps say `
+        value: `${fmtTotal(rr.low * qty)} – ${fmtTotal(rr.high * qty)}`,
+        text: `what ${per.length} recent sale comps say `
           + `buyers pay per ${spec.noun}, applied to your ${qty.toLocaleString()} ${spec.noun}${plural}. This is the headline range above.`,
       }];
       // Mirror of the cross-check on the $/SF path: when a per-square-foot
@@ -4048,7 +4120,8 @@
         const rrSf = psfBand;
         entries.push({
           label: "Price per square foot cross-check",
-          text: `${fmtTotal(rrSf.low * sizeR.min)} – ${fmtTotal(rrSf.high * sizeR.max)}, the same comps on a `
+          value: `${fmtTotal(rrSf.low * sizeR.min)} – ${fmtTotal(rrSf.high * sizeR.max)}`,
+          text: `the same comps on a `
             + `per-square-foot basis across ${ppsfs.length} sale comps.`,
         });
       }
@@ -4070,7 +4143,8 @@
       renderApproaches([
         {
           label: "Income approach",
-          text: `${fmtTotal(loVal)} – ${fmtTotal(hiVal)}, your net operating income valued at the market's `
+          value: `${fmtTotal(loVal)} – ${fmtTotal(hiVal)}`,
+          text: `your net operating income valued at the market's `
             + `${capLo}%–${capHi}% cap-rate range. This is the headline range above.`,
         },
         {
@@ -4097,14 +4171,15 @@
       basisEl.textContent = (rr.trimmed
         ? `The middle range of ${ppsfs.length} sale comps, per square foot. `
         : `$/SF from ${ppsfs.length} sale comps. `)
-        + "We couldn't find this building's square footage; enter it under 'Your property details' and this becomes a total dollar value instantly.";
+        + "We couldn't find this building's square footage; enter it under 'Refine' and this becomes a total dollar value instantly.";
       trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
       renderCompScatter(ppsfs, rr, { fmt: fmtPsf, unitPhrase: "$/SF" });
       const entries = [{
         label: "Sales comparison approach",
-        text: `${fmtPsf(rr.low)} – ${fmtPsf(rr.high)}, what ${ppsfs.length} recent sale comps say buyers pay per `
-          + `square foot. Enter your building's size above and this becomes a total dollar range.`,
+        value: `${fmtPsf(rr.low)} – ${fmtPsf(rr.high)}`,
+        text: `what ${ppsfs.length} recent sale comps say buyers pay per `
+          + `square foot. Enter your building's size under Refine and this becomes a total dollar range.`,
       }];
       const incEntry = incomeApproachEntry(rr.low, rr.high);
       if (incEntry) entries.push(incEntry);
@@ -4126,7 +4201,7 @@
       // the fix here is to restore a comp, not to wait for a fresh search.
       const curatedShortfall = !!sizeR && allSaleComps.length >= 2 && ppsfs.length < 2;
       basisEl.textContent = altCompN >= 3
-        ? `Enter your ${altSpec.askFor} under 'Your property details': ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
+        ? `Enter your ${altSpec.askFor} under 'Refine': ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
         : curatedShortfall
           ? (meta.shared
             ? "Not enough included sale comps to compute a range: the report owner excluded some comps."

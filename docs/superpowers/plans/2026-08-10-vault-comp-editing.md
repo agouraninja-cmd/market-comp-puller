@@ -399,21 +399,14 @@ await t.test("the comp edit routes refuse an anonymous caller", async () => {
     assert.equal(r.status, 401, method + " must refuse before it reads anything");
   }
 });
-
-await t.test("the add-comp route refuses an anonymous caller", async () => {
-  const r = await fetch(srv.base + "/api/vault/comp", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ address: "1 A St, Boise, ID" }),
-  });
-  assert.equal(r.status, 401);
-});
-
-await t.test("the vault export refuses an anonymous caller", async () => {
-  const r = await fetch(srv.base + "/api/vault/export.csv");
-  assert.equal(r.status, 401);
-});
 ```
+
+**Only the PATCH/DELETE test belongs here.** The gate tests for `POST
+/api/vault/comp` and `GET /api/vault/export.csv` live in Tasks 5 and 6, with
+the routes they cover. Writing all three now would leave `npm test` RED for
+three tasks, which in this repo is not a cosmetic problem: `npm start` runs a
+`prestart` of `node --check server.js && npm test`, so a red suite is a
+failed deploy, and it also destroys each task's own green-at-the-end signal.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -523,13 +516,31 @@ git commit -m "Vault: edit and delete one comp"
 
 **Files:**
 - Modify: `server.js` (beside the routes from Task 4)
-- Test: `test/routes.test.js` (the POST 401 test is already written in Task 4 Step 1)
+- Test: `test/routes.test.js`
 
 **Interfaces:**
 - Consumes: `openVault()`, `VAULT.normalizeRow`, `marketOf`, `linkVaultProperties`
 - Produces: `POST /api/vault/comp` → `201 { ok: true, comp }`
 
-- [ ] **Step 1: Implement**
+- [ ] **Step 1: Write the failing gate test**
+
+```js
+// in test/routes.test.js, in the bare-environment suite, beside the
+// PATCH/DELETE gate test from Task 4
+await t.test("the add-comp route refuses an anonymous caller", async () => {
+  const r = await fetch(srv.base + "/api/vault/comp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address: "1 A St, Boise, ID" }),
+  });
+  assert.equal(r.status, 401);
+});
+```
+
+Run `node --test test/routes.test.js` and confirm it fails with 404 rather
+than 401, because the route does not exist yet.
+
+- [ ] **Step 2: Implement**
 
 ```js
 // Add ONE comp by hand. A broker who closed a deal on Tuesday should not
@@ -599,13 +610,26 @@ git commit -m "Vault: add one comp by hand, through the importer's own parser"
 
 **Files:**
 - Modify: `server.js`
-- Test: `test/routes.test.js` (the 401 test is already written in Task 4 Step 1)
+- Test: `test/routes.test.js`
 
 **Interfaces:**
 - Consumes: `openVault()`, `VAULT.exportCsv`
 - Produces: a `text/csv` download of every comp the caller owns
 
-- [ ] **Step 1: Implement**
+- [ ] **Step 1: Write the failing gate test**
+
+```js
+// in test/routes.test.js, in the bare-environment suite
+await t.test("the vault export refuses an anonymous caller", async () => {
+  const r = await fetch(srv.base + "/api/vault/export.csv");
+  assert.equal(r.status, 401);
+});
+```
+
+Run `node --test test/routes.test.js` and confirm it fails with 404 rather
+than 401, because the route does not exist yet.
+
+- [ ] **Step 2: Implement**
 
 ```js
 // The whole book, as the file our own importer reads.

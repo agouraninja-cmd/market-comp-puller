@@ -11571,18 +11571,30 @@ const server = http.createServer((req, res) => {
           const comp = rows && rows[0];
           if (!comp) return sendJson(res, 404, { error: "That comp isn't in your vault." });
 
-          // A published comp is retracted before either operation. Owner's
-          // decision: an edit leaves it unpublished so republishing is a
-          // deliberate act by someone looking at the corrected row.
-          const unpublished = await retractPublishedComp(user.id, comp);
-
           if (req.method === "DELETE") {
+            // Retract-first is correct here: a delete has no validation step
+            // that can fail, so there is no window where retracting turns out
+            // to have been premature.
+            const unpublished = await retractPublishedComp(user.id, comp);
             await sbRequest("DELETE",
               `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
               undefined, { prefer: "return=minimal" });
             return sendJson(res, 200, { ok: true, unpublished });
           }
 
+          // PATCH: parse -> validate -> collision check -> THEN retract -> write.
+          // Retracting before validation used to mean a broker's REJECTED edit
+          // (typing "1.2M", the exact input the vault exists to refuse) still
+          // deleted the comp_submissions row and cleared published/
+          // published_at/published_submission_id before the 400 was ever
+          // returned. The broker saw only a parse error and had no way to know
+          // their comp had already left the public records and lost its firm
+          // credit — and if the submission had been approved, republishing
+          // creates a fresh PENDING row needing manual owner re-approval, so
+          // the credit does not come back on its own. The same reasoning
+          // covers the 409 collision path below: a comp that fails to save
+          // must not be retracted either. Retraction only happens once the
+          // edit is known to be one that will actually be written.
           const result = VAULT.validateEdit(comp, JSON.parse(body || "{}"));
           if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
 
@@ -11607,6 +11619,24 @@ const server = http.createServer((req, res) => {
             `&id=neq.${encodeURIComponent(id)}&limit=1`);
           if (clash && clash.length) {
             return sendJson(res, 409, { error: "You already have this comp." });
+          }
+
+          // The edit is validated and will be written. Only now does a
+          // published comp get retracted (see the long comment above).
+          const unpublished = await retractPublishedComp(user.id, comp);
+
+          // An address change means the OLD property_id (the previous
+          // building) is wrong for the new address, and linkVaultProperties'
+          // link PATCH only ever fills a NULL property_id ("property_id=
+          // is.null", so a re-import can't rewrite a link that already looks
+          // correct). Left non-null here, the comp would keep pointing at the
+          // old building forever and attachPropertyCoords would stitch the
+          // old building's coordinates onto the corrected address in every
+          // future report. Nulling it out is scoped to an address change on
+          // purpose — clearing it on every price edit would leave comps
+          // briefly unlocated for no reason.
+          if (row.address_key !== comp.address_key) {
+            row.property_id = null;
           }
 
           // Exactly the upload route's order and argument shapes: the PATCH
@@ -11781,9 +11811,19 @@ const server = http.createServer((req, res) => {
         // throws, so some comps legitimately have no property row. Those
         // export with empty lat/lng — correct, because they never had
         // coordinates to lose. Do not add a geocoding fallback here.
+        //
+        // Both or neither, same rule attachPropertyCoords already enforces
+        // (⚠ near-duplicate of that check, not merged here on purpose — see
+        // its comment). Without it a property row with lat set and lng null
+        // exports a lone latitude, which normalizeRow then REFUSES on
+        // re-import ("lat and lng must be given together"), failing that row
+        // of the broker's own file on the very next upload.
         const rows = comps.map((c) => {
           const p = coords.get(c.property_id) || {};
-          return { ...c, lat: p.lat, lng: p.lng };
+          const lat = Number(p.lat);
+          const lng = Number(p.lng);
+          const located = Number.isFinite(lat) && Number.isFinite(lng);
+          return { ...c, lat: located ? lat : undefined, lng: located ? lng : undefined };
         });
 
         const csv = VAULT.exportCsv(rows);

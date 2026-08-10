@@ -764,6 +764,24 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   parse. Verified end-to-end 2026-07-27 on both a 24-month and the default
   12-month lookback. Note the threshold is per market **and** property type, so
   it only pays off when traffic repeats in the same market.
+  **Metro matching (2026-08-10).** Corpus-first retrieval, and ONLY it, also
+  reads the subject market's immediate neighbors from `market.js`'s curated
+  `METRO_GROUPS`, so a Meridian search can draw on Boise's rows. Those come
+  back as a separate `nearby` list and get their own prompt block, worded more
+  narrowly than the exact-market one (use only when the target's own city is
+  thin, report the address exactly as given, prefer a same-city comp when both
+  are comparable). The exact-market block's "never include one clearly in a
+  different city" rule stays intact and absolute. **`coverage` remains
+  exact-market only**, so `corpusIsStrong` and the search budget cannot be
+  moved by a nearby row; that is the whole safety property, and it is why the
+  two counts are kept separate rather than summed. `corpusRowsForMarket` itself
+  is UNCHANGED for its four other callers (watchlist feed, vault gut check,
+  `/api/corpus-comps`, Address Explorer); retrieval calls the new
+  `corpusRowsForMarkets` directly instead. Rollback is `CORPUS_METRO=off`. Adding
+  a metro group is a data edit in `market.js`; the rule is adjacent suburbs
+  sharing one submarket, never a whole statistical area, and a test pins every
+  entry against `marketOf` because an exact-match key that never matches is
+  invisible.
 - `GET /how-it-works` — the standalone proof/FAQ page, reached from the header
   nav (the old "Methodology" item) and the footer. Holds the four blocks that
   used to sit below the fold on the home page: the stat strip, the sample-report

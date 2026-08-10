@@ -270,5 +270,8 @@
     "details": "A sale comp priced more than 25% outside the report's own value band now carries a small chip saying so, next to its Exclude button. It is a curation aid for you only: it never prints, never exports, and never appears on a shared link. The same 25% rule the vault gut check uses." },
   { "date": "2026-08-09", "type": "improvement",
     "title": "Search quality can finally be measured instead of guessed at",
-    "details": "A new eval harness runs a fixed set of 12 addresses through real searches and scores what came back: how many priced sale comps, whether a valuation was possible at all, how good the sources were, how many comps sat outside the window or the market. Two runs can be compared, so a model upgrade or a prompt change is now a decision with numbers behind it. Nothing customer-facing changed." }
+    "details": "A new eval harness runs a fixed set of 12 addresses through real searches and scores what came back: how many priced sale comps, whether a valuation was possible at all, how good the sources were, how many comps sat outside the window or the market. Two runs can be compared, so a model upgrade or a prompt change is now a decision with numbers behind it. Nothing customer-facing changed." },
+  { "date": "2026-08-10", "type": "improvement",
+    "title": "A thin market can borrow its neighbors' comps",
+    "details": "Searches in a small city now draw on comps already gathered in the cities immediately around it, so a Meridian report can start from what we know about Boise instead of from nothing. They are offered as candidates only: the model is told to prefer a comp in the target's own city, to use a neighbor only when the target is thin, and to report each address exactly as it stands, so the report always shows where a comp really is. The number of live searches a report runs is unchanged." }
 ]

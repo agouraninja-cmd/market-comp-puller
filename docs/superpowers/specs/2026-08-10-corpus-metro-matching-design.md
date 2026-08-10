@@ -60,10 +60,14 @@ returns nothing and the feature looks like it works.
 
 ### `corpusRowsForMarket` (server.js)
 
-Widens from `market=eq.<X>` to `market=in.(<X>,<siblings…>)`, and the file
-fallback filter matches the same set. Rows keep their own `market` value,
-which is what lets the caller tell exact from nearby. With no group for the
-subject's market, the query is byte-identical to today's.
+A new `corpusRowsForMarkets(markets, property_type, limit)` does the widened
+read (`market=in.(…)`, values quoted and percent-encoded because a market key
+contains a comma), and `corpusRowsForMarket` becomes a one-line delegate so its
+four other callers — the watchlist feed, the vault gut check, `/api/corpus-comps`,
+and the Address Explorer — keep exactly the rows they always got. The
+single-market path still emits the identical `market=eq.` query, so the widened
+form, which local dev cannot exercise without a database, can only ever cost the
+nearby rows and never the existing behavior.
 
 ### `retrieveCorpusComps` (server.js)
 

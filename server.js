@@ -9297,7 +9297,7 @@ const server = http.createServer((req, res) => {
             // below), the thin-market rate is what says whether previews are
             // becoming a spend sink, and whether MIN_PRICED_SALE_COMPS sits in
             // the right place. PII-free, same shape as `explore_reject`.
-            logEvent("explore_preview", { prop_type: typeOk, market: address, source: "explore" });
+            logEvent("explore_preview", { prop_type: typeOk, market: address, source: "explore", cached });
             return { status: 200, body: { url: `/market-preview/${slug}`, slug, published: false, pricedSaleCount } };
         })());
         // The SSE opens on the FIRST progress event, not up front. At this

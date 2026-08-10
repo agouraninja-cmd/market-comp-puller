@@ -129,7 +129,23 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const PROVIDER = require("./search-provider-anthropic");
+
+// The provider registry. Each module satisfies the same ten-export contract
+// (name, logLabel, apiKeyEnv, defaultModel, capabilities, buildRequestBody,
+// requestInit, parseResponse, normalizeUsage, costOf). Explicit map with NO
+// fallthrough: an unrecognized value must fail loudly at boot rather than
+// silently serve a provider nobody chose. Same rule the /api/checkout PLANS
+// table follows, and for the same reason.
+const SEARCH_PROVIDERS = {
+  anthropic: require("./search-provider-anthropic"),
+  gemini: require("./search-provider-gemini"),
+};
+const SEARCH_PROVIDER_NAME = (process.env.SEARCH_PROVIDER || "anthropic").trim().toLowerCase();
+const PROVIDER = SEARCH_PROVIDERS[SEARCH_PROVIDER_NAME];
+if (!PROVIDER) {
+  console.error(`⛔ SEARCH_PROVIDER="${SEARCH_PROVIDER_NAME}" is not one of: ${Object.keys(SEARCH_PROVIDERS).join(", ")}`);
+  process.exit(1);
+}
 // Overridable so the eval harness can score one model against another
 // (run-eval.js). Unset everywhere in production, which keeps this exactly
 // the constant it has always been. If the API 404s on a model id, list the
@@ -137,6 +153,12 @@ const PROVIDER = require("./search-provider-anthropic");
 // default.
 // MODEL still overrides, so an existing MODEL=... deployment is unaffected.
 const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
+
+// The provider names its own credential var, so this stays a lookup rather
+// than a branch. Testing PROVIDER.name here would be the first crack in the
+// never-branch-on-name rule, and credential selection is exactly where such
+// exceptions look most reasonable.
+const providerApiKey = () => (process.env[PROVIDER.apiKeyEnv] || "").trim();
 
 // Optional shared password. If set, visitors must enter it before searching.
 // Leave it unset to keep the app open.
@@ -3802,6 +3824,21 @@ function clientErrorMessage(err) {
 // price of a small completion (~$0.05, ~40s) instead of solo()'s full
 // ~$0.35/~90s re-search. Every failure path here surfaces to the caller,
 // which falls back to that full retry, so this can only ever save.
+//
+// Deliberately Anthropic-only for now, and NOT routed through PROVIDER: it
+// hardcodes api.anthropic.com, the three Anthropic headers, and reads
+// API_KEY (ANTHROPIC_API_KEY) directly rather than providerApiKey(). Under
+// SEARCH_PROVIDER=gemini this call still fires on a parse failure and still
+// targets Anthropic, so a Gemini-backed run whose JSON fails to parse
+// attempts an Anthropic repair before falling to Gemini's own full retry.
+// It does not crash: with no ANTHROPIC_API_KEY set, fetch() drops the
+// undefined x-api-key header rather than throwing, the call 401s, and the
+// existing failure path (every error here surfaces to the caller) falls
+// through to solo()'s full re-search, which does go through PROVIDER
+// correctly. The cost is a wasted ~40s round trip and, if ANTHROPIC_API_KEY
+// happens to also be set, a real cross-provider repair call that nothing
+// here flags. Left as a known gap for phase 2's validation gate rather than
+// generalized in this task.
 async function repairCompJson(brokenText, maxTokens) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000);
@@ -3839,6 +3876,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
+  // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
+  // non-streaming path rather than ask for a mode it doesn't support.
+  const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
   const body = PROVIDER.buildRequestBody({
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
@@ -3846,7 +3886,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                         subjectDetails, lane),
     maxComps,
     searchUses,
-    stream: STREAM_ANTHROPIC,
+    stream: useStream,
   });
   const say = typeof onProgress === "function" ? onProgress : () => {};
 
@@ -3883,7 +3923,11 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // NOT be cleared right after the await, or the whole read loop would run
   // unguarded and a wedged upstream would hang forever. It is cleared in the
   // finally that wraps the reading, further down.
-  const callDeadlineMs = searchTimeoutMsFor(searchUses, body.max_tokens);
+  // A provider that cannot cap search rounds never honored searchUses, so a
+  // deadline derived from it would be arbitrary. Budget the worst case (a full
+  // 10-search run) instead of a number that was silently ignored.
+  const deadlineUses = PROVIDER.capabilities.searchBudget ? searchUses : 10;
+  const callDeadlineMs = searchTimeoutMsFor(deadlineUses, body.max_tokens);
   const timer = setTimeout(() => controller.abort(), callDeadlineMs);
   // Two very different failures used to raise the SAME error with no way to
   // tell them apart, in the message OR in the log:
@@ -3904,7 +3948,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   };
   let r;
   try {
-    const init = PROVIDER.requestInit({ apiKey: API_KEY });
+    const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
     r = await fetch(init.url, {
       method: "POST",
       headers: init.headers,
@@ -3929,7 +3973,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   let usage = {};
   let stopReason = "";
 
-  if (!STREAM_ANTHROPIC) {
+  if (!useStream) {
     clearTimeout(timer);
     const parsed = PROVIDER.parseResponse(await r.json());
     text = parsed.text;
@@ -13494,6 +13538,7 @@ const server = http.createServer((req, res) => {
     // the same port — two concurrent suite runs once cross-talked exactly
     // that way. Absent in production, where the env var is never set.
     return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY),
+      provider: PROVIDER.name, search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
@@ -13973,6 +14018,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
+  console.log(`🔀 Search provider: ${PROVIDER.name} (model ${MODEL}${PROVIDER.capabilities.searchBudget ? "" : ", no search-budget cap"})`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)

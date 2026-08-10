@@ -242,6 +242,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .leaflet-bar a:hover { background: var(--wash) }
       [data-theme="dark"] .leaflet-popup-content-wrapper,
       [data-theme="dark"] .leaflet-popup-tip { background: var(--card); color: var(--ink) }
+
+      /* Member logos are uploaded as data URIs and are almost always drawn
+         for white paper, so a black-on-transparent mark disappears on a
+         dark letterhead. The chip is presentation only -- the stored
+         profile is untouched, and print/PNG never see this rule at all. */
+      [data-theme="dark"] .brand-logo {
+        background: #fff; padding: 4px 6px; border-radius: 3px;
+      }
     }
 
     /* ------------------------------------------------------------------------
@@ -1284,8 +1292,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-2.5" aria-label="CompNinja home">
         <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
-          <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-          <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+          <rect x="2" y="4" width="26" height="22" rx="2" fill="var(--ink)"/>
+          <polygon points="3.5,26 28,5.5 28,10 8,26" fill="var(--red-fill)"/>
         </svg>
         <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </a>
@@ -1911,7 +1919,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <!-- Captured / printed region -->
       <div id="reportArea" class="space-y-6">
 
-        <!-- Print letterhead: appears only on the printed / PDF report -->
+        <!-- Print letterhead: appears only on the printed / PDF report.
+             .print-only is display:none on screen, so this icon is never
+             seen in dark mode -- literal fill values stay on purpose, since
+             print always renders light regardless of the site theme. -->
         <div class="print-only pb-3 mb-2 border-b-2 border-brand-700">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -1945,8 +1956,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div class="report-lockup shrink-0 flex items-center gap-2">
               <div id="reportLockupDefault" class="flex items-center gap-2">
                 <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
-                  <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-                  <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+                  <rect x="2" y="4" width="26" height="22" rx="2" fill="var(--ink)"/>
+                  <polygon points="3.5,26 28,5.5 28,10 8,26" fill="var(--red-fill)"/>
                 </svg>
                 <div class="rd-wordmark uppercase">Comp<b>Ninja</b></div>
               </div>
@@ -5861,19 +5872,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const baseY = compact ? 76 : 62;
     const avgExt = compact ? 28 : 22;            // avg line half-height
     const bandHalf = compact ? 18 : 14;          // subject band half-height
+    // Colours are CSS custom properties, not literal hex -- so this SVG,
+    // once inserted, repaints with the site theme on its own (a toggle mid-
+    // report needs no re-render). fill/stroke on an SVG presentation
+    // attribute resolve var() exactly like a stylesheet declaration would.
     let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per square foot">`;
-    svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="#E4E2DA" stroke-width="2"/>`;
+    svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="var(--line)" stroke-width="2"/>`;
 
     // Subject band behind everything else.
     if (youLo !== null && isBand) {
-      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="#B91C1C" fill-opacity="0.12"/>`;
+      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="var(--red-fill)" fill-opacity="0.12"/>`;
     }
 
     // Median line + label, anchor flipped near the edges so it stays inside.
     const ax = x(med);
     const aAnchor = ax < EDGE + 40 ? "start" : ax > W - EDGE - 40 ? "end" : "middle";
-    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="#1A2433" stroke-width="2"/>`;
-    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">Median ${formatUsd(med, { maximumFractionDigits: 0 })}</text>`;
+    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="var(--ink)" stroke-width="2"/>`;
+    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="var(--ink)" font-family="Inter, sans-serif">Median ${formatUsd(med, { maximumFractionDigits: 0 })}</text>`;
 
     // Comp dots with vertical jitter when they crowd each other.
     const offsets = [0, -11, 11, -22];
@@ -5884,21 +5899,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const py = baseY + offsets[oi];
       prevX = px;
       const delay = Math.min(0.15 + i * 0.07, 0.8).toFixed(2);
-      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="#5A6473" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
+      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="var(--ink-mute)" fill-opacity="0.85" stroke="var(--card)" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
     });
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
     const loHiY = compact ? baseY + 52 : baseY + 38;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="#68707E" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="#68707E" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
       const yx = x(youMid);
-      svg += `<circle class="ch-pop" style="animation-delay:.75s" cx="${yx.toFixed(1)}" cy="${baseY}" r="7" fill="#B91C1C" stroke="#fff" stroke-width="1.5"/>`;
+      svg += `<circle class="ch-pop" style="animation-delay:.75s" cx="${yx.toFixed(1)}" cy="${baseY}" r="7" fill="var(--red-fill)" stroke="var(--card)" stroke-width="1.5"/>`;
       const yAnchor = yx < EDGE + 20 ? "start" : yx > W - EDGE - 20 ? "end" : "middle";
-      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="#B91C1C" font-family="Inter, sans-serif">You</text>`;
+      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="var(--red)" font-family="Inter, sans-serif">You</text>`;
     }
     svg += `</svg>`;
 
@@ -8570,8 +8585,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       svg.setAttribute("width", w); svg.setAttribute("height", h);
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.setAttribute("aria-label", `${vals.length} valuations tracked`);
+      // The polyline's #8A93A0 has no matching token (same allowance as
+      // .rd-scat-tick in the CSS bridge) but reads fine unlit against both
+      // card colours; the endpoint dot has an exact one and gets it, so its
+      // dark value stays vivid rather than fading with the line.
       svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="#8A93A0" stroke-width="1.4"/>` +
-        `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="#B91C1C"/>`;
+        `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="var(--red-fill)"/>`;
       return svg;
     };
     let combined = 0, curOfPaired = 0, prevOfPaired = 0;
@@ -9322,7 +9341,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const img = document.createElement("img");
       img.src = brand.logo;
       img.alt = brand.firmName || "";
-      img.className = logoClass || "h-7";
+      img.className = "brand-logo " + (logoClass || "h-7");
       img.onerror = function () {
         // A stored logo can be corrupt, or truncated by an older save. A
         // broken image icon on a document a broker is handing to a client is
@@ -9467,7 +9486,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const img = document.createElement("img");
       img.src = b.logo;
       img.alt = "";
-      img.className = "h-9";
+      img.className = "brand-logo h-9";
       box.appendChild(img);
     }
     if (b.firmName) {

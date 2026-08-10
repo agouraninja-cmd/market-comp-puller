@@ -379,6 +379,120 @@ test("no raw hex colour remains in index.html's style block outside :root/dark d
   assert.deepEqual(offenders, [], `raw hex colour(s) outside the token system: ${offenders.join(", ")}`);
 });
 
+test("no raw colour literal remains in index.html's generated markup (the JS half)", () => {
+  // The test above only ever scans the <style> block, which structurally
+  // cannot see a colour baked into markup the SCRIPT builds — an inline
+  // style="" string, an SVG fill/stroke attribute, or a canvas/html2canvas
+  // colour assignment. That blind spot has bitten this project four
+  // separate times, most recently the vault's year chart, whose headline
+  // number rendered at 1.14:1 in dark mode (test/theme.test.js's own
+  // "generated markup" test for vault-page.js, added in that fix). This is
+  // the same fix for index.html, which never had one: writing it turned up
+  // the report's own market-position chart (renderMarketChart) and the
+  // header/report-lockup logo icon rendering dark-on-dark in dark mode,
+  // both fixed alongside this test by switching their fill/stroke to
+  // var(--token) rather than by loosening the allowlist below.
+  //
+  // A blind hex scan of everything after </style> does not work here the
+  // way it does for vault-page.js: index.html's <body> is thousands of
+  // Tailwind arbitrary-value classes (bg-[#F5F4EF], text-[#5A6473], ...),
+  // and every one of those is a literal hex substring that is ALREADY
+  // covered by the "every colour utility has a dark rule" test above via
+  // the class-name bridge, not by this one. So this scan is deliberately
+  // scoped to colour-bearing PROPERTY CONTEXTS only — inline style=""
+  // declarations (prop:#hex, split the same way the style-block test above
+  // splits CSS declarations, so "border:2px solid #fff" is still caught),
+  // bare SVG/HTML attributes (fill="#hex", stroke="#hex"), and JS
+  // assignments (ctx.fillStyle = "#hex", backgroundColor: "#hex") — which
+  // is exactly what a Tailwind class name never looks like: the hex in
+  // `bg-[#F5F4EF]` sits directly after `[`, never after `:`/`=`, so it
+  // never enters this scan at all. Comments (HTML <!-- --> only — this
+  // file's // and /* */ JS comments were checked by hand and none mention a
+  // hex value) are stripped first so prose like "dark mode's own --slab:
+  // #1E293B" in a code comment can't read as a declaration.
+  const styleEnd = INDEX.indexOf("</style>");
+  assert.notEqual(styleEnd, -1, "index.html's </style> tag not found");
+  let jsHalf = INDEX.slice(styleEnd).replace(/<!--[\s\S]*?-->/g, "");
+
+  // pinColors() is the theming IMPLEMENTATION for the Leaflet map pins and
+  // aerial-photo placeholder, not a literal that forgot to theme: it is a
+  // plain isDark() ? {...} : {...} object literal, so BOTH themes' real
+  // values necessarily sit in the source as hex, the same way :root's own
+  // dark block does. Carved out here the same way the CSS test above carves
+  // out @media print — a scan that can't evaluate a ternary has no way to
+  // know these are already correct, so it would either flag genuinely
+  // themed code or need every one of its six values individually
+  // allowlisted with no real offender left to explain them.
+  const pcStart = jsHalf.indexOf("const pinColors = ()");
+  assert.notEqual(pcStart, -1, "pinColors() moved or was renamed");
+  const pcEnd = jsHalf.indexOf(";", pcStart);
+  jsHalf = jsHalf.slice(0, pcStart) + jsHalf.slice(pcEnd + 1);
+
+  const offenders = [];
+
+  // Pass 1: inline style="..." attributes. Consumed and removed (not just
+  // read) so pass 2's simpler attr="#hex" scan below can't double-count a
+  // hex that already got its property from this pass's declaration split.
+  const rest = jsHalf.replace(/style="([^"]*)"/g, (whole, styleVal) => {
+    for (const decl of styleVal.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) offenders.push(`${prop}:${hex.toLowerCase()}`);
+    }
+    return "";
+  });
+
+  // Pass 2: bare SVG/HTML attributes (fill="#hex") and JS assignments
+  // (ctx.fillStyle = "#hex", backgroundColor: "#hex") — anything shaped
+  // like identifier, then `:` or `=`, then an optional quote, then hex,
+  // immediately. The identifier may contain dots (ctx.fillStyle) so a
+  // property access reads as one token instead of matching bare "fillStyle".
+  for (const m of rest.matchAll(/([a-zA-Z_$][\w.]*)\s*[:=]\s*["']?(#[0-9A-Fa-f]{3,8})\b/g)) {
+    offenders.push(`${m[1].toLowerCase()}:${m[2].toLowerCase()}`);
+  }
+
+  // Keyed by "property:hex" like the style-block test above, each with its
+  // own one-line reason. Tight on purpose — a future addition should invert
+  // its own colours with var(--token) first and reach for this list only
+  // when a token genuinely can't apply.
+  const ALLOWLIST = new Set([
+    // Aerial-photo placeholder's red point marker and the "© Esri" caption
+    // chip: both are drawn ON the stitched satellite photo itself, not on a
+    // themed page surface, so a site theme has no business repainting them
+    // (aerialThumb; the map basemap and pins around the photo DO theme, via
+    // pinColors()).
+    "background:#dc2626", "border:#fff", "color:#fff",
+    // Footer wordmark + its CompNinja icon: this lockup sits on
+    // bg-[#1A2433], a slab that is dark in BOTH themes (see the comment at
+    // the declaration), so literal white text and brand red read correctly
+    // regardless of site theme.
+    "color:#ef4444", "fill:#ffffff", "fill:#b91c1c",
+    // Print letterhead's CompNinja icon: .print-only is display:none on
+    // screen, so this markup is only ever seen by print, which is pinned
+    // light on purpose and never reads data-theme at all.
+    "fill:#1a2433",
+    // My Desk portfolio sparkline's polyline: no matching token (same
+    // allowance already given to .rd-scat-tick in the CSS bridge above) —
+    // measured legible against both --card values, so left literal rather
+    // than shifting the light-mode shade to fit an existing token.
+    "stroke:#8a93a0",
+    // Uploaded logo re-encode (readLogoFile): fills a transient <canvas>
+    // white before flattening a transparent PNG to JPEG. Image-processing
+    // math, not page theming — the canvas is never inserted into the page.
+    "ctx.fillstyle:#fff",
+    // PNG export (downloadImage/html2canvas): deliberately light-only, so a
+    // report exported from a dark screen still reads as a normal client
+    // deliverable. Pinned by the "the PNG export is never dark" test below.
+    "backgroundcolor:#fbfbf9",
+  ]);
+
+  const named = offenders.filter((o) => !ALLOWLIST.has(o));
+  assert.deepEqual(named, [],
+    `raw colour literal(s) in index.html's generated markup, outside the allowlist: ${named.join(", ")}`);
+});
+
 test("index.html sets the theme before first paint", () => {
   const head = INDEX.slice(0, INDEX.indexOf("<style>"));
   assert.ok(head.includes(`setAttribute("data-theme"`), "no boot script in <head>");

@@ -196,7 +196,7 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
    container would render them at ~40px, which is the heavy-saturated-block
    look the rest of this page avoids. Below 600px it scales down as normal. */
 .chart svg{display:block;width:100%;max-width:600px;height:auto}
-/* The year chart is generated SVG (drawChart, further down this file), not
+/* The year chart is generated SVG (renderChart, further down this file), not
    markup here -- so these classes are the only place its colours live now.
    Fixed 2026-08-10 fix round 2: they used to be inline fill/stroke hex on
    the generated elements, which is invisible to the raw-hex regression test

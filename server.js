@@ -105,6 +105,7 @@ const BACKTEST = require("./backtest");
 // disclaimer) that can be applied to a report they hold an entitlement for.
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
 const BRANDING = require("./branding.js");
+const CITYCHECK = require("./city-check");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -8838,6 +8839,24 @@ try{var sk=sessionStorage.getItem(KEYK);load(sk||"");}catch(e){load("");}
 </body></html>`;
 }
 
+// Real-city verdicts for the Explorer, memoized for the process lifetime:
+// a city doesn't pop into or out of existence, and a restart clears any
+// data-gap mistake. "unavailable" is deliberately never cached — the next
+// request retries the service. The memo is consulted BEFORE the rate
+// limiter so repeat lookups of known cities stay free; the limiter only
+// bounds outbound Zippopotam calls, and tripping it fails OPEN (this is a
+// guardrail on our own spend, not a service the visitor is owed).
+const cityVerdictMem = new Map(); // "ST|city" -> "ok" | "unknown"
+async function checkExploreCity(req, city, state) {
+  const key = `${state}|${city.toLowerCase()}`;
+  if (cityVerdictMem.has(key)) return cityVerdictMem.get(key);
+  if (rateLimited("exploreCheck:" + clientIp(req), 10, 15 * 60 * 1000)) return "unavailable";
+  const verdict = await CITYCHECK.checkCity(
+    (url) => fetch(url, { signal: AbortSignal.timeout(4000) }), city, state);
+  if (verdict !== "unavailable") cityVerdictMem.set(key, verdict);
+  return verdict;
+}
+
 const server = http.createServer((req, res) => {
   // --- API endpoint ---
   if (req.method === "POST" && req.url === "/api/comps") {
@@ -9200,6 +9219,23 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 403, {
             error: guestGateMessage("explore any market"),
             signin_required: true,
+          });
+        }
+
+        // Real-city check, BEFORE the explore limiter so a typo answers 400
+        // without eating one of the visitor's three real-search slots — and
+        // before the billed job, which is the whole point: "industrial Bosie
+        // ID" must never spend ~$0.36 or publish a misspelled /market/ page.
+        // "unavailable" (service down or exploreCheck limiter tripped) falls
+        // through and the search runs exactly as before this check existed;
+        // DAILY_SEARCH_CAP still backstops spend. A 400 here never consumes
+        // the guest's free search (consumeGuestSearchFor keys on status 200).
+        // Spec: docs/superpowers/specs/2026-08-09-explore-market-city-validation-design.md
+        const cityVerdict = await checkExploreCity(req, cityOk, stateOk);
+        if (cityVerdict === "unknown") {
+          logEvent("explore_reject", { prop_type: typeOk, market: `${cityOk}, ${stateOk}`, source: "explore" });
+          return sendJson(res, 400, {
+            error: `We couldn't find a city called "${cityOk}" in ${stateOk}. Check the spelling, or run a valuation for a specific property instead.`,
           });
         }
 

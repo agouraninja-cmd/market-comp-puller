@@ -4375,6 +4375,14 @@ const CN_LOGO_LIGHT =
 //                       `billing` — a comped admin has the vault with no Stripe
 //   Manage billing      a Stripe customer exists (status set, not "none") and
 //                       is not the comped "admin" status, which has no portal
+// The site's colour tokens. Interpolated into every in-scope stylesheet
+// rather than copied, so a token can never drift between pages. The four
+// admin dashboards keep their own literal :root blocks -- they are out of
+// dark mode's scope and already carry this same vocabulary, which is what
+// would make adding them later a one-line change.
+const THEME = require("./theme.js");
+const THEME_CSS = THEME.rootCss();
+
 const ACCOUNT_NAV_CSS = `
 /* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.
    Load-bearing: .hdr nav .dd a sets display:block, which out-specifies the
@@ -4382,16 +4390,16 @@ const ACCOUNT_NAV_CSS = `
    signed-out chrome and signed-in chrome at once without this line. */
 .hdr nav [hidden]{display:none!important}
 .hdr nav .acct summary{display:flex;align-items:center}
-.hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:#1A2433;color:#fff;
+.hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:var(--slab);color:#fff;
   font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block}
-.hdr nav .dd .em{padding:6px 12px 7px;font-size:12px;color:#94A3B8;
+.hdr nav .dd .em{padding:6px 12px 7px;font-size:12px;color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:176px}
 /* Menu rows that act rather than navigate. Restates .dd a's box so the two
    kinds of row are indistinguishable to the eye. */
-.hdr nav .dd button{display:block;width:100%;text-align:left;padding:8px 12px;color:#374253;
+.hdr nav .dd button{display:block;width:100%;text-align:left;padding:8px 12px;color:var(--ink-body);
   background:none;border:0;font:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap}
-.hdr nav .dd button:hover{background:#F8FAFC;color:#1A2433}
-.hdr nav .dd .up{color:#B91C1C;font-weight:500}
+.hdr nav .dd button:hover{background:var(--wash);color:var(--ink)}
+.hdr nav .dd .up{color:var(--red);font-weight:500}
 .hdr nav .dd a.vault{font-weight:500}
 `;
 
@@ -4467,118 +4475,119 @@ const ACCOUNT_NAV_JS =
 // looks like the app they are being sent to. Self-contained by design: no
 // dependency on the purged tailwind.css.
 const MARKET_CSS = `
+${THEME_CSS}
 /* Broker directory list on a market page. Plain list, no cards: this is a
    directory, not a ranking, and boxes imply a hierarchy the data cannot back. */
 .brokers{list-style:none;padding:0;margin:12px 0 0}
-.brokers li{padding:8px 0;border-top:1px solid #E7E3DA}
+.brokers li{padding:8px 0;border-top:1px solid var(--line)}
 .brokers li:first-child{border-top:0}
 .brokers a{font-weight:600}
 .brokers .sub{margin-left:8px}
 
 *{box-sizing:border-box}
 /* Flex column so the ink footer sits at the bottom of a short page. */
-body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1024px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
-.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
 .hleft{display:flex;align-items:center;gap:18px}
-.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
-.wordmark b{color:#B91C1C;font-weight:600}
+.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
+.hdr nav a{color:var(--ink-mute);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 /* Explore dropdown — mirrors index.html's header menu, as a no-JS <details>
    (a tiny script in MARKET_BAR adds close-on-outside-click). */
 .hdr nav details{position:relative}
-.hdr nav summary{list-style:none;cursor:pointer;color:#5A6473;white-space:nowrap;user-select:none}
+.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-mute);white-space:nowrap;user-select:none}
 .hdr nav summary::-webkit-details-marker{display:none}
-.hdr nav summary:hover,.hdr nav details[open] summary{color:#1A2433}
-.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:#8A93A0}
-.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:#fff;
-  border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-faint)}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
   padding:4px 0;min-width:176px}
-.hdr nav .dd a{display:block;padding:8px 12px;color:#374253}
-.hdr nav .dd a:hover{background:#F8FAFC;color:#1A2433}
-.hdr nav .dd a.on{color:#1A2433;font-weight:500}
+.hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
+.hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
+.hdr nav .dd a.on{color:var(--ink);font-weight:500}
 /* Type */
 h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;line-height:1.15;
-  letter-spacing:-.005em;color:#1A2433;margin:10px 0 6px}
-.sub{color:#5A6473;font-size:14px;margin:0 0 22px;max-width:70ch}
-.sub a{color:#5A6473;text-decoration:underline;text-decoration-color:#D8D4C9}
-.sub a:hover{color:#1A2433}
+  letter-spacing:-.005em;color:var(--ink);margin:10px 0 6px}
+.sub{color:var(--ink-mute);font-size:14px;margin:0 0 22px;max-width:70ch}
+.sub a{color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
+.sub a:hover{color:var(--ink)}
 /* Tiles — bordered cards rather than the landing page's hairline mesh: pages
    render 2-4 of these depending on the data, so a fixed column count that
    divides evenly (which the mesh needs to avoid a half-empty row) is out. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
-.tile{background:#fff;border:1px solid #E4E2DA;border-radius:6px;padding:16px 18px}
-.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#68707E;font-weight:600}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:600}
 .tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
-  color:#1A2433;font-variant-numeric:tabular-nums}
-.tile .n{font-size:12.5px;color:#68707E;margin-top:2px}
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.tile .n{font-size:12.5px;color:var(--ink-3);margin-top:2px}
 /* Ledger stat strip (Direction G, owner-approved 2026-08-09): the market
    page's headline figures as one ruled ledger line, the same geometry the
    report hero and the vault book line use — median emphasized on warmer
    paper, red label. The .tiles grid above stays for its OTHER consumers
    (the Explorer preview page and the /markets client tiles); only the
    market page itself moved to the ledger. */
-.ledger{display:flex;border:1px solid #D8D4C9;border-radius:6px;overflow:hidden;background:#fff;margin:22px 0}
-.lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid #ECEAE3}
+.ledger{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin:22px 0}
+.lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:#FCFBF8}
-.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600}
-.lcell.mid .k{color:#B91C1C}
+.lcell.mid{background:var(--wash)}
+.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.lcell.mid .k{color:var(--red)}
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
-  color:#1A2433;font-variant-numeric:tabular-nums}
+  color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
-.lcell .n{font-size:12px;color:#68707E;margin-top:2px}
-@media(max-width:700px){.ledger{flex-direction:column}.lcell{border-right:0;border-bottom:1px solid #ECEAE3}.lcell:last-child{border-bottom:0}}
+.lcell .n{font-size:12px;color:var(--ink-3);margin-top:2px}
+@media(max-width:700px){.ledger{flex-direction:column}.lcell{border-right:0;border-bottom:1px solid var(--hair)}.lcell:last-child{border-bottom:0}}
 /* Statement comps table (Direction H, same approval): ink header rule and a
    median closing row under a double rule. Scoped to table.stmt so the other
    marketShell pages (brokers, vault, the markets directory) keep their own
    table look. */
-table.stmt th{background:none;border-bottom:2px solid #1A2433}
-table.stmt tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600;color:#1A2433}
-table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600}
+table.stmt th{background:none;border-bottom:2px solid var(--ink)}
+table.stmt tfoot td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600;color:var(--ink)}
+table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute);font-weight:600}
 /* Cards. Headings stay serif at reading size rather than the uppercase
    micro-label used elsewhere — these are sentence-length ("What's driving
    Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
-.card{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:22px;margin:18px 0}
-.card h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;
+.card{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:22px;margin:18px 0}
+.card h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:0 0 12px;letter-spacing:normal;text-transform:none}
-.card h3{font-size:14.5px;font-weight:600;color:#1A2433;margin:16px 0 4px}
-.card p{margin:0 0 10px;color:#374253;font-size:14.5px}
-.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:#374253;font-size:14.5px}
+.card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
+.card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
+.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
 /* min-width is what makes the .scroll wrapper actually work: a width:100%
    table always shrinks to its container, so overflow-x had nothing to overflow.
    Invisible at 6 columns; a multifamily page renders 8 and would otherwise
    crush to ~40px per column on a phone. */
 table{width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 td:first-child,th:first-child{min-width:180px}
-th{background:#F5F4EF;color:#68707E;text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
-  text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #D8D4C9}
-td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
-.scroll{overflow-x:auto;border:1px solid #E4E2DA;border-radius:6px;margin:18px 0;background:#fff}
+th{background:var(--wash);color:var(--ink-3);text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--edge)}
+td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-align:top}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card)}
 /* Source badges use the report's own colour language: green Verified, amber
    Listing, neutral for public record / news / estimate. */
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;
-  white-space:nowrap;line-height:1.4;color:#46536A;background:#EAEEF4}
-.badge.v{color:#06603A;background:#E3F2EA}
-.badge.li{color:#7A5B12;background:#F7EFDC}
+  white-space:nowrap;line-height:1.4;color:var(--ink-body);background:var(--wash)}
+.badge.v{color:var(--ok-text);background:var(--ok-bg)}
+.badge.li{color:var(--warn-text);background:var(--warn-bg)}
 /* CTA — the calm bordered block from the landing page, not the old gradient. */
-.cta{border:1px solid #D8D4C9;background:#fff;border-radius:6px;padding:28px;margin:26px 0;text-align:center}
-.cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:#1A2433;
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center}
+.cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
-.cta p{color:#4C5665;font-size:14px;margin:8px auto 20px;max-width:52ch}
-.cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:#5A6473;text-decoration:underline;text-decoration-color:#D8D4C9}
-.cta .alt:hover{color:#1A2433}
-.btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
-.btn:hover{background:#991B1B;color:#fff}
+.cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
+.cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
+.cta .alt:hover{color:var(--ink)}
+.btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
+.btn:hover{background:var(--red-fill-hover);color:#fff}
 /* Header-sized variant, for the auth controls in the market bar. Mirrors the
    same rule in HOW_CSS so the two site headers sit at the same height. The nav
    rule below it exists because .hdr nav a would otherwise grey the button out.
@@ -4586,13 +4595,13 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .btn.sm{padding:7px 14px;font-size:13px}
 .hdr nav a.btn{color:#fff}.hdr nav a.btn:hover{color:#fff}
 .related{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.related a{background:#fff;border:1px solid #D8D4C9;border-radius:4px;padding:6px 14px;font-size:13px;color:#374253}
-.related a:hover{border-color:#68707E;color:#1A2433}
+.related a{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:6px 14px;font-size:13px;color:var(--ink-body)}
+.related a:hover{border-color:var(--ink-3);color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
-.mcard{display:block;background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:18px 20px;color:inherit}
-.mcard:hover{border-color:#68707E}
-.mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
-.mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
+.mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit}
+.mcard:hover{border-color:var(--ink-3)}
+.mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:var(--ink)}
+.mcard .s{color:var(--ink-mute);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
    screen reader: a bare search box with only a placeholder has no accessible
    name once the visitor starts typing.
@@ -4602,38 +4611,38 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
    at startup instead. */
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .mfilter{margin-top:24px;max-width:420px}
-.mfilter input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #D8D4C9;border-radius:6px;
-  padding:10px 12px;font-family:inherit;font-size:16px;color:#1A2433}
+.mfilter input{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--edge);border-radius:6px;
+  padding:10px 12px;font-family:inherit;font-size:16px;color:var(--ink)}
 /* 16px: anything smaller makes iOS Safari zoom on focus and stay zoomed. */
-.mfilter input::placeholder{color:#68707E}
-.mfilter input:focus{outline:none;border-color:#B91C1C;box-shadow:0 0 0 1px #B91C1C}
-.mcount{color:#5A6473;font-size:13px;margin-top:10px;min-height:1.2em}
-.disc{color:#68707E;font-size:12.5px;margin-top:26px}
+.mfilter input::placeholder{color:var(--ink-3)}
+.mfilter input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.mcount{color:var(--ink-mute);font-size:13px;margin-top:10px;min-height:1.2em}
+.disc{color:var(--ink-3);font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
 .legal{max-width:72ch}
-.legal h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;color:#1A2433;
+.legal h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;color:var(--ink);
   letter-spacing:normal;text-transform:none;margin:34px 0 10px}
-.legal p{margin:0 0 12px;color:#374253;font-size:14.5px}
+.legal p{margin:0 0 12px;color:var(--ink-body);font-size:14.5px}
 .legal ul{margin:0 0 12px;padding-left:22px}
-.legal li{margin:6px 0;color:#374253;font-size:14.5px}
-.legal code{font-size:13px;background:#F5F4EF;padding:1px 5px;border-radius:3px}
+.legal li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+.legal code{font-size:13px;background:var(--wash);padding:1px 5px;border-radius:3px}
 /* Footer — the navy ink footer from the home page. */
-footer{background:#1A2433;color:#B8C0CC;font-size:13px}
+footer{background:var(--slab);color:var(--ink-4);font-size:13px}
 footer .wrap{padding:36px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
 footer .wordmark{color:#fff}
-footer p{color:#8F99A8;margin:12px 0 0;max-width:68ch;line-height:1.6}
-footer a{color:#D5DAE2;text-decoration:underline;text-decoration-color:#46536A}
+footer p{color:var(--ink-faint);margin:12px 0 0;max-width:68ch;line-height:1.6}
+footer a{color:var(--ink-4);text-decoration:underline;text-decoration-color:var(--ink-body)}
 footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
-footer li a{text-decoration:none;color:#B8C0CC}
+footer li a{text-decoration:none;color:var(--ink-4)}
 /* Grouped link columns — the flat list had grown long enough that the footer
    became the tallest block on the page. Wraps on narrow screens so three
    groups never push past 375px. Mirrored in HOW_CSS and in index.html's
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
-footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
@@ -5624,56 +5633,57 @@ function renderMarketDirectoryHTML(signedIn) {
 // as the same site rather than the older market-page skin.
 // ---------------------------------------------------------------------------
 const HOW_CSS = `
+${THEME_CSS}
 *{box-sizing:border-box}
-body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1024px;margin:0 auto;padding:0 16px}
 /* Header — mirrors index.html's bar so navigating here feels continuous. */
-.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 /* Wraps on narrow screens: the nav drops to its own row rather than squeezing
    each link into a two-line column (which overflowed the viewport at 375px). */
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
 .hleft{display:flex;align-items:center;gap:18px}
-.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
-.wordmark b{color:#B91C1C;font-weight:600}
+.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
-.hdr nav a.on{color:#1A2433;font-weight:500}
+.hdr nav a{color:var(--ink-mute);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+.hdr nav a.on{color:var(--ink);font-weight:500}
 /* Explore dropdown — same pattern as MARKET_CSS; keep the two in step. The
    FAQ accordions below are also <details>, which is why every rule (and the
    close-on-outside-click script) is scoped to ".hdr nav". */
 .hdr nav details{position:relative}
-.hdr nav summary{list-style:none;cursor:pointer;color:#5A6473;white-space:nowrap;user-select:none}
+.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-mute);white-space:nowrap;user-select:none}
 .hdr nav summary::-webkit-details-marker{display:none}
-.hdr nav summary:hover,.hdr nav details[open] summary{color:#1A2433}
-.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:#8A93A0}
-.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:#fff;
-  border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-faint)}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
   padding:4px 0;min-width:176px}
-.hdr nav .dd a{display:block;padding:8px 12px;color:#374253}
-.hdr nav .dd a:hover{background:#F8FAFC;color:#1A2433}
-.hdr nav .dd a.on{color:#1A2433;font-weight:500}
+.hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
+.hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
+.hdr nav .dd a.on{color:var(--ink);font-weight:500}
 /* Type + section furniture */
-.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
-.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
 h1.h{font-size:38px;line-height:1.12;margin:12px 0 0;max-width:20ch}
 h2.h{font-size:27px;margin:8px 0 0}
-h3{font-size:15px;font-weight:600;color:#1A2433;margin:0 0 6px}
-.lead{color:#4C5665;font-size:16.5px;max-width:58ch;margin:16px 0 0}
-.sub{color:#4C5665;font-size:14px;max-width:60ch;margin:4px 0 20px}
+h3{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px}
+.lead{color:var(--ink-2);font-size:16.5px;max-width:58ch;margin:16px 0 0}
+.sub{color:var(--ink-2);font-size:14px;max-width:60ch;margin:4px 0 20px}
 section{padding:48px 0}
-.band{background:#F5F4EF;box-shadow:0 0 0 100vmax #F5F4EF;clip-path:inset(0 -100vmax)}
-.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600;margin-bottom:2px}
+.band{background:var(--wash);box-shadow:0 0 0 100vmax var(--wash);clip-path:inset(0 -100vmax)}
+.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
 /* Stat strip */
-.stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid #E4E2DA;border-bottom:1px solid #E4E2DA}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .stat{padding:18px}
-.stat:nth-child(1),.stat:nth-child(3){border-right:1px solid #E4E2DA}
-.stat .n{font-size:22px;font-weight:600;color:#1A2433;font-variant-numeric:tabular-nums}
-.stat .l{font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+.stat:nth-child(1),.stat:nth-child(3){border-right:1px solid var(--line)}
+.stat .n{font-size:22px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
 /* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
    the ONLY place a visitor sees the product before signing up, so it is built
    as a faithful miniature of the real report rather than a layout of its own:
@@ -5681,36 +5691,36 @@ section{padding:48px 0}
    closing on its double-ruled median. Keep it in step with index.html's
    .rd-ledger and #compsTable rules — when the report changes shape, this
    exhibit is what tells visitors it did. */
-.exhibit{border:1px solid #D8D4C9;background:#fff;border-radius:6px;overflow:hidden}
-.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden}
+.cap{padding:12px 20px;border-bottom:1px solid var(--hair);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .exbody{padding:20px}
-.exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;letter-spacing:-.005em}
-.exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:#5A6473;margin-top:6px;padding-bottom:12px;border-bottom:1px solid #ECEAE3}
-.exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid #ECEAE3}
+.exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);letter-spacing:-.005em}
+.exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:var(--ink-mute);margin-top:6px;padding-bottom:12px;border-bottom:1px solid var(--hair)}
+.exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid var(--hair)}
 .exmeta span:last-child{border-right:0;margin-right:0;padding-right:0}
-.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:#68707E}
+.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:var(--ink-3)}
 .exsec{margin-top:16px}
-.secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid #1A2433;padding-bottom:4px;margin-bottom:9px}
-.seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#1A2433}
-.secnote{font-size:9.5px;color:#68707E;text-align:right}
-.ledger{display:flex;border:1px solid #D8D4C9;border-radius:5px;overflow:hidden}
-.lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid #ECEAE3}
+.secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:4px;margin-bottom:9px}
+.seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink)}
+.secnote{font-size:9.5px;color:var(--ink-3);text-align:right}
+.ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
+.lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:#FCFBF8}
-.lcell.mid .lab{color:#B91C1C}
-.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+.lcell.mid{background:var(--wash)}
+.lcell.mid .lab{color:var(--red)}
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}
-.psf{font-size:10.5px;color:#68707E;margin-top:2px}
-.drv{font-size:13px;color:#374253;padding:7px 0;border-top:1px solid #F0EFE9;display:flex;gap:8px}
+.psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.drv{font-size:13px;color:var(--ink-body);padding:7px 0;border-top:1px solid var(--hair);display:flex;gap:8px}
 .drv:first-of-type{border-top:0}
-.drv b{color:#B91C1C;font-weight:700}
+.drv b{color:var(--red);font-weight:700}
 .exscroll{overflow-x:auto}
 table.comps{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-table.comps th{text-align:left;color:#68707E;font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid #1A2433;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
-table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid #F0EFE9;white-space:nowrap}
+table.comps th{text-align:left;color:var(--ink-3);font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid var(--ink);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
+table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid var(--hair);white-space:nowrap}
 table.comps th.n,table.comps td.n{text-align:right}
-table.comps tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600}
-table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473}
+table.comps tfoot td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600}
+table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute)}
 /* Hero (Direction E): the claim on the left, the product itself on the right —
    the exhibit used to sit below the fold while half this row was empty.
    Stacks claim-first below 900px, so a phone loses nothing but the order. */
@@ -5726,68 +5736,68 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .exmini .lcell{padding:9px 11px}
 .exmini .fig{font-size:15px}
 .exmini .lcell.mid .fig{font-size:19px}
-.mrows{margin-top:12px;border-top:1px solid #ECEAE3;padding-top:8px}
-.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid #F0EFE9;font-variant-numeric:tabular-nums}
+.mrows{margin-top:12px;border-top:1px solid var(--hair);padding-top:8px}
+.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--hair);font-variant-numeric:tabular-nums}
 .mrow:last-of-type{border-bottom:0}
-.mrow .a{color:#1A2433;font-weight:500}
+.mrow .a{color:var(--ink);font-weight:500}
 .mrow .badge{margin-left:6px}
-.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600;border-top:1px solid #1A2433;border-bottom:3px double #1A2433;padding:6px 0;margin-top:2px}
+.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute);font-weight:600;border-top:1px solid var(--ink);border-bottom:3px double var(--ink);padding:6px 0;margin-top:2px}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
-.badge.v{color:#06603A;background:#E3F2EA}
-.badge.p{color:#46536A;background:#EAEEF4}
-.badge.li{color:#7A5B12;background:#F7EFDC}
-.legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:#4C5665;align-items:center}
+.badge.v{color:var(--ok-text);background:var(--ok-bg)}
+.badge.p{color:var(--ink-body);background:var(--wash)}
+.badge.li{color:var(--warn-text);background:var(--warn-bg)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
-.steps{border:1px solid #D8D4C9;border-radius:6px;overflow:hidden;background:#fff;display:grid;grid-template-columns:1fr;margin-top:20px}
-.step{padding:22px 24px;border-bottom:1px solid #ECEAE3}
+.steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px}
+.step{padding:22px 24px;border-bottom:1px solid var(--hair)}
 .step:last-child{border-bottom:0}
-.num{font-family:Georgia,serif;font-size:13px;color:#B91C1C;margin-bottom:8px}
-.step p{font-size:13.5px;color:#5A6473;margin:0}
+.num{font-family:Georgia,serif;font-size:13px;color:var(--red);margin-bottom:8px}
+.step p{font-size:13.5px;color:var(--ink-mute);margin:0}
 /* FAQ accordions — chevron marker, matching the home page's disclosure style */
-details.q{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:16px 20px;margin-bottom:12px}
-details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:#1A2433}
+details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
+details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:var(--ink)}
 details.q summary::-webkit-details-marker{display:none}
 details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
 details.q[open] summary::after{transform:rotate(180deg)}
-details.q p{font-size:14px;color:#5A6473;margin:8px 0 0;max-width:80ch}
+details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 /* Closing CTA */
-.cta{border:1px solid #D8D4C9;background:#fff;border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px}
-.cta p{color:#4C5665;font-size:14px;margin:8px auto 20px;max-width:52ch}
-.btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
-.btn:hover{background:#991B1B;color:#fff}
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px}
+.cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
+.btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
+.btn:hover{background:var(--red-fill-hover);color:#fff}
 /* Header signup control. .hdr nav a already sets a colour and out-specifies
    .btn, so the white has to be restated at that specificity. */
 .hdr nav a.btn,.hdr nav a.btn:hover{color:#fff}
 .btn.sm{padding:7px 14px;font-size:13px}
 .heroCta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:24px}
-.heroCta .alt{font-size:13.5px;color:#5A6473}
+.heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
-footer{background:#1A2433;color:#B8C0CC;font-size:13px}
+footer{background:var(--slab);color:var(--ink-4);font-size:13px}
 footer .wrap{padding:40px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:32px}
 footer .wordmark{color:#fff}
-footer p{color:#8F99A8;margin:12px 0 0;max-width:68ch;line-height:1.6}
-footer a{color:#D5DAE2;text-decoration:underline;text-decoration-color:#46536A}
+footer p{color:var(--ink-faint);margin:12px 0 0;max-width:68ch;line-height:1.6}
+footer a{color:var(--ink-4);text-decoration:underline;text-decoration-color:var(--ink-body)}
 footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
-footer li a{text-decoration:none;color:#B8C0CC}
+footer li a{text-decoration:none;color:var(--ink-4)}
 /* Grouped link columns — the flat list had grown long enough that the footer
    became the tallest block on the page. Wraps on narrow screens so three
    groups never push past 375px. Mirrored in HOW_CSS and in index.html's
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
-footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .stats{grid-template-columns:repeat(4,1fr)}
   .stat{padding:20px}
   /* Four across: rule between every pair, so the divider the two-column
      layout only needs after 1 and 3 also lands between 2 and 3. */
-  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid #E4E2DA}
+  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid var(--line)}
   .steps{grid-template-columns:repeat(3,1fr)}
-  .step{border-bottom:0;border-right:1px solid #ECEAE3}
+  .step{border-bottom:0;border-right:1px solid var(--hair)}
   .step:last-child{border-right:0}
   h1.h{font-size:42px}
   footer .wrap{flex-direction:row}
@@ -5839,8 +5849,8 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 .anim .exhibit tbody td{border-bottom-color:transparent;transition:border-bottom-color .4s ease-out}
 .anim .exhibit tfoot td{border-top-color:transparent;border-bottom-color:transparent;transition:border-top-color .4s ease-out,border-bottom-color .4s ease-out}
 .anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr,.anim .exhibit.on .mrow{opacity:1;transform:none}
-.anim .exhibit.on tbody td{border-bottom-color:#F0EFE9}
-.anim .exhibit.on tfoot td{border-top-color:#1A2433;border-bottom-color:#1A2433}
+.anim .exhibit.on tbody td{border-bottom-color:var(--hair)}
+.anim .exhibit.on tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink)}
 /* The delays come LAST on purpose. A transition SHORTHAND resets
    transition-delay to 0, and the tfoot rules above match at exactly the same
    specificity as this one, so whichever is written later wins — put the
@@ -5867,14 +5877,14 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 @media (prefers-reduced-motion:reduce){
   .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1;transform:none;transition:none}
   .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none;transition:none}
-  .anim .exhibit tbody td{border-bottom-color:#F0EFE9;transition:none}
-  .anim .exhibit tfoot td{border-top-color:#1A2433;border-bottom-color:#1A2433;transition:none}
+  .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
+  .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
 }
 @media print{
   .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1!important;transform:none!important}
   .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none!important}
-  .anim .exhibit tbody td{border-bottom-color:#F0EFE9!important}
-  .anim .exhibit tfoot td{border-top-color:#1A2433!important;border-bottom-color:#1A2433!important}
+  .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
+  .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
 }
 ${ACCOUNT_NAV_CSS}`;
 

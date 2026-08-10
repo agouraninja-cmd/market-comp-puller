@@ -14,10 +14,10 @@ const assert = require("node:assert");
 const {
   parseCsv, normalizeHeader, parseMoney, parseNumber, parsePercent, parseDate,
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
-  templateCsv, TEMPLATE_COLUMNS, MAX_ROWS_PER_UPLOAD,
+  templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, MAX_ROWS_PER_UPLOAD,
   canPublish, creditName, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
-  suggestMapping,
+  suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -607,4 +607,41 @@ test("an unrecognised header suggests nothing and is not an error", () => {
 test("an empty header is ignored entirely", () => {
   const { mapping } = suggestMapping(["address", ""]);
   assert.equal(Object.keys(mapping).length, 1);
+});
+
+test("no alias is claimed by two different fields", () => {
+  const seen = new Map();
+  for (const [target, list] of Object.entries(HEADER_ALIASES)) {
+    for (const a of list) {
+      assert.equal(seen.has(a), false,
+        `"${a}" is an alias for both ${seen.get(a)} and ${target}`);
+      seen.set(a, target);
+    }
+  }
+});
+
+test("no alias collides with a literal field name", () => {
+  for (const [target, list] of Object.entries(HEADER_ALIASES)) {
+    for (const a of list) {
+      assert.equal(MAPPABLE_TARGETS.includes(a), false,
+        `"${a}" (alias for ${target}) is also a literal field name`);
+    }
+  }
+});
+
+test("suggestMapping(null) returns empty results rather than throwing", () => {
+  const { mapping, ambiguous } = suggestMapping(null);
+  assert.deepEqual(mapping, {});
+  assert.deepEqual(ambiguous, []);
+});
+
+test("two headers normalizing to the same string mark that target ambiguous", () => {
+  // Headers that normalize to "price": "price", "Price", "PRICE", "Sale Price" (if it were an alias)
+  // Using two aliases that both map to price: one existing and one hypothetical
+  // Actually, let's use headers that normalize to different targets to test collision.
+  // Better: use two columns that normalize to the exact same string (e.g., with spaces and hyphens)
+  const { mapping, ambiguous } = suggestMapping(["Sale Price", "sale-price"]);
+  // Both normalize to "sale_price" which is an alias for "price"
+  assert.equal(mapping.sale_price, undefined, "ambiguous alias should not be suggested");
+  assert.ok(ambiguous.includes("price"), "price target should be marked ambiguous");
 });

@@ -51,6 +51,7 @@ async function boot(env) {
       SUPABASE_SERVICE_KEY: "",
       STRIPE_SECRET_KEY: "",
       PRO_ENABLED: "",
+      TESTER_PASSKEY: "",
       ...env,
     },
     stdio: "ignore",

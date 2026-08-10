@@ -167,6 +167,21 @@ function proEnabledFor(user) {
   return PRO_ENABLED && ENT.inAudience(user, PRO_AUDIENCE);
 }
 
+// Optional shared passkey that comps Pro to a signed-in account (the beta
+// tester door). Deliberately NOT ADMIN_KEY: that key also unlocks /admin,
+// /dev and /contacts, so handing it to testers would hand out the analytics,
+// the lead list and the dev tools along with it. Unset = POST
+// /api/redeem-passkey does not exist (404), which is what keeps this inert on
+// any deployment that never configured it.
+//
+// Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
+// devices and survives a passkey rotation — and revoking one tester is a
+// one-row UPDATE, without changing the passkey for everyone else. See the
+// comped-tester branch in entitlements.js for what it grants (everything Pro
+// except the broker vault) and what it cannot override (PRO_ENABLED, and a
+// real paid subscription).
+const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
+
 // Stripe. Keys live only in the environment — never in the repo, never in a
 // response, never in the browser. The price IDs are not secret (they identify
 // a product, they do not authorize anything), but they are configured rather
@@ -866,6 +881,20 @@ async function updateUserPassword(id, password_hash) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.password_hash = password_hash; await saveAccountStore(); }
 }
+// Grants comped Pro to one account (the redeemed tester passkey).
+//
+// THROWS on a Supabase failure rather than returning false, unlike the
+// fire-and-forget writes elsewhere in this file: the caller answers the
+// visitor with "you're in", and a swallowed failure there means someone is
+// told they have Pro that they do not have and cannot get by trying again.
+async function setUserTester(id) {
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { pro_tester: true });
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.pro_tester = true; await saveAccountStore(); }
+}
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -936,7 +965,17 @@ async function getSessionUser(req) {
   if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
   try {
     const user = await findUserById(sess.user_id);
-    return user ? { id: user.id, email: user.email, name: user.name || "" } : null;
+    return user ? {
+      id: user.id,
+      email: user.email,
+      name: user.name || "",
+      // The comped-tester flag. Narrowing this object is deliberate (it is what
+      // stops a password hash reaching a caller), which means a new entitlement
+      // input has to be added HERE or it never reaches computeEntitlements at
+      // all — the feature would be silently inert with nothing failing.
+      // Boolean() so a missing column (deploy-then-migrate) reads as false.
+      pro_tester: Boolean(user.pro_tester),
+    } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
 // Route guard: replies 401 itself; callers bail on null.
@@ -1296,8 +1335,13 @@ async function getEntitlements(user, reportId, admin = false) {
     findReportPurchase(user && user.id, reportId),
     getExportUsage(user && user.id, ENT.usagePeriod(now)),
   ]);
+  // Deliberately NOT a short-circuit above the DB reads, unlike the admin
+  // branch: a tester may also be a paying subscriber, and entitlements.js
+  // resolves the comped branch only when there is no live subscription to
+  // prefer. Reading the subscription is what makes that possible.
+  const tester = Boolean(user && user.pro_tester);
   return ENT.computeEntitlements({
-    user, subscription, purchase, usage, reportId, now, enabled: true,
+    user, subscription, purchase, usage, reportId, now, enabled: true, tester,
   });
 }
 
@@ -4440,7 +4484,8 @@ const CN_LOGO_LIGHT =
 //   Your vault          pro.canUseVault, never a plan test, and NOT gated on
 //                       `billing` — a comped admin has the vault with no Stripe
 //   Manage billing      a Stripe customer exists (status set, not "none") and
-//                       is not the comped "admin" status, which has no portal
+//                       is not the comped "admin" or "tester" status, neither
+//                       of which has a Stripe customer behind it
 const ACCOUNT_NAV_CSS = `
 /* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.
    Load-bearing: .hdr nav .dd a sets display:block, which out-specifies the
@@ -4509,7 +4554,7 @@ const ACCOUNT_NAV_JS =
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
   `show($("navUpgrade"),live&&!isPro);` +
-  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin);` +
+  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin&&!pro.tester);` +
   `});` +
   `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
@@ -10220,6 +10265,59 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Redeem the tester passkey: comped Pro for a signed-in account --------
+  //
+  // Refusal order mirrors the vault's openVault() and requireBroker(): the
+  // feature not existing, then the caller, then the secret.
+  //
+  // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
+  // /contacts, so it can never be the thing handed to testers; this grants
+  // Pro and nothing else, and touches neither the dashboards nor the
+  // header-only `internal` bypass in /api/comps.
+  if (req.method === "POST" && req.url === "/api/redeem-passkey") {
+    // Unset = the feature does not exist on this deployment. 404 rather than
+    // 403, matching how the ADMIN_KEY-gated routes go dark when unconfigured:
+    // a probe cannot tell a wrong code from a deployment that has no code.
+    if (!TESTER_PASSKEY) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        // Tighter than the account routes' 10: this guards a SHARED secret,
+        // and legitimate use is one redemption per person, ever.
+        if (rateLimited("passkey:" + clientIp(req), 5, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const user = await getSessionUser(req);
+        // The grant is stored on an account, so there is nothing to store it
+        // on for an anonymous caller. Checked BEFORE the secret compare so a
+        // signed-out prober cannot use this route to test codes at all.
+        if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
+        // Idempotent: a second redemption is a no-op, not an error. Also
+        // checked before the compare, so someone who already has access
+        // cannot be told "incorrect code" by a rotated passkey.
+        if (user.pro_tester) return sendJson(res, 200, { ok: true, already: true });
+        const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
+        if (!secretMatches(passkey, TESTER_PASSKEY)) {
+          return sendJson(res, 401, { error: "That code isn't right." });
+        }
+        await setUserTester(user.id);
+        console.log(`Tester passkey redeemed by ${user.email}`);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        // setUserTester throws on a failed write — never report success for a
+        // grant that did not land.
+        console.error("redeem-passkey error:", err);
+        return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
+      }
+    });
+    return;
+  }
+
   // --- Portfolio: the signed-in user's saved properties --------------------
   if (req.url === "/api/portfolio" || req.url.startsWith("/api/portfolio?")) {
     if (req.method === "GET") {
@@ -12378,6 +12476,14 @@ const server = http.createServer((req, res) => {
           // and to keep billing controls (which would 503 or 400 at Stripe)
           // away from an account that never bought anything.
           admin: ent.admin === true,
+          // Comped tester access. Presentation only, like every field here —
+          // the routes re-resolve entitlements server-side, so editing this
+          // response relabels a plan card and unlocks nothing.
+          tester: ent.tester === true,
+          // Whether this deployment has a tester passkey at all, so the pricing
+          // modal can hide a redeem row that could only ever fail. NOT a secret and
+          // not an entitlement: it says a door exists, never what opens it.
+          testerPasskey: Boolean(TESTER_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
@@ -13624,4 +13730,10 @@ server.listen(PORT, () => {
   } else {
     console.log("⭐ Pro tier disabled (set PRO_ENABLED=on once the Pro DDL has been run).");
   }
+  // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
+  // with migration 022 not yet run looks like a working deployment until a
+  // real tester's redemption 500s.
+  console.log(TESTER_PASSKEY
+    ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
+    : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
 });

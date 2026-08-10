@@ -186,6 +186,19 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The "Manage billing" button 400s for a comped account (no Stripe
+  // customer behind either "admin" or "tester" status) — this pins that the
+  // emitted hydration script actually excludes BOTH, matching index.html's
+  // hasBillingHistory(). A prior version excluded only pro.admin, which left
+  // a comped tester clicking a button that always fails. A markup-only check
+  // (no redemption call needed) so it costs nothing against the route's
+  // per-IP limiter.
+  await t.test("the account-nav billing button excludes comped testers, not just admins", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    assert.match(html, /pro\.status\)&&pro\.status!=="none"&&!pro\.admin&&!pro\.tester/,
+      "ACCOUNT_NAV_JS's navBilling visibility must exclude pro.tester alongside pro.admin");
+  });
+
   // /brokers' "Upgrade to Pro" link hides itself for members via the shared
   // hydration script. Two halves that must both exist or the link either
   // never hides (id missing from the script) or never renders (id missing
@@ -864,5 +877,113 @@ test("market explorer with the guest gate disabled", async (t) => {
     assert.equal(r.status, 500);
     const j = await r.json();
     assert.match(j.error, /ANTHROPIC_API_KEY/);
+  });
+});
+
+// --- The tester passkey -----------------------------------------------------
+//
+// A shared code that comps Pro to a SIGNED-IN account, separate from
+// ADMIN_KEY (which also unlocks /admin, /dev and /contacts). entitlements.js
+// already proves what the flag grants; this proves the door is wired: that it
+// does not exist when unconfigured, that it refuses an anonymous caller and a
+// wrong code, and that a correct code actually reaches /api/config.
+//
+// No Supabase in this environment, so accounts and the pro_tester flag live in
+// the git-ignored account-store.json fallback — which is exactly why this can
+// run for free with no database.
+
+test("tester passkey", async (t) => {
+  await t.test("the route does not exist when TESTER_PASSKEY is unset", async () => {
+    const srv = await boot({});
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/api/redeem-passkey", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ passkey: "anything" }),
+    });
+    assert.equal(r.status, 404, "an unconfigured deployment must not answer this route");
+
+    // /api/config must say so too, so the pricing modal can hide the "Have a
+    // code?" row rather than show a control that can only ever fail. A plain
+    // /api/config fetch, not a redeem call, so it costs nothing against the
+    // route's per-IP limiter.
+    const cfg = await (await fetch(srv.base + "/api/config")).json();
+    assert.equal(cfg.pro.testerPasskey, false);
+  });
+
+  await t.test("configured: refuses anonymous and wrong codes, accepts the right one", async () => {
+    const PASSKEY = "let-me-in-please";
+    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: PASSKEY });
+    t.after(() => srv.stop());
+
+    const redeem = (passkey, cookie) => fetch(srv.base + "/api/redeem-passkey", {
+      method: "POST",
+      headers: Object.assign({ "content-type": "application/json" }, cookie ? { cookie } : {}),
+      body: JSON.stringify({ passkey }),
+    });
+
+    // Anonymous, even with the right code: the grant lives on an account.
+    const anon = await redeem(PASSKEY);
+    assert.equal(anon.status, 401);
+
+    // Make a real account and keep its session cookie.
+    const email = `tester-${Date.now()}@example.com`;
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "correct-horse-battery" }),
+    });
+    assert.equal(signup.status, 200, "signup should succeed against the file store");
+    const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_session="), "expected a session cookie, got " + cookie);
+
+    // Signed in but wrong code.
+    const wrong = await redeem("not-the-passkey", cookie);
+    assert.equal(wrong.status, 401);
+
+    // Not a tester yet.
+    const before = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(before.pro.tester, false);
+    assert.equal(before.pro.isPro, false);
+    // A configured deployment reports the door exists, independent of
+    // whether THIS caller has redeemed it — that is what lets the pricing
+    // modal show the row before anyone has typed a code.
+    assert.equal(before.pro.testerPasskey, true);
+
+    // The right code, signed in.
+    const ok = await redeem(PASSKEY, cookie);
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).ok, true);
+
+    // ...and it reaches the entitlements the UI reads.
+    const after = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(after.pro.tester, true);
+    assert.equal(after.pro.isPro, true);
+    assert.equal(after.pro.status, "tester");
+    // The one capability a tester is deliberately denied.
+    assert.equal(after.pro.canUseVault, false);
+
+    // Redeeming twice is idempotent, not an error.
+    const again = await redeem(PASSKEY, cookie);
+    assert.equal(again.status, 200);
+    assert.equal((await again.json()).already, true);
+
+    // The idempotency check must run BEFORE the secret compare, not after:
+    // once someone already has access, even a WRONG code must still answer
+    // "already: true" rather than "incorrect code" (which would happen if a
+    // rotated or mistyped passkey were compared first). This is the only
+    // assertion that actually pins the ordering the route's comment claims —
+    // the same-correct-code idempotency check above would still pass if a
+    // future edit swapped the two checks.
+    //
+    // Call budget: this brings the route's per-IP total in this test to 5
+    // (anon, wrong, ok, again, this one), exactly the 5-per-15-minute limit
+    // (rateLimited blocks only when hits > max, so the 5th still goes
+    // through). There is no headroom left in this test for another
+    // /api/redeem-passkey call — a new case needs its own boot() or a fresh
+    // client IP.
+    const wrongAfter = await redeem("still-not-the-passkey", cookie);
+    assert.equal(wrongAfter.status, 200);
+    assert.equal((await wrongAfter.json()).already, true);
   });
 });

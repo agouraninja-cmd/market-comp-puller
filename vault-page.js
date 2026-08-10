@@ -322,12 +322,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
          consolation prize.
          ------------------------------------------------------------------ -->
     <section id="firstRun" class="hide">
-      <h2>Start here</h2>
       <div class="steps">
         <div class="step">
           <span class="stepn">1</span>
           <div>
-            <h3>Build your comp set</h3>
+            <h3>Build your own comp set</h3>
             <p>Upload closed deals.</p>
             <ul>
               <li>Appears in your reports</li>

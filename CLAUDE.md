@@ -1339,11 +1339,16 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       the disclosure superseded that); the trust line restates it as soon as
       there is a comp, and the publish flow makes it again at the one point
       where it can be acted on. The step headings are the owner's
-      ("Build your comp set" / "Or watch your markets for leads", 2026-08-10
+      ("Build your own comp set" / "Or watch your markets for leads", 2026-08-10
       spec — they superseded a same-day "Add your comps"/"Add your markets"
       pass), each over one short line and three bullets; do not restore the
       explanatory prose to the card face without asking — it belongs in the
-      collapsed disclosures.
+      collapsed disclosures. The panel itself carries **no heading**: "Start
+      here" was cut on 2026-08-10 (twice, the second time after the
+      restructure restored it) because a numbered 1 and 2 under two headings
+      already say where to start. `#firstRun` is not a `section+section`, so
+      it takes no top padding and `.steps`' own top margin collapses into the
+      section's — the gap is unchanged with the h2 gone, and no CSS pins it.
     - **There is exactly ONE `<input type=file>`.** Step 1's button and the
       ordinary "Add comps" button both call `$("file").click()`. Two inputs
       would mean two values and two change handlers, and an upload started

@@ -163,9 +163,28 @@ the page holds would therefore silently truncate exactly the large books that
 most need exporting, which is the same silent-data-loss failure the CSV mapper
 exists to prevent. This route pages server-side until the vault is exhausted.
 
-- **Template-shaped**, in the exact column order `TEMPLATE_COLUMNS` defines, so
+- **Template-shaped**, leading with `TEMPLATE_COLUMNS` in its exact order, so
   the file re-imports with no mapping screen: a file already in our own column
   names skips that screen by design.
+- **Plus every optional per-type column that actually carries data.**
+  `TEMPLATE_COLUMNS` alone is NOT the export shape, and assuming it was is a
+  bug this spec originally contained. `OPTIONAL_SPEC_COLUMNS` (`clear_height`,
+  `units`, `lot_acres` and nine more) are importable, are stored on
+  `broker_comps`, and are named in the template's own guidance as columns a
+  broker may add. An export of `TEMPLATE_COLUMNS` only would drop them
+  silently, so a broker who exported to fix a price would re-import a book with
+  every clear height gone. The export therefore appends each
+  `OPTIONAL_SPEC_COLUMNS` name that is non-null on at least one exported row,
+  in that constant's own order. A book with no per-type data gets exactly
+  `TEMPLATE_COLUMNS` and no trailing empty columns.
+- **`lat` and `lng` come from the joined property, not the comp.** They are in
+  `TEMPLATE_COLUMNS` but they are not columns on `broker_comps`; they live on
+  `broker_properties` one join away, which is why `vault-api.js` keeps them in
+  a separate `PROPERTY_FIELDS` list. An export built from `broker_comps` alone
+  would emit them empty, and re-importing that file would strip the
+  coordinates and send a private address back out to a third-party geocoder on
+  the next report. That is a privacy regression, not merely data loss, so the
+  export route joins `broker_properties` and a test covers the round trip.
 - **Data rows only**, no `#` guidance lines. The template teaches; an export
   carries data.
 - **The whole vault**, ignoring the dashboard's current filter. The button says
@@ -199,12 +218,17 @@ Two consequences, both intended and both worth stating in the UI:
   collision case.
 - Export row shaping tested pure, including a comp with every optional field
   empty.
-- **A test pinning the export's headers against `TEMPLATE_COLUMNS`.** This is
-  the one that matters most over time: it fails the build the next time a
-  per-type field is added through the `add-comp-field` skill without the export
-  learning about it, which is the way the round trip would otherwise break
-  quietly. It is the same shape as the existing test pinning the template's
-  guidance text against `PROPERTY_TYPES` and `OPTIONAL_SPEC_COLUMNS`.
+- **Header tests pinning the export against both constants.** An empty book
+  exports exactly `TEMPLATE_COLUMNS`; a book carrying a per-type value exports
+  that column too, and only the ones carrying data. These fail the build the
+  next time a per-type field is added through the `add-comp-field` skill
+  without the export learning about it, which is how the round trip would
+  otherwise break quietly. Same shape as the existing test pinning the
+  template's guidance against `PROPERTY_TYPES` and `OPTIONAL_SPEC_COLUMNS`.
+- **A round-trip test**: build rows, export them, run the CSV back through
+  `parseUpload`, and assert every value survives, coordinates included. This is
+  the single test that would have caught both of the export flaws recorded in
+  section 5.
 - `test/routes.test.js` gets the gate wiring for all four endpoints: the
   401/403/503 order, and that each refuses a comp id belonging to another user.
 

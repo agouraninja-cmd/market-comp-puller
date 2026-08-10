@@ -4011,7 +4011,15 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
           }
         } else if (ev.type === "message_delta") {
           stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          if (ev.usage) usage = { ...usage, ...PROVIDER.normalizeUsage(ev.usage) };
+          // normalizeUsage always emits all four keys, filling absent ones
+          // with 0 (Number(undefined) || 0). A message_delta frame carries
+          // only output_tokens, so a plain spread would zero the input and
+          // cache counts that message_start already established. Overwrite
+          // only the keys this delta actually carried.
+          if (ev.usage) {
+            const d = PROVIDER.normalizeUsage(ev.usage);
+            for (const k of Object.keys(d)) if (d[k]) usage[k] = d[k];
+          }
         }
       }
     } catch (err) {

@@ -24,6 +24,8 @@ function buildRequestBody({ model, prompt, maxComps, searchUses, stream }) {
     // and is what keeps the notes cap a QUALITY instruction rather than a hard
     // truncation that severs the JSON mid-array.
     max_tokens: maxComps > 8 ? 10000 : 8000,
+    // searchUses already accounts for the subject-size lookup getting extra
+    // searches, so it does not crowd out the comp searches themselves.
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchUses }],
     messages: [{
       role: "user",
@@ -33,7 +35,10 @@ function buildRequestBody({ model, prompt, maxComps, searchUses, stream }) {
         // The web_search loop re-runs inference on EVERY round and re-reads
         // this whole prompt at full input price each time. cache_control makes
         // rounds 2..N read it at ~0.1x. It relies on a PREFIX match, so the
-        // prompt must stay byte-identical across a request's rounds.
+        // prompt must stay byte-identical across a request's rounds. Sonnet's
+        // minimum cacheable prefix is 1,024 tokens and this prompt is about 3x
+        // that, so it always qualifies, but a future prompt trim that took it
+        // under 1,024 would silently stop caching, with no error.
         cache_control: { type: "ephemeral" },
       }],
     }],

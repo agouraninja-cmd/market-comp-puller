@@ -275,10 +275,11 @@ test("bare environment", async (t) => {
     assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
   });
 
-  // Per-comp edit/delete and add are new doors into the same private table as
-  // every other vault route, so they get the same 401-before-anything-else
-  // proof: openVault must refuse before the id in the query string, or the
-  // JSON body, is ever read.
+  // Per-comp edit/delete is a new door into the same private table as every
+  // other vault route, so it gets the same 401-before-anything-else proof:
+  // openVault must refuse before the id in the query string, or the JSON
+  // body, is ever read. The add-comp (POST) and export.csv gate tests live
+  // beside the routes that own them, not here.
   await t.test("the comp edit routes refuse an anonymous caller", async () => {
     for (const method of ["PATCH", "DELETE"]) {
       const r = await fetch(srv.base + "/api/vault/comp?id=00000000-0000-0000-0000-000000000000", {
@@ -288,20 +289,6 @@ test("bare environment", async (t) => {
       });
       assert.equal(r.status, 401, method + " must refuse before it reads anything");
     }
-  });
-
-  await t.test("the add-comp route refuses an anonymous caller", async () => {
-    const r = await fetch(srv.base + "/api/vault/comp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ address: "1 A St, Boise, ID" }),
-    });
-    assert.equal(r.status, 401);
-  });
-
-  await t.test("the vault export refuses an anonymous caller", async () => {
-    const r = await fetch(srv.base + "/api/vault/export.csv");
-    assert.equal(r.status, 401);
   });
 
   // NOT COVERED HERE, and deliberately: the 403-not-a-broker and

@@ -11590,9 +11590,12 @@ const server = http.createServer((req, res) => {
           // marketOf lives in server.js and must agree byte for byte with
           // comp_corpus.market, so a comp published later needs no translation.
           row.market = marketOf(row.address);
-          // linkVaultProperties (and PROPS.propertyRowsFrom underneath it) skip
-          // any row missing user_id — the same field the upload route stamps
-          // onto every row before either write, below.
+          // validateEdit's row is built by normalizeRow, which never sets
+          // user_id, and PROPS.propertyRowsFrom silently skips any row
+          // missing it — so without this line every edit would quietly no-op
+          // the property-dimension link rather than fail visibly. The upload
+          // route stamps the same field onto every row before either write,
+          // for the same reason.
           row.user_id = user.id;
 
           // A collision is answered by name rather than surfaced as a 500 from

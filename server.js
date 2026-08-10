@@ -10198,6 +10198,59 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Redeem the tester passkey: comped Pro for a signed-in account --------
+  //
+  // Refusal order mirrors the vault's openVault() and requireBroker(): the
+  // feature not existing, then the caller, then the secret.
+  //
+  // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
+  // /contacts, so it can never be the thing handed to testers; this grants
+  // Pro and nothing else, and touches neither the dashboards nor the
+  // header-only `internal` bypass in /api/comps.
+  if (req.method === "POST" && req.url === "/api/redeem-passkey") {
+    // Unset = the feature does not exist on this deployment. 404 rather than
+    // 403, matching how the ADMIN_KEY-gated routes go dark when unconfigured:
+    // a probe cannot tell a wrong code from a deployment that has no code.
+    if (!TESTER_PASSKEY) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        // Tighter than the account routes' 10: this guards a SHARED secret,
+        // and legitimate use is one redemption per person, ever.
+        if (rateLimited("passkey:" + clientIp(req), 5, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const user = await getSessionUser(req);
+        // The grant is stored on an account, so there is nothing to store it
+        // on for an anonymous caller. Checked BEFORE the secret compare so a
+        // signed-out prober cannot use this route to test codes at all.
+        if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
+        // Idempotent: a second redemption is a no-op, not an error. Also
+        // checked before the compare, so someone who already has access
+        // cannot be told "incorrect code" by a rotated passkey.
+        if (user.pro_tester) return sendJson(res, 200, { ok: true, already: true });
+        const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
+        if (!secretMatches(passkey, TESTER_PASSKEY)) {
+          return sendJson(res, 401, { error: "That code isn't right." });
+        }
+        await setUserTester(user.id);
+        console.log(`Tester passkey redeemed by ${user.email}`);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        // setUserTester throws on a failed write — never report success for a
+        // grant that did not land.
+        console.error("redeem-passkey error:", err);
+        return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
+      }
+    });
+    return;
+  }
+
   // --- Portfolio: the signed-in user's saved properties --------------------
   if (req.url === "/api/portfolio" || req.url.startsWith("/api/portfolio?")) {
     if (req.method === "GET") {
@@ -12356,6 +12409,10 @@ const server = http.createServer((req, res) => {
           // and to keep billing controls (which would 503 or 400 at Stripe)
           // away from an account that never bought anything.
           admin: ent.admin === true,
+          // Comped tester access. Presentation only, like every field here —
+          // the routes re-resolve entitlements server-side, so editing this
+          // response relabels a plan card and unlocks nothing.
+          tester: ent.tester === true,
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,

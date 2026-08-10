@@ -196,7 +196,7 @@
   // Is this displayed $/SF an outlier against the hero's displayed band?
   // Returns null, or { dir, pct } where pct is the integer percent distance
   // from the NEAREST band edge (+38 means 38% above the band top).
-  // CAUTION: 25% and the nearest-edge delta semantics are the SAME product rule as
+  // ⚠ 25% and the nearest-edge delta semantics are the SAME product rule as
   // gut-check.js's OUTLIER_PCT/outlierOf and its band-delta math. Change them together.
   var OUTLIER_PCT = 0.25;
   function outlierOf(ppsf, band) {

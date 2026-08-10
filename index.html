@@ -3598,6 +3598,7 @@
 
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
+    currentPsfBand = null;
     const card = document.getElementById("ownerHero");
     if (!meta) { card.classList.add("hidden"); return; }
     // Market-level search (a city like "Boise ID", no street number) — there's

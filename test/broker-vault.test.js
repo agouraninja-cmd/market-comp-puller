@@ -22,7 +22,7 @@ const {
   validateMapping, applyHeaderMapping,
   inspectCsv, normalizedHeaderRow,
   validateEdit, EDITABLE_FIELDS,
-  exportColumns, exportCsv,
+  exportColumns, exportCsv, exportRowsWithCoords,
 } = require("../broker-vault");
 
 // --- CSV reading -----------------------------------------------------------
@@ -657,6 +657,53 @@ test("the export emits no comment lines", () => {
   }];
   assert.ok(!exportCsv(rows).split("\n").some((l) => l.startsWith("#")),
     "the template teaches; an export carries data");
+});
+
+// --- exportRowsWithCoords: the property-coordinate join --------------------
+//
+// The regression this guards against: Number(null) === 0 and
+// Number.isFinite(0) === true, so coercing an unlocated property's lat/lng
+// BEFORE checking for null reads it as a real coordinate at 0,0 — Null
+// Island — which normalizeRow then refuses on re-import. A property with a
+// real lat but a missing lng has the opposite failure: the missing side
+// coerces to 0 and the pair re-imports cleanly as a wrong coordinate,
+// silently, in the Atlantic.
+
+test("a property with no location on file exports blank coordinates, not zero", () => {
+  const comps = [{ id: "c1", property_id: "p1", address: "1 A St" }];
+  const coords = new Map([["p1", { lat: null, lng: null }]]);
+  const rows = exportRowsWithCoords(comps, coords);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].lat, undefined);
+  assert.equal(rows[0].lng, undefined);
+});
+
+test("a real coordinate pair survives the join", () => {
+  const comps = [{ id: "c1", property_id: "p1", address: "1 A St" }];
+  const coords = new Map([["p1", { lat: 43.6, lng: -116.2 }]]);
+  const rows = exportRowsWithCoords(comps, coords);
+  assert.equal(rows[0].lat, 43.6);
+  assert.equal(rows[0].lng, -116.2);
+});
+
+test("a comp with no property_id exports blank coordinates", () => {
+  const comps = [{ id: "c1", property_id: null, address: "1 A St" }];
+  const rows = exportRowsWithCoords(comps, new Map());
+  assert.equal(rows[0].lat, undefined);
+  assert.equal(rows[0].lng, undefined);
+});
+
+test("the null-coordinate case round-trips cleanly back through the importer", () => {
+  const comps = [{
+    id: "c1", property_id: "p1", address: "100 Main St, Boise, ID",
+    property_type: "Industrial", transaction: "sale", deal_date: "2025-03-14",
+  }];
+  const coords = new Map([["p1", { lat: null, lng: null }]]);
+  const rows = exportRowsWithCoords(comps, coords);
+  const parsed = parseUpload(exportCsv(rows));
+  assert.equal(parsed.ok, true, parsed.errors && parsed.errors.join("; "));
+  assert.equal(parsed.rows.length, 1, parsed.errors && parsed.errors.join("; "));
+  assert.equal(parsed.rows[0]._lat, undefined);
 });
 
 // --- publishing ------------------------------------------------------------

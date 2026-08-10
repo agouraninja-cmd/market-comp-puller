@@ -963,6 +963,46 @@ function exportColumns(rows) {
 }
 
 /**
+ * Joins a broker's stored comps with their (separately fetched) property
+ * coordinates, producing the rows exportCsv actually writes.
+ *
+ * Pulled out of server.js so this join can be tested with no database: it is
+ * the exact spot the "both or neither" rule has to hold, and the whole
+ * reason this needs its own function is that `Number(null) === 0` and
+ * `Number.isFinite(0) === true`. A property row with no location on file
+ * (today, essentially every one — import-time geocoding is deferred) has
+ * `lat: null, lng: null`, and coercing before null-checking reads that as a
+ * located building at 0,0: Null Island, which `normalizeRow` refuses on
+ * re-import ("lat and lng are both 0"). A lone real latitude has the same
+ * failure the other way — `lng` coerces to 0 and the pair re-imports
+ * cleanly as a wrong coordinate in the Atlantic, which is worse, because
+ * nothing refuses it. Checking `!= null` first is what makes "no
+ * coordinates on file" export blank instead of zero.
+ *
+ * NOT the same rule `attachPropertyCoords` enforces in server.js, despite
+ * the comment that used to say so — that function has this identical
+ * `Number(null)` flaw and should not be trusted as a reference until it is
+ * fixed too (tracked separately; it drives live blended comps, not export).
+ *
+ * `coordsById` is a Map of property_id -> { lat, lng } (or absent/partial);
+ * a comp with no `property_id`, or none found in the map, exports blank.
+ */
+function exportRowsWithCoords(comps, coordsById) {
+  const list = Array.isArray(comps) ? comps : [];
+  const coords = coordsById instanceof Map ? coordsById : new Map();
+  return list.map((c) => {
+    const p = coords.get(c && c.property_id) || {};
+    const located = p.lat != null && p.lng != null &&
+      Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng));
+    return {
+      ...c,
+      lat: located ? Number(p.lat) : undefined,
+      lng: located ? Number(p.lng) : undefined,
+    };
+  });
+}
+
+/**
  * A broker's own comps as CSV, in the shape our own importer reads.
  *
  * The round trip is the requirement: export, fix fifty rows in Excel,
@@ -1167,6 +1207,7 @@ module.exports = {
   templateCsv,
   exportColumns,
   exportCsv,
+  exportRowsWithCoords,
   TEMPLATE_COLUMNS,
   OPTIONAL_SPEC_COLUMNS,
   PROPERTY_TYPES,

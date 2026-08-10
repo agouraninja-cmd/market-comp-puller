@@ -11812,19 +11812,15 @@ const server = http.createServer((req, res) => {
         // export with empty lat/lng — correct, because they never had
         // coordinates to lose. Do not add a geocoding fallback here.
         //
-        // Both or neither, same rule attachPropertyCoords already enforces
-        // (⚠ near-duplicate of that check, not merged here on purpose — see
-        // its comment). Without it a property row with lat set and lng null
-        // exports a lone latitude, which normalizeRow then REFUSES on
-        // re-import ("lat and lng must be given together"), failing that row
-        // of the broker's own file on the very next upload.
-        const rows = comps.map((c) => {
-          const p = coords.get(c.property_id) || {};
-          const lat = Number(p.lat);
-          const lng = Number(p.lng);
-          const located = Number.isFinite(lat) && Number.isFinite(lng);
-          return { ...c, lat: located ? lat : undefined, lng: located ? lng : undefined };
-        });
+        // Both or neither, checked in the pure, tested
+        // VAULT.exportRowsWithCoords (⚠ near-duplicate of the same rule in
+        // attachPropertyCoords above, not merged here on purpose — see that
+        // function's comment; it has the identical Number(null) flaw this
+        // helper was written to fix, so do not treat it as a reference).
+        // Without the null check a property row with no location on file
+        // (lat: null, lng: null — today, essentially every one) exports
+        // 0,0, which re-imports as a real coordinate: Null Island.
+        const rows = VAULT.exportRowsWithCoords(comps, coords);
 
         const csv = VAULT.exportCsv(rows);
         res.writeHead(200, {

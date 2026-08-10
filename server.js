@@ -12411,6 +12411,9 @@ const server = http.createServer((req, res) => {
     // script calls the global GUTCHECK, so this file must never be stale
     // relative to the page that depends on it.
     "/gut-check.js": { file: "gut-check.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Same maxAge: 0 rule again: index.html's Market Explorer calls the
+    // global EXPLOREQ, so this file must never be stale relative to it.
+    "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },

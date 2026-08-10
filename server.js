@@ -11736,13 +11736,29 @@ const server = http.createServer((req, res) => {
         }
         const PAGE = 1000;
         const comps = [];
-        for (let offset = 0; ; offset += PAGE) {
+        for (let offset = 0; ; ) {
+          // order carries a unique secondary key (id, the primary key from
+          // migration 013). deal_date alone is day-granularity and routinely
+          // ties across many rows in an imported book; Postgres only
+          // guarantees stable OFFSET/LIMIT paging when the ORDER BY produces
+          // a unique row order, so without the tiebreaker a comp on the
+          // boundary between two pages can be ordered differently between
+          // the two fetches and silently dropped (or duplicated).
           const page = await sbRequest("GET",
             `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
-            `&order=deal_date.desc&limit=${PAGE}&offset=${offset}`);
+            `&order=deal_date.desc,id.asc&limit=${PAGE}&offset=${offset}`);
           if (!page || !page.length) break;
           comps.push(...page);
-          if (page.length < PAGE) break;
+          // Advance by the rows actually returned, NOT by PAGE. PostgREST
+          // honours a project-level Max Rows setting by returning fewer rows
+          // than requested with no error, so a short page can mean a
+          // server-side cap rather than the end of the book — treating it as
+          // exhaustion (the old `page.length < PAGE` check) would silently
+          // truncate the export at whatever that cap is. Only an EMPTY page
+          // means the book is exhausted. The cost is one extra empty-page
+          // round trip when the book is an exact multiple of PAGE, which is
+          // the right trade for an export whose whole job is to be complete.
+          offset += page.length;
         }
 
         // Coordinates in TWO plain queries rather than a PostgREST embed. The

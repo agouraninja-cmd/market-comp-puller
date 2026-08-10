@@ -1297,8 +1297,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     watch. Four rules:
     - **It keys on comps AND uploads, never comps alone.** A broker whose
       import was entirely rejected, or who deleted every comp out of one, has
-      been through the door already; showing "Start here" again reads as their
-      work having been thrown away.
+      been through the door already; showing the first-run steps again reads as
+      their work having been thrown away.
     - **The trust line is hidden, not deleted.** That line exists to let a
       broker watch "0 published" stay at zero, which only means anything once
       there is something it could have counted. On day one it is a 0-0

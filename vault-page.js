@@ -314,8 +314,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
          consolation prize.
          ------------------------------------------------------------------ -->
     <section id="firstRun" class="hide">
-      <h2>Start here</h2>
-
       <div class="steps">
         <div class="step">
           <span class="stepn">1</span>
@@ -342,7 +340,6 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
             <p>Add the markets you cover and you will start seeing property owners in them
               who have asked for a valuation. Their details stay anonymous until you ask
               for an introduction, and CompNinja makes the introduction by hand.</p>
-            <p class="fine">Nothing to upload. This works on an empty vault.</p>
             <div class="row" style="margin-top:var(--s4)">
               <button class="btn ghost" id="frCoverage">Choose your markets</button>
             </div>
@@ -916,8 +913,8 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // ---- First run vs the real workspace --------------------------------------
   // Keyed on comps AND uploads, not comps alone. A broker whose only import was
   // entirely rejected, or who has deleted every comp out of an import, has
-  // already been through the door once — showing them "Start here" again would
-  // read as their work having been thrown away.
+  // already been through the door once — showing them the first-run steps again
+  // would read as their work having been thrown away.
   //
   // Everything hidden here is hidden because it is EMPTY, not because it is
   // unimportant: an empty table with a header row and a "nothing here yet" line
@@ -1367,8 +1364,8 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("mapSec").classList.remove("hide");
     $("addSec").classList.add("hide");
     // Hidden too, or a first-run broker — which the FIRST broker through this
-    // door is by definition — keeps "Start here" on screen above the panel
-    // that replaced step 1. closeMapper puts it back.
+    // door is by definition — keeps the first-run steps on screen above the
+    // panel that replaced step 1. closeMapper puts it back.
     $("firstRun").classList.add("hide");
     Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
       s.addEventListener("change",refreshMapper);

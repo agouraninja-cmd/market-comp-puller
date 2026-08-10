@@ -1023,3 +1023,47 @@ test("tester passkey", async (t) => {
     assert.equal((await wrongAfter.json()).already, true);
   });
 });
+
+// --- SEARCH_PROVIDER wiring --------------------------------------------------
+//
+// entitlements.js/comp-gate.js/stripe.js prove decisions are right in
+// isolation; this file exists to prove they are actually wired to a route.
+// The capability descriptor has exactly that hazard: capabilities.searchBudget
+// could be correct in search-provider-gemini.js and completely ignored by
+// server.js, and every unit test would still pass. /healthz reporting
+// `provider` and `search_budget` off PROVIDER.capabilities is the only
+// observable proof the server consults the descriptor at all, so that is what
+// gets asserted here rather than anything about search-provider-gemini.js
+// itself.
+
+test("SEARCH_PROVIDER wiring", async (t) => {
+  await t.test("gemini boots and reports it cannot cap the search budget", async () => {
+    const srv = await boot({ SEARCH_PROVIDER: "gemini", GEMINI_API_KEY: "test-key" });
+    try {
+      const body = await (await fetch(srv.base + "/healthz")).json();
+      assert.equal(body.provider, "gemini");
+      // Read off PROVIDER.capabilities, so a server.js that stopped consulting
+      // the descriptor reports the wrong value and fails here.
+      assert.equal(body.search_budget, false);
+    } finally { srv.stop(); }
+  });
+
+  await t.test("the default is anthropic, with a search budget", async () => {
+    const srv = await boot({});
+    try {
+      const body = await (await fetch(srv.base + "/healthz")).json();
+      assert.equal(body.provider, "anthropic");
+      assert.equal(body.search_budget, true);
+    } finally { srv.stop(); }
+  });
+
+  await t.test("an unrecognized SEARCH_PROVIDER refuses to boot", async () => {
+    // boot() throws "server exited early" when the child exits before /healthz.
+    // A silent fallback to anthropic would boot healthy and fail this test.
+    await assert.rejects(
+      () => boot({ SEARCH_PROVIDER: "bogus" }),
+      /exited early/,
+      "must exit rather than silently pick a provider",
+    );
+  });
+});

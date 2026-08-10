@@ -1230,7 +1230,7 @@
              majority of searches, so it belongs where an override belongs. -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <span id="subjectSummary">+ Refine <span class="text-[#68707E] font-normal">(size, NOI, price range, market note: optional, sharpens the estimate)</span></span>
+            <span id="subjectSummary">+ Refine <span class="text-[#68707E] font-normal">(size, NOI, cap rate, market note: optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
             <p id="subjectHint" class="text-xs text-[#68707E] mb-3">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size and property type come from public records automatically, so set a size here only to override what we found.</p>
@@ -1259,10 +1259,21 @@
                 <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 <p class="text-xs text-[#68707E] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
               </div>
-              <div>
-                <label class="rd-lab" for="targetPriceMax">Price max</label>
-                <input id="targetPriceMax" type="number" min="0" step="any" placeholder="e.g. 3400000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                <p class="text-xs text-[#68707E] mt-1">Optional upper bound; pairs with the price on the form to make a range.</p>
+              <div id="capRateWrap">
+                <!-- Took the Price max slot on 2026-08-10. That max earned its
+                     place when the asking price also lived down here; once the
+                     price moved up onto the form itself, a lone "max" in Refine
+                     was a control that only made sense if you remembered the
+                     field it belonged to. A cap rate is what a commercial owner
+                     actually reaches for, and it lights up an approach the
+                     report could not otherwise hear an opinion about: the
+                     income line values NOI at the MODEL's range and had no way
+                     to be told the owner disagrees. Browser-only, exactly like
+                     the NOI beside it - never in the /api/comps body, so never
+                     in the cache key. -->
+                <label class="rd-lab" for="capRate">Cap rate (%)</label>
+                <input id="capRate" type="number" min="0" step="0.01" placeholder="e.g. 6.25" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                <p class="text-xs text-[#68707E] mt-1">Your own cap rate. With NOI it adds an income-approach value line. Used only in your browser.</p>
               </div>
               <div>
                 <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
@@ -2503,9 +2514,15 @@
     document.getElementById("targetSizeLabel").textContent = SIZE_LABELS[type] || "Building size (SF)";
     // Clear as well as hide: a value typed under another type would otherwise
     // still be read on submit and produce an income approach for raw land.
-    const hideNoi = type === "Land";
-    if (hideNoi) document.getElementById("noi").value = "";
-    document.getElementById("noiWrap").classList.toggle("hidden", hideNoi);
+    // The cap rate travels with the NOI — every surface it drives needs an NOI
+    // to divide, so on Land it would be a control that can never do anything.
+    const hideIncome = type === "Land";
+    if (hideIncome) {
+      document.getElementById("noi").value = "";
+      document.getElementById("capRate").value = "";
+    }
+    document.getElementById("noiWrap").classList.toggle("hidden", hideIncome);
+    document.getElementById("capRateWrap").classList.toggle("hidden", hideIncome);
   }
 
   // Read the visible detail inputs into a flat object, dropping blanks so an
@@ -2860,20 +2877,22 @@
     if (e.isTrusted) document.getElementById("sizeEstimateNote").classList.add("hidden");
   });
   let subjectEditTimer = null;
-  ["targetSize", "targetSizeMax", "targetPrice", "targetPriceMax", "noi"].forEach((id) => {
+  ["targetSize", "targetSizeMax", "targetPrice", "capRate", "noi"].forEach((id) => {
     document.getElementById(id).addEventListener("input", () => {
       if (!currentParsed || !currentMeta) return;
       clearTimeout(subjectEditTimer);
       subjectEditTimer = setTimeout(() => {
         const sizeR = targetRange("targetSize", "targetSizeMax");
-        const priceR = targetRange("targetPrice", "targetPriceMax");
+        const priceR = targetRange("targetPrice", null);
         const noiVal = numericValue(document.getElementById("noi").value);
+        const capVal = numericValue(document.getElementById("capRate").value);
         currentMeta.subject = {
           sizeMin: sizeR ? sizeR.min : null,
           sizeMax: sizeR ? sizeR.max : null,
           priceMin: priceR ? priceR.min : null,
           priceMax: priceR ? priceR.max : null,
           noi: noiVal > 0 ? noiVal : null,
+          capRate: capVal > 0 ? capVal : null,
           // Read from the DOM, not merged from the old object — this rebuild
           // replaces subject wholesale, so anything not re-read is lost.
           details: readSubjectDetails(),
@@ -3036,7 +3055,9 @@
       if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
       if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
       if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
-      if (s.priceMax != null && s.priceMax !== s.priceMin) document.getElementById("targetPriceMax").value = s.priceMax;
+      // priceMax has no input to restore into since 2026-08-10; it survives in
+      // meta so pre-existing shares keep rendering their range on the subject row.
+      if (s.capRate != null) document.getElementById("capRate").value = s.capRate;
       renderResults(payload.data, meta);
       showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
     } catch (e) {
@@ -3472,9 +3493,14 @@
   // ----------------------------------------------------------------------------
   // Reads a min/max input pair as a range. Either box may be left blank
   // (single value); swapped bounds are tolerated. Returns null if empty.
+  // maxId is optional: the price lost its max input on 2026-08-10 and passes
+  // null, while the size kept both. A named-but-absent element contributes
+  // nothing rather than throwing, so a range that loses its upper bound
+  // degrades to a single figure instead of taking the whole render down.
   function targetRange(minId, maxId) {
+    const maxEl = maxId ? document.getElementById(maxId) : null;
     const a = numericValue(document.getElementById(minId).value);
-    const b = numericValue(document.getElementById(maxId).value);
+    const b = maxEl ? numericValue(maxEl.value) : NaN;
     if (!(a > 0) && !(b > 0)) return null;
     const lo = a > 0 ? a : b;
     const hi = b > 0 ? b : a;
@@ -3489,7 +3515,21 @@
       return { min: s[kind + "Min"], max: s[kind + "Max"] > 0 ? s[kind + "Max"] : s[kind + "Min"] };
     }
     return targetRange(kind === "size" ? "targetSize" : "targetPrice",
-                       kind === "size" ? "targetSizeMax" : "targetPriceMax");
+                       kind === "size" ? "targetSizeMax" : null);
+  }
+
+  // The owner's own cap rate, as a percent (6.25, not 0.0625). Same
+  // meta-then-form precedence as subjectRangeFromMeta, and for the same
+  // reason: a reopened saved report has no form input to read. Bounded — a
+  // rate outside 0-100 is a typo (a decimal 0.0625 or a stray keystroke), and
+  // dividing NOI by it would print a value wrong by orders of magnitude next
+  // to figures that are right.
+  function subjectCapRate(meta) {
+    const m = meta || currentMeta;
+    const stored = m && m.subject ? numericValue(m.subject.capRate) : NaN;
+    const el = document.getElementById("capRate");
+    const v = stored > 0 ? stored : (el ? numericValue(el.value) : NaN);
+    return v > 0 && v < 100 ? v : null;
   }
 
   function renderComparison(parsed) {
@@ -3786,7 +3826,7 @@
     // which also serves street-number-less real addresses ("One Wilshire Blvd").
     const hasStreetNumber = /^\s*\d+\s/.test(String(meta.address || ""));
     const s = meta.subject || {};
-    const hasUserSubject = [s.sizeMin, s.sizeMax, s.priceMin, s.priceMax, s.noi].some((v) => v > 0)
+    const hasUserSubject = [s.sizeMin, s.sizeMax, s.priceMin, s.priceMax, s.noi, s.capRate].some((v) => v > 0)
       || numericValue((s.details || {}).lot_acres) > 0;
     if (!hasStreetNumber && !hasUserSubject) { card.classList.add("hidden"); return; }
 
@@ -3952,40 +3992,63 @@
       muted: true,
     };
 
-    // Income approach: NOI (kept browser-side) over the model's market cap-rate range.
+    // Income approach: NOI (kept browser-side) over the model's market cap-rate
+    // range and, when the owner told us the rate they underwrite at, over
+    // theirs as a second line beside it. Two lines rather than a replacement —
+    // the point of asking for the rate is to read your own assumption AGAINST
+    // the market's, not to overwrite what the market said.
     const noi = meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
     const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
     const capLo = capR ? numericValue(capR.low) : NaN;
     const capHi = capR ? numericValue(capR.high) : NaN;
     const capOk = capLo > 0 && capHi >= capLo;
+    const userCap = subjectCapRate(meta);
+    const capPct = (v) => (Math.round(v * 100) / 100).toLocaleString();
 
-    // Built the same way whichever sales basis leads the hero, so the two
-    // headline branches can't drift apart. Takes the leading range so the
-    // agreement sentence compares like with like.
-    const incomeApproachEntry = (salesLo, salesHi) => {
-      if (!(noi && capOk)) {
-        // Land has no income to report — its NOI field is hidden, so pitching
-        // it here would point at a control the user cannot see.
-        if (meta.type === "Land") return null;
-        return {
+    // Built the same way whichever sales basis leads the hero, so the headline
+    // branches can't drift apart. Takes the leading range so the agreement
+    // sentence compares like with like. Returns 0-2 entries and every caller
+    // spreads them, so the market line and the owner's line can never be
+    // pushed in a different order or lose one another.
+    const incomeApproachEntries = (salesLo, salesHi) => {
+      const out = [];
+      if (noi && capOk) {
+        const incLo = noi / (capHi / 100);
+        const incHi = noi / (capLo / 100);
+        const agree = incLo <= salesHi && incHi >= salesLo
+          ? "The two approaches overlap, which strengthens the estimate."
+          : incLo > salesHi
+            ? "The income approach comes in higher than the sale comps: either the market prices this asset type below its income, or the NOI and cap-rate inputs deserve a second look."
+            : "The income approach comes in lower than the sale comps, worth a second look at the NOI and cap-rate inputs before leaning on either number.";
+        out.push({
           label: "Income approach",
-          text: "not run: enter your NOI under 'Refine' and the building gets valued on its income too.",
-          muted: true,
-        };
+          value: `${fmtTotal(incLo)} – ${fmtTotal(incHi)}`,
+          text: `your net operating income valued at the market's `
+            + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
+        });
       }
-      const incLo = noi / (capHi / 100);
-      const incHi = noi / (capLo / 100);
-      const agree = incLo <= salesHi && incHi >= salesLo
-        ? "The two approaches overlap, which strengthens the estimate."
-        : incLo > salesHi
-          ? "The income approach comes in higher than the sale comps: either the market prices this asset type below its income, or the NOI and cap-rate inputs deserve a second look."
-          : "The income approach comes in lower than the sale comps, worth a second look at the NOI and cap-rate inputs before leaning on either number.";
-      return {
+      if (noi && userCap) {
+        out.push({
+          label: capOk ? "Income approach (your cap rate)" : "Income approach",
+          value: fmtTotal(noi / (userCap / 100)),
+          text: capOk
+            ? `the same income at the ${capPct(userCap)}% rate you entered under 'Refine', to read against the market's range above.`
+            : `your net operating income valued at the ${capPct(userCap)}% cap rate you entered under 'Refine'. This search returned no market cap-rate range, so there is nothing here to check it against.`,
+        });
+      }
+      if (out.length) return out;
+      // Land has no income to report — its NOI field is hidden, so pitching
+      // it here would point at a control the user cannot see.
+      if (meta.type === "Land") return [];
+      return [{
         label: "Income approach",
-        value: `${fmtTotal(incLo)} – ${fmtTotal(incHi)}`,
-        text: `your net operating income valued at the market's `
-          + `${capLo}%–${capHi}% cap-rate range. ${agree}`,
-      };
+        // Two different shortfalls, and telling someone who already typed
+        // their NOI to type their NOI is how this line reads as broken.
+        text: noi
+          ? "not run: this search returned no market cap-rate range. Enter your own cap rate under 'Refine' and your NOI gets valued on it."
+          : "not run: enter your NOI under 'Refine' and the building gets valued on its income too.",
+        muted: true,
+      }];
     };
 
     // Sales comparison on a per-unit / per-acre basis, when the type trades
@@ -4071,8 +4134,7 @@
       // comps expressed in a different unit, not a separate approach.
       const altEntry = altBasisEntry(meta, s, saleComps, parsed);
       if (altEntry) entries.push(altEntry);
-      const incEntry = incomeApproachEntry(rr.low * sizeR.min, rr.high * sizeR.max);
-      if (incEntry) entries.push(incEntry);
+      entries.push(...incomeApproachEntries(rr.low * sizeR.min, rr.high * sizeR.max));
       entries.push(costApproachEntry);
       renderApproaches(entries);
     } else if (altRange) {
@@ -4127,8 +4189,7 @@
             + `per-square-foot basis across ${ppsfs.length} sale comps.`,
         });
       }
-      const incEntry = incomeApproachEntry(rr.low * qty, rr.high * qty);
-      if (incEntry) entries.push(incEntry);
+      entries.push(...incomeApproachEntries(rr.low * qty, rr.high * qty));
       entries.push(costApproachEntry);
       renderApproaches(entries);
     } else if (noi && capOk) {
@@ -4149,6 +4210,36 @@
           text: `your net operating income valued at the market's `
             + `${capLo}%–${capHi}% cap-rate range. This is the headline range above.`,
         },
+        // The owner's own rate against the market's, same as every other
+        // branch — reached through the shared builder so this headline can't
+        // grow a second copy of that line's wording.
+        ...(userCap ? incomeApproachEntries(loVal, hiVal).slice(1) : []),
+        {
+          label: "Sales comparison approach",
+          text: "not enough priced sale comps came back in this window to build a per-square-foot range.",
+          muted: true,
+        },
+        costApproachEntry,
+      ]);
+    } else if (noi && userCap) {
+      // Same shortfall as the branch above — no usable sale range — but the
+      // only cap rate we have is the owner's own. A single rate produces a
+      // single figure, and it is NOT widened into a band by inventing basis
+      // points around it: the Low and High slots read "-", the way they
+      // already do when there is no estimate at all. An invented spread here
+      // would be indistinguishable on screen from one the comps earned.
+      const v = noi / (userCap / 100);
+      lowEl.textContent = "-";
+      animateValue(midEl, v, fmtTotal);
+      highEl.textContent = "-";
+      setPpsf("ownerLowPpsf", "");
+      setPpsf("ownerMidPpsf", "at the " + capPct(userCap) + "% cap rate you entered");
+      setPpsf("ownerHighPpsf", "");
+      basisEl.textContent = "Your NOI at your own cap rate (income approach). "
+        + "One rate gives one figure rather than a range: this search returned no market cap-rate range, "
+        + "and not enough priced sale comps to build one either.";
+      renderApproaches([
+        ...incomeApproachEntries(v, v),
         {
           label: "Sales comparison approach",
           text: "not enough priced sale comps came back in this window to build a per-square-foot range.",
@@ -4160,7 +4251,7 @@
       // No building size from any source, but priced sale comps exist - lead
       // with the per-square-foot band. A unit-price range is a real valuation
       // answer; bare dashes read as a broken report. Reached only when the
-      // income approach can't lead either, so incomeApproachEntry below always
+      // income approach can't lead either, so incomeApproachEntries below always
       // returns its muted "enter your NOI" pitch (arguments unused).
       const rr = psfBand;
       const fmtPsf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
@@ -4183,8 +4274,7 @@
         text: `what ${ppsfs.length} recent sale comps say buyers pay per `
           + `square foot. Enter your building's size under Refine and this becomes a total dollar range.`,
       }];
-      const incEntry = incomeApproachEntry(rr.low, rr.high);
-      if (incEntry) entries.push(incEntry);
+      entries.push(...incomeApproachEntries(rr.low, rr.high));
       entries.push(costApproachEntry);
       renderApproaches(entries);
     } else {
@@ -4302,6 +4392,14 @@
     const capHi = capR ? numericValue(capR.high) : NaN;
     if (noi && capLo > 0 && capHi >= capLo) {
       return { value: Math.sqrt((noi / (capHi / 100)) * (noi / (capLo / 100))), source: "income-approach midpoint" };
+    }
+    // Same precedence the hero uses — the market's range leads, the owner's own
+    // rate carries the approach when there is no market range. Without this the
+    // hero would head a report with the owner's figure while "sell today" quoted
+    // nothing, or worse, a different number on the same page.
+    const uCap = subjectCapRate(meta);
+    if (noi && uCap) {
+      return { value: noi / (uCap / 100), source: "income approach at your cap rate" };
     }
     return null;
   }
@@ -4509,7 +4607,15 @@
       const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
       const capLo = capR ? numericValue(capR.low) : NaN;
       const capHi = capR ? numericValue(capR.high) : NaN;
-      const capMid = capLo > 0 && capHi >= capLo ? (capLo + capHi) / 2 : null;
+      // The owner's own cap rate outranks the market's midpoint: they told us
+      // what they underwrite at, and these two figures are the going-in rate
+      // plus the same offsets either way. Read at SEED time only — assumptions
+      // are sticky once seeded (that is what lets a hand-tuned exit cap
+      // survive a re-render), so a cap rate typed AFTER the report rendered
+      // leaves the DCF on its market defaults until the fields are edited
+      // directly, which the card already allows.
+      const capMid = subjectCapRate(meta)
+        || (capLo > 0 && capHi >= capLo ? (capLo + capHi) / 2 : null);
       a.holdYears = 10;
       a.noiGrowthPct = 2.5;
       a.discountPct = capMid ? Math.round((capMid + 2.0) * 10) / 10 : 8.5;
@@ -7350,8 +7456,8 @@
       document.getElementById("targetSize").value = m.subject.sizeMin || "";
       document.getElementById("targetSizeMax").value = m.subject.sizeMax && m.subject.sizeMax !== m.subject.sizeMin ? m.subject.sizeMax : "";
       document.getElementById("targetPrice").value = m.subject.priceMin || "";
-      document.getElementById("targetPriceMax").value = m.subject.priceMax && m.subject.priceMax !== m.subject.priceMin ? m.subject.priceMax : "";
       document.getElementById("noi").value = m.subject.noi || "";
+      document.getElementById("capRate").value = m.subject.capRate || "";
       writeSubjectDetails(m.subject.details);
     }
     document.getElementById("compForm").requestSubmit();
@@ -11458,6 +11564,7 @@
             : `${privateIncludedCount()} counted in the valuation, not listed on the Comps sheet (visible only to the report owner)`,
         ]] : []),
         ...(s.noi > 0 ? [["NOI (yours)", xlsxMoney(s.noi)]] : []),
+        ...(s.capRate > 0 ? [["Cap rate (yours)", `${s.capRate}%`]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
         [],
         ["Automated estimate, not an appraisal. Verify independently before underwriting."],
@@ -12345,8 +12452,11 @@
     const months = selectedLookbackMonths();
     const txFocus = document.getElementById("txFocus").value;
     const sizeR = targetRange("targetSize", "targetSizeMax");
-    const priceR = targetRange("targetPrice", "targetPriceMax");
+    const priceR = targetRange("targetPrice", null);
     const noiVal = numericValue(document.getElementById("noi").value);
+    // Browser-only, exactly like the NOI above it: never added to the request
+    // body below, so it never reaches the server and never enters the cache key.
+    const capVal = numericValue(document.getElementById("capRate").value);
     const subjectDetails = readSubjectDetails();
     if (!address) return;
     if (!months) {
@@ -12479,6 +12589,7 @@
           priceMin: priceR ? priceR.min : null,
           priceMax: priceR ? priceR.max : null,
           noi: noiVal > 0 ? noiVal : null,
+          capRate: capVal > 0 ? capVal : null,
           details: subjectDetails,
         },
       });

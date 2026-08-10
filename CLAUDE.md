@@ -1595,7 +1595,19 @@ private row has not earned. Two rules matter when editing anything down here:
    denominator; the market band `market_opex_range` itself is market data and
    stays): private finances, stripped from shares. The DCF's
    four assumptions (hold/growth/discount/exit cap) are opinions, not
-   finances, and stay in shares. The one deliberate exception for all of
+   finances, and stay in shares. So is the owner's own **cap rate**
+   (`meta.subject.capRate`, the Refine field that replaced Price max on
+   2026-08-10): browser-only like the NOI it divides, never in the
+   `/api/comps` body and so never in the cache key, but NOT stripped by
+   `/api/share` — it discloses nothing alone, because every surface it drives
+   needs the NOI that already is stripped. It adds a second income-approach
+   line beside the market's (`incomeApproachEntries` — one builder, 0-2
+   entries, every hero branch spreads it so the two lines cannot drift or be
+   ordered differently), carries the income approach outright when the model
+   returned no `market_cap_rate_range`, and seeds the DCF at seed time only.
+   A single rate renders a single figure: it is deliberately never widened
+   into a band, since an invented spread would be indistinguishable on
+   screen from one the comps earned. The one deliberate exception for all of
    these private figures (NOI, debt, rent roll, gross income) is the
    signed-in **portfolio**: a saved report's `meta.subject`
    and `meta.assumptions` are stored in the owner's own authenticated

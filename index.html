@@ -1121,11 +1121,26 @@
         </div>
         <div class="rd-row grid grid-cols-1 sm:grid-cols-3">
           <div class="rd-cell">
-            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
-            <!-- One input now; the optional max moved into "+ Refine" below.
-                 The placeholder stays SHORT ("auto") — this cell is a third of
-                 the row and long placeholders have clipped here before. -->
-            <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="rd-in" />
+            <!-- The size held this slot until 2026-08-10 and was being answered
+                 automatically twice over (public records server-side, the OSM
+                 footprint estimate during the confirm dialog), so the slot went
+                 to the one optional input that lights up a whole report surface
+                 that is otherwise dark: renderComparison() hides itself unless
+                 it has BOTH a size and a price, so without a price nobody ever
+                 sees their own $/SF against the market's, or the over/under
+                 verdict. Still optional — the address is this form's only
+                 required field. One input, because two inputs around a "to"
+                 inside a third-of-a-row cell is exactly what clipped the size
+                 range; the max lives in Refine. -->
+            <!-- "Asking price", not "Your price": a bare "your price" invites
+                 the price they PAID years ago, and a historical number would
+                 make the comparison card announce a nonsense over/under against
+                 today's market. Measured against the cell's real 184px (171px
+                 at the sm breakpoint): the old "Asking / expected price ($)"
+                 wrapped to two lines here and pushed this input below the
+                 Lookback and Focus inputs beside it. -->
+            <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+            <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="rd-in" />
           </div>
           <div class="rd-cell">
             <label class="rd-lab" for="lookback">Lookback</label>
@@ -1163,29 +1178,41 @@
              so. Polite, not assertive — the confirm dialog restates the type
              with real buttons before any search runs. -->
         <div class="rd-row px-4 py-2 bg-[#FBFBF9] text-xs text-[#68707E]">
-          <span id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint - edit it up top if it's off.</span><span id="sizeHint">Size is pulled from public records when left blank.</span>
+          <span id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it under Refine if it's off.</span><span id="sizeHint">Size comes from public records automatically.</span>
           <span id="typeStatusLine" class="ml-1" aria-live="polite"></span>
           <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
           <div id="typeAutoNote" class="mt-1"></div>
         </div>
 
-        <!-- Refine (optional; size and type live up top). Direction N folded
-             the size max and the market note in here beside price and NOI —
-             all four ride the search or the analysis, none are required. -->
+        <!-- Refine (optional; the address, price, lookback and focus live up
+             top). Size moved back down here on 2026-08-10 when the price took
+             its slot on the form: it is answered automatically on the great
+             majority of searches, so it belongs where an override belongs. -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <span id="subjectSummary">+ Refine <span class="text-[#68707E] font-normal">(price, NOI, size range, market note: optional, sharpens the estimate)</span></span>
+            <span id="subjectSummary">+ Refine <span class="text-[#68707E] font-normal">(size, NOI, price range, market note: optional, sharpens the estimate)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3">Add a price to compare against the comp average, or NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size and property type come from public records automatically when left alone.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size and property type come from public records automatically, so set a size here only to override what we found.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label id="targetPriceLabel" class="rd-lab">Asking / expected price ($)</label>
+                <!-- Size is one range in one cell again, the shape it had before
+                     Direction N: a half-width Refine cell has room for two
+                     inputs and a "to", which a third-of-a-row cell did not.
+                     Every id here is unchanged, and all of the size machinery
+                     (SIZE_LABELS relabelling to Lot size / Property size, the
+                     footprint estimate, the autoFor/autoValue machine-size
+                     markers, saved-report restores) reads by getElementById and
+                     never by position, so it keeps working from down here — the
+                     estimate lands the same way even while this section is
+                     collapsed, which is why the strip above still announces it. -->
+                <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
                 <div class="flex items-center gap-2">
-                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                   <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
-                  <input id="targetPriceMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
+                <p class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
               </div>
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
@@ -1193,9 +1220,9 @@
                 <p class="text-xs text-[#68707E] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
               </div>
               <div>
-                <label class="rd-lab" for="targetSizeMax">Size max (SF)</label>
-                <input id="targetSizeMax" type="number" min="0" step="any" placeholder="e.g. 60000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                <p class="text-xs text-[#68707E] mt-1">Optional upper bound; pairs with the size on the form to make a range.</p>
+                <label class="rd-lab" for="targetPriceMax">Price max</label>
+                <input id="targetPriceMax" type="number" min="0" step="any" placeholder="e.g. 3400000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                <p class="text-xs text-[#68707E] mt-1">Optional upper bound; pairs with the price on the form to make a range.</p>
               </div>
               <div>
                 <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>

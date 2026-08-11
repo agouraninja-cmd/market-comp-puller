@@ -1,5 +1,12 @@
 [
   {
+    "date": "2026-08-11",
+    "type": "fix",
+    "title": "First real vault book through the funnel: badge, distances, and import summary fixed",
+    "details": "Walking a realistic 12-row broker CSV through the whole funnel surfaced three bugs, all fixed with tests. Blended vault comps showed 7,508-mile distances: a building with no stored location was joined as latitude 0, longitude 0 (Number(null) is 0), the same Null Island trap the export path fixed a day earlier; the join now lives in pure, tested blend-comps code. The \"From your vault\" badge never rendered because TIER_WEIGHT had no broker_vault key, so tierOf answered null; the key now exists at full weight, which leaves the valuation unchanged. And a mapper import wrote its summary, including the line-numbered skipped rows, into the closed Add comps panel; the panel now opens, so a dropped row is never silent.",
+    "commit": "94d11fc"
+  },
+  {
     "date": "2026-08-10",
     "type": "improvement",
     "title": "Gemini 3.6 Flash is now the default comp-search model",

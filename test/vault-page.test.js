@@ -722,6 +722,34 @@ test("a successful import from the panel closes it and reports the result", asyn
   assert.match(doc.getElementById("res").innerHTML, /Imported 1 comp/);
 });
 
+test("a mapper import's skips are SHOWN: the uploader panel opens for the summary", async () => {
+  // #res lives inside #addSec, which ships closed, and the mapper path never
+  // went through the setAddOpen(true) at the top of doImport — so "2 rows
+  // skipped" plus its line-numbered reasons was written into a hidden panel
+  // and the broker never learned two deals were dropped. The content
+  // assertions above passed the whole time; this one pins the visibility.
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, {
+      ok: true, imported: 9, skipped: 2, duplicates: 1,
+      errors: ["Line 5: price: \"1.2M\" is not a plain number"],
+    })),
+  });
+  await chooseFile(doc, MAPPABLE_CSV);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+
+  assert.ok(!doc.getElementById("addSec").className.split(" ").includes("hide"),
+    "the summary was written into a closed panel: className=" + doc.getElementById("addSec").className);
+  // The stub document's attributes are no-ops, so aria-expanded can't be
+  // read here — the toggle's label rides on the same setAddOpen call and
+  // pins the same invariant: the deck action describes the open state.
+  assert.equal(doc.getElementById("addToggle").textContent, "Close",
+    "the deck action must describe the state the panel is in");
+  const html = doc.getElementById("res").innerHTML;
+  assert.match(html, /2 rows skipped/);
+  assert.match(html, /Line 5/);
+});
+
 test("skipped # lines are reported, not dropped silently", async () => {
   // The template ships its rules as # lines, so this clause fires on the
   // ordinary path. It is here for the other one: a broker whose own export has

@@ -1572,6 +1572,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         // mapping away — and it has to happen BEFORE the summary is written,
         // since closing the panel is what makes #res visible again.
         if(onOk)onOk();
+        // Closing the mapper is not enough: #res lives inside #addSec, which
+        // ships closed, and on the mapper path nothing above has opened it —
+        // so the summary, including the line-numbered skips, was being
+        // written into a hidden panel and a broker never learned rows were
+        // dropped (found on the first real mapper import, 2026-08-10). Same
+        // rule as the non-mapper open at the top of doImport: a result must
+        // be written somewhere that is showing.
+        if(viaMapper)setAddOpen(true);
         var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
         if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
         if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");

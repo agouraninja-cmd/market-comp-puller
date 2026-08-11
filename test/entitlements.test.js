@@ -726,3 +726,63 @@ test("audience decides which branch of computeEntitlements a visitor gets", () =
   assert.equal(untouched.exportsRemaining, "unlimited");
   assert.equal(untouched.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
 });
+
+// --- the vault_beta grant (migration 023) ----------------------------------
+//
+// The broker-onboarding door: broker surfaces only, per account, independent
+// of billing. The negative tests matter most — the flag must never comp
+// Pro's report features and must never act without a signed-in user.
+
+test("vault_beta on a free account opens the broker surfaces only", () => {
+  const e = ent({ user: USER, vaultBeta: true });
+  assert.equal(e.broker, true);
+  assert.equal(e.canUseVault, true);
+  assert.equal(e.pro, false, "the grant must not comp Pro");
+  assert.equal(e.plan, "free");
+  assert.equal(e.status, "none", "nothing here came from Stripe");
+  assert.equal(e.maxComps, FREE_MAX_COMPS, "report features stay free-tier");
+  assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
+  assert.notEqual(e.exportsRemaining, "unlimited");
+  assert.match(e.reason, /broker beta/);
+});
+
+test("vault_beta cannot switch a dark deployment on", () => {
+  const e = computeEntitlements({ user: USER, vaultBeta: true, now: NOW, enabled: false });
+  assert.equal(e.canUseVault, false);
+  assert.equal(e.broker, false);
+});
+
+test("vault_beta without a signed-in user grants nothing", () => {
+  const e = ent({ user: null, vaultBeta: true });
+  assert.equal(e.broker, false);
+  assert.equal(e.canUseVault, false);
+});
+
+test("a tester who also holds vault_beta gets the vault with the comp", () => {
+  const e = ent({ user: USER, tester: true, vaultBeta: true });
+  assert.equal(e.status, "tester");
+  assert.equal(e.pro, true);
+  assert.equal(e.broker, true);
+  assert.equal(e.canUseVault, true);
+});
+
+test("a tester without vault_beta still has no vault", () => {
+  const e = ent({ user: USER, tester: true });
+  assert.equal(e.canUseVault, false);
+});
+
+test("vault_beta is independent of billing: the vault survives a lapse", () => {
+  const lapsed = activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) });
+  const e = ent({ user: USER, subscription: lapsed, vaultBeta: true });
+  assert.equal(e.pro, false, "the subscription really has lapsed");
+  assert.equal(e.canUseVault, true, "the grant was never billing, so no lapse closes it");
+  assert.match(e.reason, /broker beta/,
+    "'Pro access has ended' over an open vault reads as a bug");
+});
+
+test("a live subscription with vault_beta reads as an ordinary subscriber", () => {
+  const e = ent({ user: USER, subscription: activeSub(), vaultBeta: true });
+  assert.equal(e.pro, true);
+  assert.equal(e.status, "active");
+  assert.equal(e.canUseVault, true);
+});

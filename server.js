@@ -1376,8 +1376,11 @@ async function getEntitlements(user, reportId, admin = false) {
   // resolves the comped branch only when there is no live subscription to
   // prefer. Reading the subscription is what makes that possible.
   const tester = Boolean(user && user.pro_tester);
+  // Per-account vault grant (migration 023) — the broker-onboarding door.
+  // Reads as undefined until the column exists, which Boolean()s to false.
+  const vaultBeta = Boolean(user && user.vault_beta);
   return ENT.computeEntitlements({
-    user, subscription, purchase, usage, reportId, now, enabled: true, tester,
+    user, subscription, purchase, usage, reportId, now, enabled: true, tester, vaultBeta,
   });
 }
 

@@ -1,0 +1,38 @@
+-- migrations/023-vault-beta.sql
+-- 023 · Vault access without a subscription: one flag per account (2026-08-11)
+--
+-- Why this exists: there is no way to hand a real broker the vault without
+-- them paying on day one. The tester passkey deliberately excludes the vault
+-- (a shared code guarding an upload surface — see CLAUDE.md's TESTER_PASSKEY
+-- rules), and ADMIN_KEY also unlocks /admin, /dev and /contacts, so it can
+-- never be given out. This flag is the narrow door: Owen sets it per broker,
+-- one row at a time, for onboarding (Chuck first).
+--
+--   update users set vault_beta = true where email = 'broker@firm.com';
+--
+-- Revoking is the same statement with false — per-account, no shared secret
+-- to rotate, nobody else affected.
+--
+-- What it grants (rules in entitlements.js, covered by npm test): the broker
+-- surfaces only — the vault, the lead inbox, blended comps in their own
+-- reports. It does NOT comp Pro's report features (comp count, lookback,
+-- exports stay free-tier), cannot switch a dark deployment on (PRO_ENABLED
+-- still wins), and is independent of billing on purpose: a beta broker's
+-- book stays reachable even though they never had a subscription to lapse.
+--
+-- Purely additive and idempotent. `not null default false` backfills every
+-- existing row to "no grant" — the fail-closed direction.
+--
+-- Deploy-order-safe in BOTH directions, same argument as 022:
+--   migrate-then-deploy — the column sits unread until the code ships.
+--   deploy-then-migrate — getSessionUser reads `user.vault_beta` as
+--   undefined (PostgREST returns the row without the column rather than
+--   erroring on a SELECT *), which Boolean()s to false: nobody has the
+--   grant until the column exists, and nothing errors.
+
+alter table users add column if not exists vault_beta boolean not null default false;
+
+-- Verify (zero rows = schema complete):
+--   select c from unnest(array['vault_beta']) as c
+--   where not exists (select 1 from information_schema.columns
+--                     where table_name = 'users' and column_name = c);

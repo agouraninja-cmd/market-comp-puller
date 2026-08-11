@@ -201,8 +201,16 @@ function subscriptionState(sub, now) {
  * @param {boolean} o.tester       this account's users.pro_tester flag — comps
  *                                 Pro, but only alongside `enabled`, a signed-in
  *                                 user, and NO live paid subscription
+ * @param {boolean} o.vaultBeta    this account's users.vault_beta flag
+ *                                 (migration 023) — grants the BROKER surfaces
+ *                                 only (vault, lead inbox, blended comps),
+ *                                 never Pro's report features. Requires
+ *                                 `enabled` and a signed-in user; deliberately
+ *                                 independent of billing, so a beta broker's
+ *                                 book stays reachable with no subscription to
+ *                                 lapse.
  */
-function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester } = {}) {
+function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta } = {}) {
   const at = Number.isFinite(now) ? now : Date.now();
 
   // --- Comped Pro for the internal team -------------------------------------
@@ -329,9 +337,12 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // The ONE place a tester is deliberately not equal to Pro. The vault is
       // a private-data workspace with an upload endpoint; a passkey shared
       // with a wider group is a bigger surface than "try Pro's reports", so
-      // vault access stays admin/paid-only.
-      broker: false,
-      canUseVault: false,
+      // vault access stays admin/paid-only — unless this account ALSO holds
+      // the per-account vault_beta grant (migration 023), which is exactly
+      // the narrow, one-row-at-a-time door the passkey exclusion points
+      // people toward.
+      broker: vaultBeta === true,
+      canUseVault: vaultBeta === true,
       graceUntil: null,
       admin: false,
       tester: true,
@@ -358,7 +369,14 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
   //   with everything else. The old fail-closed-on-unknown-plan rule existed
   //   only to stop a subscription we could not name from opening a private
   //   data store; with a single product there is nothing left to disambiguate.
-  const broker = pro;
+  //
+  //   ONE exception: the per-account vault_beta grant (migration 023), the
+  //   broker-onboarding door. It requires a signed-in user — the grant lives
+  //   on an account row, so an anonymous request can never carry it — and it
+  //   deliberately does NOT ride the lapse rules above: it was never billing,
+  //   so there is no subscription whose end should close the book. Revoking
+  //   it is a one-row UPDATE, not a lapse.
+  const broker = pro || (vaultBeta === true && Boolean(user));
 
   // A single-report purchase only ever unlocks the report it was bought for.
   // Guard on the id rather than trusting the caller looked it up correctly.
@@ -425,6 +443,10 @@ function reasonFor({ state, pro, broker, reportUnlocked, user }) {
   if (pro) return "Active subscription — every Pro capability, including the private vault.";
   if (pro) return "Active Pro subscription.";
   if (reportUnlocked) return "This report was unlocked with a single-report purchase.";
+  // Named before the expired line on purpose: a lapsed subscriber who holds
+  // the beta grant still has their vault, and saying "access has ended" over
+  // an open vault reads as a bug.
+  if (broker) return "Free account with vault access (broker beta).";
   if (state === "expired") return "Pro access has ended.";
   return user ? "Free account." : "Not signed in.";
 }

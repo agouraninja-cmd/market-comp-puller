@@ -158,7 +158,8 @@ dependency. `.env` is git-ignored — never commit it.
   Rules live in `entitlements.js`, so `npm test` covers them; four of them
   matter. It grants everything Pro **except the broker vault** — the vault is a
   private-data workspace with an upload endpoint, and a passkey shared with a
-  wider group is a bigger surface than "try Pro's reports". It **cannot switch
+  wider group is a bigger surface than "try Pro's reports". (The narrow door
+  for handing a specific broker the vault is `users.vault_beta` — see below.) It **cannot switch
   a dark deployment on** (`PRO_ENABLED` still wins, same as the admin branch).
   Its `status` is `"tester"`, never `"active"`, so the UI never offers a
   billing portal to an account with no Stripe customer. And unlike the admin
@@ -494,6 +495,20 @@ This is not the only comped-Pro door: `TESTER_PASSKEY` (above) comps Pro to a
 signed-in account without any dashboard access, and stores the grant on the
 user row rather than in a cookie. Admin wins outright and skips the billing
 reads; a tester deliberately yields to a real subscription.
+
+There is also one comped-VAULT door, **`users.vault_beta`** (migration 023,
+2026-08-11) — the broker-onboarding grant, set per account by hand
+(`update users set vault_beta = true where email = …`), no env var and no
+shared secret. It exists because neither existing door could ever be handed
+to a real broker: the tester passkey deliberately excludes the vault, and
+`ADMIN_KEY` also unlocks the dashboards. Rules in `entitlements.js`, covered
+by `npm test`, and deliberately narrow: it grants the broker surfaces only
+(vault, lead inbox, blended comps — `broker`/`canUseVault`), never Pro's
+report features; it cannot switch a dark deployment on (`PRO_ENABLED` still
+wins); and unlike everything else vault-shaped it does NOT ride the
+subscription lapse rules — the grant was never billing, so only the one-row
+UPDATE revokes it, and a beta broker whose trial subscription lapses keeps
+their book.
 
 `MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`

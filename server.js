@@ -9146,16 +9146,14 @@ async function attachPropertyCoords(userId, comps) {
       `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
       `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source`);
 
-    const byId = new Map();
-    for (const p of Array.isArray(props) ? props : []) {
-      // Both or neither, checked once more at the point of use. A half-located
-      // building would put a pin on the equator, and by here the value has
-      // passed through a spreadsheet, a parser and a database.
-      const lat = Number(p && p.lat);
-      const lng = Number(p && p.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      byId.set(p.id, { lat, lng, geo_source: p.geo_source || null });
-    }
+    // Both or neither, and null is not a coordinate — the rule lives in the
+    // pure, tested BLEND.propertyCoordsById. The bare Number() guard that
+    // used to sit here treated lat: null as 0 (`Number(null) === 0` is
+    // finite), which stitched every unlocated building's comps to Null
+    // Island and printed "7508 mi" in the report's Distance column — the
+    // identical flaw exportRowsWithCoords was extracted to fix on the
+    // export path (2026-08-10).
+    const byId = BLEND.propertyCoordsById(props);
     if (!byId.size) return comps;
 
     return comps.map((c) => {
@@ -12139,9 +12137,9 @@ const server = http.createServer((req, res) => {
         //
         // Both or neither, checked in the pure, tested
         // VAULT.exportRowsWithCoords (⚠ near-duplicate of the same rule in
-        // attachPropertyCoords above, not merged here on purpose — see that
-        // function's comment; it has the identical Number(null) flaw this
-        // helper was written to fix, so do not treat it as a reference).
+        // BLEND.propertyCoordsById, which attachPropertyCoords uses for the
+        // report path since 2026-08-11 — two implementations because they
+        // build different shapes, one rule; change one, check the other).
         // Without the null check a property row with no location on file
         // (lat: null, lng: null — today, essentially every one) exports
         // 0,0, which re-imports as a real coordinate: Null Island.

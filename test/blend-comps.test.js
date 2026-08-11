@@ -290,3 +290,40 @@ test("junk in, junk out, without throwing", () => {
   assert.equal(anonymizePrivateComps(null), null);
   assert.deepEqual(anonymizePrivateComps({ comps: "nope" }), { comps: "nope" });
 });
+
+// --- propertyCoordsById: the report-path coordinate join ---------------------
+//
+// The rule is BOTH OR NEITHER, and the trap is `Number(null) === 0`: a
+// property row with no location on file must contribute no coordinates, not
+// Null Island. The export path has the same rule in exportRowsWithCoords
+// (broker-vault.js); these tests are the report path's half of that pair.
+
+const { propertyCoordsById } = require("../blend-comps");
+
+test("an unlocated building (lat/lng null) contributes no coordinates", () => {
+  const byId = propertyCoordsById([{ id: "p1", lat: null, lng: null, geo_source: null }]);
+  assert.equal(byId.size, 0);
+});
+
+test("a half-located building is treated as unlocated", () => {
+  const byId = propertyCoordsById([
+    { id: "p1", lat: 43.6, lng: null },
+    { id: "p2", lat: null, lng: -116.2 },
+  ]);
+  assert.equal(byId.size, 0);
+});
+
+test("a located building's coordinates come through as numbers", () => {
+  const byId = propertyCoordsById([{ id: "p1", lat: "43.6135", lng: "-116.2035", geo_source: "broker" }]);
+  assert.deepEqual(byId.get("p1"), { lat: 43.6135, lng: -116.2035, geo_source: "broker" });
+});
+
+test("non-numeric coordinate strings are refused, not guessed", () => {
+  const byId = propertyCoordsById([{ id: "p1", lat: "43°36'N", lng: "-116.2" }]);
+  assert.equal(byId.size, 0);
+});
+
+test("junk rows and junk input do not throw", () => {
+  assert.equal(propertyCoordsById(null).size, 0);
+  assert.equal(propertyCoordsById([null, {}, { id: null, lat: 1, lng: 2 }]).size, 0);
+});

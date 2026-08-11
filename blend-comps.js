@@ -128,6 +128,32 @@ function isPrivateComp(c) {
   return Boolean(c && typeof c === "object" && c.private === true);
 }
 
+// Coordinates a building may lend its comps (migration 017), keyed by
+// property id. One rule: BOTH OR NEITHER, and null is not a coordinate.
+//
+// This is a function for the same reason broker-vault.js grew
+// exportRowsWithCoords: `Number(null) === 0` and `Number.isFinite(0) ===
+// true`, so a property row with no location on file — today, essentially
+// every one, since import-time geocoding is deferred — slipped a bare
+// Number() guard and stitched its comps to lat 0 / lng 0. Null Island is
+// ~7,500 mi from any US subject, and the report's Distance column printed
+// exactly that; the fake-but-finite coordinates also satisfied renderMap()'s
+// "already located, don't geocode" privacy guard, so the pin logic worked
+// from the Gulf of Guinea instead of skipping. An unlocated building must
+// contribute NO coordinate keys at all — toReportComp then drops them and
+// the comp renders exactly as it did before migration 017.
+function propertyCoordsById(props) {
+  const byId = new Map();
+  for (const p of Array.isArray(props) ? props : []) {
+    if (!p || p.id == null) continue;
+    const located = p.lat != null && p.lng != null &&
+      Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng));
+    if (!located) continue;
+    byId.set(p.id, { lat: Number(p.lat), lng: Number(p.lng), geo_source: p.geo_source || null });
+  }
+  return byId;
+}
+
 // Add a broker's own comps to their own report.
 //
 // Deliberately NOT deduplicated against the public comps. A broker watching
@@ -214,6 +240,7 @@ module.exports = {
   anonymizePrivateComps,
   toReportComp,
   isPrivateComp,
+  propertyCoordsById,
   PRIVATE_SOURCE_TYPE,
   FIELD_MAP,
 };

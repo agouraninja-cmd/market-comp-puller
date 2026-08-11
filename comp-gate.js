@@ -28,7 +28,9 @@ const YEAR_MS = 365.25 * 24 * 3600 * 1000;
 // reports), so this is a second copy on purpose — and the two must agree, or
 // a free user's range would differ from a Pro user's on identical comps.
 // Change one, change the other, and run `npm test`.
-const TIER_WEIGHT = { verified: 1, user: 1, public_record: 1, listing: 0.85, news: 0.7, estimate: 0.5 };
+// (broker_vault: a blended private comp, full weight — see valuation.js's
+// comment for why the key has to exist at all.)
+const TIER_WEIGHT = { verified: 1, user: 1, public_record: 1, listing: 0.85, news: 0.7, estimate: 0.5, broker_vault: 1 };
 
 function numericValue(str) {
   if (str == null) return NaN;

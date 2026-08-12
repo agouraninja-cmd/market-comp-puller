@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-12",
+    "type": "fix",
+    "title": "The gut check now appears on the first import instead of the next page load",
+    "details": "Market benchmarks are fetched per market-and-type bucket, so a brand-new vault has nothing to ask for and the fetch returns early. The caller marked them loaded anyway, so a broker who imported their book into an empty vault got no gut check for the rest of that session, and only saw one if they happened to reload the page. Found on a clean-slate run against the real corpus, and it is the actual reason the panel looked like it was failing in thin markets: the benchmarks were fine the whole time. The flag now stays unset until there is a bucket to ask about, so the reload that follows the first import is the one that loads them."
+  },
+  {
+    "date": "2026-08-12",
     "type": "improvement",
     "title": "A broker states the name their published comps are credited to",
     "details": "Publishing a comp promises credit to your firm by name, and there was nowhere to say what that name was. A broker who came in through the vault had no profile, so the credit quietly fell back to whatever they typed in the signup form, and that personal name was then copied into the firm field and shown publicly as their company. Nobody chose it, so nobody could correct it. The vault now names the credit before any publish and offers one form to set it, publishing refuses with a message that opens that form instead of a dead end, and the credit reads the stated profile only. Stating a name is deliberately not a public listing: the row it creates is private, so a broker who wants a public profile page still opts into that separately."

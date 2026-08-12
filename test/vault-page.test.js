@@ -725,6 +725,7 @@ test("a failed import leaves the panel open with every selection intact", async 
 test("a successful import from the panel closes it and reports the result", async () => {
   const { doc, calls } = await runPage([], null, {
     upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1, skipped: 0 })),
+    reloadComps: [comp({})],
   });
   await chooseFile(doc, MAPPABLE_CSV);
   doc.getElementById("mapGo").fire("click");
@@ -1216,4 +1217,27 @@ test("a publish refused for a missing credit opens the form", async () => {
   assert.equal(doc.getElementById("idForm").className, "",
     "the one refusal a broker can fix in place must open the field that fixes it");
   } finally { global.confirm = realConfirm; }
+});
+
+test("an empty vault asks for no benchmarks, and does not latch the flag", async () => {
+  // The first-run bug this guards: loadBenchmarks is asked PER BUCKET, so an
+  // empty vault has nothing to ask about and returns early — but the caller
+  // used to set benchLoaded=true anyway, so the gut check stayed empty for
+  // the rest of the session and only appeared if the broker happened to
+  // reload. Found on a clean-slate run against the real corpus (2026-08-12),
+  // and it is why the panel looked like it was failing in thin markets when
+  // the benchmarks were fine.
+  //
+  // Only the first half is asserted here: the stub DOM cannot walk an
+  // empty-boot -> import -> populated-reload sequence (the reload is answered
+  // from the boot payload), so the re-fetch itself is verified in a real
+  // browser rather than pretended at here. What this pins is the guard's
+  // shape — no call while empty, and the condition that keeps it retryable.
+  const { calls } = await runPage([]);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/benchmarks") === 0).length, 0,
+    "an empty vault has no bucket to ask about");
+
+  const js = pageScript(renderVaultHTML(boot([]), CHROME));
+  assert.match(js, /if\(!benchLoaded\s*&&\s*comps\.length\)/,
+    "the benchmarks flag must stay false until there is a bucket, or the first import never loads them");
 });

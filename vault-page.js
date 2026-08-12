@@ -805,7 +805,15 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // calls load()) still populates the Leads section on first paint.
     if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
     if(!bovsLoaded){ bovsLoaded=true; loadBovs(); }
-    if(!benchLoaded){ benchLoaded=true; loadBenchmarks(); }
+    // Benchmarks are asked for PER BUCKET, so an empty vault has nothing to
+    // ask about and loadBenchmarks bails. Marking it loaded anyway is what
+    // broke the first run: a broker who imported into an empty vault got the
+    // early return, kept benchLoaded=true, and never saw a gut check until
+    // they happened to reload the page. The comps.length guard leaves the
+    // flag false until there is actually a bucket, so the apply() that
+    // follows the first import is the one that loads them. This is why the
+    // gut check looked like it was failing in thin markets when it was not.
+    if(!benchLoaded && comps.length){ benchLoaded=true; loadBenchmarks(); }
     render();
   }
 

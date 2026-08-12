@@ -336,6 +336,12 @@ async function runPage(comps, benchResult, opts, identity) {
         ? opts.comp(init, u)
         : Promise.resolve(jsonResponse(200, { ok: true, comp: {}, unpublished: false }));
     }
+    // The BOV panel loads on every apply(), so without this stub every page
+    // in this file ran its loadBovs through the catch branch — which hides
+    // the empty-state line, and so could never have caught it lingering.
+    if (u.indexOf("/api/broker/bovs") === 0) {
+      return opts.bovs ? opts.bovs(init, u) : Promise.resolve(jsonResponse(200, { bovs: [], rollup: null }));
+    }
     if (u.indexOf("/api/vault?") === 0) return Promise.resolve(jsonResponse(200, bootPayload.j));
     return Promise.reject(new Error("unexpected fetch in test: " + u));
   };
@@ -1370,4 +1376,50 @@ test("an unpriced comp in a second type cannot suppress the median", async () =>
   ]));
   assert.notEqual(doc.getElementById("cMed").textContent, "—");
   assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · sales only");
+});
+
+// ---------------------------------------------------------------------------
+// The BOV panel's empty state (2026-08-12)
+//
+// Nothing in this file had ever stubbed /api/broker/bovs, so every page here
+// ran loadBovs through its catch branch — which hides the empty line, and so
+// could never have caught it lingering over a populated log.
+// ---------------------------------------------------------------------------
+
+const A_BOV = {
+  id: "b1", market: "Boise, ID", property_type: "Industrial",
+  status: "open", source: "compninja", received_on: "2026-08-01",
+  size_sqft: 40000, address: "1 Ind St", notes: "",
+};
+
+test("an empty BOV log shows its line and no table", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK);
+  assert.equal(doc.getElementById("noBovs").className, "empty",
+    "with nothing logged the line is the only thing to show");
+  assert.match(doc.getElementById("bovTableWrap").className, /hide/,
+    "a header row over no rows is the empty table the first-run work removed");
+});
+
+test("the first logged BOV puts the empty line away", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    bovs: () => Promise.resolve(jsonResponse(200, {
+      bovs: [A_BOV],
+      rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
+    })),
+  });
+  assert.match(doc.getElementById("noBovs").className, /hide/,
+    '"Nothing logged yet" over a logged BOV contradicts the row beneath it');
+  assert.equal(doc.getElementById("bovTableWrap").className, "tw");
+  assert.match(doc.getElementById("bovRows").innerHTML, /Boise, ID/);
+});
+
+test("a failed BOV load shows neither the empty line nor a stale table", async () => {
+  // The error message is the answer here. An empty-state line would claim the
+  // log is empty when the truth is that it could not be read.
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
+  });
+  assert.match(doc.getElementById("noBovs").className, /hide/);
+  assert.match(doc.getElementById("bovTableWrap").className, /hide/);
+  assert.match(doc.getElementById("bovMsg").innerHTML, /unavailable/i);
 });

@@ -26,12 +26,15 @@ function comp(o) {
     price: 1000000, size_sqft: 10000, price_per_sqft: 100, published: false,
   }, o);
 }
-function boot(comps) {
+function boot(comps, identity) {
   return { s: 200, j: {
     comps, uploads: [],
     counts: { returned: comps.length, published: comps.filter((c) => c.published).length },
     markets: [...new Set(comps.map((c) => c.market))],
     types: [...new Set(comps.map((c) => c.property_type))],
+    // The credit identity, as vaultReadPayload serves it. Default is the
+    // unstated case, which is what every pre-existing test wants.
+    identity: identity || { display_name: "", company: "", creditedTo: "" },
   } };
 }
 // The page's own inline script, as the browser would receive it.
@@ -285,10 +288,10 @@ function jsonResponse(status, body) {
 // happened at all" are asserted. /api/vault/inspect answers through the REAL
 // broker-vault.js, exactly as server.js does, so these tests pin the page
 // against its actual producer rather than a hand-written fixture.
-async function runPage(comps, benchResult, opts) {
+async function runPage(comps, benchResult, opts, identity) {
   opts = opts || {};
   const calls = [];
-  const bootPayload = boot(comps);
+  const bootPayload = boot(comps, identity);
   const html = renderVaultHTML(bootPayload, CHROME);
   const script = pageScript(html);
   const doc = stubDocument();
@@ -313,6 +316,20 @@ async function runPage(comps, benchResult, opts) {
     }
     if (u.indexOf("/api/vault/upload") === 0) {
       return opts.upload ? opts.upload() : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
+    }
+    if (u.indexOf("/api/vault/publish") === 0) {
+      return opts.publish
+        ? opts.publish()
+        : Promise.resolve(jsonResponse(200, { ok: true, published: true, creditedTo: "Hawkins Ridge CRE" }));
+    }
+    if (u.indexOf("/api/vault/identity") === 0) {
+      return opts.identity
+        ? opts.identity(init)
+        : Promise.resolve(jsonResponse(200, {
+            ok: true,
+            identity: { display_name: "", company: "Hawkins Ridge CRE" },
+            creditedTo: "Hawkins Ridge CRE",
+          }));
     }
     if (u.indexOf("/api/vault/comp") === 0) {
       return opts.comp
@@ -1130,4 +1147,73 @@ test("choosing a property type reveals that type's own fields, and switching typ
     "Multifamily's own field must appear once that type is chosen");
   assert.ok(!doc.getElementById("addTypeFields").innerHTML.includes("addComp_clear_height"),
     "the previous type's field must not linger after switching");
+});
+
+// ---------------------------------------------------------------------------
+// The credit identity (2026-08-12)
+//
+// A published comp carries a public credit — "Verified · via <firm>" on every
+// report it reaches. Until this shipped, a broker who never stated one had
+// their comps credited to whatever they typed at signup, and could not have
+// known it happened. These pin the two things that would silently regress:
+// the page must SHOW the credit before a publish, and the refusal must open
+// the form rather than send the broker looking for a screen that did not
+// exist.
+// ---------------------------------------------------------------------------
+
+test("an unstated identity says so, and offers to fix it", async () => {
+  const { doc } = await runPage([comp({})]);
+  const line = doc.getElementById("creditLine").innerHTML;
+  assert.match(line, /need a name to credit/i);
+  assert.match(line, /id="idEdit"/, "there must be a control to state one");
+});
+
+test("the identity form ships closed in the markup", () => {
+  // Asserted on the HTML, not through the stub DOM: the stub fabricates
+  // elements on demand, so an initial class set in the markup is invisible
+  // to it. Same reason the empty-vault test reads the html string.
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<div id="idForm" class="hide">/,
+    "the form must not greet every broker who opens their book");
+});
+
+test("a stated identity names the credit before anything is published", async () => {
+  const { doc } = await runPage([comp({})], null, {}, {
+    display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", creditedTo: "Hawkins Ridge CRE",
+  });
+  const line = doc.getElementById("creditLine").innerHTML;
+  assert.match(line, /Hawkins Ridge CRE/);
+  assert.match(line, /credited to/i);
+});
+
+test("the page never recomputes the credit — it prints the server's answer", async () => {
+  // creditName() prefers company over display_name. If the page reimplemented
+  // that rule it could drift from the publish route and promise a name the
+  // write would not produce, so it must print creditedTo verbatim even when
+  // that disagrees with the two fields beside it.
+  const { doc } = await runPage([comp({})], null, {}, {
+    display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", creditedTo: "Something Else Entirely",
+  });
+  assert.match(doc.getElementById("creditLine").innerHTML, /Something Else Entirely/);
+});
+
+test("a publish refused for a missing credit opens the form", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+  const { doc } = await runPage([comp({})], null, {
+    publish: () => Promise.resolve(jsonResponse(400, {
+      error: "Add your firm or display name before publishing — published comps are credited to it.",
+      code: "needs_credit_name",
+    })),
+  });
+  doc.getElementById("tbody").fire("click", {
+    target: { closest: (sel) => sel === "button[data-pub]"
+      ? { getAttribute: () => "c1", classList: { contains: () => false }, disabled: false, textContent: "Publish" }
+      : null },
+  });
+  await tick();
+  assert.equal(doc.getElementById("idForm").className, "",
+    "the one refusal a broker can fix in place must open the field that fixes it");
+  } finally { global.confirm = realConfirm; }
 });

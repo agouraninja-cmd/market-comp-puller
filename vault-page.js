@@ -357,6 +357,26 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       </div>
       <p class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
         public records, and nothing is published unless you choose it.</p>
+      <!-- The credit identity, stated once and shown BEFORE any publish.
+           It sits with the trust line because it answers the same question
+           that line does — what leaves here, and under whose name — and
+           because it is meaningless until there is a book to publish from.
+           #creditLine is written by renderIdentity() from the server's own
+           creditedTo, never assembled here, so the page cannot promise a
+           name the publish route would not actually use. -->
+      <p class="note" id="creditLine"></p>
+      <div id="idForm" class="hide">
+        <div class="row">
+          <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
+          <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
+          <button class="btn ghost" id="idSave">Save</button>
+          <button class="btn ghost" id="idCancel">Cancel</button>
+        </div>
+        <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
+          when you have one, otherwise to your name. This is not a public listing &mdash; it only
+          names the credit on comps you choose to publish.</p>
+        <p class="msg bad hide" id="idMsg"></p>
+      </div>
     </div>
     <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
       The figures below are drawn from those, so your full book may be larger.</p>
@@ -769,6 +789,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("cPricedPct").textContent=comps.length?Math.round(ps.length*100/comps.length)+"% of book":"";
     $("cMed").textContent=med!=null?psf0(med):"\\u2014";
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+    renderIdentity(o.j.identity);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
     // counting part of the book, and a broker reading "42 comps in Boise"
@@ -1256,6 +1277,73 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("addToggle").textContent=addOpen?"Close":"+ Add comps";
     $("addToggle").setAttribute("aria-expanded",addOpen?"true":"false");
   }
+
+  // ---- The credit identity --------------------------------------------
+  //
+  // Who a published comp is credited to, stated once. It is shown BEFORE any
+  // publish rather than discovered after one, because a credit is a public
+  // claim about who someone is: "Verified &middot; via <firm>" on every report the
+  // comp reaches. Until 2026-08-12 an unstated identity silently became the
+  // account's signup name, so a broker could not have corrected it — they
+  // were never told it had happened.
+  //
+  // identity.creditedTo is the SERVER's answer, from the same creditName()
+  // the publish route calls. Never recomputed here: a page that guessed the
+  // credit could promise a name the write would not produce.
+  // (No backticks anywhere in this block: the whole page is one template
+  // literal, and one stray backtick ends it — see the file's header note.)
+  var identity={display_name:"",company:"",creditedTo:""};
+
+  function renderIdentity(idn){
+    identity=idn||{display_name:"",company:"",creditedTo:""};
+    var to=identity.creditedTo||"";
+    $("creditLine").innerHTML=to
+      ? "Comps you publish are credited to <strong>"+esc(to)+"</strong>. "+
+        '<button class="pubbtn" id="idEdit">Change</button>'
+      : "Comps you publish need a name to credit them to. "+
+        '<button class="pubbtn" id="idEdit">Add your firm</button>';
+  }
+
+  // The single writer of the form's visibility, like setAddOpen: the fields
+  // are refilled from the last known identity on every open, so a cancelled
+  // edit never leaves a half-typed firm name waiting to be saved later.
+  function setIdOpen(open){
+    if(open){
+      $("idCompany").value=identity.company||"";
+      $("idName").value=identity.display_name||"";
+      $("idMsg").className="msg bad hide";
+    }
+    $("idForm").className=open?"":"hide";
+    if(open)$("idCompany").focus();
+  }
+
+  $("creditLine").addEventListener("click",function(e){
+    if(e.target&&e.target.id==="idEdit")setIdOpen(true);
+  });
+  $("idCancel").addEventListener("click",function(){ setIdOpen(false); });
+  $("idSave").addEventListener("click",function(){
+    var body={company:$("idCompany").value,display_name:$("idName").value};
+    $("idSave").disabled=true; $("idSave").textContent="Saving\\u2026";
+    fetch("/api/vault/identity",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        $("idSave").disabled=false; $("idSave").textContent="Save";
+        if(o.s!==200){
+          $("idMsg").textContent=o.j.error||"That didn't save.";
+          $("idMsg").className="msg bad";
+          return;
+        }
+        renderIdentity({display_name:o.j.identity.display_name,
+          company:o.j.identity.company,creditedTo:o.j.creditedTo});
+        setIdOpen(false);
+      })
+      .catch(function(){
+        $("idSave").disabled=false; $("idSave").textContent="Save";
+        $("idMsg").textContent="That didn't reach the server. Nothing was changed.";
+        $("idMsg").className="msg bad";
+      });
+  });
 
   function renderUploads(ups){
     $("ups").innerHTML=ups.length?ups.map(function(u){
@@ -2005,6 +2093,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .then(function(o){
         if(o.s!==200){
           compMsg(o.j.error||"That didn't go through.",true);
+          // The one refusal a broker can fix right here. Opening the form
+          // turns "you need a name" into the field that supplies it, instead
+          // of sending them off to find where identity is set — which, until
+          // this shipped, was nowhere.
+          if(o.j.code==="needs_credit_name")setIdOpen(true);
         }else if(o.j.published&&o.j.creditedTo){
           compMsg("Published, credited to "+o.j.creditedTo+".");
         }else{

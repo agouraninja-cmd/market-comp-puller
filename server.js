@@ -9018,11 +9018,16 @@ async function vaultReadPayload(req, params) {
   }
   query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
 
-  const [entR, compsR, uploadsR] = await Promise.allSettled([
+  const [entR, compsR, uploadsR, profileR] = await Promise.allSettled([
     entitlementsFor(req),
     DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
     DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
       `&order=created_at.desc&limit=100`) : Promise.resolve(null),
+    // The credit identity, so the page can say who a publish would credit
+    // BEFORE the broker clicks it. findBrokerProfile never throws, but it is
+    // settled alongside the rest anyway: an identity read must never be able
+    // to fail a vault the broker can otherwise open.
+    DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : Promise.resolve(null),
   ]);
   // entitlementsFor fails closed internally; if it somehow rejects, closed
   // here too — an error must never open a vault.
@@ -9060,6 +9065,20 @@ async function vaultReadPayload(req, params) {
     },
     markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
     types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
+    // Who a publish would credit, decided by the same creditName the publish
+    // route uses so the page can never promise a name the write would not
+    // produce. `creditedTo: ""` is the honest answer for a broker who has not
+    // stated one yet, and it is what makes the vault ask before the refusal
+    // rather than after. Deliberately NOT the profile row: `public`, `slug`
+    // and `email` are no business of this page.
+    identity: (() => {
+      const p = (profileR.status === "fulfilled" && profileR.value) || null;
+      return {
+        display_name: (p && p.display_name) || "",
+        company: (p && p.company) || "",
+        creditedTo: VAULT.creditName(p),
+      };
+    })(),
   } };
 }
 
@@ -11831,7 +11850,12 @@ const server = http.createServer((req, res) => {
           // name to credit is not worth publishing — refuse rather than post it
           // anonymously and let the broker discover later that they got nothing.
           const profile = await findBrokerProfile(user.email, user.id);
-          const by = VAULT.creditName(profile, user);
+          // Profile only — never user.name. See creditName's comment: the
+          // account-name fallback credited a vault-first broker's comps to
+          // their signup name and copied it into broker_company, which is
+          // published as their firm. Unset now means the refusal below,
+          // which the vault turns into a one-time question.
+          const by = VAULT.creditName(profile);
           if (!by) {
             return sendJson(res, 400, {
               error: "Add your firm or display name before publishing — published comps are credited to it.",
@@ -11860,6 +11884,94 @@ const server = http.createServer((req, res) => {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault publish failed:", err.message);
           return sendJson(res, 502, { error: "That didn't go through. Nothing was changed." });
+        }
+      });
+      return;
+    }
+
+    // --- The credit identity a published comp carries -----------------------
+    //
+    // A vault route, not a /api/broker/* one, because it exists FOR publishing
+    // and publishing lives here: same openVault gate, no third near-copy of
+    // the three refusals to keep in step.
+    //
+    // IT NEVER TOUCHES `public`. broker-directory.js opens with the rule this
+    // would otherwise break — coverage answers WHICH markets, `public` answers
+    // WHETHER to list at all, and they are separate consents. Stating a firm
+    // name so a published comp can be credited is not agreeing to appear in a
+    // public directory, so this writes display_name/company and leaves the
+    // opt-in to POST /api/broker/profile, exactly where it already lives.
+    if (req.method === "POST" && path === "/api/vault/identity") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultid:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const parsed = VAULT.validateIdentity(JSON.parse(body || "{}"));
+          if (!parsed.ok) return sendJson(res, 400, { error: parsed.error });
+          const { display_name, company } = parsed.identity;
+
+          const existing = await findBrokerProfile(user.email, user.id);
+          if (existing) {
+            // Filter on the FOUND ROW's email, not the account's.
+            // findBrokerProfile matches by user_id first and email second, so
+            // a legacy row adopted onto this account (migration 015) can carry
+            // a different address than the one the broker signs in with —
+            // filtering on user.email would then update nothing and report
+            // success, which reads as an identity that will not save.
+            // `email` is unique since 003, so this addresses exactly one row.
+            // user_id rides along to finish adopting that legacy row.
+            await sbRequest("PATCH",
+              `broker_profiles?email=eq.${encodeURIComponent(String(existing.email || user.email).toLowerCase())}`,
+              { display_name, company, user_id: user.id, updated_at: new Date().toISOString() },
+              { prefer: "return=minimal" });
+          } else {
+            // First statement creates the row. `public` is NOT passed: the
+            // column defaults to false (003), so a profile born here is
+            // private until somebody opts in on purpose.
+            const base = brokerSlugOf(company, display_name);
+            let created = null;
+            for (let n = 0; !created && n <= 20; n++) {
+              const slug = n === 0 ? base : `${base}-${n + 1}`;
+              try {
+                const ins = await sbRequest("POST", "broker_profiles", {
+                  email: String(user.email).toLowerCase(),
+                  user_id: user.id,
+                  display_name, company, slug,
+                }, { prefer: "return=representation" });
+                created = ins && ins[0];
+              } catch (err) {
+                // Slug collision -> next suffix. A user_id collision cannot be
+                // fixed by a new slug, so it must not burn 20 retries.
+                if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+                if (/user_id/i.test(String(err.message))) throw err;
+              }
+            }
+            if (!created) {
+              const slug = `${base}-${crypto.randomBytes(3).toString("hex")}`;
+              await sbRequest("POST", "broker_profiles", {
+                email: String(user.email).toLowerCase(),
+                user_id: user.id,
+                display_name, company, slug,
+              }, { prefer: "return=minimal" });
+            }
+          }
+
+          BROKER_PROFILES.fetchedAt = 0;   // the credit cache must not serve the old name
+          refreshBrokerProfiles();
+          return sendJson(res, 200, {
+            ok: true,
+            identity: { display_name, company },
+            creditedTo: VAULT.creditName({ display_name, company }),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault identity save failed:", err.message);
+          return sendJson(res, 502, { error: "That didn't save. Nothing was changed." });
         }
       });
       return;

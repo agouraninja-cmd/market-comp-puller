@@ -250,6 +250,10 @@ test("bare environment", async (t) => {
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/vault/benchmarks"],
       ["POST",   "/api/vault/inspect"],
+      // Writes broker_profiles, whose display_name/company become PUBLIC the
+      // moment somebody opts in — so an unauthenticated caller reaching it
+      // could put words in a named broker's mouth.
+      ["POST",   "/api/vault/identity"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {

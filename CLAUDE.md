@@ -1660,6 +1660,33 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the reason migration 019 has no SQL backfill (`marketOf()` is JS).
     Routes go through `requireBroker`. Manual adds log a PII-free `bov`
     analytics event. Lapse locks the log, never deletes it.
+  - **The credit identity is STATED, never inherited** (2026-08-12).
+    `POST /api/vault/identity` writes `broker_profiles.display_name` and
+    `.company`, creating the row if needed; `vaultReadPayload` returns an
+    `identity` block (`display_name`, `company`, `creditedTo`) so `/vault`
+    can name the credit BEFORE a publish rather than after one. Four rules.
+    **`creditName(profile)` reads the profile only** — the old `user.name`
+    fallback is gone, and that fallback was the bug: the publish confirm
+    promises "credited to your firm by name", a vault-first broker has no
+    profile, so their comps were credited to whatever they typed at signup
+    and `submissionRowFrom` copied that string into `broker_company`, which
+    is published as their firm. Nobody chose it, so nobody could correct
+    it. **An unstated identity now returns `""`**, the publish route
+    refuses with `needs_credit_name`, and the vault opens the form in
+    place — a one-time question instead of a silent wrong answer.
+    **It never touches `public`**: broker-directory.js's TWO CONSENTS rule
+    holds, so stating a firm name creates a row that is private by default
+    (`public` defaults false in 003) and the opt-in stays on `POST
+    /api/broker/profile`. Verified 2026-08-12 — after saving an identity,
+    `/broker/<slug>` still 404s and the market page lists nobody. **The
+    page prints `creditedTo` verbatim** and never recomputes the
+    company-then-name preference, or it could promise a name the write
+    would not produce; a test pins that by disagreeing the two on purpose.
+    Rules in the pure, tested `validateIdentity` (at least one field must
+    survive trimming; the two stay separate columns because a firm is not
+    a person; control characters stripped since these strings reach a
+    public page, formula shapes left to `guardFormula` at `csvCell` so a
+    firm really called "+Plus Realty" keeps its name).
   - **The template carries its own rules, as `#` lines** (2026-08-10; spec
     `docs/superpowers/specs/2026-08-10-vault-template-self-documenting-design.md`).
     `isCommentRow` skips any body row whose FIRST cell starts with `#`, and

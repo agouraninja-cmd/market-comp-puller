@@ -16,7 +16,7 @@ const {
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
   templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, PROPERTY_TYPES,
   isCommentRow, MAX_ROWS_PER_UPLOAD,
-  canPublish, creditName, submissionRowFrom,
+  canPublish, creditName, validateIdentity, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
@@ -834,11 +834,61 @@ test("canPublish never throws on garbage", () => {
   }
 });
 
-test("credit prefers the firm name, then a personal name", () => {
-  assert.equal(creditName({ company: "Adler Industrial", display_name: "O K" }, { name: "Owen" }), "Adler Industrial");
-  assert.equal(creditName({ display_name: "O Kleene" }, { name: "Owen" }), "O Kleene");
-  assert.equal(creditName({}, { name: "Owen" }), "Owen");
-  assert.equal(creditName(null, null), "", "no name at all is empty, not a crash");
+test("credit prefers the firm name, then a stated personal name", () => {
+  assert.equal(creditName({ company: "Adler Industrial", display_name: "O K" }), "Adler Industrial");
+  assert.equal(creditName({ display_name: "O Kleene" }), "O Kleene");
+  assert.equal(creditName(null), "", "no name at all is empty, not a crash");
+});
+
+test("an unstated identity credits NOBODY, rather than the account's signup name", () => {
+  // This used to answer "Owen" from the user row, and that fallback was the
+  // bug: the publish confirm promises "credited to your firm by name", a
+  // vault-first broker has no profile, so their comps were credited to
+  // whatever they typed at signup — and submissionRowFrom copies that string
+  // into broker_company, publishing a personal name as a firm. Nobody chose
+  // it, so nobody could correct it. Empty now means the publish route
+  // refuses with needs_credit_name and the vault asks once.
+  assert.equal(creditName({}), "");
+  assert.equal(creditName({ company: "   ", display_name: "" }), "",
+    "whitespace is not a stated identity");
+  // The old second argument is gone. Passing one must not resurrect it.
+  assert.equal(creditName({}, { name: "Owen" }), "",
+    "the account name must not reach the credit by any route");
+});
+
+// --- the stated identity itself ---------------------------------------------
+
+test("an identity needs at least one of firm or name", () => {
+  assert.equal(validateIdentity({}).ok, false);
+  assert.equal(validateIdentity({ company: "  ", display_name: "\t" }).ok, false);
+  assert.equal(validateIdentity(null).ok, false);
+  assert.match(validateIdentity({}).error, /firm/i);
+});
+
+test("either field alone is enough, and both are kept separate", () => {
+  assert.deepEqual(validateIdentity({ company: "Hawkins Ridge CRE" }).identity,
+    { display_name: "", company: "Hawkins Ridge CRE" });
+  assert.deepEqual(validateIdentity({ display_name: "Chuck Hawkins" }).identity,
+    { display_name: "Chuck Hawkins", company: "" });
+  // Separate all the way down: broker-directory.js lists them independently,
+  // and a firm is not a person.
+  assert.deepEqual(validateIdentity({ company: "Hawkins Ridge CRE", display_name: "Chuck Hawkins" }).identity,
+    { display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE" });
+});
+
+test("identity text is trimmed, collapsed, capped and stripped of control characters", () => {
+  const r = validateIdentity({ company: "  Hawkins   Ridge\tCRE  " });
+  assert.equal(r.identity.company, "Hawkins Ridge CRE");
+  assert.equal(validateIdentity({ company: "A".repeat(200) }).identity.company.length, 60);
+  // These strings reach a public page and an admin CSV.
+  const ctrl = validateIdentity({ company: "Hawkins\u0000Ridge\u001FCRE" });
+  assert.equal(ctrl.identity.company, "Hawkins Ridge CRE");
+});
+
+test("a formula-shaped firm name keeps its name", () => {
+  // guardFormula handles this at csvCell, the one place it can do harm. A
+  // firm really called "+Plus Realty" must not be refused here.
+  assert.equal(validateIdentity({ company: "+Plus Realty" }).identity.company, "+Plus Realty");
 });
 
 test("publishing capitalises the transaction, or the comp is never offered", () => {

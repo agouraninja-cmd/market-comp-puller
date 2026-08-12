@@ -1175,13 +1175,52 @@ function canPublish(comp) {
 
 // The name a published comp is credited to. Company first: "Verified · via
 // Adler Industrial" is what a broker is publishing FOR, and a firm name is
-// what a property owner recognizes. Falls back to a personal name.
-function creditName(profile, user) {
-  const p = profile || {}, u = user || {};
+// what a property owner recognizes; a broker who works under their own name
+// states that as their display name and gets it for the same reason.
+//
+// IT READS THE PROFILE ONLY — never the account's `name` (dropped
+// 2026-08-12). That fallback made the publish flow's own promise false:
+// the confirm says "credited to your firm by name", and a vault-first
+// broker has no profile, so their comps were quietly credited to whatever
+// they typed into the signup form — usually a personal name, then copied
+// into `broker_company` by submissionRowFrom and shown publicly as their
+// firm. Nobody chose that, so nobody could correct it.
+//
+// With no stated identity this returns "" and the publish route refuses
+// with `needs_credit_name`, which the vault turns into a one-time question.
+// Asking once is the whole point: a credit is a public claim about who
+// someone is, and inheriting it from an unrelated field is a guess.
+function creditName(profile) {
+  const p = profile || {};
   return text(p.company, MAX_SHORT_TEXT)
     || text(p.display_name, MAX_SHORT_TEXT)
-    || text(u.name, MAX_SHORT_TEXT)
     || "";
+}
+
+// The identity a broker states for their published comps: a firm, a personal
+// name, or both. Pure so `npm test` covers the rules on strings that become
+// PUBLIC — the "via <firm>" credit on every report the comp reaches, and the
+// market-page directory listing.
+//
+// One requirement, and it is the same one creditName answers: at least one of
+// the two must survive trimming, or there is no credit to publish under. The
+// two fields stay SEPARATE all the way down (broker_profiles has a column for
+// each) rather than being collapsed into one string here — publicBrokerRow in
+// broker-directory.js lists them independently, and a firm is not a person.
+function validateIdentity(input) {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  // Control characters would travel into a public page and an admin CSV.
+  // Formula-shaped values are handled downstream by guardFormula at the one
+  // place they can do harm (csvCell), so they are deliberately not refused
+  // here — a firm legitimately named "+Plus Realty" keeps its name.
+  const clean = (v) =>
+    text(String(v == null ? "" : v).replace(/[\u0000-\u001F\u007F-\u009F]+/g, " "), MAX_SHORT_TEXT);
+  const display_name = clean(src.display_name);
+  const company = clean(src.company);
+  if (!display_name && !company) {
+    return { ok: false, error: "Enter your firm, or your own name if you work under it." };
+  }
+  return { ok: true, identity: { display_name, company } };
 }
 
 /**
@@ -1297,6 +1336,7 @@ module.exports = {
   enforceVerifiedFlags,
   canPublish,
   creditName,
+  validateIdentity,
   submissionRowFrom,
   parseCsv,
   isCommentRow,

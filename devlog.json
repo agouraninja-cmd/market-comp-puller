@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-12",
+    "type": "improvement",
+    "title": "A broker states the name their published comps are credited to",
+    "details": "Publishing a comp promises credit to your firm by name, and there was nowhere to say what that name was. A broker who came in through the vault had no profile, so the credit quietly fell back to whatever they typed in the signup form, and that personal name was then copied into the firm field and shown publicly as their company. Nobody chose it, so nobody could correct it. The vault now names the credit before any publish and offers one form to set it, publishing refuses with a message that opens that form instead of a dead end, and the credit reads the stated profile only. Stating a name is deliberately not a public listing: the row it creates is private, so a broker who wants a public profile page still opts into that separately."
+  },
+  {
     "date": "2026-08-11",
     "type": "improvement",
     "title": "The mapper now reads a real brokerage export without hand-fixing",

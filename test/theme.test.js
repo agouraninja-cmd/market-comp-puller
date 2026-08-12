@@ -730,4 +730,188 @@ test("every CSS comment in vault-page.js's style block actually closes where it 
   const closes = (style.match(/\*\//g) || []).length;
   assert.equal(opens, closes,
     `vault-page.js's style block has ${opens} "/*" but ${closes} "*/" -- a comment closes early or never closes`);
+  // The whole page is one template literal. A backtick inside a CSS comment
+  // (the round-1 note wrapping MARKET_CSS in one) terminates it and the
+  // module fails to parse -- test/vault-page.test.js never even loads.
+  // Same class of hazard as a stray */ , caught the same way.
+  assert.equal((style.match(/`/g) || []).length, 0,
+    "vault-page.js's style block contains a backtick -- that ends the outer template literal");
 });
+
+test("every [data-theme] rule in index.html sits inside @media screen", () => {
+  // Print isolation is cascade, not a grep: an unscoped [data-theme="dark"]
+  // keeps custom properties resolving to their dark values inside @media
+  // print even when no print rule mentions the attribute. The token block
+  // and the utility bridge are already pinned above; this catches a THIRD
+  // copy (the loading-ninja fill, any future one-off) drifting outside
+  // @media screen. Comments are blanked (not deleted) so indices stay
+  // aligned -- several notes in this stylesheet mention the selector in
+  // prose, and a raw scan would flag those as unscoped rules.
+  const css = INDEX_STYLE.replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length));
+  function mediaQueryAt(src, pos) {
+    let depth = 0;
+    const mediaAt = new Map();
+    for (let i = 0; i < pos; i++) {
+      if (src.startsWith("@media", i)) {
+        const brace = src.indexOf("{", i);
+        if (brace === -1 || brace >= pos) break;
+        const query = src.slice(i + 6, brace).trim();
+        i = brace;
+        depth++;
+        mediaAt.set(depth, query);
+        continue;
+      }
+      if (src[i] === "{") { depth++; continue; }
+      if (src[i] === "}") {
+        mediaAt.delete(depth);
+        depth = Math.max(0, depth - 1);
+      }
+    }
+    for (let d = depth; d >= 1; d--) {
+      if (mediaAt.has(d)) return mediaAt.get(d);
+    }
+    return null;
+  }
+  const hits = [...css.matchAll(/\[data-theme/g)];
+  assert.ok(hits.length > 0, "index.html lost every [data-theme] selector");
+  for (const m of hits) {
+    assert.equal(mediaQueryAt(css, m.index), "screen",
+      `[data-theme] at index ${m.index} is not inside @media screen`);
+  }
+});
+
+test("the header CompNinja mark themes, and the footer mark does not", () => {
+  // CN_LOGO's rect is near-black (#1A2433). On the dark header that is
+  // --paper, that measured ~1.27:1. The class plus a stylesheet rule is
+  // the same pattern the vault chart and index.html's own header icon
+  // already use: a presentation-attribute fill= is the fallback (admin
+  // dashboards, out of scope, have no .cn-logo rule and keep rendering
+  // as before), and the in-scope stylesheets override it. CN_LOGO_LIGHT
+  // sits on the footer slab, which is dark in BOTH themes, so it must
+  // stay literal white -- var(--ink) would be navy in light mode.
+  const logo = SERVER_JS.slice(
+    SERVER_JS.indexOf("const CN_LOGO ="),
+    SERVER_JS.indexOf("const CN_LOGO_LIGHT =")
+  );
+  const light = SERVER_JS.slice(
+    SERVER_JS.indexOf("const CN_LOGO_LIGHT ="),
+    SERVER_JS.indexOf("const THEME_CSS =")
+  );
+  assert.match(logo, /class="cn-logo"/, "CN_LOGO is missing class=\"cn-logo\"");
+  assert.equal(light.includes("cn-logo"), false,
+    "CN_LOGO_LIGHT picked up the themed class -- the footer mark would invert");
+  for (const [where, css] of [
+    ["MARKET_CSS", cssBlock("MARKET_CSS")],
+    ["HOW_CSS", cssBlock("HOW_CSS")],
+    ["vault-page.js", VAULT_JS],
+  ]) {
+    assert.ok(css.includes(".cn-logo rect{fill:var(--ink)}"),
+      `${where} is missing the .cn-logo rect rule`);
+    assert.ok(css.includes(".cn-logo polygon{fill:var(--red-fill)}"),
+      `${where} is missing the .cn-logo polygon rule`);
+  }
+});
+
+function hexOffendersInCss(css) {
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  function insideBraces(src) {
+    let d = 0, out = "";
+    for (const c of src) {
+      if (c === "{") { d++; out += "\u0001"; continue; }
+      if (c === "}") { d = Math.max(0, d - 1); out += "\u0002"; continue; }
+      if (d > 0) out += c;
+    }
+    return out;
+  }
+  const blocks = insideBraces(noComments).split(/[\u0001\u0002]/).filter((b) => b.trim());
+  const offenders = [];
+  for (const block of blocks) {
+    for (const decl of block.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) offenders.push(`${prop}:${hex.toLowerCase()}`);
+    }
+  }
+  return offenders;
+}
+
+test("no raw hex colour remains in in-scope server stylesheets outside the deliberate allowlist", () => {
+  // 2026-08-12 Task 8 fix round 1: index.html and vault-page.js already
+  // pin their stylesheets; MARKET_CSS / HOW_CSS / ACCOUNT_NAV_CSS did not,
+  // so a literal on a public page (the header logo, the market trend
+  // chart, the brokers Verified chip) could ship unthemed. Admin
+  // dashboards are out of scope and are not in this list.
+  const ALLOWLIST = new Set([
+    "color:#fff", // text on --red-fill buttons and on the --slab footer
+  ]);
+  const blocks = {
+    MARKET_CSS: cssBlock("MARKET_CSS"),
+    HOW_CSS: cssBlock("HOW_CSS"),
+    ACCOUNT_NAV_CSS: cssBlock("ACCOUNT_NAV_CSS"),
+  };
+  const offenders = [];
+  for (const [where, css] of Object.entries(blocks)) {
+    for (const key of hexOffendersInCss(css)) {
+      if (!ALLOWLIST.has(key)) offenders.push(`${where} ${key}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    `raw hex colour(s) outside the token system in server stylesheets: ${offenders.join(", ")}`);
+});
+
+test("no raw colour literal remains in in-scope server.js generated markup", () => {
+  // The stylesheet test above cannot see a colour baked into HTML the
+  // server concatenates -- an SVG fill=, an inline style="", a theme-color
+  // meta. That is how the header logo (1.27:1) and the market trend chart
+  // shipped unthemed. Slice stops at renderAdminHTML: the four dashboards
+  // after it are out of scope (spec section 1). CSS template-literal
+  // bodies are carved out so this test does not double-count what the
+  // stylesheet test already pins.
+  const logoAt = SERVER_JS.indexOf("const CN_LOGO =");
+  const adminAt = SERVER_JS.indexOf("function renderAdminHTML(");
+  assert.notEqual(logoAt, -1, "CN_LOGO not found");
+  assert.notEqual(adminAt, -1, "renderAdminHTML not found");
+  let inScope = SERVER_JS.slice(logoAt, adminAt);
+  for (const name of ["MARKET_CSS", "HOW_CSS", "ACCOUNT_NAV_CSS"]) {
+    const block = cssBlock(name);
+    assert.ok(inScope.includes(block), `${name} missing from the in-scope slice`);
+    inScope = inScope.replace(block, "");
+  }
+
+  const offenders = [];
+  const rest = inScope.replace(/style="([^"]*)"/g, (whole, styleVal) => {
+    for (const decl of styleVal.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) offenders.push(`${prop}:${hex.toLowerCase()}`);
+    }
+    return "";
+  });
+  for (const m of rest.matchAll(/([a-zA-Z_$][\w.-]*)\s*[:=]\s*["']?(#[0-9A-Fa-f]{3,8})\b/g)) {
+    offenders.push(`${m[1].toLowerCase()}:${m[2].toLowerCase()}`);
+  }
+
+  const ALLOWLIST = new Set([
+    // CN_LOGO presentation-attribute fallback: in-scope pages override via
+    // .cn-logo; admin dashboards (no rule) keep the original navy/red.
+    "fill:#1a2433", "fill:#b91c1c",
+    // CN_LOGO_LIGHT: footer slab is dark in both themes, so white stays.
+    "fill:#ffffff",
+    // Footer wordmark accent on that same slab (MARKET_FOOTER and the
+    // how-it-works footer). Matches index.html's own allowlist.
+    "color:#ef4444",
+    // <meta name="theme-color"> paired with prefers-color-scheme, so the
+    // browser chrome tracks the OS rather than data-theme. Same pair as
+    // --paper's light/dark values; not a page colour.
+    "content:#fbfbf9", "content:#020617",
+  ]);
+
+  const named = offenders.filter((o) => !ALLOWLIST.has(o));
+  assert.deepEqual(named, [],
+    `raw colour literal(s) in in-scope server.js generated markup: ${named.join(", ")}`);
+});
+

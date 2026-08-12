@@ -4398,11 +4398,35 @@ function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
 // /broker, /how-it-works, /admin). Declared HERE, above MARKET_BAR: that
 // constant is built at module load, so a logo defined further down the file
 // would still be in its temporal dead zone and crash the process at startup.
+//
+// Dark-mode fix (2026-08-10, fix round 1): this rect's fill used to be the
+// literal hex below with nothing else -- correct on the light header it was
+// designed for, but the SAME near-black on the near-black header MARKET_CSS's
+// dark block gives it,
+// measured ~1.27:1 against --paper dark. class="cn-logo" plus a rule in
+// MARKET_CSS/HOW_CSS (`.cn-logo rect{fill:var(--ink)}`,
+// `.cn-logo polygon{fill:var(--red-fill)}`) is the structural fix Task 6 used
+// for the vault's chart and this branch's own index.html fix used for the
+// same icon there: a stylesheet rule, not a fill="var(...)" attribute
+// (unreliable, and invisible to a raw-hex regression test the way a class
+// name is not). The literal fill= attributes stay as the fallback value --
+// lowest CSS specificity there is, so any page that DOES carry the `.cn-logo`
+// rule (every page in dark-mode scope) overrides it, and the four admin
+// dashboards, which deliberately do NOT carry that rule (own :root blocks,
+// out of dark-mode scope), keep rendering exactly as before untouched.
 const CN_LOGO =
-  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
+  `<svg class="cn-logo" viewBox="0 0 30 30" aria-hidden="true">` +
   `<rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>` +
   `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
-// Same mark inverted for the ink footer.
+// Same mark inverted for the ink footer. Deliberately NOT given the
+// `.cn-logo` treatment above and never will be: the footer slab is dark in
+// BOTH themes (the same "already dark in light mode" reasoning `--slab`
+// itself carries), so this rect must stay literal white regardless of
+// site theme -- var(--ink) would be exactly wrong here, since --ink's LIGHT
+// value is dark navy. CN_LOGO and CN_LOGO_LIGHT differ only in this one
+// fill, but they need opposite behaviour (one must vary with the theme, the
+// other must never vary at all), so folding them into one themed mark is
+// not possible without breaking whichever context is currently correct.
 const CN_LOGO_LIGHT =
   `<svg viewBox="0 0 30 30" aria-hidden="true">` +
   `<rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>` +
@@ -4613,6 +4637,12 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hleft{display:flex;align-items:center;gap:18px}
 .brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
+/* The header CN_LOGO mark (never the footer's CN_LOGO_LIGHT, which has no
+   .cn-logo class and stays literal white on purpose -- see its declaration
+   in server.js). Overrides the SVG's literal fill= fallback: a stylesheet
+   rule beats a presentation attribute regardless of selector specificity. */
+.cn-logo rect{fill:var(--ink)}
+.cn-logo polygon{fill:var(--red-fill)}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
@@ -4678,6 +4708,16 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
 .card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
 .card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* Market page's median-$/SF-by-half-year trend chart (renderMarketPageHTML's
+   trendSvg). Dark-mode fix (2026-08-10, fix round 1) -- the same class-based
+   approach as .cn-logo above, and for the same reason: colours in generated
+   SVG markup are invisible to a raw-hex regression test and fill="var(...)"
+   as a presentation attribute is unreliable, so both live here instead. */
+.mkt-trend-line{stroke:var(--ink)}
+.mkt-trend-dot{fill:var(--ink)}
+.mkt-trend-dot-hi{fill:var(--red-fill)}
+.mkt-trend-label{fill:var(--ink)}
+.mkt-trend-caption{fill:var(--ink-3)}
 /* min-width is what makes the .scroll wrapper actually work: a width:100%
    table always shrinks to its container, so overflow-x had nothing to overflow.
    Invisible at 6 columns; a multifamily page renders 8 and would otherwise
@@ -5315,7 +5355,7 @@ function sendNotFound(req, res, message) {
   const body =
     `<section style="padding:56px 0"><div class="kicker">404</div>` +
     `<h1>${escHtml(message || "This page doesn't exist.")}</h1>` +
-    `<p style="color:#4C5665;max-width:56ch">The address may have moved, or the report behind it may have been ` +
+    `<p style="color:var(--ink-2);max-width:56ch">The address may have moved, or the report behind it may have been ` +
     `regenerated under a newer market page. Everything current is one click away.</p>` +
     `<p style="margin-top:18px"><a class="btn" href="/">Run a free valuation &rarr;</a></p>` +
     `<p style="margin-top:14px"><a href="/markets">Browse every market we cover &rarr;</a></p></section>`;
@@ -5390,14 +5430,20 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     const x = (i) => pad + (i * (w - 2 * pad)) / Math.max(1, buckets.length - 1);
     const y = (v) => (hi === lo ? hgt / 2 : hgt - pad - ((v - lo) * (hgt - 2 * pad)) / (hi - lo));
     const pts = buckets.map((b, i) => `${Math.round(x(i))},${Math.round(y(b.medianPsf))}`).join(" ");
+    // Dark-mode fix (2026-08-10, fix round 1): colours are classes into
+    // MARKET_CSS's .mkt-trend-* rules (var(--ink)/var(--ink-3)/var(--red-fill)),
+    // not literal hex -- this SVG is rendered ONLY inside renderMarketPageHTML,
+    // which always goes through marketShell/MARKET_CSS, so unlike CN_LOGO
+    // above there is no out-of-scope context needing a literal fallback.
     trendSvg =
       `<svg viewBox="0 0 ${w} ${hgt + 30}" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Median price per square foot by half-year">` +
-      `<polyline fill="none" stroke="#1A2433" stroke-width="2" points="${pts}"/>` +
+      `<polyline class="mkt-trend-line" fill="none" stroke-width="2" points="${pts}"/>` +
       buckets.map((b, i) => {
         const cx = Math.round(x(i)), cy = Math.round(y(b.medianPsf));
-        return `<circle cx="${cx}" cy="${cy}" r="4" fill="${i === buckets.length - 1 ? "#B91C1C" : "#1A2433"}"/>` +
-          `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="#1A2433">${usd0(b.medianPsf)}</text>` +
-          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#68707E">${escHtml(b.label)} &middot; ${b.count}</text>`;
+        const hiCls = i === buckets.length - 1 ? " mkt-trend-dot-hi" : "";
+        return `<circle class="mkt-trend-dot${hiCls}" cx="${cx}" cy="${cy}" r="4"/>` +
+          `<text class="mkt-trend-label" x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600">${usd0(b.medianPsf)}</text>` +
+          `<text class="mkt-trend-caption" x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11">${escHtml(b.label)} &middot; ${b.count}</text>`;
       }).join("") +
       `</svg>`;
   }
@@ -5766,6 +5812,12 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hleft{display:flex;align-items:center;gap:18px}
 .brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
+/* The header CN_LOGO mark (never the footer's CN_LOGO_LIGHT, which has no
+   .cn-logo class and stays literal white on purpose -- see its declaration
+   in server.js). Overrides the SVG's literal fill= fallback: a stylesheet
+   rule beats a presentation attribute regardless of selector specificity. */
+.cn-logo rect{fill:var(--ink)}
+.cn-logo polygon{fill:var(--red-fill)}
 .wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
@@ -6136,7 +6188,16 @@ function renderBrokersPageHTML(signedIn) {
     `<div class="card"><h2>What you get for submitting comps</h2>` +
     `<ul>` +
     `<li>Every report that uses one of your comps shows ` +
-    `<span class="badge" style="color:#06603A;background:#E3F2EA">Verified &middot; via Your Firm</span></li>` +
+    // Dark-mode fix (2026-08-10, fix round 1): var(--ok-text)/var(--ok-bg),
+    // not the literal pair this used to carry -- the same substitution
+    // Task 2/4 already made for the report table's own Verified badge and
+    // vault-page.js's .pubbtn.on repeats (see its comment on that rule):
+    // the text value matches --ok-text's light value exactly, and the
+    // background is within that same already-approved tolerance of
+    // --ok-bg's. A style="" attribute on a plain span, unlike an SVG
+    // presentation attribute, resolves var() reliably, so no class is
+    // needed here the way CN_LOGO and the trend chart needed one.
+    `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span></li>` +
     `<li>When an owner in your market wants a broker&rsquo;s opinion of value, we introduce them to you</li>` +
     `<li>A public profile page with your verified comps</li>` +
     `</ul></div>` +
@@ -6648,7 +6709,11 @@ ${ACCOUNT_NAV_JS}
         <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
         <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
         <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <span style="color:#68707E">Badges under-claim, never over-claim.</span>
+        <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
+             match to the literal this used to carry -- a plain span's
+             style="" attribute resolves var() reliably, unlike an SVG
+             presentation attribute, so no class is needed. -->
+        <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
       </div>
     </section>
   </div>

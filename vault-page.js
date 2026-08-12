@@ -59,6 +59,14 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
    page's spacing scale, so it stays literal and identical everywhere. */
 .brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
+/* Dark-mode fix (2026-08-10, fix round 1): CN_LOGO's rect/polygon carry a
+   literal fallback fill= (see its declaration in server.js), overridden here
+   the same way MARKET_CSS and HOW_CSS override it. This file does not
+   interpolate MARKET_CSS despite taking it as a parameter -- the page has
+   always carried its own copy of .hdr/.brand/.wordmark -- so the rule has
+   to be repeated here or /vault's header logo stays unthemed. */
+.cn-logo rect{fill:var(--ink)}
+.cn-logo polygon{fill:var(--red-fill)}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}

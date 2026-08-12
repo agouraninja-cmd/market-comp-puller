@@ -351,7 +351,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         <div class="lcell"><span class="llab">Priced sales</span>
           <div class="lfig" id="cPriced">0</div><div class="lsub" id="cPricedPct"></div></div>
         <div class="lcell"><span class="llab">Median $/SF</span>
-          <div class="lfig" id="cMed">&mdash;</div><div class="lsub">sales only</div></div>
+          <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
         <div class="lcell mid"><span class="llab">Published</span>
           <div class="lfig" id="cPub">0</div><div class="lsub">only if you choose it</div></div>
       </div>
@@ -747,6 +747,33 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   var psfList=function(list){
     return list.map(psfOf).filter(function(v){return v!=null});
   };
+  // The $/SF values a median would be taken over, AND how many property types
+  // they span.
+  //
+  // $/SF IS NOT COMPARABLE ACROSS PROPERTY TYPES, so a median that mixes them
+  // is an artifact rather than a statistic: on the first realistic test book
+  // industrial (~$78), office (~$157) and retail (~$230) blended into a
+  // headline "$117/SF", a figure describing no building in the book and
+  // sitting in the largest type on the page. Counted over the PRICED SALES
+  // only — the rows that actually feed the median — so an unpriced lease in a
+  // second type never suppresses a figure it could not have moved.
+  //
+  // Same instinct as the rollup card that shows its comp count when it has no
+  // priced sales: where a number would be fabricated, say what is true
+  // instead. Every caller (the ledger tile, the reading strip, the table
+  // footer) reads this one helper, which is also what keeps the strip and the
+  // footer quoting the same thing — a rule this file is required to hold.
+  var psfStats=function(list){
+    var vals=[],seen={},types=0;
+    (list||[]).forEach(function(c){
+      var v=psfOf(c);
+      if(v==null)return;
+      vals.push(v);
+      var t=c&&c.property_type;
+      if(t&&!seen[t]){seen[t]=1;types++;}
+    });
+    return {values:vals,types:types,mixed:types>1};
+  };
   var yearOf=function(c){
     var m=/^(\\d{4})/.exec(String(c.deal_date||""));
     return m?m[1]:null;
@@ -783,11 +810,18 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // the rollup and chart read, so the strip can never disagree with the
     // panels below it. Whole-book always; the filter never narrows it.
     var ups=o.j.uploads||[];
-    var ps=psfList(comps),med=median(ps);
+    var st=psfStats(comps),ps=st.values,med=median(ps);
     $("cImports").textContent=ups.length?ups.length+" import"+(ups.length===1?"":"s"):"";
     $("cPriced").textContent=ps.length;
     $("cPricedPct").textContent=comps.length?Math.round(ps.length*100/comps.length)+"% of book":"";
-    $("cMed").textContent=med!=null?psf0(med):"\\u2014";
+    // A book spanning several property types has no single $/SF, so the
+    // headline figure names the reason instead of averaging incomparable
+    // things. The market cards below DO segment by type, and the type filter
+    // brings this figure straight back, so nothing is actually lost.
+    $("cMed").textContent=(med!=null&&!st.mixed)?psf0(med):"\\u2014";
+    $("cMedSub").textContent=st.mixed
+      ? st.types+" property types \\u00b7 filter to compare"
+      : "sales only";
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
     renderIdentity(o.j.identity);
     renderRollup();
@@ -905,12 +939,26 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // cards and the year chart lead with, so the three views read against
     // each other. No priced sales = no row; a double rule over a blank would
     // claim a figure that does not exist.
-    var vps=psfList(rows),vmed=median(vps);
-    renderStrip(rows,vps,vmed);
-    $("tblFoot").innerHTML=vps.length
-      ? '<tr><td class="lab" colspan="7">Median of '+vps.length+" priced sale"+(vps.length===1?"":"s")+
-        (rows.length===comps.length?"":" in this view")+'</td><td class="num">'+psf(vmed)+"</td><td></td><td></td></tr>"
-      : "";
+    var vst=psfStats(rows),vps=vst.values,vmed=median(vps);
+    renderStrip(rows,vps,vmed,vst);
+    // Three states, two of which still draw the closing rule: a view spanning
+    // several property types says why there is no figure rather than sealing
+    // the column with one, because the $/SF it would average is measured in
+    // different units row to row.
+    //
+    // ONE row template with the label and the number varying, deliberately
+    // not two branches emitting their own <tr>: the footer's column count is
+    // checked by finding a single label cell with a colspan in this file and
+    // counting the cells after it, so a second copy silently breaks that
+    // check (it did, on the first attempt at this change). No backticks in
+    // this block either — the whole page is one template literal.
+    $("tblFoot").innerHTML=!vps.length ? "" :
+      '<tr><td class="lab" colspan="7">'+
+      (vst.mixed
+        ? "No single median across "+vst.types+" property types \\u2014 filter by type to compare"
+        : "Median of "+vps.length+" priced sale"+(vps.length===1?"":"s")+
+          (rows.length===comps.length?"":" in this view"))+
+      '</td><td class="num">'+(vst.mixed?"\\u2014":psf(vmed))+"</td><td></td><td></td></tr>";
     Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
       var on=th.getAttribute("data-k")===sortK;
       th.innerHTML=th.textContent.replace(/[ \\u25b2\\u25bc]+$/,"")+(on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"");
@@ -1155,14 +1203,18 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       '<div class="sfig'+(ok?" ok":"")+'">'+fig+"</div>"+
       (sub?'<div class="ssub">'+sub+"</div>":"")+"</"+tag+">";
   }
-  function renderStrip(rows,vps,vmed){
+  function renderStrip(rows,vps,vmed,vst){
     var box=$("readStrip");
     // Nothing on screen means nothing to summarise. The empty-table line below
     // says what is going on; a strip of dashes above it would not.
     if(!rows.length){box.className="strip hide";box.innerHTML="";return;}
     var cells=[];
-    cells.push(stripCell("Median $/SF",vps.length?psf(vmed):"&mdash;",
-      vps.length?vps.length+" priced sale"+(vps.length===1?"":"s"):"no priced sales",
+    // Reads the same psfStats the footer does, so the two cannot quote
+    // different things — the rule this strip has carried since it shipped.
+    var mixed=!!(vst&&vst.mixed);
+    cells.push(stripCell("Median $/SF",(vps.length&&!mixed)?psf(vmed):"&mdash;",
+      mixed?vst.types+" property types":
+        (vps.length?vps.length+" priced sale"+(vps.length===1?"":"s"):"no priced sales"),
       $("chartBox").className.indexOf("hide")<0?"chartBox":""));
     var gv="&mdash;",gs="",gok=false;
     if(lastGut&&lastGut.unavailable){ gs="benchmarks unavailable"; }

@@ -1271,3 +1271,64 @@ test("a partly-new book counts both halves separately", async () => {
   // different facts and must not be collapsed into one number.
   assert.match(html, /2 duplicates in the file/);
 });
+
+// ---------------------------------------------------------------------------
+// $/SF is not comparable across property types (2026-08-12)
+//
+// A book holding industrial (~$78/SF), office (~$157) and retail (~$230)
+// blended into a headline "$117/SF" — the largest number on the page, and one
+// that describes no building in the book. The ledger tile, the reading strip
+// and the table footer all read one psfStats helper so they cannot disagree.
+// ---------------------------------------------------------------------------
+
+const MIXED_BOOK = [
+  comp({ id: "i1", property_type: "Industrial", price_per_sqft: 78, address: "1 Ind St" }),
+  comp({ id: "i2", property_type: "Industrial", price_per_sqft: 80, address: "2 Ind St" }),
+  comp({ id: "o1", property_type: "Office", price_per_sqft: 157, address: "3 Off St" }),
+  comp({ id: "r1", property_type: "Retail", price_per_sqft: 230, address: "4 Ret St" }),
+];
+const ONE_TYPE_BOOK = [
+  comp({ id: "i1", property_type: "Industrial", price_per_sqft: 78, address: "1 Ind St" }),
+  comp({ id: "i2", property_type: "Industrial", price_per_sqft: 80, address: "2 Ind St" }),
+];
+
+test("a mixed-type book shows no headline median, and says why", async () => {
+  const { doc } = await runPage(MIXED_BOOK);
+  assert.equal(doc.getElementById("cMed").textContent, "—",
+    "a median across incomparable units must not be quoted");
+  assert.match(doc.getElementById("cMedSub").textContent, /3 property types/);
+  assert.match(doc.getElementById("cMedSub").textContent, /filter/i,
+    "the reader needs to know the figure is one click away");
+});
+
+test("a single-type book still gets its median", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK);
+  assert.notEqual(doc.getElementById("cMed").textContent, "—",
+    "suppressing a median that IS comparable would be the opposite mistake");
+  assert.equal(doc.getElementById("cMedSub").textContent, "sales only");
+});
+
+test("the table footer refuses the same figure the tile refuses", async () => {
+  const { doc } = await runPage(MIXED_BOOK);
+  const foot = doc.getElementById("tblFoot").innerHTML;
+  assert.match(foot, /No single median across 3 property types/);
+  assert.ok(!/\$\d/.test(foot), "the footer must not seal the column with a price: " + foot);
+});
+
+test("the footer and the tile agree on a single-type book too", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK);
+  const foot = doc.getElementById("tblFoot").innerHTML;
+  assert.match(foot, /Median of 2 priced sales/);
+  assert.match(foot, /\$\d/, "a comparable median must still seal the column");
+});
+
+test("an unpriced comp in a second type cannot suppress the median", async () => {
+  // psfStats counts types across the PRICED SALES only — the rows that feed
+  // the median. A lease with no $/SF never moved it, so it must not silence
+  // it either.
+  const { doc } = await runPage(ONE_TYPE_BOOK.concat([
+    comp({ id: "l1", property_type: "Office", transaction: "lease", price: null, price_per_sqft: null, address: "9 Lease Rd" }),
+  ]));
+  assert.notEqual(doc.getElementById("cMed").textContent, "—");
+  assert.equal(doc.getElementById("cMedSub").textContent, "sales only");
+});

@@ -2,6 +2,12 @@
   {
     "date": "2026-08-12",
     "type": "fix",
+    "title": "No more headline $/SF median across mixed property types",
+    "details": "A book holding industrial, office and retail reported a single median of $117/SF, the largest figure on the page and one that described no building in it: dollars per square foot are not comparable across property types, so a median mixing them is an artifact rather than a statistic. The ledger tile, the reading strip and the table footer now all decline the figure when the rows they summarise span more than one type, and say how many types and that filtering brings it back. Filtering to a type restores it immediately, and the market cards underneath were already segmented correctly, so no real number was lost. Counted over priced sales only, so an unpriced lease in a second type cannot silence a median it could never have moved."
+  },
+  {
+    "date": "2026-08-12",
+    "type": "fix",
     "title": "An import now reports what was stored, not what was read",
     "details": "Re-uploading a book the vault already held said 'Imported 16 comps' after saving none. The insert ignores duplicates against the database, but it asked for no confirmation back, so the route could only report how many rows it had parsed. It now asks for the stored ids and counts those, and the page states the two facts separately: what landed, and how many rows the vault already had. Rows repeated inside a single file stay a third, separate count, because a broker re-uploading last month's export is doing something entirely normal and none of it is an error. Being wrong in the reassuring direction is the failure that matters here: a broker told their deals landed does not go looking for them."
   },

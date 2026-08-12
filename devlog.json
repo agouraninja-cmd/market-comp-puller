@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-11",
+    "type": "improvement",
+    "title": "The mapper now reads a real brokerage export without hand-fixing",
+    "details": "Measured against the first real broker file: 4 of its 11 meaningful columns needed manual mapping, and one suggestion was actively wrong. All four are fixed. \"$/SF\" normalizes to bare \"sf\" and was the sole claimant of the size alias, so the mapper suggested importing $68.11 as a 68 sq ft building; a rate-shaped header (isRateHeader, tested on the raw string) may now claim nothing by alias, while an exact name like \"Price Per Unit\" still maps. \"Cap Rate (%)\" left an underscore stub after the symbols stripped and missed its own exact match; normalization now trims those. \"Trans\", \"Bldg SF\", RBA and GLA joined the alias table. And an explicit no-value price (\"Undisclosed\", \"N/A\") now reads as an empty cell instead of losing the row to the 1.2M error, which is what the template promised all along; pending prices (\"TBD\", \"call for price\") are still refused, and shorthand still gets the write-it-out advice."
+  },
+  {
+    "date": "2026-08-11",
     "type": "feature",
     "title": "vault_beta: hand a specific broker the vault without a subscription",
     "details": "Broker onboarding had no door: the tester passkey deliberately excludes the vault, ADMIN_KEY also unlocks the dashboards, so a real broker's only path in was paying on day one. users.vault_beta (migration 023, run it before flipping any flag) is the narrow alternative: set per account by hand, revoked the same way, no shared secret. It grants the broker surfaces only, so reports stay free-tier; it cannot switch a dark deployment on; and it is independent of billing on purpose, so a beta broker's book stays reachable with no subscription to lapse. Rules live in entitlements.js with the rest of the decision table."

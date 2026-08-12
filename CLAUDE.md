@@ -1689,10 +1689,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     A broker uploads their own export and maps its columns once. `POST
     /api/vault/inspect` reports headers, real sample values and a suggested
     mapping; `/api/vault/upload` takes an optional `mapping`, and absent it
-    behaves byte for byte as before. Five rules a future editor will
+    behaves byte for byte as before. Six rules a future editor will
     otherwise break: **a target is suggested only when exactly ONE column
     claims it**, which is how the old "we do not guess column names"
     decision survives (two columns aliasing to `price` suggest neither);
+    **a rate-shaped header may claim nothing by ALIAS** (`isRateHeader`,
+    2026-08-11, tested on the RAW header because the "/" carrying the
+    meaning strips away in normalization) — "$/SF" normalizes to bare
+    `sf`, which made it the sole claimant of the size alias on the first
+    real broker file, so the mapper confidently suggested importing
+    $68.11 as a 68 sq ft building; an exact target name still maps, so a
+    literal "Price Per Unit" column keeps its real multifamily column;
     **the screen is always shown unless every header is already one of
     ours**, because only four fields are required per row, so a file with
     an unrecognised "Sq Ft" column imports today with every size null and

@@ -103,7 +103,14 @@ test("money refuses negatives in both notations", () => {
 });
 
 test("money refuses text", () => {
-  for (const v of ["TBD", "call for price", "n/a", "--"]) {
+  // "n/a" and "--" used to sit in this list. They moved to the no-value set
+  // on 2026-08-11 (see NO_VALUE_TOKENS): they name the ABSENCE of a number,
+  // so reading them as an empty cell guesses nothing — where "TBD" and
+  // "call for price" describe a price that exists and is pending, which is
+  // information a blank would destroy. The first real broker file lost a
+  // whole row to "Undisclosed" while the template promised undisclosed
+  // deals still count.
+  for (const v of ["TBD", "call for price", "pending", "see notes"]) {
     assert.equal(parseMoney(v).ok, false, `${v} must be refused`);
   }
 });
@@ -1426,4 +1433,104 @@ test("the server-set fields the edit and add routes stamp onto every row are rea
     `The routes stamp field(s) broker_comps does not have: ${missing.join(", ")}. ` +
     `A column here that the table does not have will 400 the whole write at runtime -- ` +
     `this test is the only thing standing between that and a silent production failure.`);
+});
+
+// --- the first real broker file's suggestion gaps (2026-08-11) ---------------
+//
+// Every case here is a header the 2026-08-10 dry-run file actually carried.
+// The one that matters most is "$/SF": it normalizes to bare "sf", which made
+// it the SOLE claimant of the size alias, and the mapper confidently
+// suggested importing $68.11 as a 68 sq ft building. A derived rate may
+// claim nothing by alias.
+
+const { isRateHeader } = require("../broker-vault");
+
+test("rate-shaped headers are recognized on the raw string", () => {
+  for (const h of ["$/SF", "$ / SF", "Price/SF", "Rent/SF/Yr", "$ per SF", "PSF", "p.s.f.", "Price per square foot"]) {
+    assert.equal(isRateHeader(h), true, h + " should read as a rate");
+  }
+  for (const h of ["SF", "Bldg SF", "Sale Price", "Sq Ft", "RBA", ""]) {
+    assert.equal(isRateHeader(h), false, h + " should not read as a rate");
+  }
+});
+
+test("the dry-run file's headers now suggest correctly, and $/SF claims nothing", () => {
+  const headers = ["Property Name", "Property Address", "Type", "Trans", "Close Date",
+    "Sale Price", "Bldg SF", "$/SF", "Cap Rate (%)", "Yr Built", "Tenancy", "Comments"];
+  const { mapping } = suggestMapping(headers);
+  assert.equal(mapping.property_address, "address");
+  assert.equal(mapping.type, "property_type");
+  assert.equal(mapping.trans, "transaction", "Trans is a required field and must suggest");
+  assert.equal(mapping.close_date, "deal_date");
+  assert.equal(mapping.sale_price, "price");
+  assert.equal(mapping.bldg_sf, "size_sqft", "Bldg SF is the common size header");
+  assert.equal(mapping.cap_rate, "cap_rate", "the stripped (%) must not leave a stub that misses the exact match");
+  assert.equal(mapping.yr_built, "year_built");
+  assert.equal(mapping.comments, "notes");
+  assert.equal(Object.values(mapping).includes("size_sqft") &&
+    Object.entries(mapping).find(([, t]) => t === "size_sqft")[0], "bldg_sf",
+    "size must come from Bldg SF, never from $/SF");
+});
+
+test("$/SF alone still suggests nothing for size", () => {
+  const { mapping } = suggestMapping(["Property Address", "$/SF"]);
+  assert.equal(Object.values(mapping).includes("size_sqft"), false);
+});
+
+test("a plain SF column still suggests size", () => {
+  const { mapping } = suggestMapping(["Property Address", "SF"]);
+  assert.equal(mapping.sf, "size_sqft");
+});
+
+test("a rate-shaped header that names our own column exactly still maps", () => {
+  // "Price Per Unit" is rate-shaped AND the literal name of a real
+  // multifamily column — the guard blocks alias claims only.
+  const { mapping } = suggestMapping(["Price Per Unit"]);
+  assert.equal(mapping.price_per_unit, "price_per_unit");
+});
+
+test("symbol suffixes normalize away without leaving underscore stubs", () => {
+  assert.equal(normalizeHeader("Cap Rate (%)"), "cap_rate");
+  assert.equal(normalizeHeader("Sale Price ($)"), "sale_price");
+  assert.equal(normalizeHeader("Bldg  SF"), "bldg_sf");
+  assert.equal(normalizeHeader("($)"), "", "a header that is ONLY symbols still vanishes to the positional key");
+});
+
+// --- no-value markers read as an empty cell ----------------------------------
+
+test("an explicit no-value marker in a money cell reads as blank, not an error", () => {
+  for (const v of ["Undisclosed", "not disclosed", "N/A", "na", "None", "Confidential", "Withheld", "-", "—"]) {
+    const r = parseMoney(v);
+    assert.equal(r.ok, true, v + " should read as no value");
+    assert.equal(r.value, null);
+  }
+});
+
+test("shorthand still gets the 1.2M advice; other text gets the undisclosed hint", () => {
+  for (const v of ["1.2M", "450k", "1.5 million", "$2.3MM"]) {
+    const r = parseMoney(v);
+    assert.equal(r.ok, false, v + " must still be refused");
+    assert.match(r.error, /1\.2M/, v + " should get the shorthand advice");
+  }
+  const other = parseMoney("Call broker");
+  assert.equal(other.ok, false);
+  assert.match(other.error, /leave the cell blank/,
+    "text that is not shorthand should get the undisclosed hint, not the 1.2M advice");
+});
+
+test("no-value markers read as blank in plain numbers too", () => {
+  assert.deepEqual(parseNumber("N/A"), { ok: true, value: null });
+  assert.deepEqual(parseNumber("—"), { ok: true, value: null });
+});
+
+test("a sale row with an Undisclosed price imports as an unpriced deal", () => {
+  const row = {
+    address: "2455 E Lanark St, Meridian, ID 83642",
+    property_type: "Industrial", transaction: "sale",
+    deal_date: "2024-09-12", price: "Undisclosed", size_sqft: "41,000",
+  };
+  const r = normalizeRow(row);
+  assert.equal(r.ok, true, JSON.stringify(r.errors || []));
+  assert.equal(r.row.price, null);
+  assert.equal(r.row.size_sqft, 41000);
 });

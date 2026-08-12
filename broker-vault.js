@@ -165,7 +165,16 @@ function normalizeHeader(name) {
   return String(name == null ? "" : name)
     .trim().toLowerCase()
     .replace(/[\s\-]+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
+    .replace(/[^a-z0-9_]/g, "")
+    // A stripped symbol can leave an underscore stub behind: "Cap Rate (%)"
+    // is "cap_rate_(%)" after the whitespace pass, and dropping the "(%)"
+    // leaves "cap_rate_" — one invisible character away from the exact
+    // target it plainly names, which is how the first real broker file got
+    // no suggestion for its cap-rate column (2026-08-10). Same class:
+    // "Sale Price ($)" → "sale_price_". Still only whitespace, case and
+    // punctuation — no word in the header is being interpreted.
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 /**
@@ -205,17 +214,45 @@ function normalizedHeaderRow(rawHeaders) {
 const HEADER_ALIASES = {
   address:       ["property_address", "prop_address", "street_address", "site_address", "addr"],
   property_type: ["type", "prop_type", "asset_type", "product_type"],
-  transaction:   ["deal_type", "transaction_type", "sale_or_lease", "lease_or_sale"],
+  transaction:   ["deal_type", "transaction_type", "sale_or_lease", "lease_or_sale", "trans", "trans_type"],
   deal_date:     ["sale_date", "close_date", "closing_date", "transaction_date", "sold_date", "date"],
-  price:         ["sale_price", "sales_price", "purchase_price", "sold_price"],
-  size_sqft:     ["sf", "sq_ft", "sqft", "square_feet", "square_footage", "building_sf", "building_size", "size"],
-  cap_rate:      ["cap", "going_in_cap", "cap_pct"],
+  price:         ["sale_price", "sales_price", "purchase_price", "sold_price", "consideration"],
+  // The abbreviated forms ("Bldg SF", "RBA", "GLA") are what brokerage
+  // exports actually say — the first real file's size column was "Bldg SF"
+  // and suggested nothing (2026-08-10). RBA (rentable building area) and
+  // GLA (gross leasable area) are the CoStar-family names for the same
+  // measure.
+  size_sqft:     ["sf", "sq_ft", "sqft", "square_feet", "square_footage", "building_sf", "building_size", "size",
+                  "bldg_sf", "bldg_sqft", "bldg_size", "building_sqft", "gross_sf", "total_sf", "rba", "gla"],
+  cap_rate:      ["cap", "going_in_cap", "cap_pct", "cap_rate_pct"],
   tenancy:       ["tenancy_type"],
   year_built:    ["yr_built", "built", "year_constructed"],
   notes:         ["comments", "remarks", "note"],
   lat:           ["latitude"],
   lng:           ["longitude", "long", "lon"],
 };
+
+// A rate-shaped header names a DERIVED figure, never the measure itself:
+// "$/SF" is a price divided by a size, and mapping it onto either side of
+// that division corrupts the side it lands on. The first real broker file
+// proved the hazard is live, not theoretical: its "$/SF" column normalizes
+// to bare "sf" (the $ and / both strip), which made it the sole claimant of
+// the size alias — so the mapper confidently suggested importing $68.11 as
+// a 68 sq ft building (2026-08-10). Tested on the RAW header, before
+// normalization erases the "/" that is the whole signal.
+//
+// Guards ALIAS claims only. An exact target name is never blocked: "Price
+// Per Unit" is rate-shaped AND the literal name of a real multifamily
+// column, and a broker who used our own header gets our own column.
+function isRateHeader(raw) {
+  const s = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (!s) return false;
+  if (/\/\s*(sf|sq\.?\s*ft|sqft|square\s*foot|square\s*feet|acre|unit|yr|year|mo|month|nnn)\b/.test(s)) return true;
+  if (/\bper\s+(sf|sq\.?\s*ft|sqft|square\s*foot|acre|unit|month|year)\b/.test(s)) return true;
+  if (/^\$\s*(\/|per)\s*/.test(s)) return true;
+  if (/^p\.?\s?s\.?\s?f\.?$/.test(s) || /\bpsf\b/.test(s)) return true;
+  return false;
+}
 
 // Every field a column may be mapped onto.
 const MAPPABLE_TARGETS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
@@ -233,7 +270,8 @@ const REQUIRED_TARGETS = ["address", "property_type", "transaction", "deal_date"
  * was written to prevent.
  */
 function suggestMapping(headers) {
-  const norm = (Array.isArray(headers) ? headers : []).map(normalizeHeader);
+  const raw = Array.isArray(headers) ? headers : [];
+  const norm = raw.map(normalizeHeader);
 
   // Which columns claim each target, exact matches tracked separately so a
   // literal `price` column can settle a tie an alias would otherwise create.
@@ -241,9 +279,14 @@ function suggestMapping(headers) {
   const alias = new Map();   // target -> [normalized header]
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
 
-  for (const h of norm) {
+  for (let i = 0; i < norm.length; i++) {
+    const h = norm[i];
     if (!h) continue;
     if (MAPPABLE_TARGETS.includes(h)) { push(exact, h, h); continue; }
+    // A derived-rate column ("$/SF", "Rent/SF/Yr") may claim nothing by
+    // alias — see isRateHeader. The check reads the RAW header because the
+    // "/" carrying the meaning does not survive normalization.
+    if (isRateHeader(raw[i])) continue;
     for (const [target, list] of Object.entries(HEADER_ALIASES)) {
       if (list.includes(h)) push(alias, target, h);
     }
@@ -327,8 +370,21 @@ function applyHeaderMapping(headers, mapping) {
 const text = (v, max = MAX_TEXT) =>
   String(v == null ? "" : v).trim().replace(/\s+/g, " ").slice(0, max);
 
+// The explicit ways a spreadsheet says "there is no number here". Compared
+// case-insensitively with whitespace collapsed. Deliberately a closed set of
+// literal markers: each one names ABSENCE, so treating it as an empty cell
+// loses nothing — the line this must never cross is interpreting a value
+// (that is why "TBD" of the pending-deal kind and shorthand like "1.2M" stay
+// rejections). Shared by parseMoney and parseNumber.
+const NO_VALUE_TOKENS = new Set([
+  "undisclosed", "not disclosed", "n/a", "na", "none", "confidential",
+  "withheld", "unknown", "-", "--", "—", "–",
+]);
+
 /**
- * Money. Accepts "$1,250,000", "1250000", "1,250,000.50".
+ * Money. Accepts "$1,250,000", "1250000", "1,250,000.50", and reads an
+ * explicit no-value marker ("Undisclosed", "N/A" — NO_VALUE_TOKENS above) as
+ * an empty cell, because that is what it says.
  *
  * REFUSES shorthand ("1.2M", "450k") and accounting negatives ("(1,000)"),
  * matching displayMoney()'s stance in index.html: an ambiguous figure is
@@ -339,8 +395,24 @@ const text = (v, max = MAX_TEXT) =>
 function parseMoney(v) {
   const raw = String(v == null ? "" : v).trim();
   if (!raw) return { ok: true, value: null };
+  // An explicit no-value marker means the same thing as an empty cell. This
+  // is NOT the shorthand-guessing the comment above rules out: "Undisclosed"
+  // names the absence of a number, and reading it as absent loses nothing —
+  // where reading "1.2M" as anything requires inventing a value. The set is
+  // closed and literal on purpose; the first real broker file wrote
+  // "Undisclosed" and lost the whole row to the 1.2M error (2026-08-10),
+  // when the template itself promises an undisclosed deal still counts.
+  if (NO_VALUE_TOKENS.has(raw.toLowerCase().replace(/\s+/g, " "))) {
+    return { ok: true, value: null };
+  }
   if (/[a-z]/i.test(raw.replace(/^(usd|us\$)\s*/i, ""))) {
-    return { ok: false, error: `"${raw}" is not a plain number — write 1200000, not 1.2M` };
+    // Only shorthand that actually looks like shorthand earns the 1.2M
+    // advice — telling someone who wrote "Call broker" to write 1200000
+    // explains the wrong mistake.
+    if (/^[\d.,\s$]*\d\s*(k|m|mm|b|bn|mil|million|thousand)\.?$/i.test(raw.replace(/^(usd|us\$)\s*/i, ""))) {
+      return { ok: false, error: `"${raw}" is not a plain number — write 1200000, not 1.2M` };
+    }
+    return { ok: false, error: `"${raw}" is not a number — leave the cell blank if the price is undisclosed; the deal still counts` };
   }
   if (/^\(.*\)$/.test(raw)) return { ok: false, error: `"${raw}" looks negative` };
   const cleaned = raw.replace(/^(usd|us\$)\s*/i, "").replace(/[$,\s]/g, "");
@@ -351,10 +423,14 @@ function parseMoney(v) {
   return { ok: true, value: n };
 }
 
-/** A plain count or area. Accepts "45,000" and "45,000 SF"; the unit is dropped. */
+/** A plain count or area. Accepts "45,000" and "45,000 SF"; the unit is dropped.
+ *  A no-value marker ("N/A" — NO_VALUE_TOKENS above) reads as an empty cell. */
 function parseNumber(v) {
   const raw = String(v == null ? "" : v).trim();
   if (!raw) return { ok: true, value: null };
+  if (NO_VALUE_TOKENS.has(raw.toLowerCase().replace(/\s+/g, " "))) {
+    return { ok: true, value: null };
+  }
   const cleaned = raw
     .replace(/\b(sf|sq\.?\s*ft\.?|square\s+feet|ft2|units?|acres?)\b/gi, "")
     .replace(/[,\s]/g, "");
@@ -1227,6 +1303,7 @@ module.exports = {
   normalizeHeader,
   normalizedHeaderRow,
   suggestMapping,
+  isRateHeader,
   validateMapping,
   applyHeaderMapping,
   inspectCsv,

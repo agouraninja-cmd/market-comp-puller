@@ -1676,7 +1676,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         // rule as the non-mapper open at the top of doImport: a result must
         // be written somewhere that is showing.
         if(viaMapper)setAddOpen(true);
+        // "Imported N" counts what the vault actually STORED. A re-uploaded
+        // book is the ordinary case, not an error, so the rows it already
+        // had are stated plainly beside it rather than folded into the
+        // imported count — which is what used to happen, and which told a
+        // broker 16 comps had landed when none had.
         var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
+        if(j.already)bits.push(j.already+(j.already===1?" was":" were")+" already in your vault");
         if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
         if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
         // The template's own # notes, normally. Said out loud anyway: a broker

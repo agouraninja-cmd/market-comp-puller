@@ -26,7 +26,13 @@ the Restart rule below); a small Node proxy holds the API key so the browser
 never sees it. The public contact email across the site is
 info@compninja.co. The owner is not a licensed broker: site copy must say
 we "connect you with a local broker", never that we are one, and every
-valuation is labeled an automated estimate, never an appraisal.
+valuation is labeled an automated estimate, never an appraisal. That rule
+reaches the DATA too, not just the copy: publishing a vault comp earns the
+green "Verified · via \<name\>" badge, which means "a named broker vouched
+for this deal", so **the owner does not publish** (decided 2026-08-12) and
+the standing plan is to refuse `POST /api/vault/publish` without a license
+on the broker profile — see docs/ROADMAP.md's "Next" for the decision and
+the alternatives already rejected.
 
 There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).

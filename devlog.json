@@ -2,6 +2,12 @@
   {
     "date": "2026-08-12",
     "type": "fix",
+    "title": "An import now reports what was stored, not what was read",
+    "details": "Re-uploading a book the vault already held said 'Imported 16 comps' after saving none. The insert ignores duplicates against the database, but it asked for no confirmation back, so the route could only report how many rows it had parsed. It now asks for the stored ids and counts those, and the page states the two facts separately: what landed, and how many rows the vault already had. Rows repeated inside a single file stay a third, separate count, because a broker re-uploading last month's export is doing something entirely normal and none of it is an error. Being wrong in the reassuring direction is the failure that matters here: a broker told their deals landed does not go looking for them."
+  },
+  {
+    "date": "2026-08-12",
+    "type": "fix",
     "title": "The gut check now appears on the first import instead of the next page load",
     "details": "Market benchmarks are fetched per market-and-type bucket, so a brand-new vault has nothing to ask for and the fetch returns early. The caller marked them loaded anyway, so a broker who imported their book into an empty vault got no gut check for the rest of that session, and only saw one if they happened to reload the page. Found on a clean-slate run against the real corpus, and it is the actual reason the panel looked like it was failing in thin markets: the benchmarks were fine the whole time. The flag now stays unset until there is a bucket to ask about, so the reload that follows the first import is the one that loads them."
   },

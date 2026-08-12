@@ -58,6 +58,24 @@ intent, the devlog states history.
 - **White-label exports**, riding on the branding profile once its UI
   exists.
 - **Market digest pages**, once the corpus holds 2+ quarters of history.
+- **Only a licensed broker may publish a vault comp** (decided 2026-08-12,
+  not yet built). The "Verified" badge means "a named broker vouched for
+  this deal" — the strongest provenance a report shows, and the entire
+  currency the broker tier trades in, since brokers are paid in credit
+  rather than cash. The owner is not a licensed broker, so his publishing
+  under any credit name would make the badge say something untrue, and the
+  same hole is open to anyone else who gets vault access. **The decision:
+  put a license field on the broker profile and refuse `POST
+  /api/vault/publish` without it** — enforced in code rather than
+  remembered as a rule. Deliberately deferred, not parked: nobody can
+  publish today except the owner, who has decided not to, so there is no
+  live exposure; build it before the first outside broker gets a vault
+  (i.e. alongside `vault_beta`, migration 023). Rejected alternatives, so
+  they are not re-litigated: a separate non-broker provenance tier (moves
+  SOURCE_TIERS, TIER_WEIGHT, the comp-gate mirror, badge copy and the
+  legend together, for a contributor class that does not exist yet), and
+  rewording "Verified" to claim less (weakens the badge for the actual
+  brokers it exists to reward).
 
 ## Later (broker-tier phases, in order)
 

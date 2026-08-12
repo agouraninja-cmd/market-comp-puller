@@ -1241,3 +1241,33 @@ test("an empty vault asks for no benchmarks, and does not latch the flag", async
   assert.match(js, /if\(!benchLoaded\s*&&\s*comps\.length\)/,
     "the benchmarks flag must stay false until there is a bucket, or the first import never loads them");
 });
+
+test("a re-uploaded book says what was stored, not what was read", async () => {
+  // The server counts what the database actually took (the insert asks for
+  // ids back rather than return=minimal). The page must then say so: this
+  // used to read "Imported 16 comps" after storing none, which is the
+  // reassuring direction to be wrong in — a broker told their deals landed
+  // does not go looking for them.
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200,
+      { ok: true, imported: 0, already: 16, skipped: 0 })),
+  });
+  await chooseFile(doc, CLEAN_CSV);
+  const html = doc.getElementById("res").innerHTML;
+  assert.match(html, /Imported 0 comps/);
+  assert.match(html, /16 were already in your vault/);
+});
+
+test("a partly-new book counts both halves separately", async () => {
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200,
+      { ok: true, imported: 4, already: 1, skipped: 0, duplicates: 2 })),
+  });
+  await chooseFile(doc, CLEAN_CSV);
+  const html = doc.getElementById("res").innerHTML;
+  assert.match(html, /Imported 4 comps/);
+  assert.match(html, /1 was already in your vault/, "singular reads correctly");
+  // `already` (the vault had it) and `duplicates` (the file repeated it) are
+  // different facts and must not be collapsed into one number.
+  assert.match(html, /2 duplicates in the file/);
+});

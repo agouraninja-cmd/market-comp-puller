@@ -11704,9 +11704,22 @@ const server = http.createServer((req, res) => {
           // PostgREST 400s the whole insert on an unknown column, which here
           // would mean refusing a broker's entire spreadsheet. Stripped for
           // the comp insert; `rows` keeps them for the property write below.
-          await sbRequest("POST", "broker_comps?on_conflict=user_id,dedupe_key",
+          // `select=id` + return=representation, NOT return=minimal: the
+          // response is how many rows were actually STORED. With minimal the
+          // route could only report how many it parsed, so re-importing a
+          // book already in the vault said "Imported 16 comps" when it had
+          // saved none — the reassuring direction to be wrong in, and the
+          // one this repo's own rule warns about (a broker who is told
+          // something landed will not go looking for it). Only ids come
+          // back, so the payload stays small even at MAX_ROWS_PER_UPLOAD.
+          const insertedRows = await sbRequest("POST",
+            "broker_comps?on_conflict=user_id,dedupe_key&select=id",
             rows.map(PROPS.stripCarriedKeys),
-            { prefer: "resolution=ignore-duplicates,return=minimal" });
+            { prefer: "resolution=ignore-duplicates,return=representation" });
+          const inserted = Array.isArray(insertedRows) ? insertedRows.length : rows.length;
+          // Rows the database already had. Distinct from parsed.duplicates,
+          // which counts repeats WITHIN the file the broker just handed us.
+          const alreadyStored = Math.max(0, rows.length - inserted);
 
           // Link each comp to its building (migration 016). Deliberately AFTER
           // the comps are safely stored and deliberately unable to fail the
@@ -11729,7 +11742,13 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 200, {
             ok: true,
             uploadId,
-            imported: parsed.rows.length,
+            // What was STORED, not what was read — see the insert above.
+            imported: inserted,
+            // Rows the vault already held. A separate field from
+            // `duplicates` (repeats inside this one file) because they are
+            // different facts and a broker re-uploading last month's export
+            // is doing something entirely normal.
+            already: alreadyStored,
             total: parsed.total,
             skipped: parsed.skipped,
             duplicates: parsed.duplicates,

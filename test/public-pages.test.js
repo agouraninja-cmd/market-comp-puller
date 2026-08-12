@@ -132,6 +132,26 @@ test("the cost answer matches what the product actually sells", async (t) => {
     }
   });
 
+  await t.test("brokers have a path off the landing page, not just an FAQ row", async () => {
+    // Until 2026-08-12 a broker arriving here met one FAQ answer and a link
+    // inside the Explore dropdown. The owner's own read is that broker
+    // relationships are the better acquisition lever than SEO, so the page
+    // that every visitor lands on should say what a broker gets and where to
+    // go. Asserted on both surfaces because `/` and /how-it-works serve the
+    // same bytes while the wall is up.
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /What brokers get/, p + " should address brokers directly");
+      assert.match(html, /href="\/brokers"/, p + " should link to the broker page");
+      // The three concrete trades, not a pitch. Matched around the
+      // apostrophes, which escHtml turns into &#39; on the way out.
+      assert.match(html, /public records unless you choose to publish/i,
+        p + " should state the privacy trade plainly");
+      assert.match(html, /Verified badge and your firm\S{0,6}s name/i,
+        p + " should name the credit a broker actually receives");
+    }
+  });
+
   await t.test("it still leads with the free tier, because that is true", async () => {
     const html = await (await fetch(srv.base + "/how-it-works")).text();
     assert.match(html, /free/i, "reports genuinely are free with an account; that is the offer");

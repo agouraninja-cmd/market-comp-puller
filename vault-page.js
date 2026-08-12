@@ -458,8 +458,15 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
                 <label>Type <select id="covType"></select></label>
                 <button class="btn ghost" id="covAdd">Watch this market</button>
               </div>
-              <p class="fine" style="margin-top:var(--s3)">Removing every market re-fills
-                earned ones on your next visit.</p>
+              <!-- Plain-language rewrite (2026-08-12). The old line read
+                   "Removing every market re-fills earned ones on your next
+                   visit", which assumes the reader knows markets can be
+                   "earned". They can: seedCoverageFromSubmissions refills
+                   coverage from a broker's approved comps, but only when the
+                   list is empty and only on a visit that does not pass
+                   noseed=1. Say the trade, not the mechanism. -->
+              <p class="fine" style="margin-top:var(--s3)">Remove all of them and any market
+                where you have submitted a comp comes back on your next visit.</p>
             </div></div>
           </div>
         </div>

@@ -6556,6 +6556,25 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   const faqBlock = HOW_FAQ.map(([q, a]) =>
     `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
 
+  // The broker half of the product, on the page brokers actually land on.
+  // Until now this page spoke only to owners: a broker arriving here met one
+  // FAQ row and a link buried in the Explore dropdown, which is a poor showing
+  // for the audience the owner considers the better acquisition lever.
+  //
+  // Three concrete trades, no pitch. Same `.steps` idiom as Method above so it
+  // needs no new CSS, with the numeral slot carrying a short label instead.
+  // Copy rules (they have been enforced before): no em dashes, one idea per
+  // line, name the real thing rather than gesturing at it.
+  const brokerPoints = [
+    ["Private", "Your closed deals stay yours",
+     "Upload your book to a private vault. It is visible only to you, and it never enters CompNinja's public records unless you choose to publish a comp."],
+    ["Credit", "Submitted comps carry your name",
+     "A comp you publish shows a green Verified badge and your firm's name on every report that uses it."],
+    ["Leads", "Owners in your markets",
+     "When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand."],
+  ].map(([n, h, p]) =>
+    `<div class="step"><div class="num">${escHtml(n)}</div><h3>${escHtml(h)}</h3><p>${escHtml(p)}</p></div>`).join("");
+
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
@@ -6739,6 +6758,13 @@ ${ACCOUNT_NAV_JS}
       <div class="kicker">Questions</div>
       <h2 class="h" style="margin-bottom:20px">FAQ</h2>
       ${faqBlock}
+    </section>
+
+    <section class="rv" data-rv>
+      <div class="kicker">Brokers</div>
+      <h2 class="h">What brokers get.</h2>
+      <div class="steps" data-rv>${brokerPoints}</div>
+      <p style="margin:18px 0 40px"><a href="/brokers">See the broker side &rarr;</a></p>
     </section>
 
     <div class="cta rv" data-rv>

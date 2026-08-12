@@ -2,6 +2,12 @@
   {
     "date": "2026-08-12",
     "type": "improvement",
+    "title": "Brokers get a path off the landing page, not just an FAQ row",
+    "details": "Every visitor lands on the same page, and until now it spoke only to owners: a broker arriving there met one FAQ answer and a link inside the Explore dropdown. That is a poor showing for the audience these relationships are the better acquisition lever with. The page now states three concrete trades, private book, credit by name on published comps, and introductions to owners asking for a valuation in markets you watch, then points at the brokers page. It reuses the method section's own layout so it needed no new styling. Separately, the vault's coverage note stopped assuming the reader knows markets can be earned, and now just says what happens."
+  },
+  {
+    "date": "2026-08-12",
+    "type": "improvement",
     "title": "The vault's headline median names its type instead of showing a dash",
     "details": "Declining the figure outright fixed the wrong number but cost every mixed book its headline: most real books span property types, so the largest slot on the page would have read as a dash more or less permanently. The ledger tile now narrows rather than declines. It quotes the median of whichever type holds most of the priced sales and names it, so a mixed book reads '$79' above 'Industrial, 2 of 4 sales'. The reading strip and the table footer still decline, and the difference is the point: those two seal the rows on screen, where a dominant-type median would describe a subset the reader can see they did not filter to, while the tile describes the whole book. Both surfaces still read the one psfStats helper, so neither can quote a figure the other contradicts. Ties between types break on the type name rather than on the order the rows arrived in, so the same book cannot name a different type on a second load."
   },

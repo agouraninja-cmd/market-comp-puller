@@ -1089,3 +1089,43 @@ test("SEARCH_PROVIDER wiring", async (t) => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Every entitlement flag getEntitlements reads must survive getSessionUser
+//
+// getSessionUser returns a NARROWED user object on purpose — that narrowing is
+// what stops a password hash reaching a caller. The cost is a trap the
+// function's own comment warns about, and which vault_beta walked straight
+// into on 2026-08-12: the column was migrated, the grant was set on a real
+// account, getEntitlements read `user.vault_beta`, and the answer was
+// undefined because the narrowed object never carried it. Boolean(undefined)
+// is false, so a granted broker saw no vault and NOTHING failed anywhere.
+//
+// The unit tests could not catch it: they hand `vaultBeta` straight to
+// computeEntitlements, which is the far side of the missing plumbing. This
+// reads the source instead, and pins the pairing itself.
+// ---------------------------------------------------------------------------
+
+test("every user flag entitlements reads is carried by getSessionUser", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  // The shape getEntitlements uses to lift a flag off the session user.
+  const reads = [...src.matchAll(/Boolean\(user && user\.([a-z_]+)\)/g)].map((m) => m[1]);
+  assert.ok(reads.length >= 2,
+    "expected getEntitlements to read at least pro_tester and vault_beta; found " + JSON.stringify(reads));
+
+  // The object literal getSessionUser returns.
+  const start = src.indexOf("async function getSessionUser");
+  assert.ok(start >= 0, "getSessionUser should still exist");
+  const end = src.indexOf("// Route guard: replies 401 itself", start);
+  assert.ok(end > start, "could not bound getSessionUser");
+  const body = src.slice(start, end);
+
+  for (const flag of new Set(reads)) {
+    assert.match(body, new RegExp("\\b" + flag + ":"),
+      `getEntitlements reads user.${flag}, but getSessionUser does not carry it — ` +
+      "the flag would read as undefined and the feature would be silently inert");
+  }
+});

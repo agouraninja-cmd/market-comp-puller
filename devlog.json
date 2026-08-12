@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-12",
+    "type": "fix",
+    "title": "The per-account vault grant reached the database but not the code",
+    "details": "Migration 023 was run and the grant was set on a real account, and the vault still refused to open. The session user object is deliberately narrowed, which is what keeps a password hash away from callers, and the new flag had never been added to it. So entitlements asked for a field that was not there, read it as false, and every granted broker resolved to no vault while every request succeeded and nothing was logged. The function's own comment warns about exactly this and it still happened. Found by granting it to an account and looking, which no unit test could have done: they hand the flag straight to the decision table, on the far side of the missing plumbing. The pairing is now pinned by a test that reads both sides out of the server, and the schema verifier gained checks for this column and for the tester flag from migration 022, neither of which it had ever looked at."
+  },
+  {
+    "date": "2026-08-12",
     "type": "improvement",
     "title": "Brokers get a path off the landing page, not just an FAQ row",
     "details": "Every visitor lands on the same page, and until now it spoke only to owners: a broker arriving there met one FAQ answer and a link inside the Explore dropdown. That is a poor showing for the audience these relationships are the better acquisition lever with. The page now states three concrete trades, private book, credit by name on published comps, and introductions to owners asking for a valuation in markets you watch, then points at the brokers page. It reuses the method section's own layout so it needed no new styling. Separately, the vault's coverage note stopped assuming the reader knows markets can be earned, and now just says what happens."

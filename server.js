@@ -1011,6 +1011,13 @@ async function getSessionUser(req) {
       // all — the feature would be silently inert with nothing failing.
       // Boolean() so a missing column (deploy-then-migrate) reads as false.
       pro_tester: Boolean(user.pro_tester),
+      // The per-account vault grant (migration 023). It was missing here for
+      // the first day of its life and the warning above is exactly why that
+      // mattered: the column was set, entitlements read `user.vault_beta`,
+      // and the answer was silently undefined, so a granted broker still saw
+      // no vault and nothing anywhere failed. Caught only by granting it to a
+      // real account and looking. test/routes.test.js now pins the pairing.
+      vault_beta: Boolean(user.vault_beta),
     } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }

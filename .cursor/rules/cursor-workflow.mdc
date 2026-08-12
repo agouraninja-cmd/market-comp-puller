@@ -1,0 +1,14 @@
+---
+description: Cursor-only workflow for this shared CompNinja checkout. Product knowledge lives in CLAUDE.md.
+alwaysApply: true
+---
+
+# Cursor workflow
+
+Product memory is `CLAUDE.md`. Do not copy it into rules or `AGENTS.md`.
+
+- This checkout is shared. Owen pushes to `origin/main`. `git fetch origin` before starting feature work.
+- Never `git add -A` or `git add .`. Stage explicit paths only. `.env` and `ledger/*.csv` are secrets.
+- Untracked files you did not create are someone else's WIP. Leave them.
+- New work goes on a branch, not on `main`.
+- Node is a portable (no-admin) copy. Integrated terminals prepend `%LOCALAPPDATA%\node-portable\node-v24.16.0-win-x64` via `.vscode/settings.json`. If `node` is missing, that folder is not installed yet — do not assume a system Node.

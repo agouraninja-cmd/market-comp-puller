@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-12",
+    "type": "improvement",
+    "title": "The vault's headline median names its type instead of showing a dash",
+    "details": "Declining the figure outright fixed the wrong number but cost every mixed book its headline: most real books span property types, so the largest slot on the page would have read as a dash more or less permanently. The ledger tile now narrows rather than declines. It quotes the median of whichever type holds most of the priced sales and names it, so a mixed book reads '$79' above 'Industrial, 2 of 4 sales'. The reading strip and the table footer still decline, and the difference is the point: those two seal the rows on screen, where a dominant-type median would describe a subset the reader can see they did not filter to, while the tile describes the whole book. Both surfaces still read the one psfStats helper, so neither can quote a figure the other contradicts. Ties between types break on the type name rather than on the order the rows arrived in, so the same book cannot name a different type on a second load."
+  },
+  {
+    "date": "2026-08-12",
     "type": "fix",
     "title": "No more headline $/SF median across mixed property types",
     "details": "A book holding industrial, office and retail reported a single median of $117/SF, the largest figure on the page and one that described no building in it: dollars per square foot are not comparable across property types, so a median mixing them is an artifact rather than a statistic. The ledger tile, the reading strip and the table footer now all decline the figure when the rows they summarise span more than one type, and say how many types and that filtering brings it back. Filtering to a type restores it immediately, and the market cards underneath were already segmented correctly, so no real number was lost. Counted over priced sales only, so an unpriced lease in a second type cannot silence a median it could never have moved."

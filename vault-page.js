@@ -763,16 +763,32 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // instead. Every caller (the ledger tile, the reading strip, the table
   // footer) reads this one helper, which is also what keeps the strip and the
   // footer quoting the same thing — a rule this file is required to hold.
+  //
+  // The dominant field is the type most of the priced sales are in, and it
+  // exists for the LEDGER TILE ALONE — see the tile's own note in apply() for
+  // why that one surface narrows where the other two decline. (No backticks
+  // anywhere in this file, comments included: the whole page is one template
+  // literal, and a pair of them around a word closes it.)
   var psfStats=function(list){
-    var vals=[],seen={},types=0;
+    var vals=[],byType={},types=0;
     (list||[]).forEach(function(c){
       var v=psfOf(c);
       if(v==null)return;
       vals.push(v);
       var t=c&&c.property_type;
-      if(t&&!seen[t]){seen[t]=1;types++;}
+      if(!t)return;
+      if(!byType[t]){byType[t]=[];types++;}
+      byType[t].push(v);
     });
-    return {values:vals,types:types,mixed:types>1};
+    // Ties break on the type NAME, not on object key order: key order follows
+    // whatever order the rows arrived in, so two loads of the same book could
+    // otherwise name different types on the same figure and read as the page
+    // changing its mind.
+    var dom=null;
+    Object.keys(byType).sort().forEach(function(t){
+      if(!dom||byType[t].length>dom.values.length)dom={type:t,values:byType[t]};
+    });
+    return {values:vals,types:types,mixed:types>1,dominant:dom};
   };
   var yearOf=function(c){
     var m=/^(\\d{4})/.exec(String(c.deal_date||""));
@@ -814,14 +830,32 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     $("cImports").textContent=ups.length?ups.length+" import"+(ups.length===1?"":"s"):"";
     $("cPriced").textContent=ps.length;
     $("cPricedPct").textContent=comps.length?Math.round(ps.length*100/comps.length)+"% of book":"";
-    // A book spanning several property types has no single $/SF, so the
-    // headline figure names the reason instead of averaging incomparable
-    // things. The market cards below DO segment by type, and the type filter
-    // brings this figure straight back, so nothing is actually lost.
-    $("cMed").textContent=(med!=null&&!st.mixed)?psf0(med):"\\u2014";
-    $("cMedSub").textContent=st.mixed
-      ? st.types+" property types \\u00b7 filter to compare"
-      : "sales only";
+    // A book spanning several property types has no single $/SF — industrial,
+    // office and retail are priced in what amount to different units. This
+    // tile NARROWS rather than declining: the figure is the median of the type
+    // most of the priced sales are in, and the sub-line names that type and
+    // how much of the book it covers.
+    //
+    // The reading strip and the table footer decline the same figure outright,
+    // and the difference is deliberate (owner's call, 2026-08-12). Those two
+    // seal the ROWS ON SCREEN, so a dominant-type median under a mixed table
+    // would describe a subset the reader can see they did not filter to. This
+    // tile describes the BOOK, is the page's headline number, and most real
+    // books span types — so declining here would leave a permanent dash in the
+    // largest slot on the page rather than answering a narrower question
+    // honestly. Both surfaces still come from the one psfStats helper, so
+    // neither can quote a figure the other contradicts.
+    var dom=st.dominant,domMed=dom?median(dom.values):null;
+    if(st.mixed&&domMed!=null){
+      $("cMed").textContent=psf0(domMed);
+      $("cMedSub").textContent=dom.type+" \\u00b7 "+dom.values.length+" of "+ps.length+" sales";
+    }else{
+      $("cMed").textContent=med!=null?psf0(med):"\\u2014";
+      // Naming the type on a single-type book too, so the figure never sits
+      // there unqualified — and so the mixed case reads as the same tile
+      // answering a narrower question, not as a different tile.
+      $("cMedSub").textContent=(dom&&med!=null)?dom.type+" \\u00b7 sales only":"sales only";
+    }
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
     renderIdentity(o.j.identity);
     renderRollup();

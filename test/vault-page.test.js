@@ -1292,20 +1292,59 @@ const ONE_TYPE_BOOK = [
   comp({ id: "i2", property_type: "Industrial", price_per_sqft: 80, address: "2 Ind St" }),
 ];
 
-test("a mixed-type book shows no headline median, and says why", async () => {
+test("a mixed-type book narrows the headline median to its dominant type", async () => {
   const { doc } = await runPage(MIXED_BOOK);
-  assert.equal(doc.getElementById("cMed").textContent, "—",
-    "a median across incomparable units must not be quoted");
-  assert.match(doc.getElementById("cMedSub").textContent, /3 property types/);
-  assert.match(doc.getElementById("cMedSub").textContent, /filter/i,
-    "the reader needs to know the figure is one click away");
+  // Industrial holds 2 of the 4 priced sales, so the tile answers for
+  // Industrial ($78 and $80 -> $79) rather than blending in office and retail.
+  assert.equal(doc.getElementById("cMed").textContent, "$79",
+    "the figure must be a median of ONE type, never the blend");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · 2 of 4 sales",
+    "a narrowed figure has to say what it narrowed to, and how much it covers");
 });
 
-test("a single-type book still gets its median", async () => {
+test("the tile narrows where the strip and footer decline", async () => {
+  // The load-bearing asymmetry (owner's call, 2026-08-12). The tile describes
+  // the BOOK and leads with a real number; the strip and footer seal the ROWS
+  // ON SCREEN and must not quote a subset the reader did not filter to.
+  const { doc } = await runPage(MIXED_BOOK);
+  assert.equal(doc.getElementById("cMed").textContent, "$79");
+  const strip = doc.getElementById("readStrip").innerHTML;
+  assert.match(strip, /3 property types/,
+    "the strip still declines on a mixed view");
+  assert.ok(!/\$\d/.test(strip.split("vs market")[0]),
+    "the strip's median cell must not carry a price: " + strip);
+});
+
+test("the dominant type breaks ties on name, not on row order", async () => {
+  // Object key order follows the order rows arrived in, so an untied
+  // tie-break would let two loads of the same book name different types.
+  const book = [
+    comp({ id: "r1", property_type: "Retail", price_per_sqft: 230, address: "1 Ret St" }),
+    comp({ id: "o1", property_type: "Office", price_per_sqft: 157, address: "2 Off St" }),
+  ];
+  const { doc } = await runPage(book);
+  assert.match(doc.getElementById("cMedSub").textContent, /^Office · /,
+    "one sale each: Office wins on name, whichever row came first");
+  const { doc: reversed } = await runPage(book.slice().reverse());
+  assert.equal(reversed.getElementById("cMedSub").textContent,
+    doc.getElementById("cMedSub").textContent,
+    "the same book in a different order must name the same type");
+});
+
+test("a single-type book still gets its median, and names the type", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK);
   assert.notEqual(doc.getElementById("cMed").textContent, "—",
     "suppressing a median that IS comparable would be the opposite mistake");
-  assert.equal(doc.getElementById("cMedSub").textContent, "sales only");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · sales only");
+});
+
+test("a book with no priced sales at all quotes nothing", async () => {
+  const { doc } = await runPage([
+    comp({ id: "l1", property_type: "Office", transaction: "lease", price: null, price_per_sqft: null, address: "9 Lease Rd" }),
+  ]);
+  assert.equal(doc.getElementById("cMed").textContent, "—");
+  assert.equal(doc.getElementById("cMedSub").textContent, "sales only",
+    "with nothing to be a median of, the tile names no type either");
 });
 
 test("the table footer refuses the same figure the tile refuses", async () => {
@@ -1330,5 +1369,5 @@ test("an unpriced comp in a second type cannot suppress the median", async () =>
     comp({ id: "l1", property_type: "Office", transaction: "lease", price: null, price_per_sqft: null, address: "9 Lease Rd" }),
   ]));
   assert.notEqual(doc.getElementById("cMed").textContent, "—");
-  assert.equal(doc.getElementById("cMedSub").textContent, "sales only");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · sales only");
 });

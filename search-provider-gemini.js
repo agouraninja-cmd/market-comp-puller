@@ -20,6 +20,7 @@ const capabilities = {
   // Gemini caches implicitly and reports total_cached_tokens, but exposes no
   // breakpoint to place, so there is nothing for us to control.
   promptCaching: "implicit",
+  pdfExtract: true,
 };
 
 function buildRequestBody({ model, prompt, maxComps }) {
@@ -52,6 +53,34 @@ function requestInit({ apiKey }) {
       "x-goog-api-key": apiKey,
     },
   };
+}
+
+function buildExtractBody({ model, prompt, pdfBase64 }) {
+  return {
+    contents: [{
+      parts: [
+        { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
+        { text: prompt },
+      ],
+    }],
+    generationConfig: { maxOutputTokens: 8192 },
+  };
+}
+
+function extractRequestInit({ apiKey, model }) {
+  return {
+    url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+  };
+}
+
+function parseExtractResponse(data) {
+  const parts = ((((data || {}).candidates || [])[0] || {}).content || {}).parts || [];
+  const text = parts.filter((p) => p && typeof p.text === "string").map((p) => p.text).join("");
+  return { text: text.trim(), usage: normalizeUsage(data && data.usage) };
 }
 
 // VERIFIED against live calls 2026-08-10. Response shape:
@@ -147,5 +176,8 @@ module.exports = {
   normalizeUsage,
   costOf,
   deadlineTokens,
+  buildExtractBody,
+  extractRequestInit,
+  parseExtractResponse,
   USD_PER_MTOK,
 };

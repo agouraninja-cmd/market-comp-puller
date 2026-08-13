@@ -1617,6 +1617,8 @@ test("parseExtractJson takes a fenced array and ignores trailing junk", () => {
 test("parseExtractJson refuses an object, a truncated array, and empty text", () => {
   assert.equal(parseExtractJson("{\"rows\":[]}").ok, false,
     "the prompt asks for an array; do not guess a wrapping object");
+  assert.equal(parseExtractJson("Here: {\"rows\":[]}").ok, false,
+    "prose before a wrapping object must not bypass the object check");
   assert.equal(parseExtractJson("[{\"a\":").ok, false);
   assert.equal(parseExtractJson("").ok, false);
 });

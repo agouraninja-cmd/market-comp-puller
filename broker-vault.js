@@ -1348,10 +1348,26 @@ function parseExtractJson(rawText) {
   const empty = { ok: false, rows: [], error: "We couldn't find a deals table in that PDF." };
   let text = String(rawText || "").trim();
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  if (text.startsWith("{")) return empty;
-  const start = text.indexOf("[");
-  if (start === -1) return empty;
-  let depth = 0, inString = false, escaped = false;
+  let starterPos = -1;
+  let inString = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === "\"") inString = false;
+    } else if (ch === "\"") inString = true;
+    else if (ch === "[" || ch === "{") {
+      starterPos = i;
+      if (ch === "{") return empty;
+      break;
+    }
+  }
+  if (starterPos === -1) return empty;
+  const start = starterPos;
+  let depth = 0;
+  inString = false;
+  escaped = false;
   let end = -1;
   for (let i = start; i < text.length; i++) {
     const ch = text[i];

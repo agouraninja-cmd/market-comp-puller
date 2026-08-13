@@ -1916,15 +1916,15 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
 
   function upload(file){
     if(!file)return;
+    if(!isPdfFile(file) && !isCsvFile(file)){
+      $("res").innerHTML='<div class="msg bad">Use a .csv or .pdf.</div>';
+      return;
+    }
     if(file.size>4*1024*1024){
       $("res").innerHTML='<div class="msg bad">That file is too large to read.</div>';
       return;
     }
     if(isPdfFile(file)){ extractPdf(file); return; }
-    if(!isCsvFile(file)){
-      $("res").innerHTML='<div class="msg bad">Use a .csv or .pdf.</div>';
-      return;
-    }
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };

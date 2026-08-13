@@ -876,7 +876,7 @@ test("Import posts only checked rows under the PDF filename", async () => {
 test("a non-csv non-pdf file never hits inspect", async () => {
   const { doc, calls } = await runPage([]);
   doc.getElementById("file").fire("change", {
-    target: { files: [{ name: "book.xlsx", type: "application/vnd.ms-excel", text: "PK" }], value: "x" },
+    target: { files: [{ name: "book.xlsx", type: "application/vnd.ms-excel", size: 5 * 1024 * 1024, text: "PK" }], value: "x" },
   });
   await tick();
   assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0);

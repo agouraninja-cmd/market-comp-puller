@@ -477,10 +477,9 @@ dependency. `.env` is git-ignored — never commit it.
   **`GET /healthz` reports the live `provider` AND `model`** — ask the
   deployment, never the repo. `MODEL` is read once at startup from an env var
   nobody can see from here, and a provider's `defaultModel` moves with the
-  code, so a checkout only proves what the source says. Asked on 2026-08-13
-  whether a live report had run on Gemini 3.7 Flash, the honest answer needed
-  a `git branch --contains` (it had not: that switch is still on an unmerged
-  branch, and production runs the 3.6 Flash default).
+  code, so a checkout only proves what the source says. The Gemini default is
+  `gemini-3.7-flash` (moved from 3.6 on 2026-08-13). Rollback is
+  `SEARCH_PROVIDER=anthropic` or `MODEL=gemini-3.6-flash`.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 ### Admin access — comped Pro for the team

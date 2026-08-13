@@ -37,23 +37,34 @@ function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS, THEME_CSS, THEME_BOOT }) {
 <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)"/>
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box}
 ${THEME_CSS}
 :root{
   --serif:Georgia,'Times New Roman',serif;
-  --r:4px;
-  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --r:6px;
+  --t1:34px;--t2:20px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
   --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+  --shadow:0 1px 2px rgba(26,36,51,.04),0 8px 24px rgba(26,36,51,.04);
 }
-body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+/* .hide must sit above every later rule that sets display, or a more
+   specific display:flex/grid on .deck/.strip/.ledger beats it and a hidden
+   block still paints. .deck.hide and .strip.hide restated below are the
+   cascade trap Direction U documented. */
+.hide{display:none}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-height:100vh;
   display:flex;flex-direction:column;font-size:var(--t4);
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6);width:100%}
-.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
-.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--s6);width:100%}
+.hdr{border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--paper) 92%, transparent);
+  position:sticky;top:0;z-index:20;-webkit-backdrop-filter:saturate(1.2) blur(10px);
+  backdrop-filter:saturate(1.2) blur(10px)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:14px var(--s6)}
 /* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
    relationship shared with index.html's header and MARKET_CSS, not this
    page's spacing scale, so it stays literal and identical everywhere. */
@@ -69,11 +80,15 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .cn-logo polygon{fill:var(--red-fill)}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
-.hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
-.hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
-main{flex:1;padding:var(--s7) 0 var(--s9)}
-h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var(--t1);line-height:1.15}
-.sub{color:var(--ink-2);max-width:62ch;margin:var(--s4) 0 0}
+.hdr nav{display:flex;align-items:center;gap:var(--s5);font-size:13px}
+.hdr nav a{color:var(--ink-2);padding:4px 0}.hdr nav a:hover{color:var(--ink)}
+.hdr nav a[aria-current="page"]{color:var(--ink);font-weight:600}
+main{flex:1;padding:40px 0 72px}
+.kicker{margin:0 0 var(--s3);font-size:var(--t6);font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3)}
+h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--t1);line-height:1.12;
+  letter-spacing:-.02em}
+.sub{color:var(--ink-2);max-width:54ch;margin:var(--s4) 0 0;font-size:15px;line-height:1.55}
 /* The trust line. A broker does not hand over their book of business because
    our terms promise we cannot read it — they do it because they can watch this
    number stay at zero. It is deliberately the most prominent thing on the page
@@ -81,84 +96,109 @@ h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var
 /* The book ledger (approved as "Vault A", 2026-08-08): the report hero's
    ruled-cell geometry applied to the trust line. Green is spent on exactly
    one cell — Published — because zero staying zero is the number this page
-   exists to prove. Figure size is the 26px the approved card set, not a
-   token from this page's scale. */
+   exists to prove. */
 .trust{margin:var(--s7) 0 0}
-.ledger{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
-  display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden}
-.lcell{padding:var(--s4) var(--s5);border-left:1px solid var(--hair)}
+.ledger{border:1px solid var(--edge);border-top:2px solid var(--ink);border-radius:var(--r);
+  background:var(--card);display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;
+  box-shadow:var(--shadow)}
+.lcell{padding:18px 20px;border-left:1px solid var(--hair)}
 .lcell:first-child{border-left:0}
-/* #FCFBF8 has no exact token; folded to --wash (ΔRGB 13, within the
-   project's approved 25 bound -- same fold Task 4 already made for the same
-   literal in index.html, see task-4-report.md's light-mode drift audit). */
-.lcell.mid{background:var(--wash)}
-.llab{display:block;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;margin-bottom:var(--s2)}
+/* #F7FBF8 is the redesign's published-cell green wash; folded to --ok-bg
+   (ΔRGB ~20, within the approved 25 bound) so the cell stays green in both
+   themes instead of flattening to --wash. */
+.lcell.mid{background:var(--ok-bg)}
+.llab{display:block;font-size:var(--t6);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:6px}
 .lcell.mid .llab{color:var(--green)}
-.lfig{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;font-size:26px;
-  line-height:1.2;color:var(--ink)}
+.lfig{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;font-size:28px;
+  line-height:1.15;color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .lfig{color:var(--green)}
-.lsub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1)}
+.lsub{color:var(--ink-3);font-size:var(--t5);margin-top:4px}
 /* Exactly four cells, so the 2x2 wrap can place its dividers by position. */
 @media (max-width:640px){
   .ledger{grid-template-columns:1fr 1fr}
-  .lcell{border-left:0}
+  .lcell{border-left:0;padding:16px}
   .lcell:nth-child(even){border-left:1px solid var(--hair)}
   .lcell:nth-child(-n+2){border-bottom:1px solid var(--hair)}
 }
-.trust .note{color:var(--ink-3);font-size:var(--t5);margin:var(--s3) 0 0;max-width:62ch}
+.trust .note{color:var(--ink-3);font-size:var(--t5);margin:var(--s4) 0 0;max-width:62ch}
+#creditLine{margin-top:var(--s3)}
+#creditLine strong{color:var(--ink);font-weight:600}
+#idForm{margin-top:var(--s4);padding:18px 20px;border:1px solid var(--edge);border-radius:var(--r);
+  background:var(--card);box-shadow:var(--shadow)}
 section{margin-top:var(--s8)}
 section+section{border-top:1px solid var(--line);padding-top:var(--s7)}
-h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(--s5)}
-.drop{border:1px dashed var(--edge);border-radius:var(--r);padding:var(--s7);text-align:center;
-  background:var(--card);transition:border-color .12s,background .12s}
-.drop.over{border-color:var(--red);background:var(--wash)}
-.drop p{margin:var(--s3) 0 0;color:var(--ink-2);font-size:var(--t5)}
-.btn{background:var(--red-fill);color:#fff;border:0;border-radius:var(--r);padding:var(--s3) var(--s5);
-  font-weight:600;font-size:var(--t4);font-family:inherit;cursor:pointer}
+h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 6px;letter-spacing:-.01em}
+section > .sub{margin-top:0;margin-bottom:var(--s5)}
+.drop{border:1px dashed var(--edge);border-radius:var(--r);padding:36px var(--s6);text-align:center;
+  background:var(--card);transition:border-color .15s,background .15s,box-shadow .15s}
+.drop.over{border-color:var(--red);border-style:solid;background:var(--err-bg);box-shadow:inset 0 0 0 1px var(--red)}
+.drop-k{margin:0 0 var(--s4);font-family:var(--serif);font-size:17px;font-weight:500;color:var(--ink)}
+.drop p{margin:var(--s4) 0 0;color:var(--ink-2);font-size:var(--t5)}
+.btn{background:var(--red-fill);color:#fff;border:0;border-radius:var(--r);padding:9px 16px;
+  font-weight:600;font-size:13.5px;font-family:inherit;cursor:pointer;line-height:1.3}
 .btn:hover{background:var(--red-fill-hover)}
 .btn[disabled]{background:var(--ink-4);cursor:default}
-.btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--edge)}
-.btn.ghost:hover{background:var(--wash);color:var(--ink)}
-.row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
-select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink)}
+.btn.ghost{background:var(--card);color:var(--ink-2);border:1px solid var(--edge)}
+.btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-4)}
+.row{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
+#covRow{align-items:center;margin-top:8px}
+#covRow .empty{padding:4px 0;text-align:left}
+.addpanel .tw,.mappanel .tw{box-shadow:none}
+.row label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600}
+select,input[type=text],input[type=date]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);min-height:40px}
+select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-color:var(--ink);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent)}
 /* 16px, not var(--t5): iOS Safari zooms on focus for any input under 16px
    and stays zoomed — on a data-entry page that means every filter tap. */
-table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
+.filters{padding:14px 16px;margin-top:var(--s4);background:var(--card);border:1px solid var(--edge);
+  border-radius:var(--r);align-items:flex-end}
+.filters .btn{min-height:40px}
+.filters .note{margin:0 0 10px;align-self:flex-end}
+.filters .exp{margin-left:auto}
+table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px;margin:0}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
    every header on this page — the broker's own book of record earns the same
    audited-statement vocabulary the report's comp table shipped. */
-th{text-align:left;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:2px solid var(--ink);white-space:nowrap}
-th[data-k]{cursor:pointer}
-th[data-k]:hover{color:var(--ink)}
+th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:12px 14px;border-bottom:2px solid var(--ink);white-space:nowrap;background:var(--card)}
+th[data-k],th[data-bk]{cursor:pointer}
+th[data-k]:hover,th[data-bk]:hover{color:var(--ink)}
 th .ar{color:var(--red)}
-td{padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--hair);vertical-align:top}
+td{padding:12px 14px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink-body)}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:hover td{background:var(--wash)}
+.addr{color:var(--ink);font-weight:500}
+.tag{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-2);background:var(--wash);border-radius:3px;padding:2px 7px}
 /* The comps table seals with a median row under a double rule. The last body
    row's hairline is dropped explicitly: with collapsed borders two same-width
    rules at that boundary would otherwise fight, and which one wins is
    browser-defined — the ink top rule must never lose to a hairline. */
 #tbl tbody tr:last-child td{border-bottom:0}
-tfoot td{padding:var(--s3) var(--s4) var(--s3) 0;border-top:1px solid var(--ink);
-  border-bottom:3px double var(--ink);font-weight:600}
+tfoot td{padding:12px 14px;border-top:1px solid var(--ink);
+  border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card)}
 tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
-.tw{overflow-x:auto}
-.msg{margin-top:var(--s5);padding:var(--s4) var(--s5);border-radius:var(--r);font-size:var(--t5);border:1px solid}
-/* Folded onto the shared --ok- and --err- triads (2026-08-10 fix round 1).
-   None of these three literals were exact matches for the existing tokens
-   (deltas measured: bg 11.45, border 7.28, color 23.11 -- all within the
-   project's approved 25 ΔRGB bound); .msg.bad's own trio is what completes
-   --err-text/--err-rule in theme.js, so its light values ARE the exact
-   literals this replaces. */
+.tw{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
+  margin-top:var(--s4);box-shadow:var(--shadow)}
+.msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r);font-size:var(--t5);border:1px solid}
 .msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
-.empty{color:var(--ink-3);padding:var(--s7) 0;text-align:center}
+#gate .msg{max-width:44ch;margin-top:var(--s7)}
+.load{margin-top:var(--s7);max-width:420px}
+.loadbar{height:3px;background:var(--hair);border-radius:2px;overflow:hidden;margin-bottom:var(--s4)}
+.loadbar i{display:block;height:100%;width:38%;background:var(--red-fill);
+  animation:load 1.15s ease-in-out infinite}
+@keyframes load{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
+.empty{color:var(--ink-3);padding:36px 20px;text-align:center}
+.fine{color:var(--ink-3);font-size:var(--t5);font-weight:400;letter-spacing:0;text-transform:none}
 .up{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);
-  padding:var(--s4) 0;border-bottom:1px solid var(--hair);font-size:var(--t5)}
+  padding:12px 0;border-bottom:1px solid var(--hair);font-size:var(--t5)}
+.up:last-child{border-bottom:0}
 .up .meta{color:var(--ink-3)}
 /* Padding + offsetting negative margin: a real tap target on the one control
    that DELETES an import, without moving the row's baseline layout. */
@@ -168,21 +208,23 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 /* Publish state as the statement's badge chip (Vault B): green tint only once
    published — the deliberate act, not the default. The tints are the report
    table's own Verified-badge pair, so one green means one thing site-wide. */
-.pubbtn{background:var(--card);border:1px solid var(--edge);border-radius:3px;padding:6px 10px;
+.pubbtn{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:5px 10px;
   font-family:inherit;font-size:var(--t6);font-weight:600;line-height:1.4;color:var(--ink-2);
   cursor:pointer;white-space:nowrap}
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
-/* #06603A is --ok-text's light value exactly (ΔRGB 0); #E3F2EA is the same
-   literal Task 2/4 already folded into --ok-bg for the report table's own
-   Verified badge (ΔRGB 6.4, within the approved bound) -- this is that same
-   precedent, not a new one. */
 .pubbtn.on{border-color:transparent;background:var(--ok-bg);color:var(--ok-text)}
 .pubbtn[disabled]{opacity:.5;cursor:default}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:999px;
+  padding:5px 8px 5px 12px;font-size:12.5px;background:var(--card);color:var(--ink-2);font-weight:600;
+  letter-spacing:0;text-transform:none}
+.chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;
+  padding:0 2px;font-family:inherit}
+.chip button:hover{color:var(--red)}
 /* Row actions: plain text links, not buttons. The row already carries one
    button (Publish); giving Edit/Delete the same weight would put three
    competing calls to action on one line. */
 .lnk{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;
-  color:var(--ink-3);cursor:pointer;text-decoration:underline;white-space:nowrap}
+  color:var(--ink-3);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .lnk:hover{color:var(--ink)}
 .lnk.danger{color:var(--red)}
 .lnk.danger:hover{color:var(--red-deep)}
@@ -190,10 +232,11 @@ td.rowact{white-space:nowrap}
 /* The inline edit row: one form spanning every column, not per-cell inputs —
    a comp carries fields (cap_rate, tenancy, year_built, notes) the table has
    no column for at all, so a per-cell form could not hold them. */
-.editrow label{display:flex;flex-direction:column;gap:2px;font-size:var(--t6);color:var(--ink-3)}
-.editrow input{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:var(--t5);background:var(--card);color:var(--ink);width:100%}
-.hide{display:none}
+.editrow td{background:var(--wash)}
+.editrow label{display:flex;flex-direction:column;gap:4px;font-size:var(--t6);color:var(--ink-3);
+  letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.editrow input{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);width:100%;min-height:40px}
 /* ---- The market rollup: the page's lead view ----------------------------
    A broker with 400 comps learns nothing from 400 rows. This is the index to
    their own book: one card per market + property type, which is the same pair
@@ -201,21 +244,27 @@ td.rowact{white-space:nowrap}
    same way. Whole-book always, never narrowed by the filter below it: it is
    the map, and a map that hides everything but your current street is not a
    map. Clicking one drives the filter instead. */
-.cards{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
-.card{border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:var(--s4) var(--s5);
+.cards{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.card{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);padding:16px 18px;
   text-align:left;font-family:inherit;font-size:var(--t5);color:var(--ink);cursor:pointer;
-  display:flex;flex-direction:column;gap:var(--s1);transition:border-color .12s,background .12s}
-.card:hover{border-color:var(--ink-3);background:var(--wash)}
-.card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red)}
-.card .mk{font-weight:600;font-size:var(--t4);line-height:1.3}
-.card .ty{color:var(--ink-3);font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
-.card .big{font-family:var(--serif);font-size:var(--t2);font-weight:500;margin-top:var(--s2)}
-.card .big span{font-family:inherit;font-size:var(--t5);color:var(--ink-3)}
-.card .fine{color:var(--ink-3);font-size:var(--t6)}
+  display:flex;flex-direction:column;gap:2px;transition:border-color .15s,background .15s,box-shadow .15s;
+  box-shadow:var(--shadow)}
+.card:hover{border-color:var(--ink-4);background:var(--card)}
+.card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red),var(--shadow)}
+.card .mk{font-weight:600;font-size:15px;line-height:1.3;color:var(--ink)}
+.card .ty{color:var(--ink-3);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.card .big{font-family:var(--serif);font-size:22px;font-weight:500;margin-top:8px;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.card .big span{font-family:Inter,system-ui,sans-serif;font-size:var(--t5);color:var(--ink-3);
+  letter-spacing:0;margin-left:6px}
+.card .fine{color:var(--ink-3);font-size:var(--t6);font-weight:400;letter-spacing:0;text-transform:none}
 .card .fine.pub{color:var(--green);font-weight:600}
+.card.stat{cursor:default;box-shadow:none}
+.card.stat:hover{border-color:var(--edge);background:var(--card)}
+#bovCards{margin-top:var(--s4)}
 /* ---- Chart + repeat-property blocks ---- */
 /* Capped at the viewBox width so one SVG unit is one CSS pixel: the columns
-   are drawn at a 24px maximum, and letting the chart stretch to a 1040px
+   are drawn at a 24px maximum, and letting the chart stretch to a 1120px
    container would render them at ~40px, which is the heavy-saturated-block
    look the rest of this page avoids. Below 600px it scales down as normal. */
 .chart svg{display:block;width:100%;max-width:600px;height:auto}
@@ -233,60 +282,63 @@ td.rowact{white-space:nowrap}
 .chart-bar{fill:var(--ink-mute)}
 .chart-bar.hi{fill:var(--red-fill)}
 .chart-endpoint{fill:var(--ink)}
-.rep{border-top:1px solid var(--hair);padding:var(--s3) 0;font-size:var(--t5)}
+.rep{border-top:1px solid var(--hair);padding:10px 0;font-size:var(--t5)}
+.rep:first-child{border-top:0;padding-top:0}
 .rep .addr{font-weight:600}
-.rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums;font-size:13px;margin-top:2px}
 .note{color:var(--ink-3);font-size:var(--t5)}
 /* ---- Gut check ----------------------------------------------------------
    Verdict chips stay in the page's existing voice: the pubbtn border style,
    ink for facts, green only for "in line" (the calm state), never red for a
    divergence — above/below is "worth a look", not an error. */
-.gc{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
-  padding:var(--s4) var(--s5);font-size:var(--t5);display:flex;
-  flex-direction:column;gap:var(--s2)}
-.gc .mk{font-weight:600;font-size:var(--t4)}
-.gc .ty{color:var(--ink-3);font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
-.gcv{display:inline-block;border:1px solid var(--edge);border-radius:var(--r);
-  padding:1px var(--s3);font-size:var(--t6);color:var(--ink-2);font-weight:600;
-  align-self:flex-start;margin-top:var(--s2)}
-/* border/background folded onto --ok-rule/--ok-bg (deltas 7.28 / 11.45,
-   within the approved bound); color was already var(--green), a DIFFERENT
-   existing token, left exactly as-is -- swapping it to --ok-text would move
-   this rule's light value (--green light #15803D vs --ok-text light
-   #06603A are different colours, not a near-hex fold) and nothing asked for
-   that. */
+.gc{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
+  padding:16px 18px;font-size:var(--t5);display:flex;
+  flex-direction:column;gap:4px;box-shadow:var(--shadow)}
+.gc .mk{font-weight:600;font-size:15px}
+.gc .ty{color:var(--ink-3);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.gcv{display:inline-block;border:1px solid var(--edge);border-radius:999px;
+  padding:2px 10px;font-size:var(--t6);color:var(--ink-2);font-weight:600;
+  align-self:flex-start;margin-top:6px}
 .gcv.ok{border-color:var(--ok-rule);background:var(--ok-bg);color:var(--green)}
 .gc .fine{color:var(--ink-3);font-size:var(--t6)}
-.gcOut{display:inline-block;margin-left:var(--s2);font-size:var(--t6);
+.gcOut{display:inline-block;margin-left:var(--s2);font-size:10px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
   border-bottom:1px dotted var(--ink-3);cursor:help}
 /* ---- First run ----------------------------------------------------------
    Deliberately quiet: two numbered steps on the page's own type scale, no
    illustration, no coloured callout box. A broker arriving here has just paid
    for something, and a loud empty state reads as a product apologising for
-   itself. The numbers carry the sequence; everything else is ordinary text. */
-.steps{display:grid;gap:var(--s6);margin-top:var(--s6)}
-@media (min-width:760px){.steps{grid-template-columns:1fr 1fr;gap:var(--s7)}}
-.step{display:flex;gap:var(--s4);align-items:flex-start}
-.stepn{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--wash);
-  border:1px solid var(--edge);color:var(--ink-2);font-size:var(--t5);font-weight:600;
-  display:flex;align-items:center;justify-content:center;margin-top:2px}
-.step h3{font-family:var(--serif);font-weight:500;font-size:var(--t3);margin:0 0 var(--s3)}
-.step p{margin:0 0 var(--s3);color:var(--ink-2)}
+   itself. The numbers carry the sequence; everything else is ordinary text.
+   The cards are the same white panel the rest of the workspace uses, not a
+   coloured empty-state. */
+.steps{display:grid;gap:var(--s5);margin-top:var(--s7)}
+@media (min-width:760px){.steps{grid-template-columns:1fr 1fr;gap:var(--s5)}}
+.step{display:flex;gap:var(--s4);align-items:flex-start;background:var(--card);border:1px solid var(--edge);
+  border-radius:var(--r);padding:22px 22px 20px;box-shadow:var(--shadow)}
+.stepn{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--slab);color:#fff;
+  font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.step h3{font-family:var(--serif);font-weight:500;font-size:18px;margin:0 0 6px;letter-spacing:-.01em}
+.step p{margin:0 0 var(--s4);color:var(--ink-2)}
 .step .fine{color:var(--ink-3);font-size:var(--t5)}
 /* The owner's 2026-08-10 restructure: cards carry three short bullets and
    fold their fine print into a collapsed disclosure. Same vars as .fine so
    the disclosure reads as the fine print it replaced. */
-.step ul{margin:0 0 var(--s3);padding-left:18px;color:var(--ink-2)}
-.step ul li{margin:2px 0}
+.step ul{margin:0 0 var(--s4);padding-left:18px;color:var(--ink-2)}
+.step ul li{margin:3px 0}
 .step details{margin:0 0 var(--s4)}
 .step details summary{cursor:pointer;color:var(--ink-3);font-size:var(--t5);user-select:none;list-style-position:inside}
 .step details summary:hover{color:var(--ink-2)}
 .step details .fine{margin:var(--s3) 0 0}
+/* When first-run is the page, the leads section sits directly under the two
+   steps (the book deck is hidden). A hairline keeps it from reading as a
+   leftover empty table. */
+#firstRun:not(.hide) ~ #leads{margin-top:var(--s8);padding-top:var(--s7);border-top:1px solid var(--line)}
 /* The template link is an <a> styled as a button, so it needs the same box the
    <button>s get — .btn alone leaves it inline and underlined. */
 a.btn{display:inline-block;text-decoration:none;color:#fff}
 a.btn:hover{color:#fff}
+a.btn.ghost{color:var(--ink-2)}
+a.btn.ghost:hover{color:var(--ink)}
 /* ---- Deck rules (Vault Direction U, approved 2026-08-10) -----------------
    This page is two products sharing one scroll: the book a broker keeps, and
    the pipeline they work. As ten peer sections every heading was the same
@@ -296,25 +348,27 @@ a.btn:hover{color:#fff}
    action on the right — and there are exactly two of them.
    (No backticks in this file's comments: the whole page is one template
    literal, so a backtick here ends it and the module stops parsing.) */
-.deck{display:flex;align-items:baseline;gap:var(--s4);margin:var(--s8) 0 0}
+.deck{display:flex;align-items:baseline;gap:var(--s4);margin:56px 0 0}
 /* Load-bearing, and the reason is pure cascade order: .hide is declared far
    above this block, so a later single-class rule that sets display BEATS it.
    Without this line applyFirstRun's "deck hide" leaves a stray "Your book"
    rule across the top of an empty vault — verified in a browser, not
    reasoned about. Same trap, same fix, on .strip below. */
 .deck.hide{display:none}
-.dlab{font-family:var(--serif);font-weight:500;font-size:var(--t2);white-space:nowrap}
-.dln{flex:1;height:0;border-top:2px solid var(--ink);transform:translateY(-5px)}
-.dact{background:none;border:0;padding:var(--s2) 0;font-family:inherit;font-size:var(--t5);
-  font-weight:600;color:var(--red);cursor:pointer;white-space:nowrap}
-.dact:hover{color:var(--red-deep)}
+.dlab{font-family:var(--serif);font-weight:500;font-size:22px;white-space:nowrap;letter-spacing:-.015em}
+.dln{flex:1;height:0;border-top:2px solid var(--ink);transform:translateY(-6px)}
+.dact{background:var(--card);border:1px solid var(--red);border-radius:var(--r);padding:6px 12px;
+  font-family:inherit;font-size:13px;font-weight:600;color:var(--red);cursor:pointer;white-space:nowrap}
+.dact:hover{background:var(--red-fill);color:#fff}
 /* The uploader and the column mapper stopped being sections when they moved
    under the book deck: a section would draw the section+section divider, and
    both of these are transient panels that a returning broker opens on
    purpose. Being divs also means the sections after them are never "a section
    after a hidden section", which is what the two adjacency patches this
    replaced were for. */
-.addpanel,.mappanel{margin-top:var(--s5)}
+.addpanel,.mappanel{margin-top:var(--s5);padding:20px;border:1px solid var(--edge);border-radius:var(--r);
+  background:var(--card);box-shadow:var(--shadow)}
+.mappanel h2{margin-bottom:var(--s3)}
 /* The one hidden-sibling pair left. #rollupSec hides itself when the book has
    no markets to roll up, and the divider above #compsSec would then be drawn
    under nothing. Scoped to this pair on purpose, exactly like the two rules
@@ -329,51 +383,65 @@ a.btn:hover{color:#fff}
    opens the full panel it summarises. Nothing was deleted; it stopped being
    mandatory reading. */
 .strip{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
-  display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s5)}
+  display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s4);
+  box-shadow:var(--shadow)}
 .strip.hide{display:none}   /* see the .deck.hide note above */
-.scell{padding:var(--s4) var(--s5);border:0;border-left:1px solid var(--hair);
+.scell{padding:16px 18px;border:0;border-left:1px solid var(--hair);
   background:none;font-family:inherit;text-align:left;color:inherit}
 .scell:first-child{border-left:0}
 .scell.act{cursor:pointer}
 .scell.act:hover{background:var(--wash)}
-.slab{display:block;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;margin-bottom:var(--s2)}
-.sfig{font-family:var(--serif);font-weight:500;font-size:22px;line-height:1.2;color:var(--ink)}
+.slab{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:6px}
+.sfig{font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.15;color:var(--ink);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .sfig.ok{color:var(--green)}
-.ssub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1)}
+.ssub{color:var(--ink-3);font-size:var(--t5);margin-top:4px}
 .scell.act .ssub{color:var(--red)}
 @media (max-width:640px){
   .strip{grid-template-columns:1fr}
   .scell{border-left:0;border-top:1px solid var(--hair)}
   .scell:first-child{border-top:0}
+  .filters .exp{margin-left:0}
+  h1.h{font-size:28px}
 }
 /* The three panels the strip summarises, collapsed. A details/summary carries
    its own open state, so the strip only has to set .open — there is no second
    copy of "is this panel showing" to drift. */
-.dbox{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
-  padding:var(--s3) var(--s5);margin-top:var(--s4)}
-.dbox>summary{cursor:pointer;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
+.dbox{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
+  padding:12px 18px;margin-top:var(--s4);box-shadow:var(--shadow)}
+.dbox>summary{cursor:pointer;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;user-select:none;list-style-position:inside}
 .dbox>summary:hover{color:var(--ink)}
-.dbox[open]>summary{margin-bottom:var(--s4)}
-footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
+.dbox[open]>summary{margin-bottom:var(--s4);color:var(--ink)}
+footer{background:var(--slab);color:var(--ink-4);font-size:13px;padding:0;border:0;margin-top:auto}
+footer .wrap{padding:36px var(--s6)}
+footer .wordmark{color:#fff}
+footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
 </style>
 ${THEME_BOOT}
 </head><body>
 <header class="hdr"><div class="wrap">
   <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
-  <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
+  <nav>
+    <a href="/">Search</a>
+    <a href="/desk">My Desk</a>
+    <a href="/vault" aria-current="page">Vault</a>
+    <a href="/brokers">Brokers</a>
+  </nav>
 </div></header>
 <main><div class="wrap">
+  <p class="kicker">Private workspace</p>
   <h1 class="h">Broker Vault</h1>
-  <p class="sub">Your own private comp data.</p>
+  <p class="sub">Closed deals, leads, and BOVs. Visible only to you.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
        hidden the page spent that window looking half-rendered before the
        workspace popped in. The fetch's three outcomes each replace this:
        success hides #gate, a refusal rewrites it, so it can never linger. -->
-  <div id="gate"><p class="empty">Loading your vault&hellip;</p></div>
+  <div id="gate"><div class="load"><div class="loadbar"><i></i></div>
+    <p class="empty" style="padding:0">Loading your vault&hellip;</p></div></div>
 
   <div id="app" class="hide">
     <!-- The trust line's job is to prove a number stays at zero, which only
@@ -533,6 +601,7 @@ ${THEME_BOOT}
 
     <div id="addSec" class="addpanel hide">
       <div class="drop" id="drop">
+        <p class="drop-k">Import a spreadsheet</p>
         <button class="btn" id="pick">Choose a spreadsheet</button>
         <p>or drop a .csv here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
         <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
@@ -614,12 +683,12 @@ ${THEME_BOOT}
            not: it always exports everything. It is a plain href, not a
            fetch, so the session cookie rides along and the download still
            works even if the page's own script has failed. -->
-      <div class="row">
+      <div class="row filters">
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
-        <a class="btn ghost" href="/api/vault/export.csv">Export all comps (CSV)</a>
+        <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
            is a button that opens it; a cell with nothing behind it renders as
@@ -732,7 +801,10 @@ ${THEME_BOOT}
     </section>
   </div>
 </div></main>
-<footer><div class="wrap">Private broker workspace &middot; CompNinja</div></footer>
+<footer><div class="wrap">
+  <span class="wordmark">Comp<b>Ninja</b></span>
+  <p>Private broker workspace. Your comps are never read into public records unless you choose to publish them.</p>
+</div></footer>
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
 <script>
@@ -1011,8 +1083,8 @@ ${THEME_BOOT}
         : "";
       var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
         '">Edit</button> <button class="lnk danger" data-del-comp="'+esc(c.id)+'">Delete</button></td>';
-      return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
-        "</td><td>"+esc(c.transaction)+"</td><td>"+esc(c.deal_date)+
+      return '<tr><td class="addr">'+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
+        '</td><td><span class="tag">'+esc(c.transaction)+"</span></td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
         '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+actions+"</tr>";
     }).join("");
@@ -1531,9 +1603,9 @@ ${THEME_BOOT}
   function renderCoverage(cov){
     $("covRow").innerHTML=cov.length?cov.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
-      return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
-        ' <button data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
-        '" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
+      return '<span class="chip">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
+        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        '">&times;</button></span>';
     }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
   }
   // covCount lets an empty inbox tell two situations apart: nothing to show
@@ -1647,7 +1719,7 @@ ${THEME_BOOT}
       });
   }
   function bovTile(label,val){
-    return '<div class="card"><span class="ty">'+esc(label)+'</span>'+
+    return '<div class="card stat"><span class="ty">'+esc(label)+'</span>'+
       '<div class="big">'+esc(String(val))+"</div></div>";
   }
   function renderBovs(ru){

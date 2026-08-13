@@ -120,9 +120,10 @@ test("no in-scope stylesheet references an undefined variable", () => {
   for (const [where, css] of Object.entries(blocks)) {
     for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
       // vault-page.js and the market CSS also carry non-colour scales
-      // (--t1..--t6 type, --s1..--s9 spacing, --r radius, --serif). Those
-      // are page-local and not the theme's business.
-      if (/^--(t\d|s\d|r|serif)$/.test(m[1])) continue;
+      // (--t1..--t6 type, --s1..--s9 spacing, --r radius, --serif, and the
+      // vault redesign's --shadow). Those are page-local and not the theme's
+      // business.
+      if (/^--(t\d|s\d|r|serif|shadow)$/.test(m[1])) continue;
       assert.ok(defined.has(m[1]), `${where} uses undefined ${m[1]}`);
     }
   }

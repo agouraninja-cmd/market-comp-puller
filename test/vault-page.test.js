@@ -26,12 +26,15 @@ function comp(o) {
     price: 1000000, size_sqft: 10000, price_per_sqft: 100, published: false,
   }, o);
 }
-function boot(comps) {
+function boot(comps, identity) {
   return { s: 200, j: {
     comps, uploads: [],
     counts: { returned: comps.length, published: comps.filter((c) => c.published).length },
     markets: [...new Set(comps.map((c) => c.market))],
     types: [...new Set(comps.map((c) => c.property_type))],
+    // The credit identity, as vaultReadPayload serves it. Default is the
+    // unstated case, which is what every pre-existing test wants.
+    identity: identity || { display_name: "", company: "", creditedTo: "" },
   } };
 }
 // The page's own inline script, as the browser would receive it.
@@ -285,10 +288,10 @@ function jsonResponse(status, body) {
 // happened at all" are asserted. /api/vault/inspect answers through the REAL
 // broker-vault.js, exactly as server.js does, so these tests pin the page
 // against its actual producer rather than a hand-written fixture.
-async function runPage(comps, benchResult, opts) {
+async function runPage(comps, benchResult, opts, identity) {
   opts = opts || {};
   const calls = [];
-  const bootPayload = boot(comps);
+  const bootPayload = boot(comps, identity);
   const html = renderVaultHTML(bootPayload, CHROME);
   const script = pageScript(html);
   const doc = stubDocument();
@@ -313,6 +316,31 @@ async function runPage(comps, benchResult, opts) {
     }
     if (u.indexOf("/api/vault/upload") === 0) {
       return opts.upload ? opts.upload() : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
+    }
+    if (u.indexOf("/api/vault/publish") === 0) {
+      return opts.publish
+        ? opts.publish()
+        : Promise.resolve(jsonResponse(200, { ok: true, published: true, creditedTo: "Hawkins Ridge CRE" }));
+    }
+    if (u.indexOf("/api/vault/identity") === 0) {
+      return opts.identity
+        ? opts.identity(init)
+        : Promise.resolve(jsonResponse(200, {
+            ok: true,
+            identity: { display_name: "", company: "Hawkins Ridge CRE" },
+            creditedTo: "Hawkins Ridge CRE",
+          }));
+    }
+    if (u.indexOf("/api/vault/comp") === 0) {
+      return opts.comp
+        ? opts.comp(init, u)
+        : Promise.resolve(jsonResponse(200, { ok: true, comp: {}, unpublished: false }));
+    }
+    // The BOV panel loads on every apply(), so without this stub every page
+    // in this file ran its loadBovs through the catch branch — which hides
+    // the empty-state line, and so could never have caught it lingering.
+    if (u.indexOf("/api/broker/bovs") === 0) {
+      return opts.bovs ? opts.bovs(init, u) : Promise.resolve(jsonResponse(200, { bovs: [], rollup: null }));
     }
     if (u.indexOf("/api/vault?") === 0) return Promise.resolve(jsonResponse(200, bootPayload.j));
     return Promise.reject(new Error("unexpected fetch in test: " + u));
@@ -703,6 +731,7 @@ test("a failed import leaves the panel open with every selection intact", async 
 test("a successful import from the panel closes it and reports the result", async () => {
   const { doc, calls } = await runPage([], null, {
     upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1, skipped: 0 })),
+    reloadComps: [comp({})],
   });
   await chooseFile(doc, MAPPABLE_CSV);
   doc.getElementById("mapGo").fire("click");
@@ -715,6 +744,34 @@ test("a successful import from the panel closes it and reports the result", asyn
   assert.equal(up[0].body.mapping.sale_price, "price",
     "the confirmed mapping did not reach the server");
   assert.match(doc.getElementById("res").innerHTML, /Imported 1 comp/);
+});
+
+test("a mapper import's skips are SHOWN: the uploader panel opens for the summary", async () => {
+  // #res lives inside #addSec, which ships closed, and the mapper path never
+  // went through the setAddOpen(true) at the top of doImport — so "2 rows
+  // skipped" plus its line-numbered reasons was written into a hidden panel
+  // and the broker never learned two deals were dropped. The content
+  // assertions above passed the whole time; this one pins the visibility.
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, {
+      ok: true, imported: 9, skipped: 2, duplicates: 1,
+      errors: ["Line 5: price: \"1.2M\" is not a plain number"],
+    })),
+  });
+  await chooseFile(doc, MAPPABLE_CSV);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+
+  assert.ok(!doc.getElementById("addSec").className.split(" ").includes("hide"),
+    "the summary was written into a closed panel: className=" + doc.getElementById("addSec").className);
+  // The stub document's attributes are no-ops, so aria-expanded can't be
+  // read here — the toggle's label rides on the same setAddOpen call and
+  // pins the same invariant: the deck action describes the open state.
+  assert.equal(doc.getElementById("addToggle").textContent, "Close",
+    "the deck action must describe the state the panel is in");
+  const html = doc.getElementById("res").innerHTML;
+  assert.match(html, /2 rows skipped/);
+  assert.match(html, /Line 5/);
 });
 
 test("skipped # lines are reported, not dropped silently", async () => {
@@ -733,4 +790,636 @@ test("skipped # lines are reported, not dropped silently", async () => {
   assert.match(html, /Imported 3 comps/);
   assert.match(html, /10 note lines ignored/);
   assert.ok(html.indexOf("msg ok") >= 0, "ignoring our own notes is not a failure");
+});
+
+// ---------------------------------------------------------------------------
+// Row edit / delete (task 7)
+// ---------------------------------------------------------------------------
+
+test("each comp row offers an edit and a delete", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(html.includes("data-edit"), "rows need an edit control");
+  assert.ok(html.includes("data-del-comp"), "rows need a delete control");
+});
+
+test("deleting a comp is confirmed before it is sent", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /Delete this comp/,
+    "a hard delete with no undo must be confirmed by name");
+});
+
+test("row-action messages do not write into the closed uploader panel", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(html.includes('id="compMsg"'),
+    "#res lives inside #addSec, which ships closed, so a message written there is invisible");
+});
+
+test("the page says an edit unpublishes a published comp", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /unpublish|withdrawn from the public/i,
+    "a broker must not discover the retraction later");
+});
+
+test("the comps table footer still spans every column", () => {
+  // The old version of this test asserted `heads >= 9` (true regardless of
+  // the actions column) and located "the footer's colspan" with
+  // /colspan="(\d+)"/ searched from the first "tblFoot" match onward — which
+  // finds editRow's `colspan="10"` (an unrelated template literal that
+  // happens to appear first in source order after that anchor), never the
+  // footer's own `colspan="7"`. The two numbers were never actually compared.
+  // This version reads the #tbl thead's real column count and the footer's
+  // own template literal (anchored on text unique to it), so adding an
+  // eleventh column without widening the footer fails here.
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+
+  const tblStart = html.indexOf('<table id="tbl">');
+  assert.ok(tblStart >= 0, "the comps table should still exist");
+  const theadStart = html.indexOf("<thead", tblStart);
+  const theadEnd = html.indexOf("</thead>", theadStart);
+  // (?=[ >]) so "<thead" itself (which starts with the literal text "<th")
+  // is not counted as a column.
+  const headCount = (html.slice(theadStart, theadEnd).match(/<th(?=[ >])/g) || []).length;
+
+  // Anchored on the footer's OWN opening cell, not on "tblFoot" (which also
+  // names the DOM id used elsewhere, including inside editRow's colspan).
+  const footStart = html.indexOf('<td class="lab" colspan="');
+  assert.ok(footStart >= 0, "the footer template should still declare its label cell");
+  const footEnd = html.indexOf('</tr>"', footStart);
+  assert.ok(footEnd >= 0, "the footer template should still close its row");
+  const footLiteral = html.slice(footStart, footEnd);
+
+  const colspanMatch = /colspan="(\d+)"/.exec(footLiteral);
+  assert.ok(colspanMatch, "the footer's first cell should declare a colspan");
+  const spanned = Number(colspanMatch[1]);
+  // Every OTHER <td> in the footer row covers exactly one column. The
+  // lookahead excludes the label cell matched above (the only one carrying
+  // its own colspan), so this count needs no further adjustment.
+  const otherTds = (footLiteral.match(/<td(?![^>]*colspan)/g) || []).length;
+
+  assert.strictEqual(spanned + otherTds, headCount,
+    `footer covers ${spanned + otherTds} column(s) but the header declares ${headCount}`);
+});
+
+// Proof this test can fail (per the fix-wave instructions): temporarily add
+// an 11th <th> to #tbl's thead in vault-page.js with the footer untouched —
+// this test fails (`footer covers 10 column(s) but the header declares 11`)
+// — then revert. Verified both runs; see the fix report for the exact
+// output. Left here as a comment rather than a skipped test because a real
+// 11-column header does not exist to add permanently.
+
+test("the emitted script still parses with the row actions in it", () => {
+  assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
+});
+
+// ---- Row edit / delete actually behave (beyond markup + parsing) ----------
+// The tests above only prove the controls exist and the script compiles —
+// the same gap the gut check and mapper reviews found. These drive the REAL
+// emitted script through Edit -> change a field -> Save, and through Delete,
+// against a stubbed /api/vault/comp, with a stubbed global confirm() since
+// the stub DOM has no window.confirm of its own.
+
+// The stub DOM in this file does not parse rendered HTML into live elements
+// (see stubDocument above) — getElementById auto-vivifies a blank stub the
+// first time an id is touched, whatever markup was written to innerHTML. So
+// "pre-filled" is checked against the rendered markup string itself, which
+// is exactly what a real browser would parse into the input's initial
+// .value, rather than through a stub .value that the harness cannot derive
+// from HTML.
+test("Edit reveals a form pre-filled from the comp already on the page, and Cancel restores the row", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", notes: "corner lot" });
+  const { doc } = await runPage([c1]);
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  const editHtml = doc.getElementById("tbody").innerHTML;
+  assert.match(editHtml, /id="edit_address" value="100 Main St"/,
+    "the form must be pre-filled from the comp the page already holds");
+  assert.match(editHtml, /id="edit_notes" value="corner lot"/);
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-cancel-edit]' ? { getAttribute: () => "1" } : null } });
+  await tick();
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/,
+    "cancelling must put the ordinary row back");
+  assert.ok(!doc.getElementById("tbody").innerHTML.includes('id="edit_address"'),
+    "the edit form must not still be on screen after Cancel");
+});
+
+test("Save sends only the changed field, and reports the unpublish warning", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", published: true });
+  let sentBody = null;
+  const { doc } = await runPage([c1], null, {
+    comp: (init) => {
+      sentBody = JSON.parse(init.body);
+      return Promise.resolve(jsonResponse(200, { ok: true, comp: {}, unpublished: true }));
+    },
+  });
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  // Simulate what a real browser's initial-value parse of the rendered
+  // markup already gave every input, since the stub DOM cannot derive it:
+  // every field starts equal to the comp's own value, then exactly one is
+  // touched. That is what makes "only the changed field travels" a real
+  // assertion here, not an artifact of the stub starting blank.
+  const EDIT_FIELDS = ["address", "property_type", "transaction", "deal_date",
+    "price", "size_sqft", "cap_rate", "tenancy", "year_built", "notes"];
+  EDIT_FIELDS.forEach((f) => {
+    doc.getElementById("edit_" + f).value = c1[f] == null ? "" : String(c1[f]);
+  });
+  doc.getElementById("edit_notes").value = "updated note";
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-save-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  assert.deepEqual(sentBody, { notes: "updated note" },
+    "only the field that actually changed should travel in the PATCH body");
+  assert.match(doc.getElementById("compMsg").textContent, /withdrawn from the public/i,
+    "a broker must be told a published comp was retracted by the edit");
+});
+
+test("a 400 from the server shows every listed problem, not just the first", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St" });
+  const { doc } = await runPage([c1], null, {
+    comp: () => Promise.resolve(jsonResponse(400, { error: "price is not a number; deal_date is required" })),
+  });
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+  doc.getElementById("edit_price").value = "abc";
+
+  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-save-edit]' ? { getAttribute: () => "c1" } : null } });
+  await tick();
+
+  assert.match(doc.getElementById("compMsg").textContent, /price is not a number; deal_date is required/,
+    "the whole 400 error must render, not a generic fallback");
+  assert.ok(doc.getElementById("tbody").innerHTML.includes('id="edit_price"'),
+    "a failed save must not close the editor and lose the broker's in-progress edit");
+});
+
+test("Delete confirms, then sends DELETE and reports an ordinary removal", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", published: false });
+  const calls = [];
+  const realConfirm = global.confirm;
+  global.confirm = (msg) => { calls.push(msg); return true; };
+  try {
+    const { doc } = await runPage([c1], null, {
+      comp: () => Promise.resolve(jsonResponse(200, { ok: true, unpublished: false })),
+    });
+    doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-del-comp]' ? { getAttribute: () => "c1" } : null } });
+    await tick();
+
+    assert.match(calls[0], /Delete this comp/, "the confirm text names the destructive action");
+    assert.equal(doc.getElementById("compMsg").textContent, "Deleted.");
+  } finally {
+    global.confirm = realConfirm;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Task 8: add one comp by hand, and take the whole book with you
+// ---------------------------------------------------------------------------
+
+test("the page offers an add-one-comp form with the four required fields", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  for (const f of ["address", "property_type", "transaction", "deal_date"]) {
+    assert.ok(html.includes("addComp_" + f), "the add form needs " + f);
+  }
+});
+
+test("there is still exactly one file input on the page", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const inputs = (html.match(/type=["']?file/g) || []).length;
+  assert.equal(inputs, 1,
+    "two inputs would mean two values and two change handlers");
+});
+
+test("the export button says it exports everything", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(/Export all comps/.test(html),
+    "the label must remove any ambiguity about the dashboard filter");
+});
+
+test("the export is a plain link, so it works without the page's script", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.ok(/href="\/api\/vault\/export\.csv"/.test(html),
+    "a plain href lets the cookie ride along and the browser handle the download");
+});
+
+test("the emitted script still parses with the add form in it", () => {
+  assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([comp({})]), CHROME))));
+});
+
+test("the add-by-hand form's TYPE_FIELDS map has not drifted from broker-vault.js", () => {
+  // TYPE_FIELDS is a fourth copy of the per-type field map (TYPE_COMP_FIELDS
+  // in server.js is the source of truth; VAULT.PROPERTY_TYPES /
+  // OPTIONAL_SPEC_COLUMNS are its vault-side mirror). Nothing fails the build
+  // if this one falls behind: the next field added through the
+  // add-comp-field skill would import, store, export and display correctly,
+  // and simply never appear on this form. Extracted from the emitted script
+  // text (a static object literal) rather than executed, since TYPE_FIELDS
+  // lives inside the page's IIFE and is not exposed on window.
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  const m = /var TYPE_FIELDS=(\{[\s\S]*?\});/.exec(js);
+  assert.ok(m, "could not find TYPE_FIELDS in the emitted script");
+  const TYPE_FIELDS = new Function("return (" + m[1] + ");")();
+
+  assert.deepStrictEqual(
+    Object.keys(TYPE_FIELDS).sort(),
+    [...VAULT.PROPERTY_TYPES].sort(),
+    "TYPE_FIELDS' property types have drifted from VAULT.PROPERTY_TYPES");
+
+  const union = [...new Set(Object.values(TYPE_FIELDS).flat())].sort();
+  assert.deepStrictEqual(
+    union,
+    [...VAULT.OPTIONAL_SPEC_COLUMNS].sort(),
+    "TYPE_FIELDS' fields have drifted from VAULT.OPTIONAL_SPEC_COLUMNS");
+});
+
+// ---- The add form actually behaves -----------------------------------
+// Markup-and-parses tests, above, would not have caught a submit handler
+// that reads the wrong field ids or never calls fetch at all — exactly the
+// gap the row-edit and mapper reviews found elsewhere in this file. These
+// drive the REAL emitted script through Add comp against a stubbed
+// POST /api/vault/comp.
+
+test("Add comp posts the base fields typed into the form, then clears them and reports success", async () => {
+  let sentBody = null;
+  const { doc } = await runPage([], null, {
+    comp: (init) => {
+      sentBody = JSON.parse(init.body);
+      return Promise.resolve(jsonResponse(201, { ok: true, comp: {} }));
+    },
+  });
+
+  doc.getElementById("addComp_address").value = "500 Elm St";
+  doc.getElementById("addComp_property_type").value = "Industrial";
+  doc.getElementById("addComp_transaction").value = "sale";
+  doc.getElementById("addComp_deal_date").value = "2026-03-14";
+  doc.getElementById("addComp_price").value = "1000000";
+  doc.getElementById("addComp_size_sqft").value = "10000";
+
+  doc.getElementById("addCompBtn").fire("click", {});
+  await tick();
+
+  assert.equal(sentBody.address, "500 Elm St");
+  assert.equal(sentBody.property_type, "Industrial");
+  assert.equal(sentBody.transaction, "sale");
+  assert.equal(sentBody.deal_date, "2026-03-14");
+  assert.equal(sentBody.price, "1000000");
+  assert.equal(sentBody.size_sqft, "10000");
+  // An untouched optional field must never travel as an empty string —
+  // normalizeRow would then have to tell the difference between "left
+  // blank" and "explicitly cleared", which the server side does not do.
+  assert.ok(!("notes" in sentBody), "an empty field must be omitted, not sent as \"\"");
+
+  assert.equal(doc.getElementById("addComp_address").value, "",
+    "a successful add must clear the form for the next comp");
+  // Its own message, not compMsg: see the placement/routing tests below for
+  // why the two must not share a channel.
+  assert.equal(doc.getElementById("addCompMsg").textContent, "Added.");
+});
+
+test("a 400 from adding a comp shows every listed problem, not just the first, and keeps the form filled", async () => {
+  const { doc } = await runPage([], null, {
+    comp: () => Promise.resolve(jsonResponse(400, { error: "price is not a number; deal_date is required" })),
+  });
+
+  doc.getElementById("addComp_address").value = "500 Elm St";
+  doc.getElementById("addCompBtn").fire("click", {});
+  await tick();
+
+  assert.match(doc.getElementById("addCompMsg").textContent, /price is not a number; deal_date is required/,
+    "the whole 400 error must render, not a generic fallback");
+  assert.equal(doc.getElementById("addComp_address").value, "500 Elm St",
+    "a failed add must not clear the broker's in-progress entry");
+});
+
+// ---- Fix round 1: the add-comp result must land where the broker can see
+// it, not in #compMsg -------------------------------------------------------
+//
+// #compMsg sits at the top of #compsSec. The add form lives inside #addSec,
+// well above it in document order, with #mapSec and #rollupSec (the market
+// rollup cards, for any broker who already has a book) rendering in
+// between. Reusing #compMsg for this form's result would leave it below the
+// fold for exactly the broker "add one by hand" is for: no scroll, no focus
+// move, nothing on screen to say the click did anything.
+
+test("the add form's message element lives INSIDE the add panel, not in #compsSec", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const panel = /<details class="dbox" id="addOneSec">[\s\S]*?<\/details>/.exec(html);
+  assert.ok(panel, "could not find the add-one-comp panel");
+  assert.match(panel[0], /id="addCompMsg"/,
+    "the add form's own message element must be inside the panel, beside its button");
+  assert.doesNotMatch(panel[0], /id="compMsg"/,
+    "the row-actions message element belongs to #compsSec, not this panel");
+});
+
+test("adding a comp writes to #addCompMsg, and leaves #compMsg untouched", async () => {
+  const { doc } = await runPage([], null, {
+    comp: () => Promise.resolve(jsonResponse(400, { error: "deal_date is required" })),
+  });
+
+  doc.getElementById("addComp_address").value = "500 Elm St";
+  doc.getElementById("addCompBtn").fire("click", {});
+  await tick();
+
+  assert.match(doc.getElementById("addCompMsg").textContent, /deal_date is required/,
+    "the add form's failure must be visible right where the broker clicked");
+  // The stub DOM does not parse rendered HTML into live elements (see
+  // stubDocument above), so #compMsg's initial "msg hide" from the markup
+  // is not reproduced here; what this harness CAN prove is that addComp()
+  // never touches it, i.e. it is left exactly as the page's own JS left it
+  // (never written), not reset to some failure state.
+  assert.equal(doc.getElementById("compMsg").textContent, "",
+    "the row-actions message must not be borrowed for the add form's result");
+});
+
+test("choosing a property type reveals that type's own fields, and switching types swaps them", async () => {
+  const { doc } = await runPage([]);
+
+  doc.getElementById("addComp_property_type").value = "Industrial";
+  doc.getElementById("addComp_property_type").fire("change", {});
+  await tick();
+  assert.ok(doc.getElementById("addTypeFields").innerHTML.includes("addComp_clear_height"),
+    "Industrial's own field must appear");
+  assert.ok(!doc.getElementById("addTypeFields").innerHTML.includes("addComp_units"),
+    "a Multifamily field must not appear for an Industrial comp");
+
+  doc.getElementById("addComp_property_type").value = "Multifamily";
+  doc.getElementById("addComp_property_type").fire("change", {});
+  await tick();
+  assert.ok(doc.getElementById("addTypeFields").innerHTML.includes("addComp_units"),
+    "Multifamily's own field must appear once that type is chosen");
+  assert.ok(!doc.getElementById("addTypeFields").innerHTML.includes("addComp_clear_height"),
+    "the previous type's field must not linger after switching");
+});
+
+// ---------------------------------------------------------------------------
+// The credit identity (2026-08-12)
+//
+// A published comp carries a public credit — "Verified · via <firm>" on every
+// report it reaches. Until this shipped, a broker who never stated one had
+// their comps credited to whatever they typed at signup, and could not have
+// known it happened. These pin the two things that would silently regress:
+// the page must SHOW the credit before a publish, and the refusal must open
+// the form rather than send the broker looking for a screen that did not
+// exist.
+// ---------------------------------------------------------------------------
+
+test("an unstated identity says so, and offers to fix it", async () => {
+  const { doc } = await runPage([comp({})]);
+  const line = doc.getElementById("creditLine").innerHTML;
+  assert.match(line, /need a name to credit/i);
+  assert.match(line, /id="idEdit"/, "there must be a control to state one");
+});
+
+test("the identity form ships closed in the markup", () => {
+  // Asserted on the HTML, not through the stub DOM: the stub fabricates
+  // elements on demand, so an initial class set in the markup is invisible
+  // to it. Same reason the empty-vault test reads the html string.
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<div id="idForm" class="hide">/,
+    "the form must not greet every broker who opens their book");
+});
+
+test("a stated identity names the credit before anything is published", async () => {
+  const { doc } = await runPage([comp({})], null, {}, {
+    display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", creditedTo: "Hawkins Ridge CRE",
+  });
+  const line = doc.getElementById("creditLine").innerHTML;
+  assert.match(line, /Hawkins Ridge CRE/);
+  assert.match(line, /credited to/i);
+});
+
+test("the page never recomputes the credit — it prints the server's answer", async () => {
+  // creditName() prefers company over display_name. If the page reimplemented
+  // that rule it could drift from the publish route and promise a name the
+  // write would not produce, so it must print creditedTo verbatim even when
+  // that disagrees with the two fields beside it.
+  const { doc } = await runPage([comp({})], null, {}, {
+    display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", creditedTo: "Something Else Entirely",
+  });
+  assert.match(doc.getElementById("creditLine").innerHTML, /Something Else Entirely/);
+});
+
+test("a publish refused for a missing credit opens the form", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+  const { doc } = await runPage([comp({})], null, {
+    publish: () => Promise.resolve(jsonResponse(400, {
+      error: "Add your firm or display name before publishing — published comps are credited to it.",
+      code: "needs_credit_name",
+    })),
+  });
+  doc.getElementById("tbody").fire("click", {
+    target: { closest: (sel) => sel === "button[data-pub]"
+      ? { getAttribute: () => "c1", classList: { contains: () => false }, disabled: false, textContent: "Publish" }
+      : null },
+  });
+  await tick();
+  assert.equal(doc.getElementById("idForm").className, "",
+    "the one refusal a broker can fix in place must open the field that fixes it");
+  } finally { global.confirm = realConfirm; }
+});
+
+test("an empty vault asks for no benchmarks, and does not latch the flag", async () => {
+  // The first-run bug this guards: loadBenchmarks is asked PER BUCKET, so an
+  // empty vault has nothing to ask about and returns early — but the caller
+  // used to set benchLoaded=true anyway, so the gut check stayed empty for
+  // the rest of the session and only appeared if the broker happened to
+  // reload. Found on a clean-slate run against the real corpus (2026-08-12),
+  // and it is why the panel looked like it was failing in thin markets when
+  // the benchmarks were fine.
+  //
+  // Only the first half is asserted here: the stub DOM cannot walk an
+  // empty-boot -> import -> populated-reload sequence (the reload is answered
+  // from the boot payload), so the re-fetch itself is verified in a real
+  // browser rather than pretended at here. What this pins is the guard's
+  // shape — no call while empty, and the condition that keeps it retryable.
+  const { calls } = await runPage([]);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/benchmarks") === 0).length, 0,
+    "an empty vault has no bucket to ask about");
+
+  const js = pageScript(renderVaultHTML(boot([]), CHROME));
+  assert.match(js, /if\(!benchLoaded\s*&&\s*comps\.length\)/,
+    "the benchmarks flag must stay false until there is a bucket, or the first import never loads them");
+});
+
+test("a re-uploaded book says what was stored, not what was read", async () => {
+  // The server counts what the database actually took (the insert asks for
+  // ids back rather than return=minimal). The page must then say so: this
+  // used to read "Imported 16 comps" after storing none, which is the
+  // reassuring direction to be wrong in — a broker told their deals landed
+  // does not go looking for them.
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200,
+      { ok: true, imported: 0, already: 16, skipped: 0 })),
+  });
+  await chooseFile(doc, CLEAN_CSV);
+  const html = doc.getElementById("res").innerHTML;
+  assert.match(html, /Imported 0 comps/);
+  assert.match(html, /16 were already in your vault/);
+});
+
+test("a partly-new book counts both halves separately", async () => {
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200,
+      { ok: true, imported: 4, already: 1, skipped: 0, duplicates: 2 })),
+  });
+  await chooseFile(doc, CLEAN_CSV);
+  const html = doc.getElementById("res").innerHTML;
+  assert.match(html, /Imported 4 comps/);
+  assert.match(html, /1 was already in your vault/, "singular reads correctly");
+  // `already` (the vault had it) and `duplicates` (the file repeated it) are
+  // different facts and must not be collapsed into one number.
+  assert.match(html, /2 duplicates in the file/);
+});
+
+// ---------------------------------------------------------------------------
+// $/SF is not comparable across property types (2026-08-12)
+//
+// A book holding industrial (~$78/SF), office (~$157) and retail (~$230)
+// blended into a headline "$117/SF" — the largest number on the page, and one
+// that describes no building in the book. The ledger tile, the reading strip
+// and the table footer all read one psfStats helper so they cannot disagree.
+// ---------------------------------------------------------------------------
+
+const MIXED_BOOK = [
+  comp({ id: "i1", property_type: "Industrial", price_per_sqft: 78, address: "1 Ind St" }),
+  comp({ id: "i2", property_type: "Industrial", price_per_sqft: 80, address: "2 Ind St" }),
+  comp({ id: "o1", property_type: "Office", price_per_sqft: 157, address: "3 Off St" }),
+  comp({ id: "r1", property_type: "Retail", price_per_sqft: 230, address: "4 Ret St" }),
+];
+const ONE_TYPE_BOOK = [
+  comp({ id: "i1", property_type: "Industrial", price_per_sqft: 78, address: "1 Ind St" }),
+  comp({ id: "i2", property_type: "Industrial", price_per_sqft: 80, address: "2 Ind St" }),
+];
+
+test("a mixed-type book narrows the headline median to its dominant type", async () => {
+  const { doc } = await runPage(MIXED_BOOK);
+  // Industrial holds 2 of the 4 priced sales, so the tile answers for
+  // Industrial ($78 and $80 -> $79) rather than blending in office and retail.
+  assert.equal(doc.getElementById("cMed").textContent, "$79",
+    "the figure must be a median of ONE type, never the blend");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · 2 of 4 sales",
+    "a narrowed figure has to say what it narrowed to, and how much it covers");
+});
+
+test("the tile narrows where the strip and footer decline", async () => {
+  // The load-bearing asymmetry (owner's call, 2026-08-12). The tile describes
+  // the BOOK and leads with a real number; the strip and footer seal the ROWS
+  // ON SCREEN and must not quote a subset the reader did not filter to.
+  const { doc } = await runPage(MIXED_BOOK);
+  assert.equal(doc.getElementById("cMed").textContent, "$79");
+  const strip = doc.getElementById("readStrip").innerHTML;
+  assert.match(strip, /3 property types/,
+    "the strip still declines on a mixed view");
+  assert.ok(!/\$\d/.test(strip.split("vs market")[0]),
+    "the strip's median cell must not carry a price: " + strip);
+});
+
+test("the dominant type breaks ties on name, not on row order", async () => {
+  // Object key order follows the order rows arrived in, so an untied
+  // tie-break would let two loads of the same book name different types.
+  const book = [
+    comp({ id: "r1", property_type: "Retail", price_per_sqft: 230, address: "1 Ret St" }),
+    comp({ id: "o1", property_type: "Office", price_per_sqft: 157, address: "2 Off St" }),
+  ];
+  const { doc } = await runPage(book);
+  assert.match(doc.getElementById("cMedSub").textContent, /^Office · /,
+    "one sale each: Office wins on name, whichever row came first");
+  const { doc: reversed } = await runPage(book.slice().reverse());
+  assert.equal(reversed.getElementById("cMedSub").textContent,
+    doc.getElementById("cMedSub").textContent,
+    "the same book in a different order must name the same type");
+});
+
+test("a single-type book still gets its median, and names the type", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK);
+  assert.notEqual(doc.getElementById("cMed").textContent, "—",
+    "suppressing a median that IS comparable would be the opposite mistake");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · sales only");
+});
+
+test("a book with no priced sales at all quotes nothing", async () => {
+  const { doc } = await runPage([
+    comp({ id: "l1", property_type: "Office", transaction: "lease", price: null, price_per_sqft: null, address: "9 Lease Rd" }),
+  ]);
+  assert.equal(doc.getElementById("cMed").textContent, "—");
+  assert.equal(doc.getElementById("cMedSub").textContent, "sales only",
+    "with nothing to be a median of, the tile names no type either");
+});
+
+test("the table footer refuses the same figure the tile refuses", async () => {
+  const { doc } = await runPage(MIXED_BOOK);
+  const foot = doc.getElementById("tblFoot").innerHTML;
+  assert.match(foot, /No single median across 3 property types/);
+  assert.ok(!/\$\d/.test(foot), "the footer must not seal the column with a price: " + foot);
+});
+
+test("the footer and the tile agree on a single-type book too", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK);
+  const foot = doc.getElementById("tblFoot").innerHTML;
+  assert.match(foot, /Median of 2 priced sales/);
+  assert.match(foot, /\$\d/, "a comparable median must still seal the column");
+});
+
+test("an unpriced comp in a second type cannot suppress the median", async () => {
+  // psfStats counts types across the PRICED SALES only — the rows that feed
+  // the median. A lease with no $/SF never moved it, so it must not silence
+  // it either.
+  const { doc } = await runPage(ONE_TYPE_BOOK.concat([
+    comp({ id: "l1", property_type: "Office", transaction: "lease", price: null, price_per_sqft: null, address: "9 Lease Rd" }),
+  ]));
+  assert.notEqual(doc.getElementById("cMed").textContent, "—");
+  assert.equal(doc.getElementById("cMedSub").textContent, "Industrial · sales only");
+});
+
+// ---------------------------------------------------------------------------
+// The BOV panel's empty state (2026-08-12)
+//
+// Nothing in this file had ever stubbed /api/broker/bovs, so every page here
+// ran loadBovs through its catch branch — which hides the empty line, and so
+// could never have caught it lingering over a populated log.
+// ---------------------------------------------------------------------------
+
+const A_BOV = {
+  id: "b1", market: "Boise, ID", property_type: "Industrial",
+  status: "open", source: "compninja", received_on: "2026-08-01",
+  size_sqft: 40000, address: "1 Ind St", notes: "",
+};
+
+test("an empty BOV log shows its line and no table", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK);
+  assert.equal(doc.getElementById("noBovs").className, "empty",
+    "with nothing logged the line is the only thing to show");
+  assert.match(doc.getElementById("bovTableWrap").className, /hide/,
+    "a header row over no rows is the empty table the first-run work removed");
+});
+
+test("the first logged BOV puts the empty line away", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    bovs: () => Promise.resolve(jsonResponse(200, {
+      bovs: [A_BOV],
+      rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
+    })),
+  });
+  assert.match(doc.getElementById("noBovs").className, /hide/,
+    '"Nothing logged yet" over a logged BOV contradicts the row beneath it');
+  assert.equal(doc.getElementById("bovTableWrap").className, "tw");
+  assert.match(doc.getElementById("bovRows").innerHTML, /Boise, ID/);
+});
+
+test("a failed BOV load shows neither the empty line nor a stale table", async () => {
+  // The error message is the answer here. An empty-state line would claim the
+  // log is empty when the truth is that it could not be read.
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
+  });
+  assert.match(doc.getElementById("noBovs").className, /hide/);
+  assert.match(doc.getElementById("bovTableWrap").className, /hide/);
+  assert.match(doc.getElementById("bovMsg").innerHTML, /unavailable/i);
 });

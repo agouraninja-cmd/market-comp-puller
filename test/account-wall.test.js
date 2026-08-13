@@ -33,10 +33,16 @@ const { boot } = require("./helpers/boot");
 // spending anything — which is the failure mode you want in a test suite.
 const FAKE_KEY = "sk-ant-not-a-real-key";
 
+// These boots pin SEARCH_PROVIDER explicitly rather than riding the default.
+// The default is gemini as of 2026-08-10, and the missing-key guard now names
+// whichever provider is active, so a bare ANTHROPIC_API_KEY would no longer get
+// past it. Pinning the provider keeps the fake key meaningful and keeps these
+// tests independent of a default that is a product decision, not their subject.
+
 test("the wall forces the guest search limit to zero", async (t) => {
   // GUEST_SEARCH_LIMIT deliberately set to something generous: the point is
   // that the wall overrides it rather than trusting two env vars to agree.
-  const srv = await boot({ ACCOUNT_WALL: "on", GUEST_SEARCH_LIMIT: "5", ANTHROPIC_API_KEY: FAKE_KEY });
+  const srv = await boot({ ACCOUNT_WALL: "on", GUEST_SEARCH_LIMIT: "5", SEARCH_PROVIDER: "anthropic", ANTHROPIC_API_KEY: FAKE_KEY });
   t.after(() => srv.stop());
 
   await t.test("/api/config reports the wall and a zero limit", async () => {
@@ -78,7 +84,7 @@ const FAKE_SESSION = { cookie: "cn_session=not-a-real-token" };
 test("the wall serves the landing page at the root", async (t) => {
   // Fake key for the same reason as above: the forged-cookie subtest below
   // needs /api/comps to get past its missing-key check and reach the gate.
-  const srv = await boot({ ACCOUNT_WALL: "on", ANTHROPIC_API_KEY: FAKE_KEY });
+  const srv = await boot({ ACCOUNT_WALL: "on", SEARCH_PROVIDER: "anthropic", ANTHROPIC_API_KEY: FAKE_KEY });
   t.after(() => srv.stop());
 
   const get = (p, headers) =>

@@ -129,12 +129,44 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// The provider registry. Each module satisfies the same ten-export contract
+// (name, logLabel, apiKeyEnv, defaultModel, capabilities, buildRequestBody,
+// requestInit, parseResponse, normalizeUsage, costOf). Explicit map with NO
+// fallthrough: an unrecognized value must fail loudly at boot rather than
+// silently serve a provider nobody chose. Same rule the /api/checkout PLANS
+// table follows, and for the same reason.
+const SEARCH_PROVIDERS = {
+  anthropic: require("./search-provider-anthropic"),
+  gemini: require("./search-provider-gemini"),
+};
+// Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
+// measured it better on every scored metric of the 12-target eval AND 3.9x
+// cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
+// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
+// deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
+// PAID-tier Google project: a free-tier key authenticates and runs the model
+// but 429s on every grounded search, which looks like a half-working site.
+const SEARCH_PROVIDER_NAME = (process.env.SEARCH_PROVIDER || "gemini").trim().toLowerCase();
+const PROVIDER = SEARCH_PROVIDERS[SEARCH_PROVIDER_NAME];
+if (!PROVIDER) {
+  console.error(`⛔ SEARCH_PROVIDER="${SEARCH_PROVIDER_NAME}" is not one of: ${Object.keys(SEARCH_PROVIDERS).join(", ")}`);
+  process.exit(1);
+}
 // Overridable so the eval harness can score one model against another
 // (run-eval.js). Unset everywhere in production, which keeps this exactly
 // the constant it has always been. If the API 404s on a model id, list the
 // live ones via GET https://api.anthropic.com/v1/models and update this
 // default.
-const MODEL = (process.env.MODEL || "claude-sonnet-4-6").trim();
+// MODEL still overrides, so an existing MODEL=... deployment is unaffected.
+const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
+
+// The provider names its own credential var, so this stays a lookup rather
+// than a branch. Testing PROVIDER.name here would be the first crack in the
+// never-branch-on-name rule, and credential selection is exactly where such
+// exceptions look most reasonable.
+const providerApiKey = () => (process.env[PROVIDER.apiKeyEnv] || "").trim();
 
 // Optional shared password. If set, visitors must enter it before searching.
 // Leave it unset to keep the app open.
@@ -166,6 +198,21 @@ const PRO_AUDIENCE = ENT.parseAudience(process.env.PRO_AUDIENCE);
 function proEnabledFor(user) {
   return PRO_ENABLED && ENT.inAudience(user, PRO_AUDIENCE);
 }
+
+// Optional shared passkey that comps Pro to a signed-in account (the beta
+// tester door). Deliberately NOT ADMIN_KEY: that key also unlocks /admin,
+// /dev and /contacts, so handing it to testers would hand out the analytics,
+// the lead list and the dev tools along with it. Unset = POST
+// /api/redeem-passkey does not exist (404), which is what keeps this inert on
+// any deployment that never configured it.
+//
+// Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
+// devices and survives a passkey rotation — and revoking one tester is a
+// one-row UPDATE, without changing the passkey for everyone else. See the
+// comped-tester branch in entitlements.js for what it grants (everything Pro
+// except the broker vault) and what it cannot override (PRO_ENABLED, and a
+// real paid subscription).
+const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
 
 // Stripe. Keys live only in the environment — never in the repo, never in a
 // response, never in the browser. The price IDs are not secret (they identify
@@ -460,7 +507,11 @@ function sendCsvDownload(req, res, table, file, cols, filename) {
     return sendJson(res, 401, { error: "Unauthorized." });
   }
   readRows(table, file, cols).then((rows) => {
-    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    // guardFormula: these files hold visitor-typed (lead name/company) and
+    // model-supplied (comp notes) text and are opened in the owner's Excel —
+    // a cell starting with `=`/`+`/`-`/`@` would execute there. Quoting alone
+    // does not prevent that; see the function's own header.
+    const esc = (v) => `"${VAULT.guardFormula(String(v ?? "")).replace(/"/g, '""')}"`;
     const lines = rows.map((o) => cols.map((c) => esc(o[c])).join(","));
     res.writeHead(200, {
       "content-type": "text/csv; charset=utf-8",
@@ -866,6 +917,20 @@ async function updateUserPassword(id, password_hash) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.password_hash = password_hash; await saveAccountStore(); }
 }
+// Grants comped Pro to one account (the redeemed tester passkey).
+//
+// THROWS on a Supabase failure rather than returning false, unlike the
+// fire-and-forget writes elsewhere in this file: the caller answers the
+// visitor with "you're in", and a swallowed failure there means someone is
+// told they have Pro that they do not have and cannot get by trying again.
+async function setUserTester(id) {
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { pro_tester: true });
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.pro_tester = true; await saveAccountStore(); }
+}
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -936,7 +1001,24 @@ async function getSessionUser(req) {
   if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
   try {
     const user = await findUserById(sess.user_id);
-    return user ? { id: user.id, email: user.email, name: user.name || "" } : null;
+    return user ? {
+      id: user.id,
+      email: user.email,
+      name: user.name || "",
+      // The comped-tester flag. Narrowing this object is deliberate (it is what
+      // stops a password hash reaching a caller), which means a new entitlement
+      // input has to be added HERE or it never reaches computeEntitlements at
+      // all — the feature would be silently inert with nothing failing.
+      // Boolean() so a missing column (deploy-then-migrate) reads as false.
+      pro_tester: Boolean(user.pro_tester),
+      // The per-account vault grant (migration 023). It was missing here for
+      // the first day of its life and the warning above is exactly why that
+      // mattered: the column was set, entitlements read `user.vault_beta`,
+      // and the answer was silently undefined, so a granted broker still saw
+      // no vault and nothing anywhere failed. Caught only by granting it to a
+      // real account and looking. test/routes.test.js now pins the pairing.
+      vault_beta: Boolean(user.vault_beta),
+    } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
 // Route guard: replies 401 itself; callers bail on null.
@@ -1296,8 +1378,16 @@ async function getEntitlements(user, reportId, admin = false) {
     findReportPurchase(user && user.id, reportId),
     getExportUsage(user && user.id, ENT.usagePeriod(now)),
   ]);
+  // Deliberately NOT a short-circuit above the DB reads, unlike the admin
+  // branch: a tester may also be a paying subscriber, and entitlements.js
+  // resolves the comped branch only when there is no live subscription to
+  // prefer. Reading the subscription is what makes that possible.
+  const tester = Boolean(user && user.pro_tester);
+  // Per-account vault grant (migration 023) — the broker-onboarding door.
+  // Reads as undefined until the column exists, which Boolean()s to false.
+  const vaultBeta = Boolean(user && user.vault_beta);
   return ENT.computeEntitlements({
-    user, subscription, purchase, usage, reportId, now, enabled: true,
+    user, subscription, purchase, usage, reportId, now, enabled: true, tester, vaultBeta,
   });
 }
 
@@ -3014,14 +3104,25 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   const S = SHORT_COMP_KEYS;
   const typeFields = typeSpec ? typeSpec.fields.map((f) => `"${S[f]}": "", `).join("") : ``;
   const buildingFields = isLand ? `` : `"${S.tenancy}": "", "${S.year_built}": "", `;
-  const compShape = `{ "${S.address}": "", "${S.date}": "", "${S.transaction}": "", "${S.size_sqft}": "", ${typeFields}"${S.price_or_rate}": "", "${S.price_per_sqft}": "", "${S.cap_rate}": "", ${buildingFields}"${S.notes}": "", "${S.source_url}": "", "${S.source_type}": "", "${S.verified}": false }`;
+  // "verified" is only offerable when we actually handed the model broker
+  // comps to match against. With none offered the field can only ever be
+  // false, and asking for it invites the model to award itself the badge:
+  // measured on a live Gurnee run, 4 of 5 comps came back "verified": true
+  // with zero broker submissions in that market. enforceVerifiedFlags cleared
+  // them (the badge is safe either way), but the model had already written a
+  // summary describing comps it believed were verified, and nothing revisits
+  // prose — which is exactly the contradiction a reviewer reported. Removing
+  // the field is the root fix; the narrative scrub below is the guarantee.
+  const hasVerified = !!(verifiedComps && verifiedComps.length);
+  const verifiedField = hasVerified ? `, "${S.verified}": false` : ``;
+  const compShape = `{ "${S.address}": "", "${S.date}": "", "${S.transaction}": "", "${S.size_sqft}": "", ${typeFields}"${S.price_or_rate}": "", "${S.price_per_sqft}": "", "${S.cap_rate}": "", ${buildingFields}"${S.notes}": "", "${S.source_url}": "", "${S.source_type}": ""${verifiedField} }`;
   // Legend restricted to the fields this type's shape actually carries, so
   // the prompt never teaches keys the shape doesn't use.
   const legendFields = ["address", "date", "transaction", "size_sqft",
     ...(typeSpec ? typeSpec.fields : []),
     "price_or_rate", "price_per_sqft", "cap_rate",
     ...(isLand ? [] : ["tenancy", "year_built"]),
-    "notes", "source_url", "source_type", "verified"];
+    "notes", "source_url", "source_type", ...(hasVerified ? ["verified"] : [])];
   const compKeyLegend = legendFields.map((f) => `"${S[f]}"=${f}`).join(", ");
 
   // Trusted internal comps get their own prompt section when any exist.
@@ -3203,9 +3304,17 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // patterns - restating comp figures the table already carries, and
     // narrating the search the "search_radius" field already carries. The
     // honesty caveats other rules REQUIRE in summary keep a designated slot.
-    ...(compsOnly ? [] : [`"summary" = plain English a non-professional understands: at most THREE short sentences, under about 450 characters total, in this order: (1) the single thing an owner most needs to know about this market right now; (2) the market-level read your comps support - market-level figures like a $/SF spread or a vacancy rate are welcome; (3) only if a rule above requires it, that caveat in ONE compact clause (comps beyond the window, a widened radius, a size mismatch, scarce verified data). Do NOT put in "summary": any individual comp's address, price, size, or date (the comp table carries those); lists of tenant or company names; or any account of your search process beyond that single caveat clause.`]),
+    ...(compsOnly ? [] : [`"summary" = plain English a non-professional understands: at most THREE short sentences, under about 450 characters total, in this order: (1) the single thing an owner most needs to know about this market right now; (2) the market-level read your comps support - market-level figures like a $/SF spread or a vacancy rate are welcome; (3) only if a rule above requires it, that caveat in ONE compact clause (comps beyond the window, a widened radius, a size mismatch, thin or weakly-sourced data). Do NOT put in "summary": any individual comp's address, price, size, or date (the comp table carries those); lists of tenant or company names; or any account of your search process beyond that single caveat clause.`]),
     `"currency" = the ISO 4217 code of the currency ALL prices in this report are quoted in. For a target property in the United States use "USD". For a target property in any other country, quote EVERY price figure (each comp's "price_or_rate" and "price_per_sqft", any type-specific price fields like "price_per_unit" and "price_per_acre", plus "avg_price_per_sqft") in that country's local currency, set "currency" to its code (e.g. "CAD", "MXN", "GBP"), and set "usd_rate" to the current value of 1 unit of that currency in US dollars as a plain number string (e.g. "0.73" for CAD), using the exchange rate your web search finds. When currency is "USD", set "usd_rate" to "". Never mix currencies within one report.`,
     `"source_type" = where you found the comp, exactly one of: "public_record" (a county assessor, deed, or tax record), "listing" (an active or closed listing page, brokerage flyer, or brokerage announcement), "news" (a news article or press release), "estimate" (you could not tie the figures to one specific source). Choose the single best fit; never leave it empty.`,
+    // "Verified" is a specific badge in this product, meaning a local broker
+    // vouched for the comp and our team reviewed it. Only the server can award
+    // it. A model using the word loosely in prose ("verified through county
+    // records") reads to a customer as that badge, and when the comp table
+    // shows only Listing and Estimate badges the report contradicts itself -
+    // reported by a reviewer as "the summary says there are verified comps but
+    // then you're not showing any".
+    `RESERVED WORD: do NOT use "verified", "verification", or "broker-verified" anywhere in "summary", "value_drivers", "market_trend", or "price_discovery". Those words name a specific badge in this report that only we can award, and using them for anything else makes the report contradict its own comp table. Describe where figures came from in plain terms instead ("county records show", "confirmed against the listing").`,
     ...(compsOnly ? [] : [
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
@@ -3241,7 +3350,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
-const { normalizeTrendPct, reconcilePricePerSqft } = RPARSE;
+const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -3689,25 +3798,34 @@ function noteUpstreamFailure(status, detail) {
   const billing = status === 401 || status === 403 ||
     /credit balance|purchase credits|billing|payment/i.test(msg);
   if (!billing) {
-    console.error(`Anthropic call failed (${status}): ${msg.slice(0, 200)}`);
+    console.error(`${PROVIDER.logLabel} call failed (${status}): ${msg.slice(0, 200)}`);
     return;
   }
 
   UPSTREAM_HEALTH.billing = true;
+  // This alert names the ACTIVE provider, not Anthropic. It fires from the one
+  // shared noteUpstreamFailure, so before SEARCH_PROVIDER existed it could only
+  // ever mean Anthropic; now a Gemini 401 would otherwise push the owner an
+  // actively wrong diagnosis mid-outage, telling them to go buy credits from a
+  // vendor that is not failing. The remedy differs per provider too, which is
+  // why the fix line is per-provider rather than one generic sentence.
+  // The remedy differs per vendor, so each provider carries its own. Reading it
+  // off the module keeps this a lookup: an `if (PROVIDER.name === ...)` here
+  // would be the first crack in the never-branch-on-name rule, and per-vendor
+  // copy is exactly where that exception looks most reasonable.
+  const billingFix = PROVIDER.billingHelp;
   console.error(
-    `Anthropic API is refusing every call for BILLING reasons (${status}). Comp search is ` +
-    `DOWN site-wide until the Console org that owns ANTHROPIC_API_KEY has credits again — ` +
-    `console.anthropic.com -> Plans & Billing. A comped Claude Pro/Team seat does not fund ` +
-    `this; API credits are a separate prepaid balance. Detail: ${msg.slice(0, 200)}`);
+    `${PROVIDER.logLabel} API is refusing every call for BILLING reasons (${status}). Comp ` +
+    `search is DOWN site-wide until ${PROVIDER.apiKeyEnv}'s billing is fixed. ${billingFix} ` +
+    `Detail: ${msg.slice(0, 200)}`);
   if (upstreamAlertSent) return;
   upstreamAlertSent = true;
-  sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja is DOWN: Anthropic API billing",
-    `Every comp search is failing. The Anthropic API returned ${status}:\n\n` +
+  sendEmail(LEAD_NOTIFY_EMAIL, `CompNinja is DOWN: ${PROVIDER.logLabel} API billing`,
+    `Every comp search is failing. The ${PROVIDER.logLabel} API returned ${status}:\n\n` +
     `  ${msg.slice(0, 300)}\n\n` +
-    `This is the Console API credit balance for the org that owns ANTHROPIC_API_KEY, which is\n` +
-    `billed separately from any Claude Pro/Team subscription — a comped seat does not cover it.\n\n` +
-    `Fix: console.anthropic.com -> Plans & Billing -> buy credits, and turn on auto-reload so\n` +
-    `this cannot happen silently again. Nothing needs redeploying; the next search will work.\n\n` +
+    `The active search provider is ${PROVIDER.name}, authenticated with ${PROVIDER.apiKeyEnv}.\n\n` +
+    `Fix: ${billingFix}\n\n` +
+    `Nothing needs redeploying; the next search will work.\n\n` +
     `Customers are currently seeing a generic "temporarily unavailable" message, not this one.`);
 }
 
@@ -3715,7 +3833,7 @@ function noteUpstreamFailure(status, detail) {
 // reader what to do next. Never the upstream text.
 function upstreamError(status, detail) {
   noteUpstreamFailure(status, detail);
-  const err = new Error(`Anthropic API error (${status}). ${detail || ""}`.trim());
+  const err = new Error(`${PROVIDER.logLabel} API error (${status}). ${detail || ""}`.trim());
   err.upstream = true;
   err.userMessage = (status === 429 || status === 529)
     ? "Our comp search is unusually busy right now. Please try again in a minute."
@@ -3737,6 +3855,26 @@ function clientErrorMessage(err) {
 // price of a small completion (~$0.05, ~40s) instead of solo()'s full
 // ~$0.35/~90s re-search. Every failure path here surfaces to the caller,
 // which falls back to that full retry, so this can only ever save.
+//
+// Deliberately Anthropic-only for now, and NOT routed through PROVIDER: it
+// hardcodes api.anthropic.com, the three Anthropic headers, and reads
+// API_KEY (ANTHROPIC_API_KEY) directly rather than providerApiKey(). Under
+// SEARCH_PROVIDER=gemini this call still fires on a parse failure and still
+// targets Anthropic, so a Gemini-backed run whose JSON fails to parse
+// attempts an Anthropic repair before falling to Gemini's own full retry.
+// It does not crash, and it can never actually succeed under Gemini, which
+// makes it inert rather than merely inconsistent. Node's fetch does NOT
+// drop an undefined header value; it stringifies it, so with no
+// ANTHROPIC_API_KEY set the request carries a literal `x-api-key: "undefined"`
+// and Anthropic answers 401. If ANTHROPIC_API_KEY also happens to be set,
+// the request still fails, because MODEL is this module's constant and
+// under Gemini it holds a Gemini model id ("gemini-3.6-flash" by default),
+// which Anthropic 404s on as an unrecognized model. Either way the existing
+// failure path (every error here surfaces to the caller) falls through to
+// solo()'s full re-search, which does go through PROVIDER correctly. The
+// only cost is a wasted round trip against the repair call's own 90s
+// timeout. Left as a known gap for phase 2's validation gate rather than
+// generalized in this task.
 async function repairCompJson(brokenText, maxTokens) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000);
@@ -3774,43 +3912,18 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
-  const body = {
+  // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
+  // non-streaming path rather than ask for a mode it doesn't support.
+  const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
+  const body = PROVIDER.buildRequestBody({
     model: MODEL,
-    // Shared budget for the WHOLE call — up to 8 rounds of web-search tool
-    // text plus the final JSON. The per-comp schema has grown (clear_height/
-    // dock_doors, tenancy, year_built, per-comp notes), so 3200 could
-    // get cut off mid-array on a busy 8-comp Industrial report. Billing is by
-    // actual tokens generated, not this cap, so raising it costs nothing on
-    // the (much more common) shorter reports — and leaving it high is what
-    // keeps the notes cap a QUALITY instruction rather than a hard truncation
-    // that could sever the JSON mid-array.
-    // A 10-12 comp report is a third longer than the 8-comp JSON this was
-    // sized for — give it headroom so the closing brace never gets cut off.
-    max_tokens: maxComps > 8 ? 10000 : 8000,
-    // The subject-size lookup gets two extra searches so it doesn't crowd out
-    // the comp searches themselves. When we already hold recent comps for this
-    // market (corpus-strong), the budget drops hard — that reuse is the saving.
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: searchUses }],
-    // The web_search loop re-runs model inference on EVERY round — one per
-    // search plus the final report — and each round re-reads this whole prompt
-    // at full input price. Measured at ~3,300 tokens, an 8-search report paid
-    // for it nine times over. cache_control makes rounds 2..N read it at ~0.1x.
-    // It works because caching is a PREFIX match and the prompt is byte-
-    // identical across a request's rounds: only the search results appended
-    // AFTER it grow. Sonnet's minimum cacheable prefix is 1,024 tokens and this
-    // prompt is ~3x that, so it always qualifies — but a future prompt trim
-    // that took it under 1,024 would silently stop caching, with no error.
-    messages: [{
-      role: "user",
-      content: [{
-        type: "text",
-        text: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby, subjectDetails, lane),
-        cache_control: { type: "ephemeral" },
-      }],
-    }],
-  };
-
-  if (STREAM_ANTHROPIC) body.stream = true;
+    prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
+                        subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
+                        subjectDetails, lane),
+    maxComps,
+    searchUses,
+    stream: useStream,
+  });
   const say = typeof onProgress === "function" ? onProgress : () => {};
 
   // Live comp lines for the loading card. Only calls that report progress get
@@ -3846,7 +3959,11 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // NOT be cleared right after the await, or the whole read loop would run
   // unguarded and a wedged upstream would hang forever. It is cleared in the
   // finally that wraps the reading, further down.
-  const callDeadlineMs = searchTimeoutMsFor(searchUses, body.max_tokens);
+  // A provider that cannot cap search rounds never honored searchUses, so a
+  // deadline derived from it would be arbitrary. Budget the worst case (a full
+  // 10-search run) instead of a number that was silently ignored.
+  const deadlineUses = PROVIDER.capabilities.searchBudget ? searchUses : 10;
+  const callDeadlineMs = searchTimeoutMsFor(deadlineUses, PROVIDER.deadlineTokens(body));
   const timer = setTimeout(() => controller.abort(), callDeadlineMs);
   // Two very different failures used to raise the SAME error with no way to
   // tell them apart, in the message OR in the log:
@@ -3859,21 +3976,18 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const timedOut = (cause) => {
     const waited = ((Date.now() - startedAt) / 1000).toFixed(1);
     console.error(cause === "idle"
-      ? `Anthropic call [${lane}] ABORTED: no data for ${STREAM_IDLE_MS / 1000}s (idle watchdog) after ${waited}s. The call may have been alive and billed.`
-      : `Anthropic call [${lane}] ABORTED: exceeded its ${(callDeadlineMs / 1000).toFixed(0)}s deadline after ${waited}s.`);
+      ? `${PROVIDER.logLabel} call [${lane}] ABORTED: no data for ${STREAM_IDLE_MS / 1000}s (idle watchdog) after ${waited}s. The call may have been alive and billed.`
+      : `${PROVIDER.logLabel} call [${lane}] ABORTED: exceeded its ${(callDeadlineMs / 1000).toFixed(0)}s deadline after ${waited}s.`);
     const e = new Error("The search took too long and was stopped. Please try again.");
     e.timeoutCause = cause;
     return e;
   };
   let r;
   try {
-    r = await fetch("https://api.anthropic.com/v1/messages", {
+    const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
+    r = await fetch(init.url, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: init.headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -3895,18 +4009,28 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   let usage = {};
   let stopReason = "";
 
-  if (!STREAM_ANTHROPIC) {
-    clearTimeout(timer);
-    const data = await r.json();
-    searches = (data.content || []).filter((b) => b.type === "server_tool_use").length;
-    usage = data.usage || {};
-    stopReason = data.stop_reason;
-    // Web search responses contain multiple block types — keep ONLY text blocks.
-    text = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
+  if (!useStream) {
+    // fetch() resolves at the HEADERS, not the body — the streaming branch
+    // below already knows this (its own clearTimeout sits in a `finally`
+    // after the read loop). Clearing the timer here, before `await r.json()`,
+    // left the body read with no deadline and no abort coverage; that was a
+    // tolerable gap when non-streaming was only the STREAM_ANTHROPIC=off
+    // debug path, but it is now the ONLY path for a whole provider (Gemini
+    // has no STREAM_IDLE_MS watchdog either), so a wedged call could hang
+    // forever with nothing to time it out.
+    let parsed;
+    try {
+      parsed = PROVIDER.parseResponse(await r.json());
+    } catch (err) {
+      if (err && err.name === "AbortError") throw timedOut("deadline");
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+    text = parsed.text;
+    searches = parsed.searches;
+    usage = parsed.usage;
+    stopReason = parsed.stopReason;
   } else {
     // Rebuild exactly what the non-streaming branch above produces: the text
     // blocks, in index order, joined with "\n" and trimmed. Anything else and
@@ -3926,7 +4050,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                               e.message || e.type || "unknown");
         }
         if (ev.type === "message_start") {
-          usage = (ev.message && ev.message.usage) || {};
+          usage = PROVIDER.normalizeUsage(ev.message && ev.message.usage);
           say({ phase: "start" });
         } else if (ev.type === "content_block_start") {
           const cb = ev.content_block || {};
@@ -3982,7 +4106,15 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
           }
         } else if (ev.type === "message_delta") {
           stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          if (ev.usage) usage = { ...usage, ...ev.usage };
+          // normalizeUsage always emits all four keys, filling absent ones
+          // with 0 (Number(undefined) || 0). A message_delta frame carries
+          // only output_tokens, so a plain spread would zero the input and
+          // cache counts that message_start already established. Overwrite
+          // only the keys this delta actually carried.
+          if (ev.usage) {
+            const d = PROVIDER.normalizeUsage(ev.usage);
+            for (const k of Object.keys(d)) if (d[k]) usage[k] = d[k];
+          }
         }
       }
     } catch (err) {
@@ -4008,16 +4140,21 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // should land near (rounds - 1) x the prompt size. A run that logs 0 read AND
   // 0 write is a silent miss — the usual cause is the prompt slipping under the
   // 1,024-token cacheable minimum, which raises no error.
-  console.log(`Anthropic call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_input_tokens || 0} read / ${usage.cache_creation_input_tokens || 0} write · stop=${stopReason}`);
+  console.log(`${PROVIDER.logLabel} call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_tokens || 0} read / ${usage.cache_write_tokens || 0} write · stop=${stopReason}`);
   if (stats) { stats.searches = searches; stats.out_tokens = usage.output_tokens || 0; }
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
+  // scrubUnearnedVerifiedClaims is OUTERMOST on purpose: it decides by counting
+  // the final `verified` flags, so it has to run after attachVerifiedAttribution
+  // has cleared the unearned ones. Inside that call it would read the model's
+  // own claims and conclude the narrative was justified.
   const finishReport = (raw) =>
-    attachVerifiedAttribution(
-      normalizeSubjectLastSale(
-        reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
-      verifiedComps);
+    scrubUnearnedVerifiedClaims(
+      attachVerifiedAttribution(
+        normalizeSubjectLastSale(
+          reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
+        verifiedComps));
   try {
     return finishReport(text);
   } catch (err) {
@@ -4027,7 +4164,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     if (!(err instanceof SyntaxError) || text.length <= 500) throw err;
     let repaired;
     try {
-      repaired = await repairCompJson(text, body.max_tokens);
+      repaired = await repairCompJson(text, PROVIDER.deadlineTokens(body));
     } catch (repairErr) {
       console.warn("Comp JSON repair call failed; falling back to the full retry.", repairErr && repairErr.message);
       throw err;
@@ -4464,7 +4601,8 @@ const CN_LOGO_LIGHT =
 //   Your vault          pro.canUseVault, never a plan test, and NOT gated on
 //                       `billing` — a comped admin has the vault with no Stripe
 //   Manage billing      a Stripe customer exists (status set, not "none") and
-//                       is not the comped "admin" status, which has no portal
+//                       is not the comped "admin" or "tester" status, neither
+//                       of which has a Stripe customer behind it
 // The site's colour tokens. Interpolated into every in-scope stylesheet
 // rather than copied, so a token can never drift between pages. The four
 // admin dashboards keep their own literal :root blocks -- they are out of
@@ -4581,7 +4719,7 @@ const ACCOUNT_NAV_JS =
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
   `show($("navUpgrade"),live&&!isPro);` +
-  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin);` +
+  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin&&!pro.tester);` +
   `});` +
   `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
@@ -6219,9 +6357,17 @@ function renderBrokersPageHTML(signedIn) {
 
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
-    `<a class="btn" href="/?submit=comp">Submit a comp</a>` +
-    `<p style="margin:0"><a class="alt" href="/">Or run a free valuation of a building &rarr;</a></p>` +
-    `<p style="margin:0"><a class="alt" href="/1031-exchange">Client weighing a 1031? Send them our exchange guide &rarr;</a></p></div>` +
+    `<a class="btn" href="/?submit=comp">Submit a comp</a></div>` +
+
+    // The 1031 guide in its own card, below the submit CTA (owner
+    // 2026-08-10) — a broker mid-exchange is a different reader than one
+    // holding a comp. Bordered button, not .btn: the red button stays the
+    // submit door's alone.
+    `<div class="card"><h2>Working a 1031 exchange?</h2>` +
+    `<p>A plain guide to the 45 and 180 day deadlines. Send it to your client.</p>` +
+    `<a href="/1031-exchange" style="display:inline-block;background:var(--paper);border:1px solid var(--edge);` +
+    `color:var(--ink);font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px">` +
+    `Open the 1031 guide</a></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
@@ -6372,6 +6518,9 @@ function renderPrivacyPageHTML(signedIn) {
     `<li><strong>Anthropic</strong> performs the AI-assisted comparable search. It receives the ` +
     `property address, property type, and the building attributes you enter. It does not receive the ` +
     `financial inputs described in Section 2.</li>` +
+    `<li><strong>Google</strong> (Gemini) may perform the AI-assisted comparable search. It receives ` +
+    `the same information as Anthropic above, and does not receive the financial inputs described in ` +
+    `Section 2.</li>` +
     `<li><strong>Supabase</strong> provides database hosting, and <strong>Render</strong> provides ` +
     `application hosting.</li>` +
     `<li><strong>Stripe</strong> processes subscription payments. Card details are provided by you ` +
@@ -6543,6 +6692,25 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
 
   const faqBlock = HOW_FAQ.map(([q, a]) =>
     `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
+
+  // The broker half of the product, on the page brokers actually land on.
+  // Until now this page spoke only to owners: a broker arriving here met one
+  // FAQ row and a link buried in the Explore dropdown, which is a poor showing
+  // for the audience the owner considers the better acquisition lever.
+  //
+  // Three concrete trades, no pitch. Same `.steps` idiom as Method above so it
+  // needs no new CSS, with the numeral slot carrying a short label instead.
+  // Copy rules (they have been enforced before): no em dashes, one idea per
+  // line, name the real thing rather than gesturing at it.
+  const brokerPoints = [
+    ["Private", "Your closed deals stay yours",
+     "Upload your book to a private vault. It is visible only to you, and it never enters CompNinja's public records unless you choose to publish a comp."],
+    ["Credit", "Submitted comps carry your name",
+     "A comp you publish shows a green Verified badge and your firm's name on every report that uses it."],
+    ["Leads", "Owners in your markets",
+     "When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand."],
+  ].map(([n, h, p]) =>
+    `<div class="step"><div class="num">${escHtml(n)}</div><h3>${escHtml(h)}</h3><p>${escHtml(p)}</p></div>`).join("");
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -6731,6 +6899,13 @@ ${ACCOUNT_NAV_JS}
       <div class="kicker">Questions</div>
       <h2 class="h" style="margin-bottom:20px">FAQ</h2>
       ${faqBlock}
+    </section>
+
+    <section class="rv" data-rv>
+      <div class="kicker">Brokers</div>
+      <h2 class="h">What brokers get.</h2>
+      <div class="steps" data-rv>${brokerPoints}</div>
+      <p style="margin:18px 0 40px"><a href="/brokers">See the broker side &rarr;</a></p>
     </section>
 
     <div class="cta rv" data-rv>
@@ -6999,6 +7174,25 @@ function aggregateStats(rows) {
         undone: n("undone"),
         pct: attempts ? Math.round((n("applied") / attempts) * 1000) / 10 : 0,
         undonePct: asserted ? Math.round((n("undone") / asserted) * 1000) / 10 : 0,
+      };
+    })(),
+    // Vault funnel (2026-08-10): visits by outcome, template downloads, and
+    // import attempts by outcome. Exists because the vault had zero uploads
+    // and nothing saying WHERE brokers fall off — never reaching /vault, the
+    // Pro 403, or a refused import are three different problems. Events are
+    // market-free by rule (a broker's markets are their private book), so
+    // there is no by-market cut here and must never be.
+    vault: (() => {
+      const visits = rows.filter((r) => r.kind === "vault_visit");
+      const v = (o) => visits.filter((r) => (r.source || "") === o).length;
+      const imports = rows.filter((r) => r.kind === "vault_import");
+      const src = (re) => imports.filter((r) => re.test(r.source || "")).length;
+      return {
+        visits: visits.length,
+        open: v("ok"), signin: v("signin"), locked: v("locked"),
+        templates: rows.filter((r) => r.kind === "vault_template").length,
+        imports: imports.length,
+        imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
     // Anthropic call failures since the last restart. Customers only ever see
@@ -7287,14 +7481,16 @@ function render(d){
   var upAlarm = (u.failures||0) ? (
     "<div class='card alarm'>"+
     "<h2>"+
-    (u.billing?"Comp search is DOWN &mdash; Anthropic API billing":"Anthropic calls are failing")+"</h2>"+
+    (u.billing?"Comp search is DOWN &mdash; ${PROVIDER.logLabel} API billing":"${PROVIDER.logLabel} calls are failing")+"</h2>"+
     (u.billing
       ? "<p><b>The API credit balance is exhausted or the key is not entitled, so every search "+
         "is failing site-wide.</b> Buy credits at <code>console.anthropic.com</code> &rarr; Plans &amp; "+
         "Billing for the org that owns <code>ANTHROPIC_API_KEY</code>, and switch on auto-reload. "+
         "This is <b>not</b> covered by a Claude Pro or Team subscription &mdash; API credits are a "+
-        "separate prepaid balance. No redeploy needed; the next search picks it up.</p>"
-      : "<p>Some Anthropic calls are returning errors. If these are 429s or 529s the site is "+
+        "separate prepaid balance. No redeploy needed; the next search picks it up. (This paragraph "+
+        "describes Anthropic's own billing; if the active search provider is ${PROVIDER.logLabel} "+
+        "and it is not Anthropic, check that provider's own billing console instead.)</p>"
+      : "<p>Some ${PROVIDER.logLabel} calls are returning errors. If these are 429s or 529s the site is "+
         "just busy and retries absorb it; anything else is worth reading below.</p>")+
     "<p class=muted>"+esc(u.failures||0)+" failure(s) since the last restart"+
     (u.lastStatus?" &middot; last status "+esc(u.lastStatus):"")+
@@ -7344,6 +7540,22 @@ function render(d){
       : "<p><b>"+ir.count+(ir.capped?"+":"")+"</b> request(s) total &middot; "+ir.recent.length+" most recent below. "+
         "Each also emailed you when it arrived; this list is the record that survives a dropped email.</p>"+
         "<table>"+introRows+"</table>")+
+    "</div>";
+  // Vault funnel (2026-08-10). undefined = stale /api/stats from before the
+  // events existed. Three drop-off points, three lines: reaching the page,
+  // getting past the gate, and an import our parser or storage refused.
+  // Deliberately no by-market cut — vault events are market-free by rule.
+  var vf=d.vault;
+  var vaultCard=(vf===undefined)?"":
+    "<div class=card><h2>Vault funnel</h2>"+
+    (!vf.visits&&!vf.imports&&!vf.templates
+      ? "<p class=muted>No /vault visits yet &mdash; events land from the 2026-08-10 deploy onward. "+
+        "When this stays zero, brokers are not finding the page at all.</p>"
+      : "<p><b>"+vf.visits+"</b> page visit(s) &mdash; "+vf.open+" opened a vault &middot; "+
+        vf.signin+" not signed in &middot; "+vf.locked+" hit the Pro gate</p>"+
+        "<p>"+vf.templates+" template download(s) &middot; "+vf.imports+" import attempt(s)"+
+        (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
+          (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
@@ -7395,6 +7607,7 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     introCard+
+    vaultCard+
     (!sp ? "" :
     "<div class=card><h2>About the cost tiles</h2><div class=muted>Estimates, not billed amounts &mdash; no invoice is read. "+
     "A comp (report) search is assumed "+money(sp.listPriceReport)+"; a corpus-assisted one runs a much smaller web-search budget, so the "+
@@ -8686,7 +8899,10 @@ function render(){
 // Built here rather than server-side so the admin key never rides in a URL.
 function exportCsv(){
   var cols=["name","company","role","phone","email","market","category","status","notes","created_at","updated_at"];
-  var esq=function(v){return '"'+String(v==null?"":v).replace(/"/g,'""')+'"';};
+  // Leading '=/+/-/@' would be a live formula when this opens in Excel, and
+  // the book holds visitor-typed text (lead names ride in). Same guard as
+  // broker-vault.js guardFormula, inlined because this runs in the browser.
+  var esq=function(v){var s=String(v==null?"":v);if(/^[=+@-]/.test(s)&&!/^-?[0-9.]+$/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
   var rows=ROWS.filter(matches).map(function(c){return cols.map(function(k){return esq(c[k]);}).join(",");});
   var blob=new Blob([[cols.join(",")].concat(rows).join("\\r\\n")],{type:"text/csv;charset=utf-8"});
   var a=document.createElement("a");
@@ -8970,11 +9186,16 @@ async function vaultReadPayload(req, params) {
   }
   query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
 
-  const [entR, compsR, uploadsR] = await Promise.allSettled([
+  const [entR, compsR, uploadsR, profileR] = await Promise.allSettled([
     entitlementsFor(req),
     DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
     DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
       `&order=created_at.desc&limit=100`) : Promise.resolve(null),
+    // The credit identity, so the page can say who a publish would credit
+    // BEFORE the broker clicks it. findBrokerProfile never throws, but it is
+    // settled alongside the rest anyway: an identity read must never be able
+    // to fail a vault the broker can otherwise open.
+    DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : Promise.resolve(null),
   ]);
   // entitlementsFor fails closed internally; if it somehow rejects, closed
   // here too — an error must never open a vault.
@@ -9012,6 +9233,20 @@ async function vaultReadPayload(req, params) {
     },
     markets: [...new Set(rows.map((r) => r.market).filter(Boolean))].sort(),
     types: [...new Set(rows.map((r) => r.property_type).filter(Boolean))].sort(),
+    // Who a publish would credit, decided by the same creditName the publish
+    // route uses so the page can never promise a name the write would not
+    // produce. `creditedTo: ""` is the honest answer for a broker who has not
+    // stated one yet, and it is what makes the vault ask before the refusal
+    // rather than after. Deliberately NOT the profile row: `public`, `slug`
+    // and `email` are no business of this page.
+    identity: (() => {
+      const p = (profileR.status === "fulfilled" && profileR.value) || null;
+      return {
+        display_name: (p && p.display_name) || "",
+        company: (p && p.company) || "",
+        creditedTo: VAULT.creditName(p),
+      };
+    })(),
   } };
 }
 
@@ -9101,16 +9336,14 @@ async function attachPropertyCoords(userId, comps) {
       `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
       `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source`);
 
-    const byId = new Map();
-    for (const p of Array.isArray(props) ? props : []) {
-      // Both or neither, checked once more at the point of use. A half-located
-      // building would put a pin on the equator, and by here the value has
-      // passed through a spreadsheet, a parser and a database.
-      const lat = Number(p && p.lat);
-      const lng = Number(p && p.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      byId.set(p.id, { lat, lng, geo_source: p.geo_source || null });
-    }
+    // Both or neither, and null is not a coordinate — the rule lives in the
+    // pure, tested BLEND.propertyCoordsById. The bare Number() guard that
+    // used to sit here treated lat: null as 0 (`Number(null) === 0` is
+    // finite), which stitched every unlocated building's comps to Null
+    // Island and printed "7508 mi" in the report's Distance column — the
+    // identical flaw exportRowsWithCoords was extracted to fix on the
+    // export path (2026-08-10).
+    const byId = BLEND.propertyCoordsById(props);
     if (!byId.size) return comps;
 
     return comps.map((c) => {
@@ -9439,8 +9672,8 @@ function renderAlerts(d){
   var up=al&&al.upstream,co=al&&al.corpus;
   if(up&&up.failures){
     out.push(up.billing
-      ? 'Comp search is DOWN: the Anthropic API is refusing every call for billing reasons. <a href="/admin">Details on Analytics</a>'
-      : plural(up.failures,"Anthropic call failure","Anthropic call failures")+' since the last restart'+(up.lastStatus?" (last status "+esc(up.lastStatus)+")":"")+'. <a href="/admin">Details on Analytics</a>');
+      ? 'Comp search is DOWN: the ${PROVIDER.logLabel} API is refusing every call for billing reasons. <a href="/admin">Details on Analytics</a>'
+      : plural(up.failures,"${PROVIDER.logLabel} call failure","${PROVIDER.logLabel} call failures")+' since the last restart'+(up.lastStatus?" (last status "+esc(up.lastStatus)+")":"")+'. <a href="/admin">Details on Analytics</a>');
   }
   if(co&&co.broken){
     out.push('Comp corpus is not persisting'+(co.schemaMismatch?", likely a missing column (check migrations/APPLIED.md)":"")+'. <a href="/admin">Details on Analytics</a>');
@@ -9573,9 +9806,9 @@ const server = http.createServer((req, res) => {
         if (!address || !type) {
           return sendJson(res, 400, { error: "address and property type are required." });
         }
-        if (!API_KEY) {
+        if (!providerApiKey()) {
           return sendJson(res, 500, {
-            error: "Server is missing the ANTHROPIC_API_KEY environment variable.",
+            error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.`,
           });
         }
         // Validated/clamped so arbitrary client values can't reshape the prompt.
@@ -9700,7 +9933,7 @@ const server = http.createServer((req, res) => {
           // Legacy cache entries predate $/SF reconciliation — correct them at
           // read time (idempotent, so re-hitting the in-memory object is fine).
           reconcilePricePerSqft(cached);
-          console.log(`Cache hit (no Anthropic call): ${addressOk} — ${typeOk}`);
+          console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
@@ -9718,7 +9951,7 @@ const server = http.createServer((req, res) => {
           verifiedComps, subjectDetails: detailsOk,
         }, monthsOk, txFocusOk, maxCompsOk);
         if (dw) {
-          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no Anthropic call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
+          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
           // Side effects mirror a direct cache hit, fed the PARENT payload —
           // the harvester dedupes, and the fuller comp list is the better feed.
           logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
@@ -9920,8 +10153,8 @@ const server = http.createServer((req, res) => {
             error: "Market generation is limited to a few per visitor per 15 minutes. Try again shortly, or run a valuation for a specific property instead.",
           });
         }
-        if (!API_KEY) {
-          return sendJson(res, 500, { error: "Server is missing the ANTHROPIC_API_KEY environment variable." });
+        if (!providerApiKey()) {
+          return sendJson(res, 500, { error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.` });
         }
 
         const job = joinExploreJob(slug, (emit) => (async () => {
@@ -10350,6 +10583,59 @@ const server = http.createServer((req, res) => {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("reset error:", err);
         return sendJson(res, 500, { error: "Could not reset the password." });
+      }
+    });
+    return;
+  }
+
+  // --- Redeem the tester passkey: comped Pro for a signed-in account --------
+  //
+  // Refusal order mirrors the vault's openVault() and requireBroker(): the
+  // feature not existing, then the caller, then the secret.
+  //
+  // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
+  // /contacts, so it can never be the thing handed to testers; this grants
+  // Pro and nothing else, and touches neither the dashboards nor the
+  // header-only `internal` bypass in /api/comps.
+  if (req.method === "POST" && req.url === "/api/redeem-passkey") {
+    // Unset = the feature does not exist on this deployment. 404 rather than
+    // 403, matching how the ADMIN_KEY-gated routes go dark when unconfigured:
+    // a probe cannot tell a wrong code from a deployment that has no code.
+    if (!TESTER_PASSKEY) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        // Tighter than the account routes' 10: this guards a SHARED secret,
+        // and legitimate use is one redemption per person, ever.
+        if (rateLimited("passkey:" + clientIp(req), 5, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+        }
+        const user = await getSessionUser(req);
+        // The grant is stored on an account, so there is nothing to store it
+        // on for an anonymous caller. Checked BEFORE the secret compare so a
+        // signed-out prober cannot use this route to test codes at all.
+        if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
+        // Idempotent: a second redemption is a no-op, not an error. Also
+        // checked before the compare, so someone who already has access
+        // cannot be told "incorrect code" by a rotated passkey.
+        if (user.pro_tester) return sendJson(res, 200, { ok: true, already: true });
+        const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
+        if (!secretMatches(passkey, TESTER_PASSKEY)) {
+          return sendJson(res, 401, { error: "That code isn't right." });
+        }
+        await setUserTester(user.id);
+        console.log(`Tester passkey redeemed by ${user.email}`);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        // setUserTester throws on a failed write — never report success for a
+        // grant that did not land.
+        console.error("redeem-passkey error:", err);
+        return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
       }
     });
     return;
@@ -11359,6 +11645,10 @@ const server = http.createServer((req, res) => {
     if (req.method === "GET" && path === "/api/vault/template") {
       (async () => {
         if (!(await openVault())) return;
+        // Funnel step between visiting and importing: a broker who took the
+        // template and never came back is a different loss than one who never
+        // saw the page. No market/PII, same as every vault event.
+        logEvent("vault_template", {});
         res.writeHead(200, {
           "content-type": "text/csv; charset=utf-8",
           "content-disposition": 'attachment; filename="compninja-comp-template.csv"',
@@ -11532,6 +11822,11 @@ const server = http.createServer((req, res) => {
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
+            // A whole-file rejection is the funnel's sharpest signal: a
+            // broker TRIED and our parser refused everything. `source` packs
+            // the row count (the link_check precedent — the analytics schema
+            // is fixed); no market or filename may ride along.
+            logEvent("vault_import", { source: `rejected:${parsed.total}` });
             return sendJson(res, 400, {
               error: parsed.errors[0] || "Nothing in that file could be imported.",
               errors: parsed.errors,
@@ -11577,9 +11872,22 @@ const server = http.createServer((req, res) => {
           // PostgREST 400s the whole insert on an unknown column, which here
           // would mean refusing a broker's entire spreadsheet. Stripped for
           // the comp insert; `rows` keeps them for the property write below.
-          await sbRequest("POST", "broker_comps?on_conflict=user_id,dedupe_key",
+          // `select=id` + return=representation, NOT return=minimal: the
+          // response is how many rows were actually STORED. With minimal the
+          // route could only report how many it parsed, so re-importing a
+          // book already in the vault said "Imported 16 comps" when it had
+          // saved none — the reassuring direction to be wrong in, and the
+          // one this repo's own rule warns about (a broker who is told
+          // something landed will not go looking for it). Only ids come
+          // back, so the payload stays small even at MAX_ROWS_PER_UPLOAD.
+          const insertedRows = await sbRequest("POST",
+            "broker_comps?on_conflict=user_id,dedupe_key&select=id",
             rows.map(PROPS.stripCarriedKeys),
-            { prefer: "resolution=ignore-duplicates,return=minimal" });
+            { prefer: "resolution=ignore-duplicates,return=representation" });
+          const inserted = Array.isArray(insertedRows) ? insertedRows.length : rows.length;
+          // Rows the database already had. Distinct from parsed.duplicates,
+          // which counts repeats WITHIN the file the broker just handed us.
+          const alreadyStored = Math.max(0, rows.length - inserted);
 
           // Link each comp to its building (migration 016). Deliberately AFTER
           // the comps are safely stored and deliberately unable to fail the
@@ -11594,10 +11902,21 @@ const server = http.createServer((req, res) => {
             `${parsed.skipped ? `, ${parsed.skipped} skipped` : ""}` +
             `${parsed.duplicates ? `, ${parsed.duplicates} duplicate(s) in file` : ""}`);
 
+          // ok:<imported>/<total> — the gap between the two numbers is rows
+          // our parser skipped, which is the per-row half of the rejection
+          // signal above.
+          logEvent("vault_import", { source: `ok:${parsed.rows.length}/${parsed.total}` });
+
           return sendJson(res, 200, {
             ok: true,
             uploadId,
-            imported: parsed.rows.length,
+            // What was STORED, not what was read — see the insert above.
+            imported: inserted,
+            // Rows the vault already held. A separate field from
+            // `duplicates` (repeats inside this one file) because they are
+            // different facts and a broker re-uploading last month's export
+            // is doing something entirely normal.
+            already: alreadyStored,
             total: parsed.total,
             skipped: parsed.skipped,
             duplicates: parsed.duplicates,
@@ -11611,6 +11930,9 @@ const server = http.createServer((req, res) => {
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault upload failed:", err.message);
+          // Parsed fine, storage failed — our fault, not theirs, and the one
+          // outcome that loses a broker who did everything right.
+          logEvent("vault_import", { source: "store_failed" });
           return sendJson(res, 502, {
             error: "That import could not be saved — nothing was stored. Please try again.",
           });
@@ -11633,6 +11955,36 @@ const server = http.createServer((req, res) => {
         sendJson(res, 502, { error: "Could not load your vault. Please try again." });
       });
       return;
+    }
+
+    // Take a published comp back out of the public corpus.
+    //
+    // Editing or deleting a comp privately has a public consequence: publishing
+    // wrote a comp_submissions row credited to the broker's firm. This is the
+    // same retraction the unpublish branch of /api/vault/publish performs, and
+    // it DELETES rather than marks rejected for the reason recorded there —
+    // fetchVerifiedComps selects on status, and a retracted comp should leave
+    // no public row at all.
+    //
+    // What it cannot undo: if the submission was already approved, the comp
+    // may already have been served in reports and harvested into comp_corpus.
+    // Retracting does not un-harvest those rows, and no caller should imply it
+    // does.
+    async function retractPublishedComp(userId, comp) {
+      if (!comp || !comp.published) return false;
+      if (comp.published_submission_id) {
+        await sbRequest("DELETE",
+          `comp_submissions?id=eq.${encodeURIComponent(comp.published_submission_id)}`,
+          undefined, { prefer: "return=minimal" });
+      }
+      await sbRequest("PATCH",
+        // user_id in the filter, always. Without it, knowing another broker's
+        // comp id would be enough to alter their data.
+        `broker_comps?id=eq.${encodeURIComponent(comp.id)}&user_id=eq.${encodeURIComponent(userId)}`,
+        { published: false, published_at: null, published_submission_id: null },
+        { prefer: "return=minimal" });
+      console.log(`Vault comp ${comp.id} retracted by user ${userId}`);
+      return true;
     }
 
     // --- Publish / unpublish one comp ---------------------------------------
@@ -11671,18 +12023,7 @@ const server = http.createServer((req, res) => {
 
           // --- unpublish ---
           if (publish === false) {
-            if (comp.published_submission_id) {
-              // Delete rather than mark rejected: fetchVerifiedComps selects on
-              // status, but a retracted comp should leave no public row at all.
-              await sbRequest("DELETE",
-                `comp_submissions?id=eq.${encodeURIComponent(comp.published_submission_id)}`,
-                undefined, { prefer: "return=minimal" });
-            }
-            await sbRequest("PATCH",
-              `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
-              { published: false, published_at: null, published_submission_id: null },
-              { prefer: "return=minimal" });
-            console.log(`Vault comp ${id} unpublished by user ${user.id}`);
+            await retractPublishedComp(user.id, comp);
             return sendJson(res, 200, { ok: true, published: false });
           }
 
@@ -11696,7 +12037,12 @@ const server = http.createServer((req, res) => {
           // name to credit is not worth publishing — refuse rather than post it
           // anonymously and let the broker discover later that they got nothing.
           const profile = await findBrokerProfile(user.email, user.id);
-          const by = VAULT.creditName(profile, user);
+          // Profile only — never user.name. See creditName's comment: the
+          // account-name fallback credited a vault-first broker's comps to
+          // their signup name and copied it into broker_company, which is
+          // published as their firm. Unset now means the refusal below,
+          // which the vault turns into a one-time question.
+          const by = VAULT.creditName(profile);
           if (!by) {
             return sendJson(res, 400, {
               error: "Add your firm or display name before publishing — published comps are credited to it.",
@@ -11730,6 +12076,276 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // --- The credit identity a published comp carries -----------------------
+    //
+    // A vault route, not a /api/broker/* one, because it exists FOR publishing
+    // and publishing lives here: same openVault gate, no third near-copy of
+    // the three refusals to keep in step.
+    //
+    // IT NEVER TOUCHES `public`. broker-directory.js opens with the rule this
+    // would otherwise break — coverage answers WHICH markets, `public` answers
+    // WHETHER to list at all, and they are separate consents. Stating a firm
+    // name so a published comp can be credited is not agreeing to appear in a
+    // public directory, so this writes display_name/company and leaves the
+    // opt-in to POST /api/broker/profile, exactly where it already lives.
+    if (req.method === "POST" && path === "/api/vault/identity") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultid:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const parsed = VAULT.validateIdentity(JSON.parse(body || "{}"));
+          if (!parsed.ok) return sendJson(res, 400, { error: parsed.error });
+          const { display_name, company } = parsed.identity;
+
+          const existing = await findBrokerProfile(user.email, user.id);
+          if (existing) {
+            // Filter on the FOUND ROW's email, not the account's.
+            // findBrokerProfile matches by user_id first and email second, so
+            // a legacy row adopted onto this account (migration 015) can carry
+            // a different address than the one the broker signs in with —
+            // filtering on user.email would then update nothing and report
+            // success, which reads as an identity that will not save.
+            // `email` is unique since 003, so this addresses exactly one row.
+            // user_id rides along to finish adopting that legacy row.
+            await sbRequest("PATCH",
+              `broker_profiles?email=eq.${encodeURIComponent(String(existing.email || user.email).toLowerCase())}`,
+              { display_name, company, user_id: user.id, updated_at: new Date().toISOString() },
+              { prefer: "return=minimal" });
+          } else {
+            // First statement creates the row. `public` is NOT passed: the
+            // column defaults to false (003), so a profile born here is
+            // private until somebody opts in on purpose.
+            const base = brokerSlugOf(company, display_name);
+            let created = null;
+            for (let n = 0; !created && n <= 20; n++) {
+              const slug = n === 0 ? base : `${base}-${n + 1}`;
+              try {
+                const ins = await sbRequest("POST", "broker_profiles", {
+                  email: String(user.email).toLowerCase(),
+                  user_id: user.id,
+                  display_name, company, slug,
+                }, { prefer: "return=representation" });
+                created = ins && ins[0];
+              } catch (err) {
+                // Slug collision -> next suffix. A user_id collision cannot be
+                // fixed by a new slug, so it must not burn 20 retries.
+                if (!/409|23505|duplicate/i.test(String(err.message))) throw err;
+                if (/user_id/i.test(String(err.message))) throw err;
+              }
+            }
+            if (!created) {
+              const slug = `${base}-${crypto.randomBytes(3).toString("hex")}`;
+              await sbRequest("POST", "broker_profiles", {
+                email: String(user.email).toLowerCase(),
+                user_id: user.id,
+                display_name, company, slug,
+              }, { prefer: "return=minimal" });
+            }
+          }
+
+          BROKER_PROFILES.fetchedAt = 0;   // the credit cache must not serve the old name
+          refreshBrokerProfiles();
+          return sendJson(res, 200, {
+            ok: true,
+            identity: { display_name, company },
+            creditedTo: VAULT.creditName({ display_name, company }),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault identity save failed:", err.message);
+          return sendJson(res, 502, { error: "That didn't save. Nothing was changed." });
+        }
+      });
+      return;
+    }
+
+    // --- Edit / delete one comp ---------------------------------------------
+    //
+    // Both are user_id-scoped in the read AND in the write: without it,
+    // knowing another broker's comp id is enough to change their data.
+    if ((req.method === "PATCH" || req.method === "DELETE") && path === "/api/vault/comp") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultedit:" + clientIp(req), 120)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const id = new URL(req.url, "http://localhost").searchParams.get("id");
+          if (!id) return sendJson(res, 400, { error: "Which comp?" });
+          // broker_comps.id is a uuid column, so a malformed id (not just an
+          // unknown one) makes PostgREST reject the query and this route's
+          // catch would otherwise answer 502 — our-server-broke, when the
+          // truth is caller-sent-nonsense. Answering 404 here, identically to
+          // an id that parses but doesn't exist below, is deliberate: from
+          // the caller's side a malformed id and someone else's id are the
+          // same "not in your vault", and treating them alike is also what
+          // stops this route confirming which ids are real by status code.
+          if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+
+          const rows = await sbRequest("GET",
+            `broker_comps?id=eq.${encodeURIComponent(id)}` +
+            `&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
+          const comp = rows && rows[0];
+          if (!comp) return sendJson(res, 404, { error: "That comp isn't in your vault." });
+
+          if (req.method === "DELETE") {
+            // Retract-first is correct here: a delete has no validation step
+            // that can fail, so there is no window where retracting turns out
+            // to have been premature.
+            const unpublished = await retractPublishedComp(user.id, comp);
+            await sbRequest("DELETE",
+              `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+              undefined, { prefer: "return=minimal" });
+            return sendJson(res, 200, { ok: true, unpublished });
+          }
+
+          // PATCH: parse -> validate -> collision check -> THEN retract -> write.
+          // Retracting before validation used to mean a broker's REJECTED edit
+          // (typing "1.2M", the exact input the vault exists to refuse) still
+          // deleted the comp_submissions row and cleared published/
+          // published_at/published_submission_id before the 400 was ever
+          // returned. The broker saw only a parse error and had no way to know
+          // their comp had already left the public records and lost its firm
+          // credit — and if the submission had been approved, republishing
+          // creates a fresh PENDING row needing manual owner re-approval, so
+          // the credit does not come back on its own. The same reasoning
+          // covers the 409 collision path below: a comp that fails to save
+          // must not be retracted either. Retraction only happens once the
+          // edit is known to be one that will actually be written.
+          const result = VAULT.validateEdit(comp, JSON.parse(body || "{}"));
+          if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+
+          const row = result.row;
+          // marketOf lives in server.js and must agree byte for byte with
+          // comp_corpus.market, so a comp published later needs no translation.
+          row.market = marketOf(row.address);
+          // validateEdit's row is built by normalizeRow, which never sets
+          // user_id, and PROPS.propertyRowsFrom silently skips any row
+          // missing it — so without this line every edit would quietly no-op
+          // the property-dimension link rather than fail visibly. The upload
+          // route stamps the same field onto every row before either write,
+          // for the same reason.
+          row.user_id = user.id;
+
+          // A collision is answered by name rather than surfaced as a 500 from
+          // the unique (user_id, dedupe_key) constraint. `id=neq` excludes the
+          // comp being edited, or every no-op save would collide with itself.
+          const clash = await sbRequest("GET",
+            `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&dedupe_key=eq.${encodeURIComponent(row.dedupe_key)}` +
+            `&id=neq.${encodeURIComponent(id)}&limit=1`);
+          if (clash && clash.length) {
+            return sendJson(res, 409, { error: "You already have this comp." });
+          }
+
+          // The edit is validated and will be written. Only now does a
+          // published comp get retracted (see the long comment above).
+          const unpublished = await retractPublishedComp(user.id, comp);
+
+          // An address change means the OLD property_id (the previous
+          // building) is wrong for the new address, and linkVaultProperties'
+          // link PATCH only ever fills a NULL property_id ("property_id=
+          // is.null", so a re-import can't rewrite a link that already looks
+          // correct). Left non-null here, the comp would keep pointing at the
+          // old building forever and attachPropertyCoords would stitch the
+          // old building's coordinates onto the corrected address in every
+          // future report. Nulling it out is scoped to an address change on
+          // purpose — clearing it on every price edit would leave comps
+          // briefly unlocated for no reason.
+          if (row.address_key !== comp.address_key) {
+            row.property_id = null;
+          }
+
+          // Exactly the upload route's order and argument shapes: the PATCH
+          // gets the STRIPPED row (`_lat`/`_lng` are carried between functions
+          // and are not columns on broker_comps — PostgREST 400s the whole
+          // write on an unknown column), while linkVaultProperties gets the
+          // row that still carries them, because PROPS.propertyRowsFrom reads
+          // them off it.
+          const saved = await sbRequest("PATCH",
+            `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
+            PROPS.stripCarriedKeys({ ...row }), { prefer: "return=representation" });
+          // Two arguments, never three, and it never throws: the property
+          // dimension is an index onto a broker's book, not part of it. A
+          // failed link costs a join, a failed edit costs the broker their
+          // correction.
+          await linkVaultProperties(user.id, [row]);
+          return sendJson(res, 200, {
+            ok: true, unpublished,
+            comp: VAULTAPI.toApiComp((saved && saved[0]) || null),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault comp edit failed:", err.message);
+          sendJson(res, 502, { error: "Could not save that change. Please try again." });
+        }
+      });
+      return;
+    }
+
+    // Add ONE comp by hand. A broker who closed a deal on Tuesday should not
+    // have to author a CSV to record it.
+    //
+    // Runs the IDENTICAL row parser the upload path uses. Two entry doors, one
+    // set of rules — a form handler with its own validation would quietly
+    // accept the "1.2M" and the Excel serial dates that broker-vault.js exists
+    // to refuse.
+    if (req.method === "POST" && path === "/api/vault/comp") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultadd:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const result = VAULT.normalizeRow(JSON.parse(body || "{}"));
+          if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+
+          const row = result.row;
+          // normalizeRow never sets user_id, and PROPS.propertyRowsFrom
+          // silently skips any row missing it — without this line the
+          // property-dimension link would quietly no-op rather than fail
+          // visibly. Same trap the edit route hit; same fix.
+          row.user_id = user.id;
+          // upload_id stays null: this comp belongs to no import. The column
+          // is already nullable, which is why this feature needs no
+          // migration. A hand-added comp therefore can never be removed by
+          // deleting an import — per-comp delete (Task 4) is the only way.
+          row.market = marketOf(row.address);
+
+          const clash = await sbRequest("GET",
+            `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&dedupe_key=eq.${encodeURIComponent(row.dedupe_key)}&limit=1`);
+          if (clash && clash.length) {
+            return sendJson(res, 409, { error: "You already have this comp." });
+          }
+
+          // Same split as the upload and edit routes: the insert gets the
+          // stripped row, the property link gets the one still carrying
+          // `_lat`/`_lng`.
+          const saved = await sbRequest("POST", "broker_comps",
+            [PROPS.stripCarriedKeys({ ...row })], { prefer: "return=representation" });
+          await linkVaultProperties(user.id, [row]);
+          return sendJson(res, 201, { ok: true, comp: VAULTAPI.toApiComp((saved && saved[0]) || null) });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault comp add failed:", err.message);
+          sendJson(res, 502, { error: "Could not save that comp. Please try again." });
+        }
+      });
+      return;
+    }
+
     // Undo one import. The comps cascade with the batch row.
     if (req.method === "DELETE" && path === "/api/vault/upload") {
       (async () => {
@@ -11747,6 +12363,100 @@ const server = http.createServer((req, res) => {
       })().catch((err) => {
         console.error("vault delete failed:", err.message);
         sendJson(res, 502, { error: "Could not remove that import. Please try again." });
+      });
+      return;
+    }
+
+    // The whole book, as the file our own importer reads. This answers the
+    // question a broker asks BEFORE their first upload: "what happens to my
+    // data if I cancel." It has to be complete, not approximately complete.
+    //
+    // NOT built from vaultReadPayload. That path hard-caps at 1000 rows
+    // (Math.min(..., 1000)) and the dashboard already fetches ?limit=1000 and
+    // filters in the browser — an export built from it would silently
+    // truncate exactly the large books that most need exporting. This pages
+    // until the vault is exhausted instead.
+    //
+    // It also JOINS broker_properties for lat/lng. Those are template columns
+    // but they are NOT columns on broker_comps; they live on the property a
+    // comp is linked to. Emitting them empty would strip a private address's
+    // coordinates on re-import and send it back out to a third-party
+    // geocoder on the next report.
+    if (req.method === "GET" && path === "/api/vault/export.csv") {
+      (async () => {
+        const user = await openVault();
+        if (!user) return;
+        if (rateLimited("vaultexp:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+        }
+        const PAGE = 1000;
+        const comps = [];
+        for (let offset = 0; ; ) {
+          // order carries a unique secondary key (id, the primary key from
+          // migration 013). deal_date alone is day-granularity and routinely
+          // ties across many rows in an imported book; Postgres only
+          // guarantees stable OFFSET/LIMIT paging when the ORDER BY produces
+          // a unique row order, so without the tiebreaker a comp on the
+          // boundary between two pages can be ordered differently between
+          // the two fetches and silently dropped (or duplicated).
+          const page = await sbRequest("GET",
+            `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&order=deal_date.desc,id.asc&limit=${PAGE}&offset=${offset}`);
+          if (!page || !page.length) break;
+          comps.push(...page);
+          // Advance by the rows actually returned, NOT by PAGE. PostgREST
+          // honours a project-level Max Rows setting by returning fewer rows
+          // than requested with no error, so a short page can mean a
+          // server-side cap rather than the end of the book — treating it as
+          // exhaustion (the old `page.length < PAGE` check) would silently
+          // truncate the export at whatever that cap is. Only an EMPTY page
+          // means the book is exhausted. The cost is one extra empty-page
+          // round trip when the book is an exact multiple of PAGE, which is
+          // the right trade for an export whose whole job is to be complete.
+          offset += page.length;
+        }
+
+        // Coordinates in TWO plain queries rather than a PostgREST embed. The
+        // embed's relationship name depends on how the FK was declared in
+        // migration 016 and would have to be discovered against a live
+        // database; a wrong guess makes the whole export 400 rather than
+        // degrade. This is one extra round trip on a download that already
+        // pages, and it is obvious what it does.
+        const propIds = [...new Set(comps.map((c) => c.property_id).filter(Boolean))];
+        const coords = new Map();
+        for (let i = 0; i < propIds.length; i += 200) {
+          const slice = propIds.slice(i, i + 200);
+          const props = await sbRequest("GET",
+            `broker_properties?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&id=in.(${slice.map(encodeURIComponent).join(",")})&select=id,lat,lng`);
+          for (const p of props || []) coords.set(p.id, p);
+        }
+        // property_id is nullable on purpose (migrate-then-deploy and
+        // deploy-then-migrate both had to work) and linkVaultProperties never
+        // throws, so some comps legitimately have no property row. Those
+        // export with empty lat/lng — correct, because they never had
+        // coordinates to lose. Do not add a geocoding fallback here.
+        //
+        // Both or neither, checked in the pure, tested
+        // VAULT.exportRowsWithCoords (⚠ near-duplicate of the same rule in
+        // BLEND.propertyCoordsById, which attachPropertyCoords uses for the
+        // report path since 2026-08-11 — two implementations because they
+        // build different shapes, one rule; change one, check the other).
+        // Without the null check a property row with no location on file
+        // (lat: null, lng: null — today, essentially every one) exports
+        // 0,0, which re-imports as a real coordinate: Null Island.
+        const rows = VAULT.exportRowsWithCoords(comps, coords);
+
+        const csv = VAULT.exportCsv(rows);
+        res.writeHead(200, {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": 'attachment; filename="compninja-vault.csv"',
+          "cache-control": "no-store",
+        });
+        res.end(csv);
+      })().catch((err) => {
+        console.error("vault export failed:", err.message);
+        sendJson(res, 502, { error: "Could not build your export. Please try again." });
       });
       return;
     }
@@ -12513,6 +13223,14 @@ const server = http.createServer((req, res) => {
           // and to keep billing controls (which would 503 or 400 at Stripe)
           // away from an account that never bought anything.
           admin: ent.admin === true,
+          // Comped tester access. Presentation only, like every field here —
+          // the routes re-resolve entitlements server-side, so editing this
+          // response relabels a plan card and unlocks nothing.
+          tester: ent.tester === true,
+          // Whether this deployment has a tester passkey at all, so the pricing
+          // modal can hide a redeem row that could only ever fail. NOT a secret and
+          // not an entitlement: it says a door exists, never what opens it.
+          testerPasskey: Boolean(TESTER_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
@@ -13221,7 +13939,8 @@ const server = http.createServer((req, res) => {
     // test can verify the responder is ITS child and not a foreign server on
     // the same port — two concurrent suite runs once cross-talked exactly
     // that way. Absent in production, where the env var is never set.
-    return sendJson(res, 200, { ok: true, hasKey: Boolean(API_KEY),
+    return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
+      provider: PROVIDER.name, search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
@@ -13627,6 +14346,17 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         console.error("vault boot failed:", err.message);
       }
+      // Vault funnel: with zero uploads to date, "does anyone even reach the
+      // page, and what stops them" is the question. Deliberately PII-free AND
+      // market-free — a broker's markets are their private book, so unlike
+      // search events nothing here may carry one. `source` is the boot
+      // outcome: ok / signin (401) / locked (the Pro 403) / nodb / error.
+      logEvent("vault_visit", { source:
+        !boot ? "error"
+        : boot.s === 200 ? "ok"
+        : boot.s === 401 ? "signin"
+        : boot.s === 403 ? "locked"
+        : "nodb" });
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
@@ -13701,14 +14431,15 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
+  console.log(`🔀 Search provider: ${PROVIDER.name} (model ${MODEL}${PROVIDER.capabilities.searchBudget ? "" : ", no search-budget cap"})`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)
   loadDynamicMarketPages().then((n) => {
     console.log(`🧭 Market Explorer: ${n} visitor-generated page(s) loaded (${DB_CONFIGURED ? "Supabase market_pages" : path.basename(DYNAMIC_MARKETS_FILE) + " — EPHEMERAL on most hosts; run the market_pages DDL in Supabase for durable storage"}).`);
   });
-  if (!API_KEY) {
-    console.warn("⚠  ANTHROPIC_API_KEY is not set — /api/comps will return an error until you set it.");
+  if (!providerApiKey()) {
+    console.warn(`⚠  ${PROVIDER.apiKeyEnv} is not set — /api/comps will return an error until you set it.`);
   }
   console.log(APP_PASSWORD
     ? "🔒 Password gate ENABLED (APP_PASSWORD is set)."
@@ -13759,4 +14490,10 @@ server.listen(PORT, () => {
   } else {
     console.log("⭐ Pro tier disabled (set PRO_ENABLED=on once the Pro DDL has been run).");
   }
+  // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
+  // with migration 022 not yet run looks like a working deployment until a
+  // real tester's redemption 500s.
+  console.log(TESTER_PASSKEY
+    ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
+    : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
 });

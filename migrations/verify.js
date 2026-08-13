@@ -112,6 +112,17 @@ const COLUMNS = [
   // ephemeral file fallback (the 004 failure shape, on PII this time).
   ["broker_profiles",   ["user_id"],                            "015-broker-lead-inbox.sql"],
   ["leads",             ["size_sqft", "id"],                    "015-broker-lead-inbox.sql"],
+  // 022 and 023 hang per-account grants off `users`. Neither was checked here
+  // until 2026-08-12, and they are the sharpest case in this list: both are
+  // read through getSessionUser's narrowed object, so a missing column reads
+  // as undefined, then false, all the way to the entitlement. The feature is
+  // simply OFF for everyone it was granted to, every request succeeds, and no
+  // log line is written. 023 shipped with that exact failure for a day — the
+  // column was migrated and the grant set, and the vault still refused,
+  // because the flag never reached computeEntitlements. Checking the column
+  // here is what turns "the migration was run" from a claim into a fact.
+  ["users",             ["pro_tester"],                         "022-tester-passkey.sql"],
+  ["users",             ["vault_beta"],                         "023-vault-beta.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

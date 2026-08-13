@@ -165,7 +165,16 @@ function normalizeHeader(name) {
   return String(name == null ? "" : name)
     .trim().toLowerCase()
     .replace(/[\s\-]+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
+    .replace(/[^a-z0-9_]/g, "")
+    // A stripped symbol can leave an underscore stub behind: "Cap Rate (%)"
+    // is "cap_rate_(%)" after the whitespace pass, and dropping the "(%)"
+    // leaves "cap_rate_" — one invisible character away from the exact
+    // target it plainly names, which is how the first real broker file got
+    // no suggestion for its cap-rate column (2026-08-10). Same class:
+    // "Sale Price ($)" → "sale_price_". Still only whitespace, case and
+    // punctuation — no word in the header is being interpreted.
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 /**
@@ -205,17 +214,45 @@ function normalizedHeaderRow(rawHeaders) {
 const HEADER_ALIASES = {
   address:       ["property_address", "prop_address", "street_address", "site_address", "addr"],
   property_type: ["type", "prop_type", "asset_type", "product_type"],
-  transaction:   ["deal_type", "transaction_type", "sale_or_lease", "lease_or_sale"],
+  transaction:   ["deal_type", "transaction_type", "sale_or_lease", "lease_or_sale", "trans", "trans_type"],
   deal_date:     ["sale_date", "close_date", "closing_date", "transaction_date", "sold_date", "date"],
-  price:         ["sale_price", "sales_price", "purchase_price", "sold_price"],
-  size_sqft:     ["sf", "sq_ft", "sqft", "square_feet", "square_footage", "building_sf", "building_size", "size"],
-  cap_rate:      ["cap", "going_in_cap", "cap_pct"],
+  price:         ["sale_price", "sales_price", "purchase_price", "sold_price", "consideration"],
+  // The abbreviated forms ("Bldg SF", "RBA", "GLA") are what brokerage
+  // exports actually say — the first real file's size column was "Bldg SF"
+  // and suggested nothing (2026-08-10). RBA (rentable building area) and
+  // GLA (gross leasable area) are the CoStar-family names for the same
+  // measure.
+  size_sqft:     ["sf", "sq_ft", "sqft", "square_feet", "square_footage", "building_sf", "building_size", "size",
+                  "bldg_sf", "bldg_sqft", "bldg_size", "building_sqft", "gross_sf", "total_sf", "rba", "gla"],
+  cap_rate:      ["cap", "going_in_cap", "cap_pct", "cap_rate_pct"],
   tenancy:       ["tenancy_type"],
   year_built:    ["yr_built", "built", "year_constructed"],
   notes:         ["comments", "remarks", "note"],
   lat:           ["latitude"],
   lng:           ["longitude", "long", "lon"],
 };
+
+// A rate-shaped header names a DERIVED figure, never the measure itself:
+// "$/SF" is a price divided by a size, and mapping it onto either side of
+// that division corrupts the side it lands on. The first real broker file
+// proved the hazard is live, not theoretical: its "$/SF" column normalizes
+// to bare "sf" (the $ and / both strip), which made it the sole claimant of
+// the size alias — so the mapper confidently suggested importing $68.11 as
+// a 68 sq ft building (2026-08-10). Tested on the RAW header, before
+// normalization erases the "/" that is the whole signal.
+//
+// Guards ALIAS claims only. An exact target name is never blocked: "Price
+// Per Unit" is rate-shaped AND the literal name of a real multifamily
+// column, and a broker who used our own header gets our own column.
+function isRateHeader(raw) {
+  const s = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (!s) return false;
+  if (/\/\s*(sf|sq\.?\s*ft|sqft|square\s*foot|square\s*feet|acre|unit|yr|year|mo|month|nnn)\b/.test(s)) return true;
+  if (/\bper\s+(sf|sq\.?\s*ft|sqft|square\s*foot|acre|unit|month|year)\b/.test(s)) return true;
+  if (/^\$\s*(\/|per)\s*/.test(s)) return true;
+  if (/^p\.?\s?s\.?\s?f\.?$/.test(s) || /\bpsf\b/.test(s)) return true;
+  return false;
+}
 
 // Every field a column may be mapped onto.
 const MAPPABLE_TARGETS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
@@ -233,7 +270,8 @@ const REQUIRED_TARGETS = ["address", "property_type", "transaction", "deal_date"
  * was written to prevent.
  */
 function suggestMapping(headers) {
-  const norm = (Array.isArray(headers) ? headers : []).map(normalizeHeader);
+  const raw = Array.isArray(headers) ? headers : [];
+  const norm = raw.map(normalizeHeader);
 
   // Which columns claim each target, exact matches tracked separately so a
   // literal `price` column can settle a tie an alias would otherwise create.
@@ -241,9 +279,14 @@ function suggestMapping(headers) {
   const alias = new Map();   // target -> [normalized header]
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
 
-  for (const h of norm) {
+  for (let i = 0; i < norm.length; i++) {
+    const h = norm[i];
     if (!h) continue;
     if (MAPPABLE_TARGETS.includes(h)) { push(exact, h, h); continue; }
+    // A derived-rate column ("$/SF", "Rent/SF/Yr") may claim nothing by
+    // alias — see isRateHeader. The check reads the RAW header because the
+    // "/" carrying the meaning does not survive normalization.
+    if (isRateHeader(raw[i])) continue;
     for (const [target, list] of Object.entries(HEADER_ALIASES)) {
       if (list.includes(h)) push(alias, target, h);
     }
@@ -327,8 +370,21 @@ function applyHeaderMapping(headers, mapping) {
 const text = (v, max = MAX_TEXT) =>
   String(v == null ? "" : v).trim().replace(/\s+/g, " ").slice(0, max);
 
+// The explicit ways a spreadsheet says "there is no number here". Compared
+// case-insensitively with whitespace collapsed. Deliberately a closed set of
+// literal markers: each one names ABSENCE, so treating it as an empty cell
+// loses nothing — the line this must never cross is interpreting a value
+// (that is why "TBD" of the pending-deal kind and shorthand like "1.2M" stay
+// rejections). Shared by parseMoney and parseNumber.
+const NO_VALUE_TOKENS = new Set([
+  "undisclosed", "not disclosed", "n/a", "na", "none", "confidential",
+  "withheld", "unknown", "-", "--", "—", "–",
+]);
+
 /**
- * Money. Accepts "$1,250,000", "1250000", "1,250,000.50".
+ * Money. Accepts "$1,250,000", "1250000", "1,250,000.50", and reads an
+ * explicit no-value marker ("Undisclosed", "N/A" — NO_VALUE_TOKENS above) as
+ * an empty cell, because that is what it says.
  *
  * REFUSES shorthand ("1.2M", "450k") and accounting negatives ("(1,000)"),
  * matching displayMoney()'s stance in index.html: an ambiguous figure is
@@ -339,8 +395,24 @@ const text = (v, max = MAX_TEXT) =>
 function parseMoney(v) {
   const raw = String(v == null ? "" : v).trim();
   if (!raw) return { ok: true, value: null };
+  // An explicit no-value marker means the same thing as an empty cell. This
+  // is NOT the shorthand-guessing the comment above rules out: "Undisclosed"
+  // names the absence of a number, and reading it as absent loses nothing —
+  // where reading "1.2M" as anything requires inventing a value. The set is
+  // closed and literal on purpose; the first real broker file wrote
+  // "Undisclosed" and lost the whole row to the 1.2M error (2026-08-10),
+  // when the template itself promises an undisclosed deal still counts.
+  if (NO_VALUE_TOKENS.has(raw.toLowerCase().replace(/\s+/g, " "))) {
+    return { ok: true, value: null };
+  }
   if (/[a-z]/i.test(raw.replace(/^(usd|us\$)\s*/i, ""))) {
-    return { ok: false, error: `"${raw}" is not a plain number — write 1200000, not 1.2M` };
+    // Only shorthand that actually looks like shorthand earns the 1.2M
+    // advice — telling someone who wrote "Call broker" to write 1200000
+    // explains the wrong mistake.
+    if (/^[\d.,\s$]*\d\s*(k|m|mm|b|bn|mil|million|thousand)\.?$/i.test(raw.replace(/^(usd|us\$)\s*/i, ""))) {
+      return { ok: false, error: `"${raw}" is not a plain number — write 1200000, not 1.2M` };
+    }
+    return { ok: false, error: `"${raw}" is not a number — leave the cell blank if the price is undisclosed; the deal still counts` };
   }
   if (/^\(.*\)$/.test(raw)) return { ok: false, error: `"${raw}" looks negative` };
   const cleaned = raw.replace(/^(usd|us\$)\s*/i, "").replace(/[$,\s]/g, "");
@@ -351,10 +423,14 @@ function parseMoney(v) {
   return { ok: true, value: n };
 }
 
-/** A plain count or area. Accepts "45,000" and "45,000 SF"; the unit is dropped. */
+/** A plain count or area. Accepts "45,000" and "45,000 SF"; the unit is dropped.
+ *  A no-value marker ("N/A" — NO_VALUE_TOKENS above) reads as an empty cell. */
 function parseNumber(v) {
   const raw = String(v == null ? "" : v).trim();
   if (!raw) return { ok: true, value: null };
+  if (NO_VALUE_TOKENS.has(raw.toLowerCase().replace(/\s+/g, " "))) {
+    return { ok: true, value: null };
+  }
   const cleaned = raw
     .replace(/\b(sf|sq\.?\s*ft\.?|square\s+feet|ft2|units?|acres?)\b/gi, "")
     .replace(/[,\s]/g, "");
@@ -702,6 +778,59 @@ function normalizeRow(raw) {
   return errors.length ? { ok: false, errors } : { ok: true, row };
 }
 
+// broker_comps.id is a uuid column (migration 013), so PostgREST rejects a
+// malformed `?id=` outright and the caller's fetch throws. Checking the
+// SHAPE first lets the PATCH/DELETE routes answer the same 404 an unknown-
+// but-valid id already gets, instead of letting the thrown PostgREST error
+// fall into the generic catch and answer 502 — which reads as "our server
+// broke" for what is actually "the caller sent nonsense", and would also
+// tell a prober whether it is worth trying other ids by the status code
+// alone.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v) {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+
+// The fields a broker may change. Deliberately an ALLOWLIST built from the
+// two column constants rather than "everything on the row": a patch that
+// could set user_id would be an account-takeover primitive, and one that
+// could set `published` would put a row in the public corpus without the
+// submission that credits it.
+//
+// This matters even though normalizeRow already builds its `row` by explicit
+// field-by-field assignment and never spreads its input, so today a patch
+// carrying user_id or published would be dropped by normalizeRow alone with
+// no allowlist at all. EDITABLE_FIELDS is defense in depth against a future
+// normalizeRow that spreads `src` for convenience -- the moment it does, this
+// allowlist is the only thing still standing between a patch and those
+// columns. The "EDITABLE_FIELDS itself" test below is what keeps this
+// allowlist honest, since nothing about a merged row's SHAPE can tell
+// "properly filtered" apart from "normalizeRow happened to drop it anyway".
+const EDITABLE_FIELDS = Object.freeze([...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
+
+/**
+ * Validate an edit to one stored comp.
+ *
+ * NOT a second validator. It rebuilds the row's template-shaped input, applies
+ * the patch over it, and runs `normalizeRow` -- the same function every
+ * imported row goes through. That is what makes a hand-typed "1.2M" or an
+ * Excel serial date fail here exactly as it fails on import, and what keeps
+ * `dedupe_key`, `address_key` and the sales-only `price_per_sqft` rule
+ * produced by one piece of code instead of two that can drift.
+ *
+ * `existing` is the stored row (or anything with the same field names).
+ * `patch` is the browser's partial; keys outside EDITABLE_FIELDS are dropped.
+ */
+function validateEdit(existing, patch) {
+  const base = existing && typeof existing === "object" ? existing : {};
+  const p = patch && typeof patch === "object" ? patch : {};
+  const merged = {};
+  for (const f of EDITABLE_FIELDS) {
+    merged[f] = Object.prototype.hasOwnProperty.call(p, f) ? p[f] : base[f];
+  }
+  return normalizeRow(merged);
+}
+
 // --- a whole file -------------------------------------------------------------
 
 /**
@@ -814,15 +943,41 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
 }
 
 /**
+ * Neutralize spreadsheet formula injection: a cell starting with `=`, `+`,
+ * `-` or `@` is a FORMULA to Excel, LibreOffice and Google Sheets — quoting
+ * does not help, because the quotes are gone by the time the cell is
+ * interpreted. `=HYPERLINK(...)` in a comp's notes would execute on the
+ * broker's own machine when they open their export, and the admin CSVs carry
+ * visitor-typed and model-supplied text opened in the owner's Excel.
+ *
+ * The guard is the standard leading apostrophe, with one exception: a cell
+ * that is entirely a plain number is left alone, because every exported
+ * longitude starts with `-` and an apostrophe there would fail parseCoord on
+ * re-import and strip the building's location. The exception must match the
+ * WHOLE cell — `-2+cmd|...` starts with a digit-after-minus but is still a
+ * live payload, so a prefix test is not enough. Text that trips the guard
+ * (`- great location`) was already broken in Excel (#NAME?), so the
+ * apostrophe renders it correctly rather than corrupting anything; it does
+ * survive a re-import into the stored value, which is the accepted trade for
+ * never emitting a live formula.
+ */
+function guardFormula(s) {
+  return /^[=+\-@]/.test(s) && !/^-?[0-9.]+$/.test(s) ? "'" + s : s;
+}
+
+/**
  * Quote a cell for CSV output: wrap in quotes when it contains a comma, a
  * quote or a newline, and double any embedded quotes.
  *
  * Not optional for the template — the example address contains two commas, so
  * writing it bare shifts every column right and the first thing a broker does
  * with our own file fails validation. (It did; there is a test.)
+ *
+ * Formula-guarded first (see guardFormula) — every CSV this module emits is
+ * opened in a spreadsheet by design, so there is no un-guarded variant.
  */
 function csvCell(v) {
-  const s = String(v == null ? "" : v);
+  const s = guardFormula(String(v == null ? "" : v));
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -898,6 +1053,91 @@ function templateCsv() {
   ].join("\n") + "\n";
 }
 
+// --- export --------------------------------------------------------------
+//
+// The reverse of templateCsv: a broker's OWN stored comps, turned back into
+// the shape parseUpload reads, so "export, fix fifty rows in Excel,
+// re-import" is a real workflow rather than a one-way trip.
+
+/**
+ * The columns one export needs.
+ *
+ * TEMPLATE_COLUMNS alone is NOT the answer, and assuming it was is the bug
+ * this function exists to prevent. The optional per-type columns
+ * (clear_height, units, lot_acres and nine more) are importable and stored, so
+ * an export without them would hand a broker a book with every clear height
+ * gone — silently, which is the failure mode the whole vault is written
+ * against. They are appended only when something actually carries data, so a
+ * book with no per-type fields gets no trailing empty columns.
+ */
+function exportColumns(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const used = OPTIONAL_SPEC_COLUMNS.filter((c) =>
+    list.some((r) => r && r[c] != null && String(r[c]).trim() !== ""));
+  return [...TEMPLATE_COLUMNS, ...used];
+}
+
+/**
+ * Joins a broker's stored comps with their (separately fetched) property
+ * coordinates, producing the rows exportCsv actually writes.
+ *
+ * Pulled out of server.js so this join can be tested with no database: it is
+ * the exact spot the "both or neither" rule has to hold, and the whole
+ * reason this needs its own function is that `Number(null) === 0` and
+ * `Number.isFinite(0) === true`. A property row with no location on file
+ * (today, essentially every one — import-time geocoding is deferred) has
+ * `lat: null, lng: null`, and coercing before null-checking reads that as a
+ * located building at 0,0: Null Island, which `normalizeRow` refuses on
+ * re-import ("lat and lng are both 0"). A lone real latitude has the same
+ * failure the other way — `lng` coerces to 0 and the pair re-imports
+ * cleanly as a wrong coordinate in the Atlantic, which is worse, because
+ * nothing refuses it. Checking `!= null` first is what makes "no
+ * coordinates on file" export blank instead of zero.
+ *
+ * NOT the same rule `attachPropertyCoords` enforces in server.js, despite
+ * the comment that used to say so — that function has this identical
+ * `Number(null)` flaw and should not be trusted as a reference until it is
+ * fixed too (tracked separately; it drives live blended comps, not export).
+ *
+ * `coordsById` is a Map of property_id -> { lat, lng } (or absent/partial);
+ * a comp with no `property_id`, or none found in the map, exports blank.
+ */
+function exportRowsWithCoords(comps, coordsById) {
+  const list = Array.isArray(comps) ? comps : [];
+  const coords = coordsById instanceof Map ? coordsById : new Map();
+  return list.map((c) => {
+    const p = coords.get(c && c.property_id) || {};
+    const located = p.lat != null && p.lng != null &&
+      Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng));
+    return {
+      ...c,
+      lat: located ? Number(p.lat) : undefined,
+      lng: located ? Number(p.lng) : undefined,
+    };
+  });
+}
+
+/**
+ * A broker's own comps as CSV, in the shape our own importer reads.
+ *
+ * The round trip is the requirement: export, fix fifty rows in Excel,
+ * re-import with no mapping screen (a file already in our column names skips
+ * it). A test runs the output of this function back through parseUpload.
+ *
+ * `lat`/`lng` must already be lifted onto each row from the joined property —
+ * they are not columns on broker_comps. Omitting them would strip a private
+ * address's coordinates on re-import and send it out to a third-party
+ * geocoder on the next report.
+ */
+function exportCsv(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const cols = exportColumns(list);
+  return [
+    cols.map(csvCell).join(","),
+    ...list.map((r) => cols.map((c) => csvCell(r ? r[c] : "")).join(",")),
+  ].join("\n") + "\n";
+}
+
 // --- publishing: the one sanctioned door through the privacy wall ------------
 //
 // Ecosystem Plan §4. A broker flips one of their own comps to public and gets
@@ -935,13 +1175,52 @@ function canPublish(comp) {
 
 // The name a published comp is credited to. Company first: "Verified · via
 // Adler Industrial" is what a broker is publishing FOR, and a firm name is
-// what a property owner recognizes. Falls back to a personal name.
-function creditName(profile, user) {
-  const p = profile || {}, u = user || {};
+// what a property owner recognizes; a broker who works under their own name
+// states that as their display name and gets it for the same reason.
+//
+// IT READS THE PROFILE ONLY — never the account's `name` (dropped
+// 2026-08-12). That fallback made the publish flow's own promise false:
+// the confirm says "credited to your firm by name", and a vault-first
+// broker has no profile, so their comps were quietly credited to whatever
+// they typed into the signup form — usually a personal name, then copied
+// into `broker_company` by submissionRowFrom and shown publicly as their
+// firm. Nobody chose that, so nobody could correct it.
+//
+// With no stated identity this returns "" and the publish route refuses
+// with `needs_credit_name`, which the vault turns into a one-time question.
+// Asking once is the whole point: a credit is a public claim about who
+// someone is, and inheriting it from an unrelated field is a guess.
+function creditName(profile) {
+  const p = profile || {};
   return text(p.company, MAX_SHORT_TEXT)
     || text(p.display_name, MAX_SHORT_TEXT)
-    || text(u.name, MAX_SHORT_TEXT)
     || "";
+}
+
+// The identity a broker states for their published comps: a firm, a personal
+// name, or both. Pure so `npm test` covers the rules on strings that become
+// PUBLIC — the "via <firm>" credit on every report the comp reaches, and the
+// market-page directory listing.
+//
+// One requirement, and it is the same one creditName answers: at least one of
+// the two must survive trimming, or there is no credit to publish under. The
+// two fields stay SEPARATE all the way down (broker_profiles has a column for
+// each) rather than being collapsed into one string here — publicBrokerRow in
+// broker-directory.js lists them independently, and a firm is not a person.
+function validateIdentity(input) {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  // Control characters would travel into a public page and an admin CSV.
+  // Formula-shaped values are handled downstream by guardFormula at the one
+  // place they can do harm (csvCell), so they are deliberately not refused
+  // here — a firm legitimately named "+Plus Realty" keeps its name.
+  const clean = (v) =>
+    text(String(v == null ? "" : v).replace(/[\u0000-\u001F\u007F-\u009F]+/g, " "), MAX_SHORT_TEXT);
+  const display_name = clean(src.display_name);
+  const company = clean(src.company);
+  if (!display_name && !company) {
+    return { ok: false, error: "Enter your firm, or your own name if you work under it." };
+  }
+  return { ok: true, identity: { display_name, company } };
 }
 
 /**
@@ -1057,12 +1336,14 @@ module.exports = {
   enforceVerifiedFlags,
   canPublish,
   creditName,
+  validateIdentity,
   submissionRowFrom,
   parseCsv,
   isCommentRow,
   normalizeHeader,
   normalizedHeaderRow,
   suggestMapping,
+  isRateHeader,
   validateMapping,
   applyHeaderMapping,
   inspectCsv,
@@ -1075,9 +1356,16 @@ module.exports = {
   parsePropertyType,
   addressKey,
   normalizeRow,
+  validateEdit,
+  EDITABLE_FIELDS,
+  isUuid,
   parseUpload,
+  guardFormula,
   csvCell,
   templateCsv,
+  exportColumns,
+  exportCsv,
+  exportRowsWithCoords,
   TEMPLATE_COLUMNS,
   OPTIONAL_SPEC_COLUMNS,
   PROPERTY_TYPES,

@@ -198,8 +198,19 @@ function subscriptionState(sub, now) {
  * @param {boolean} o.enabled       PRO_ENABLED — false restores pre-Pro behavior
  * @param {boolean} o.admin        the caller holds ADMIN_KEY — comps Pro, but
  *                                 only alongside `enabled` AND a signed-in user
+ * @param {boolean} o.tester       this account's users.pro_tester flag — comps
+ *                                 Pro, but only alongside `enabled`, a signed-in
+ *                                 user, and NO live paid subscription
+ * @param {boolean} o.vaultBeta    this account's users.vault_beta flag
+ *                                 (migration 023) — grants the BROKER surfaces
+ *                                 only (vault, lead inbox, blended comps),
+ *                                 never Pro's report features. Requires
+ *                                 `enabled` and a signed-in user; deliberately
+ *                                 independent of billing, so a beta broker's
+ *                                 book stays reachable with no subscription to
+ *                                 lapse.
  */
-function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin } = {}) {
+function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta } = {}) {
   const at = Number.isFinite(now) ? now : Date.now();
 
   // --- Comped Pro for the internal team -------------------------------------
@@ -246,6 +257,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canUseVault: true,
       graceUntil: null,
       admin: true,
+      tester: false,
       reason: "Pro is comped for the CompNinja team.",
     };
   }
@@ -280,12 +292,64 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canUseVault: false,
       graceUntil: null,
       admin: false,
+      tester: false,
       reason: "Pro tier is switched off (PRO_ENABLED is not 'on').",
     };
   }
 
   const state = subscriptionState(subscription, at);
   const pro = PRO_STATES.includes(state);
+
+  // --- Comped Pro for a beta tester -----------------------------------------
+  //
+  // A persistent flag on the user row (users.pro_tester), set by redeeming
+  // TESTER_PASSKEY. Deliberately NOT an early short-circuit like the admin
+  // branch above, and the difference is the whole design:
+  //
+  //   Admin is possession of a KEY — a staff signal, and staff are not
+  //   customers, so it is right for it to win outright and skip the
+  //   subscription reads entirely.
+  //
+  //   A tester is an ordinary person who may go on to actually subscribe. If
+  //   this branch won outright, that person would be stuck reading as
+  //   "comped" forever — no real status, no billing portal — while their card
+  //   was being charged. So it is checked only when there is no live paid
+  //   subscription to prefer, which also means comped access resumes if that
+  //   subscription later lapses.
+  //
+  // `enabled` is already guaranteed true here (the !enabled branch returned
+  // above), so this cannot switch a dark deployment on. `user` is required for
+  // the same reason the admin branch requires it: the grant lives on an
+  // account, and there is no account on an anonymous request.
+  if (!pro && tester && user) {
+    return {
+      plan: "tester",
+      pro: true,
+      // Not "active": nothing here came from Stripe, and the UI must not offer
+      // a billing portal to an account with no customer record.
+      status: "tester",
+      maxComps: "all",
+      canBrand: true,
+      maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
+      exportsRemaining: "unlimited",
+      reportUnlocked: false,
+      canExploreAddresses: true,
+      // The ONE place a tester is deliberately not equal to Pro. The vault is
+      // a private-data workspace with an upload endpoint; a passkey shared
+      // with a wider group is a bigger surface than "try Pro's reports", so
+      // vault access stays admin/paid-only — unless this account ALSO holds
+      // the per-account vault_beta grant (migration 023), which is exactly
+      // the narrow, one-row-at-a-time door the passkey exclusion points
+      // people toward.
+      broker: vaultBeta === true,
+      canUseVault: vaultBeta === true,
+      graceUntil: null,
+      admin: false,
+      tester: true,
+      reason: "Pro is comped for a beta tester.",
+    };
+  }
+
   const planName = String((subscription && subscription.plan) || "");
   const plan = pro && PAID_PLANS.includes(planName)
     ? planName
@@ -305,7 +369,14 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
   //   with everything else. The old fail-closed-on-unknown-plan rule existed
   //   only to stop a subscription we could not name from opening a private
   //   data store; with a single product there is nothing left to disambiguate.
-  const broker = pro;
+  //
+  //   ONE exception: the per-account vault_beta grant (migration 023), the
+  //   broker-onboarding door. It requires a signed-in user — the grant lives
+  //   on an account row, so an anonymous request can never carry it — and it
+  //   deliberately does NOT ride the lapse rules above: it was never billing,
+  //   so there is no subscription whose end should close the book. Revoking
+  //   it is a one-row UPDATE, not a lapse.
+  const broker = pro || (vaultBeta === true && Boolean(user));
 
   // A single-report purchase only ever unlocks the report it was bought for.
   // Guard on the id rather than trusting the caller looked it up correctly.
@@ -360,6 +431,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     canUseVault: broker,
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
     admin: false,
+    tester: false,
     reason: reasonFor({ state, pro, broker, reportUnlocked, user }),
   };
 }
@@ -371,6 +443,10 @@ function reasonFor({ state, pro, broker, reportUnlocked, user }) {
   if (pro) return "Active subscription — every Pro capability, including the private vault.";
   if (pro) return "Active Pro subscription.";
   if (reportUnlocked) return "This report was unlocked with a single-report purchase.";
+  // Named before the expired line on purpose: a lapsed subscriber who holds
+  // the beta grant still has their vault, and saying "access has ended" over
+  // an open vault reads as a bug.
+  if (broker) return "Free account with vault access (broker beta).";
   if (state === "expired") return "Pro access has ended.";
   return user ? "Free account." : "Not signed in.";
 }

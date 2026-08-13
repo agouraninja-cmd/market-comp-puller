@@ -251,3 +251,16 @@ test("outlierOf: degenerate and junk inputs are null", () => {
   assert.deepEqual(V.outlierOf(130, { low: 100, high: 100 }), { dir: "above", pct: 30 });
   assert.equal(V.outlierOf(120, { low: 100, high: 100 }), null);
 });
+
+test("a blended vault comp has a tier, at full weight", () => {
+  // The key exists so the tier does: without broker_vault in TIER_WEIGHT,
+  // tierOf returned null and index.html's sourceBadge() rendered no
+  // "From your vault" badge (found on the first real blended report,
+  // 2026-08-10). Weight 1 must equal the old implicit behavior, where a
+  // null tier skipped the multiplier.
+  assert.equal(V.tierOf(comp({ source_type: "broker_vault" })), "broker_vault");
+  assert.equal(V.TIER_WEIGHT.broker_vault, 1);
+  const vault = comp({ source_type: "broker_vault" });
+  const unknown = comp({ source_type: "who knows" });
+  assert.equal(V.compWeight(vault, AS_OF), V.compWeight(unknown, AS_OF));
+});

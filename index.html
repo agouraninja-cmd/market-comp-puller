@@ -1131,6 +1131,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+
+      <!-- Comped access for beta testers. Hidden until /api/config resolves,
+           and shown only to a signed-in non-Pro visitor: the grant is stored
+           on an account, so there is nothing to attach it to signed out. -->
+      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <button id="passkeyToggle" type="button" aria-expanded="false"
+          class="text-sm text-[#68707E] hover:text-[#374253] underline">
+          Have a code?
+        </button>
+        <div id="passkeyForm" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
+          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Access code"
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <button id="passkeySubmit" type="button"
+            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+            Redeem
+          </button>
+        </div>
+        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
+      </div>
+
       <p class="text-xs text-[#68707E] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms</a>.
       </p>
@@ -2792,12 +2812,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // everywhere regardless — a house was handed a hero reading "WHAT THIS
   // BUILDING IS WORTH" (owner feedback 2026-08-10), which reads as boilerplate
   // written for somebody else's asset class, and on Land there is no building
-  // at all. Only the two odd types are listed; everything else really is a
-  // building. Keep this in step with SIZE_LABELS above: they answer the same
-  // question about the same six types, and a type added to one without the
-  // other produces a form that calls it a home and a hero that calls it a
-  // building.
-  const ASSET_NOUN = { Residential: "home", Land: "property" };
+  // at all.
+  //
+  // Related to SIZE_LABELS above but deliberately NOT equal to it: Multifamily
+  // and Retail keep "Building size (SF)" as the FIELD label, because that
+  // really is the building square footage the valuation divides by, even
+  // though the asset above it is called a property. Check both when adding a
+  // type, and expect them to differ.
+  //
+  // Only Industrial and Office fall through to "building", because those two
+  // genuinely ARE one building. The other four are named:
+  //   Residential  home      - also covers condos and townhomes, which have no
+  //                            type of their own; a condo is a home.
+  //   Land         property  - there is no building at all.
+  //   Multifamily  property  - an apartment community is not one building, and
+  //                            the type also covers duplexes, so neither
+  //                            "apartment building" nor "apartment community"
+  //                            is true across the range. It is also the unit
+  //                            the report already prices on (ALT_BASIS).
+  //   Retail       property  - right for a single-tenant pad AND for a strip or
+  //                            anchored center; "building" is only right for
+  //                            the first, "center" only for the second.
+  const ASSET_NOUN = {
+    Residential: "home",
+    Land: "property",
+    Multifamily: "property",
+    Retail: "property",
+  };
   const assetNoun = (type) => ASSET_NOUN[type] || "building";
   // Spelled out rather than `assetNoun(type) + "s"`, which produced
   // "propertys" on Land the first time this shipped. Three known nouns, so a
@@ -10304,12 +10345,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Comped team access. Pro, but with nothing behind it at Stripe — so every
   // billing control has to be kept away from it, not just re-labelled.
   function isAdminPro() { return Boolean(proConfig && proConfig.admin); }
+  // Comped beta-tester access. Also Pro with nothing behind it at Stripe.
+  function isTesterPro() { return Boolean(proConfig && proConfig.tester); }
   // "none" means no Stripe customer has ever existed for this user, so the
   // portal would 400. Any other state means there is something to manage —
-  // except "admin", which is comped and likewise has no customer to manage.
+  // except "admin"/"tester", which are comped and likewise have no customer
+  // to manage.
   function hasBillingHistory() {
     return Boolean(currentUser) && proConfig && proConfig.status
-      && proConfig.status !== "none" && !isAdminPro();
+      && proConfig.status !== "none" && !isAdminPro() && !isTesterPro();
   }
 
   function showPricingError(msg) {
@@ -10490,6 +10534,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         detail: "Full Pro access while your admin key is unlocked. Nothing is billed, and there's no subscription behind it.",
       };
     }
+    if (p.tester) {
+      return {
+        title: "Pro — comped (beta tester)",
+        detail: "Full Pro access as a beta tester. Nothing is billed, and there's no subscription behind it. The private broker vault isn't included.",
+      };
+    }
     if (p.isPro && p.status === "grace") {
       const until = p.graceUntil ? new Date(p.graceUntil) : null;
       return {
@@ -10547,6 +10597,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (typeof renderLockedNotice === "function") renderLockedNotice();
 
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
+
+    // The redeem row: signed-in, not already Pro, AND this deployment actually
+    // has a passkey configured. Deliberately NOT gated on billingLive() — a
+    // code is exactly what someone uses on a deployment with no Stripe keys,
+    // the same exception the vault link makes. The testerPasskey check exists
+    // because /api/config's `tester` flag only reports whether THIS user has
+    // already redeemed, not whether a passkey exists at all — without it, a
+    // deployment that never set TESTER_PASSKEY still showed a row that could
+    // only ever fail on submit.
+    const hasPasskey = Boolean(proConfig && proConfig.testerPasskey);
+    document.getElementById("passkeyRow")
+      .classList.toggle("hidden", !currentUser || pro || !hasPasskey);
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already
@@ -10619,10 +10681,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     updateExportAllowance();
 
     const card = document.getElementById("billingCard");
-    // Admins see the card even where billing isn't live (a dev box with no
-    // Stripe keys): comped Pro applies there too, so the way back out of it
-    // has to as well.
-    const showCard = Boolean(currentUser) && (live || isAdminPro());
+    // Comped visitors (admins and beta testers) see the card even where
+    // billing isn't live (a dev box with no Stripe keys): comped Pro applies
+    // there too, so the way back out of it has to as well. Any future comped
+    // path needs the same OR here, or its plan-card copy is unreachable on a
+    // Stripe-less deployment.
+    const showCard = Boolean(currentUser) && (live || isAdminPro() || isTesterPro());
     card.classList.toggle("hidden", !showCard);
     if (showCard) {
       const copy = billingStatusCopy();
@@ -10630,6 +10694,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("billingDetail").textContent = copy.detail;
       document.getElementById("billingUpgradeBtn").classList.toggle("hidden", pro);
       document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
+      // Admin-only: it clears the cn_admin cookie, which a tester never has.
       document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
     }
   }
@@ -10804,6 +10869,56 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
+
+  document.getElementById("passkeyToggle").addEventListener("click", (e) => {
+    const form = document.getElementById("passkeyForm");
+    const open = form.classList.toggle("hidden");
+    e.currentTarget.setAttribute("aria-expanded", String(!open));
+    if (!open) document.getElementById("passkeyInput").focus();
+  });
+
+  async function submitPasskey() {
+    const input = document.getElementById("passkeyInput");
+    const btn = document.getElementById("passkeySubmit");
+    const msg = document.getElementById("passkeyMsg");
+    // Re-entrancy guard: the click handler is protected by btn.disabled, but
+    // Enter-in-the-input calls this directly, so a fast double-Enter could
+    // otherwise fire two redeem requests against the route's 5-per-15min cap.
+    if (btn.disabled) return;
+    const code = input.value.trim();
+    if (!code) return;
+    msg.classList.add("hidden");
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Checking…";
+    try {
+      const r = await fetch("/api/redeem-passkey", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passkey: code }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Could not redeem that code.");
+      input.value = "";
+      // Re-read /api/config so every entitlement-driven surface updates in
+      // place — the same seam used after a checkout return and a sign-in.
+      await refreshProConfig();
+      closePricingModal();
+    } catch (ex) {
+      msg.textContent = ex.message;
+      msg.className = "mt-2 text-sm text-red-700";
+      msg.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
+  document.getElementById("passkeySubmit").addEventListener("click", submitPasskey);
+  document.getElementById("passkeyInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submitPasskey(); }
+  });
+
   // The Direction-J comparison table, behind a disclosure: the modal's job is
   // a decision, the table is the spec sheet for whoever wants it.
   document.getElementById("pricingCompareBtn").addEventListener("click", (e) => {

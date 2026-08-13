@@ -8,50 +8,15 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const fs = require("node:fs");
-const path = require("node:path");
 
 const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS , PROPERTY_FIELDS } = require("../vault-api");
 
 // Parse the columns the migrations actually declare, rather than restating
 // them here — a second hand-written list would be a second thing to keep in
-// sync, and this repo already carries one such pair with a ⚠ on it.
-//
-// Scans EVERY migration rather than naming the ones that exist today. The
-// first version of this named 013 and 014 explicitly, which meant migration
-// 016 added a column and this test happily reported the contract complete —
-// the exact failure it was written to prevent, in its own implementation.
-function migrationColumns(table = "broker_comps") {
-  const root = path.join(__dirname, "..", "migrations");
-  const files = fs.readdirSync(root).filter((f) => f.endsWith(".sql")).sort();
-  const cols = [];
-  for (const f of files) {
-    const sql = fs.readFileSync(path.join(root, f), "utf8");
-    // Strip comments first, so a column named only in prose is not counted.
-    const live = sql.split("\n").map((l) => l.split("--")[0]).join("\n");
-
-    const create = new RegExp(
-      `create table (?:if not exists )?${table}\\s*\\(([\\s\\S]*?)\\n\\);`, "i").exec(live);
-    if (create) {
-      for (const rawLine of create[1].split("\n")) {
-        const line = rawLine.trim();
-        if (!line) continue;
-        if (/^(unique|primary key|constraint|foreign key|check)\b/i.test(line)) continue;
-        for (const part of line.split(",")) {
-          const m = /^([a-z_]+)\s+(uuid|text|numeric|date|boolean|timestamptz|bigint|int)\b/.exec(part.trim());
-          if (m) cols.push(m[1]);
-        }
-      }
-    }
-    // ALTER TABLE <table> ... ADD COLUMN [IF NOT EXISTS] <name>
-    for (const alter of live.matchAll(new RegExp(`alter table\\s+${table}\\b([\\s\\S]*?);`, "gi"))) {
-      for (const m of alter[1].matchAll(/add column\s+(?:if not exists\s+)?([a-z_]+)/gi)) {
-        cols.push(m[1]);
-      }
-    }
-  }
-  return [...new Set(cols)];
-}
+// sync, and this repo already carries one such pair with a ⚠ on it. Shared
+// with broker-vault.test.js's write-payload contract check, which needs the
+// identical real-schema read for the same reason.
+const { migrationColumns } = require("./helpers/migration-columns");
 
 // ---------------------------------------------------------------------------
 // The contract vs the schema

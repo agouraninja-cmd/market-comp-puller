@@ -130,6 +130,82 @@ test("non-admins carry admin:false, so the UI can read one field", () => {
   assert.equal(ent({ user: USER, subscription: activeSub() }).admin, false);
 });
 
+// --- comped tester access --------------------------------------------------
+//
+// "Tester" is a persistent per-account flag (users.pro_tester), set by
+// redeeming TESTER_PASSKEY. Unlike admin — which is possession of a key, i.e.
+// a staff signal — a tester is an ordinary person who may well go on to
+// actually subscribe, so these tests pin that the flag YIELDS to a real
+// subscription instead of masking it.
+
+test("tester: comped Pro from the account flag alone", () => {
+  const e = ent({ user: USER, tester: true });
+  assert.equal(e.plan, "tester");
+  assert.equal(e.pro, true);
+  assert.equal(e.tester, true);
+  assert.equal(e.maxComps, "all");
+  assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+  assert.equal(e.exportsRemaining, "unlimited");
+  assert.equal(e.canBrand, true);
+  assert.equal(e.canExploreAddresses, true);
+});
+
+test("tester status is never a Stripe status — there is no customer to manage", () => {
+  assert.equal(ent({ user: USER, tester: true }).status, "tester");
+});
+
+test("a tester does NOT get the broker vault", () => {
+  // The vault is a private-data workspace with an upload endpoint. A passkey
+  // shared with a wider group is a bigger surface than "try Pro's reports",
+  // so the vault stays admin/paid-only. This is the one place a tester is
+  // deliberately NOT equal to Pro.
+  const e = ent({ user: USER, tester: true });
+  assert.equal(e.broker, false);
+  assert.equal(e.canUseVault, false);
+});
+
+test("a real subscription always wins over the tester flag", () => {
+  // The trap this closes: if the tester branch short-circuited like admin's
+  // does, a tester who later subscribes would be stuck reading as "comped"
+  // forever — no billing portal, no real status — while being charged.
+  const e = ent({ user: USER, tester: true, subscription: activeSub() });
+  assert.equal(e.plan, "pro_monthly");
+  assert.equal(e.status, "active");
+  assert.equal(e.tester, false, "a paying subscriber is not labelled comped");
+  assert.equal(e.canUseVault, true, "and their subscription's vault is not withheld");
+});
+
+test("an expired subscription falls back to the tester flag", () => {
+  // The other side of the same rule: comped access resumes when the paid
+  // subscription lapses, rather than the lapse stripping a tester of access
+  // they had before they ever subscribed.
+  const dead = activeSub({ current_period_end: iso(NOW - 30 * DAY) });
+  const e = ent({ user: USER, tester: true, subscription: dead });
+  assert.equal(e.pro, true);
+  assert.equal(e.status, "tester");
+});
+
+test("tester without an account gets nothing — the flag lives on a user row", () => {
+  const e = ent({ user: null, tester: true });
+  assert.equal(e.plan, "anonymous");
+  assert.equal(e.pro, false);
+  assert.equal(e.maxComps, FREE_MAX_COMPS);
+});
+
+test("tester cannot switch a dark deployment back on", () => {
+  const e = computeEntitlements({ user: USER, tester: true, now: NOW, enabled: false });
+  assert.equal(e.plan, "free");
+  assert.equal(e.tester, false);
+  assert.equal(e.status, "disabled");
+});
+
+test("non-testers carry tester:false, so the UI can read one field", () => {
+  assert.equal(ent({ user: USER }).tester, false);
+  assert.equal(ent({ user: USER, admin: true }).tester, false);
+  assert.equal(ent({ user: USER, subscription: activeSub() }).tester, false);
+  assert.equal(computeEntitlements({ user: USER, now: NOW, enabled: false }).tester, false);
+});
+
 // --- anonymous and free ----------------------------------------------------
 
 test("anonymous visitor: FREE_MAX_COMPS comps, 12 months, one export", () => {
@@ -649,4 +725,64 @@ test("audience decides which branch of computeEntitlements a visitor gets", () =
   assert.equal(untouched.maxComps, "all", "the public keeps the pre-Pro app");
   assert.equal(untouched.exportsRemaining, "unlimited");
   assert.equal(untouched.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+});
+
+// --- the vault_beta grant (migration 023) ----------------------------------
+//
+// The broker-onboarding door: broker surfaces only, per account, independent
+// of billing. The negative tests matter most — the flag must never comp
+// Pro's report features and must never act without a signed-in user.
+
+test("vault_beta on a free account opens the broker surfaces only", () => {
+  const e = ent({ user: USER, vaultBeta: true });
+  assert.equal(e.broker, true);
+  assert.equal(e.canUseVault, true);
+  assert.equal(e.pro, false, "the grant must not comp Pro");
+  assert.equal(e.plan, "free");
+  assert.equal(e.status, "none", "nothing here came from Stripe");
+  assert.equal(e.maxComps, FREE_MAX_COMPS, "report features stay free-tier");
+  assert.equal(e.maxLookbackMonths, FREE_MAX_LOOKBACK_MONTHS);
+  assert.notEqual(e.exportsRemaining, "unlimited");
+  assert.match(e.reason, /broker beta/);
+});
+
+test("vault_beta cannot switch a dark deployment on", () => {
+  const e = computeEntitlements({ user: USER, vaultBeta: true, now: NOW, enabled: false });
+  assert.equal(e.canUseVault, false);
+  assert.equal(e.broker, false);
+});
+
+test("vault_beta without a signed-in user grants nothing", () => {
+  const e = ent({ user: null, vaultBeta: true });
+  assert.equal(e.broker, false);
+  assert.equal(e.canUseVault, false);
+});
+
+test("a tester who also holds vault_beta gets the vault with the comp", () => {
+  const e = ent({ user: USER, tester: true, vaultBeta: true });
+  assert.equal(e.status, "tester");
+  assert.equal(e.pro, true);
+  assert.equal(e.broker, true);
+  assert.equal(e.canUseVault, true);
+});
+
+test("a tester without vault_beta still has no vault", () => {
+  const e = ent({ user: USER, tester: true });
+  assert.equal(e.canUseVault, false);
+});
+
+test("vault_beta is independent of billing: the vault survives a lapse", () => {
+  const lapsed = activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) });
+  const e = ent({ user: USER, subscription: lapsed, vaultBeta: true });
+  assert.equal(e.pro, false, "the subscription really has lapsed");
+  assert.equal(e.canUseVault, true, "the grant was never billing, so no lapse closes it");
+  assert.match(e.reason, /broker beta/,
+    "'Pro access has ended' over an open vault reads as a bug");
+});
+
+test("a live subscription with vault_beta reads as an ordinary subscriber", () => {
+  const e = ent({ user: USER, subscription: activeSub(), vaultBeta: true });
+  assert.equal(e.pro, true);
+  assert.equal(e.status, "active");
+  assert.equal(e.canUseVault, true);
 });

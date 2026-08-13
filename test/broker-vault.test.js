@@ -16,12 +16,20 @@ const {
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
   templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, PROPERTY_TYPES,
   isCommentRow, MAX_ROWS_PER_UPLOAD,
-  canPublish, creditName, submissionRowFrom,
+  canPublish, creditName, validateIdentity, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
   inspectCsv, normalizedHeaderRow,
+  validateEdit, EDITABLE_FIELDS, isUuid,
+  exportColumns, exportCsv, exportRowsWithCoords,
+  guardFormula, csvCell,
 } = require("../broker-vault");
+
+// Shared with vault-api.test.js: parses the columns a table actually has out
+// of the migration files, so this check fails the build on a real schema
+// drift instead of trusting a second hand-written column list.
+const { migrationColumns } = require("./helpers/migration-columns");
 
 // --- CSV reading -----------------------------------------------------------
 
@@ -95,7 +103,14 @@ test("money refuses negatives in both notations", () => {
 });
 
 test("money refuses text", () => {
-  for (const v of ["TBD", "call for price", "n/a", "--"]) {
+  // "n/a" and "--" used to sit in this list. They moved to the no-value set
+  // on 2026-08-11 (see NO_VALUE_TOKENS): they name the ABSENCE of a number,
+  // so reading them as an empty cell guesses nothing — where "TBD" and
+  // "call for price" describe a price that exists and is pending, which is
+  // information a blank would destroy. The first real broker file lost a
+  // whole row to "Undisclosed" while the template promised undisclosed
+  // deals still count.
+  for (const v of ["TBD", "call for price", "pending", "see notes"]) {
     assert.equal(parseMoney(v).ok, false, `${v} must be refused`);
   }
 });
@@ -272,6 +287,150 @@ test("garbage input does not throw", () => {
     assert.doesNotThrow(() => normalizeRow(v));
     assert.equal(normalizeRow(v).ok, false);
   }
+});
+
+// --- editing a stored row ---------------------------------------------------
+//
+// validateEdit is deliberately NOT a second validator: it merges the patch
+// over the existing row's template-shaped fields and runs it back through
+// normalizeRow, the same function every imported row goes through. These
+// tests exist to prove that wiring, not to re-test normalizeRow's parsing
+// rules -- those are covered above.
+
+test("validateEdit merges a patch over the existing comp", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1000000,
+    size_sqft: 10000, notes: "keep me",
+  };
+  const r = validateEdit(existing, { price: "$1,250,000" });
+  assert.equal(r.ok, true);
+  assert.equal(r.row.price, 1250000);
+  assert.equal(r.row.notes, "keep me", "unpatched fields survive");
+  assert.equal(r.row.price_per_sqft, 125, "$/SF recomputed from the new price");
+});
+
+test("validateEdit refuses shorthand exactly as the importer does", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14",
+  };
+  const r = validateEdit(existing, { price: "1.2M" });
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.join(" ").includes("price"), "the error names the field");
+});
+
+test("validateEdit recomputes the dedupe key when the price changes", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1000000,
+  };
+  const before = normalizeRow(existing).row.dedupe_key;
+  const after = validateEdit(existing, { price: 1250000 }).row.dedupe_key;
+  assert.notEqual(after, before);
+  assert.equal(after, normalizeRow({ ...existing, price: 1250000 }).row.dedupe_key,
+    "the edit path must produce the same key the import path would");
+});
+
+test("validateEdit leaves price_per_sqft null when a sale becomes a lease", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Office",
+    transaction: "sale", deal_date: "2025-03-14", price: 500000, size_sqft: 5000,
+  };
+  const r = validateEdit(existing, { transaction: "lease" });
+  assert.equal(r.ok, true);
+  assert.equal(r.row.price_per_sqft, null,
+    "an annual rent over size is $/SF/yr and must never enter that column");
+});
+
+test("validateEdit ignores keys that are not template fields", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14",
+  };
+  const r = validateEdit(existing, { user_id: "someone-else", published: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.row.user_id, undefined, "a patch may never set user_id");
+  assert.equal(r.row.published, undefined, "a patch may never set published");
+});
+
+// The test above proves a patch cannot set user_id/published, but it cannot
+// tell "properly allowlisted" apart from "no allowlist at all, saved only by
+// normalizeRow's explicit field-by-field construction (which never spreads
+// its input)". Swap validateEdit's merge for `{ ...existing, ...patch }` --
+// no EDITABLE_FIELDS restriction whatsoever -- and the test above still
+// passes, because normalizeRow drops the unknown keys either way. So pin the
+// allowlist ITSELF: widening it, or deleting the filtering, must fail here
+// even if every row-shape assertion elsewhere in this file stays green.
+test("EDITABLE_FIELDS is exactly the two column constants, and excludes the fields a patch must never touch", () => {
+  assert.deepEqual(EDITABLE_FIELDS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
+  // A patch that could set user_id would be an account-takeover primitive
+  // (it retargets the row to another broker's account); one that could set
+  // published (or the columns that go with it) would put a row in the public
+  // corpus without the submission that credits it.
+  const forbidden = [
+    "user_id", "published", "published_at", "published_submission_id",
+    "id", "upload_id", "market", "dedupe_key", "address_key",
+  ];
+  for (const f of forbidden) {
+    assert.ok(!EDITABLE_FIELDS.includes(f), `EDITABLE_FIELDS must not include "${f}"`);
+  }
+});
+
+// The two tests above still do not prove validateEdit's MERGE actually
+// consults EDITABLE_FIELDS -- pinning the constant's value catches someone
+// widening it, but not someone who leaves it untouched and swaps the merge
+// itself for `{ ...existing, ...patch }`. normalizeRow would still drop the
+// forbidden keys from its RESULT (it builds `row` field by field and never
+// spreads `src`), so that regression is invisible to every test above it.
+// The allowlist's only observable behavior, once the result can't tell the
+// difference, is that it never even READS a key outside the list. Trap the
+// read with a getter: the allowlist loop iterates EDITABLE_FIELDS and so
+// never names these keys, while a spread reads every enumerable own property
+// on the patch and trips them immediately.
+test("validateEdit never reads a patch field outside the allowlist", () => {
+  const existing = {
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1000000,
+  };
+  const touched = [];
+  const patch = { price: 1250000 };
+  for (const k of ["user_id", "published", "published_submission_id", "id", "upload_id"]) {
+    Object.defineProperty(patch, k, {
+      enumerable: true, configurable: true,
+      get() { touched.push(k); return "tampered"; },
+    });
+  }
+  const r = validateEdit(existing, patch);
+  assert.equal(r.ok, true);
+  assert.equal(r.row.price, 1250000, "the allowlisted field still applies");
+  assert.deepEqual(touched, [],
+    "a patch key outside EDITABLE_FIELDS must never be read: one that could set " +
+    "user_id is an account-takeover primitive, and one that could set published " +
+    "would put a row in the public corpus without the submission that credits it");
+});
+
+// --- the comp-id shape check -------------------------------------------------
+//
+// broker_comps.id is a uuid column (migration 013), so a malformed `?id=`
+// makes PostgREST reject the query and throw, rather than simply finding no
+// row. The PATCH/DELETE routes use isUuid to answer the SAME 404 an
+// unknown-but-well-formed id gets, before ever asking the database -- a
+// malformed id and someone else's id must look identical to the caller. This
+// can only be unit-tested here: the bare-environment route suite has no
+// session, so both routes answer 401 before the id is ever inspected, and
+// cannot observe this check from the outside.
+test("isUuid accepts a real uuid", () => {
+  assert.equal(isUuid("3fa85f64-5717-4562-b3fc-2c963f66afa6"), true);
+  assert.equal(isUuid("3FA85F64-5717-4562-B3FC-2C963F66AFA6"), true, "case-insensitive");
+});
+
+test("isUuid rejects what a broken client or a prober might send", () => {
+  assert.equal(isUuid("banana"), false);
+  assert.equal(isUuid(""), false);
+  assert.equal(isUuid("3fa85f64-5717-4562-b3fc-2c963f66afa6'"), false, "trailing quote");
+  assert.equal(isUuid("1=1; DROP TABLE broker_comps;--"), false, "SQL-ish string");
+  assert.equal(isUuid("3fa85f64-5717-4562-b3fc-2c963f66afa6%00"), false, "embedded null byte");
 });
 
 // --- a whole file ----------------------------------------------------------
@@ -465,6 +624,166 @@ test("parseUpload never throws on garbage", () => {
   }
 });
 
+// --- export ------------------------------------------------------------
+//
+// exportColumns/exportCsv are the reverse of the importer: a broker's own
+// stored comps, turned back into the CSV shape parseUpload reads. The rule
+// they exist to enforce is TEMPLATE_COLUMNS-alone-is-not-the-answer: the
+// optional per-type columns (clear_height, units, lot_acres and nine more)
+// are real, imported, stored data, and an export that dropped them would
+// hand a broker a book missing the very fields they typed in.
+
+test("an export with no per-type data is exactly the template columns", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1250000, size_sqft: 10000,
+  }];
+  assert.deepEqual(exportColumns(rows), TEMPLATE_COLUMNS);
+});
+
+test("an export carries the per-type columns that hold data, and only those", () => {
+  const rows = [
+    { address: "1 A St, Boise, ID", property_type: "Industrial",
+      transaction: "sale", deal_date: "2025-01-02", clear_height: "32'" },
+    { address: "2 B St, Boise, ID", property_type: "Industrial",
+      transaction: "sale", deal_date: "2025-01-03", dock_doors: null },
+  ];
+  const cols = exportColumns(rows);
+  assert.ok(cols.includes("clear_height"), "a populated per-type column must survive the round trip");
+  assert.ok(!cols.includes("dock_doors"), "an empty per-type column must not add a dead column");
+  assert.deepEqual(cols.slice(0, TEMPLATE_COLUMNS.length), TEMPLATE_COLUMNS,
+    "the template columns lead, in their own order");
+});
+
+test("the export round-trips back through the importer", () => {
+  // Coordinates are the case that matters most: if lat/lng do not survive
+  // this trip, a re-import strips a private address's coordinates and the
+  // next report sends that address out to a third-party geocoder.
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Industrial",
+    transaction: "sale", deal_date: "2025-03-14", price: 1250000,
+    size_sqft: 10000, cap_rate: 5.75, tenancy: "Single tenant",
+    year_built: "1998", notes: "Sold, fully leased", clear_height: "32'",
+    lat: 43.6150, lng: -116.2023,
+  }];
+  const parsed = parseUpload(exportCsv(rows));
+  assert.equal(parsed.rows.length, 1, parsed.errors && parsed.errors.join("; "));
+  const r = parsed.rows[0];
+  assert.equal(r.address, "100 Main St, Boise, ID");
+  assert.equal(r.price, 1250000);
+  assert.equal(r.size_sqft, 10000);
+  assert.equal(r.clear_height, "32'");
+  assert.equal(r._lat, 43.6150, "coordinates must survive, or a re-import sends the address to a geocoder");
+  assert.equal(r._lng, -116.2023);
+});
+
+test("a note containing a comma survives the export", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Retail",
+    transaction: "sale", deal_date: "2025-03-14", notes: 'Sold "as is", quickly',
+  }];
+  const parsed = parseUpload(exportCsv(rows));
+  assert.equal(parsed.rows[0].notes, 'Sold "as is", quickly');
+});
+
+test("the export emits no comment lines", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Retail",
+    transaction: "sale", deal_date: "2025-03-14",
+  }];
+  assert.ok(!exportCsv(rows).split("\n").some((l) => l.startsWith("#")),
+    "the template teaches; an export carries data");
+});
+
+// --- formula injection -----------------------------------------------------
+//
+// A cell starting with = + - @ is a FORMULA to Excel/Sheets/LibreOffice, and
+// quoting does not defuse it — the quotes are gone by the time the cell is
+// interpreted. Every CSV this module writes is opened in a spreadsheet by
+// design (the export by the broker, the admin downloads by the owner), so a
+// hostile note must never leave here executable.
+
+test("a cell starting with a formula character is neutralized", () => {
+  assert.equal(guardFormula("=HYPERLINK(\"http://evil\")"), "'=HYPERLINK(\"http://evil\")");
+  assert.equal(guardFormula("@SUM(A1)"), "'@SUM(A1)");
+  assert.equal(guardFormula("+cmd|' /C calc'!A0"), "'+cmd|' /C calc'!A0");
+  assert.equal(guardFormula("- great location"), "'- great location");
+});
+
+test("a plain number is never guarded — every longitude starts with a minus", () => {
+  // An apostrophe on "-116.2023" would fail parseCoord on re-import and
+  // strip the building's stored location.
+  assert.equal(guardFormula("-116.2023"), "-116.2023");
+  assert.equal(csvCell(-116.2023), "-116.2023");
+  assert.equal(guardFormula("5.75"), "5.75");
+});
+
+test("digit-after-minus is not enough — the number exception matches the whole cell", () => {
+  // "-2+cmd|..." starts like a number and is still a live payload.
+  assert.equal(guardFormula("-2+cmd|' /C calc'!A0"), "'-2+cmd|' /C calc'!A0");
+});
+
+test("a hostile note leaves exportCsv neutralized, and the trade is the apostrophe surviving re-import", () => {
+  const rows = [{
+    address: "100 Main St, Boise, ID", property_type: "Retail",
+    transaction: "sale", deal_date: "2025-03-14", notes: "=cmd|' /C calc'!A0",
+  }];
+  const out = exportCsv(rows);
+  assert.ok(out.includes("'=cmd"), "the note must carry the guard in the file");
+  // The accepted trade (see guardFormula's header): the apostrophe is stored
+  // on re-import rather than the formula coming back to life on the next
+  // export. If this assertion ever changes, the export must still never
+  // round-trip back to a bare leading "=".
+  assert.equal(parseUpload(out).rows[0].notes, "'=cmd|' /C calc'!A0");
+});
+
+// --- exportRowsWithCoords: the property-coordinate join --------------------
+//
+// The regression this guards against: Number(null) === 0 and
+// Number.isFinite(0) === true, so coercing an unlocated property's lat/lng
+// BEFORE checking for null reads it as a real coordinate at 0,0 — Null
+// Island — which normalizeRow then refuses on re-import. A property with a
+// real lat but a missing lng has the opposite failure: the missing side
+// coerces to 0 and the pair re-imports cleanly as a wrong coordinate,
+// silently, in the Atlantic.
+
+test("a property with no location on file exports blank coordinates, not zero", () => {
+  const comps = [{ id: "c1", property_id: "p1", address: "1 A St" }];
+  const coords = new Map([["p1", { lat: null, lng: null }]]);
+  const rows = exportRowsWithCoords(comps, coords);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].lat, undefined);
+  assert.equal(rows[0].lng, undefined);
+});
+
+test("a real coordinate pair survives the join", () => {
+  const comps = [{ id: "c1", property_id: "p1", address: "1 A St" }];
+  const coords = new Map([["p1", { lat: 43.6, lng: -116.2 }]]);
+  const rows = exportRowsWithCoords(comps, coords);
+  assert.equal(rows[0].lat, 43.6);
+  assert.equal(rows[0].lng, -116.2);
+});
+
+test("a comp with no property_id exports blank coordinates", () => {
+  const comps = [{ id: "c1", property_id: null, address: "1 A St" }];
+  const rows = exportRowsWithCoords(comps, new Map());
+  assert.equal(rows[0].lat, undefined);
+  assert.equal(rows[0].lng, undefined);
+});
+
+test("the null-coordinate case round-trips cleanly back through the importer", () => {
+  const comps = [{
+    id: "c1", property_id: "p1", address: "100 Main St, Boise, ID",
+    property_type: "Industrial", transaction: "sale", deal_date: "2025-03-14",
+  }];
+  const coords = new Map([["p1", { lat: null, lng: null }]]);
+  const rows = exportRowsWithCoords(comps, coords);
+  const parsed = parseUpload(exportCsv(rows));
+  assert.equal(parsed.ok, true, parsed.errors && parsed.errors.join("; "));
+  assert.equal(parsed.rows.length, 1, parsed.errors && parsed.errors.join("; "));
+  assert.equal(parsed.rows[0]._lat, undefined);
+});
+
 // --- publishing ------------------------------------------------------------
 //
 // The one door through the privacy wall. A mistake here is either a broker's
@@ -515,11 +834,61 @@ test("canPublish never throws on garbage", () => {
   }
 });
 
-test("credit prefers the firm name, then a personal name", () => {
-  assert.equal(creditName({ company: "Adler Industrial", display_name: "O K" }, { name: "Owen" }), "Adler Industrial");
-  assert.equal(creditName({ display_name: "O Kleene" }, { name: "Owen" }), "O Kleene");
-  assert.equal(creditName({}, { name: "Owen" }), "Owen");
-  assert.equal(creditName(null, null), "", "no name at all is empty, not a crash");
+test("credit prefers the firm name, then a stated personal name", () => {
+  assert.equal(creditName({ company: "Adler Industrial", display_name: "O K" }), "Adler Industrial");
+  assert.equal(creditName({ display_name: "O Kleene" }), "O Kleene");
+  assert.equal(creditName(null), "", "no name at all is empty, not a crash");
+});
+
+test("an unstated identity credits NOBODY, rather than the account's signup name", () => {
+  // This used to answer "Owen" from the user row, and that fallback was the
+  // bug: the publish confirm promises "credited to your firm by name", a
+  // vault-first broker has no profile, so their comps were credited to
+  // whatever they typed at signup — and submissionRowFrom copies that string
+  // into broker_company, publishing a personal name as a firm. Nobody chose
+  // it, so nobody could correct it. Empty now means the publish route
+  // refuses with needs_credit_name and the vault asks once.
+  assert.equal(creditName({}), "");
+  assert.equal(creditName({ company: "   ", display_name: "" }), "",
+    "whitespace is not a stated identity");
+  // The old second argument is gone. Passing one must not resurrect it.
+  assert.equal(creditName({}, { name: "Owen" }), "",
+    "the account name must not reach the credit by any route");
+});
+
+// --- the stated identity itself ---------------------------------------------
+
+test("an identity needs at least one of firm or name", () => {
+  assert.equal(validateIdentity({}).ok, false);
+  assert.equal(validateIdentity({ company: "  ", display_name: "\t" }).ok, false);
+  assert.equal(validateIdentity(null).ok, false);
+  assert.match(validateIdentity({}).error, /firm/i);
+});
+
+test("either field alone is enough, and both are kept separate", () => {
+  assert.deepEqual(validateIdentity({ company: "Hawkins Ridge CRE" }).identity,
+    { display_name: "", company: "Hawkins Ridge CRE" });
+  assert.deepEqual(validateIdentity({ display_name: "Chuck Hawkins" }).identity,
+    { display_name: "Chuck Hawkins", company: "" });
+  // Separate all the way down: broker-directory.js lists them independently,
+  // and a firm is not a person.
+  assert.deepEqual(validateIdentity({ company: "Hawkins Ridge CRE", display_name: "Chuck Hawkins" }).identity,
+    { display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE" });
+});
+
+test("identity text is trimmed, collapsed, capped and stripped of control characters", () => {
+  const r = validateIdentity({ company: "  Hawkins   Ridge\tCRE  " });
+  assert.equal(r.identity.company, "Hawkins Ridge CRE");
+  assert.equal(validateIdentity({ company: "A".repeat(200) }).identity.company.length, 60);
+  // These strings reach a public page and an admin CSV.
+  const ctrl = validateIdentity({ company: "Hawkins\u0000Ridge\u001FCRE" });
+  assert.equal(ctrl.identity.company, "Hawkins Ridge CRE");
+});
+
+test("a formula-shaped firm name keeps its name", () => {
+  // guardFormula handles this at csvCell, the one place it can do harm. A
+  // firm really called "+Plus Realty" must not be refused here.
+  assert.equal(validateIdentity({ company: "+Plus Realty" }).identity.company, "+Plus Realty");
 });
 
 test("publishing capitalises the transaction, or the comp is never offered", () => {
@@ -1032,4 +1401,186 @@ test("the full round trip: a $ column mapped through the mapping screen actually
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].price, 100);
   assert.equal(result.rows[0].address, "1 A St, Boise, ID");
+});
+
+// --- write payloads vs the real schema ---------------------------------------
+//
+// The one failure this repo has actually suffered here (CLAUDE.md, "Comp
+// corpus"): PostgREST 400ing on an unknown column, silently, for weeks,
+// because nothing checked the write shape against the live table. The edit
+// (PATCH /api/vault/comp) and add (POST /api/vault/comp) routes in server.js
+// both write `PROPS.stripCarriedKeys({ ...row })` plus a few server-set
+// fields (user_id, market, and property_id on an address change) — this pins
+// every key either payload can carry against broker_comps' real columns, so a
+// field added here without a matching migration fails the build instead of
+// 400ing a broker's edit at runtime.
+//
+// `lat`/`lng` (in EDITABLE_FIELDS, via TEMPLATE_COLUMNS) and `_lat`/`_lng`
+// (in a fully-populated normalizeRow result) are excluded on purpose: they
+// are not broker_comps columns by design (see the long comment above
+// normalizeRow's coordinate handling) and are stripped by
+// PROPS.stripCarriedKeys before either route ever writes the row. Excluding
+// them here is not loosening the check — the route code that actually
+// removes them is what makes it safe to exclude them, and vault-coordinates
+// tests pin that removal directly.
+
+function fullyPopulatedEditInput() {
+  const row = {
+    address: "100 Main St, Boise, ID",
+    property_type: "Industrial",
+    transaction: "sale",
+    deal_date: "2026-03-14",
+    price: "1,000,000",
+    size_sqft: "10,000",
+    cap_rate: "6.25%",
+    tenancy: "Single",
+    year_built: "1998",
+    notes: "Solid building.",
+    lat: "43.6",
+    lng: "-116.2",
+  };
+  for (const key of OPTIONAL_SPEC_COLUMNS) row[key] = "x";
+  return row;
+}
+
+test("every EDITABLE_FIELDS entry a route can actually write is a real broker_comps column", () => {
+  const cols = migrationColumns("broker_comps");
+  // lat/lng never reach the table: they ride the request as EDITABLE_FIELDS
+  // entries but are lifted into _lat/_lng by normalizeRow and then stripped
+  // by PROPS.stripCarriedKeys before the write. Every other EDITABLE_FIELDS
+  // entry is written verbatim.
+  const writable = EDITABLE_FIELDS.filter((f) => f !== "lat" && f !== "lng");
+  const missing = writable.filter((f) => !cols.includes(f));
+  assert.deepEqual(missing, [],
+    `EDITABLE_FIELDS claims field(s) broker_comps does not have: ${missing.join(", ")}. ` +
+    `A column here that the table does not have will 400 the whole write at runtime -- ` +
+    `this test is the only thing standing between that and a silent production failure.`);
+});
+
+test("every key a fully-populated normalizeRow result carries is a real broker_comps column", () => {
+  const cols = migrationColumns("broker_comps");
+  const { ok, row, errors } = normalizeRow(fullyPopulatedEditInput());
+  assert.equal(ok, true, (errors || []).join(" | "));
+  // _lat/_lng are the carried, non-column keys PROPS.stripCarriedKeys removes
+  // before either write route sends the row to PostgREST.
+  const keys = Object.keys(row).filter((k) => k !== "_lat" && k !== "_lng");
+  const missing = keys.filter((k) => !cols.includes(k));
+  assert.deepEqual(missing, [],
+    `normalizeRow produced field(s) broker_comps does not have: ${missing.join(", ")}. ` +
+    `A column here that the table does not have will 400 the whole write at runtime -- ` +
+    `this test is the only thing standing between that and a silent production failure.`);
+});
+
+test("the server-set fields the edit and add routes stamp onto every row are real broker_comps columns", () => {
+  const cols = migrationColumns("broker_comps");
+  // user_id and market are added by both routes; property_id is added (set to
+  // null) by the edit route only, on an address change. All three are
+  // assembled onto the row before the SAME write PROPS.stripCarriedKeys
+  // guards, so they carry the identical risk as every EDITABLE_FIELDS column.
+  const serverSet = ["user_id", "market", "property_id"];
+  const missing = serverSet.filter((f) => !cols.includes(f));
+  assert.deepEqual(missing, [],
+    `The routes stamp field(s) broker_comps does not have: ${missing.join(", ")}. ` +
+    `A column here that the table does not have will 400 the whole write at runtime -- ` +
+    `this test is the only thing standing between that and a silent production failure.`);
+});
+
+// --- the first real broker file's suggestion gaps (2026-08-11) ---------------
+//
+// Every case here is a header the 2026-08-10 dry-run file actually carried.
+// The one that matters most is "$/SF": it normalizes to bare "sf", which made
+// it the SOLE claimant of the size alias, and the mapper confidently
+// suggested importing $68.11 as a 68 sq ft building. A derived rate may
+// claim nothing by alias.
+
+const { isRateHeader } = require("../broker-vault");
+
+test("rate-shaped headers are recognized on the raw string", () => {
+  for (const h of ["$/SF", "$ / SF", "Price/SF", "Rent/SF/Yr", "$ per SF", "PSF", "p.s.f.", "Price per square foot"]) {
+    assert.equal(isRateHeader(h), true, h + " should read as a rate");
+  }
+  for (const h of ["SF", "Bldg SF", "Sale Price", "Sq Ft", "RBA", ""]) {
+    assert.equal(isRateHeader(h), false, h + " should not read as a rate");
+  }
+});
+
+test("the dry-run file's headers now suggest correctly, and $/SF claims nothing", () => {
+  const headers = ["Property Name", "Property Address", "Type", "Trans", "Close Date",
+    "Sale Price", "Bldg SF", "$/SF", "Cap Rate (%)", "Yr Built", "Tenancy", "Comments"];
+  const { mapping } = suggestMapping(headers);
+  assert.equal(mapping.property_address, "address");
+  assert.equal(mapping.type, "property_type");
+  assert.equal(mapping.trans, "transaction", "Trans is a required field and must suggest");
+  assert.equal(mapping.close_date, "deal_date");
+  assert.equal(mapping.sale_price, "price");
+  assert.equal(mapping.bldg_sf, "size_sqft", "Bldg SF is the common size header");
+  assert.equal(mapping.cap_rate, "cap_rate", "the stripped (%) must not leave a stub that misses the exact match");
+  assert.equal(mapping.yr_built, "year_built");
+  assert.equal(mapping.comments, "notes");
+  assert.equal(Object.values(mapping).includes("size_sqft") &&
+    Object.entries(mapping).find(([, t]) => t === "size_sqft")[0], "bldg_sf",
+    "size must come from Bldg SF, never from $/SF");
+});
+
+test("$/SF alone still suggests nothing for size", () => {
+  const { mapping } = suggestMapping(["Property Address", "$/SF"]);
+  assert.equal(Object.values(mapping).includes("size_sqft"), false);
+});
+
+test("a plain SF column still suggests size", () => {
+  const { mapping } = suggestMapping(["Property Address", "SF"]);
+  assert.equal(mapping.sf, "size_sqft");
+});
+
+test("a rate-shaped header that names our own column exactly still maps", () => {
+  // "Price Per Unit" is rate-shaped AND the literal name of a real
+  // multifamily column — the guard blocks alias claims only.
+  const { mapping } = suggestMapping(["Price Per Unit"]);
+  assert.equal(mapping.price_per_unit, "price_per_unit");
+});
+
+test("symbol suffixes normalize away without leaving underscore stubs", () => {
+  assert.equal(normalizeHeader("Cap Rate (%)"), "cap_rate");
+  assert.equal(normalizeHeader("Sale Price ($)"), "sale_price");
+  assert.equal(normalizeHeader("Bldg  SF"), "bldg_sf");
+  assert.equal(normalizeHeader("($)"), "", "a header that is ONLY symbols still vanishes to the positional key");
+});
+
+// --- no-value markers read as an empty cell ----------------------------------
+
+test("an explicit no-value marker in a money cell reads as blank, not an error", () => {
+  for (const v of ["Undisclosed", "not disclosed", "N/A", "na", "None", "Confidential", "Withheld", "-", "—"]) {
+    const r = parseMoney(v);
+    assert.equal(r.ok, true, v + " should read as no value");
+    assert.equal(r.value, null);
+  }
+});
+
+test("shorthand still gets the 1.2M advice; other text gets the undisclosed hint", () => {
+  for (const v of ["1.2M", "450k", "1.5 million", "$2.3MM"]) {
+    const r = parseMoney(v);
+    assert.equal(r.ok, false, v + " must still be refused");
+    assert.match(r.error, /1\.2M/, v + " should get the shorthand advice");
+  }
+  const other = parseMoney("Call broker");
+  assert.equal(other.ok, false);
+  assert.match(other.error, /leave the cell blank/,
+    "text that is not shorthand should get the undisclosed hint, not the 1.2M advice");
+});
+
+test("no-value markers read as blank in plain numbers too", () => {
+  assert.deepEqual(parseNumber("N/A"), { ok: true, value: null });
+  assert.deepEqual(parseNumber("—"), { ok: true, value: null });
+});
+
+test("a sale row with an Undisclosed price imports as an unpriced deal", () => {
+  const row = {
+    address: "2455 E Lanark St, Meridian, ID 83642",
+    property_type: "Industrial", transaction: "sale",
+    deal_date: "2024-09-12", price: "Undisclosed", size_sqft: "41,000",
+  };
+  const r = normalizeRow(row);
+  assert.equal(r.ok, true, JSON.stringify(r.errors || []));
+  assert.equal(r.row.price, null);
+  assert.equal(r.row.size_sqft, 41000);
 });

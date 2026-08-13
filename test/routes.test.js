@@ -186,6 +186,19 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The "Manage billing" button 400s for a comped account (no Stripe
+  // customer behind either "admin" or "tester" status) — this pins that the
+  // emitted hydration script actually excludes BOTH, matching index.html's
+  // hasBillingHistory(). A prior version excluded only pro.admin, which left
+  // a comped tester clicking a button that always fails. A markup-only check
+  // (no redemption call needed) so it costs nothing against the route's
+  // per-IP limiter.
+  await t.test("the account-nav billing button excludes comped testers, not just admins", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    assert.match(html, /pro\.status\)&&pro\.status!=="none"&&!pro\.admin&&!pro\.tester/,
+      "ACCOUNT_NAV_JS's navBilling visibility must exclude pro.tester alongside pro.admin");
+  });
+
   // /brokers' "Upgrade to Pro" link hides itself for members via the shared
   // hydration script. Two halves that must both exist or the link either
   // never hides (id missing from the script) or never renders (id missing
@@ -237,6 +250,10 @@ test("bare environment", async (t) => {
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/vault/benchmarks"],
       ["POST",   "/api/vault/inspect"],
+      // Writes broker_profiles, whose display_name/company become PUBLIC the
+      // moment somebody opts in — so an unauthenticated caller reaching it
+      // could put words in a named broker's mouth.
+      ["POST",   "/api/vault/identity"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {
@@ -273,6 +290,42 @@ test("bare environment", async (t) => {
       body: JSON.stringify({ csv: "address\n1 A St, Boise, ID\n" }),
     });
     assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
+  });
+
+  // Per-comp edit/delete is a new door into the same private table as every
+  // other vault route, so it gets the same 401-before-anything-else proof:
+  // openVault must refuse before the id in the query string, or the JSON
+  // body, is ever read. The export.csv gate test lives beside the route that
+  // owns it, not here.
+  await t.test("the comp edit routes refuse an anonymous caller", async () => {
+    for (const method of ["PATCH", "DELETE"]) {
+      const r = await fetch(srv.base + "/api/vault/comp?id=00000000-0000-0000-0000-000000000000", {
+        method,
+        headers: { "content-type": "application/json" },
+        body: method === "PATCH" ? JSON.stringify({ price: 1 }) : undefined,
+      });
+      assert.equal(r.status, 401, method + " must refuse before it reads anything");
+    }
+  });
+
+  // Same door, different verb: adding one comp by hand goes through the same
+  // openVault gate as everything else here, and must refuse before the JSON
+  // body is ever parsed.
+  await t.test("the add-comp route refuses an anonymous caller", async () => {
+    const r = await fetch(srv.base + "/api/vault/comp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ address: "1 A St, Boise, ID" }),
+    });
+    assert.equal(r.status, 401);
+  });
+
+  // The whole-book export. Same gate, same order: an anonymous caller must
+  // not learn whether the vault export exists before learning they aren't
+  // signed in.
+  await t.test("the vault export refuses an anonymous caller", async () => {
+    const r = await fetch(srv.base + "/api/vault/export.csv");
+    assert.equal(r.status, 401);
   });
 
   // NOT COVERED HERE, and deliberately: the 403-not-a-broker and
@@ -863,6 +916,216 @@ test("market explorer with the guest gate disabled", async (t) => {
     // Past the gate, stopped by the absent API key — never 403.
     assert.equal(r.status, 500);
     const j = await r.json();
-    assert.match(j.error, /ANTHROPIC_API_KEY/);
+    // Deliberately vendor-agnostic: the guard names whichever provider is
+    // active (PROVIDER.apiKeyEnv), so pinning one vendor here would make an
+    // unrelated SEARCH_PROVIDER default change look like a gate regression.
+    // What this test cares about is the SHAPE: a missing-key 500, not a 403.
+    assert.match(j.error, /is missing the \w+_API_KEY/);
   });
+});
+
+// --- The tester passkey -----------------------------------------------------
+//
+// A shared code that comps Pro to a SIGNED-IN account, separate from
+// ADMIN_KEY (which also unlocks /admin, /dev and /contacts). entitlements.js
+// already proves what the flag grants; this proves the door is wired: that it
+// does not exist when unconfigured, that it refuses an anonymous caller and a
+// wrong code, and that a correct code actually reaches /api/config.
+//
+// No Supabase in this environment, so accounts and the pro_tester flag live in
+// the git-ignored account-store.json fallback — which is exactly why this can
+// run for free with no database.
+
+test("tester passkey", async (t) => {
+  await t.test("the route does not exist when TESTER_PASSKEY is unset", async () => {
+    const srv = await boot({});
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/api/redeem-passkey", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ passkey: "anything" }),
+    });
+    assert.equal(r.status, 404, "an unconfigured deployment must not answer this route");
+
+    // /api/config must say so too, so the pricing modal can hide the "Have a
+    // code?" row rather than show a control that can only ever fail. A plain
+    // /api/config fetch, not a redeem call, so it costs nothing against the
+    // route's per-IP limiter.
+    const cfg = await (await fetch(srv.base + "/api/config")).json();
+    assert.equal(cfg.pro.testerPasskey, false);
+  });
+
+  await t.test("configured: refuses anonymous and wrong codes, accepts the right one", async () => {
+    const PASSKEY = "let-me-in-please";
+    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: PASSKEY });
+    t.after(() => srv.stop());
+
+    const redeem = (passkey, cookie) => fetch(srv.base + "/api/redeem-passkey", {
+      method: "POST",
+      headers: Object.assign({ "content-type": "application/json" }, cookie ? { cookie } : {}),
+      body: JSON.stringify({ passkey }),
+    });
+
+    // Anonymous, even with the right code: the grant lives on an account.
+    const anon = await redeem(PASSKEY);
+    assert.equal(anon.status, 401);
+
+    // Make a real account and keep its session cookie.
+    const email = `tester-${Date.now()}@example.com`;
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "correct-horse-battery" }),
+    });
+    assert.equal(signup.status, 200, "signup should succeed against the file store");
+    const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_session="), "expected a session cookie, got " + cookie);
+
+    // Signed in but wrong code.
+    const wrong = await redeem("not-the-passkey", cookie);
+    assert.equal(wrong.status, 401);
+
+    // Not a tester yet.
+    const before = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(before.pro.tester, false);
+    assert.equal(before.pro.isPro, false);
+    // A configured deployment reports the door exists, independent of
+    // whether THIS caller has redeemed it — that is what lets the pricing
+    // modal show the row before anyone has typed a code.
+    assert.equal(before.pro.testerPasskey, true);
+
+    // The right code, signed in.
+    const ok = await redeem(PASSKEY, cookie);
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).ok, true);
+
+    // ...and it reaches the entitlements the UI reads.
+    const after = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(after.pro.tester, true);
+    assert.equal(after.pro.isPro, true);
+    assert.equal(after.pro.status, "tester");
+    // The one capability a tester is deliberately denied.
+    assert.equal(after.pro.canUseVault, false);
+
+    // Redeeming twice is idempotent, not an error.
+    const again = await redeem(PASSKEY, cookie);
+    assert.equal(again.status, 200);
+    assert.equal((await again.json()).already, true);
+
+    // The idempotency check must run BEFORE the secret compare, not after:
+    // once someone already has access, even a WRONG code must still answer
+    // "already: true" rather than "incorrect code" (which would happen if a
+    // rotated or mistyped passkey were compared first). This is the only
+    // assertion that actually pins the ordering the route's comment claims —
+    // the same-correct-code idempotency check above would still pass if a
+    // future edit swapped the two checks.
+    //
+    // Call budget: this brings the route's per-IP total in this test to 5
+    // (anon, wrong, ok, again, this one), exactly the 5-per-15-minute limit
+    // (rateLimited blocks only when hits > max, so the 5th still goes
+    // through). There is no headroom left in this test for another
+    // /api/redeem-passkey call — a new case needs its own boot() or a fresh
+    // client IP.
+    const wrongAfter = await redeem("still-not-the-passkey", cookie);
+    assert.equal(wrongAfter.status, 200);
+    assert.equal((await wrongAfter.json()).already, true);
+  });
+});
+
+// --- SEARCH_PROVIDER wiring --------------------------------------------------
+//
+// entitlements.js/comp-gate.js/stripe.js prove decisions are right in
+// isolation; this file exists to prove they are actually wired to a route.
+// The capability descriptor has exactly that hazard: capabilities.searchBudget
+// could be correct in search-provider-gemini.js and completely ignored by
+// server.js, and every unit test would still pass. /healthz reporting
+// `provider` and `search_budget` off PROVIDER.capabilities is the only
+// observable proof the server consults the descriptor at all, so that is what
+// gets asserted here rather than anything about search-provider-gemini.js
+// itself.
+
+test("SEARCH_PROVIDER wiring", async (t) => {
+  await t.test("gemini boots and reports it cannot cap the search budget", async () => {
+    const srv = await boot({ SEARCH_PROVIDER: "gemini", GEMINI_API_KEY: "test-key" });
+    try {
+      const body = await (await fetch(srv.base + "/healthz")).json();
+      assert.equal(body.provider, "gemini");
+      // Read off PROVIDER.capabilities, so a server.js that stopped consulting
+      // the descriptor reports the wrong value and fails here.
+      assert.equal(body.search_budget, false);
+    } finally { srv.stop(); }
+  });
+
+  await t.test("anthropic reports that it CAN cap the search budget", async () => {
+    // The other half of the capability assertion. Both states have to be pinned:
+    // a server.js that hardcoded either value would pass one of these two and
+    // fail the other, which is what makes the pair meaningful rather than one
+    // assertion that happens to match a constant.
+    const srv = await boot({ SEARCH_PROVIDER: "anthropic" });
+    try {
+      const body = await (await fetch(srv.base + "/healthz")).json();
+      assert.equal(body.provider, "anthropic");
+      assert.equal(body.search_budget, true);
+    } finally { srv.stop(); }
+  });
+
+  await t.test("the default provider is gemini", async () => {
+    // Flipped from anthropic on 2026-08-10 after the phase 2 validation gate.
+    // Pinned deliberately: the default decides what every real search costs and
+    // which vendor a deployment depends on, so it should never change silently.
+    const srv = await boot({});
+    try {
+      assert.equal((await (await fetch(srv.base + "/healthz")).json()).provider, "gemini");
+    } finally { srv.stop(); }
+  });
+
+  await t.test("an unrecognized SEARCH_PROVIDER refuses to boot", async () => {
+    // boot() throws "server exited early" when the child exits before /healthz.
+    // A silent fallback to anthropic would boot healthy and fail this test.
+    await assert.rejects(
+      () => boot({ SEARCH_PROVIDER: "bogus" }),
+      /exited early/,
+      "must exit rather than silently pick a provider",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Every entitlement flag getEntitlements reads must survive getSessionUser
+//
+// getSessionUser returns a NARROWED user object on purpose — that narrowing is
+// what stops a password hash reaching a caller. The cost is a trap the
+// function's own comment warns about, and which vault_beta walked straight
+// into on 2026-08-12: the column was migrated, the grant was set on a real
+// account, getEntitlements read `user.vault_beta`, and the answer was
+// undefined because the narrowed object never carried it. Boolean(undefined)
+// is false, so a granted broker saw no vault and NOTHING failed anywhere.
+//
+// The unit tests could not catch it: they hand `vaultBeta` straight to
+// computeEntitlements, which is the far side of the missing plumbing. This
+// reads the source instead, and pins the pairing itself.
+// ---------------------------------------------------------------------------
+
+test("every user flag entitlements reads is carried by getSessionUser", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  // The shape getEntitlements uses to lift a flag off the session user.
+  const reads = [...src.matchAll(/Boolean\(user && user\.([a-z_]+)\)/g)].map((m) => m[1]);
+  assert.ok(reads.length >= 2,
+    "expected getEntitlements to read at least pro_tester and vault_beta; found " + JSON.stringify(reads));
+
+  // The object literal getSessionUser returns.
+  const start = src.indexOf("async function getSessionUser");
+  assert.ok(start >= 0, "getSessionUser should still exist");
+  const end = src.indexOf("// Route guard: replies 401 itself", start);
+  assert.ok(end > start, "could not bound getSessionUser");
+  const body = src.slice(start, end);
+
+  for (const flag of new Set(reads)) {
+    assert.match(body, new RegExp("\\b" + flag + ":"),
+      `getEntitlements reads user.${flag}, but getSessionUser does not carry it — ` +
+      "the flag would read as undefined and the feature would be silently inert");
+  }
 });

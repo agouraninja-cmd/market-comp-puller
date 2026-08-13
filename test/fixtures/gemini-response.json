@@ -1,0 +1,18 @@
+{
+  "id": "v1_fixture",
+  "status": "completed",
+  "object": "interaction",
+  "model": "gemini-3.6-flash",
+  "usage": {
+    "total_tokens": 11608,
+    "total_input_tokens": 4207,
+    "total_output_tokens": 928,
+    "total_thought_tokens": 6473,
+    "total_cached_tokens": 1251
+  },
+  "steps": [
+    { "type": "thought", "signature": "EvYCCvMCARFNMg9SjPBY6ueuuk2S3tgw" },
+    { "type": "model_output", "content": [{ "type": "text", "text": "Here is the report." }] },
+    { "type": "model_output", "content": [{ "type": "text", "text": "{\"comps\":[]}" }] }
+  ]
+}

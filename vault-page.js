@@ -178,6 +178,21 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
    precedent, not a new one. */
 .pubbtn.on{border-color:transparent;background:var(--ok-bg);color:var(--ok-text)}
 .pubbtn[disabled]{opacity:.5;cursor:default}
+/* Row actions: plain text links, not buttons. The row already carries one
+   button (Publish); giving Edit/Delete the same weight would put three
+   competing calls to action on one line. */
+.lnk{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;
+  color:var(--ink-3);cursor:pointer;text-decoration:underline;white-space:nowrap}
+.lnk:hover{color:var(--ink)}
+.lnk.danger{color:var(--red)}
+.lnk.danger:hover{color:var(--red-deep)}
+td.rowact{white-space:nowrap}
+/* The inline edit row: one form spanning every column, not per-cell inputs —
+   a comp carries fields (cap_rate, tenancy, year_built, notes) the table has
+   no column for at all, so a per-cell form could not hold them. */
+.editrow label{display:flex;flex-direction:column;gap:2px;font-size:var(--t6);color:var(--ink-3)}
+.editrow input{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:var(--t5);background:var(--card);color:var(--ink);width:100%}
 .hide{display:none}
 /* ---- The market rollup: the page's lead view ----------------------------
    A broker with 400 comps learns nothing from 400 rows. This is the index to
@@ -377,12 +392,32 @@ ${THEME_BOOT}
         <div class="lcell"><span class="llab">Priced sales</span>
           <div class="lfig" id="cPriced">0</div><div class="lsub" id="cPricedPct"></div></div>
         <div class="lcell"><span class="llab">Median $/SF</span>
-          <div class="lfig" id="cMed">&mdash;</div><div class="lsub">sales only</div></div>
+          <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
         <div class="lcell mid"><span class="llab">Published</span>
           <div class="lfig" id="cPub">0</div><div class="lsub">only if you choose it</div></div>
       </div>
       <p class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
         public records, and nothing is published unless you choose it.</p>
+      <!-- The credit identity, stated once and shown BEFORE any publish.
+           It sits with the trust line because it answers the same question
+           that line does — what leaves here, and under whose name — and
+           because it is meaningless until there is a book to publish from.
+           #creditLine is written by renderIdentity() from the server's own
+           creditedTo, never assembled here, so the page cannot promise a
+           name the publish route would not actually use. -->
+      <p class="note" id="creditLine"></p>
+      <div id="idForm" class="hide">
+        <div class="row">
+          <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
+          <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
+          <button class="btn ghost" id="idSave">Save</button>
+          <button class="btn ghost" id="idCancel">Cancel</button>
+        </div>
+        <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
+          when you have one, otherwise to your name. This is not a public listing &mdash; it only
+          names the credit on comps you choose to publish.</p>
+        <p class="msg bad hide" id="idMsg"></p>
+      </div>
     </div>
     <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
       The figures below are drawn from those, so your full book may be larger.</p>
@@ -464,8 +499,15 @@ ${THEME_BOOT}
                 <label>Type <select id="covType"></select></label>
                 <button class="btn ghost" id="covAdd">Watch this market</button>
               </div>
-              <p class="fine" style="margin-top:var(--s3)">Removing every market re-fills
-                earned ones on your next visit.</p>
+              <!-- Plain-language rewrite (2026-08-12). The old line read
+                   "Removing every market re-fills earned ones on your next
+                   visit", which assumes the reader knows markets can be
+                   "earned". They can: seedCoverageFromSubmissions refills
+                   coverage from a broker's approved comps, but only when the
+                   list is empty and only on a visit that does not pass
+                   noseed=1. Say the trade, not the mechanism. -->
+              <p class="fine" style="margin-top:var(--s3)">Remove all of them and any market
+                where you have submitted a comp comes back on your next visit.</p>
             </div></div>
           </div>
         </div>
@@ -496,6 +538,46 @@ ${THEME_BOOT}
         <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
       </div>
       <div id="res"></div>
+
+      <!-- One comp at a time, through the SAME route the importer's own rows
+           land on (POST /api/vault/comp -> normalizeRow), so a hand-typed
+           comp is held to the exact rules a CSV row is: same required
+           fields, same number parsing, same duplicate check. Collapsed by
+           default beside the uploader — most brokers get here with a
+           spreadsheet, and this is the fallback for the one comp that
+           isn't in one. -->
+      <details class="dbox" id="addOneSec">
+        <summary>Or add one comp by hand</summary>
+        <div class="row" style="margin-top:var(--s4)">
+          <label>Address <input id="addComp_address" type="text"/></label>
+          <label>Type <select id="addComp_property_type"></select></label>
+          <label>Sale/lease <select id="addComp_transaction">
+            <option value="sale">Sale</option>
+            <option value="lease">Lease</option>
+          </select></label>
+          <label>Date <input id="addComp_deal_date" type="date"/></label>
+          <label>Price <input id="addComp_price" type="text" style="width:110px"/></label>
+          <label>Size (SF) <input id="addComp_size_sqft" type="text" style="width:90px"/></label>
+          <label>Cap rate <input id="addComp_cap_rate" type="text" style="width:70px" placeholder="optional"/></label>
+          <label>Tenancy <input id="addComp_tenancy" type="text" placeholder="optional"/></label>
+          <label>Year built <input id="addComp_year_built" type="text" style="width:70px" placeholder="optional"/></label>
+          <label>Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
+          <label>Lat <input id="addComp_lat" type="text" style="width:90px" placeholder="optional"/></label>
+          <label>Lng <input id="addComp_lng" type="text" style="width:90px" placeholder="optional"/></label>
+          <!-- Repopulated on every property-type change; its own nested .row
+               so the type's fields still get the same gap as the base ones. -->
+          <div class="row" id="addTypeFields" style="width:100%"></div>
+          <button class="btn ghost" id="addCompBtn" type="button">Add comp</button>
+        </div>
+        <!-- Its own message, NOT #compMsg. #compMsg sits at the top of
+             #compsSec, well below this panel in document order — for a
+             broker who already has a book, the market rollup and gut-check
+             cards render in between, so a message written there can land
+             out of view of the button that was just clicked, with no
+             scroll and nothing on screen to say the click did anything.
+             aria-live announces it without moving focus. -->
+        <p id="addCompMsg" class="msg hide" aria-live="polite"></p>
+      </details>
     </div>
 
     <div id="mapSec" class="mappanel hide">
@@ -524,12 +606,20 @@ ${THEME_BOOT}
       <h2>Your comps</h2>
       <!-- One filter row above everything it scopes: the chart, the repeat-
            property list and the table all read the same slice, so they can
-           never disagree about which comps are on screen. -->
+           never disagree about which comps are on screen. The export sits
+           here rather than inside the closed uploader, and its label says
+           "all" on purpose: this row is a FILTER, and a button reading just
+           "Export" beside a filtered view would leave a broker guessing
+           whether it exports the slice on screen or the whole book. It does
+           not: it always exports everything. It is a plain href, not a
+           fetch, so the session cookie rides along and the download still
+           works even if the page's own script has failed. -->
       <div class="row">
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
+        <a class="btn ghost" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
            is a button that opens it; a cell with nothing behind it renders as
@@ -548,13 +638,18 @@ ${THEME_BOOT}
         <summary>Properties you have more than one deal on</summary>
         <div id="repRows"></div>
       </details>
+      <!-- #res, the obvious message target for a row action, lives inside
+           #addSec, a panel that ships CLOSED — a message written there is
+           invisible to a broker who never opened the uploader. Edit and
+           Delete get their own target instead. -->
+      <p id="compMsg" class="msg hide" aria-live="polite"></p>
       <div class="tw"><table id="tbl">
         <thead><tr>
           <th data-k="address">Address</th><th data-k="market">Market</th>
           <th data-k="property_type">Type</th><th data-k="transaction">Deal</th>
           <th data-k="deal_date">Date</th><th data-k="price" class="num">Price</th>
           <th data-k="size_sqft" class="num">Size</th><th data-k="price_per_sqft" class="num">$/SF</th>
-          <th data-k="published">Public</th>
+          <th data-k="published">Public</th><th></th>
         </tr></thead><tbody id="tbody"></tbody><tfoot id="tblFoot"></tfoot>
       </table></div>
       <!-- "above" used to point at a section in plain view. The uploader is a
@@ -652,6 +747,10 @@ ${THEME_BOOT}
   var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
   var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false,bovsLoaded=false;
   var bench=null,benchFailed=false,benchLoaded=false;
+  // The one comp row currently swapped for an inline edit form, or null. Only
+  // one at a time: two open forms would double the "only changed fields
+  // travel" bookkeeping in saveComp for no real benefit.
+  var editingId=null;
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -696,6 +795,49 @@ ${THEME_BOOT}
   var psfList=function(list){
     return list.map(psfOf).filter(function(v){return v!=null});
   };
+  // The $/SF values a median would be taken over, AND how many property types
+  // they span.
+  //
+  // $/SF IS NOT COMPARABLE ACROSS PROPERTY TYPES, so a median that mixes them
+  // is an artifact rather than a statistic: on the first realistic test book
+  // industrial (~$78), office (~$157) and retail (~$230) blended into a
+  // headline "$117/SF", a figure describing no building in the book and
+  // sitting in the largest type on the page. Counted over the PRICED SALES
+  // only — the rows that actually feed the median — so an unpriced lease in a
+  // second type never suppresses a figure it could not have moved.
+  //
+  // Same instinct as the rollup card that shows its comp count when it has no
+  // priced sales: where a number would be fabricated, say what is true
+  // instead. Every caller (the ledger tile, the reading strip, the table
+  // footer) reads this one helper, which is also what keeps the strip and the
+  // footer quoting the same thing — a rule this file is required to hold.
+  //
+  // The dominant field is the type most of the priced sales are in, and it
+  // exists for the LEDGER TILE ALONE — see the tile's own note in apply() for
+  // why that one surface narrows where the other two decline. (No backticks
+  // anywhere in this file, comments included: the whole page is one template
+  // literal, and a pair of them around a word closes it.)
+  var psfStats=function(list){
+    var vals=[],byType={},types=0;
+    (list||[]).forEach(function(c){
+      var v=psfOf(c);
+      if(v==null)return;
+      vals.push(v);
+      var t=c&&c.property_type;
+      if(!t)return;
+      if(!byType[t]){byType[t]=[];types++;}
+      byType[t].push(v);
+    });
+    // Ties break on the type NAME, not on object key order: key order follows
+    // whatever order the rows arrived in, so two loads of the same book could
+    // otherwise name different types on the same figure and read as the page
+    // changing its mind.
+    var dom=null;
+    Object.keys(byType).sort().forEach(function(t){
+      if(!dom||byType[t].length>dom.values.length)dom={type:t,values:byType[t]};
+    });
+    return {values:vals,types:types,mixed:types>1,dominant:dom};
+  };
   var yearOf=function(c){
     var m=/^(\\d{4})/.exec(String(c.deal_date||""));
     return m?m[1]:null;
@@ -732,12 +874,38 @@ ${THEME_BOOT}
     // the rollup and chart read, so the strip can never disagree with the
     // panels below it. Whole-book always; the filter never narrows it.
     var ups=o.j.uploads||[];
-    var ps=psfList(comps),med=median(ps);
+    var st=psfStats(comps),ps=st.values,med=median(ps);
     $("cImports").textContent=ups.length?ups.length+" import"+(ups.length===1?"":"s"):"";
     $("cPriced").textContent=ps.length;
     $("cPricedPct").textContent=comps.length?Math.round(ps.length*100/comps.length)+"% of book":"";
-    $("cMed").textContent=med!=null?psf0(med):"\\u2014";
+    // A book spanning several property types has no single $/SF — industrial,
+    // office and retail are priced in what amount to different units. This
+    // tile NARROWS rather than declining: the figure is the median of the type
+    // most of the priced sales are in, and the sub-line names that type and
+    // how much of the book it covers.
+    //
+    // The reading strip and the table footer decline the same figure outright,
+    // and the difference is deliberate (owner's call, 2026-08-12). Those two
+    // seal the ROWS ON SCREEN, so a dominant-type median under a mixed table
+    // would describe a subset the reader can see they did not filter to. This
+    // tile describes the BOOK, is the page's headline number, and most real
+    // books span types — so declining here would leave a permanent dash in the
+    // largest slot on the page rather than answering a narrower question
+    // honestly. Both surfaces still come from the one psfStats helper, so
+    // neither can quote a figure the other contradicts.
+    var dom=st.dominant,domMed=dom?median(dom.values):null;
+    if(st.mixed&&domMed!=null){
+      $("cMed").textContent=psf0(domMed);
+      $("cMedSub").textContent=dom.type+" \\u00b7 "+dom.values.length+" of "+ps.length+" sales";
+    }else{
+      $("cMed").textContent=med!=null?psf0(med):"\\u2014";
+      // Naming the type on a single-type book too, so the figure never sits
+      // there unqualified — and so the mixed case reads as the same tile
+      // answering a narrower question, not as a different tile.
+      $("cMedSub").textContent=(dom&&med!=null)?dom.type+" \\u00b7 sales only":"sales only";
+    }
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+    renderIdentity(o.j.identity);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
     // counting part of the book, and a broker reading "42 comps in Boise"
@@ -753,7 +921,15 @@ ${THEME_BOOT}
     // calls load()) still populates the Leads section on first paint.
     if(!leadsLoaded){ leadsLoaded=true; loadLeads(); }
     if(!bovsLoaded){ bovsLoaded=true; loadBovs(); }
-    if(!benchLoaded){ benchLoaded=true; loadBenchmarks(); }
+    // Benchmarks are asked for PER BUCKET, so an empty vault has nothing to
+    // ask about and loadBenchmarks bails. Marking it loaded anyway is what
+    // broke the first run: a broker who imported into an empty vault got the
+    // early return, kept benchLoaded=true, and never saw a gut check until
+    // they happened to reload the page. The comps.length guard leaves the
+    // flag false until there is actually a bucket, so the apply() that
+    // follows the first import is the one that loads them. This is why the
+    // gut check looked like it was failing in thin markets when it was not.
+    if(!benchLoaded && comps.length){ benchLoaded=true; loadBenchmarks(); }
     render();
   }
 
@@ -774,6 +950,33 @@ ${THEME_BOOT}
       return '<option value="'+esc(v)+'"'+(v===cur?" selected":"")+">"+esc(v)+"</option>"}).join("");
   }
 
+  function compById(id){
+    for(var i=0;i<comps.length;i++){ if(String(comps[i].id)===String(id))return comps[i]; }
+    return null;
+  }
+
+  // Every field PATCH /api/vault/comp accepts. The whole row becomes one form
+  // spanning the table's colspan, not ten per-cell inputs: a comp carries
+  // fields (cap_rate, tenancy, year_built, notes) the table itself has no
+  // column for, so a per-cell form could never reach them.
+  var EDIT_FIELDS=["address","property_type","transaction","deal_date",
+                   "price","size_sqft","cap_rate","tenancy","year_built","notes"];
+  var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
+    deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
+    tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
+
+  function editRow(c){
+    var fields=EDIT_FIELDS.map(function(f){
+      var v=c[f]==null?"":c[f];
+      return "<label>"+esc(EDIT_LABELS[f]||f)+
+        '<input type="text" id="edit_'+f+'" value="'+escA(v)+'"/></label>';
+    }).join("");
+    return '<tr class="editrow"><td colspan="10"><div class="row">'+fields+
+      '<button class="btn ghost" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
+      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button>'+
+      "</div></td></tr>";
+  }
+
   function render(){
     var rows=view().slice().sort(function(a,b){
       var x=a[sortK],y=b[sortK];
@@ -791,6 +994,11 @@ ${THEME_BOOT}
     renderChart(rows);
     renderRepeats(rows);
     $("tbody").innerHTML=rows.map(function(c){
+      // A row being edited replaces itself with the form, rather than the
+      // form appearing beside it: two representations of the same comp on
+      // screen at once is what "only changed fields travel" was written to
+      // avoid confusion about.
+      if(editingId===c.id)return editRow(c);
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
       // it goes through a button and a confirm.
@@ -801,22 +1009,38 @@ ${THEME_BOOT}
         ? ' <span class="gcOut" title="'+escA(Math.abs(gutOutliers[c.id].pct)+"% "+
             (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
         : "";
+      var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
+        '">Edit</button> <button class="lnk danger" data-del-comp="'+esc(c.id)+'">Delete</button></td>';
       return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
         "</td><td>"+esc(c.transaction)+"</td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
-        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td></tr>";
+        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+actions+"</tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
     // current view, sealed under a double rule — the same figure the market
     // cards and the year chart lead with, so the three views read against
     // each other. No priced sales = no row; a double rule over a blank would
     // claim a figure that does not exist.
-    var vps=psfList(rows),vmed=median(vps);
-    renderStrip(rows,vps,vmed);
-    $("tblFoot").innerHTML=vps.length
-      ? '<tr><td class="lab" colspan="7">Median of '+vps.length+" priced sale"+(vps.length===1?"":"s")+
-        (rows.length===comps.length?"":" in this view")+'</td><td class="num">'+psf(vmed)+"</td><td></td></tr>"
-      : "";
+    var vst=psfStats(rows),vps=vst.values,vmed=median(vps);
+    renderStrip(rows,vps,vmed,vst);
+    // Three states, two of which still draw the closing rule: a view spanning
+    // several property types says why there is no figure rather than sealing
+    // the column with one, because the $/SF it would average is measured in
+    // different units row to row.
+    //
+    // ONE row template with the label and the number varying, deliberately
+    // not two branches emitting their own <tr>: the footer's column count is
+    // checked by finding a single label cell with a colspan in this file and
+    // counting the cells after it, so a second copy silently breaks that
+    // check (it did, on the first attempt at this change). No backticks in
+    // this block either — the whole page is one template literal.
+    $("tblFoot").innerHTML=!vps.length ? "" :
+      '<tr><td class="lab" colspan="7">'+
+      (vst.mixed
+        ? "No single median across "+vst.types+" property types \\u2014 filter by type to compare"
+        : "Median of "+vps.length+" priced sale"+(vps.length===1?"":"s")+
+          (rows.length===comps.length?"":" in this view"))+
+      '</td><td class="num">'+(vst.mixed?"\\u2014":psf(vmed))+"</td><td></td><td></td></tr>";
     Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
       var on=th.getAttribute("data-k")===sortK;
       th.innerHTML=th.textContent.replace(/[ \\u25b2\\u25bc]+$/,"")+(on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"");
@@ -1068,14 +1292,18 @@ ${THEME_BOOT}
       '<div class="sfig'+(ok?" ok":"")+'">'+fig+"</div>"+
       (sub?'<div class="ssub">'+sub+"</div>":"")+"</"+tag+">";
   }
-  function renderStrip(rows,vps,vmed){
+  function renderStrip(rows,vps,vmed,vst){
     var box=$("readStrip");
     // Nothing on screen means nothing to summarise. The empty-table line below
     // says what is going on; a strip of dashes above it would not.
     if(!rows.length){box.className="strip hide";box.innerHTML="";return;}
     var cells=[];
-    cells.push(stripCell("Median $/SF",vps.length?psf(vmed):"&mdash;",
-      vps.length?vps.length+" priced sale"+(vps.length===1?"":"s"):"no priced sales",
+    // Reads the same psfStats the footer does, so the two cannot quote
+    // different things — the rule this strip has carried since it shipped.
+    var mixed=!!(vst&&vst.mixed);
+    cells.push(stripCell("Median $/SF",(vps.length&&!mixed)?psf(vmed):"&mdash;",
+      mixed?vst.types+" property types":
+        (vps.length?vps.length+" priced sale"+(vps.length===1?"":"s"):"no priced sales"),
       $("chartBox").className.indexOf("hide")<0?"chartBox":""));
     var gv="&mdash;",gs="",gok=false;
     if(lastGut&&lastGut.unavailable){ gs="benchmarks unavailable"; }
@@ -1198,6 +1426,73 @@ ${THEME_BOOT}
     $("addToggle").textContent=addOpen?"Close":"+ Add comps";
     $("addToggle").setAttribute("aria-expanded",addOpen?"true":"false");
   }
+
+  // ---- The credit identity --------------------------------------------
+  //
+  // Who a published comp is credited to, stated once. It is shown BEFORE any
+  // publish rather than discovered after one, because a credit is a public
+  // claim about who someone is: "Verified &middot; via <firm>" on every report the
+  // comp reaches. Until 2026-08-12 an unstated identity silently became the
+  // account's signup name, so a broker could not have corrected it — they
+  // were never told it had happened.
+  //
+  // identity.creditedTo is the SERVER's answer, from the same creditName()
+  // the publish route calls. Never recomputed here: a page that guessed the
+  // credit could promise a name the write would not produce.
+  // (No backticks anywhere in this block: the whole page is one template
+  // literal, and one stray backtick ends it — see the file's header note.)
+  var identity={display_name:"",company:"",creditedTo:""};
+
+  function renderIdentity(idn){
+    identity=idn||{display_name:"",company:"",creditedTo:""};
+    var to=identity.creditedTo||"";
+    $("creditLine").innerHTML=to
+      ? "Comps you publish are credited to <strong>"+esc(to)+"</strong>. "+
+        '<button class="pubbtn" id="idEdit">Change</button>'
+      : "Comps you publish need a name to credit them to. "+
+        '<button class="pubbtn" id="idEdit">Add your firm</button>';
+  }
+
+  // The single writer of the form's visibility, like setAddOpen: the fields
+  // are refilled from the last known identity on every open, so a cancelled
+  // edit never leaves a half-typed firm name waiting to be saved later.
+  function setIdOpen(open){
+    if(open){
+      $("idCompany").value=identity.company||"";
+      $("idName").value=identity.display_name||"";
+      $("idMsg").className="msg bad hide";
+    }
+    $("idForm").className=open?"":"hide";
+    if(open)$("idCompany").focus();
+  }
+
+  $("creditLine").addEventListener("click",function(e){
+    if(e.target&&e.target.id==="idEdit")setIdOpen(true);
+  });
+  $("idCancel").addEventListener("click",function(){ setIdOpen(false); });
+  $("idSave").addEventListener("click",function(){
+    var body={company:$("idCompany").value,display_name:$("idName").value};
+    $("idSave").disabled=true; $("idSave").textContent="Saving\\u2026";
+    fetch("/api/vault/identity",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        $("idSave").disabled=false; $("idSave").textContent="Save";
+        if(o.s!==200){
+          $("idMsg").textContent=o.j.error||"That didn't save.";
+          $("idMsg").className="msg bad";
+          return;
+        }
+        renderIdentity({display_name:o.j.identity.display_name,
+          company:o.j.identity.company,creditedTo:o.j.creditedTo});
+        setIdOpen(false);
+      })
+      .catch(function(){
+        $("idSave").disabled=false; $("idSave").textContent="Save";
+        $("idMsg").textContent="That didn't reach the server. Nothing was changed.";
+        $("idMsg").className="msg bad";
+      });
+  });
 
   function renderUploads(ups){
     $("ups").innerHTML=ups.length?ups.map(function(u){
@@ -1514,7 +1809,21 @@ ${THEME_BOOT}
         // mapping away — and it has to happen BEFORE the summary is written,
         // since closing the panel is what makes #res visible again.
         if(onOk)onOk();
+        // Closing the mapper is not enough: #res lives inside #addSec, which
+        // ships closed, and on the mapper path nothing above has opened it —
+        // so the summary, including the line-numbered skips, was being
+        // written into a hidden panel and a broker never learned rows were
+        // dropped (found on the first real mapper import, 2026-08-10). Same
+        // rule as the non-mapper open at the top of doImport: a result must
+        // be written somewhere that is showing.
+        if(viaMapper)setAddOpen(true);
+        // "Imported N" counts what the vault actually STORED. A re-uploaded
+        // book is the ordinary case, not an error, so the rows it already
+        // had are stated plainly beside it rather than folded into the
+        // imported count — which is what used to happen, and which told a
+        // broker 16 comps had landed when none had.
         var bits=["Imported "+j.imported+" comp"+(j.imported===1?"":"s")];
+        if(j.already)bits.push(j.already+(j.already===1?" was":" were")+" already in your vault");
         if(j.skipped)bits.push(j.skipped+" row"+(j.skipped===1?"":"s")+" skipped");
         if(j.duplicates)bits.push(j.duplicates+" duplicate"+(j.duplicates===1?"":"s")+" in the file");
         // The template's own # notes, normally. Said out loud anyway: a broker
@@ -1739,8 +2048,9 @@ ${THEME_BOOT}
   });
 
   $("pick").addEventListener("click",function(){ $("file").click() });
-  // Step 1's button is the same door as #pick — one <input type=file>, so an
-  // upload started here lands in the same handler and the same result message.
+  // Step 1's button is the same door as #pick — one file input on the whole
+  // page, so an upload started here lands in the same handler and the same
+  // result message.
   $("frPick").addEventListener("click",function(){ $("file").click() });
   $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
@@ -1767,6 +2077,113 @@ ${THEME_BOOT}
     setAddOpen(!addOpen);
     if(addOpen)$("addSec").scrollIntoView({behavior:"smooth",block:"nearest"});
   });
+
+  // ---- Add one comp by hand ----------------------------------------------
+  // Per-type columns, mirroring TYPE_COMP_FIELDS in server.js. A field the
+  // chosen type does not use is not rendered, so a broker is never asked for
+  // an Industrial clear height on a Multifamily deal. The map's own keys are
+  // also the property-type list the select offers, so there is one list to
+  // keep in step rather than two.
+  // ⚠ A FOURTH copy of the per-type field map. TYPE_COMP_FIELDS in
+  // server.js is the source of truth (VAULT.PROPERTY_TYPES/
+  // OPTIONAL_SPEC_COLUMNS in broker-vault.js are its mirror for the vault); a
+  // field added there through the add-comp-field skill will import, store,
+  // export and display correctly but never appear on this form unless this
+  // map is updated too. test/vault-page.test.js pins Object.keys(TYPE_FIELDS)
+  // against VAULT.PROPERTY_TYPES and the union of its values against
+  // VAULT.OPTIONAL_SPEC_COLUMNS, so drift here fails the build instead of
+  // shipping silently.
+  var TYPE_FIELDS={
+    Industrial:["clear_height","dock_doors"],
+    Office:["building_class","floor_plate"],
+    Retail:["center_type","anchor_tenant"],
+    Multifamily:["units","price_per_unit"],
+    Land:["lot_acres","price_per_acre","zoning"],
+    Residential:["beds_baths"],
+  };
+  var TYPE_FIELD_LABELS={clear_height:"Clear height",dock_doors:"Dock doors",
+    building_class:"Building class",floor_plate:"Floor plate",
+    center_type:"Center type",anchor_tenant:"Anchor tenant",
+    units:"Units",price_per_unit:"Price/unit",
+    lot_acres:"Lot acres",price_per_acre:"Price/acre",zoning:"Zoning",
+    beds_baths:"Beds/baths"};
+  // Everything TEMPLATE_COLUMNS/normalizeRow in broker-vault.js accepts
+  // outside the per-type fields above. Field ids are "addComp_"+this, so the
+  // submit handler below builds the row generically instead of naming every
+  // input twice.
+  var BASE_FIELDS=["address","property_type","transaction","deal_date",
+                   "price","size_sqft","cap_rate","tenancy","year_built",
+                   "notes","lat","lng"];
+  $("addComp_property_type").innerHTML=Object.keys(TYPE_FIELDS)
+    .map(function(t){return "<option>"+t+"</option>"}).join("");
+  function renderAddTypeFields(){
+    var fs=TYPE_FIELDS[$("addComp_property_type").value]||[];
+    $("addTypeFields").innerHTML=fs.map(function(f){
+      return "<label>"+esc(TYPE_FIELD_LABELS[f]||f)+
+        ' <input id="addComp_'+f+'" type="text" placeholder="optional"/></label>';
+    }).join("");
+  }
+  $("addComp_property_type").addEventListener("change",renderAddTypeFields);
+  renderAddTypeFields();
+
+  // A second message channel, deliberately not compMsg. compMsg sits at the
+  // top of #compsSec, and the add form lives inside #addSec, well above it
+  // in document order with the market rollup and gut-check panels between
+  // them for any broker who already has a book — exactly the broker "add
+  // one by hand" is for. Writing the result there would leave it below the
+  // fold with no scroll, no focus move and nothing on screen to say the
+  // click did anything. This one lives right under the button that caused
+  // it instead, and carries aria-live so a screen reader still announces it
+  // without a focus jump. compMsg itself is untouched: it is still exactly
+  // right for the row-level edit/delete controls a few pixels above it.
+  function addCompMsg(text,bad){
+    var el=$("addCompMsg");
+    el.className=text?("msg "+(bad?"bad":"ok")):"msg hide";
+    el.textContent=text||"";
+  }
+
+  async function addComp(){
+    var typeFields=TYPE_FIELDS[$("addComp_property_type").value]||[];
+    var body={};
+    BASE_FIELDS.concat(typeFields).forEach(function(f){
+      var el=$("addComp_"+f);
+      // An untouched field is omitted rather than sent as "": normalizeRow
+      // treats "left blank" and "explicitly cleared" the same way already,
+      // and sending every empty string would just be noise on the wire.
+      if(el&&el.value.trim())body[f]=el.value.trim();
+    });
+    var b=$("addCompBtn"); b.disabled=true;
+    var r;
+    try{
+      r=await fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    }catch(err){
+      // A rejected fetch (offline, DNS, a dropped connection) never reaches
+      // the r.ok check below, and without this the button was left disabled
+      // forever — the form was dead until reload.
+      b.disabled=false;
+      return addCompMsg("That didn't reach the server. Nothing was changed.",true);
+    }
+    var j=await r.json().catch(function(){return{};});
+    b.disabled=false;
+    // The server returns EVERY problem with the row, not just the first, so
+    // a broker fixing the form gets one complete list. Show it whole.
+    if(!r.ok)return addCompMsg(j.error||"Could not save that comp.",true);
+    // property_type and transaction are left alone: a broker adding several
+    // comps of the same type/deal kind in a row should not have to reselect
+    // them each time. Re-rendering the type fields for the still-selected
+    // type is what clears them, rather than a second field list to keep in
+    // step with TYPE_FIELDS.
+    BASE_FIELDS.forEach(function(f){
+      if(f==="property_type"||f==="transaction")return;
+      var el=$("addComp_"+f); if(el)el.value="";
+    });
+    renderAddTypeFields();
+    load();
+    addCompMsg("Added.");
+  }
+  $("addCompBtn").addEventListener("click",addComp);
+
   // One delegated handler for the strip: a cell that carries data-open owns a
   // panel, and opening it is all it does. The details element holds its own
   // state, so there is nothing here to keep in step with it.
@@ -1830,16 +2247,108 @@ ${THEME_BOOT}
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){
-          $("res").innerHTML='<div class="msg bad">'+esc(o.j.error||"That didn\\'t go through.")+"</div>";
+          compMsg(o.j.error||"That didn't go through.",true);
+          // The one refusal a broker can fix right here. Opening the form
+          // turns "you need a name" into the field that supplies it, instead
+          // of sending them off to find where identity is set — which, until
+          // this shipped, was nowhere.
+          if(o.j.code==="needs_credit_name")setIdOpen(true);
         }else if(o.j.published&&o.j.creditedTo){
-          $("res").innerHTML='<div class="msg ok">Published, credited to '+esc(o.j.creditedTo)+".</div>";
+          compMsg("Published, credited to "+o.j.creditedTo+".");
         }else{
-          $("res").innerHTML="";
+          compMsg("");
         }
         load();
       })
       .catch(function(){ b.disabled=false;
-        $("res").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+        compMsg("That didn't reach the server. Nothing was changed.",true); });
+  });
+
+  // ---- Row edit / delete -----------------------------------------------
+  // #compMsg carries every result from here: #res, the natural-looking
+  // target, lives inside #addSec, a panel that ships CLOSED, so a message
+  // written there would be invisible to a broker who never opened it.
+  function compMsg(text,bad){
+    var el=$("compMsg");
+    el.className=text?("msg "+(bad?"bad":"ok")):"msg hide";
+    el.textContent=text||"";
+  }
+
+  function openEditor(id){
+    if(!compById(id))return;
+    editingId=id;
+    render();
+  }
+
+  function closeEditor(){
+    editingId=null;
+    render();
+  }
+
+  async function deleteComp(id){
+    // Hard delete, no undo: confirm by name rather than with a generic prompt.
+    if(!confirm("Delete this comp? This cannot be undone."))return;
+    var r;
+    try{
+      r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
+        {method:"DELETE",credentials:"same-origin"});
+    }catch(err){
+      // On a flaky connection this used to give the broker no signal at all —
+      // the click just went nowhere.
+      return compMsg("That didn't reach the server. Nothing was changed.",true);
+    }
+    var j=await r.json().catch(function(){return{};});
+    if(!r.ok)return compMsg(j.error||"Could not delete that comp.",true);
+    load();
+    compMsg(j.unpublished
+      ? "Deleted, and withdrawn from the public records."
+      : "Deleted.");
+  }
+
+  // Sends only CHANGED fields, so an untouched input can never overwrite a
+  // value with a stale copy the page happened to be holding.
+  async function saveComp(id,before){
+    var patch={},any=false;
+    EDIT_FIELDS.forEach(function(f){
+      var el=$("edit_"+f); if(!el)return;
+      var v=el.value.trim();
+      var was=before[f]==null?"":String(before[f]);
+      if(v!==was){patch[f]=v;any=true;}
+    });
+    if(!any){closeEditor();return;}
+    var r;
+    try{
+      r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
+        method:"PATCH",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
+    }catch(err){
+      return compMsg("That didn't reach the server. Nothing was changed.",true);
+    }
+    var j=await r.json().catch(function(){return{};});
+    // 400 and 409 both carry a sentence written for the broker, and a 400
+    // lists EVERY problem with the row rather than just the first. Show it
+    // whole: "You already have this comp." tells them what to do, "Could not
+    // save" does not.
+    if(!r.ok)return compMsg(j.error||"Could not save that change.",true);
+    closeEditor();
+    load();
+    compMsg(j.unpublished
+      ? "Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it."
+      : "Saved.");
+  }
+
+  // A second delegated listener beside the publish one above, rather than a
+  // rewrite of it: each early-returns when the click was not its own kind of
+  // button, so the two coexist safely on the same element.
+  $("tbody").addEventListener("click",function(e){
+    var d=e.target.closest("button[data-del-comp]");
+    if(d)return deleteComp(d.getAttribute("data-del-comp"));
+    var s=e.target.closest("button[data-save-edit]");
+    if(s)return saveComp(s.getAttribute("data-save-edit"),compById(s.getAttribute("data-save-edit"))||{});
+    var c=e.target.closest("button[data-cancel-edit]");
+    if(c)return closeEditor();
+    var b=e.target.closest("button[data-edit]");
+    if(b)return openEditor(b.getAttribute("data-edit"));
   });
 
   $("ups").addEventListener("click",function(e){

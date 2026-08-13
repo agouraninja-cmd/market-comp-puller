@@ -26,7 +26,13 @@ the Restart rule below); a small Node proxy holds the API key so the browser
 never sees it. The public contact email across the site is
 info@compninja.co. The owner is not a licensed broker: site copy must say
 we "connect you with a local broker", never that we are one, and every
-valuation is labeled an automated estimate, never an appraisal.
+valuation is labeled an automated estimate, never an appraisal. That rule
+reaches the DATA too, not just the copy: publishing a vault comp earns the
+green "Verified · via \<name\>" badge, which means "a named broker vouched
+for this deal", so **the owner does not publish** (decided 2026-08-12) and
+the standing plan is to refuse `POST /api/vault/publish` without a license
+on the broker profile — see docs/ROADMAP.md's "Next" for the decision and
+the alternatives already rejected.
 
 There is no build step, no linter, and **no npm dependencies** — it runs on
 plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
@@ -146,6 +152,28 @@ dependency. `.env` is git-ignored — never commit it.
   endpoint is disabled. Without Supabase configured, leads live only in
   `leads.jsonl`, which ephemeral-filesystem hosts wipe on every redeploy.
   **It is also the admin identity for comped Pro** — see "Admin access" below.
+- `TESTER_PASSKEY` — optional shared passkey that comps Pro to a **signed-in**
+  account (the beta-tester door). Unset = `POST /api/redeem-passkey` 404s and
+  the pricing modal's "Have a code?" row never renders, so this is inert on any
+  deployment that never configured it. **It is not `ADMIN_KEY`**: that key also
+  unlocks `/admin`, `/dev` and `/contacts`, so it can never be the thing handed
+  to testers. Redeeming sets `users.pro_tester` (migration 022), so the grant
+  follows the ACCOUNT across devices, survives a passkey rotation, and is
+  revoked one tester at a time with a one-row `update users set pro_tester =
+  false where email = …` rather than by rotating the code for everyone.
+  Rules live in `entitlements.js`, so `npm test` covers them; four of them
+  matter. It grants everything Pro **except the broker vault** — the vault is a
+  private-data workspace with an upload endpoint, and a passkey shared with a
+  wider group is a bigger surface than "try Pro's reports". (The narrow door
+  for handing a specific broker the vault is `users.vault_beta` — see below.) It **cannot switch
+  a dark deployment on** (`PRO_ENABLED` still wins, same as the admin branch).
+  Its `status` is `"tester"`, never `"active"`, so the UI never offers a
+  billing portal to an account with no Stripe customer. And unlike the admin
+  branch it is **checked as a fallback after the subscription**, not as an
+  early short-circuit: a tester who later subscribes gets their real Stripe
+  status and their billing portal, and comped access resumes if that
+  subscription lapses. A tester is also NOT the `internal` bypass in
+  `/api/comps`, which stays header-only.
 - `RESEND_API_KEY` — optional. When set, every stored lead AND every broker
   comp submission fires an email notification via Resend's REST API (plain
   fetch, free tier is plenty). Fire-and-forget: a failing provider is logged
@@ -408,6 +436,17 @@ dependency. `.env` is git-ignored — never commit it.
   product is live but unbuyable and the deployment looks perfectly healthy,
   which is why startup logs it loudly. Rules live in `entitlements.js`
   (`parseAudience` / `inAudience`), so `npm test` covers them.
+- `SEARCH_PROVIDER` — optional `gemini` (**default since 2026-08-10**) or `anthropic`. Picks which
+  vendor runs the comp search. An unrecognized value **exits at boot** rather
+  than silently falling back, the same no-fallthrough rule `/api/checkout`'s
+  `PLANS` map follows. `MODEL` still overrides the chosen provider's default
+  model, so existing `MODEL=` deployments are unaffected. Gemini authenticates
+  with `GEMINI_API_KEY` and needs a **paid-tier** Google project: search
+  grounding 429s on the free tier, and the error names no project. Gemini
+  cannot cap its search rounds (`google_search` takes no `max_uses`), so
+  corpus-first retrieval remains a quality lever there but stops being a cost
+  lever. Server code must branch on `PROVIDER.capabilities.*`, never on
+  `PROVIDER.name`.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 ### Admin access — comped Pro for the team
@@ -458,6 +497,25 @@ a free user" button on the plan card does. Keep that button working: the team is
 permanently on the far side of the paywall, so it is the only way anyone
 internal ever renders one.
 
+This is not the only comped-Pro door: `TESTER_PASSKEY` (above) comps Pro to a
+signed-in account without any dashboard access, and stores the grant on the
+user row rather than in a cookie. Admin wins outright and skips the billing
+reads; a tester deliberately yields to a real subscription.
+
+There is also one comped-VAULT door, **`users.vault_beta`** (migration 023,
+2026-08-11) — the broker-onboarding grant, set per account by hand
+(`update users set vault_beta = true where email = …`), no env var and no
+shared secret. It exists because neither existing door could ever be handed
+to a real broker: the tester passkey deliberately excludes the vault, and
+`ADMIN_KEY` also unlocks the dashboards. Rules in `entitlements.js`, covered
+by `npm test`, and deliberately narrow: it grants the broker surfaces only
+(vault, lead inbox, blended comps — `broker`/`canUseVault`), never Pro's
+report features; it cannot switch a dark deployment on (`PRO_ENABLED` still
+wins); and unlike everything else vault-shaped it does NOT ride the
+subscription lapse rules — the grant was never billing, so only the one-row
+UPDATE revokes it, and a beta broker whose trial subscription lapses keeps
+their book.
+
 `MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`
 with the key and update the constant — an earlier model ID was retired.
@@ -492,7 +550,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (`isAggregateAddress`), is forced to `estimate` no matter what the model
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
-  normalization is a guarantee. **Source-link check (2026-08-09).** After the
+  normalization is a guarantee.
+  **"Verified" is a reserved word (2026-08-10).** It names a badge only the
+  server awards (a broker vouched, our team reviewed), so the model must
+  never write it. Two layers, the same requests-vs-guarantee split: the
+  `verified` field is **only in the comp shape when broker comps were
+  actually offered** (`hasVerified` in `buildPrompt`) — with none offered it
+  could only ever be false, and asking for it made the model award itself the
+  badge, measured live at 4 of 5 comps on a market with zero submissions; and
+  `scrubUnearnedVerifiedClaims` (pure, tested, in report-parse.js) rewrites
+  the verified word family in `summary`/`value_drivers`/`market_trend`/
+  `price_discovery`/comp `notes` whenever the finished report carries no
+  verified comp. `enforceVerifiedFlags` always kept the BADGES honest; what
+  was broken was that nothing revisited the prose the model wrote around
+  them, so a summary described verified comps while every badge read
+  Estimate/News/Listing. Three rules: the scrub is **outermost** in
+  `finishReport` because it counts the FINAL flags (inside
+  `attachVerifiedAttribution` it would read the model's own claims); it fires
+  **only at zero** verified comps, since one real badge makes the word
+  accurate; and it **rewrites rather than deletes**, because cutting a clause
+  can take the summary's required honesty caveat with it. Keep the summary
+  rule's own caveat examples free of the word too — they said "scarce
+  verified data" and contradicted this rule on the same prompt.
+  **Source-link check (2026-08-09).** After the
   report is parsed and normalized, and before the cache write, harvest, market
   snapshot, and the `gate()` funnel, `applySourceLinkCheck` (server.js) checks
   each comp's `source_url`: max 12 unique URLs in parallel under one 2.5s
@@ -1001,6 +1081,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` for comped Pro on the
+  signed-in caller's account (401 if not signed in, rate-limited per IP). See
+  `TESTER_PASSKEY` above for what the grant covers.
 - `GET /dev`, `GET /api/devlog`, `GET|PUT /api/dev-ideas` — the **Development
   Hub**: an internal changelog + future-ideas page, gated by the same
   `ADMIN_KEY` (and sessionStorage key) as `/admin`, with the same triple-noindex
@@ -1258,6 +1341,61 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
   All four go through one `openVault()` helper: 401 not signed in → 403 not a
   broker (`canUseVault`) → 503 no database.
+  - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
+    /api/vault/comp?id=` fixes or removes one stored comp; `POST
+    /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
+    should not have to author a CSV); `GET /api/vault/export.csv` downloads
+    the whole book. **`EDITABLE_FIELDS` in `broker-vault.js` is an
+    allowlist**, not a second validator — `validateEdit(existing, patch)`
+    merges the patch over the stored row and reruns it through
+    `normalizeRow`, the same function every imported row goes through, so a
+    hand-typed "1.2M" or an Excel serial date fails an edit exactly as it
+    fails an upload.
+    **Editing or deleting a PUBLISHED comp retracts it** (`retractPublishedComp`)
+    — deletes the `comp_submissions` row and clears `published`/
+    `published_at`/`published_submission_id` — and **the retraction happens
+    only AFTER validation succeeds**, never before. It shipped the other way
+    round first: retracting ahead of `JSON.parse`/`validateEdit`/the
+    collision check meant a broker's REJECTED edit (typing "1.2M", the exact
+    input the vault exists to refuse) still pulled the comp from the public
+    records and stripped its firm credit before the 400 was ever returned —
+    the broker saw only a parse error and had no way to know what had
+    happened, and if the submission had already been approved, republishing
+    creates a fresh PENDING row needing manual owner re-approval, so the
+    credit does not come back on its own. DELETE has no validation step that
+    can fail, so it stays retract-first.
+    **An address edit nulls `property_id`** before the write, specifically
+    when `row.address_key !== comp.address_key`, never on an untouched
+    address. `linkVaultProperties`' relink PATCH only ever fills a NULL
+    `property_id` (`property_id=is.null`, so a re-import can't rewrite a
+    link that already looks correct) — left non-null after an address
+    change, a comp would keep pointing at the OLD building forever and
+    `attachPropertyCoords` would stitch the old building's coordinates onto
+    the corrected address in every future report.
+    **The export must be complete or refuse.** It does NOT build on
+    `vaultReadPayload`, which hard-caps at 1000 rows; it pages until an
+    EMPTY page comes back, advancing the offset by the rows actually
+    returned rather than by the page size, because PostgREST can honor a
+    project-level Max Rows setting by returning fewer rows than requested
+    with no error — treating a short page as "done" would silently truncate
+    at whatever that cap is. It orders by `deal_date.desc,id.asc`
+    specifically because `deal_date` alone is day-granularity and ties
+    across many rows in an imported book; Postgres only guarantees stable
+    OFFSET/LIMIT paging when the ORDER BY produces a unique row order, so a
+    non-unique sort key can drop (or duplicate) a comp on a page boundary.
+    It also JOINS `broker_properties` for `lat`/`lng` — those are not
+    columns on `broker_comps` — and separately carries every populated
+    per-type column (`clear_height`, `units`, `lot_acres`, etc.), which ARE
+    columns on `broker_comps` and ride along for free because the paging
+    query passes no `select=`; `VAULT.exportColumns` then appends only the
+    ones actually populated. Omit either source and a re-import silently
+    drops that comp's specs or sends a private address back out to a
+    third-party geocoder, which migration 017 and `parseCoord` exist to
+    prevent.
+    No migration was needed for any of this: `broker_comps.upload_id` was
+    already nullable (a hand-added comp belongs to no import, so it can only
+    ever be removed per-comp, never by deleting an import), and every new
+    field these routes touch already had a column.
   - **Blended comps** (server half, 2026-08-06). A broker's own vault comps
     appear inside **their own** reports, flagged `private: true` with
     `source_type: "broker_vault"`, plus a top-level `private_count`. Rules in
@@ -1528,6 +1666,33 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the reason migration 019 has no SQL backfill (`marketOf()` is JS).
     Routes go through `requireBroker`. Manual adds log a PII-free `bov`
     analytics event. Lapse locks the log, never deletes it.
+  - **The credit identity is STATED, never inherited** (2026-08-12).
+    `POST /api/vault/identity` writes `broker_profiles.display_name` and
+    `.company`, creating the row if needed; `vaultReadPayload` returns an
+    `identity` block (`display_name`, `company`, `creditedTo`) so `/vault`
+    can name the credit BEFORE a publish rather than after one. Four rules.
+    **`creditName(profile)` reads the profile only** — the old `user.name`
+    fallback is gone, and that fallback was the bug: the publish confirm
+    promises "credited to your firm by name", a vault-first broker has no
+    profile, so their comps were credited to whatever they typed at signup
+    and `submissionRowFrom` copied that string into `broker_company`, which
+    is published as their firm. Nobody chose it, so nobody could correct
+    it. **An unstated identity now returns `""`**, the publish route
+    refuses with `needs_credit_name`, and the vault opens the form in
+    place — a one-time question instead of a silent wrong answer.
+    **It never touches `public`**: broker-directory.js's TWO CONSENTS rule
+    holds, so stating a firm name creates a row that is private by default
+    (`public` defaults false in 003) and the opt-in stays on `POST
+    /api/broker/profile`. Verified 2026-08-12 — after saving an identity,
+    `/broker/<slug>` still 404s and the market page lists nobody. **The
+    page prints `creditedTo` verbatim** and never recomputes the
+    company-then-name preference, or it could promise a name the write
+    would not produce; a test pins that by disagreeing the two on purpose.
+    Rules in the pure, tested `validateIdentity` (at least one field must
+    survive trimming; the two stay separate columns because a firm is not
+    a person; control characters stripped since these strings reach a
+    public page, formula shapes left to `guardFormula` at `csvCell` so a
+    firm really called "+Plus Realty" keeps its name).
   - **The template carries its own rules, as `#` lines** (2026-08-10; spec
     `docs/superpowers/specs/2026-08-10-vault-template-self-documenting-design.md`).
     `isCommentRow` skips any body row whose FIRST cell starts with `#`, and
@@ -1557,10 +1722,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     A broker uploads their own export and maps its columns once. `POST
     /api/vault/inspect` reports headers, real sample values and a suggested
     mapping; `/api/vault/upload` takes an optional `mapping`, and absent it
-    behaves byte for byte as before. Five rules a future editor will
+    behaves byte for byte as before. Six rules a future editor will
     otherwise break: **a target is suggested only when exactly ONE column
     claims it**, which is how the old "we do not guess column names"
     decision survives (two columns aliasing to `price` suggest neither);
+    **a rate-shaped header may claim nothing by ALIAS** (`isRateHeader`,
+    2026-08-11, tested on the RAW header because the "/" carrying the
+    meaning strips away in normalization) — "$/SF" normalizes to bare
+    `sf`, which made it the sole claimant of the size alias on the first
+    real broker file, so the mapper confidently suggested importing
+    $68.11 as a 68 sq ft building; an exact target name still maps, so a
+    literal "Price Per Unit" column keeps its real multifamily column;
     **the screen is always shown unless every header is already one of
     ours**, because only four fields are required per row, so a file with
     an unrecognised "Sq Ft" column imports today with every size null and
@@ -1750,11 +1922,22 @@ private row has not earned. Two rules matter when editing anything down here:
    `setHeroTitle` in index.html).** The report called every subject a
    "building", so a house got a hero reading "WHAT THIS BUILDING IS WORTH"
    and a pointer to "Building Size" beside a field labelled *Property size*
-   (owner feedback 2026-08-10). Residential is a `home`, Land is a
-   `property`, the other four are `building`s. Three rules: **keep it in step
-   with `SIZE_LABELS`**, which answers the same question about the same six
-   types, so a type added to one without the other produces a form and a hero
-   that disagree; **plurals come from `ASSET_NOUN_PLURAL`, never `noun + "s"`**
+   (owner feedback 2026-08-10). Residential is a `home` (which also covers
+   **condos and townhomes** — they have no type of their own, and a condo is a
+   home); Land, **Multifamily** and **Retail** are a `property`; only
+   Industrial and Office fall through to `building`, because only those two
+   genuinely are one. Multifamily is deliberately NOT "apartment building" or
+   "apartment community" (owner's call, 2026-08-10): the type spans duplexes
+   and 300-unit garden communities and neither phrase is true across that
+   range, while `property` is also the unit the report already prices on
+   (`ALT_BASIS`). Retail is `property` for the same both-shapes reason —
+   "building" fits only a single-tenant pad, "center" only an anchored center.
+   Three rules: **it is related to `SIZE_LABELS` but deliberately not equal to
+   it** — Multifamily and Retail keep "Building size (SF)" as the FIELD label
+   because that really is the building square footage the valuation divides
+   by, even though the asset above it is called a property; check both when
+   adding a type, and expect them to differ; **plurals come from
+   `ASSET_NOUN_PLURAL`, never `noun + "s"`**
    (that shipped "propertys" on Land); and **the hero heading is set at TWO
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
    hero on screen a minute before the real render repaints it, so without the

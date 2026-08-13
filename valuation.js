@@ -91,9 +91,19 @@
   }
 
   // Source-tier weights. Also the tier vocabulary: index.html's SOURCE_TIERS
-  // holds the badge labels and CSS classes for the same six keys, and tierOf
+  // holds the badge labels and CSS classes for the same seven keys, and tierOf
   // below is the ONE place a comp's tier is decided.
-  const TIER_WEIGHT = { verified: 1, user: 1, public_record: 1, listing: 0.85, news: 0.7, estimate: 0.5 };
+  //
+  // broker_vault is a blended private comp (blend-comps.js). Weight 1 changes
+  // nothing in the valuation — before the key existed, tierOf returned null
+  // for these comps and compWeight skipped the multiplier, an implicit 1 —
+  // but without the key tierOf's null meant NO tier, so index.html's
+  // sourceBadge() rendered no "From your vault" badge and the legend omitted
+  // the tier entirely. The key exists so the tier does; the weight is just
+  // written down instead of implied. Full weight is deliberate: it is the
+  // broker's own closed deal, the one provenance they can vouch for
+  // personally. Mirrored in comp-gate.js — keep the two in step.
+  const TIER_WEIGHT = { verified: 1, user: 1, public_record: 1, listing: 0.85, news: 0.7, estimate: 0.5, broker_vault: 1 };
 
   function tierOf(comp) {
     if (comp.verified === true || String(comp.verified).toLowerCase() === "true") return "verified";

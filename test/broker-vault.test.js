@@ -24,6 +24,9 @@ const {
   validateEdit, EDITABLE_FIELDS, isUuid,
   exportColumns, exportCsv, exportRowsWithCoords,
   guardFormula, csvCell,
+  looksLikePdf, parseExtractJson, classifyExtractRows, uploadPayloadToCsv,
+  MAX_PDF_BYTES, VAULT_FIELD_KEYS, EXTRACT_KEYS,
+  extractVendorError, extractWasTruncated,
 } = require("../broker-vault");
 
 // Shared with vault-api.test.js: parses the columns a table actually has out
@@ -1583,4 +1586,128 @@ test("a sale row with an Undisclosed price imports as an unpriced deal", () => {
   assert.equal(r.ok, true, JSON.stringify(r.errors || []));
   assert.equal(r.row.price, null);
   assert.equal(r.row.size_sqft, 41000);
+});
+
+// --- PDF extract helpers -------------------------------------------------
+//
+// A PDF has to be read, so a price can come out wrong. These helpers never
+// store anything: they decide whether the bytes are a PDF, turn the model's
+// text into an array, and classify each candidate through normalizeRow so
+// the confirm table can tint a bad row without dropping the values the
+// broker needs to edit.
+
+test("looksLikePdf accepts a %PDF header and refuses anything else", () => {
+  assert.equal(looksLikePdf(Buffer.from("%PDF-1.4\n")), true);
+  assert.equal(looksLikePdf(Buffer.from("%PDF")), true);
+  assert.equal(looksLikePdf(Buffer.from("PK\x03\x04")), false, "xlsx zip magic");
+  assert.equal(looksLikePdf(Buffer.from("")), false);
+  assert.equal(looksLikePdf(null), false);
+});
+
+test("MAX_PDF_BYTES is 4 MiB", () => {
+  assert.equal(MAX_PDF_BYTES, 4 * 1024 * 1024);
+});
+
+test("parseExtractJson takes a fenced array and ignores trailing junk", () => {
+  const text = "```json\n[{\"address\":\"1 Main St\"}]\n```\nThanks!";
+  const out = parseExtractJson(text);
+  assert.equal(out.ok, true);
+  assert.equal(out.rows[0].address, "1 Main St");
+});
+
+test("parseExtractJson refuses an object, a truncated array, and empty text", () => {
+  assert.equal(parseExtractJson("{\"rows\":[]}").ok, false,
+    "the prompt asks for an array; do not guess a wrapping object");
+  assert.equal(parseExtractJson("Here: {\"rows\":[]}").ok, false,
+    "prose before a wrapping object must not bypass the object check");
+  assert.equal(parseExtractJson("[{\"a\":").ok, false);
+  assert.equal(parseExtractJson("").ok, false);
+});
+
+test("classifyExtractRows keeps values on a failed row and drops unknown keys", () => {
+  const out = classifyExtractRows([
+    {
+      address: "4100 W Franklin Rd, Boise ID",
+      property_type: "Industrial",
+      transaction: "sale",
+      deal_date: "2026-03-12",
+      price: "$4,250,000",
+      verified: true,
+      source_url: "https://example.com",
+    },
+    {
+      address: "Meridian industrial (submarket)",
+      property_type: "Industrial",
+      transaction: "sale",
+      price: "68.11",
+    },
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].error, null);
+  assert.equal(out[0].values.address, "4100 W Franklin Rd, Boise ID");
+  assert.equal(out[0].values.verified, undefined);
+  assert.equal(out[0].values.source_url, undefined);
+  assert.ok(out[1].error, "a numberless address must fail normalizeRow");
+  assert.equal(out[1].values.address, "Meridian industrial (submarket)",
+    "the confirm table cannot edit a value we dropped");
+});
+
+test("uploadPayloadToCsv turns confirm rows into a parseUpload-clean CSV", () => {
+  const rows = [{
+    address: "4100 W Franklin Rd, Boise ID",
+    property_type: "Industrial",
+    transaction: "sale",
+    deal_date: "2026-03-12",
+    price: "$4,250,000",
+    size_sqft: "50000",
+  }];
+  const made = uploadPayloadToCsv({ rows });
+  assert.equal(made.ok, true);
+  const parsed = parseUpload(made.csv);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.rows[0].price, 4250000);
+});
+
+test("uploadPayloadToCsv refuses csv and rows together, and an empty rows array", () => {
+  assert.equal(uploadPayloadToCsv({ csv: "address\n", rows: [{ address: "1 Main" }] }).ok, false);
+  assert.equal(uploadPayloadToCsv({ rows: [] }).ok, false);
+  assert.equal(uploadPayloadToCsv({ csv: "address,property_type,transaction,deal_date\n1 Main St,Industrial,sale,2026-01-05\n" }).ok, true);
+});
+
+test("VAULT_FIELD_KEYS is template plus optional spec, nothing else", () => {
+  assert.deepEqual(VAULT_FIELD_KEYS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
+});
+
+test("EXTRACT_KEYS is the vault fields minus lat and lng", () => {
+  assert.deepEqual(EXTRACT_KEYS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]
+    .filter((k) => k !== "lat" && k !== "lng"));
+  assert.ok(!EXTRACT_KEYS.includes("lat"));
+  assert.ok(!EXTRACT_KEYS.includes("lng"));
+  assert.ok(EXTRACT_KEYS.includes("address"));
+  assert.ok(EXTRACT_KEYS.includes("beds_baths"));
+});
+
+test("extractVendorError maps a vendor 5xx to 502 and the spec copy, never search-outage copy", () => {
+  const err = extractVendorError(500, "internal");
+  assert.equal(err.statusCode, 502);
+  assert.equal(err.userMessage, "Could not read that PDF. Nothing was saved.");
+  assert.equal(err.userMessage.includes("comp search"), false);
+});
+
+test("extractVendorError maps a vendor 429 to the upload-busy line, not the search-busy line", () => {
+  const err = extractVendorError(429, "resource exhausted");
+  assert.equal(err.statusCode, 429);
+  assert.equal(err.userMessage, "Too many uploads. Please wait a moment.");
+  assert.equal(err.userMessage.includes("comp search"), false);
+});
+
+test("extractWasTruncated is true for Anthropic max_tokens and Gemini MAX_TOKENS or incomplete", () => {
+  assert.equal(extractWasTruncated("max_tokens"), true);
+  assert.equal(extractWasTruncated("MAX_TOKENS"), true);
+  assert.equal(extractWasTruncated("incomplete"), true);
+  assert.equal(extractWasTruncated("end_turn"), false);
+  assert.equal(extractWasTruncated("STOP"), false);
+  assert.equal(extractWasTruncated(""), false);
+  assert.equal(extractWasTruncated(undefined), false);
 });

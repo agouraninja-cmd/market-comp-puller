@@ -20,6 +20,7 @@ const capabilities = {
   // Gemini caches implicitly and reports total_cached_tokens, but exposes no
   // breakpoint to place, so there is nothing for us to control.
   promptCaching: "implicit",
+  pdfExtract: true,
 };
 
 function buildRequestBody({ model, prompt, maxComps }) {
@@ -51,6 +52,48 @@ function requestInit({ apiKey }) {
       "content-type": "application/json",
       "x-goog-api-key": apiKey,
     },
+  };
+}
+
+function buildExtractBody({ model, prompt, pdfBase64 }) {
+  return {
+    contents: [{
+      parts: [
+        { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
+        { text: prompt },
+      ],
+    }],
+    // Same smaller search-path cap: thought tokens count toward output, and
+    // an Anthropic-sized 8k/10k truncates a table mid-array.
+    generationConfig: { maxOutputTokens: 24000 },
+  };
+}
+
+function extractRequestInit({ apiKey, model }) {
+  return {
+    url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+  };
+}
+
+function parseExtractResponse(data) {
+  const cand = ((data || {}).candidates || [])[0] || {};
+  const parts = ((cand.content || {}).parts) || [];
+  const text = parts.filter((p) => p && typeof p.text === "string").map((p) => p.text).join("");
+  const meta = (data && data.usageMetadata) || {};
+  return {
+    text: text.trim(),
+    // generateContent uses finishReason (MAX_TOKENS); keep Interactions
+    // `status: "incomplete"` in case that shape ever appears here.
+    stopReason: cand.finishReason || (data && data.status) || "",
+    usage: normalizeUsage({
+      total_input_tokens: meta.promptTokenCount,
+      total_output_tokens: meta.candidatesTokenCount,
+      total_thought_tokens: meta.thoughtsTokenCount,
+    }),
   };
 }
 
@@ -147,5 +190,8 @@ module.exports = {
   normalizeUsage,
   costOf,
   deadlineTokens,
+  buildExtractBody,
+  extractRequestInit,
+  parseExtractResponse,
   USD_PER_MTOK,
 };

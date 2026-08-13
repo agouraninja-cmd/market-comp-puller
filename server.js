@@ -3056,6 +3056,19 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
+const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a table PDF (CoStar, ARGUS, CMA, or similar). Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
+
+Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
+property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
+transaction must be "sale" or "lease".
+deal_date must be YYYY-MM-DD.
+
+Rules:
+- Extract every deal row from tables. Omit header rows, totals, averages, and submarket-summary rows.
+- Omit a field rather than invent it. Never invent a price, date, or size.
+- address must be a specific property with a street number, not a district or "general submarket estimate".
+- Do not include a verified flag or a source_url.`;
+
 function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
@@ -3908,6 +3921,55 @@ async function repairCompJson(brokenText, maxTokens) {
   }
 }
 
+async function extractPdfOnce(pdfBase64) {
+  if (!PROVIDER.capabilities.pdfExtract) {
+    const err = new Error("PDF import isn't available on this deployment.");
+    err.statusCode = 503;
+    throw err;
+  }
+  const apiKey = providerApiKey();
+  if (!apiKey) {
+    const err = new Error(`Server is missing the ${PROVIDER.apiKeyEnv} environment variable.`);
+    err.statusCode = 503;
+    throw err;
+  }
+  const init = PROVIDER.extractRequestInit({ apiKey, model: MODEL });
+  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, pdfBase64 });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  const startedAt = Date.now();
+  try {
+    const r = await fetch(init.url, {
+      method: "POST",
+      headers: init.headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!r.ok) {
+      const detail = (await r.text().catch(() => "")).slice(0, 200);
+      console.error(`${PROVIDER.logLabel} pdf-extract failed (${r.status}): ${detail}`);
+      throw VAULT.extractVendorError(r.status);
+    }
+    const parsed = PROVIDER.parseExtractResponse(await r.json());
+    console.log(`${PROVIDER.logLabel} pdf-extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
+    if (VAULT.extractWasTruncated(parsed.stopReason)) {
+      const err = new Error("That PDF has more rows than we can read in one pass. Nothing was saved.");
+      err.statusCode = 400;
+      throw err;
+    }
+    return parsed.text || "";
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      const e = new Error("Could not read that PDF. Nothing was saved.");
+      e.statusCode = 504;
+      throw e;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null, stats = null) {
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
@@ -4535,11 +4597,35 @@ function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
 // /broker, /how-it-works, /admin). Declared HERE, above MARKET_BAR: that
 // constant is built at module load, so a logo defined further down the file
 // would still be in its temporal dead zone and crash the process at startup.
+//
+// Dark-mode fix (2026-08-10, fix round 1): this rect's fill used to be the
+// literal hex below with nothing else -- correct on the light header it was
+// designed for, but the SAME near-black on the near-black header MARKET_CSS's
+// dark block gives it,
+// measured ~1.27:1 against --paper dark. class="cn-logo" plus a rule in
+// MARKET_CSS/HOW_CSS (`.cn-logo rect{fill:var(--ink)}`,
+// `.cn-logo polygon{fill:var(--red-fill)}`) is the structural fix Task 6 used
+// for the vault's chart and this branch's own index.html fix used for the
+// same icon there: a stylesheet rule, not a fill="var(...)" attribute
+// (unreliable, and invisible to a raw-hex regression test the way a class
+// name is not). The literal fill= attributes stay as the fallback value --
+// lowest CSS specificity there is, so any page that DOES carry the `.cn-logo`
+// rule (every page in dark-mode scope) overrides it, and the four admin
+// dashboards, which deliberately do NOT carry that rule (own :root blocks,
+// out of dark-mode scope), keep rendering exactly as before untouched.
 const CN_LOGO =
-  `<svg viewBox="0 0 30 30" aria-hidden="true">` +
+  `<svg class="cn-logo" viewBox="0 0 30 30" aria-hidden="true">` +
   `<rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>` +
   `<polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/></svg>`;
-// Same mark inverted for the ink footer.
+// Same mark inverted for the ink footer. Deliberately NOT given the
+// `.cn-logo` treatment above and never will be: the footer slab is dark in
+// BOTH themes (the same "already dark in light mode" reasoning `--slab`
+// itself carries), so this rect must stay literal white regardless of
+// site theme -- var(--ink) would be exactly wrong here, since --ink's LIGHT
+// value is dark navy. CN_LOGO and CN_LOGO_LIGHT differ only in this one
+// fill, but they need opposite behaviour (one must vary with the theme, the
+// other must never vary at all), so folding them into one themed mark is
+// not possible without breaking whichever context is currently correct.
 const CN_LOGO_LIGHT =
   `<svg viewBox="0 0 30 30" aria-hidden="true">` +
   `<rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>` +
@@ -4579,6 +4665,42 @@ const CN_LOGO_LIGHT =
 //   Manage billing      a Stripe customer exists (status set, not "none") and
 //                       is not the comped "admin" or "tester" status, neither
 //                       of which has a Stripe customer behind it
+// The site's colour tokens. Interpolated into every in-scope stylesheet
+// rather than copied, so a token can never drift between pages. The four
+// admin dashboards keep their own literal :root blocks -- they are out of
+// dark mode's scope and already carry this same vocabulary, which is what
+// would make adding them later a one-line change.
+const THEME = require("./theme.js");
+const THEME_CSS = THEME.rootCss();
+
+// Sets data-theme before the first frame. Render-blocking and inline on
+// purpose: anything deferred or async paints the light theme first, and a
+// white flash on a dark page is worse than having no dark mode at all.
+// Wrapped in try/catch because localStorage throws outright in a Safari
+// private window, and a theme preference must never be able to blank a page.
+//
+// It reads PRESENCE of an explicit choice, falling back to the OS. This is
+// also the feature's rollback lever: nothing else in the codebase ever sets
+// data-theme, so short-circuiting this one string disables dark mode on
+// every surface at once.
+//
+// ⚠ index.html hand-copies this script into its own <head> (it is a static
+// file server.js never templates, so it cannot interpolate THEME_BOOT).
+// Nothing keeps the two copies in step but this comment and the "index.html's
+// theme boot script and toggle handler mirror server.js" test in
+// test/theme.test.js -- edit both together or a visitor's theme flips as they
+// move between the app and a market page.
+const THEME_BOOT =
+  `<script>(function(){try{var t=localStorage.getItem("theme");` +
+  `if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";` +
+  `if(t==="dark")document.documentElement.setAttribute("data-theme","dark");` +
+  `}catch(e){}})();</script>\n`;
+
+// Paired so the mobile browser chrome agrees with the page it frames.
+const THEME_META =
+  `<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>\n` +
+  `<meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)"/>\n`;
+
 const ACCOUNT_NAV_CSS = `
 /* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.
    Load-bearing: .hdr nav .dd a sets display:block, which out-specifies the
@@ -4586,23 +4708,35 @@ const ACCOUNT_NAV_CSS = `
    signed-out chrome and signed-in chrome at once without this line. */
 .hdr nav [hidden]{display:none!important}
 .hdr nav .acct summary{display:flex;align-items:center}
-.hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:#1A2433;color:#fff;
+.hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:var(--slab);color:#fff;
   font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block}
-.hdr nav .dd .em{padding:6px 12px 7px;font-size:12px;color:#94A3B8;
+.hdr nav .dd .em{padding:6px 12px 7px;font-size:12px;color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:176px}
 /* Menu rows that act rather than navigate. Restates .dd a's box so the two
    kinds of row are indistinguishable to the eye. */
-.hdr nav .dd button{display:block;width:100%;text-align:left;padding:8px 12px;color:#374253;
+.hdr nav .dd button{display:block;width:100%;text-align:left;padding:8px 12px;color:var(--ink-body);
   background:none;border:0;font:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap}
-.hdr nav .dd button:hover{background:#F8FAFC;color:#1A2433}
-.hdr nav .dd .up{color:#B91C1C;font-weight:500}
+.hdr nav .dd button:hover{background:var(--wash);color:var(--ink)}
+.hdr nav .dd .up{color:var(--red);font-weight:500}
 .hdr nav .dd a.vault{font-weight:500}
+/* Theme toggle. Sits in the nav row and reads as one of its links, not as a
+   switch widget -- this header is deliberately calm. */
+.hdr nav #themeToggle{display:inline-flex;align-items:center;padding:0;border:0;background:none;
+  color:var(--ink-3);cursor:pointer;line-height:0}
+.hdr nav #themeToggle:hover{color:var(--ink)}
 `;
 
 // The nav slots. `desk: false` for /how-it-works, which already renders its own
 // My Desk / Log in server-side and would otherwise show two of each.
 function accountNavSlots({ desk = true } = {}) {
-  return (desk
+  // The theme toggle. Rendered here and nowhere else -- the pages that use
+  // this helper each render exactly one nav, so a second copy anywhere
+  // would double it. Not hidden like the account slots: it needs no
+  // knowledge of the visitor, so it is correct on the very first frame.
+  return `<button id="themeToggle" type="button" aria-label="Switch colour theme" title="Switch colour theme">` +
+    `<svg viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
+    `d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg></button>` +
+    (desk
     ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
     : "") +
@@ -4664,6 +4798,15 @@ const ACCOUNT_NAV_JS =
   `var out=$("navSignOut");if(out)out.addEventListener("click",function(){` +
   `fetch("/api/account/logout",{method:"POST"}).catch(function(){}).then(function(){` +
   `location.reload();});});` +
+  // ⚠ index.html hand-copies this toggle handler onto its own #themeToggleApp
+  // button (it is a static file server.js never templates). Nothing keeps
+  // the two copies in step but this comment and the "index.html's theme boot
+  // script and toggle handler mirror server.js" test in test/theme.test.js --
+  // same storage key, same stored values, same attribute, same element.
+  `var th=$("themeToggle");if(th)th.addEventListener("click",function(){` +
+  `var el=document.documentElement,dark=el.getAttribute("data-theme")==="dark";` +
+  `if(dark){el.removeAttribute("data-theme");}else{el.setAttribute("data-theme","dark");}` +
+  `try{localStorage.setItem("theme",dark?"light":"dark");}catch(e){}});` +
   `})();</script>`;
 
 // Research Desk system — the same palette and type as the landing page and
@@ -4671,118 +4814,135 @@ const ACCOUNT_NAV_JS =
 // looks like the app they are being sent to. Self-contained by design: no
 // dependency on the purged tailwind.css.
 const MARKET_CSS = `
+${THEME_CSS}
 /* Broker directory list on a market page. Plain list, no cards: this is a
    directory, not a ranking, and boxes imply a hierarchy the data cannot back. */
 .brokers{list-style:none;padding:0;margin:12px 0 0}
-.brokers li{padding:8px 0;border-top:1px solid #E7E3DA}
+.brokers li{padding:8px 0;border-top:1px solid var(--line)}
 .brokers li:first-child{border-top:0}
 .brokers a{font-weight:600}
 .brokers .sub{margin-left:8px}
 
 *{box-sizing:border-box}
 /* Flex column so the ink footer sits at the bottom of a short page. */
-body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-height:100vh;display:flex;flex-direction:column;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1024px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
-.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
 .hleft{display:flex;align-items:center;gap:18px}
-.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
-.wordmark b{color:#B91C1C;font-weight:600}
+/* The header CN_LOGO mark (never the footer's CN_LOGO_LIGHT, which has no
+   .cn-logo class and stays literal white on purpose -- see its declaration
+   in server.js). Overrides the SVG's literal fill= fallback: a stylesheet
+   rule beats a presentation attribute regardless of selector specificity. */
+.cn-logo rect{fill:var(--ink)}
+.cn-logo polygon{fill:var(--red-fill)}
+.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
+.hdr nav a{color:var(--ink-mute);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 /* Explore dropdown — mirrors index.html's header menu, as a no-JS <details>
    (a tiny script in MARKET_BAR adds close-on-outside-click). */
 .hdr nav details{position:relative}
-.hdr nav summary{list-style:none;cursor:pointer;color:#5A6473;white-space:nowrap;user-select:none}
+.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-mute);white-space:nowrap;user-select:none}
 .hdr nav summary::-webkit-details-marker{display:none}
-.hdr nav summary:hover,.hdr nav details[open] summary{color:#1A2433}
-.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:#8A93A0}
-.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:#fff;
-  border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-faint)}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
   padding:4px 0;min-width:176px}
-.hdr nav .dd a{display:block;padding:8px 12px;color:#374253}
-.hdr nav .dd a:hover{background:#F8FAFC;color:#1A2433}
-.hdr nav .dd a.on{color:#1A2433;font-weight:500}
+.hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
+.hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
+.hdr nav .dd a.on{color:var(--ink);font-weight:500}
 /* Type */
 h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;line-height:1.15;
-  letter-spacing:-.005em;color:#1A2433;margin:10px 0 6px}
-.sub{color:#5A6473;font-size:14px;margin:0 0 22px;max-width:70ch}
-.sub a{color:#5A6473;text-decoration:underline;text-decoration-color:#D8D4C9}
-.sub a:hover{color:#1A2433}
+  letter-spacing:-.005em;color:var(--ink);margin:10px 0 6px}
+.sub{color:var(--ink-mute);font-size:14px;margin:0 0 22px;max-width:70ch}
+.sub a{color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
+.sub a:hover{color:var(--ink)}
 /* Tiles — bordered cards rather than the landing page's hairline mesh: pages
    render 2-4 of these depending on the data, so a fixed column count that
    divides evenly (which the mesh needs to avoid a half-empty row) is out. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
-.tile{background:#fff;border:1px solid #E4E2DA;border-radius:6px;padding:16px 18px}
-.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#68707E;font-weight:600}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:600}
 .tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
-  color:#1A2433;font-variant-numeric:tabular-nums}
-.tile .n{font-size:12.5px;color:#68707E;margin-top:2px}
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.tile .n{font-size:12.5px;color:var(--ink-3);margin-top:2px}
 /* Ledger stat strip (Direction G, owner-approved 2026-08-09): the market
    page's headline figures as one ruled ledger line, the same geometry the
    report hero and the vault book line use — median emphasized on warmer
    paper, red label. The .tiles grid above stays for its OTHER consumers
    (the Explorer preview page and the /markets client tiles); only the
    market page itself moved to the ledger. */
-.ledger{display:flex;border:1px solid #D8D4C9;border-radius:6px;overflow:hidden;background:#fff;margin:22px 0}
-.lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid #ECEAE3}
+.ledger{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin:22px 0}
+.lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:#FCFBF8}
-.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600}
-.lcell.mid .k{color:#B91C1C}
+.lcell.mid{background:var(--wash)}
+.lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.lcell.mid .k{color:var(--red)}
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
-  color:#1A2433;font-variant-numeric:tabular-nums}
+  color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
-.lcell .n{font-size:12px;color:#68707E;margin-top:2px}
-@media(max-width:700px){.ledger{flex-direction:column}.lcell{border-right:0;border-bottom:1px solid #ECEAE3}.lcell:last-child{border-bottom:0}}
+.lcell .n{font-size:12px;color:var(--ink-3);margin-top:2px}
+@media(max-width:700px){.ledger{flex-direction:column}.lcell{border-right:0;border-bottom:1px solid var(--hair)}.lcell:last-child{border-bottom:0}}
 /* Statement comps table (Direction H, same approval): ink header rule and a
    median closing row under a double rule. Scoped to table.stmt so the other
    marketShell pages (brokers, vault, the markets directory) keep their own
    table look. */
-table.stmt th{background:none;border-bottom:2px solid #1A2433}
-table.stmt tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600;color:#1A2433}
-table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600}
+table.stmt th{background:none;border-bottom:2px solid var(--ink)}
+table.stmt tfoot td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600;color:var(--ink)}
+table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute);font-weight:600}
 /* Cards. Headings stay serif at reading size rather than the uppercase
    micro-label used elsewhere — these are sentence-length ("What's driving
    Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
-.card{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:22px;margin:18px 0}
-.card h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;
+.card{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:22px;margin:18px 0}
+.card h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:0 0 12px;letter-spacing:normal;text-transform:none}
-.card h3{font-size:14.5px;font-weight:600;color:#1A2433;margin:16px 0 4px}
-.card p{margin:0 0 10px;color:#374253;font-size:14.5px}
-.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:#374253;font-size:14.5px}
+.card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
+.card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
+.card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* Market page's median-$/SF-by-half-year trend chart (renderMarketPageHTML's
+   trendSvg). Dark-mode fix (2026-08-10, fix round 1) -- the same class-based
+   approach as .cn-logo above, and for the same reason: colours in generated
+   SVG markup are invisible to a raw-hex regression test and fill="var(...)"
+   as a presentation attribute is unreliable, so both live here instead. */
+.mkt-trend-line{stroke:var(--ink)}
+.mkt-trend-dot{fill:var(--ink)}
+.mkt-trend-dot-hi{fill:var(--red-fill)}
+.mkt-trend-label{fill:var(--ink)}
+.mkt-trend-caption{fill:var(--ink-3)}
 /* min-width is what makes the .scroll wrapper actually work: a width:100%
    table always shrinks to its container, so overflow-x had nothing to overflow.
    Invisible at 6 columns; a multifamily page renders 8 and would otherwise
    crush to ~40px per column on a phone. */
 table{width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 td:first-child,th:first-child{min-width:180px}
-th{background:#F5F4EF;color:#68707E;text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
-  text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #D8D4C9}
-td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
-.scroll{overflow-x:auto;border:1px solid #E4E2DA;border-radius:6px;margin:18px 0;background:#fff}
+th{background:var(--wash);color:var(--ink-3);text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--edge)}
+td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-align:top}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card)}
 /* Source badges use the report's own colour language: green Verified, amber
    Listing, neutral for public record / news / estimate. */
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;
-  white-space:nowrap;line-height:1.4;color:#46536A;background:#EAEEF4}
-.badge.v{color:#06603A;background:#E3F2EA}
-.badge.li{color:#7A5B12;background:#F7EFDC}
+  white-space:nowrap;line-height:1.4;color:var(--ink-body);background:var(--wash)}
+.badge.v{color:var(--ok-text);background:var(--ok-bg)}
+.badge.li{color:var(--warn-text);background:var(--warn-bg)}
 /* CTA — the calm bordered block from the landing page, not the old gradient. */
-.cta{border:1px solid #D8D4C9;background:#fff;border-radius:6px;padding:28px;margin:26px 0;text-align:center}
-.cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:#1A2433;
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center}
+.cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
-.cta p{color:#4C5665;font-size:14px;margin:8px auto 20px;max-width:52ch}
-.cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:#5A6473;text-decoration:underline;text-decoration-color:#D8D4C9}
-.cta .alt:hover{color:#1A2433}
-.btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
-.btn:hover{background:#991B1B;color:#fff}
+.cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
+.cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
+.cta .alt:hover{color:var(--ink)}
+.btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
+.btn:hover{background:var(--red-fill-hover);color:#fff}
 /* Header-sized variant, for the auth controls in the market bar. Mirrors the
    same rule in HOW_CSS so the two site headers sit at the same height. The nav
    rule below it exists because .hdr nav a would otherwise grey the button out.
@@ -4790,13 +4950,13 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
 .btn.sm{padding:7px 14px;font-size:13px}
 .hdr nav a.btn{color:#fff}.hdr nav a.btn:hover{color:#fff}
 .related{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.related a{background:#fff;border:1px solid #D8D4C9;border-radius:4px;padding:6px 14px;font-size:13px;color:#374253}
-.related a:hover{border-color:#68707E;color:#1A2433}
+.related a{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:6px 14px;font-size:13px;color:var(--ink-body)}
+.related a:hover{border-color:var(--ink-3);color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
-.mcard{display:block;background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:18px 20px;color:inherit}
-.mcard:hover{border-color:#68707E}
-.mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:#1A2433}
-.mcard .s{color:#5A6473;font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
+.mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit}
+.mcard:hover{border-color:var(--ink-3)}
+.mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:var(--ink)}
+.mcard .s{color:var(--ink-mute);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
    screen reader: a bare search box with only a placeholder has no accessible
    name once the visitor starts typing.
@@ -4806,38 +4966,38 @@ td{padding:10px;border-top:1px solid #F0EFE9;color:#374253;vertical-align:top}
    at startup instead. */
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .mfilter{margin-top:24px;max-width:420px}
-.mfilter input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #D8D4C9;border-radius:6px;
-  padding:10px 12px;font-family:inherit;font-size:16px;color:#1A2433}
+.mfilter input{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--edge);border-radius:6px;
+  padding:10px 12px;font-family:inherit;font-size:16px;color:var(--ink)}
 /* 16px: anything smaller makes iOS Safari zoom on focus and stay zoomed. */
-.mfilter input::placeholder{color:#68707E}
-.mfilter input:focus{outline:none;border-color:#B91C1C;box-shadow:0 0 0 1px #B91C1C}
-.mcount{color:#5A6473;font-size:13px;margin-top:10px;min-height:1.2em}
-.disc{color:#68707E;font-size:12.5px;margin-top:26px}
+.mfilter input::placeholder{color:var(--ink-3)}
+.mfilter input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.mcount{color:var(--ink-mute);font-size:13px;margin-top:10px;min-height:1.2em}
+.disc{color:var(--ink-3);font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
 .legal{max-width:72ch}
-.legal h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;color:#1A2433;
+.legal h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:20px;color:var(--ink);
   letter-spacing:normal;text-transform:none;margin:34px 0 10px}
-.legal p{margin:0 0 12px;color:#374253;font-size:14.5px}
+.legal p{margin:0 0 12px;color:var(--ink-body);font-size:14.5px}
 .legal ul{margin:0 0 12px;padding-left:22px}
-.legal li{margin:6px 0;color:#374253;font-size:14.5px}
-.legal code{font-size:13px;background:#F5F4EF;padding:1px 5px;border-radius:3px}
+.legal li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+.legal code{font-size:13px;background:var(--wash);padding:1px 5px;border-radius:3px}
 /* Footer — the navy ink footer from the home page. */
-footer{background:#1A2433;color:#B8C0CC;font-size:13px}
+footer{background:var(--slab);color:var(--ink-4);font-size:13px}
 footer .wrap{padding:36px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
 footer .wordmark{color:#fff}
-footer p{color:#8F99A8;margin:12px 0 0;max-width:68ch;line-height:1.6}
-footer a{color:#D5DAE2;text-decoration:underline;text-decoration-color:#46536A}
+footer p{color:var(--ink-faint);margin:12px 0 0;max-width:68ch;line-height:1.6}
+footer a{color:var(--ink-4);text-decoration:underline;text-decoration-color:var(--ink-body)}
 footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
-footer li a{text-decoration:none;color:#B8C0CC}
+footer li a{text-decoration:none;color:var(--ink-4)}
 /* Grouped link columns — the flat list had grown long enough that the footer
    became the tallest block on the page. Wraps on narrow screens so three
    groups never push past 375px. Mirrored in HOW_CSS and in index.html's
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
-footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
@@ -5366,9 +5526,12 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    `${THEME_META}` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     (head || "") +
-    `<style>${MARKET_CSS}</style>\n</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `<style>${MARKET_CSS}</style>\n` +
+    THEME_BOOT +
+    `</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -5392,7 +5555,7 @@ function sendNotFound(req, res, message) {
   const body =
     `<section style="padding:56px 0"><div class="kicker">404</div>` +
     `<h1>${escHtml(message || "This page doesn't exist.")}</h1>` +
-    `<p style="color:#4C5665;max-width:56ch">The address may have moved, or the report behind it may have been ` +
+    `<p style="color:var(--ink-2);max-width:56ch">The address may have moved, or the report behind it may have been ` +
     `regenerated under a newer market page. Everything current is one click away.</p>` +
     `<p style="margin-top:18px"><a class="btn" href="/">Run a free valuation &rarr;</a></p>` +
     `<p style="margin-top:14px"><a href="/markets">Browse every market we cover &rarr;</a></p></section>`;
@@ -5467,14 +5630,20 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     const x = (i) => pad + (i * (w - 2 * pad)) / Math.max(1, buckets.length - 1);
     const y = (v) => (hi === lo ? hgt / 2 : hgt - pad - ((v - lo) * (hgt - 2 * pad)) / (hi - lo));
     const pts = buckets.map((b, i) => `${Math.round(x(i))},${Math.round(y(b.medianPsf))}`).join(" ");
+    // Dark-mode fix (2026-08-10, fix round 1): colours are classes into
+    // MARKET_CSS's .mkt-trend-* rules (var(--ink)/var(--ink-3)/var(--red-fill)),
+    // not literal hex -- this SVG is rendered ONLY inside renderMarketPageHTML,
+    // which always goes through marketShell/MARKET_CSS, so unlike CN_LOGO
+    // above there is no out-of-scope context needing a literal fallback.
     trendSvg =
       `<svg viewBox="0 0 ${w} ${hgt + 30}" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Median price per square foot by half-year">` +
-      `<polyline fill="none" stroke="#1A2433" stroke-width="2" points="${pts}"/>` +
+      `<polyline class="mkt-trend-line" fill="none" stroke-width="2" points="${pts}"/>` +
       buckets.map((b, i) => {
         const cx = Math.round(x(i)), cy = Math.round(y(b.medianPsf));
-        return `<circle cx="${cx}" cy="${cy}" r="4" fill="${i === buckets.length - 1 ? "#B91C1C" : "#1A2433"}"/>` +
-          `<text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="#1A2433">${usd0(b.medianPsf)}</text>` +
-          `<text x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11" fill="#68707E">${escHtml(b.label)} &middot; ${b.count}</text>`;
+        const hiCls = i === buckets.length - 1 ? " mkt-trend-dot-hi" : "";
+        return `<circle class="mkt-trend-dot${hiCls}" cx="${cx}" cy="${cy}" r="4"/>` +
+          `<text class="mkt-trend-label" x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="12" font-weight="600">${usd0(b.medianPsf)}</text>` +
+          `<text class="mkt-trend-caption" x="${cx}" y="${hgt + 18}" text-anchor="middle" font-size="11">${escHtml(b.label)} &middot; ${b.count}</text>`;
       }).join("") +
       `</svg>`;
   }
@@ -5828,56 +5997,63 @@ function renderMarketDirectoryHTML(signedIn) {
 // as the same site rather than the older market-page skin.
 // ---------------------------------------------------------------------------
 const HOW_CSS = `
+${THEME_CSS}
 *{box-sizing:border-box}
-body{margin:0;background:#FBFBF9;color:#1A2433;line-height:1.6;
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-a{color:#B91C1C;text-decoration:none}a:hover{color:#991B1B}
+a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .wrap{max-width:1024px;margin:0 auto;padding:0 16px}
 /* Header — mirrors index.html's bar so navigating here feels continuous. */
-.hdr{border-bottom:1px solid #E4E2DA;background:#FBFBF9}
+.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 /* Wraps on narrow screens: the nav drops to its own row rather than squeezing
    each link into a two-line column (which overflowed the viewport at 375px). */
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
 .hleft{display:flex;align-items:center;gap:18px}
-.brand{display:flex;align-items:center;gap:10px;color:#1A2433}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#1A2433}
-.wordmark b{color:#B91C1C;font-weight:600}
+/* The header CN_LOGO mark (never the footer's CN_LOGO_LIGHT, which has no
+   .cn-logo class and stays literal white on purpose -- see its declaration
+   in server.js). Overrides the SVG's literal fill= fallback: a stylesheet
+   rule beats a presentation attribute regardless of selector specificity. */
+.cn-logo rect{fill:var(--ink)}
+.cn-logo polygon{fill:var(--red-fill)}
+.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.wordmark b{color:var(--red);font-weight:600}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:#5A6473;white-space:nowrap}.hdr nav a:hover{color:#1A2433}
-.hdr nav a.on{color:#1A2433;font-weight:500}
+.hdr nav a{color:var(--ink-mute);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+.hdr nav a.on{color:var(--ink);font-weight:500}
 /* Explore dropdown — same pattern as MARKET_CSS; keep the two in step. The
    FAQ accordions below are also <details>, which is why every rule (and the
    close-on-outside-click script) is scoped to ".hdr nav". */
 .hdr nav details{position:relative}
-.hdr nav summary{list-style:none;cursor:pointer;color:#5A6473;white-space:nowrap;user-select:none}
+.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-mute);white-space:nowrap;user-select:none}
 .hdr nav summary::-webkit-details-marker{display:none}
-.hdr nav summary:hover,.hdr nav details[open] summary{color:#1A2433}
-.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:#8A93A0}
-.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:#fff;
-  border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-faint)}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
   padding:4px 0;min-width:176px}
-.hdr nav .dd a{display:block;padding:8px 12px;color:#374253}
-.hdr nav .dd a:hover{background:#F8FAFC;color:#1A2433}
-.hdr nav .dd a.on{color:#1A2433;font-weight:500}
+.hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
+.hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
+.hdr nav .dd a.on{color:var(--ink);font-weight:500}
 /* Type + section furniture */
-.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B91C1C;font-weight:600}
-.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:#1A2433;margin:0}
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
 h1.h{font-size:38px;line-height:1.12;margin:12px 0 0;max-width:20ch}
 h2.h{font-size:27px;margin:8px 0 0}
-h3{font-size:15px;font-weight:600;color:#1A2433;margin:0 0 6px}
-.lead{color:#4C5665;font-size:16.5px;max-width:58ch;margin:16px 0 0}
-.sub{color:#4C5665;font-size:14px;max-width:60ch;margin:4px 0 20px}
+h3{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px}
+.lead{color:var(--ink-2);font-size:16.5px;max-width:58ch;margin:16px 0 0}
+.sub{color:var(--ink-2);font-size:14px;max-width:60ch;margin:4px 0 20px}
 section{padding:48px 0}
-.band{background:#F5F4EF;box-shadow:0 0 0 100vmax #F5F4EF;clip-path:inset(0 -100vmax)}
-.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#68707E;font-weight:600;margin-bottom:2px}
+.band{background:var(--wash);box-shadow:0 0 0 100vmax var(--wash);clip-path:inset(0 -100vmax)}
+.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
 /* Stat strip */
-.stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid #E4E2DA;border-bottom:1px solid #E4E2DA}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .stat{padding:18px}
-.stat:nth-child(1),.stat:nth-child(3){border-right:1px solid #E4E2DA}
-.stat .n{font-size:22px;font-weight:600;color:#1A2433;font-variant-numeric:tabular-nums}
-.stat .l{font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+.stat:nth-child(1),.stat:nth-child(3){border-right:1px solid var(--line)}
+.stat .n{font-size:22px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
 /* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
    the ONLY place a visitor sees the product before signing up, so it is built
    as a faithful miniature of the real report rather than a layout of its own:
@@ -5885,36 +6061,36 @@ section{padding:48px 0}
    closing on its double-ruled median. Keep it in step with index.html's
    .rd-ledger and #compsTable rules — when the report changes shape, this
    exhibit is what tells visitors it did. */
-.exhibit{border:1px solid #D8D4C9;background:#fff;border-radius:6px;overflow:hidden}
-.cap{padding:12px 20px;border-bottom:1px solid #ECEAE3;font-size:11.5px;color:#68707E;letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden}
+.cap{padding:12px 20px;border-bottom:1px solid var(--hair);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .exbody{padding:20px}
-.exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:#1A2433;letter-spacing:-.005em}
-.exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:#5A6473;margin-top:6px;padding-bottom:12px;border-bottom:1px solid #ECEAE3}
-.exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid #ECEAE3}
+.exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);letter-spacing:-.005em}
+.exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:var(--ink-mute);margin-top:6px;padding-bottom:12px;border-bottom:1px solid var(--hair)}
+.exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid var(--hair)}
 .exmeta span:last-child{border-right:0;margin-right:0;padding-right:0}
-.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:#68707E}
+.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:var(--ink-3)}
 .exsec{margin-top:16px}
-.secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid #1A2433;padding-bottom:4px;margin-bottom:9px}
-.seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#1A2433}
-.secnote{font-size:9.5px;color:#68707E;text-align:right}
-.ledger{display:flex;border:1px solid #D8D4C9;border-radius:5px;overflow:hidden}
-.lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid #ECEAE3}
+.secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:4px;margin-bottom:9px}
+.seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink)}
+.secnote{font-size:9.5px;color:var(--ink-3);text-align:right}
+.ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
+.lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:#FCFBF8}
-.lcell.mid .lab{color:#B91C1C}
-.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:#1A2433;font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+.lcell.mid{background:var(--wash)}
+.lcell.mid .lab{color:var(--red)}
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}
-.psf{font-size:10.5px;color:#68707E;margin-top:2px}
-.drv{font-size:13px;color:#374253;padding:7px 0;border-top:1px solid #F0EFE9;display:flex;gap:8px}
+.psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.drv{font-size:13px;color:var(--ink-body);padding:7px 0;border-top:1px solid var(--hair);display:flex;gap:8px}
 .drv:first-of-type{border-top:0}
-.drv b{color:#B91C1C;font-weight:700}
+.drv b{color:var(--red);font-weight:700}
 .exscroll{overflow-x:auto}
 table.comps{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-table.comps th{text-align:left;color:#68707E;font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid #1A2433;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
-table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid #F0EFE9;white-space:nowrap}
+table.comps th{text-align:left;color:var(--ink-3);font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid var(--ink);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
+table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid var(--hair);white-space:nowrap}
 table.comps th.n,table.comps td.n{text-align:right}
-table.comps tfoot td{border-top:1px solid #1A2433;border-bottom:3px double #1A2433;font-weight:600}
-table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473}
+table.comps tfoot td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600}
+table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute)}
 /* Hero (Direction E): the claim on the left, the product itself on the right —
    the exhibit used to sit below the fold while half this row was empty.
    Stacks claim-first below 900px, so a phone loses nothing but the order. */
@@ -5930,68 +6106,75 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .exmini .lcell{padding:9px 11px}
 .exmini .fig{font-size:15px}
 .exmini .lcell.mid .fig{font-size:19px}
-.mrows{margin-top:12px;border-top:1px solid #ECEAE3;padding-top:8px}
-.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid #F0EFE9;font-variant-numeric:tabular-nums}
+.mrows{margin-top:12px;border-top:1px solid var(--hair);padding-top:8px}
+.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--hair);font-variant-numeric:tabular-nums}
 .mrow:last-of-type{border-bottom:0}
-.mrow .a{color:#1A2433;font-weight:500}
+.mrow .a{color:var(--ink);font-weight:500}
 .mrow .badge{margin-left:6px}
-.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#5A6473;font-weight:600;border-top:1px solid #1A2433;border-bottom:3px double #1A2433;padding:6px 0;margin-top:2px}
+.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute);font-weight:600;border-top:1px solid var(--ink);border-bottom:3px double var(--ink);padding:6px 0;margin-top:2px}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
-.badge.v{color:#06603A;background:#E3F2EA}
-.badge.p{color:#46536A;background:#EAEEF4}
-.badge.li{color:#7A5B12;background:#F7EFDC}
-.legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:#4C5665;align-items:center}
+.badge.v{color:var(--ok-text);background:var(--ok-bg)}
+.badge.p{color:var(--ink-body);background:var(--wash)}
+.badge.li{color:var(--warn-text);background:var(--warn-bg)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
-.steps{border:1px solid #D8D4C9;border-radius:6px;overflow:hidden;background:#fff;display:grid;grid-template-columns:1fr;margin-top:20px}
-.step{padding:22px 24px;border-bottom:1px solid #ECEAE3}
+.steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px}
+.step{padding:22px 24px;border-bottom:1px solid var(--hair)}
 .step:last-child{border-bottom:0}
-.num{font-family:Georgia,serif;font-size:13px;color:#B91C1C;margin-bottom:8px}
-.step p{font-size:13.5px;color:#5A6473;margin:0}
+.num{font-family:Georgia,serif;font-size:13px;color:var(--red);margin-bottom:8px}
+.step p{font-size:13.5px;color:var(--ink-mute);margin:0}
 /* FAQ accordions — chevron marker, matching the home page's disclosure style */
-details.q{background:#fff;border:1px solid #D8D4C9;border-radius:6px;padding:16px 20px;margin-bottom:12px}
-details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:#1A2433}
+details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
+details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:var(--ink)}
 details.q summary::-webkit-details-marker{display:none}
+/* This chevron's stroke color is %2394a3b8 -- #94A3B8 URL-encoded inside an
+   inline SVG data URI. It stands in for --ink-3 and can't be tokenized:
+   var() cannot reach inside a data: URI. It happens to be exactly --ink-3's
+   DARK value (theme.js), which is a coincidence, not a fix -- it's why this
+   chevron reads correctly in both themes today. If --ink-3's dark value
+   ever changes, this literal silently stops matching and needs updating by
+   hand; it will not error, just drift. */
 details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
 details.q[open] summary::after{transform:rotate(180deg)}
-details.q p{font-size:14px;color:#5A6473;margin:8px 0 0;max-width:80ch}
+details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 /* Closing CTA */
-.cta{border:1px solid #D8D4C9;background:#fff;border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px}
-.cta p{color:#4C5665;font-size:14px;margin:8px auto 20px;max-width:52ch}
-.btn{display:inline-block;background:#B91C1C;color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
-.btn:hover{background:#991B1B;color:#fff}
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px}
+.cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
+.btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
+.btn:hover{background:var(--red-fill-hover);color:#fff}
 /* Header signup control. .hdr nav a already sets a colour and out-specifies
    .btn, so the white has to be restated at that specificity. */
 .hdr nav a.btn,.hdr nav a.btn:hover{color:#fff}
 .btn.sm{padding:7px 14px;font-size:13px}
 .heroCta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:24px}
-.heroCta .alt{font-size:13.5px;color:#5A6473}
+.heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
-footer{background:#1A2433;color:#B8C0CC;font-size:13px}
+footer{background:var(--slab);color:var(--ink-4);font-size:13px}
 footer .wrap{padding:40px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:32px}
 footer .wordmark{color:#fff}
-footer p{color:#8F99A8;margin:12px 0 0;max-width:68ch;line-height:1.6}
-footer a{color:#D5DAE2;text-decoration:underline;text-decoration-color:#46536A}
+footer p{color:var(--ink-faint);margin:12px 0 0;max-width:68ch;line-height:1.6}
+footer a{color:var(--ink-4);text-decoration:underline;text-decoration-color:var(--ink-body)}
 footer a:hover{color:#fff}
 footer ul{list-style:none;margin:12px 0 0;padding:0}
 footer li{margin-bottom:8px}
-footer li a{text-decoration:none;color:#B8C0CC}
+footer li a{text-decoration:none;color:var(--ink-4)}
 /* Grouped link columns — the flat list had grown long enough that the footer
    became the tallest block on the page. Wraps on narrow screens so three
    groups never push past 375px. Mirrored in HOW_CSS and in index.html's
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
-footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A93A0;font-weight:600}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .stats{grid-template-columns:repeat(4,1fr)}
   .stat{padding:20px}
   /* Four across: rule between every pair, so the divider the two-column
      layout only needs after 1 and 3 also lands between 2 and 3. */
-  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid #E4E2DA}
+  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid var(--line)}
   .steps{grid-template-columns:repeat(3,1fr)}
-  .step{border-bottom:0;border-right:1px solid #ECEAE3}
+  .step{border-bottom:0;border-right:1px solid var(--hair)}
   .step:last-child{border-right:0}
   h1.h{font-size:42px}
   footer .wrap{flex-direction:row}
@@ -6043,8 +6226,8 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 .anim .exhibit tbody td{border-bottom-color:transparent;transition:border-bottom-color .4s ease-out}
 .anim .exhibit tfoot td{border-top-color:transparent;border-bottom-color:transparent;transition:border-top-color .4s ease-out,border-bottom-color .4s ease-out}
 .anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr,.anim .exhibit.on .mrow{opacity:1;transform:none}
-.anim .exhibit.on tbody td{border-bottom-color:#F0EFE9}
-.anim .exhibit.on tfoot td{border-top-color:#1A2433;border-bottom-color:#1A2433}
+.anim .exhibit.on tbody td{border-bottom-color:var(--hair)}
+.anim .exhibit.on tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink)}
 /* The delays come LAST on purpose. A transition SHORTHAND resets
    transition-delay to 0, and the tfoot rules above match at exactly the same
    specificity as this one, so whichever is written later wins — put the
@@ -6071,14 +6254,14 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 @media (prefers-reduced-motion:reduce){
   .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1;transform:none;transition:none}
   .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none;transition:none}
-  .anim .exhibit tbody td{border-bottom-color:#F0EFE9;transition:none}
-  .anim .exhibit tfoot td{border-top-color:#1A2433;border-bottom-color:#1A2433;transition:none}
+  .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
+  .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
 }
 @media print{
   .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1!important;transform:none!important}
   .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none!important}
-  .anim .exhibit tbody td{border-bottom-color:#F0EFE9!important}
-  .anim .exhibit tfoot td{border-top-color:#1A2433!important;border-bottom-color:#1A2433!important}
+  .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
+  .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
 }
 ${ACCOUNT_NAV_CSS}`;
 
@@ -6205,7 +6388,16 @@ function renderBrokersPageHTML(signedIn) {
     `<div class="card"><h2>What you get for submitting comps</h2>` +
     `<ul>` +
     `<li>Every report that uses one of your comps shows ` +
-    `<span class="badge" style="color:#06603A;background:#E3F2EA">Verified &middot; via Your Firm</span></li>` +
+    // Dark-mode fix (2026-08-10, fix round 1): var(--ok-text)/var(--ok-bg),
+    // not the literal pair this used to carry -- the same substitution
+    // Task 2/4 already made for the report table's own Verified badge and
+    // vault-page.js's .pubbtn.on repeats (see its comment on that rule):
+    // the text value matches --ok-text's light value exactly, and the
+    // background is within that same already-approved tolerance of
+    // --ok-bg's. A style="" attribute on a plain span, unlike an SVG
+    // presentation attribute, resolves var() reliably, so no class is
+    // needed here the way CN_LOGO and the trend chart needed one.
+    `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span></li>` +
     `<li>When an owner in your market wants a broker&rsquo;s opinion of value, we introduce them to you</li>` +
     `<li>A public profile page with your verified comps</li>` +
     `</ul></div>` +
@@ -6235,8 +6427,8 @@ function renderBrokersPageHTML(signedIn) {
     // submit door's alone.
     `<div class="card"><h2>Working a 1031 exchange?</h2>` +
     `<p>A plain guide to the 45 and 180 day deadlines. Send it to your client.</p>` +
-    `<a href="/1031-exchange" style="display:inline-block;background:#fff;border:1px solid #D8D4C9;` +
-    `color:#1A2433;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px">` +
+    `<a href="/1031-exchange" style="display:inline-block;background:var(--paper);border:1px solid var(--edge);` +
+    `color:var(--ink);font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px">` +
     `Open the 1031 guide</a></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
@@ -6747,7 +6939,11 @@ ${ACCOUNT_NAV_JS}
         <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
         <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
         <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <span style="color:#68707E">Badges under-claim, never over-claim.</span>
+        <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
+             match to the literal this used to carry -- a plain span's
+             style="" attribute resolves var() reliably, unlike an SVG
+             presentation attribute, so no class is needed. -->
+        <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
       </div>
     </section>
   </div>
@@ -6896,7 +7092,6 @@ ${ACCOUNT_NAV_JS}
     `<title>${escHtml(title)} | CompNinja</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
     `<meta name="robots" content="index, follow"/>\n<link rel="canonical" href="${canonical}"/>\n` +
-    `<meta name="theme-color" content="#FBFBF9"/>\n` +
     `<meta property="og:type" content="website"/>\n<meta property="og:site_name" content="CompNinja"/>\n` +
     `<meta property="og:title" content="${escHtml(title)}"/>\n` +
     `<meta property="og:description" content="${escHtml(description)}"/>\n` +
@@ -6906,8 +7101,10 @@ ${ACCOUNT_NAV_JS}
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    `${THEME_META}` +
     `<script type="application/ld+json">${jsonLd}</script>\n` +
     `<style>${HOW_CSS}</style>\n` +
+    THEME_BOOT +
     // The ONE thing that arms the scroll choreography. Every rule that hides
     // anything is scoped under html.anim, so a visitor with JS off — or a
     // crawler, or anyone whose network drops this byte — gets the finished
@@ -11579,6 +11776,60 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // Read a broker's own PDF and return classified rows for a confirm table.
+    // Stores NOTHING: the PDF never lands in broker_uploads or broker_comps.
+    if (req.method === "POST" && path === "/api/vault/extract") {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 8e6 && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultex:" + clientIp(req), 8)) {
+            return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
+          }
+          const { filename, pdf } = JSON.parse(body || "{}");
+          const b64 = String(pdf || "").replace(/^data:application\/pdf;base64,/i, "");
+          let bytes;
+          try { bytes = Buffer.from(b64, "base64"); }
+          catch (err) { return sendJson(res, 400, { error: "That doesn't look like a PDF." }); }
+          if (!VAULT.looksLikePdf(bytes)) {
+            return sendJson(res, 400, { error: "That doesn't look like a PDF." });
+          }
+          if (bytes.length > VAULT.MAX_PDF_BYTES) {
+            return sendJson(res, 400, { error: "That file is too large to read." });
+          }
+          const text = await extractPdfOnce(b64);
+          const parsed = VAULT.parseExtractJson(text);
+          if (!parsed.ok || parsed.rows.length === 0) {
+            logEvent("vault_extract", { source: "empty:0" });
+            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that PDF." });
+          }
+          const rows = VAULT.classifyExtractRows(parsed.rows);
+          logEvent("vault_extract", { source: `ok:${rows.length}` });
+          sendJson(res, 200, {
+            filename: String(filename || "").trim().slice(0, 200),
+            rows,
+          });
+        } catch (err) {
+          // Same guard as /api/vault/inspect: V8 quotes the input in a
+          // JSON.parse error, so a malformed body would otherwise print a
+          // fragment of the broker's private PDF into Render's logs (and
+          // echo it back via clientErrorMessage). A bad body is 400.
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault extract error:", err.message);
+          const status = err.statusCode || 500;
+          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that PDF. Nothing was saved." });
+        }
+      });
+      return;
+    }
+
     // Public market benchmarks for the /vault gut check. POST, not GET:
     // market names carry commas ("Boise, ID") and a JSON body beats
     // query-string escaping.
@@ -11678,12 +11929,18 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
 
-          const { filename, csv, mapping } = JSON.parse(body || "{}");
+          const parsedBody = JSON.parse(body || "{}");
+          const { filename, mapping } = parsedBody;
+          const made = VAULT.uploadPayloadToCsv({ csv: parsedBody.csv, rows: parsedBody.rows });
+          if (!made.ok) {
+            return sendJson(res, 400, { error: made.error || "Nothing to import." });
+          }
+          const csv = made.csv;
           // `mapping` absent means today's behaviour byte for byte, so
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
           // wrong, which is why nothing is checked here.
-          const parsed = VAULT.parseUpload(csv, { mapping: mapping || null });
+          const parsed = VAULT.parseUpload(csv, { mapping: parsedBody.rows ? null : (mapping || null) });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -11715,7 +11972,9 @@ const server = http.createServer((req, res) => {
 
           // Saved only once the import actually succeeded, so a mapping that
           // produced nothing usable is never offered back to them next time.
-          if (mapping) saveCsvMapping(user.id, mapping);
+          // Row uploads (PDF confirm) ignore mapping entirely — do not overwrite
+          // the broker's remembered CSV mapping.
+          if (mapping && !parsedBody.rows) saveCsvMapping(user.id, mapping);
 
           // `market` is attached HERE, with server.js's own marketOf() and no
           // other parse, so broker_comps.market agrees byte for byte with
@@ -13804,8 +14063,18 @@ const server = http.createServer((req, res) => {
     // test can verify the responder is ITS child and not a foreign server on
     // the same port — two concurrent suite runs once cross-talked exactly
     // that way. Absent in production, where the env var is never set.
+    //
+    // `model` answers a question that was unanswerable from outside the box:
+    // "which model wrote this report?" MODEL is a startup constant that a
+    // deployment can override with an env var nobody can read from here, and
+    // a provider's defaultModel moves with the code, so inspecting the repo
+    // proves what the SOURCE says rather than what production is running.
+    // Asked on 2026-08-13 about a live report ("was this Gemini 3.7 Flash?")
+    // and the only honest answer was a git argument. It is the same class of
+    // fact as `provider`, which is already here, and it names a model — not
+    // a credential.
     return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
-      provider: PROVIDER.name, search_budget: PROVIDER.capabilities.searchBudget,
+      provider: PROVIDER.name, model: MODEL, search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
@@ -14227,7 +14496,16 @@ const server = http.createServer((req, res) => {
         "cache-control": "no-store",
         "x-robots-tag": "noindex, nofollow",
       });
-      res.end(renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }));
+      res.end(renderVaultHTML(boot, {
+        CN_LOGO,
+        MARKET_CSS,
+        THEME_CSS,
+        THEME_BOOT,
+        ACCOUNT_NAV_CSS,
+        ACCOUNT_NAV_JS,
+        ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
+        ACCOUNT_NAV_PRICING,
+      }));
     })();
     return;
   }

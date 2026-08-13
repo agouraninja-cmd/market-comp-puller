@@ -252,6 +252,85 @@ test("outlierOf: degenerate and junk inputs are null", () => {
   assert.equal(V.outlierOf(120, { low: 100, high: 100 }), null);
 });
 
+// --- subjectSizeFit ---------------------------------------------------------
+//
+// The rule that would have caught the 2026-08-13 report: a $52,000 mobile home
+// valued at $795,000 because the size box held 10,100 SF measured off a bike
+// shop 81 m away. The comps were right; the subject size was not.
+
+test("subjectSizeFit counts the comps outside compWeight's 0.5x-2x window", () => {
+  // The count the hero's trust line reports. 10,000 SF subject: 30,000 is more
+  // than 2x (off), 20,000 is exactly 2x (inside, matching compWeight's own
+  // free pass), 5,000 is exactly 0.5x (inside).
+  const fit = V.subjectSizeFit(10000, [
+    comp({ size_sqft: "30000" }), comp({ size_sqft: "20000" }), comp({ size_sqft: "5000" }),
+  ]);
+  assert.equal(fit.sized, 3);
+  assert.equal(fit.offSize, 1);
+  assert.equal(fit.unsupported, false);
+});
+
+test("subjectSizeFit flags a subject size the comps cannot support", () => {
+  // The real report, with its real numbers.
+  const trailerComps = [460, 720, 924, 672, 980, 938, 1152, 1492]
+    .map((sf) => comp({ size_sqft: String(sf) }));
+  const fit = V.subjectSizeFit(10100, trailerComps);
+  assert.equal(fit.unsupported, true);
+  assert.equal(fit.dir, "larger");
+  assert.equal(fit.nearest, 1492);
+  assert.equal(fit.factor, 6.8);
+  // Every comp is off-size, which is what makes the SUBJECT the outlier.
+  assert.equal(fit.offSize, 8);
+  assert.equal(fit.sized, 8);
+});
+
+test("subjectSizeFit flags an implausibly SMALL subject too", () => {
+  // The same failure with the numbers reversed — a size typed in thousands, or
+  // a unit's floor area against whole-building comps.
+  const fit = V.subjectSizeFit(900, [
+    comp({ size_sqft: "40000" }), comp({ size_sqft: "52000" }), comp({ size_sqft: "61000" }),
+  ]);
+  assert.equal(fit.unsupported, true);
+  assert.equal(fit.dir, "smaller");
+  assert.equal(fit.nearest, 40000);
+  assert.equal(fit.factor, 44.4);
+});
+
+test("subjectSizeFit stays quiet when the comps straddle the subject", () => {
+  // One comp far smaller and another far larger is a scattered comp set, which
+  // the per-comp weighting already handles and offSize already reports. It is
+  // NOT a size box holding a number from a different building, so it must not
+  // raise the warning that tells the reader to go doubt their own input.
+  const fit = V.subjectSizeFit(10000, [
+    comp({ size_sqft: "500" }), comp({ size_sqft: "800" }), comp({ size_sqft: "90000" }),
+  ]);
+  assert.equal(fit.offSize, 3);
+  assert.equal(fit.unsupported, false);
+});
+
+test("subjectSizeFit needs three sized comps before it accuses the subject", () => {
+  // Two comps agreeing is not evidence about a third figure.
+  const two = V.subjectSizeFit(10100, [comp({ size_sqft: "460" }), comp({ size_sqft: "720" })]);
+  assert.equal(two.offSize, 2);
+  assert.equal(two.unsupported, false);
+});
+
+test("subjectSizeFit ignores leases and unsized comps, and returns null with nothing to compare", () => {
+  // Leases are a different unit ($/SF/yr) and never inform the sale band, so
+  // they cannot make the subject look out of place either.
+  const withLease = V.subjectSizeFit(10100, [
+    comp({ size_sqft: "460" }), comp({ size_sqft: "720" }), comp({ size_sqft: "924" }),
+    comp({ transaction: "Lease", size_sqft: "40000" }),
+  ]);
+  assert.equal(withLease.sized, 3);
+  assert.equal(withLease.unsupported, true);
+  // No size on the subject, or no sized comp, means there is no comparison to
+  // report — distinct from a comparison that found nothing wrong.
+  assert.equal(V.subjectSizeFit(0, [comp()]), null);
+  assert.equal(V.subjectSizeFit(10000, [comp({ size_sqft: "" })]), null);
+  assert.equal(V.subjectSizeFit(10000, []), null);
+});
+
 test("a blended vault comp has a tier, at full weight", () => {
   // The key exists so the tier does: without broker_vault in TIER_WEIGHT,
   // tierOf returned null and index.html's sourceBadge() rendered no

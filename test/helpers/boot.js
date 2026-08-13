@@ -51,6 +51,11 @@ async function boot(env) {
       // missing-key guard stops firing, and a suite this file guarantees to be
       // free would start making BILLED search calls.
       GEMINI_API_KEY: "",
+      // Blanked so a developer with MODEL= in their own .env cannot change what
+      // these tests prove — server.js's loader only fills a var that is
+      // undefined, so an empty string here stays empty and MODEL falls back to
+      // the provider's default, which is what the /healthz assertion pins.
+      MODEL: "",
       ADMIN_KEY: "",
       APP_PASSWORD: "",
       SUPABASE_URL: "",

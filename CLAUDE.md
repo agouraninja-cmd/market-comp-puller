@@ -263,10 +263,11 @@ dependency. `.env` is git-ignored — never commit it.
   in index.html) — which is also what a Street View 404 swaps in via the
   img's onerror.
   **A pin only gets a photo at all when its OSM building footprint exists
-  AND its address starts with a street number** (`snapMarkersToBuildings` —
+  AND its address starts with a street number AND that street number names a
+  whole property rather than one unit of it** (`snapMarkersToBuildings` —
   one batched browser-direct Overpass query per report after pins settle,
   two public endpoints tried in order, cached in localStorage
-  `bldgCache.v1`): the footprint is the one signal proving the photo shows
+  `bldgCache.v2`): the footprint is the one signal proving the photo shows
   the property. Geocoded points sit on the street centerline, so every
   unsnapped aiming strategy (raw point, Google address geocode) produced
   photos of roads/trees on rural reports — owner's rule is "the actual
@@ -277,6 +278,32 @@ dependency. `.env` is git-ignored — never commit it.
   column three times. It is deliberately NOT the shape-lenient
   `isAggregateAddress()` in server.js, which protects corpus DATA where
   numberless comps are still valid rows.
+  Two further gates, both added 2026-08-13 after a Boise mobile-home report
+  photographed a bike shop 81 m up the street (same incident as the $795,000
+  valuation — see flow 3 under "Non-obvious flows"). **The footprint must
+  PROVE the address** (`addr:housenumber` + `addr:street`, via the existing
+  `osmNumberMatches`/`streetLooksSame` written for the type detector's
+  Phoenix "Mandarin Super Buffet" bug): proximity cannot tell two sides of a
+  street apart, let alone a shop from the trailer park beside it. Where
+  NOTHING in range carries a house number the map cannot answer and the
+  main-mass pick stands, so coverage holds in the suburbs where photos work.
+  Among several footprints that all prove the address (one building mapped
+  in parts) it still takes the main mass — a photo of the wrong wing is
+  still a photo of the right building, which is why this is the PHOTO's rule
+  and not the size estimate's. **And `unitDesignatorOf()` refuses outright**
+  for an address naming one unit of a site (`Trailer 51`, `Apt 3B`, `SPC 12`,
+  `#45`): geocoders silently drop the unit — Census answered "6728 W
+  Fairview Ave Trailer 51" with "6728 FAIRVIEW AVE" — so no footprint at
+  that point is provably the subject's, and 38 of them shared that number.
+  It gates comps too, because the model returns unit addresses of its own.
+  Its vocabulary is tested in both directions (`test/index-html.test.js`):
+  loosened, wrong buildings return; tightened, ordinary streets lose their
+  photos, and "Roomy", "Lotus" and "United Nations" all parsed as unit
+  designators on the first pass.
+  `bldgCache` went to **v2** with these: the snap now depends on the
+  ADDRESS, not just the pin, so a key of coordinates alone held one answer
+  for every unit of a park — and the bump retires the wrong-building snaps
+  already sitting in browsers, the same reason `geoCache` went to v2.
   Spend guardrails: Google Maps API quotas are NO LONGER user-adjustable
   (the spec's 500/day quota-cap step is obsolete) — the backstops are the
   "CompNinja Street View cap" $5/month budget alert on the billing account
@@ -447,6 +474,13 @@ dependency. `.env` is git-ignored — never commit it.
   corpus-first retrieval remains a quality lever there but stops being a cost
   lever. Server code must branch on `PROVIDER.capabilities.*`, never on
   `PROVIDER.name`.
+  **`GET /healthz` reports the live `provider` AND `model`** — ask the
+  deployment, never the repo. `MODEL` is read once at startup from an env var
+  nobody can see from here, and a provider's `defaultModel` moves with the
+  code, so a checkout only proves what the source says. Asked on 2026-08-13
+  whether a live report had run on Gemini 3.7 Flash, the honest answer needed
+  a `git branch --contains` (it had not: that switch is still on an unmerged
+  branch, and production runs the 3.6 Flash default).
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 ### Admin access — comped Pro for the team
@@ -1337,10 +1371,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `GET /api/vault/template` (the CSV a broker fills in), `POST
   /api/vault/upload` (JSON `{filename, csv}` — deliberately not multipart,
   which would be hundreds of lines of hand-rolled parsing in a repo with no
-  dependencies), `GET /api/vault` (filters by `market` and `type`), and
+  dependencies; also accepts `{filename, rows}` from the PDF confirm table,
+  converted through `exportCsv` then `parseUpload` — the CSV path is
+  unchanged), `POST /api/vault/extract` (JSON `{filename, pdf}` — base64 —
+  sends the file to the extract vendor with no search tools, writes nothing,
+  and returns `{ rows: [{ values, error }] }` for the confirm table),
+  `GET /api/vault` (filters by `market` and `type`), and
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
-  All four go through one `openVault()` helper: 401 not signed in → 403 not a
-  broker (`canUseVault`) → 503 no database.
+  All of these routes go through one `openVault()` helper: 401 not signed in →
+  403 not a broker (`canUseVault`) → 503 no database.
   - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
@@ -1531,11 +1570,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       already say where to start. `#firstRun` is not a `section+section`, so
       it takes no top padding and `.steps`' own top margin collapses into the
       section's — the gap is unchanged with the h2 gone, and no CSS pins it.
-    - **There is exactly ONE `<input type=file>`.** Step 1's button and the
-      ordinary "Add comps" button both call `$("file").click()`. Two inputs
-      would mean two values and two change handlers, and an upload started
-      from one would be invisible to the other's result message. A test pins
-      this.
+    - **There is exactly ONE `<input type=file>`.** Its `accept` includes
+      `.pdf` as well as `.csv`. Step 1's button and the ordinary "Add comps"
+      button both call `$("file").click()`. Two inputs would mean two values
+      and two change handlers, and an upload started from one would be
+      invisible to the other's result message. Table PDFs land in `#pdfSec`
+      (the confirm table), not the CSV column mapper. A test pins this.
     - **The coverage form is ONE relocating node** (`#covForm`). Its home is
       step 2; `applyFirstRun` moves it to the top of the leads section once
       the vault has content (step 2 hides then), and walks it home again if
@@ -1993,13 +2033,53 @@ private row has not earned. Two rules matter when editing anything down here:
    input as an editable override. Since 2026-08-04 the browser also pre-fills
    an OSM footprint-derived size estimate during the address-confirm dialog
    (`maybeEstimateSize` in index.html: shoelace area × building:levels,
-   `fpSize.v1` cache, gated to verified street-numbered non-Land addresses,
+   `fpSize.v2` cache, gated to verified street-numbered non-Land addresses,
    labeled by `#sizeEstimateNote` and editable) — which doubles as a
    search-budget cut, since a size that rides the request skips the model's
    2-search size lookup. An Overpass outage is deliberately NOT cached as a
    miss. The prompt's PRICED BUT UNSIZED COMPS rule is the server-side
    sibling: a priced sale comp missing its size is worth one dedicated
    search, verified to lift priced-comp counts on thin markets.
+   **This is the most expensive number in the report, because the hero
+   multiplies it, and it shipped for nine days willing to measure any
+   building.** On 2026-08-13 a Boise mobile home listed on Zillow at $52,000
+   was reported at $795,000: "biggest footprint within 120 m" chose Bob's
+   Bicycles, 10,064 sq ft, 81 m up W Fairview Ave, and 10,100 SF × the comps'
+   $78/SF median is $795,000 to the dollar. Nothing was wrong with the comps
+   — the model returned eight manufactured homes at $61-158/SF and said so.
+   Three rules now stand between that footprint and the size box, and all
+   three matter because each catches a case the others miss.
+   **The footprint must PROVE the address** (`addr:housenumber` +
+   `addr:street`) — the same filter `detectPropertyType` has applied since
+   the Phoenix "Mandarin Super Buffet" bug, which this estimate and the map
+   photo simply never adopted even though the photo's own comment claimed
+   they followed the same rule. **More than one proving footprint refuses**,
+   which is the deliberate OPPOSITE of `detectPropertyType` preferring the
+   main mass: every part of a campus shares one property TYPE, while only one
+   of them is the building whose square footage the value hangs on (38
+   footprints prove #6728 at Fairview). **And a unit designator refuses**
+   before the query is even made (`unitDesignatorOf`, shared with the photo
+   gate — see `GOOGLE_MAPS_API_KEY` above for its vocabulary and tests).
+   A refusal is cheap and self-healing: the server then spends the two
+   searches it saved looking the size up from public records, which is what
+   it did before this estimate existed and is better data than a measurement
+   of the wrong building. `fpSize` went to **v2** because entries are now
+   keyed by address as well as coordinates, and the bump retires the wrong
+   sizes already cached in browsers.
+   The backstop for every OTHER way a wrong size arrives (a record lookup, a
+   typo) is **`VALUATION.subjectSizeFit`** — pure and tested, and the single
+   owner of "how does the subject's size compare to the comps'", so the trust
+   line's "N comps are a different size class" count and this warning can
+   never disagree. When EVERY sized comp falls outside `compWeight`'s 0.5x-2x
+   window and the subject sits entirely past one end of their range, the odd
+   one out is the SUBJECT SIZE, not the comps, and the trust line says which
+   figure to doubt and how far the range is extrapolated. That report already
+   whispered "8 comps are a different size class and count less", which reads
+   as a footnote about the comps rather than a warning that the headline was
+   extrapolated 6.8× past every one of them. It deliberately stays quiet when
+   the comps STRADDLE the subject (one far smaller, one far larger): that is
+   a scattered comp set, which the weighting already handles, not a size box
+   holding a number from a different building.
    NOI **never reaches the model or any public
    surface**: the income-approach cross-check divides the browser-held NOI by
    the model's `market_cap_rate_range`, `/api/comps` never receives it, and

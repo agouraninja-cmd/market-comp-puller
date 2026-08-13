@@ -507,10 +507,11 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
               <p class="fine">Your comps are never read into CompNinja&rsquo;s public
                 records, never included in an export or a shared link, and never shown
                 to another broker.</p>
+              <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
             </details>
             <div class="row" style="margin-top:var(--s4)">
               <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
-              <button class="btn ghost" id="frPick">Choose a spreadsheet</button>
+              <button class="btn ghost" id="frPick">Choose a spreadsheet or PDF</button>
             </div>
           </div>
         </div>
@@ -577,9 +578,9 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
     <div id="addSec" class="addpanel hide">
       <div class="drop" id="drop">
         <p class="drop-k">Import a spreadsheet</p>
-        <button class="btn" id="pick">Choose a spreadsheet</button>
-        <p>or drop a .csv here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
-        <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
+        <button class="btn" id="pick">Choose a spreadsheet or PDF</button>
+        <p>or drop a .csv or .pdf here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
+        <input type="file" id="file" accept=".csv,.pdf,text/csv,application/pdf" class="hide"/>
       </div>
       <div id="res"></div>
 
@@ -641,6 +642,22 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       </div>
     </div>
 
+    <div id="pdfSec" class="mappanel hide">
+      <h2>Review these comps</h2>
+      <p class="sub" style="margin-top:0"><span id="pdfCount">0</span> deals in <span id="pdfName"></span>.
+        Uncheck any that aren't yours. Fix a cell if we misread it. Nothing is saved until you import.</p>
+      <p class="note" id="pdfStrip"></p>
+      <div class="tw"><table id="pdfTable">
+        <thead id="pdfHead"></thead>
+        <tbody id="pdfBody"></tbody>
+      </table></div>
+      <p id="pdfMsg" class="msg bad hide"></p>
+      <div class="row">
+        <button class="btn" id="pdfGo">Import</button>
+        <button class="btn ghost" id="pdfCancel">Cancel</button>
+      </div>
+    </div>
+
     <section id="rollupSec" class="hide">
       <h2>Your markets</h2>
       <div class="cards" id="rollup"></div>
@@ -698,7 +715,7 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       </table></div>
       <!-- "above" used to point at a section in plain view. The uploader is a
            closed panel now, so this names the control that opens it. -->
-      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet.</div>
+      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet or PDF.</div>
       <!-- Imports is provenance for the table it now sits under, not a tenth
            peer section at the foot of the page. Collapsed, because the one
            thing a broker does here (remove an import) is rare and destructive,
@@ -1799,21 +1816,25 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
   });
 
   var pending = null;   // {name, csv} held while the broker maps
+  var pdfPending = null; // extract result held while the broker confirms
 
-  function doImport(name, csv, mapping, onOk){
+  function doImport(name, csv, mapping, onOk, rows){
     // Whether this import came from the mapping screen decides where its
     // result can be SEEN: #res lives inside #addSec, which is hidden while
     // the panel is open, so a failure written there would be invisible.
     var viaMapper=!!mapInfo;
+    var viaPdf=!!pdfPending;
     // Not via the mapper means every word about this import — "Importing", the
     // row counts, the line-numbered errors — is written into #res, which lives
     // inside the uploader panel. Open it, or the broker watches nothing happen.
-    if(!viaMapper)setAddOpen(true);
+    if(!viaMapper&&!viaPdf)setAddOpen(true);
     $("pick").disabled=true;
     if(viaMapper){ $("mapGo").disabled=true; $("mapGo").textContent="Importing\\u2026"; }
+    if(viaPdf){ $("pdfGo").disabled=true; $("pdfGo").textContent="Importing\\u2026"; }
     $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
-    var payload={filename:name,csv:csv};
-    if(mapping)payload.mapping=mapping;
+    var payload={filename:name};
+    if(rows){ payload.rows=rows; }
+    else { payload.csv=csv; if(mapping) payload.mapping=mapping; }
     // Line-numbered problems are the point: a broker fixing a spreadsheet
     // needs to know WHICH row, in the numbering Excel shows them.
     function errList(j){
@@ -1832,6 +1853,11 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
         $("mapGo").disabled=false;
         $("mapMsg").innerHTML=esc(msg)+errs;
         $("mapMsg").classList.remove("hide");
+        $("res").innerHTML="";
+      }else if(viaPdf&&pdfPending){
+        refreshPdfGo();
+        $("pdfMsg").innerHTML=esc(msg)+errs;
+        $("pdfMsg").classList.remove("hide");
         $("res").innerHTML="";
       }else{
         $("res").innerHTML='<div class="msg bad">'+esc(msg)+errs+"</div>";
@@ -1856,7 +1882,7 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
         // dropped (found on the first real mapper import, 2026-08-10). Same
         // rule as the non-mapper open at the top of doImport: a result must
         // be written somewhere that is showing.
-        if(viaMapper)setAddOpen(true);
+        if(viaMapper||viaPdf)setAddOpen(true);
         // "Imported N" counts what the vault actually STORED. A re-uploaded
         // book is the ordinary case, not an error, so the rows it already
         // had are stated plainly beside it rather than folded into the
@@ -1877,8 +1903,28 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       .catch(function(){ failed("The upload did not reach the server. Nothing was saved.",""); });
   }
 
+  function isPdfFile(file){
+    var n=String(file&&file.name||"").toLowerCase();
+    var t=String(file&&file.type||"");
+    return t==="application/pdf" || /\\.pdf$/.test(n);
+  }
+  function isCsvFile(file){
+    var n=String(file&&file.name||"").toLowerCase();
+    var t=String(file&&file.type||"");
+    return t==="text/csv" || /\\.csv$/.test(n);
+  }
+
   function upload(file){
     if(!file)return;
+    if(file.size>4*1024*1024){
+      $("res").innerHTML='<div class="msg bad">That file is too large to read.</div>';
+      return;
+    }
+    if(isPdfFile(file)){ extractPdf(file); return; }
+    if(!isCsvFile(file)){
+      $("res").innerHTML='<div class="msg bad">Use a .csv or .pdf.</div>';
+      return;
+    }
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
@@ -1906,6 +1952,34 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
     fr.readAsText(file);
   }
 
+  function extractPdf(file){
+    setAddOpen(true);
+    $("pick").disabled=true;
+    $("res").innerHTML='<div class="msg ok">Reading the table in '+esc(file.name)+"&hellip;</div>";
+    var fr=new FileReader();
+    fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
+    fr.onload=function(){
+      var url=String(fr.result||"");
+      var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
+      fetch("/api/vault/extract",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({filename:file.name,pdf:b64})})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          $("pick").disabled=false;
+          if(o.s!==200){
+            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that PDF. Nothing was saved.")+"</div>";
+            return;
+          }
+          $("res").innerHTML="";
+          openPdfPreview(o.j);
+        })
+        .catch(function(){ $("pick").disabled=false;
+          $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
+    };
+    fr.readAsDataURL(file);
+  }
+
   var mapInfo=null;
 
   // The dropdown's LIST is served by /api/vault/inspect (targets), so it can
@@ -1914,6 +1988,10 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
   // the first time should not have to read twenty-four database identifiers.
   // Anything without a label falls back to its raw value, so a per-type field
   // added later still appears rather than vanishing.
+  // Keep in step with broker-vault.js REQUIRED_TARGETS / TEMPLATE_COLUMNS /
+  // OPTIONAL_SPEC_COLUMNS. This page cannot require that module.
+  var PDF_REQUIRED=["address","property_type","transaction","deal_date"];
+  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
   var TARGET_LABELS={
     address:"Address", property_type:"Property type", transaction:"Sale or lease",
     deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",
@@ -1981,6 +2059,7 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       $("mapAmbig").classList.add("hide");
     }
     $("mapSec").classList.remove("hide");
+    $("pdfSec").classList.add("hide");
     $("addSec").classList.add("hide");
     // Hidden too, or a first-run broker — which the FIRST broker through this
     // door is by definition — keeps the first-run steps on screen above the
@@ -2084,6 +2163,106 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
   });
   $("mapCancel").addEventListener("click",function(){
     closeMapper();
+    $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
+  });
+
+  function pdfColumns(rows){
+    var cols=PDF_REQUIRED.slice();
+    PDF_KEYS.forEach(function(k){
+      if(cols.indexOf(k)>=0)return;
+      var used=(rows||[]).some(function(r){
+        var v=r.values&&r.values[k];
+        return v!=null && String(v)!=="";
+      });
+      if(used)cols.push(k);
+    });
+    return cols;
+  }
+
+  function refreshPdfGo(){
+    var n=0;
+    ((pdfPending&&pdfPending.rows)||[]).forEach(function(r){ if(r.checked)n++; });
+    $("pdfGo").textContent="Import "+n+" comps";
+    $("pdfGo").disabled=n===0;
+  }
+
+  function collectPdfRows(){
+    var out=[];
+    ((pdfPending&&pdfPending.rows)||[]).forEach(function(r){
+      if(!r.checked)return;
+      var row={};
+      Object.keys(r.values||{}).forEach(function(k){
+        var v=r.values[k];
+        if(v!=null && String(v)!=="")row[k]=String(v);
+      });
+      out.push(row);
+    });
+    return out;
+  }
+
+  function openPdfPreview(info){
+    pdfPending=info||{filename:"",rows:[]};
+    var rows=pdfPending.rows||[];
+    rows.forEach(function(r){
+      r.values=r.values||{};
+      r.checked=r.error==null;
+    });
+    var cols=pdfColumns(rows);
+    $("pdfCount").textContent=String(rows.length);
+    $("pdfName").textContent=pdfPending.filename||"";
+    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th>"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
+    $("pdfBody").innerHTML=rows.map(function(r,i){
+      var tint=r.error!=null?' style="background:#FDF2F2"':"";
+      var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
+      var cells=cols.map(function(k){
+        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+'" value="'+escA(r.values[k]||"")+'"/></td>';
+      }).join("");
+      return "<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
+    }).join("");
+    var n=rows.length, ready=0, fail=0, allDate=true;
+    rows.forEach(function(r){
+      if(r.error==null)ready++;
+      else { fail++; if(!/date/i.test(String(r.error)))allDate=false; }
+    });
+    var failBit=fail?(allDate?fail+" need a date":fail+" need a fix"):"";
+    $("pdfStrip").textContent=n+" found \\u00b7 "+ready+" ready"+(failBit?" \\u00b7 "+failBit:"");
+    $("pdfMsg").innerHTML="";
+    $("pdfMsg").classList.add("hide");
+    $("mapSec").classList.add("hide");
+    $("pdfSec").classList.remove("hide");
+    $("addSec").classList.add("hide");
+    $("firstRun").classList.add("hide");
+    Array.prototype.forEach.call($("pdfBody").querySelectorAll("input"),function(inp){
+      var i=Number(inp.getAttribute("data-i"));
+      if(inp.type==="checkbox"){
+        inp.addEventListener("change",function(){
+          if(pdfPending.rows[i])pdfPending.rows[i].checked=inp.checked;
+          refreshPdfGo();
+        });
+      }else{
+        inp.addEventListener("input",function(){
+          if(pdfPending.rows[i])pdfPending.rows[i].values[inp.getAttribute("data-k")]=inp.value;
+        });
+      }
+    });
+    refreshPdfGo();
+    $("pdfSec").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  function closePdfPreview(){
+    $("pdfSec").classList.add("hide");
+    pdfPending=null;
+    applyFirstRun(firstRunCounts[0],firstRunCounts[1]);
+  }
+
+  $("pdfGo").addEventListener("click",function(){
+    if(!pdfPending)return;
+    var rows=collectPdfRows();
+    if(!rows.length)return;
+    doImport(pdfPending.filename,null,null,closePdfPreview,rows);
+  });
+  $("pdfCancel").addEventListener("click",function(){
+    closePdfPreview();
     $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
   });
 

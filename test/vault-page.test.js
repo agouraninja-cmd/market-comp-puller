@@ -240,7 +240,8 @@ function stubElement() {
       if (!selects) selects = parseSelects(html);
       return selects;
     },
-    click() {}, focus() {}, scrollIntoView() {},
+    click() { (on.click || []).forEach((fn) => fn({})); },
+    focus() {}, scrollIntoView() {},
     getAttribute() { return null; }, setAttribute() {},
     closest() { return null; },
   };
@@ -250,6 +251,10 @@ function stubElement() {
 function stubFileReader() {
   return function FakeFileReader() {
     this.readAsText = (file) => { this.result = file.text; if (this.onload) this.onload(); };
+    this.readAsDataURL = (file) => {
+      this.result = file.dataUrl || "data:application/pdf;base64,JVBERi0x";
+      if (this.onload) this.onload();
+    };
   };
 }
 
@@ -314,6 +319,11 @@ async function runPage(comps, benchResult, opts, identity) {
         required: VAULT.REQUIRED_TARGETS,
       })));
     }
+    if (u.indexOf("/api/vault/extract") === 0) {
+      return opts.extract
+        ? opts.extract(init)
+        : Promise.resolve(jsonResponse(200, { filename: "book.pdf", rows: [] }));
+    }
     if (u.indexOf("/api/vault/upload") === 0) {
       return opts.upload ? opts.upload() : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
     }
@@ -363,6 +373,13 @@ async function chooseFile(doc, csv, name) {
   doc.getElementById("file").fire("change", {
     target: { files: [{ name: name || "book.csv", text: csv }], value: "x" },
   });
+  await tick();
+}
+async function choosePdf(doc, name) {
+  doc.getElementById("file").fire("change", {
+    target: { files: [{ name: name || "book.pdf", type: "application/pdf", size: 1200, dataUrl: "data:application/pdf;base64,JVBERi0x" }], value: "x" },
+  });
+  await tick();
   await tick();
 }
 const selectsOf = (doc) => doc.getElementById("mapBody").querySelectorAll("select");
@@ -510,6 +527,21 @@ test("the mapping panel is present and hidden on first paint", () => {
   assert.match(html, /id="mapSec"/);
   assert.match(html, /<div id="mapSec" class="mappanel hide">/,
     "it must not flash before a file is chosen");
+});
+
+test("the PDF confirm panel is present and hidden on first paint", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /id="pdfSec"/);
+  assert.match(html, /<div id="pdfSec" class="mappanel hide">/,
+    "it must not flash before a file is chosen");
+});
+
+test("PDF_REQUIRED is address,property_type,transaction,deal_date", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const m = script.match(/var PDF_REQUIRED=\[([^\]]*)\]/);
+  assert.ok(m, "PDF_REQUIRED is missing from the emitted script");
+  const keys = m[1].split(",").map((s) => s.replace(/["'\s]/g, ""));
+  assert.equal(keys.join(","), "address,property_type,transaction,deal_date");
 });
 
 test("the mapping panel names the ignored columns", () => {
@@ -790,6 +822,65 @@ test("skipped # lines are reported, not dropped silently", async () => {
   assert.match(html, /Imported 3 comps/);
   assert.match(html, /10 note lines ignored/);
   assert.ok(html.indexOf("msg ok") >= 0, "ignoring our own notes is not a failure");
+});
+
+// ---------------------------------------------------------------------------
+// PDF confirm table (task 5)
+// ---------------------------------------------------------------------------
+
+test("a PDF does not call inspect and does not open the mapper", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12", price: "4250000" },
+        error: null,
+      }],
+    })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0);
+  assert.ok(doc.getElementById("mapSec").classList.contains("hide"));
+  assert.ok(!doc.getElementById("pdfSec").classList.contains("hide"));
+});
+
+test("a CSV still goes through inspect", async () => {
+  const { doc, calls } = await runPage([]);
+  await chooseFile(doc, CLEAN_CSV);
+  assert.ok(calls.some((c) => c.url.indexOf("/api/vault/inspect") === 0),
+    "spreadsheets must not start taking the PDF path");
+});
+
+test("Import posts only checked rows under the PDF filename", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [
+        { values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" }, error: null },
+        { values: { address: "Meridian industrial (submarket)", property_type: "Industrial", transaction: "sale" }, error: "no street number" },
+      ],
+    })),
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  doc.getElementById("pdfGo").click();
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].body.filename, "Q2.pdf");
+  assert.equal(up[0].body.csv, undefined);
+  assert.equal(up[0].body.rows.length, 1);
+  assert.equal(up[0].body.rows[0].address, "4100 W Franklin Rd, Boise ID");
+});
+
+test("a non-csv non-pdf file never hits inspect", async () => {
+  const { doc, calls } = await runPage([]);
+  doc.getElementById("file").fire("change", {
+    target: { files: [{ name: "book.xlsx", type: "application/vnd.ms-excel", text: "PK" }], value: "x" },
+  });
+  await tick();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0);
+  assert.match(doc.getElementById("res").innerHTML, /Use a \.csv or \.pdf/);
 });
 
 // ---------------------------------------------------------------------------

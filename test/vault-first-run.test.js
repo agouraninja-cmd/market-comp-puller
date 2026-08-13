@@ -99,3 +99,15 @@ test("the emitted page script still parses", () => {
   assert.ok(m, "could not find the page's inline script");
   assert.doesNotThrow(() => new Function(m[0].replace(/^<script>/, "").replace(/<\/script>$/, "")));
 });
+
+test("the file input accepts csv and pdf", () => {
+  assert.match(html(), /id="file"[^>]*accept="[^"]*\.pdf/);
+});
+
+test("the first-run disclosure names the extract vendor", () => {
+  assert.match(html(), /extract vendor/);
+});
+
+test("picker copy mentions PDF", () => {
+  assert.match(html(), /Choose a spreadsheet or PDF/);
+});

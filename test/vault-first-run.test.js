@@ -66,7 +66,7 @@ test("every element the first run hides ships hidden or is toggled by id", () =>
   // Direction U neither addSec nor importsSec is a <section> — one is a panel
   // under the book deck, the other a disclosure under the comps table — so
   // this pins the id, which is what the toggling actually needs.
-  for (const id of ["addSec", "compsSec", "importsSec"]) {
+  for (const id of ["addSec", "compsSec", "importsSec", "pipeSec"]) {
     assert.match(page, new RegExp('id="' + id + '"'), id + " has no id to toggle");
   }
 });
@@ -79,28 +79,22 @@ test("the uploader ships closed, so the book is what a returning broker sees", (
   assert.match(html(), /id="addToggle"[^>]*aria-expanded="false"/);
 });
 
-test("the leads table ships hidden, so a header row never stands alone", () => {
-  assert.match(html(), /<div class="tw hide" id="leadTableWrap">/);
+test("the pipeline table ships hidden, so a header row never stands alone", () => {
+  assert.match(html(), /<div class="tw hide" id="pipeTableWrap">/);
 });
 
-test("the leads section ships hidden, so an empty vault does not flash the inbox", () => {
-  // Same first-paint rule as the BOV tracker: applyFirstRun reveals it once
-  // there is a book, and renderLeads can unhide it if a watched market already
-  // has owners waiting. Shipping it visible put the empty inbox under the two
-  // first-run cards until the script ran.
-  assert.match(html(), /<section id="leads" class="hide">/);
+test("the pipeline section ships hidden, so an empty vault does not flash the inbox", () => {
+  assert.match(html(), /<section id="pipeSec"/);
+  assert.match(html(), /\$\("pipeSec"\)\.className=first\?"hide":""/);
 });
 
-test("applyFirstRun hides the leads section on a genuine empty vault", () => {
-  assert.match(html(), /\$\("leads"\)\.className=first\?"hide":""/);
-});
-
-test("the coverage form is one relocating node with a slot in the leads section", () => {
+test("the coverage form is one relocating node that parks in Markets you watch", () => {
   const page = html();
   assert.equal((page.match(/id="covForm"/g) || []).length, 1,
     "a second coverage form would drift from the coverage rules");
-  assert.match(page, /id="covFormSlot"/);
+  assert.match(page, /id="covBox"/);
   assert.match(page, /id="covFormHome"/);
+  assert.doesNotMatch(page, /id="covFormSlot"/);
 });
 
 test("applyFirstRun keys on comps AND uploads", () => {

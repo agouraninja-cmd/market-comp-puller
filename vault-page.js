@@ -432,6 +432,9 @@ a.btn.ghost:hover{color:var(--ink)}
 .strip{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s4);
   box-shadow:var(--shadow)}
+/* The pipeline's strip is five stages wide. Declared after .strip so it wins
+   the column count, and BEFORE .strip.hide so hiding still beats it. */
+.strip.s5{grid-template-columns:repeat(5,1fr)}
 .strip.hide{display:none}   /* see the .deck.hide note above */
 .scell{padding:16px 18px;border:0;border-left:1px solid var(--hair);
   background:none;font-family:inherit;text-align:left;color:inherit}
@@ -455,6 +458,13 @@ a.btn.ghost:hover{color:var(--ink)}
 /* The three panels the strip summarises, collapsed. A details/summary carries
    its own open state, so the strip only has to set .open — there is no second
    copy of "is this panel showing" to drift. */
+/* A lead's stage. A CHIP, never a select: New is not a status a broker can
+   move a lead into or out of from here — the only move is requesting an
+   introduction, which is the row's own action. The green .pubbtn.on is
+   deliberately not reused; that means "published", a public claim. */
+.stg{display:inline-block;font-size:var(--t6);letter-spacing:.08em;text-transform:uppercase;
+  font-weight:600;color:var(--ink-2);background:var(--wash);border:1px solid var(--edge);
+  border-radius:3px;padding:3px 7px;white-space:nowrap}
 .dbox{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   padding:12px 18px;margin-top:var(--s4);box-shadow:var(--shadow)}
 .dbox>summary{cursor:pointer;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
@@ -620,18 +630,19 @@ if(dd)dd.open=false;});</script>
                 anonymous until you ask for an introduction.</p>
             </details>
             <!-- The ONE market-adding form on the page. applyFirstRun moves this
-                 node down into #leads once the vault has content, because this
+                 node into #covBox once the vault has content, because this
                  whole card hides then and a broker must always have somewhere to
                  add a market. One node, relocated — never a second copy that
                  would drift from the coverage rules. -->
             <div id="covFormHome"><div id="covForm">
               <div class="form">
-                <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST"/></label>
+                <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
                 <label>Type <select id="covType"></select></label>
                 <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
               </div>
               <div class="row" id="covRow"></div>
               <div id="leadMsg"></div>
+              <div id="covMsg"></div>
               <!-- Plain-language rewrite (2026-08-12). The old line read
                    "Removing every market re-fills earned ones on your next
                    visit", which assumes the reader knows markets can be
@@ -819,68 +830,91 @@ if(dd)dd.open=false;});</script>
 
     <!-- ------------------------------------------------------------------
          The pipeline deck: work coming IN, rather than work already done.
-         Deliberately no action on this rule — the market-adding form
-         (#covForm) is relocated to the top of the leads section directly
-         beneath it, so a control here would point at something already on
-         screen. (The approved Direction U card drew one; it was redundant
-         once the form landed a line below it.)
+         ONE table, from a lead nobody has claimed through to won or lost —
+         see docs/superpowers/specs/2026-08-13-vault-pipeline-deck-design.md.
+         It used to be two sections, "Leads in your markets" and "BOV
+         tracker", which described one flow with no shared structure: an
+         intro request auto-creates the BOV row, so the same engagement sat
+         in two tables 500px apart, repeating four columns, with nothing on
+         screen connecting them.
+
+         The rule now carries the deck's one action, like the book deck's
+         "+ Add comps" — the two forms this deck used to open with (log a
+         BOV, watch a market) are a panel and a collapsed box now, because a
+         deck should open with the work, not with inputs.
          ------------------------------------------------------------------ -->
     <div class="deck hide" id="deckPipe">
       <span class="dlab">Your pipeline</span><span class="dln"></span>
+      <button class="dact" id="bovToggle" aria-expanded="false" aria-controls="bovAddSec">+ Log a BOV</button>
     </div>
 
-    <!-- Display only since 2026-08-10: the market-adding form (#covForm) lives
-         in Start-here step 2 on a first run and is moved to the top of this
-         section by applyFirstRun once the vault has content. Do not add a
-         second form here — one node, relocated, is the rule. Ships hidden so
-         an empty vault does not flash the inbox under the two first-run cards
-         before applyFirstRun runs; revealed when there is a book, or when a
-         watched market already has leads waiting. -->
-    <section id="leads" class="hide">
-      <h2>Leads in your markets</h2>
-      <p class="sub" style="margin-top:0">Property owners requesting a Broker Opinion of Value
-        show up here for any market you&rsquo;re watching.</p>
-      <div id="covFormSlot"></div>
-      <div class="tw hide" id="leadTableWrap"><table>
-        <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
-        <tbody id="leadRows"></tbody>
-      </table></div>
-      <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
-    </section>
+    <!-- No h2: the deck rule above is the level ABOVE h2, and with one
+         section under it a heading would only restate the rule. Same reason
+         #firstRun carries none. -->
+    <section id="pipeSec" class="hide">
+      <p class="sub" style="margin-top:0">Every engagement, from a property owner
+        requesting a Broker Opinion of Value in a market you watch through to won or
+        lost. Only you can see this.</p>
+      <div class="strip s5 hide" id="pipeStrip"></div>
+      <p class="note hide" id="pipeNote"></p>
 
-    <section id="bovSec" class="hide">
-      <h2>BOV tracker</h2>
-      <p class="sub" style="margin-top:0">Every Broker Opinion of Value you&rsquo;re working,
-        from any source. Introductions you request above land here automatically; log the
-        rest yourself. This is your private log: only you can see it.</p>
-      <div class="cards" id="bovCards"></div>
-      <div class="form" style="margin-top:var(--s4)">
-        <label>Market <input id="bovMarket" type="text" placeholder="City, ST"/></label>
-        <label>Type <select id="bovType"></select></label>
-        <label>Source <select id="bovSource">
-          <option value="referral">Referral</option>
-          <option value="repeat_client">Repeat client</option>
-          <option value="other" selected>Other</option>
-        </select></label>
-        <label>Size (SF) <input id="bovSize" type="text"/></label>
-        <label>Received <input id="bovDate" type="date"/></label>
-        <label class="span2">Address <input id="bovAddr" type="text" placeholder="optional"/></label>
-        <label class="span2">Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
-        <div class="formact span-all">
-          <button class="btn" id="bovAdd">Log a BOV</button>
+      <!-- A panel, not a section, and it ships CLOSED — the same rule #addSec
+           carries. #bovMsg lives INSIDE it for the same reason #res lives
+           inside #addSec: a log that failed must not write its error into
+           something invisible. -->
+      <div id="bovAddSec" class="addpanel hide">
+        <div class="form">
+          <label>Market <input id="bovMarket" type="text" placeholder="City, ST" list="mktList"/></label>
+          <label>Type <select id="bovType"></select></label>
+          <label>Source <select id="bovSource">
+            <option value="referral">Referral</option>
+            <option value="repeat_client">Repeat client</option>
+            <option value="other" selected>Other</option>
+          </select></label>
+          <label>Size (SF) <input id="bovSize" type="text"/></label>
+          <label>Received <input id="bovDate" type="date"/></label>
+          <label class="span2">Address <input id="bovAddr" type="text" placeholder="optional"/></label>
+          <label class="span2">Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
+          <div class="formact span-all">
+            <button class="btn" id="bovAdd">Log a BOV</button>
+          </div>
         </div>
+        <div id="bovMsg"></div>
       </div>
-      <div id="bovMsg"></div>
-      <div class="tw hide" id="bovTableWrap"><table id="bovTbl">
+
+      <!-- Suggestions for both market inputs, from the markets this broker
+           already watches or already holds comps in. A list, never a
+           constraint: the next BOV may be in a market they have never
+           touched, so free text still submits and the server stays the gate. -->
+      <datalist id="mktList"></datalist>
+
+      <div id="pipeMsg"></div>
+      <!-- Hidden while there are no rows: a header row with nothing under it is
+           the same "is this broken?" signal the empty comps table gave. -->
+      <div class="tw hide" id="pipeTableWrap"><table id="pipeTbl">
         <thead><tr>
-          <th data-bk="received_on">Received</th><th data-bk="market">Market</th>
-          <th data-bk="property_type">Type</th><th data-bk="size_sqft" class="num">Size</th>
-          <th data-bk="source">Source</th><th data-bk="status">Status</th>
+          <th data-bk="stageRank">Stage</th><th data-bk="received">Received</th>
+          <th data-bk="market">Market</th><th data-bk="property_type">Type</th>
+          <th data-bk="size_sqft" class="num">Size</th><th data-bk="source">Source</th>
           <th>Notes</th><th></th>
-        </tr></thead><tbody id="bovRows"></tbody>
+        </tr></thead><tbody id="pipeRows"></tbody>
       </table></div>
-      <div class="empty hide" id="noBovs">Nothing logged yet. Request an introduction above,
-        or log a BOV you got elsewhere.</div>
+      <!-- Said once, under the table, rather than in every unclaimed lead's
+           empty Market cell. A lead is anonymized to five facts by
+           broker-leads.js; the blank is the privacy wall, not missing data. -->
+      <p class="note hide" id="leadPrivacy">A lead&rsquo;s address and contact details stay
+        with CompNinja until an introduction is made.</p>
+      <div class="empty hide" id="noPipe"></div>
+
+      <!-- Choosing markets is setup, not the daily job, so it collapses —
+           and #covForm is still exactly ONE node, relocated here by
+           applyFirstRun when the vault has content and walked home to
+           Start-here step 2 when the last import is deleted. Never add a
+           second copy: it would be a second thing to keep in step with the
+           coverage rules in broker-leads.js. -->
+      <details class="dbox" id="covBox">
+        <summary>Markets you watch</summary>
+      </details>
     </section>
   </div>
 </div></main>
@@ -1060,6 +1094,9 @@ if(dd)dd.open=false;});</script>
       $("cMedSub").textContent=(dom&&med!=null)?dom.type+" \\u00b7 sales only":"sales only";
     }
     fillFilter("fMarket",o.j.markets||[]); fillFilter("fType",o.j.types||[]);
+    // Also the pipeline's market suggestions: a broker's next BOV is usually in
+    // a market they already hold comps in, and this is where that list arrives.
+    allMarkets=o.j.markets||[];
     renderIdentity(o.j.identity);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
@@ -1554,15 +1591,15 @@ if(dd)dd.open=false;});</script>
     $("deckBook").className=first?"deck hide":"deck";
     $("deckPipe").className=first?"deck hide":"deck";
     // The market form is ONE node, placed wherever the broker can see it:
-    // its home (#covFormHome) in Start-here step 2 on a first run, the slot
-    // at the top of the leads section otherwise (step 2 is hidden then, and
-    // a broker with a full book must still be able to add a market).
-    // appendChild MOVES an attached node, so no copy ever exists — and
-    // deleting the last import walks it home again, since this function
-    // re-applies both ways. Chips and the form's own error line travel
-    // inside #covForm, so they cannot be stranded in a hidden section.
+    // its home (#covFormHome) in Start-here step 2 on a first run, inside the
+    // pipeline's collapsed "Markets you watch" box otherwise (step 2 is hidden
+    // then, and a broker with a full book must still be able to add a market).
+    // appendChild MOVES an attached node, so no copy ever exists — and deleting
+    // the last import walks it home again, since this function re-applies both
+    // ways. Chips and the form's own error line travel inside #covForm, so they
+    // cannot be stranded in a hidden section.
     if(first)$("covFormHome").appendChild($("covForm"));
-    else $("covFormSlot").appendChild($("covForm"));
+    else $("covBox").appendChild($("covForm"));
     // The uploader is step 1's job on a first run and the book deck's action
     // otherwise, so it is closed by default in BOTH cases and this only
     // re-asserts whatever the broker last chose. It deliberately does not
@@ -1570,11 +1607,13 @@ if(dd)dd.open=false;});</script>
     // that failed before it could raise the comp count would have written its
     // error into something invisible. doImport opens it for exactly that.
     setAddOpen(addOpen);
+    // Same rule for the pipeline's own panel, and the same reason it is not
+    // forced shut on a first run: #bovMsg lives inside it.
+    setBovOpen(bovOpen);
     $("trustLine").className=first?"trust hide":"trust";
     $("compsSec").className=first?"hide":"";
     $("importsSec").className=first?"dbox hide":"dbox";
-    $("leads").className=first?"hide":"";
-    $("bovSec").className=first?"hide":"";
+    $("pipeSec").className=first?"hide":"";
   }
 
   // The single writer of the uploader's visibility. The deck action's label
@@ -1585,6 +1624,17 @@ if(dd)dd.open=false;});</script>
     $("addSec").className=addOpen?"addpanel":"addpanel hide";
     $("addToggle").textContent=addOpen?"Close":"+ Add comps";
     $("addToggle").setAttribute("aria-expanded",addOpen?"true":"false");
+  }
+
+  // The pipeline deck's equivalent, and the single writer of the log-a-BOV
+  // panel's visibility. Ships closed: a deck should open with the work, not
+  // with a seven-field form.
+  var bovOpen=false;
+  function setBovOpen(open){
+    bovOpen=!!open;
+    $("bovAddSec").className=bovOpen?"addpanel":"addpanel hide";
+    $("bovToggle").textContent=bovOpen?"Close":"+ Log a BOV";
+    $("bovToggle").setAttribute("aria-expanded",bovOpen?"true":"false");
   }
 
   // ---- The credit identity --------------------------------------------
@@ -1665,6 +1715,12 @@ if(dd)dd.open=false;});</script>
   }
 
   var PROP_TYPES=["Industrial","Office","Retail","Multifamily","Land","Residential"];
+  // The pipeline's two sources, each with its own arrival state. A row is only
+  // ever drawn from what actually arrived: leadsOk/bovsOk false means that half
+  // reports a failure and contributes nothing, while the other half still
+  // renders. One table fed by two endpoints must never let either failure blank
+  // the deck or leave the other half's stale rows under an error message.
+  var leads=[],coverage=[],leadsOk=false,leadsErr="",allMarkets=[];
   // noseed=true after a delete: that call must NOT re-earn the market the
   // broker just removed. A plain page visit (no arg) always reseeds, which is
   // what the section's own copy promises.
@@ -1673,19 +1729,21 @@ if(dd)dd.open=false;});</script>
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){
-          // No stale rows left on screen under an error message.
-          $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("leadTableWrap").className="tw hide"; $("noLeads").className="empty hide";
-          $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't load leads.")+"</div>";
+          leads=[]; coverage=[]; leadsOk=false;
+          leadsErr=o.j.error||"Couldn't load leads.";
+          renderCoverage(coverage); renderPipeline();
           return;
         }
-        $("leadMsg").innerHTML="";
-        var cov=o.j.coverage||[];
-        renderCoverage(cov);
-        renderLeads(o.j.leads||[],cov.length);
+        leadsOk=true; leadsErr="";
+        coverage=o.j.coverage||[];
+        leads=o.j.leads||[];
+        renderCoverage(coverage);
+        renderPipeline();
       })
       .catch(function(){
-        $("covRow").innerHTML=""; $("leadRows").innerHTML=""; $("leadTableWrap").className="tw hide"; $("noLeads").className="empty hide";
-        $("leadMsg").innerHTML='<div class="msg bad">Couldn\\'t load leads. Please try again.</div>';
+        leads=[]; coverage=[]; leadsOk=false;
+        leadsErr="Couldn\\'t load leads. Please try again.";
+        renderCoverage(coverage); renderPipeline();
       });
   }
   function renderCoverage(cov){
@@ -1696,28 +1754,12 @@ if(dd)dd.open=false;});</script>
         ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
         '">&times;</button></span>';
     }).join(" "):((firstRunCounts[0]===0&&firstRunCounts[1]===0)?"":emptyHint);
-  }
-  // covCount lets an empty inbox tell two situations apart: nothing to show
-  // because there is no coverage yet (the covRow hint above already says so,
-  // so #noLeads stays hidden) vs. coverage exists but nothing has come in
-  // (that's the case #noLeads is for).
-  function renderLeads(leads,covCount){
-    var showEmpty=leads.length===0&&covCount>0;
-    $("noLeads").className=showEmpty?"empty":"empty hide";
-    $("leadTableWrap").className=leads.length?"tw":"tw hide";
-    $("leadRows").innerHTML=leads.map(function(l){
-      var btn=l.intro_requested
-        ? '<button class="pubbtn on" disabled>Intro requested</button>'
-        : '<button class="pubbtn" data-intro="'+escA(l.id)+'">Request introduction</button>';
-      return "<tr><td>"+esc(String(l.ts||"").slice(0,10))+"</td><td>"+esc(l.market)+"</td><td>"+esc(l.type)+
-        '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"")+"</td><td>"+btn+"</td></tr>";
+    var seen={},opts=[];
+    coverage.concat().forEach(function(c){ if(c&&c.market&&!seen[c.market]){seen[c.market]=1;opts.push(c.market);} });
+    (allMarkets||[]).forEach(function(m){ if(m&&!seen[m]){seen[m]=1;opts.push(m);} });
+    $("mktList").innerHTML=opts.sort().map(function(m){
+      return '<option value="'+escA(m)+'"></option>';
     }).join("");
-    // On a genuine empty vault the inbox is hidden with the pipeline. If a
-    // watched market already has owners waiting, surface the table under the
-    // two first-run cards — that is the one leftover that is not furniture.
-    if(firstRunCounts[0]===0&&firstRunCounts[1]===0){
-      $("leads").className=leads.length?"":"hide";
-    }
   }
   $("covType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
   $("covMarket").addEventListener("keydown",function(e){
@@ -1732,11 +1774,11 @@ if(dd)dd.open=false;});</script>
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         b.disabled=false;
-        if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't add that market.")+"</div>"; return; }
-        $("covMarket").value=""; loadLeads();
+        if(o.s!==200){ $("covMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't add that market.")+"</div>"; return; }
+        $("covMsg").innerHTML=""; $("covMarket").value=""; loadLeads();
       })
       .catch(function(){ b.disabled=false;
-        $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was added.</div>'; });
+        $("covMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was added.</div>'; });
   });
   document.addEventListener("click",function(e){
     var cov=e.target.getAttribute&&e.target.getAttribute("data-cov");
@@ -1744,12 +1786,12 @@ if(dd)dd.open=false;});</script>
       fetch("/api/broker/coverage?id="+encodeURIComponent(cov),{method:"DELETE",credentials:"same-origin"})
         .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
         .then(function(o){
-          if(o.s!==200){ $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that market.")+"</div>"; return; }
+          if(o.s!==200){ $("covMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that market.")+"</div>"; return; }
           // noseed: the market just removed must not be re-earned by this
           // same reload. A full page visit still reseeds it.
-          loadLeads(true);
+          $("covMsg").innerHTML=""; loadLeads(true);
         })
-        .catch(function(){ $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+        .catch(function(){ $("covMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
       return;
     }
     var intro=e.target.getAttribute&&e.target.getAttribute("data-intro");
@@ -1764,23 +1806,40 @@ if(dd)dd.open=false;});</script>
             // (a concurrent click elsewhere) and detached the captured node.
             var again=document.querySelector('[data-intro="'+intro+'"]');
             if(again){ again.disabled=false; again.textContent="Request introduction"; }
-            $("leadMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't send that request.")+"</div>";
+            $("pipeMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't send that request.")+"</div>";
             return;
           }
-          loadLeads();
+          // Both halves: the intro marks the lead requested AND auto-creates the
+          // open BOV row, and since 2026-08-13 those are two stages of one
+          // table, so refreshing only the leads would show the request landing
+          // with no sign of the engagement it just opened.
+          loadLeads(); loadBovs();
         })
         .catch(function(){
           var again=document.querySelector('[data-intro="'+intro+'"]');
           if(again){ again.disabled=false; again.textContent="Request introduction"; }
-          $("leadMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was sent.</div>';
+          $("pipeMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was sent.</div>';
         });
     }
   });
 
-  // ---- BOV tracker ----------------------------------------------------------
-  var bovs=[],bovRollup=null,bovSortK="received_on",bovSortAsc=false;
+  // ---- The pipeline ---------------------------------------------------------
+  //
+  // One table, two sources. A lead is an anonymized market signal that belongs
+  // to nobody yet; a BOV is this broker's own engagement. They are two STAGES
+  // of one thing, and requesting an introduction is the move between them, so
+  // they are drawn as one list rather than as two products.
+  //
+  // Nothing here widens what a lead exposes: the five facts broker-leads.js
+  // allows are the five facts drawn, and a lead's empty Market and Notes cells
+  // are the privacy wall doing its job (#leadPrivacy says so once, below).
+  var bovs=[],bovRollup=null,bovsOk=false,bovsErr="";
+  var pipeSortK="received",pipeSortAsc=false,pipeStage="";
   var BOV_STATUSES=["open","delivered","won","lost"];
   var BOV_SOURCE_LABEL={compninja:"CompNinja intro",referral:"Referral",repeat_client:"Repeat client",other:"Other"};
+  // New first, then the log's own order. The rank is what the Stage column
+  // sorts on: sorting five stage NAMES alphabetically would read as random.
+  var STAGES=["new","open","delivered","won","lost"];
   $("bovType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
   // noseed=true after a delete: that call must NOT let the GET's own-empty-
   // log reseed bring back a row the broker just Removed. A plain page visit
@@ -1791,76 +1850,169 @@ if(dd)dd.open=false;});</script>
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
         if(o.s!==200){
-          $("bovCards").innerHTML=""; $("bovRows").innerHTML="";
-          $("bovTableWrap").className="tw hide"; $("noBovs").className="empty hide";
-          // Panel-scoped copy: requireBroker's strings name the lead inbox
-          // (that copy is load-bearing for the leads panel above this one),
-          // so a 403/503 here is reworded rather than shown verbatim.
-          var msg=o.s===403?"The BOV tracker is part of Pro."
-            :o.s===503?"The BOV tracker is unavailable right now. Please try again in a minute."
+          bovs=[]; bovRollup=null; bovsOk=false;
+          // Reworded rather than shown verbatim: requireBroker's strings name
+          // the lead inbox, and this half of the table is the broker's own log.
+          bovsErr=o.s===403?"Your BOV log is part of Pro."
+            :o.s===503?"Your BOV log is unavailable right now. Please try again in a minute."
             :(o.j.error||"Couldn't load your BOV log.");
-          $("bovMsg").innerHTML='<div class="msg bad">'+esc(msg)+"</div>";
+          renderPipeline();
           return;
         }
-        $("bovMsg").innerHTML="";
+        bovsOk=true; bovsErr="";
         bovs=o.j.bovs||[];
         bovRollup=o.j.rollup||null;
-        renderBovs(bovRollup);
+        renderPipeline();
       })
       .catch(function(){
-        $("bovCards").innerHTML=""; $("bovRows").innerHTML="";
-        $("bovTableWrap").className="tw hide"; $("noBovs").className="empty hide";
-        $("bovMsg").innerHTML='<div class="msg bad">Couldn\\'t load your BOV log. Please try again.</div>';
+        bovs=[]; bovRollup=null; bovsOk=false;
+        bovsErr="Couldn\\'t load your BOV log. Please try again.";
+        renderPipeline();
       });
   }
-  function bovTile(label,val){
-    return '<div class="card stat"><span class="ty">'+esc(label)+'</span>'+
-      '<div class="big">'+esc(String(val))+"</div></div>";
-  }
-  function renderBovs(ru){
-    // Tiles only once there is anything to count: four zeros over an empty
-    // section is the 0-0 scoreboard the first-run work removed elsewhere.
-    if(!ru||!ru.total){ $("bovCards").innerHTML=""; }
-    else{
-      // The dash under the floor is deliberate: a win rate over one or two
-      // decided BOVs reads as a joke (bov-log.js holds the floor).
-      var wr=ru.winRate==null?"\\u2014":Math.round(ru.winRate*100)+"%";
-      $("bovCards").innerHTML=bovTile("This year",ru.thisYear)+bovTile("Open",ru.open)+
-        bovTile("Delivered",ru.delivered)+bovTile("Win rate",wr);
+
+  // Both sources, normalized onto one row shape so the table, the sort and the
+  // strip all read the same fields. kind is the only thing downstream needs
+  // to know about where a row came from.
+  function pipeRows(){
+    var out=[];
+    if(leadsOk){
+      leads.forEach(function(l){
+        out.push({kind:"lead",id:l.id,stage:"new",stageRank:0,
+          received:String(l.ts||"").slice(0,10),market:l.market||"",address:"",
+          property_type:l.type||"",size_sqft:l.size_sqft||null,
+          source:"lead",sourceLabel:"CompNinja lead",notes:"",
+          intro_requested:!!l.intro_requested,status:""});
+      });
     }
-    $("noBovs").className=bovs.length?"empty hide":"empty";
-    $("bovTableWrap").className=bovs.length?"tw":"tw hide";
-    var rows=bovs.slice().sort(function(a,b){
-      var av=a[bovSortK],bv=b[bovSortK];
+    if(bovsOk){
+      bovs.forEach(function(b){
+        var st=STAGES.indexOf(b.status);
+        out.push({kind:"bov",id:b.id,stage:b.status,stageRank:st<0?9:st,
+          received:b.received_on||String(b.created_at||"").slice(0,10),
+          market:b.market||"",address:b.address||"",
+          property_type:b.property_type||"",size_sqft:b.size_sqft||null,
+          source:b.source,sourceLabel:BOV_SOURCE_LABEL[b.source]||b.source||"",
+          notes:b.notes||"",intro_requested:false,status:b.status});
+      });
+    }
+    return out;
+  }
+
+  // A stage cell. Same rule as the book deck's reading strip: it is a BUTTON
+  // only when there is something behind it, because an affordance over an empty
+  // stage is a control that does nothing.
+  function stageCell(stage,label,count,active){
+    var live=count>0,tag=live?"button":"div",
+        cls="scell"+(live?" act":""),
+        attr=live?' type="button" data-stage="'+stage+'"':"";
+    return "<"+tag+' class="'+cls+'"'+attr+'><span class="slab">'+label+"</span>"+
+      '<div class="sfig'+(active?" ok":"")+'">'+count+"</div>"+
+      (active?'<div class="ssub">filtering</div>':"")+"</"+tag+">";
+  }
+
+  function renderPipeline(){
+    // Whichever halves failed, said once, above the table. Neither failure may
+    // blank the deck: the other half's rows still render underneath.
+    var errs=[];
+    if(!leadsOk&&leadsErr)errs.push(leadsErr);
+    if(!bovsOk&&bovsErr)errs.push(bovsErr);
+    $("pipeMsg").innerHTML=errs.map(function(m){
+      return '<div class="msg bad">'+esc(m)+"</div>";
+    }).join("");
+
+    var all=pipeRows();
+    // Counted from what ARRIVED, never from what was asked for — a strip that
+    // counted a failed half would report zero as if it were the answer.
+    var counts={};
+    all.forEach(function(r){ counts[r.stage]=(counts[r.stage]||0)+1; });
+    if(pipeStage&&!counts[pipeStage])pipeStage="";   // the stage being filtered emptied out
+    var strip=$("pipeStrip");
+    if(all.length){
+      strip.innerHTML=STAGES.map(function(s){
+        return stageCell(s,s.charAt(0).toUpperCase()+s.slice(1),counts[s]||0,pipeStage===s);
+      }).join("");
+      strip.className="strip s5";
+    } else { strip.innerHTML=""; strip.className="strip s5 hide"; }
+
+    // The two rollup facts that are not stage counts. They come from the
+    // server's own rollup, so the win rate keeps bov-log.js's floor of three
+    // decided BOVs, under which it is a dash rather than a punchline.
+    var note=$("pipeNote");
+    if(bovRollup&&bovRollup.total){
+      var wr=bovRollup.winRate==null?"\\u2014":Math.round(bovRollup.winRate*100)+"%";
+      note.innerHTML=esc(bovRollup.thisYear)+" this year &middot; win rate "+wr;
+      note.className="note";
+    } else { note.innerHTML=""; note.className="note hide"; }
+
+    var rows=all.filter(function(r){ return !pipeStage||r.stage===pipeStage; });
+    rows.sort(function(a,b){
+      var av=a[pipeSortK],bv=b[pipeSortK];
       if(av==null&&bv==null)return 0;
       if(av==null)return 1;
       if(bv==null)return -1;
       var c=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv));
-      return bovSortAsc?c:-c;
+      return pipeSortAsc?c:-c;
     });
-    $("bovRows").innerHTML=rows.map(function(b){
-      var sel='<select data-bov="'+escA(b.id)+'" data-prev="'+escA(b.status)+'">'+
+
+    $("pipeTableWrap").className=rows.length?"tw":"tw hide";
+    // Only shown when an unclaimed lead is actually on screen to explain.
+    var anyLead=rows.some(function(r){ return r.kind==="lead"; });
+    $("leadPrivacy").className=anyLead?"note":"note hide";
+    $("pipeRows").innerHTML=rows.map(pipeRow).join("");
+
+    // One empty line, not two, and it says which situation this is. Silent
+    // while anything failed: "nothing here" would be a claim we cannot make.
+    var none=$("noPipe");
+    if(all.length||errs.length){ none.className="empty hide"; none.textContent=""; }
+    else if(!coverage.length){
+      none.className="empty";
+      none.textContent="No markets yet \\u2014 add one under Markets you watch to start seeing leads.";
+    } else {
+      none.className="empty";
+      none.textContent="Nothing in your markets in the last 90 days, and nothing logged yet.";
+    }
+  }
+
+  function pipeRow(r){
+    var stage,action;
+    if(r.kind==="lead"){
+      stage='<span class="stg new">New</span>';
+      action=r.intro_requested
+        ? '<button class="pubbtn on" disabled>Intro requested</button>'
+        : '<button class="pubbtn" data-intro="'+escA(r.id)+'">Request introduction</button>';
+    } else {
+      stage='<select data-bov="'+escA(r.id)+'" data-prev="'+escA(r.status)+'">'+
         BOV_STATUSES.map(function(s){
-          return '<option value="'+s+'"'+(b.status===s?" selected":"")+">"+
+          return '<option value="'+s+'"'+(r.status===s?" selected":"")+">"+
             s.charAt(0).toUpperCase()+s.slice(1)+"</option>";
         }).join("")+"</select>";
-      return "<tr><td>"+esc(b.received_on||String(b.created_at||"").slice(0,10))+"</td>"+
-        "<td>"+esc(b.market)+(b.address?' <span class="note">'+esc(b.address)+"</span>":"")+"</td>"+
-        "<td>"+esc(b.property_type)+"</td>"+
-        '<td class="num">'+(b.size_sqft?num(b.size_sqft)+" SF":"")+"</td>"+
-        "<td>"+esc(BOV_SOURCE_LABEL[b.source]||b.source)+"</td>"+
-        "<td>"+sel+"</td>"+
-        "<td>"+esc(b.notes||"")+"</td>"+
-        '<td><button class="pubbtn" data-bovdel="'+escA(b.id)+'">Remove</button></td></tr>';
-    }).join("");
+      action='<button class="pubbtn" data-bovdel="'+escA(r.id)+'">Remove</button>';
+    }
+    return "<tr><td>"+stage+"</td><td>"+esc(r.received)+"</td>"+
+      "<td>"+esc(r.market)+(r.address?' <span class="note">'+esc(r.address)+"</span>":"")+"</td>"+
+      "<td>"+esc(r.property_type)+"</td>"+
+      '<td class="num">'+(r.size_sqft?num(r.size_sqft)+" SF":"")+"</td>"+
+      "<td>"+esc(r.sourceLabel)+"</td>"+
+      "<td>"+esc(r.notes)+"</td>"+
+      "<td>"+action+"</td></tr>";
   }
-  document.querySelector("#bovTbl thead").addEventListener("click",function(e){
+
+  document.querySelector("#pipeTbl thead").addEventListener("click",function(e){
     var th=e.target.closest("th[data-bk]"); if(!th)return;
     var k=th.getAttribute("data-bk");
-    if(k===bovSortK)bovSortAsc=!bovSortAsc; else{bovSortK=k;bovSortAsc=false;}
-    // The kept rollup means a sort click redraws in place and never clears
-    // the tiles or costs a refetch.
-    renderBovs(bovRollup);
+    if(k===pipeSortK)pipeSortAsc=!pipeSortAsc; else{pipeSortK=k;pipeSortAsc=false;}
+    // Redraws from the rows already held: a sort costs no refetch and cannot
+    // clear the strip.
+    renderPipeline();
+  });
+  // A stage cell is the filter, and clicking the active one clears it — a
+  // toggle, never a trap you can only leave by reloading.
+  $("pipeStrip").addEventListener("click",function(e){
+    var cell=e.target.closest("button[data-stage]"); if(!cell)return;
+    var s=cell.getAttribute("data-stage");
+    pipeStage=pipeStage===s?"":s;
+    renderPipeline();
   });
   $("bovAdd").addEventListener("click",function(){
     var b=$("bovAdd");
@@ -1876,6 +2028,7 @@ if(dd)dd.open=false;});</script>
       .then(function(o){
         b.disabled=false;
         if(o.s!==200){ $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't log that BOV.")+"</div>"; return; }
+        $("bovMsg").innerHTML="";
         $("bovMarket").value=""; $("bovSize").value=""; $("bovDate").value="";
         $("bovAddr").value=""; $("bovNotes").value="";
         loadBovs();
@@ -1898,15 +2051,18 @@ if(dd)dd.open=false;});</script>
         sel.disabled=false;
         if(o.s!==200){
           sel.value=prev;
-          $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't save that change.")+"</div>";
+          // #pipeMsg, not #bovMsg: this select is in a table ROW, while #bovMsg
+          // lives inside the log-a-BOV panel, which is closed. An error written
+          // there would be invisible to the broker who just changed a stage.
+          $("pipeMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't save that change.")+"</div>";
           return;
         }
         sel.setAttribute("data-prev",next);
-        loadBovs();   // the tiles moved
+        loadBovs();   // the stage counts moved
       })
       .catch(function(){
         sel.disabled=false; sel.value=prev;
-        $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>';
+        $("pipeMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>';
       });
   });
   document.addEventListener("click",function(e){
@@ -1916,13 +2072,13 @@ if(dd)dd.open=false;});</script>
     fetch("/api/broker/bovs?id="+encodeURIComponent(del),{method:"DELETE",credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
-        if(o.s!==200){ $("bovMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that BOV.")+"</div>"; return; }
+        if(o.s!==200){ $("pipeMsg").innerHTML='<div class="msg bad">'+esc(o.j.error||"Couldn't remove that BOV.")+"</div>"; return; }
         // noseed: the row just removed must not be re-seeded from intro
         // requests by this same reload if the delete emptied the log. A
         // full page visit still reseeds it.
         loadBovs(true);
       })
-      .catch(function(){ $("bovMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
+      .catch(function(){ $("pipeMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
   });
 
   var pending = null;   // {name, csv} held while the broker maps
@@ -2407,6 +2563,10 @@ if(dd)dd.open=false;});</script>
   $("addToggle").addEventListener("click",function(){
     setAddOpen(!addOpen);
     if(addOpen)$("addSec").scrollIntoView({behavior:"smooth",block:"nearest"});
+  });
+  $("bovToggle").addEventListener("click",function(){
+    setBovOpen(!bovOpen);
+    if(bovOpen)$("bovAddSec").scrollIntoView({behavior:"smooth",block:"nearest"});
   });
 
   // ---- Add one comp by hand ----------------------------------------------

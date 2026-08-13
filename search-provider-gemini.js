@@ -3,7 +3,7 @@
 // Gemini half of the provider seam. Same pure contract as
 // search-provider-anthropic.js: no fetch, no timers, no env reads.
 //
-// Prices are per million tokens for gemini-3.6-flash. Google Search grounding
+// Prices are per million tokens for gemini-3.7-flash. Google Search grounding
 // is billed per query ($14/1,000) with 5,000 free per month across the Gemini
 // 3 family, so at this volume grounding is free and is deliberately not
 // modelled here. Revisit if report volume ever approaches that ceiling.
@@ -139,7 +139,7 @@ module.exports = {
     "aistudio.google.com/apikey, and the Google Cloud billing account behind the project " +
     "that owns GEMINI_API_KEY. Search grounding requires a PAID-tier project: a free-tier " +
     "key authenticates and runs the model but 429s on every grounded search.",
-  defaultModel: "gemini-3.6-flash",
+  defaultModel: "gemini-3.7-flash",
   capabilities,
   buildRequestBody,
   requestInit,

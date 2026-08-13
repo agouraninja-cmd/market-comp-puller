@@ -6,6 +6,11 @@ const P = require("../search-provider-gemini");
 const A = require("../search-provider-anthropic");
 const FIXTURE = require("./fixtures/gemini-response.json");
 
+test("defaults to gemini-3.7-flash", () => {
+  assert.equal(P.defaultModel, "gemini-3.7-flash",
+    "comp and market searches both take PROVIDER.defaultModel");
+});
+
 test("declares that it cannot cap the search budget", () => {
   assert.equal(P.name, "gemini");
   assert.equal(P.capabilities.searchBudget, false,
@@ -24,9 +29,9 @@ test("exports the same surface as the Anthropic module", () => {
 
 test("buildRequestBody sends google_search and never sends max_uses", () => {
   const body = P.buildRequestBody({
-    model: "gemini-3.6-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
+    model: "gemini-3.7-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
   });
-  assert.equal(body.model, "gemini-3.6-flash");
+  assert.equal(body.model, "gemini-3.7-flash");
   assert.equal(body.input, "PROMPT");
   assert.deepEqual(body.tools, [{ type: "google_search" }]);
   assert.equal(JSON.stringify(body).includes("max_uses"), false,
@@ -35,7 +40,7 @@ test("buildRequestBody sends google_search and never sends max_uses", () => {
 
 test("buildRequestBody nests the output cap under generation_config, never top-level", () => {
   const body = P.buildRequestBody({
-    model: "gemini-3.6-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
+    model: "gemini-3.7-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
   });
   assert.equal(body.generation_config.max_output_tokens, 32000,
     "the Interactions API only accepts the cap nested under generation_config");

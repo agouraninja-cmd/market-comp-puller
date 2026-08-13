@@ -2,6 +2,12 @@
   {
     "date": "2026-08-13",
     "type": "improvement",
+    "title": "An empty vault is the real vault, not a numbered onboarding page",
+    "details": "Day one used to be two cards, with Your book and Your pipeline hidden until a spreadsheet landed, so the pipeline table shipped yesterday was invisible on an empty account. The empty vault is now the same two decks. The trust line shows zeros. Each empty body is a short invitation: upload closed deals, or watch a market. Add comps and Log a BOV stay closed. The watch-market form sits in the pipeline body until a lead or BOV exists, then collapses under Markets you watch. Watching a market on day one no longer hides waiting leads."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
     "title": "The vault pipeline is one table, from a new lead through won or lost",
     "details": "Leads and the BOV tracker described one flow in two sections 500px apart, repeating the same four columns, with nothing on screen connecting an intro request to the engagement it opened. They are now one table with a stage column. A lead is a New chip whose only action is requesting an introduction; a BOV keeps its status select and Remove. The four tiles became a five-cell stage strip plus a note for this year and the win rate. Coverage collapses under Markets you watch, and logging a BOV is the deck action behind a closed panel, matching Add comps. No new endpoint: the browser already had both payloads."
   },

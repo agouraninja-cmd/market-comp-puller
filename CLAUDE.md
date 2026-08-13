@@ -1488,15 +1488,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     - **Dragging a file anywhere over the page opens it.** `#drop` is inside
       that closed panel, so without the document-level `dragenter`/`dragover`
       handler drag-and-drop would silently stop existing. It is guarded on the
-      book deck being visible, so a first run still shows one uploader.
+      book deck being visible (a 403 hides `#app`), not on a first-run page —
+      the empty vault IS the two decks (2026-08-13).
     - **`.deck.hide` and `.strip.hide` are load-bearing.** Both classes set
       `display`, and both are declared BELOW `.hide` in the same stylesheet, so
-      a plain `deck hide` loses the cascade and leaves a stray "Your book" rule
-      across an empty vault. Found in a browser, not by reading. Same trap as
-      `ACCOUNT_NAV_CSS`'s `[hidden]` line.
-    - **`#firstRun` sits OUTSIDE both decks**, and both decks hide on a first
-      run: a rule reading "Your book" over an empty one is the same 0-0
-      scoreboard the trust line is hidden to avoid.
+      a plain `deck hide` loses the cascade and leaves a stray "Your book"
+      rule. Found in a browser, not by reading. Same trap as
+      `ACCOUNT_NAV_CSS`'s `[hidden]` line. Decks now ship visible; the line
+      still matters if a future gate adds `hide`.
+    - **The empty vault is the real vault** (2026-08-13). Both decks and the
+      trust line (including zeros) always show. `#bookEmpty` / `#pipeEmpty`
+      are invitations, not a numbered `#firstRun` page. Spec:
+      `docs/superpowers/specs/2026-08-13-vault-empty-workspace-design.md`.
     - **One hidden-sibling CSS patch, `#rollupSec.hide + #compsSec`.** It
       replaced two others (`#firstRun.hide + #addSec`, `#addSec.hide +
       #mapSec`), which stopped being needed once those two became divs. Keep
@@ -1542,47 +1545,38 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       JS, is one template literal, so a stray `${` or a single-backslash escape
       emits broken JavaScript and a blank workspace rather than failing loudly.
       That test compiles what the page actually emits.
-  - **The FIRST RUN is a different page** (2026-08-06). When a broker has no
-    comps *and* no imports, `applyFirstRun()` hides the trust line, the "Add
-    comps" section, the comps table and the imports list, and shows
-    `#firstRun`: two numbered steps, one to upload and one to add markets to
-    watch. Four rules:
+  - **The EMPTY VAULT is the real vault** (2026-08-13; spec
+    `docs/superpowers/specs/2026-08-13-vault-empty-workspace-design.md`).
+    When a broker has no comps *and* no imports, `applyFirstRun()` still
+    hides the comps table and the imports list, but both decks and the
+    trust line (zeros included) stay up. `#bookEmpty` is the book's body
+    (upload invitation + privacy disclosure + template / Choose buttons);
+    `#pipeEmpty` is the pipeline's (watch-market form, visible, not
+    collapsed). `#firstRun` as a numbered two-card page is gone. Four
+    rules:
     - **It keys on comps AND uploads, never comps alone.** A broker whose
       import was entirely rejected, or who deleted every comp out of one, has
-      been through the door already; showing the first-run steps again reads as
-      their work having been thrown away.
-    - **The trust line is hidden, not deleted.** That line exists to let a
-      broker watch "0 published" stay at zero, which only means anything once
-      there is something it could have counted. On day one it is a 0-0
-      scoreboard over an empty page. The empty vault's privacy promise lives
-      in step 1's collapsed "Required columns & privacy details" disclosure
-      (the owner's 2026-08-10 restructure folded the fine print away rather
-      than deleting it — an earlier same-day pass had cut it outright, and
-      the disclosure superseded that); the trust line restates it as soon as
-      there is a comp, and the publish flow makes it again at the one point
-      where it can be acted on. The step headings are the owner's
-      ("Build your own comp set" / "Or watch your markets for leads", 2026-08-10
-      spec — they superseded a same-day "Add your comps"/"Add your markets"
-      pass), each over one short line and three bullets; do not restore the
-      explanatory prose to the card face without asking — it belongs in the
-      collapsed disclosures. The panel itself carries **no heading**: "Start
-      here" was cut on 2026-08-10 (twice, the second time after the
-      restructure restored it) because a numbered 1 and 2 under two headings
-      already say where to start. `#firstRun` is not a `section+section`, so
-      it takes no top padding and `.steps`' own top margin collapses into the
-      section's — the gap is unchanged with the h2 gone, and no CSS pins it.
+      been through the door already; showing the book invitation again reads as
+      their work having been thrown away. Pipeline empty is independent: a
+      waiting lead must show even when the book is empty.
+    - **The trust line shows zeros.** It exists to let a broker watch
+      "0 published" stay at zero. Hidden until 2026-08-13 because it sat over
+      numbered onboarding cards; with the workspace showing, the zeros are
+      the honest empty state. Privacy copy still lives in `#bookEmpty`'s
+      collapsed "Required columns & privacy details" disclosure, is restated
+      on the trust line, and is made again at publish. Do not put the fine
+      print back on the invitation face without asking.
     - **There is exactly ONE `<input type=file>`.** Its `accept` includes
-      `.pdf` as well as `.csv`. Step 1's button and the ordinary "Add comps"
+      `.pdf` as well as `.csv`. `#bookPick` and the ordinary "Add comps"
       button both call `$("file").click()`. Two inputs would mean two values
       and two change handlers, and an upload started from one would be
       invisible to the other's result message. Table PDFs land in `#pdfSec`
       (the confirm table), not the CSV column mapper. A test pins this.
     - **The coverage form is ONE relocating node** (`#covForm`). Its home is
-      step 2; `applyFirstRun` moves it to the top of the leads section once
-      the vault has content (step 2 hides then), and walks it home again if
-      the last import is deleted. Never add a second copy — it would be a
-      second thing to keep in step with the coverage rules in
-      `broker-leads.js`.
+      `#pipeEmpty`; `renderPipeline` moves it into `#covBox` once a lead or
+      BOV row exists, and walks it home when the pipeline is empty again.
+      Never add a second copy — it would be a second thing to keep in step
+      with the coverage rules in `broker-leads.js`.
     Empty tables are hidden throughout rather than shown with a header row and
     a "nothing here yet" line — three of those stacked up was the thing that
     made a new vault read as broken rather than new.

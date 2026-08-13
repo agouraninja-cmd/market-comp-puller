@@ -344,37 +344,16 @@ td.rowact{white-space:nowrap}
 .gcOut{display:inline-block;margin-left:var(--s2);font-size:10px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
   border-bottom:1px dotted var(--ink-3);cursor:help}
-/* ---- First run ----------------------------------------------------------
-   Deliberately quiet: two numbered steps on the page's own type scale, no
-   illustration, no coloured callout box. A broker arriving here has just paid
-   for something, and a loud empty state reads as a product apologising for
-   itself. The numbers carry the sequence; everything else is ordinary text.
-   The cards are the same white panel the rest of the workspace uses, not a
-   coloured empty-state. */
-.steps{display:grid;gap:var(--s5);margin-top:var(--s7)}
-@media (min-width:760px){.steps{grid-template-columns:1fr 1fr;gap:var(--s5)}}
-.step{display:flex;gap:var(--s4);align-items:flex-start;background:var(--card);border:1px solid var(--edge);
-  border-radius:var(--r);padding:22px 22px 20px;box-shadow:var(--shadow)}
-.stepn{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--slab);color:#fff;
-  font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
-.step h3{font-family:var(--serif);font-weight:500;font-size:18px;margin:0 0 6px;letter-spacing:-.01em}
-.step p{margin:0 0 var(--s4);color:var(--ink-2)}
-.step .fine{color:var(--ink-3);font-size:var(--t5)}
-/* The owner's 2026-08-10 restructure: cards carry three short bullets and
-   fold their fine print into a collapsed disclosure. Same vars as .fine so
-   the disclosure reads as the fine print it replaced. */
-.step ul{margin:0 0 var(--s4);padding-left:18px;color:var(--ink-2)}
-.step ul li{margin:3px 0}
-.step details{margin:0 0 var(--s4)}
-.step details summary{cursor:pointer;color:var(--ink-3);font-size:var(--t5);user-select:none;list-style-position:inside}
-.step details summary:hover{color:var(--ink-2)}
-.step details .fine{margin:var(--s3) 0 0}
-/* When first-run is the page, a lead TABLE can still appear under the two
-   cards if a watched market already has owners waiting — that is the one
-   leftover that earns its place. The empty inbox, the heading over nothing,
-   and the BOV tracker stay hidden. A hairline keeps a real table from
-   reading as a leftover empty section. */
-#firstRun:not(.hide) ~ #leads:not(.hide){margin-top:var(--s8);padding-top:var(--s7);border-top:1px solid var(--line)}
+/* ---- Empty invitations ---------------------------------------------------
+   The empty vault is the real vault: both decks show, and each empty body
+   is a short invitation rather than a numbered onboarding page. Quiet on
+   purpose — same type as the rest of the workspace, no panel, no 1/2. */
+.invite{margin:8px 0 var(--s6);max-width:36em}
+.invite > p{margin:0 0 var(--s4);color:var(--ink-2)}
+.invite details{margin:0 0 var(--s4)}
+.invite details summary{cursor:pointer;color:var(--ink-3);font-size:var(--t5);user-select:none;list-style-position:inside}
+.invite details summary:hover{color:var(--ink-2)}
+.invite details .fine{margin:var(--s3) 0 0;color:var(--ink-3);font-size:var(--t5)}
 /* The template link is an <a> styled as a button, so it needs the same box the
    <button>s get — .btn alone leaves it inline and underlined. */
 a.btn{display:inline-block;text-decoration:none;color:#fff}
@@ -514,16 +493,13 @@ if(dd)dd.open=false;});</script>
     <p class="empty" style="padding:0">Loading your vault&hellip;</p></div></div>
 
   <div id="app" class="hide">
-    <!-- The trust line's job is to prove a number stays at zero, which only
-         works once there is something it could have counted. On day one it is
-         a scoreboard reading 0-0 above an empty page, so it is hidden until
-         the first import lands. The empty vault's privacy promise lives in
-         step 1's collapsed "Required columns & privacy details" disclosure
-         (the owner's 2026-08-10 restructure: off the card face, one click
-         away rather than gone); this line restates it the moment there is a
-         comp, and the publish flow makes it again where it can be acted on.
-         See applyFirstRun(). -->
-    <div class="trust hide" id="trustLine">
+    <!-- The trust line's job is to prove a number stays at zero, including
+         on day one. Hidden until 2026-08-13 because a 0-0 scoreboard over
+         numbered onboarding cards read as broken; the empty vault is now
+         the real workspace, so the zeros are the honest empty state.
+         Privacy copy is restated here AND in #bookEmpty's disclosure AND
+         at publish. See applyFirstRun(). -->
+    <div class="trust" id="trustLine">
       <div class="ledger">
         <div class="lcell"><span class="llab">Comps</span>
           <div class="lfig" id="cCount">0</div><div class="lsub" id="cImports"></div></div>
@@ -564,115 +540,36 @@ if(dd)dd.open=false;});</script>
 
 
     <!-- ------------------------------------------------------------------
-         First run. Shown only when the vault is genuinely empty (no comps
-         AND no imports), and replaced by the real workspace the moment
-         anything lands.
-
-         What it is fixing: the empty vault used to be a count of zero, an
-         uploader, and three empty tables. The only route forward was
-         "download a template, map your book into it, come back", which is
-         homework with no visible payoff, and the one thing a broker could
-         do immediately was at the bottom of the page under a heading about
-         something else. This is where people quietly give up.
-
-         So it says what the payoff is, states the effort honestly, and
-         offers the ten-second path as a real alternative rather than a
-         consolation prize.
-         ------------------------------------------------------------------ -->
-    <section id="firstRun" class="hide">
-      <div class="steps">
-        <div class="step">
-          <span class="stepn">1</span>
-          <div>
-            <h3>Build your own comp set</h3>
-            <p>Upload closed deals.</p>
-            <ul>
-              <li>Appears in your reports</li>
-              <li>Transforms data into an organized set</li>
-              <li>Never visible to others</li>
-            </ul>
-            <!-- The friction the disclosure removes is fear, not typing: a broker
-                 looking at a ten-column template assumes all ten are mandatory and
-                 that a deal with an undisclosed price cannot go in. Neither is
-                 true — but at the owner's request (2026-08-10) the reassurance is
-                 folded away until asked for, so the card itself stays three lines. -->
-            <details>
-              <summary>Required columns &amp; privacy details</summary>
-              <p class="fine">Four columns are required: address, property type, sale or
-                lease, and the date. Everything else is optional, so undisclosed deals
-                still count.</p>
-              <p class="fine">Your comps are never read into CompNinja&rsquo;s public
-                records, never included in an export or a shared link, and never shown
-                to another broker.</p>
-              <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
-            </details>
-            <div class="row" style="margin-top:var(--s4)">
-              <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
-              <button class="btn ghost" id="frPick">Choose a spreadsheet or PDF</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="step">
-          <span class="stepn">2</span>
-          <div>
-            <h3>Or watch your markets for leads</h3>
-            <p>Nothing to upload. Works on an empty vault.</p>
-            <ul>
-              <li>See owners requesting valuations in your markets</li>
-              <li>Identities stay anonymous until you request an intro</li>
-              <li>CompNinja makes the introduction by hand</li>
-            </ul>
-            <details>
-              <summary>How markets work</summary>
-              <p class="fine">Add the markets you cover. You&rsquo;ll start seeing property
-                owners there who&rsquo;ve asked for a valuation. Their details stay
-                anonymous until you ask for an introduction.</p>
-            </details>
-            <!-- The ONE market-adding form on the page. applyFirstRun moves this
-                 node into #covBox once the vault has content, because this
-                 whole card hides then and a broker must always have somewhere to
-                 add a market. One node, relocated — never a second copy that
-                 would drift from the coverage rules. -->
-            <div id="covFormHome"><div id="covForm">
-              <div class="form">
-                <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
-                <label>Type <select id="covType"></select></label>
-                <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
-              </div>
-              <div class="row" id="covRow"></div>
-              <div id="leadMsg"></div>
-              <div id="covMsg"></div>
-              <!-- Plain-language rewrite (2026-08-12). The old line read
-                   "Removing every market re-fills earned ones on your next
-                   visit", which assumes the reader knows markets can be
-                   "earned". They can: seedCoverageFromSubmissions refills
-                   coverage from a broker's approved comps, but only when the
-                   list is empty and only on a visit that does not pass
-                   noseed=1. Say the trade, not the mechanism. -->
-              <p class="fine" style="margin-top:var(--s3)">Remove all of them and any market
-                where you have submitted a comp comes back on your next visit.</p>
-            </div></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ------------------------------------------------------------------
          The book deck. Everything from here to the pipeline rule is the
          broker's own data: what they have, and where it came from.
 
          "Add comps" used to be a full section ABOVE the comps table, so a
          broker with 200 comps opened their book and was shown an uploader
          first. It is the deck's action now, and the panel opens on click (or
-         on dragging a file anywhere over the page). The first-run panel is
-         deliberately OUTSIDE this deck: on day one there is no book, and a
-         rule reading "Your book" over an empty one is the same 0-0 scoreboard
-         the trust line is hidden to avoid.
+         on dragging a file anywhere over the page). An empty book is still
+         this deck: #bookEmpty is the body until a comp or import lands.
          ------------------------------------------------------------------ -->
-    <div class="deck hide" id="deckBook">
+    <div class="deck" id="deckBook">
       <span class="dlab">Your book</span><span class="dln"></span>
       <button class="dact" id="addToggle" aria-expanded="false" aria-controls="addSec">+ Add comps</button>
+    </div>
+
+    <div id="bookEmpty" class="invite">
+      <p>Upload closed deals. They appear in your reports and stay private.</p>
+      <details>
+        <summary>Required columns &amp; privacy details</summary>
+        <p class="fine">Four columns are required: address, property type, sale or
+          lease, and the date. Everything else is optional, so undisclosed deals
+          still count.</p>
+        <p class="fine">Your comps are never read into CompNinja&rsquo;s public
+          records, never included in an export or a shared link, and never shown
+          to another broker.</p>
+        <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+      </details>
+      <div class="row">
+        <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
+        <button class="btn ghost" id="bookPick">Choose a spreadsheet or PDF</button>
+      </div>
     </div>
 
     <div id="addSec" class="addpanel hide">
@@ -839,20 +736,18 @@ if(dd)dd.open=false;});</script>
          screen connecting them.
 
          The rule now carries the deck's one action, like the book deck's
-         "+ Add comps" — the two forms this deck used to open with (log a
-         BOV, watch a market) are a panel and a collapsed box now, because a
-         deck should open with the work, not with inputs.
+         "+ Add comps". An empty pipeline is still this deck: #pipeEmpty
+         holds the watch-market form until a lead or BOV row arrives.
          ------------------------------------------------------------------ -->
-    <div class="deck hide" id="deckPipe">
+    <div class="deck" id="deckPipe">
       <span class="dlab">Your pipeline</span><span class="dln"></span>
       <button class="dact" id="bovToggle" aria-expanded="false" aria-controls="bovAddSec">+ Log a BOV</button>
     </div>
 
     <!-- No h2: the deck rule above is the level ABOVE h2, and with one
-         section under it a heading would only restate the rule. Same reason
-         #firstRun carries none. -->
-    <section id="pipeSec" class="hide">
-      <p class="sub" style="margin-top:0">Every engagement, from a property owner
+         section under it a heading would only restate the rule. -->
+    <section id="pipeSec">
+      <p class="sub hide" id="pipeIntro" style="margin-top:0">Every engagement, from a property owner
         requesting a Broker Opinion of Value in a market you watch through to won or
         lost. Only you can see this.</p>
       <div class="strip s5 hide" id="pipeStrip"></div>
@@ -889,6 +784,24 @@ if(dd)dd.open=false;});</script>
       <datalist id="mktList"></datalist>
 
       <div id="pipeMsg"></div>
+      <div id="pipeEmpty" class="invite">
+        <p>Watch a market to see owners requesting valuations. Nothing to upload.</p>
+        <!-- The ONE market-adding form on the page. renderPipeline moves this
+             node into #covBox once a lead or BOV exists. One node, relocated
+             — never a second copy that would drift from the coverage rules. -->
+        <div id="covForm">
+          <div class="form">
+            <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
+            <label>Type <select id="covType"></select></label>
+            <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
+          </div>
+          <div class="row" id="covRow"></div>
+          <div id="leadMsg"></div>
+          <div id="covMsg"></div>
+          <p class="fine" style="margin-top:var(--s3)">Remove all of them and any market
+            where you have submitted a comp comes back on your next visit.</p>
+        </div>
+      </div>
       <!-- Hidden while there are no rows: a header row with nothing under it is
            the same "is this broken?" signal the empty comps table gave. -->
       <div class="tw hide" id="pipeTableWrap"><table id="pipeTbl">
@@ -904,15 +817,11 @@ if(dd)dd.open=false;});</script>
            broker-leads.js; the blank is the privacy wall, not missing data. -->
       <p class="note hide" id="leadPrivacy">A lead&rsquo;s address and contact details stay
         with CompNinja until an introduction is made.</p>
-      <div class="empty hide" id="noPipe"></div>
 
-      <!-- Choosing markets is setup, not the daily job, so it collapses —
-           and #covForm is still exactly ONE node, relocated here by
-           applyFirstRun when the vault has content and walked home to
-           Start-here step 2 when the last import is deleted. Never add a
-           second copy: it would be a second thing to keep in step with the
-           coverage rules in broker-leads.js. -->
-      <details class="dbox" id="covBox">
+      <!-- Choosing markets is setup, not the daily job, so it collapses once
+           there is a row. #covForm is still exactly ONE node, relocated here
+           by renderPipeline. Never add a second copy. -->
+      <details class="dbox hide" id="covBox">
         <summary>Markets you watch</summary>
       </details>
     </section>
@@ -1583,37 +1492,17 @@ if(dd)dd.open=false;});</script>
   function applyFirstRun(compCount,uploadCount){
     firstRunCounts=[compCount,uploadCount];
     var first=compCount===0&&uploadCount===0;
-    $("firstRun").className=first?"":"hide";
-    // Both decks stand down on a first run: there is no book to head, and the
-    // pipeline rule over a single section reads as furniture. The two cards
-    // are the whole page then — leads and the BOV tracker hide with the decks
-    // unless a watched market already has owners waiting.
-    $("deckBook").className=first?"deck hide":"deck";
-    $("deckPipe").className=first?"deck hide":"deck";
-    // The market form is ONE node, placed wherever the broker can see it:
-    // its home (#covFormHome) in Start-here step 2 on a first run, inside the
-    // pipeline's collapsed "Markets you watch" box otherwise (step 2 is hidden
-    // then, and a broker with a full book must still be able to add a market).
-    // appendChild MOVES an attached node, so no copy ever exists — and deleting
-    // the last import walks it home again, since this function re-applies both
-    // ways. Chips and the form's own error line travel inside #covForm, so they
-    // cannot be stranded in a hidden section.
-    if(first)$("covFormHome").appendChild($("covForm"));
-    else $("covBox").appendChild($("covForm"));
-    // The uploader is step 1's job on a first run and the book deck's action
-    // otherwise, so it is closed by default in BOTH cases and this only
+    $("bookEmpty").className=first?"invite":"invite hide";
+    // The uploader is closed by default in BOTH cases and this only
     // re-asserts whatever the broker last chose. It deliberately does not
-    // force it shut on a first run: #res lives inside this panel, so an import
-    // that failed before it could raise the comp count would have written its
-    // error into something invisible. doImport opens it for exactly that.
+    // force it shut on an empty book: #res lives inside this panel, so an
+    // import that failed before it could raise the comp count would have
+    // written its error into something invisible. doImport opens it for
+    // exactly that.
     setAddOpen(addOpen);
-    // Same rule for the pipeline's own panel, and the same reason it is not
-    // forced shut on a first run: #bovMsg lives inside it.
     setBovOpen(bovOpen);
-    $("trustLine").className=first?"trust hide":"trust";
     $("compsSec").className=first?"hide":"";
     $("importsSec").className=first?"dbox hide":"dbox";
-    $("pipeSec").className=first?"hide":"";
   }
 
   // The single writer of the uploader's visibility. The deck action's label
@@ -1753,7 +1642,7 @@ if(dd)dd.open=false;});</script>
       return '<span class="chip">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
         ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
         '">&times;</button></span>';
-    }).join(" "):((firstRunCounts[0]===0&&firstRunCounts[1]===0)?"":emptyHint);
+    }).join(" "):(($("covForm").parentNode&&$("covForm").parentNode.id==="pipeEmpty")?"":emptyHint);
     var seen={},opts=[];
     coverage.concat().forEach(function(c){ if(c&&c.market&&!seen[c.market]){seen[c.market]=1;opts.push(c.market);} });
     (allMarkets||[]).forEach(function(m){ if(m&&!seen[m]){seen[m]=1;opts.push(m);} });
@@ -1961,17 +1850,17 @@ if(dd)dd.open=false;});</script>
     $("leadPrivacy").className=anyLead?"note":"note hide";
     $("pipeRows").innerHTML=rows.map(pipeRow).join("");
 
-    // One empty line, not two, and it says which situation this is. Silent
-    // while anything failed: "nothing here" would be a claim we cannot make.
-    var none=$("noPipe");
-    if(all.length||errs.length){ none.className="empty hide"; none.textContent=""; }
-    else if(!coverage.length){
-      none.className="empty";
-      none.textContent="No markets yet \\u2014 add one under Markets you watch to start seeing leads.";
-    } else {
-      none.className="empty";
-      none.textContent="Nothing in your markets in the last 90 days, and nothing logged yet.";
-    }
+    // Invitation vs table: a header row over nothing is the empty table this
+    // page used to open with. Failures do not count as empty — "nothing here"
+    // would be a claim we cannot make — so an error with no rows hides the
+    // invitation too and leaves the messages in #pipeMsg.
+    var pipeInvite=!all.length&&!errs.length;
+    $("pipeEmpty").className=pipeInvite?"invite":"invite hide";
+    $("pipeIntro").className=pipeInvite?"sub hide":"sub";
+    $("covBox").className=pipeInvite?"dbox hide":"dbox";
+    if(pipeInvite)$("pipeEmpty").appendChild($("covForm"));
+    else $("covBox").appendChild($("covForm"));
+    renderCoverage(coverage);
   }
 
   function pipeRow(r){
@@ -2329,10 +2218,9 @@ if(dd)dd.open=false;});</script>
     $("mapSec").classList.remove("hide");
     $("pdfSec").classList.add("hide");
     $("addSec").classList.add("hide");
-    // Hidden too, or a first-run broker — which the FIRST broker through this
-    // door is by definition — keeps the first-run steps on screen above the
-    // panel that replaced step 1. closeMapper puts it back.
-    $("firstRun").classList.add("hide");
+    // Hidden too, or an empty vault keeps the book invitation on screen
+    // above the panel that replaced it. closeMapper puts it back.
+    $("bookEmpty").classList.add("hide");
     Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
       s.addEventListener("change",refreshMapper);
     });
@@ -2413,10 +2301,9 @@ if(dd)dd.open=false;});</script>
 
   function closeMapper(){
     $("mapSec").classList.add("hide");
-    // NOT an unconditional un-hide of #addSec: applyFirstRun deliberately
-    // hides it on a first run, where step 1 owns the uploader, and restoring
-    // it there leaves "Choose a spreadsheet" twice on one page. Re-applying
-    // the same function is what keeps that rule in one place.
+    // NOT an unconditional un-hide of #addSec: applyFirstRun keeps it
+    // closed on an empty book, where #bookEmpty owns the Choose button,
+    // and restoring the panel there leaves Choose twice on one page.
     applyFirstRun(firstRunCounts[0],firstRunCounts[1]);
     pending=null; mapInfo=null;
   }
@@ -2499,7 +2386,7 @@ if(dd)dd.open=false;});</script>
     $("mapSec").classList.add("hide");
     $("pdfSec").classList.remove("hide");
     $("addSec").classList.add("hide");
-    $("firstRun").classList.add("hide");
+    $("bookEmpty").classList.add("hide");
     Array.prototype.forEach.call($("pdfBody").querySelectorAll("input"),function(inp){
       var i=Number(inp.getAttribute("data-i"));
       if(inp.type==="checkbox"){
@@ -2538,7 +2425,7 @@ if(dd)dd.open=false;});</script>
   // Step 1's button is the same door as #pick — one file input on the whole
   // page, so an upload started here lands in the same handler and the same
   // result message.
-  $("frPick").addEventListener("click",function(){ $("file").click() });
+  $("bookPick").addEventListener("click",function(){ $("file").click() });
   $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.add("over"); })});
@@ -2549,9 +2436,8 @@ if(dd)dd.open=false;});</script>
   // dragged at the page would have nowhere to land and the feature would look
   // deleted. Dragging a FILE anywhere over the window opens the panel; from
   // there #drop's own handlers above behave exactly as they always have.
-  // Guarded on the deck being visible: on a first run step 1 owns the
-  // uploader, and a second one appearing mid-drag is the duplicate this page
-  // has always refused.
+  // Guarded on the deck being visible: a 403 gate hides #app, and opening
+  // the panel behind a hidden deck is a control that does nothing.
   ["dragenter","dragover"].forEach(function(ev){
     document.addEventListener(ev,function(e){
       var t=e.dataTransfer&&e.dataTransfer.types;

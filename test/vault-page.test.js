@@ -293,7 +293,7 @@ function stubElement() {
     classList,
     addEventListener(t, fn) { (on[t] = on[t] || []).push(fn); },
     removeEventListener() {},
-    // applyFirstRun relocates the one #covForm node between step 2 and
+    // renderPipeline relocates the one #covForm node between #pipeEmpty and
     // #covBox. This harness is an id-keyed bag with no notion of position,
     // so relocation is a no-op here on purpose — elements stay reachable
     // by id either way, which is all these tests read.
@@ -578,14 +578,18 @@ test("the pipeline is one table and neither old wrapper remains", () => {
   assert.ok(!html.includes('id="leadTableWrap"'), "the old leads wrapper must be gone");
   assert.ok(!html.includes('id="bovTableWrap"'), "the old BOV wrapper must be gone");
   const js = pageScript(html);
-  assert.match(js, /\$\("pipeSec"\)\.className=first\?"hide":""/,
-    "applyFirstRun does not hide the pipeline");
+  assert.doesNotMatch(js, /\$\("pipeSec"\)\.className=first/,
+    "applyFirstRun must not hide the pipeline — a waiting lead has to show on an empty book");
 });
 
-test("the pipeline's empty state is a sentence, not an empty table", () => {
+test("the pipeline's empty state is an invitation, not an empty table", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.ok(html.includes('class="tw hide" id="pipeTableWrap"'));
-  assert.ok(html.includes('id="noPipe"'));
+  assert.ok(html.includes('id="pipeEmpty"'));
+  assert.ok(!html.includes('id="noPipe"'), "the old empty-line id must be gone");
+  const js = pageScript(html);
+  assert.match(js, /if\(pipeInvite\)\$\("pipeEmpty"\)\.appendChild\(\$\("covForm"\)\)/);
+  assert.match(js, /\$\("covBox"\)\.appendChild\(\$\("covForm"\)\)/);
 });
 
 test("the lead-privacy line appears exactly once", () => {
@@ -651,7 +655,7 @@ test("the deck drop zone names the extract vendor", () => {
   const drop = html.indexOf('id="drop"');
   assert.ok(drop >= 0, "#drop is missing");
   assert.match(html.slice(drop), /extract vendor/,
-    "a returning broker never sees #firstRun; the drop zone has to name the vendor");
+    "the drop zone has to name the vendor even when #bookEmpty is hidden");
 });
 
 test("the drop-k heading mentions PDF", () => {
@@ -825,22 +829,23 @@ test("a file already in our own column names skips the screen and sends no mappi
 });
 
 test("Cancel restores the page it interrupted, and uploads nothing", async () => {
-  // The first broker through this door is by definition a first-run broker,
-  // where applyFirstRun has deliberately hidden #addSec (step 1 owns the
-  // uploader). Cancel used to un-hide it unconditionally and leave #firstRun
-  // hidden, i.e. both cards on screen at once until a reload.
+  // An empty vault shows #bookEmpty, not a numbered first-run page.
+  // Cancel used to un-hide #addSec unconditionally and leave the invitation
+  // hidden, i.e. both the mapper's replacement and a second Choose button.
   const { doc, calls } = await runPage([]);
-  assert.equal(doc.getElementById("firstRun").className, "", "expected a first-run page");
+  assert.ok(!doc.getElementById("bookEmpty").classList.contains("hide"),
+    "expected the empty-book invitation");
   await chooseFile(doc, DIRTY_CSV);
-  assert.ok(doc.getElementById("firstRun").classList.contains("hide"),
-    "Start here must not sit above the panel that replaced it");
+  assert.ok(doc.getElementById("bookEmpty").classList.contains("hide"),
+    "the invitation must not sit above the panel that replaced it");
 
   doc.getElementById("mapCancel").fire("click");
 
   assert.ok(doc.getElementById("mapSec").classList.contains("hide"));
-  assert.equal(doc.getElementById("firstRun").className, "", "Start here was not restored");
+  assert.ok(!doc.getElementById("bookEmpty").classList.contains("hide"),
+    "the book invitation was not restored");
   assert.ok(doc.getElementById("addSec").classList.contains("hide"),
-    "the uploader was un-hidden on a first run, so it now appears twice");
+    "the uploader was un-hidden on an empty vault, so Choose appears twice");
   assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 0);
 });
 
@@ -862,7 +867,7 @@ test("a failed import leaves the panel open with every selection intact", async 
 
   assert.ok(!doc.getElementById("mapSec").classList.contains("hide"),
     "the mapping panel closed on a failed import");
-  assert.ok(doc.getElementById("firstRun").classList.contains("hide"),
+  assert.ok(doc.getElementById("bookEmpty").classList.contains("hide"),
     "closeMapper ran anyway: the page behind the panel was restored");
   assert.equal(selectFor(doc, "sq_ft").value, "size_sqft", "the mapping was thrown away");
   assert.equal(selectFor(doc, "sale_price").value, "price");
@@ -1651,25 +1656,32 @@ const A_LEAD = {
 };
 const A_COV = { id: "cov1", market: "Boise, ID", property_type: "Industrial", source: "added" };
 
-test("an empty pipeline shows its line and no table", async () => {
+test("an empty pipeline shows the invitation and no table", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK);
-  assert.equal(doc.getElementById("noPipe").className, "empty",
-    "with nothing in either source the line is the only thing to show");
+  assert.ok(!doc.getElementById("pipeEmpty").classList.contains("hide"),
+    "with nothing in either source the invitation is the body");
   assert.match(doc.getElementById("pipeTableWrap").className, /hide/,
     "a header row over no rows is the empty table the first-run work removed");
 });
 
-test("the first logged BOV puts the empty line away", async () => {
+test("the first logged BOV puts the invitation away", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, {
     bovs: () => Promise.resolve(jsonResponse(200, {
       bovs: [A_BOV],
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
     })),
   });
-  assert.match(doc.getElementById("noPipe").className, /hide/,
-    '"Nothing logged yet" over a logged BOV contradicts the row beneath it');
+  assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"),
+    "the invitation over a logged BOV contradicts the row beneath it");
   assert.equal(doc.getElementById("pipeTableWrap").className, "tw");
   assert.match(doc.getElementById("pipeRows").innerHTML, /Boise, ID/);
+});
+
+test("coverage without a lead or BOV keeps the pipeline invitation", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [] })),
+  });
+  assert.ok(!doc.getElementById("pipeEmpty").classList.contains("hide"));
 });
 
 test("a BOV row renders its status select and a Remove button", async () => {
@@ -1734,14 +1746,14 @@ test("BOVs failing still renders lead rows", async () => {
   assert.match(doc.getElementById("pipeRows").innerHTML, /<span class="stg new">New<\/span>/);
   assert.match(doc.getElementById("pipeRows").innerHTML, /Meridian, ID/);
   assert.match(doc.getElementById("pipeMsg").innerHTML, /unavailable/i);
-  assert.match(doc.getElementById("noPipe").className, /hide/);
+  assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"));
 });
 
-test("a failed BOV load shows neither the empty line nor a stale table when leads are empty too", async () => {
+test("a failed BOV load shows neither the invitation nor a stale table when leads are empty too", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, {
     bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
   });
-  assert.match(doc.getElementById("noPipe").className, /hide/);
+  assert.ok(doc.getElementById("pipeEmpty").classList.contains("hide"));
   assert.match(doc.getElementById("pipeTableWrap").className, /hide/);
   assert.match(doc.getElementById("pipeMsg").innerHTML, /unavailable/i);
 });

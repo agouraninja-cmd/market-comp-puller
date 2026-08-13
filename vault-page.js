@@ -19,13 +19,27 @@
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 
-// CN_LOGO and MARKET_CSS are the site's shared chrome: one definition in
-// server.js, used by seven other server-rendered pages. They are passed IN
-// rather than copied here, because a second copy would drift from the first
-// (server.js already carries a "keep the two in step" warning about exactly
-// that hazard elsewhere). Passing them keeps one source of truth and means
-// this file never has to reach back into server.js.
-function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
+// CN_LOGO and the account-nav pieces are the site's shared chrome: one
+// definition in server.js, used by the other server-rendered pages. They are
+// passed IN rather than copied here, because a second copy would drift from
+// the first (server.js already carries a "keep the two in step" warning about
+// exactly that hazard elsewhere). Passing them keeps one source of truth and
+// means this file never has to reach back into server.js. The vault keeps its
+// own sticky header and stylesheet; it lifts the circle, Pricing slot, and
+// hydration script so a member leaving /desk does not appear to have signed
+// out.
+function renderVaultHTML(boot, chrome) {
+  chrome = chrome || {};
+  const CN_LOGO = chrome.CN_LOGO || "";
+  // MARKET_CSS is accepted so the page keeps taking the site's shared chrome
+  // object; the vault draws its own stylesheet and only lifts the account-nav
+  // pieces from it, because a second copy of MARKET_BAR would drift.
+  const ACCOUNT_NAV_CSS = chrome.ACCOUNT_NAV_CSS || "";
+  const ACCOUNT_NAV_JS = chrome.ACCOUNT_NAV_JS || "";
+  const ACCOUNT_NAV_SLOTS = chrome.ACCOUNT_NAV_SLOTS || "";
+  const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
+  const THEME_CSS = chrome.THEME_CSS || "";
+  const THEME_BOOT = chrome.THEME_BOOT || "";
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
@@ -33,41 +47,77 @@ function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
 <html lang="en"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
-<meta name="theme-color" content="#FBFBF9"/>
+<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
+<meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)"/>
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box}
+${THEME_CSS}
 :root{
-  --ink:#1A2433;--ink-2:#4C5665;--ink-3:#68707E;--ink-4:#C7CBD2;
-  --red:#B91C1C;--red-deep:#991B1B;
-  --green:#15803D;
-  --paper:#FBFBF9;--line:#E4E2DA;--hair:#F0EFE9;--wash:#F5F4EF;--edge:#D8D4C9;
   --serif:Georgia,'Times New Roman',serif;
-  --r:4px;
-  --t1:32px;--t2:19px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
+  --r:6px;
+  --t1:34px;--t2:20px;--t3:15px;--t4:14px;--t5:12.5px;--t6:11px;
   --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
+  --shadow:0 1px 2px rgba(26,36,51,.04),0 8px 24px rgba(26,36,51,.04);
 }
-body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;min-height:100vh;
+/* .hide must sit above every later rule that sets display, or a more
+   specific display:flex/grid on .deck/.strip/.ledger beats it and a hidden
+   block still paints. .deck.hide and .strip.hide restated below are the
+   cascade trap Direction U documented. */
+.hide{display:none}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-height:100vh;
   display:flex;flex-direction:column;font-size:var(--t4);
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1040px;margin:0 auto;padding:0 var(--s6);width:100%}
-.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
-.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:var(--s5) var(--s6)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--s6);width:100%}
+.hdr{border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--paper) 92%, transparent);
+  position:sticky;top:0;z-index:20;-webkit-backdrop-filter:saturate(1.2) blur(10px);
+  backdrop-filter:saturate(1.2) blur(10px)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:14px var(--s6)}
 /* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
    relationship shared with index.html's header and MARKET_CSS, not this
    page's spacing scale, so it stays literal and identical everywhere. */
 .brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
+/* Dark-mode fix (2026-08-10, fix round 1): CN_LOGO's rect/polygon carry a
+   literal fallback fill= (see its declaration in server.js), overridden here
+   the same way MARKET_CSS and HOW_CSS override it. This file does not
+   interpolate MARKET_CSS despite taking it as a parameter -- the page has
+   always carried its own copy of .hdr/.brand/.wordmark -- so the rule has
+   to be repeated here or /vault's header logo stays unthemed. */
+.cn-logo rect{fill:var(--ink)}
+.cn-logo polygon{fill:var(--red-fill)}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
-.hdr nav{display:flex;gap:var(--s5);font-size:var(--t5)}
-.hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
-main{flex:1;padding:var(--s7) 0 var(--s9)}
-h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var(--t1);line-height:1.15}
-.sub{color:var(--ink-2);max-width:62ch;margin:var(--s4) 0 0}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
+.hdr nav a{color:var(--ink-2);padding:4px 0;white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
+.hdr nav a[aria-current="page"]{color:var(--ink);font-weight:600}
+/* Explore + account circle, matching MARKET_BAR so the vault is not the one
+   signed-in page whose bar drops Pricing and the circle. Load-bearing:
+   .hdr nav .dd a sets display:block, which out-specifies [hidden], so the
+   injected ACCOUNT_NAV_CSS (and the copy below) must keep slots hidden. */
+.hdr nav [hidden]{display:none!important}
+.hdr nav details{position:relative}
+.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-2);white-space:nowrap;user-select:none}
+.hdr nav summary::-webkit-details-marker{display:none}
+.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-3)}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+  padding:4px 0;min-width:176px}
+.hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
+.hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
+main{flex:1;padding:40px 0 72px}
+.kicker{margin:0 0 var(--s3);font-size:var(--t6);font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3)}
+h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--t1);line-height:1.12;
+  letter-spacing:-.02em}
+.sub{color:var(--ink-2);max-width:54ch;margin:var(--s4) 0 0;font-size:15px;line-height:1.55}
 /* The trust line. A broker does not hand over their book of business because
    our terms promise we cannot read it — they do it because they can watch this
    number stay at zero. It is deliberately the most prominent thing on the page
@@ -75,75 +125,117 @@ h1.h{font-family:var(--serif);font-weight:500;margin:var(--s4) 0 0;font-size:var
 /* The book ledger (approved as "Vault A", 2026-08-08): the report hero's
    ruled-cell geometry applied to the trust line. Green is spent on exactly
    one cell — Published — because zero staying zero is the number this page
-   exists to prove. Figure size is the 26px the approved card set, not a
-   token from this page's scale. */
+   exists to prove. */
 .trust{margin:var(--s7) 0 0}
-.ledger{border:1px solid var(--edge);border-radius:var(--r);background:#fff;
-  display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden}
-.lcell{padding:var(--s4) var(--s5);border-left:1px solid var(--hair)}
+.ledger{border:1px solid var(--edge);border-top:2px solid var(--ink);border-radius:var(--r);
+  background:var(--card);display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;
+  box-shadow:var(--shadow)}
+.lcell{padding:18px 20px;border-left:1px solid var(--hair)}
 .lcell:first-child{border-left:0}
-.lcell.mid{background:#FCFBF8}
-.llab{display:block;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;margin-bottom:var(--s2)}
+/* #F7FBF8 is the redesign's published-cell green wash; folded to --ok-bg
+   (ΔRGB ~20, within the approved 25 bound) so the cell stays green in both
+   themes instead of flattening to --wash. */
+.lcell.mid{background:var(--ok-bg)}
+.llab{display:block;font-size:var(--t6);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:6px}
 .lcell.mid .llab{color:var(--green)}
-.lfig{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;font-size:26px;
-  line-height:1.2;color:var(--ink)}
+.lfig{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;font-size:28px;
+  line-height:1.15;color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .lfig{color:var(--green)}
-.lsub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1)}
+.lsub{color:var(--ink-3);font-size:var(--t5);margin-top:4px}
 /* Exactly four cells, so the 2x2 wrap can place its dividers by position. */
 @media (max-width:640px){
   .ledger{grid-template-columns:1fr 1fr}
-  .lcell{border-left:0}
+  .lcell{border-left:0;padding:16px}
   .lcell:nth-child(even){border-left:1px solid var(--hair)}
   .lcell:nth-child(-n+2){border-bottom:1px solid var(--hair)}
 }
-.trust .note{color:var(--ink-3);font-size:var(--t5);margin:var(--s3) 0 0;max-width:62ch}
+.trust .note{color:var(--ink-3);font-size:var(--t5);margin:var(--s4) 0 0;max-width:62ch}
+#creditLine{margin-top:var(--s3)}
+#creditLine strong{color:var(--ink);font-weight:600}
+#idForm{margin-top:var(--s4);padding:18px 20px;border:1px solid var(--edge);border-radius:var(--r);
+  background:var(--card);box-shadow:var(--shadow)}
 section{margin-top:var(--s8)}
 section+section{border-top:1px solid var(--line);padding-top:var(--s7)}
-h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 var(--s5)}
-.drop{border:1px dashed var(--edge);border-radius:var(--r);padding:var(--s7);text-align:center;
-  background:#fff;transition:border-color .12s,background .12s}
-.drop.over{border-color:var(--red);background:var(--wash)}
-.drop p{margin:var(--s3) 0 0;color:var(--ink-2);font-size:var(--t5)}
-.btn{background:var(--red);color:#fff;border:0;border-radius:var(--r);padding:var(--s3) var(--s5);
-  font-weight:600;font-size:var(--t4);font-family:inherit;cursor:pointer}
-.btn:hover{background:var(--red-deep)}
+h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 6px;letter-spacing:-.01em}
+section > .sub{margin-top:0;margin-bottom:var(--s5)}
+.drop{border:1px dashed var(--edge);border-radius:var(--r);padding:36px var(--s6);text-align:center;
+  background:var(--card);transition:border-color .15s,background .15s,box-shadow .15s}
+.drop.over{border-color:var(--red);border-style:solid;background:var(--err-bg);box-shadow:inset 0 0 0 1px var(--red)}
+.drop-k{margin:0 0 var(--s4);font-family:var(--serif);font-size:17px;font-weight:500;color:var(--ink)}
+.drop p{margin:var(--s4) 0 0;color:var(--ink-2);font-size:var(--t5)}
+.btn{background:var(--red-fill);color:#fff;border:0;border-radius:var(--r);padding:9px 16px;
+  font-weight:600;font-size:13.5px;font-family:inherit;cursor:pointer;line-height:1.3}
+.btn:hover{background:var(--red-fill-hover)}
 .btn[disabled]{background:var(--ink-4);cursor:default}
-.btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--edge)}
-.btn.ghost:hover{background:var(--wash);color:var(--ink)}
-.row{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:center}
-select,input[type=text]{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:16px;background:#fff;color:var(--ink)}
+.btn.ghost{background:var(--card);color:var(--ink-2);border:1px solid var(--edge)}
+.btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-4)}
+.row{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px 16px;align-items:end}
+.form .span2{grid-column:1/-1}
+.form .span-all{grid-column:1/-1}
+.formact{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.form input,.form select{width:100%}
+@media (min-width:720px){.form .span2{grid-column:span 2}}
+#addTypeFields{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px 16px}
+#covRow{align-items:center;margin-top:8px;gap:8px}
+#covRow .empty{padding:4px 0;text-align:left}
+.addpanel .tw,.mappanel .tw{box-shadow:none}
+.row label,.form label,.editrow label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600}
+select,input[type=text],input[type=date]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);min-height:40px}
+select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-color:var(--ink);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent)}
 /* 16px, not var(--t5): iOS Safari zooms on focus for any input under 16px
    and stays zoomed — on a data-entry page that means every filter tap. */
-table{width:100%;border-collapse:collapse;font-size:var(--t5);margin-top:var(--s5)}
+.filters{padding:14px 16px;margin-top:var(--s4);background:var(--card);border:1px solid var(--edge);
+  border-radius:var(--r);align-items:flex-end}
+.filters .btn{min-height:40px}
+.filters .note{margin:0 0 10px;align-self:flex-end}
+.filters .exp{margin-left:auto}
+table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px;margin:0}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
    every header on this page — the broker's own book of record earns the same
    audited-statement vocabulary the report's comp table shipped. */
-th{text-align:left;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:2px solid var(--ink);white-space:nowrap}
-th[data-k]{cursor:pointer}
-th[data-k]:hover{color:var(--ink)}
+th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:12px 14px;border-bottom:2px solid var(--ink);white-space:nowrap;background:var(--card)}
+th[data-k],th[data-bk]{cursor:pointer}
+th[data-k]:hover,th[data-bk]:hover{color:var(--ink)}
 th .ar{color:var(--red)}
-td{padding:var(--s3) var(--s4) var(--s3) 0;border-bottom:1px solid var(--hair);vertical-align:top}
+td{padding:12px 14px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink-body)}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:hover td{background:var(--wash)}
+.addr{color:var(--ink);font-weight:500}
+.tag{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-2);background:var(--wash);border-radius:3px;padding:2px 7px}
 /* The comps table seals with a median row under a double rule. The last body
    row's hairline is dropped explicitly: with collapsed borders two same-width
    rules at that boundary would otherwise fight, and which one wins is
    browser-defined — the ink top rule must never lose to a hairline. */
 #tbl tbody tr:last-child td{border-bottom:0}
-tfoot td{padding:var(--s3) var(--s4) var(--s3) 0;border-top:1px solid var(--ink);
-  border-bottom:3px double var(--ink);font-weight:600}
+tfoot td{padding:12px 14px;border-top:1px solid var(--ink);
+  border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card)}
 tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
-.tw{overflow-x:auto}
-.msg{margin-top:var(--s5);padding:var(--s4) var(--s5);border-radius:var(--r);font-size:var(--t5);border:1px solid}
-.msg.ok{background:#F0FAF3;border-color:#BFE3CB;color:#14532D}
-.msg.bad{background:#FDF2F2;border-color:#F0C7C7;color:#7F1D1D}
+.tw{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
+  margin-top:var(--s4);box-shadow:var(--shadow)}
+.msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r);font-size:var(--t5);border:1px solid}
+.msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
+.msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
+#pdfTable tbody tr.need-fix td,#pdfTable tbody tr.need-fix:hover td{background:var(--err-bg)}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
-.empty{color:var(--ink-3);padding:var(--s7) 0;text-align:center}
+#gate .msg{max-width:44ch;margin-top:var(--s7)}
+.load{margin-top:var(--s7);max-width:420px}
+.loadbar{height:3px;background:var(--hair);border-radius:2px;overflow:hidden;margin-bottom:var(--s4)}
+.loadbar i{display:block;height:100%;width:38%;background:var(--red-fill);
+  animation:load 1.15s ease-in-out infinite}
+@keyframes load{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
+.empty{color:var(--ink-3);padding:36px 20px;text-align:center}
+.fine{color:var(--ink-3);font-size:var(--t5);font-weight:400;letter-spacing:0;text-transform:none}
 .up{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);
-  padding:var(--s4) 0;border-bottom:1px solid var(--hair);font-size:var(--t5)}
+  padding:12px 0;border-bottom:1px solid var(--hair);font-size:var(--t5)}
+.up:last-child{border-bottom:0}
 .up .meta{color:var(--ink-3)}
 /* Padding + offsetting negative margin: a real tap target on the one control
    that DELETES an import, without moving the row's baseline layout. */
@@ -153,28 +245,38 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 /* Publish state as the statement's badge chip (Vault B): green tint only once
    published — the deliberate act, not the default. The tints are the report
    table's own Verified-badge pair, so one green means one thing site-wide. */
-.pubbtn{background:#fff;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;
+.pubbtn{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:5px 10px;
   font-family:inherit;font-size:var(--t6);font-weight:600;line-height:1.4;color:var(--ink-2);
   cursor:pointer;white-space:nowrap}
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
-.pubbtn.on{border-color:transparent;background:#E3F2EA;color:#06603A}
+.pubbtn.on{border-color:transparent;background:var(--ok-bg);color:var(--ok-text)}
 .pubbtn[disabled]{opacity:.5;cursor:default}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:999px;
+  padding:5px 8px 5px 12px;font-size:12.5px;background:var(--card);color:var(--ink-2);font-weight:600;
+  letter-spacing:0;text-transform:none}
+.chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;
+  padding:0 2px;font-family:inherit}
+.chip button:hover{color:var(--red)}
 /* Row actions: plain text links, not buttons. The row already carries one
    button (Publish); giving Edit/Delete the same weight would put three
    competing calls to action on one line. */
 .lnk{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;
-  color:var(--ink-3);cursor:pointer;text-decoration:underline;white-space:nowrap}
+  color:var(--ink-3);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .lnk:hover{color:var(--ink)}
 .lnk.danger{color:var(--red)}
 .lnk.danger:hover{color:var(--red-deep)}
 td.rowact{white-space:nowrap}
 /* The inline edit row: one form spanning every column, not per-cell inputs —
    a comp carries fields (cap_rate, tenancy, year_built, notes) the table has
-   no column for at all, so a per-cell form could not hold them. */
-.editrow label{display:flex;flex-direction:column;gap:2px;font-size:var(--t6);color:var(--ink-3)}
-.editrow input{padding:var(--s2) var(--s3);border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:var(--t5);background:#fff;color:var(--ink);width:100%}
-.hide{display:none}
+   no column for at all, so a per-cell form could not hold them. Same grid as
+   the add-by-hand and BOV forms, so the three data-entry surfaces read as
+   one vocabulary. */
+.editrow td{background:var(--wash);padding:16px 18px}
+.editk{margin:0 0 12px;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600}
+.editrow .form{max-width:920px}
+.editrow input,.editrow select{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);width:100%;min-height:40px}
 /* ---- The market rollup: the page's lead view ----------------------------
    A broker with 400 comps learns nothing from 400 rows. This is the index to
    their own book: one card per market + property type, which is the same pair
@@ -182,72 +284,103 @@ td.rowact{white-space:nowrap}
    same way. Whole-book always, never narrowed by the filter below it: it is
    the map, and a map that hides everything but your current street is not a
    map. Clicking one drives the filter instead. */
-.cards{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
-.card{border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:var(--s4) var(--s5);
+.cards{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.card{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);padding:16px 18px;
   text-align:left;font-family:inherit;font-size:var(--t5);color:var(--ink);cursor:pointer;
-  display:flex;flex-direction:column;gap:var(--s1);transition:border-color .12s,background .12s}
-.card:hover{border-color:var(--ink-3);background:var(--wash)}
-.card.on{border-color:var(--red);background:#fff;box-shadow:inset 0 0 0 1px var(--red)}
-.card .mk{font-weight:600;font-size:var(--t4);line-height:1.3}
-.card .ty{color:var(--ink-3);font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
-.card .big{font-family:var(--serif);font-size:var(--t2);font-weight:500;margin-top:var(--s2)}
-.card .big span{font-family:inherit;font-size:var(--t5);color:var(--ink-3)}
-.card .fine{color:var(--ink-3);font-size:var(--t6)}
+  display:flex;flex-direction:column;gap:2px;transition:border-color .15s,background .15s,box-shadow .15s;
+  box-shadow:var(--shadow)}
+.card:hover{border-color:var(--ink-4);background:var(--card)}
+.card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red),var(--shadow)}
+.card .mk{font-weight:600;font-size:15px;line-height:1.3;color:var(--ink)}
+.card .ty{color:var(--ink-3);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.card .big{font-family:var(--serif);font-size:22px;font-weight:500;margin-top:8px;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.card .big span{font-family:Inter,system-ui,sans-serif;font-size:var(--t5);color:var(--ink-3);
+  letter-spacing:0;margin-left:6px}
+.card .fine{color:var(--ink-3);font-size:var(--t6);font-weight:400;letter-spacing:0;text-transform:none}
 .card .fine.pub{color:var(--green);font-weight:600}
+.card.stat{cursor:default;box-shadow:none}
+.card.stat:hover{border-color:var(--edge);background:var(--card)}
+#bovCards{margin-top:var(--s4)}
 /* ---- Chart + repeat-property blocks ---- */
 /* Capped at the viewBox width so one SVG unit is one CSS pixel: the columns
-   are drawn at a 24px maximum, and letting the chart stretch to a 1040px
+   are drawn at a 24px maximum, and letting the chart stretch to a 1120px
    container would render them at ~40px, which is the heavy-saturated-block
    look the rest of this page avoids. Below 600px it scales down as normal. */
 .chart svg{display:block;width:100%;max-width:600px;height:auto}
-.rep{border-top:1px solid var(--hair);padding:var(--s3) 0;font-size:var(--t5)}
+/* The year chart is generated SVG (renderChart, further down this file), not
+   markup here -- so these classes are the only place its colours live now.
+   Fixed 2026-08-10 fix round 2: they used to be inline fill/stroke hex on
+   the generated elements, which is invisible to the raw-hex regression test
+   (that test only scans THIS block) and, worse, a presentation ATTRIBUTE
+   like fill="var(--ink)" is not reliably honoured -- only a stylesheet rule
+   or a style="" attribute is. Putting them here is what makes the endpoint
+   label (the one number this panel exists to show) actually themed instead
+   of staying ink-on-white at 1.14:1 against a dark card. */
+.chart-grid{stroke:var(--line)}
+.chart-axis{fill:var(--ink-3)}
+.chart-bar{fill:var(--ink-mute)}
+.chart-bar.hi{fill:var(--red-fill)}
+.chart-endpoint{fill:var(--ink)}
+.rep{border-top:1px solid var(--hair);padding:10px 0;font-size:var(--t5)}
+.rep:first-child{border-top:0;padding-top:0}
 .rep .addr{font-weight:600}
-.rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums;font-size:13px;margin-top:2px}
 .note{color:var(--ink-3);font-size:var(--t5)}
 /* ---- Gut check ----------------------------------------------------------
    Verdict chips stay in the page's existing voice: the pubbtn border style,
    ink for facts, green only for "in line" (the calm state), never red for a
    divergence — above/below is "worth a look", not an error. */
-.gc{border:1px solid var(--line);border-radius:var(--r);background:#fff;
-  padding:var(--s4) var(--s5);font-size:var(--t5);display:flex;
-  flex-direction:column;gap:var(--s2)}
-.gc .mk{font-weight:600;font-size:var(--t4)}
-.gc .ty{color:var(--ink-3);font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
-.gcv{display:inline-block;border:1px solid var(--edge);border-radius:var(--r);
-  padding:1px var(--s3);font-size:var(--t6);color:var(--ink-2);font-weight:600;
-  align-self:flex-start;margin-top:var(--s2)}
-.gcv.ok{border-color:#BFE3CB;background:#F0FAF3;color:var(--green)}
+.gc{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
+  padding:16px 18px;font-size:var(--t5);display:flex;
+  flex-direction:column;gap:4px;box-shadow:var(--shadow)}
+.gc .mk{font-weight:600;font-size:15px}
+.gc .ty{color:var(--ink-3);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.gcv{display:inline-block;border:1px solid var(--edge);border-radius:999px;
+  padding:2px 10px;font-size:var(--t6);color:var(--ink-2);font-weight:600;
+  align-self:flex-start;margin-top:6px}
+.gcv.ok{border-color:var(--ok-rule);background:var(--ok-bg);color:var(--green)}
 .gc .fine{color:var(--ink-3);font-size:var(--t6)}
-.gcOut{display:inline-block;margin-left:var(--s2);font-size:var(--t6);
+.gcOut{display:inline-block;margin-left:var(--s2);font-size:10px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
   border-bottom:1px dotted var(--ink-3);cursor:help}
 /* ---- First run ----------------------------------------------------------
    Deliberately quiet: two numbered steps on the page's own type scale, no
    illustration, no coloured callout box. A broker arriving here has just paid
    for something, and a loud empty state reads as a product apologising for
-   itself. The numbers carry the sequence; everything else is ordinary text. */
-.steps{display:grid;gap:var(--s6);margin-top:var(--s6)}
-@media (min-width:760px){.steps{grid-template-columns:1fr 1fr;gap:var(--s7)}}
-.step{display:flex;gap:var(--s4);align-items:flex-start}
-.stepn{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--wash);
-  border:1px solid var(--edge);color:var(--ink-2);font-size:var(--t5);font-weight:600;
-  display:flex;align-items:center;justify-content:center;margin-top:2px}
-.step h3{font-family:var(--serif);font-weight:500;font-size:var(--t3);margin:0 0 var(--s3)}
-.step p{margin:0 0 var(--s3);color:var(--ink-2)}
+   itself. The numbers carry the sequence; everything else is ordinary text.
+   The cards are the same white panel the rest of the workspace uses, not a
+   coloured empty-state. */
+.steps{display:grid;gap:var(--s5);margin-top:var(--s7)}
+@media (min-width:760px){.steps{grid-template-columns:1fr 1fr;gap:var(--s5)}}
+.step{display:flex;gap:var(--s4);align-items:flex-start;background:var(--card);border:1px solid var(--edge);
+  border-radius:var(--r);padding:22px 22px 20px;box-shadow:var(--shadow)}
+.stepn{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--slab);color:#fff;
+  font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.step h3{font-family:var(--serif);font-weight:500;font-size:18px;margin:0 0 6px;letter-spacing:-.01em}
+.step p{margin:0 0 var(--s4);color:var(--ink-2)}
 .step .fine{color:var(--ink-3);font-size:var(--t5)}
 /* The owner's 2026-08-10 restructure: cards carry three short bullets and
    fold their fine print into a collapsed disclosure. Same vars as .fine so
    the disclosure reads as the fine print it replaced. */
-.step ul{margin:0 0 var(--s3);padding-left:18px;color:var(--ink-2)}
-.step ul li{margin:2px 0}
+.step ul{margin:0 0 var(--s4);padding-left:18px;color:var(--ink-2)}
+.step ul li{margin:3px 0}
 .step details{margin:0 0 var(--s4)}
 .step details summary{cursor:pointer;color:var(--ink-3);font-size:var(--t5);user-select:none;list-style-position:inside}
 .step details summary:hover{color:var(--ink-2)}
 .step details .fine{margin:var(--s3) 0 0}
+/* When first-run is the page, a lead TABLE can still appear under the two
+   cards if a watched market already has owners waiting — that is the one
+   leftover that earns its place. The empty inbox, the heading over nothing,
+   and the BOV tracker stay hidden. A hairline keeps a real table from
+   reading as a leftover empty section. */
+#firstRun:not(.hide) ~ #leads:not(.hide){margin-top:var(--s8);padding-top:var(--s7);border-top:1px solid var(--line)}
 /* The template link is an <a> styled as a button, so it needs the same box the
    <button>s get — .btn alone leaves it inline and underlined. */
 a.btn{display:inline-block;text-decoration:none;color:#fff}
 a.btn:hover{color:#fff}
+a.btn.ghost{color:var(--ink-2)}
+a.btn.ghost:hover{color:var(--ink)}
 /* ---- Deck rules (Vault Direction U, approved 2026-08-10) -----------------
    This page is two products sharing one scroll: the book a broker keeps, and
    the pipeline they work. As ten peer sections every heading was the same
@@ -257,25 +390,32 @@ a.btn:hover{color:#fff}
    action on the right — and there are exactly two of them.
    (No backticks in this file's comments: the whole page is one template
    literal, so a backtick here ends it and the module stops parsing.) */
-.deck{display:flex;align-items:baseline;gap:var(--s4);margin:var(--s8) 0 0}
+.deck{display:flex;align-items:baseline;gap:var(--s4);margin:56px 0 0}
 /* Load-bearing, and the reason is pure cascade order: .hide is declared far
    above this block, so a later single-class rule that sets display BEATS it.
    Without this line applyFirstRun's "deck hide" leaves a stray "Your book"
    rule across the top of an empty vault — verified in a browser, not
    reasoned about. Same trap, same fix, on .strip below. */
 .deck.hide{display:none}
-.dlab{font-family:var(--serif);font-weight:500;font-size:var(--t2);white-space:nowrap}
-.dln{flex:1;height:0;border-top:2px solid var(--ink);transform:translateY(-5px)}
-.dact{background:none;border:0;padding:var(--s2) 0;font-family:inherit;font-size:var(--t5);
-  font-weight:600;color:var(--red);cursor:pointer;white-space:nowrap}
-.dact:hover{color:var(--red-deep)}
+.dlab{font-family:var(--serif);font-weight:500;font-size:22px;white-space:nowrap;letter-spacing:-.015em}
+.dln{flex:1;height:0;border-top:2px solid var(--ink);transform:translateY(-6px)}
+.dact{background:var(--card);border:1px solid var(--red);border-radius:var(--r);padding:6px 12px;
+  font-family:inherit;font-size:13px;font-weight:600;color:var(--red);cursor:pointer;white-space:nowrap}
+.dact:hover{background:var(--red-fill);color:#fff}
 /* The uploader and the column mapper stopped being sections when they moved
    under the book deck: a section would draw the section+section divider, and
    both of these are transient panels that a returning broker opens on
    purpose. Being divs also means the sections after them are never "a section
    after a hidden section", which is what the two adjacency patches this
    replaced were for. */
-.addpanel,.mappanel{margin-top:var(--s5)}
+.addpanel,.mappanel{margin-top:var(--s5);padding:20px;border:1px solid var(--edge);border-radius:var(--r);
+  background:var(--card);box-shadow:var(--shadow)}
+.mappanel h2{margin-bottom:var(--s3)}
+#mapTable td:first-child{font-weight:500;color:var(--ink)}
+#mapTable select{width:100%;min-width:160px}
+.samp{display:inline-block;background:var(--wash);border-radius:3px;padding:2px 7px;
+  margin:0 4px 4px 0;font-size:11px;color:var(--ink-2);line-height:1.4}
+.mapact{margin-top:var(--s5);padding-top:var(--s4);border-top:1px solid var(--hair)}
 /* The one hidden-sibling pair left. #rollupSec hides itself when the book has
    no markets to roll up, and the divider above #compsSec would then be drawn
    under nothing. Scoped to this pair on purpose, exactly like the two rules
@@ -289,27 +429,31 @@ a.btn:hover{color:#fff}
    figures come up here in the trust line's own ledger geometry, and each cell
    opens the full panel it summarises. Nothing was deleted; it stopped being
    mandatory reading. */
-.strip{border:1px solid var(--edge);border-radius:var(--r);background:#fff;
-  display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s5)}
+.strip{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
+  display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s4);
+  box-shadow:var(--shadow)}
 /* The pipeline's strip is five stages wide. Declared after .strip so it wins
    the column count, and BEFORE .strip.hide so hiding still beats it. */
 .strip.s5{grid-template-columns:repeat(5,1fr)}
 .strip.hide{display:none}   /* see the .deck.hide note above */
-.scell{padding:var(--s4) var(--s5);border:0;border-left:1px solid var(--hair);
+.scell{padding:16px 18px;border:0;border-left:1px solid var(--hair);
   background:none;font-family:inherit;text-align:left;color:inherit}
 .scell:first-child{border-left:0}
 .scell.act{cursor:pointer}
 .scell.act:hover{background:var(--wash)}
-.slab{display:block;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;margin-bottom:var(--s2)}
-.sfig{font-family:var(--serif);font-weight:500;font-size:22px;line-height:1.2;color:var(--ink)}
+.slab{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:6px}
+.sfig{font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.15;color:var(--ink);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .sfig.ok{color:var(--green)}
-.ssub{color:var(--ink-3);font-size:var(--t5);margin-top:var(--s1)}
+.ssub{color:var(--ink-3);font-size:var(--t5);margin-top:4px}
 .scell.act .ssub{color:var(--red)}
 @media (max-width:640px){
   .strip{grid-template-columns:1fr}
   .scell{border-left:0;border-top:1px solid var(--hair)}
   .scell:first-child{border-top:0}
+  .filters .exp{margin-left:0}
+  h1.h{font-size:28px}
 }
 /* The three panels the strip summarises, collapsed. A details/summary carries
    its own open state, so the strip only has to set .open — there is no second
@@ -321,28 +465,53 @@ a.btn:hover{color:#fff}
 .stg{display:inline-block;font-size:var(--t6);letter-spacing:.08em;text-transform:uppercase;
   font-weight:600;color:var(--ink-2);background:var(--wash);border:1px solid var(--edge);
   border-radius:3px;padding:3px 7px;white-space:nowrap}
-.dbox{border:1px solid var(--line);border-radius:var(--r);background:#fff;
-  padding:var(--s3) var(--s5);margin-top:var(--s4)}
-.dbox>summary{cursor:pointer;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
+.dbox{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
+  padding:12px 18px;margin-top:var(--s4);box-shadow:var(--shadow)}
+.dbox>summary{cursor:pointer;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;user-select:none;list-style-position:inside}
 .dbox>summary:hover{color:var(--ink)}
-.dbox[open]>summary{margin-bottom:var(--s4)}
-footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);font-size:var(--t6)}
-</style></head><body>
+.dbox[open]>summary{margin-bottom:var(--s4);color:var(--ink)}
+footer{background:var(--slab);color:var(--ink-4);font-size:13px;padding:0;border:0;margin-top:auto}
+footer .wrap{padding:36px var(--s6)}
+footer .wordmark{color:#fff}
+footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
+${ACCOUNT_NAV_CSS}
+</style>
+${THEME_BOOT}
+</head><body>
 <header class="hdr"><div class="wrap">
   <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
-  <nav><a href="/">Search</a><a href="/desk">My Desk</a><a href="/brokers">Brokers</a></nav>
-</div></header>
+  <nav>
+    <details>
+      <summary>Explore<span class="car">▾</span></summary>
+      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>
+      <a href="/markets">Markets</a><a href="/how-it-works">How it works</a>
+      <a href="/1031-exchange">1031 Guide</a><a href="/">Run a report</a></div>
+    </details>
+    <a href="/desk">My Desk</a>
+    <a href="/vault" aria-current="page">Vault</a>
+    ${ACCOUNT_NAV_SLOTS}
+  </nav>
+</div></header>${ACCOUNT_NAV_JS}
+<script>document.addEventListener("click",function(e){
+document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
+if(!d.contains(e.target))d.open=false;});});
+document.addEventListener("keydown",function(e){
+if(e.key!=="Escape")return;
+var dd=document.querySelector(".hdr nav details[open]");
+if(dd)dd.open=false;});</script>
 <main><div class="wrap">
+  <p class="kicker">Private workspace</p>
   <h1 class="h">Broker Vault</h1>
-  <p class="sub">Your own private comp data.</p>
+  <p class="sub">Closed deals, leads, and BOVs. Visible only to you.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
        hidden the page spent that window looking half-rendered before the
        workspace popped in. The fetch's three outcomes each replace this:
        success hides #gate, a refusal rewrites it, so it can never linger. -->
-  <div id="gate"><p class="empty">Loading your vault&hellip;</p></div>
+  <div id="gate"><div class="load"><div class="loadbar"><i></i></div>
+    <p class="empty" style="padding:0">Loading your vault&hellip;</p></div></div>
 
   <div id="app" class="hide">
     <!-- The trust line's job is to prove a number stays at zero, which only
@@ -376,11 +545,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
            name the publish route would not actually use. -->
       <p class="note" id="creditLine"></p>
       <div id="idForm" class="hide">
-        <div class="row">
+        <div class="form">
           <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
           <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
-          <button class="btn ghost" id="idSave">Save</button>
-          <button class="btn ghost" id="idCancel">Cancel</button>
+          <div class="formact">
+            <button class="btn" id="idSave">Save</button>
+            <button class="btn ghost" id="idCancel">Cancel</button>
+          </div>
         </div>
         <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
           when you have one, otherwise to your name. This is not a public listing &mdash; it only
@@ -433,10 +604,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
               <p class="fine">Your comps are never read into CompNinja&rsquo;s public
                 records, never included in an export or a shared link, and never shown
                 to another broker.</p>
+              <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
             </details>
             <div class="row" style="margin-top:var(--s4)">
               <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
-              <button class="btn ghost" id="frPick">Choose a spreadsheet</button>
+              <button class="btn ghost" id="frPick">Choose a spreadsheet or PDF</button>
             </div>
           </div>
         </div>
@@ -463,11 +635,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
                  add a market. One node, relocated — never a second copy that
                  would drift from the coverage rules. -->
             <div id="covFormHome"><div id="covForm">
-              <div class="row">
-                <label>Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
+              <div class="form">
+                <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
                 <label>Type <select id="covType"></select></label>
-                <button class="btn ghost" id="covAdd">Watch this market</button>
+                <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
               </div>
+              <div class="row" id="covRow"></div>
+              <div id="leadMsg"></div>
+              <div id="covMsg"></div>
               <!-- Plain-language rewrite (2026-08-12). The old line read
                    "Removing every market re-fills earned ones on your next
                    visit", which assumes the reader knows markets can be
@@ -502,9 +677,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 
     <div id="addSec" class="addpanel hide">
       <div class="drop" id="drop">
-        <button class="btn" id="pick">Choose a spreadsheet</button>
-        <p>or drop a .csv here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
-        <input type="file" id="file" accept=".csv,text/csv" class="hide"/>
+        <p class="drop-k">Import a spreadsheet or PDF</p>
+        <button class="btn" id="pick">Choose a spreadsheet or PDF</button>
+        <p>or drop a .csv or .pdf here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
+        <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+        <input type="file" id="file" accept=".csv,.pdf,text/csv,application/pdf" class="hide"/>
       </div>
       <div id="res"></div>
 
@@ -517,26 +694,26 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
            isn't in one. -->
       <details class="dbox" id="addOneSec">
         <summary>Or add one comp by hand</summary>
-        <div class="row" style="margin-top:var(--s4)">
-          <label>Address <input id="addComp_address" type="text"/></label>
+        <div class="form" style="margin-top:var(--s4)">
+          <label class="span2">Address <input id="addComp_address" type="text"/></label>
           <label>Type <select id="addComp_property_type"></select></label>
           <label>Sale/lease <select id="addComp_transaction">
             <option value="sale">Sale</option>
             <option value="lease">Lease</option>
           </select></label>
           <label>Date <input id="addComp_deal_date" type="date"/></label>
-          <label>Price <input id="addComp_price" type="text" style="width:110px"/></label>
-          <label>Size (SF) <input id="addComp_size_sqft" type="text" style="width:90px"/></label>
-          <label>Cap rate <input id="addComp_cap_rate" type="text" style="width:70px" placeholder="optional"/></label>
+          <label>Price <input id="addComp_price" type="text"/></label>
+          <label>Size (SF) <input id="addComp_size_sqft" type="text"/></label>
+          <label>Cap rate <input id="addComp_cap_rate" type="text" placeholder="optional"/></label>
           <label>Tenancy <input id="addComp_tenancy" type="text" placeholder="optional"/></label>
-          <label>Year built <input id="addComp_year_built" type="text" style="width:70px" placeholder="optional"/></label>
-          <label>Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
-          <label>Lat <input id="addComp_lat" type="text" style="width:90px" placeholder="optional"/></label>
-          <label>Lng <input id="addComp_lng" type="text" style="width:90px" placeholder="optional"/></label>
-          <!-- Repopulated on every property-type change; its own nested .row
-               so the type's fields still get the same gap as the base ones. -->
-          <div class="row" id="addTypeFields" style="width:100%"></div>
-          <button class="btn ghost" id="addCompBtn" type="button">Add comp</button>
+          <label>Year built <input id="addComp_year_built" type="text" placeholder="optional"/></label>
+          <label class="span-all">Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
+          <label>Lat <input id="addComp_lat" type="text" placeholder="optional"/></label>
+          <label>Lng <input id="addComp_lng" type="text" placeholder="optional"/></label>
+          <div class="span-all" id="addTypeFields"></div>
+          <div class="formact span-all">
+            <button class="btn" id="addCompBtn" type="button">Add comp</button>
+          </div>
         </div>
         <!-- Its own message, NOT #compMsg. #compMsg sits at the top of
              #compsSec, well below this panel in document order — for a
@@ -560,9 +737,25 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       </table></div>
       <p class="note" id="mapIgnored"></p>
       <p id="mapMsg" class="msg bad hide"></p>
-      <div class="row">
+      <div class="formact mapact">
         <button class="btn" id="mapGo">Import</button>
         <button class="btn ghost" id="mapCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div id="pdfSec" class="mappanel hide">
+      <h2>Review these comps</h2>
+      <p class="sub" style="margin-top:0"><span id="pdfCount">0</span> deals in <span id="pdfName"></span>.
+        Uncheck any that aren't yours. Fix a cell if we misread it. Nothing is saved until you import.</p>
+      <p class="note" id="pdfStrip"></p>
+      <div class="tw"><table id="pdfTable">
+        <thead id="pdfHead"></thead>
+        <tbody id="pdfBody"></tbody>
+      </table></div>
+      <p id="pdfMsg" class="msg bad hide"></p>
+      <div class="row">
+        <button class="btn" id="pdfGo">Import</button>
+        <button class="btn ghost" id="pdfCancel">Cancel</button>
       </div>
     </div>
 
@@ -583,12 +776,12 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
            not: it always exports everything. It is a plain href, not a
            fetch, so the session cookie rides along and the download still
            works even if the page's own script has failed. -->
-      <div class="row">
+      <div class="row filters">
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
-        <a class="btn ghost" href="/api/vault/export.csv">Export all comps (CSV)</a>
+        <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
            is a button that opens it; a cell with nothing behind it renders as
@@ -623,7 +816,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       </table></div>
       <!-- "above" used to point at a section in plain view. The uploader is a
            closed panel now, so this names the control that opens it. -->
-      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet.</div>
+      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet or PDF.</div>
       <!-- Imports is provenance for the table it now sits under, not a tenth
            peer section at the foot of the page. Collapsed, because the one
            thing a broker does here (remove an import) is rare and destructive,
@@ -658,7 +851,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     <!-- No h2: the deck rule above is the level ABOVE h2, and with one
          section under it a heading would only restate the rule. Same reason
          #firstRun carries none. -->
-    <section id="pipeSec">
+    <section id="pipeSec" class="hide">
       <p class="sub" style="margin-top:0">Every engagement, from a property owner
         requesting a Broker Opinion of Value in a market you watch through to won or
         lost. Only you can see this.</p>
@@ -670,7 +863,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
            inside #addSec: a log that failed must not write its error into
            something invisible. -->
       <div id="bovAddSec" class="addpanel hide">
-        <div class="row">
+        <div class="form">
           <label>Market <input id="bovMarket" type="text" placeholder="City, ST" list="mktList"/></label>
           <label>Type <select id="bovType"></select></label>
           <label>Source <select id="bovSource">
@@ -678,11 +871,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
             <option value="repeat_client">Repeat client</option>
             <option value="other" selected>Other</option>
           </select></label>
-          <label>Size (SF) <input id="bovSize" type="text" style="width:90px"/></label>
+          <label>Size (SF) <input id="bovSize" type="text"/></label>
           <label>Received <input id="bovDate" type="date"/></label>
-          <label>Address <input id="bovAddr" type="text" placeholder="optional"/></label>
-          <label>Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
-          <button class="btn ghost" id="bovAdd">Log a BOV</button>
+          <label class="span2">Address <input id="bovAddr" type="text" placeholder="optional"/></label>
+          <label class="span2">Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
+          <div class="formact span-all">
+            <button class="btn" id="bovAdd">Log a BOV</button>
+          </div>
         </div>
         <div id="bovMsg"></div>
       </div>
@@ -719,13 +914,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
            coverage rules in broker-leads.js. -->
       <details class="dbox" id="covBox">
         <summary>Markets you watch</summary>
-        <div class="row" id="covRow"></div>
-        <div id="covMsg"></div>
       </details>
     </section>
   </div>
 </div></main>
-<footer><div class="wrap">Private broker workspace &middot; CompNinja</div></footer>
+<footer><div class="wrap">
+  <span class="wordmark">Comp<b>Ninja</b></span>
+  <p>Private broker workspace. Your comps are never read into public records unless you choose to publish them.</p>
+</div></footer>
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
 <script>
@@ -964,12 +1160,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   function editRow(c){
     var fields=EDIT_FIELDS.map(function(f){
       var v=c[f]==null?"":c[f];
-      return "<label>"+esc(EDIT_LABELS[f]||f)+
+      var wide=(f==="address"||f==="notes")?' class="span2"':"";
+      return "<label"+wide+">"+esc(EDIT_LABELS[f]||f)+
         '<input type="text" id="edit_'+f+'" value="'+escA(v)+'"/></label>';
     }).join("");
-    return '<tr class="editrow"><td colspan="10"><div class="row">'+fields+
-      '<button class="btn ghost" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
-      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button>'+
+    return '<tr class="editrow"><td colspan="10"><p class="editk">Editing this comp</p><div class="form">'+fields+
+      '<div class="formact span-all"><button class="btn" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
+      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button></div>'+
       "</div></td></tr>";
   }
 
@@ -1007,8 +1204,8 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         : "";
       var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
         '">Edit</button> <button class="lnk danger" data-del-comp="'+esc(c.id)+'">Delete</button></td>';
-      return "<tr><td>"+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
-        "</td><td>"+esc(c.transaction)+"</td><td>"+esc(c.deal_date)+
+      return '<tr><td class="addr">'+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
+        '</td><td><span class="tag">'+esc(c.transaction)+"</span></td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
         '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+actions+"</tr>";
     }).join("");
@@ -1230,10 +1427,17 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
 
     var s='<svg viewBox="0 0 '+W+" "+H+'" role="img" aria-label="Median price per square foot by year">';
     // Recessive hairline grid, solid (never dashed), one step off the surface.
+    // Colours ride on CSS classes (.chart-grid / .chart-axis / .chart-bar /
+    // .chart-endpoint, declared in the <style> block above), not inline
+    // fill/stroke hex -- a presentation ATTRIBUTE like fill="var(--ink)" is
+    // not reliably supported, and more importantly, a hex literal sitting in
+    // THIS generated markup is exactly what the raw-hex regression test
+    // cannot see (it only scans the <style> block). Classes put the colour
+    // back inside what that test — and any future one like it — covers.
     [0,max/2,max].forEach(function(v){
-      s+='<line x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
-        '" stroke="#E4E2DA" stroke-width="1"/>';
-      s+='<text x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="#68707E" '+
+      s+='<line class="chart-grid" x1="'+L+'" y1="'+y(v).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(v).toFixed(1)+
+        '" stroke-width="1"/>';
+      s+='<text class="chart-axis" x="'+(L-8)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" '+
         'font-family="Inter, sans-serif" style="font-variant-numeric:tabular-nums">'+psf0(v)+"</text>";
     });
     pts.forEach(function(p,i){
@@ -1244,14 +1448,14 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       // and the tooltip should not require landing on the mark itself.
       s+='<rect x="'+(L+band*i).toFixed(1)+'" y="'+T+'" width="'+band.toFixed(1)+'" height="'+plotH+
         '" fill="transparent"><title>'+esc(tip)+"</title></rect>";
-      s+='<path d="'+bar(cx-bw/2,y(p.med),bw,h,4)+'" fill="'+(last?"#B91C1C":"#5A6473")+
+      s+='<path class="chart-bar'+(last?" hi":"")+'" d="'+bar(cx-bw/2,y(p.med),bw,h,4)+
         '" fill-opacity="'+(last?"1":"0.85")+'" pointer-events="none"/>';
-      s+='<text x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#68707E" '+
+      s+='<text class="chart-axis" x="'+cx.toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" '+
         'font-family="Inter, sans-serif">'+esc(p.year)+"</text>";
       // The endpoint is the one worth reading without hovering.
       if(last){
-        s+='<text x="'+cx.toFixed(1)+'" y="'+(y(p.med)-7).toFixed(1)+'" text-anchor="middle" font-size="12" '+
-          'font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">'+psf0(p.med)+"</text>";
+        s+='<text class="chart-endpoint" x="'+cx.toFixed(1)+'" y="'+(y(p.med)-7).toFixed(1)+'" text-anchor="middle" font-size="12" '+
+          'font-weight="600" font-family="Inter, sans-serif">'+psf0(p.med)+"</text>";
       }
     });
     s+="</svg>";
@@ -1381,8 +1585,9 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     var first=compCount===0&&uploadCount===0;
     $("firstRun").className=first?"":"hide";
     // Both decks stand down on a first run: there is no book to head, and the
-    // pipeline rule over a single section reads as furniture. The Start-here
-    // panel is the whole page then, exactly as before.
+    // pipeline rule over a single section reads as furniture. The two cards
+    // are the whole page then — leads and the BOV tracker hide with the decks
+    // unless a watched market already has owners waiting.
     $("deckBook").className=first?"deck hide":"deck";
     $("deckPipe").className=first?"deck hide":"deck";
     // The market form is ONE node, placed wherever the broker can see it:
@@ -1391,7 +1596,8 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     // then, and a broker with a full book must still be able to add a market).
     // appendChild MOVES an attached node, so no copy ever exists — and deleting
     // the last import walks it home again, since this function re-applies both
-    // ways.
+    // ways. Chips and the form's own error line travel inside #covForm, so they
+    // cannot be stranded in a hidden section.
     if(first)$("covFormHome").appendChild($("covForm"));
     else $("covBox").appendChild($("covForm"));
     // The uploader is step 1's job on a first run and the book deck's action
@@ -1541,15 +1747,13 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       });
   }
   function renderCoverage(cov){
+    var emptyHint='<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
     $("covRow").innerHTML=cov.length?cov.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
-      return '<span class="pubbtn" style="cursor:default">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
-        ' <button data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
-        '" style="background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:inherit;padding:0 0 0 4px">&times;</button></span>';
-    }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add a market below to start seeing leads here, or submit comps to earn markets automatically.</span>';
-    // The suggestion list for both market inputs: markets already watched,
-    // plus the markets this broker already holds comps in. Neither input is
-    // constrained by it — see the datalist's own note in the markup.
+      return '<span class="chip">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
+        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        '">&times;</button></span>';
+    }).join(" "):((firstRunCounts[0]===0&&firstRunCounts[1]===0)?"":emptyHint);
     var seen={},opts=[];
     coverage.concat().forEach(function(c){ if(c&&c.market&&!seen[c.market]){seen[c.market]=1;opts.push(c.market);} });
     (allMarkets||[]).forEach(function(m){ if(m&&!seen[m]){seen[m]=1;opts.push(m);} });
@@ -1878,21 +2082,25 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   });
 
   var pending = null;   // {name, csv} held while the broker maps
+  var pdfPending = null; // extract result held while the broker confirms
 
-  function doImport(name, csv, mapping, onOk){
+  function doImport(name, csv, mapping, onOk, rows){
     // Whether this import came from the mapping screen decides where its
     // result can be SEEN: #res lives inside #addSec, which is hidden while
     // the panel is open, so a failure written there would be invisible.
     var viaMapper=!!mapInfo;
+    var viaPdf=!!rows;
     // Not via the mapper means every word about this import — "Importing", the
     // row counts, the line-numbered errors — is written into #res, which lives
     // inside the uploader panel. Open it, or the broker watches nothing happen.
-    if(!viaMapper)setAddOpen(true);
+    if(!viaMapper&&!viaPdf)setAddOpen(true);
     $("pick").disabled=true;
     if(viaMapper){ $("mapGo").disabled=true; $("mapGo").textContent="Importing\\u2026"; }
+    if(viaPdf){ $("pdfGo").disabled=true; $("pdfGo").textContent="Importing\\u2026"; }
     $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
-    var payload={filename:name,csv:csv};
-    if(mapping)payload.mapping=mapping;
+    var payload={filename:name};
+    if(rows){ payload.rows=rows; }
+    else { payload.csv=csv; if(mapping) payload.mapping=mapping; }
     // Line-numbered problems are the point: a broker fixing a spreadsheet
     // needs to know WHICH row, in the numbering Excel shows them.
     function errList(j){
@@ -1911,6 +2119,11 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         $("mapGo").disabled=false;
         $("mapMsg").innerHTML=esc(msg)+errs;
         $("mapMsg").classList.remove("hide");
+        $("res").innerHTML="";
+      }else if(viaPdf&&pdfPending){
+        refreshPdfGo();
+        $("pdfMsg").innerHTML=esc(msg)+errs;
+        $("pdfMsg").classList.remove("hide");
         $("res").innerHTML="";
       }else{
         $("res").innerHTML='<div class="msg bad">'+esc(msg)+errs+"</div>";
@@ -1935,7 +2148,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         // dropped (found on the first real mapper import, 2026-08-10). Same
         // rule as the non-mapper open at the top of doImport: a result must
         // be written somewhere that is showing.
-        if(viaMapper)setAddOpen(true);
+        if(viaMapper||viaPdf)setAddOpen(true);
         // "Imported N" counts what the vault actually STORED. A re-uploaded
         // book is the ordinary case, not an error, so the rows it already
         // had are stated plainly beside it rather than folded into the
@@ -1956,8 +2169,28 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       .catch(function(){ failed("The upload did not reach the server. Nothing was saved.",""); });
   }
 
+  function isPdfFile(file){
+    var n=String(file&&file.name||"").toLowerCase();
+    var t=String(file&&file.type||"");
+    return t==="application/pdf" || /\\.pdf$/.test(n);
+  }
+  function isCsvFile(file){
+    var n=String(file&&file.name||"").toLowerCase();
+    var t=String(file&&file.type||"");
+    return t==="text/csv" || /\\.csv$/.test(n);
+  }
+
   function upload(file){
     if(!file)return;
+    if(!isPdfFile(file) && !isCsvFile(file)){
+      $("res").innerHTML='<div class="msg bad">Use a .csv or .pdf.</div>';
+      return;
+    }
+    if(file.size>4*1024*1024){
+      $("res").innerHTML='<div class="msg bad">That file is too large to read.</div>';
+      return;
+    }
+    if(isPdfFile(file)){ extractPdf(file); return; }
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
@@ -1985,6 +2218,34 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
     fr.readAsText(file);
   }
 
+  function extractPdf(file){
+    setAddOpen(true);
+    $("pick").disabled=true;
+    $("res").innerHTML='<div class="msg ok">Reading the table in '+esc(file.name)+"&hellip;</div>";
+    var fr=new FileReader();
+    fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
+    fr.onload=function(){
+      var url=String(fr.result||"");
+      var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
+      fetch("/api/vault/extract",{method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({filename:file.name,pdf:b64})})
+        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+        .then(function(o){
+          $("pick").disabled=false;
+          if(o.s!==200){
+            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that PDF. Nothing was saved.")+"</div>";
+            return;
+          }
+          $("res").innerHTML="";
+          openPdfPreview(o.j);
+        })
+        .catch(function(){ $("pick").disabled=false;
+          $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
+    };
+    fr.readAsDataURL(file);
+  }
+
   var mapInfo=null;
 
   // The dropdown's LIST is served by /api/vault/inspect (targets), so it can
@@ -1993,6 +2254,10 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   // the first time should not have to read twenty-four database identifiers.
   // Anything without a label falls back to its raw value, so a per-type field
   // added later still appears rather than vanishing.
+  // Keep in step with broker-vault.js REQUIRED_TARGETS / TEMPLATE_COLUMNS /
+  // OPTIONAL_SPEC_COLUMNS. This page cannot require that module.
+  var PDF_REQUIRED=["address","property_type","transaction","deal_date"];
+  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
   var TARGET_LABELS={
     address:"Address", property_type:"Property type", transaction:"Sale or lease",
     deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",
@@ -2040,7 +2305,9 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
         (info.targets||[]).map(function(t){
           return '<option value="'+esc(t)+'"'+(start[n]===t?" selected":"")+">"+esc(tLabel(t))+"</option>";
         })).join("");
-      var samp=(info.samples[n]||[]).map(esc).join("<br>");
+      var samp=(info.samples[n]||[]).map(function(v){
+        return '<span class="samp">'+esc(v)+"</span>";
+      }).join(" ");
       return "<tr><td>"+esc(info.headers[i])+'</td><td><select data-src="'+esc(n)+'">'+opts+
              '</select></td><td class="note">'+samp+"</td></tr>";
     }).join("");
@@ -2060,6 +2327,7 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
       $("mapAmbig").classList.add("hide");
     }
     $("mapSec").classList.remove("hide");
+    $("pdfSec").classList.add("hide");
     $("addSec").classList.add("hide");
     // Hidden too, or a first-run broker — which the FIRST broker through this
     // door is by definition — keeps the first-run steps on screen above the
@@ -2163,6 +2431,106 @@ footer{border-top:1px solid var(--line);padding:var(--s6) 0;color:var(--ink-3);f
   });
   $("mapCancel").addEventListener("click",function(){
     closeMapper();
+    $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
+  });
+
+  function pdfColumns(rows){
+    var cols=PDF_REQUIRED.slice();
+    PDF_KEYS.forEach(function(k){
+      if(cols.indexOf(k)>=0)return;
+      var used=(rows||[]).some(function(r){
+        var v=r.values&&r.values[k];
+        return v!=null && String(v)!=="";
+      });
+      if(used)cols.push(k);
+    });
+    return cols;
+  }
+
+  function refreshPdfGo(){
+    var n=0;
+    ((pdfPending&&pdfPending.rows)||[]).forEach(function(r){ if(r.checked)n++; });
+    $("pdfGo").textContent="Import "+n+" comps";
+    $("pdfGo").disabled=n===0;
+  }
+
+  function collectPdfRows(){
+    var out=[];
+    ((pdfPending&&pdfPending.rows)||[]).forEach(function(r){
+      if(!r.checked)return;
+      var row={};
+      Object.keys(r.values||{}).forEach(function(k){
+        var v=r.values[k];
+        if(v!=null && String(v)!=="")row[k]=String(v);
+      });
+      out.push(row);
+    });
+    return out;
+  }
+
+  function openPdfPreview(info){
+    pdfPending=info||{filename:"",rows:[]};
+    var rows=pdfPending.rows||[];
+    rows.forEach(function(r){
+      r.values=r.values||{};
+      r.checked=r.error==null;
+    });
+    var cols=pdfColumns(rows);
+    $("pdfCount").textContent=String(rows.length);
+    $("pdfName").textContent=pdfPending.filename||"";
+    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th>"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
+    $("pdfBody").innerHTML=rows.map(function(r,i){
+      var tint=r.error!=null?' class="need-fix"':"";
+      var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
+      var cells=cols.map(function(k){
+        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+'" value="'+escA(r.values[k]||"")+'"/></td>';
+      }).join("");
+      return "<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
+    }).join("");
+    var n=rows.length, ready=0, fail=0, allDate=true;
+    rows.forEach(function(r){
+      if(r.error==null)ready++;
+      else { fail++; if(!/date/i.test(String(r.error)))allDate=false; }
+    });
+    var failBit=fail?(allDate?fail+" need a date":fail+" need a fix"):"";
+    $("pdfStrip").textContent=n+" found \\u00b7 "+ready+" ready"+(failBit?" \\u00b7 "+failBit:"");
+    $("pdfMsg").innerHTML="";
+    $("pdfMsg").classList.add("hide");
+    $("mapSec").classList.add("hide");
+    $("pdfSec").classList.remove("hide");
+    $("addSec").classList.add("hide");
+    $("firstRun").classList.add("hide");
+    Array.prototype.forEach.call($("pdfBody").querySelectorAll("input"),function(inp){
+      var i=Number(inp.getAttribute("data-i"));
+      if(inp.type==="checkbox"){
+        inp.addEventListener("change",function(){
+          if(pdfPending.rows[i])pdfPending.rows[i].checked=inp.checked;
+          refreshPdfGo();
+        });
+      }else{
+        inp.addEventListener("input",function(){
+          if(pdfPending.rows[i])pdfPending.rows[i].values[inp.getAttribute("data-k")]=inp.value;
+        });
+      }
+    });
+    refreshPdfGo();
+    $("pdfSec").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  function closePdfPreview(){
+    $("pdfSec").classList.add("hide");
+    pdfPending=null;
+    applyFirstRun(firstRunCounts[0],firstRunCounts[1]);
+  }
+
+  $("pdfGo").addEventListener("click",function(){
+    if(!pdfPending)return;
+    var rows=collectPdfRows();
+    if(!rows.length)return;
+    doImport(pdfPending.filename,null,null,closePdfPreview,rows);
+  });
+  $("pdfCancel").addEventListener("click",function(){
+    closePdfPreview();
     $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
   });
 

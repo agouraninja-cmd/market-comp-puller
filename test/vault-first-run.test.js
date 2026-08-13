@@ -83,6 +83,20 @@ test("the pipeline table ships hidden, so a header row never stands alone", () =
   assert.match(html(), /<div class="tw hide" id="pipeTableWrap">/);
 });
 
+test("the pipeline section ships hidden, so an empty vault does not flash the inbox", () => {
+  assert.match(html(), /<section id="pipeSec"/);
+  assert.match(html(), /\$\("pipeSec"\)\.className=first\?"hide":""/);
+});
+
+test("the coverage form is one relocating node that parks in Markets you watch", () => {
+  const page = html();
+  assert.equal((page.match(/id="covForm"/g) || []).length, 1,
+    "a second coverage form would drift from the coverage rules");
+  assert.match(page, /id="covBox"/);
+  assert.match(page, /id="covFormHome"/);
+  assert.doesNotMatch(page, /id="covFormSlot"/);
+});
+
 test("applyFirstRun keys on comps AND uploads", () => {
   // An import that landed but produced no comps still means the broker has
   // been through the door; showing "Start here" again would read as their
@@ -98,4 +112,21 @@ test("the emitted page script still parses", () => {
   const m = html().match(/<script>\n\(function\(\)\{[\s\S]*?\}\)\(\);\n<\/script>/);
   assert.ok(m, "could not find the page's inline script");
   assert.doesNotThrow(() => new Function(m[0].replace(/^<script>/, "").replace(/<\/script>$/, "")));
+});
+
+test("the file input accepts csv and pdf", () => {
+  assert.match(html(), /id="file"[^>]*accept="[^"]*\.pdf/);
+});
+
+test("the first-run disclosure names the extract vendor", () => {
+  const page = html();
+  const start = page.indexOf('id="firstRun"');
+  assert.ok(start >= 0, "#firstRun is missing");
+  const end = page.indexOf('id="deckBook"', start);
+  const firstRun = page.slice(start, end > start ? end : undefined);
+  assert.match(firstRun, /extract vendor/);
+});
+
+test("picker copy mentions PDF", () => {
+  assert.match(html(), /Choose a spreadsheet or PDF/);
 });

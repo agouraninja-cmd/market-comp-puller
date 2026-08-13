@@ -14,6 +14,7 @@ const capabilities = {
   streaming: true,
   // cache_control is an explicit breakpoint we place ourselves.
   promptCaching: "explicit",
+  pdfExtract: true,
 };
 
 function buildRequestBody({ model, prompt, maxComps, searchUses, stream }) {
@@ -58,6 +59,29 @@ function requestInit({ apiKey }) {
       "anthropic-version": "2023-06-01",
     },
   };
+}
+
+function buildExtractBody({ model, prompt, pdfBase64 }) {
+  return {
+    model,
+    max_tokens: 8000,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+        { type: "text", text: prompt },
+      ],
+    }],
+  };
+}
+
+function extractRequestInit({ apiKey }) {
+  return requestInit({ apiKey });
+}
+
+function parseExtractResponse(data) {
+  const parsed = parseResponse(data);
+  return { text: parsed.text, usage: parsed.usage, stopReason: parsed.stopReason };
 }
 
 // Non-streaming branch only. The streaming branch stays in server.js for now;
@@ -121,5 +145,8 @@ module.exports = {
   normalizeUsage,
   costOf,
   deadlineTokens,
+  buildExtractBody,
+  extractRequestInit,
+  parseExtractResponse,
   USD_PER_MTOK,
 };

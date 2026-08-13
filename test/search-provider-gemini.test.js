@@ -6,6 +6,11 @@ const P = require("../search-provider-gemini");
 const A = require("../search-provider-anthropic");
 const FIXTURE = require("./fixtures/gemini-response.json");
 
+test("defaults to gemini-3.7-flash", () => {
+  assert.equal(P.defaultModel, "gemini-3.7-flash",
+    "comp and market searches both take PROVIDER.defaultModel");
+});
+
 test("declares that it cannot cap the search budget", () => {
   assert.equal(P.name, "gemini");
   assert.equal(P.capabilities.searchBudget, false,
@@ -16,7 +21,8 @@ test("declares that it cannot cap the search budget", () => {
 
 test("exports the same surface as the Anthropic module", () => {
   for (const k of ["name", "logLabel", "defaultModel", "apiKeyEnv", "capabilities", "buildRequestBody",
-                   "requestInit", "parseResponse", "normalizeUsage", "costOf", "deadlineTokens"]) {
+                   "requestInit", "parseResponse", "normalizeUsage", "costOf", "deadlineTokens",
+                   "buildExtractBody", "extractRequestInit", "parseExtractResponse"]) {
     assert.ok(k in P, `missing export: ${k}`);
     assert.equal(typeof P[k], typeof A[k], `export ${k} differs in type from anthropic`);
   }
@@ -24,9 +30,9 @@ test("exports the same surface as the Anthropic module", () => {
 
 test("buildRequestBody sends google_search and never sends max_uses", () => {
   const body = P.buildRequestBody({
-    model: "gemini-3.6-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
+    model: "gemini-3.7-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
   });
-  assert.equal(body.model, "gemini-3.6-flash");
+  assert.equal(body.model, "gemini-3.7-flash");
   assert.equal(body.input, "PROMPT");
   assert.deepEqual(body.tools, [{ type: "google_search" }]);
   assert.equal(JSON.stringify(body).includes("max_uses"), false,
@@ -35,7 +41,7 @@ test("buildRequestBody sends google_search and never sends max_uses", () => {
 
 test("buildRequestBody nests the output cap under generation_config, never top-level", () => {
   const body = P.buildRequestBody({
-    model: "gemini-3.6-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
+    model: "gemini-3.7-flash", prompt: "PROMPT", maxComps: 12, searchUses: 10, stream: false,
   });
   assert.equal(body.generation_config.max_output_tokens, 32000,
     "the Interactions API only accepts the cap nested under generation_config");
@@ -78,4 +84,55 @@ test("deadlineTokens returns a fixed figure, never max_output_tokens", () => {
   // exact bug this export exists to prevent.
   assert.equal(P.deadlineTokens({ max_output_tokens: 32000 }), 12000);
   assert.equal(P.deadlineTokens(undefined), 12000);
+});
+
+test("declares pdfExtract and buildExtractBody has no google_search", () => {
+  assert.equal(P.capabilities.pdfExtract, true);
+  const body = P.buildExtractBody({ model: "gemini-3.6-flash", prompt: "EXTRACT", pdfBase64: "AAA" });
+  assert.equal("tools" in body, false);
+  const wire = JSON.stringify(body);
+  assert.equal(wire.includes("google_search"), false);
+  assert.equal(wire.includes("web_search"), false);
+  assert.equal(body.contents[0].parts[0].inline_data.mime_type, "application/pdf");
+  assert.equal(body.contents[0].parts[0].inline_data.data, "AAA");
+  assert.equal(body.contents[0].parts[1].text, "EXTRACT");
+  assert.equal(body.generationConfig.maxOutputTokens, 24000,
+    "thought tokens count toward output; 8192 truncates a table mid-array");
+});
+
+test("extractRequestInit hits generateContent, not Interactions", () => {
+  const init = P.extractRequestInit({ apiKey: "k", model: "gemini-3.6-flash" });
+  assert.match(init.url, /models\/gemini-3\.6-flash:generateContent/);
+  assert.equal(init.url.includes("interactions"), false);
+  assert.equal(init.headers["x-goog-api-key"], "k");
+});
+
+test("parseExtractResponse reads generateContent candidates, not Interactions steps", () => {
+  const out = P.parseExtractResponse({
+    candidates: [{ content: { parts: [{ text: "[{\"address\":\"1 Main\"}]" }] } }],
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, thoughtsTokenCount: 20 },
+  });
+  assert.equal(out.text, "[{\"address\":\"1 Main\"}]");
+  assert.equal(out.usage.input_tokens, 10);
+  assert.equal(out.usage.output_tokens, 4 + 20,
+    "thought tokens fold into output, same as search");
+  assert.equal(out.stopReason, "");
+});
+
+test("parseExtractResponse surfaces generateContent finishReason, including MAX_TOKENS", () => {
+  const out = P.parseExtractResponse({
+    candidates: [{
+      finishReason: "MAX_TOKENS",
+      content: { parts: [{ text: "[{\"address\":\"1 Main\"}" }] },
+    }],
+  });
+  assert.equal(out.stopReason, "MAX_TOKENS");
+});
+
+test("parseExtractResponse also reads Interactions-style incomplete status", () => {
+  const out = P.parseExtractResponse({
+    status: "incomplete",
+    candidates: [{ content: { parts: [{ text: "[" }] } }],
+  });
+  assert.equal(out.stopReason, "incomplete");
 });

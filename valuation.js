@@ -203,6 +203,53 @@
     };
   }
 
+  // How the subject's own size sits against the sizes the comps actually cover.
+  // `offSize` counts the comps outside compWeight's 0.5x-2x free pass — the
+  // figure the hero's trust line reports as "N comps are a different size
+  // class" — and this is the single owner of that comparison so the note and
+  // the warning below can never disagree about which comps they mean.
+  //
+  // `unsupported` is that reading turned around. When EVERY sized comp falls
+  // outside the window AND the subject sits entirely past one end of their
+  // range, the odd one out is no longer the comps: it is the SUBJECT SIZE. That
+  // matters more than any other suspect number in the report because the hero
+  // multiplies it. On 2026-08-13 a mobile home listed at $52,000 was reported
+  // at $795,000: the eight comps were right (manufactured homes, 460-1,492 SF,
+  // $61-158/SF) and the size box was wrong (10,100 SF, measured off a bike shop
+  // 81 m away). The report's only hint was "8 comps are a different size class
+  // and count less", which reads as a footnote about the comps rather than a
+  // warning that the headline is extrapolated 6.8x past every one of them.
+  //
+  // Below three sized comps this stays quiet: "all of them" is not evidence
+  // when there are two, and the same 3-comp floor guards the per-unit and
+  // per-acre cross-checks.
+  var SIZE_FIT_MIN_COMPS = 3;
+  function subjectSizeFit(subjectSF, comps) {
+    var sf = Number(subjectSF);
+    if (!(sf > 0)) return null;
+    var sizes = (comps || [])
+      .filter(function (c) { return c && !String(c.transaction || "").toLowerCase().startsWith("lease"); })
+      .map(function (c) { return numericValue(c.size_sqft); })
+      .filter(function (v) { return v > 0; });
+    if (!sizes.length) return null;
+    // Same octave test compWeight applies, so "different size class" means one
+    // thing in this app.
+    var off = sizes.filter(function (v) { return Math.abs(Math.log2(v / sf)) > 1; });
+    var fit = { sized: sizes.length, offSize: off.length, unsupported: false };
+    if (sizes.length < SIZE_FIT_MIN_COMPS || off.length < sizes.length) return fit;
+    var min = Math.min.apply(null, sizes), max = Math.max.apply(null, sizes);
+    // Deliberately NOT fired when the comps straddle the subject (one comp far
+    // smaller, another far larger). That is a scattered comp set, which the
+    // per-comp weighting already handles and `offSize` already reports; it is
+    // not the size box holding a number from a different building.
+    if (sf > max * 2) {
+      fit.unsupported = true; fit.dir = "larger"; fit.nearest = max; fit.factor = Math.round((sf / max) * 10) / 10;
+    } else if (sf < min / 2) {
+      fit.unsupported = true; fit.dir = "smaller"; fit.nearest = min; fit.factor = Math.round((min / sf) * 10) / 10;
+    }
+    return fit;
+  }
+
   // Is this displayed $/SF an outlier against the hero's displayed band?
   // Returns null, or { dir, pct } where pct is the integer percent distance
   // from the NEAREST band edge (+38 means 38% above the band top).
@@ -221,6 +268,6 @@
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, compWeight, trendFactor,
-    valueFromComps, outlierOf, OUTLIER_PCT,
+    valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit,
   };
 });

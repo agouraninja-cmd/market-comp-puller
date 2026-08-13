@@ -163,14 +163,14 @@ test("bare environment", async (t) => {
   // account circle in one go and read as having been logged out mid-browse.
   // Nothing touched the session — the bar just stopped mentioning it.
   //
-  // There are now THREE headers that have to agree (index.html's, MARKET_BAR,
-  // and /how-it-works') and the site's own convention is that two copies of a
-  // nav drift. This is what catches a fourth server-rendered page shipping
-  // without the chrome: accountNavSlots() is one call, so forgetting it is the
-  // easy mistake, not getting it subtly wrong.
+  // There are now FOUR headers that have to agree (index.html's, MARKET_BAR,
+  // /how-it-works', and /vault) and the site's own convention is that two
+  // copies of a nav drift. This is what catches a fifth server-rendered page
+  // shipping without the chrome: accountNavSlots() is one call, so forgetting
+  // it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
-      "/1031-exchange", "/how-it-works", "/terms", "/privacy"];
+      "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /id="navAcct"/, p + " is missing the account circle");
@@ -219,7 +219,8 @@ test("bare environment", async (t) => {
   });
 
   // /how-it-works renders My Desk server-side (2026-08-08) AND takes the
-  // shared circle, so it is the one page that can end up with two of them.
+  // shared circle, so it is one of two pages that can end up with two of
+  // them. /vault is the other: it keeps a visible My Desk next to Vault.
   // accountNavSlots({ desk: false }) is what prevents that.
   await t.test("/how-it-works does not double up its My Desk link", async () => {
     const html = await (await fetch(srv.base + "/how-it-works", {
@@ -229,6 +230,16 @@ test("bare environment", async (t) => {
     assert.equal(desks, 1, "a signed-in member should see exactly one My Desk link");
     assert.ok(!/id="navDesk"/.test(html),
       "this page renders its own My Desk — the hydrated one must stay off it");
+  });
+
+  await t.test("/vault does not double up its My Desk link", async () => {
+    const html = await (await fetch(srv.base + "/vault", {
+      headers: { cookie: "cn_session=irrelevant-presence-only" },
+    })).text();
+    const desks = (html.match(/>My Desk</g) || []).length;
+    assert.equal(desks, 1, "a signed-in member should see exactly one My Desk link");
+    assert.ok(!/id="navDesk"/.test(html),
+      "the vault renders its own My Desk — the hydrated one must stay off it");
   });
 
   // The vault gate, wired.
@@ -250,6 +261,7 @@ test("bare environment", async (t) => {
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/vault/benchmarks"],
       ["POST",   "/api/vault/inspect"],
+      ["POST",   "/api/vault/extract"],
       // Writes broker_profiles, whose display_name/company become PUBLIC the
       // moment somebody opts in — so an unauthenticated caller reaching it
       // could put words in a named broker's mouth.
@@ -290,6 +302,15 @@ test("bare environment", async (t) => {
       body: JSON.stringify({ csv: "address\n1 A St, Boise, ID\n" }),
     });
     assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
+  });
+
+  await t.test("/api/vault/extract is gated like the rest of the vault", async () => {
+    const r = await fetch(srv.base + "/api/vault/extract", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: "book.pdf", pdf: "AAAA" }),
+    });
+    assert.equal(r.status, 401, "an anonymous caller must not send a file to the extract vendor");
   });
 
   // Per-comp edit/delete is a new door into the same private table as every
@@ -1079,6 +1100,25 @@ test("SEARCH_PROVIDER wiring", async (t) => {
     } finally { srv.stop(); }
   });
 
+  await t.test("/healthz names the live model, including a MODEL override", async () => {
+    // The provider is only half of "what answered this report" — MODEL is a
+    // startup constant an env var can override, so the repo cannot be read as
+    // proof of what production is running. Both halves are asserted because
+    // reporting PROVIDER.defaultModel instead of MODEL would satisfy the
+    // default case and silently lie on every overridden deployment, which is
+    // exactly the deployment whose model somebody is asking about.
+    const dflt = await boot({});
+    try {
+      assert.equal((await (await fetch(dflt.base + "/healthz")).json()).model,
+        require("../search-provider-gemini").defaultModel);
+    } finally { dflt.stop(); }
+
+    const over = await boot({ MODEL: "gemini-9.9-imaginary" });
+    try {
+      assert.equal((await (await fetch(over.base + "/healthz")).json()).model, "gemini-9.9-imaginary");
+    } finally { over.stop(); }
+  });
+
   await t.test("an unrecognized SEARCH_PROVIDER refuses to boot", async () => {
     // boot() throws "server exited early" when the child exits before /healthz.
     // A silent fallback to anthropic would boot healthy and fail this test.
@@ -1128,4 +1168,36 @@ test("every user flag entitlements reads is carried by getSessionUser", () => {
       `getEntitlements reads user.${flag}, but getSessionUser does not carry it — ` +
       "the flag would read as undefined and the feature would be silently inert");
   }
+});
+
+test("extractPdfOnce does not trip site-wide search outage on a vendor failure", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("async function extractPdfOnce");
+  assert.ok(start >= 0, "extractPdfOnce should still exist");
+  const end = src.indexOf("async function callAnthropicOnce", start);
+  assert.ok(end > start, "could not bound extractPdfOnce");
+  const body = src.slice(start, end);
+  assert.equal(body.includes("upstreamError"), false,
+    "a vendor 5xx on extract must not call upstreamError (that paints /admin as a search outage)");
+  assert.match(body, /extractVendorError/,
+    "vendor HTTP failures should go through extractVendorError");
+  assert.match(body, /extractWasTruncated/,
+    "a truncated extract must not look like an empty table");
+});
+
+test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  assert.ok(start >= 0, "EXTRACT_PROMPT should still exist");
+  const end = src.indexOf("function buildPrompt", start);
+  assert.ok(end > start, "could not bound EXTRACT_PROMPT");
+  const body = src.slice(start, end);
+  assert.match(body, /EXTRACT_KEYS/,
+    "the prompt must interpolate EXTRACT_KEYS so lat/lng cannot sneak back in via TEMPLATE_COLUMNS");
+  assert.equal(/\blat\b/.test(body), false, "the extract prompt must not request lat");
+  assert.equal(/\blng\b/.test(body), false, "the extract prompt must not request lng");
 });

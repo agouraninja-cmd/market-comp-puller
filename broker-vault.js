@@ -78,6 +78,7 @@ const MAX_SHORT_TEXT = 60;
 // A ceiling on one import. Not a licensing limit — a guard against a runaway
 // file turning one HTTP request into a hundred thousand inserts.
 const MAX_ROWS_PER_UPLOAD = 5000;
+const MAX_PDF_BYTES = 4 * 1024 * 1024;
 
 // --- CSV ---------------------------------------------------------------------
 
@@ -256,6 +257,11 @@ function isRateHeader(raw) {
 
 // Every field a column may be mapped onto.
 const MAPPABLE_TARGETS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
+const VAULT_FIELD_KEYS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
+// Keys offered to the extract model. lat/lng stay on the confirm table so a
+// broker can type them, but a table PDF almost never carries them and a
+// hallucinated coordinate permanently locates a private property.
+const EXTRACT_KEYS = VAULT_FIELD_KEYS.filter((k) => k !== "lat" && k !== "lng");
 
 // The four fields normalizeRow refuses a row without. Kept here as one list so
 // the mapper and the row parser cannot disagree about what "required" means.
@@ -1330,6 +1336,124 @@ function enforceVerifiedFlags(comps, offered) {
   return out;
 }
 
+// --- PDF extract -----------------------------------------------------------
+//
+// Table PDFs are read by a model, then classified here, then confirmed in
+// the browser. Nothing in this section writes. looksLikePdf is a magic-byte
+// check so a renamed .xlsx cannot reach the vendor. parseExtractJson only
+// accepts an array — wrapping objects are a guess we refuse.
+
+function looksLikePdf(bytes) {
+  if (!bytes || bytes.length < 4) return false;
+  return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+}
+
+// A vendor failure on extract is not a site-wide search outage. Search's
+// upstreamError paints /admin red and tells the broker "comp search is
+// unavailable"; this returns the spec copy and a status the extract route
+// can send, with no UPSTREAM_HEALTH side effects.
+function extractVendorError(status) {
+  const n = Number(status) || 0;
+  const err = new Error(n === 429
+    ? "Too many uploads. Please wait a moment."
+    : "Could not read that PDF. Nothing was saved.");
+  err.statusCode = n === 429 ? 429 : 502;
+  err.userMessage = err.message;
+  return err;
+}
+
+function extractWasTruncated(stopReason) {
+  const r = String(stopReason || "");
+  return r === "max_tokens" || r === "MAX_TOKENS" || r === "incomplete";
+}
+
+function parseExtractJson(rawText) {
+  const empty = { ok: false, rows: [], error: "We couldn't find a deals table in that PDF." };
+  let text = String(rawText || "").trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  let starterPos = -1;
+  let inString = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === "\"") inString = false;
+    } else if (ch === "\"") inString = true;
+    else if (ch === "[" || ch === "{") {
+      starterPos = i;
+      if (ch === "{") return empty;
+      break;
+    }
+  }
+  if (starterPos === -1) return empty;
+  const start = starterPos;
+  let depth = 0;
+  inString = false;
+  escaped = false;
+  let end = -1;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === "\"") inString = false;
+    } else if (ch === "\"") inString = true;
+    else if (ch === "[") depth++;
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) return empty;
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    if (!Array.isArray(parsed)) return empty;
+    return { ok: true, rows: parsed, error: "" };
+  } catch (err) {
+    return empty;
+  }
+}
+
+function vaultValues(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  for (const k of VAULT_FIELD_KEYS) {
+    if (src[k] == null) continue;
+    const s = String(src[k]).trim();
+    if (s) out[k] = s;
+  }
+  return out;
+}
+
+function classifyExtractRows(candidates) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  return list.map((raw) => {
+    const values = vaultValues(raw);
+    const result = normalizeRow(values);
+    return {
+      values,
+      error: result.ok ? null : (result.errors || []).join("; "),
+    };
+  });
+}
+
+function uploadPayloadToCsv({ csv, rows } = {}) {
+  const hasRows = rows != null;
+  const hasCsv = csv != null && csv !== "";
+  if (hasRows && hasCsv) {
+    return { ok: false, csv: "", error: "Send csv or rows, not both." };
+  }
+  if (hasRows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { ok: false, csv: "", error: "Nothing to import." };
+    }
+    return { ok: true, csv: exportCsv(rows), error: "" };
+  }
+  if (typeof csv === "string") return { ok: true, csv, error: "" };
+  return { ok: false, csv: "", error: "Nothing to import." };
+}
+
 module.exports = {
   normAddr,
   matchOffered,
@@ -1370,7 +1494,16 @@ module.exports = {
   OPTIONAL_SPEC_COLUMNS,
   PROPERTY_TYPES,
   MAX_ROWS_PER_UPLOAD,
+  MAX_PDF_BYTES,
   HEADER_ALIASES,
   MAPPABLE_TARGETS,
   REQUIRED_TARGETS,
+  VAULT_FIELD_KEYS,
+  EXTRACT_KEYS,
+  looksLikePdf,
+  parseExtractJson,
+  classifyExtractRows,
+  uploadPayloadToCsv,
+  extractVendorError,
+  extractWasTruncated,
 };

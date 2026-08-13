@@ -1,0 +1,918 @@
+// The dark-mode token table. Pure like entitlements.test.js: no server, no
+// database, no clock. The light values here are copied verbatim from the
+// :root block vault-page.js and the four dashboards already share, so a
+// changed light value is a regression in the theme that already ships.
+const test = require("node:test");
+const assert = require("node:assert");
+const { THEME_TOKENS, rootCss } = require("../theme.js");
+
+// The vocabulary that already exists in five shipped pages. If any light
+// value here drifts, those pages restyle silently.
+const EXISTING = {
+  ink: "#1A2433", "ink-2": "#4C5665", "ink-3": "#68707E", "ink-4": "#C7CBD2",
+  red: "#B91C1C", "red-deep": "#991B1B", green: "#15803D",
+  paper: "#FBFBF9", line: "#E4E2DA", hair: "#F0EFE9",
+  wash: "#F5F4EF", edge: "#D8D4C9",
+};
+
+test("the pre-existing token vocabulary keeps its exact light values", () => {
+  for (const [name, light] of Object.entries(EXISTING)) {
+    assert.ok(THEME_TOKENS[name], `missing token --${name}`);
+    assert.equal(THEME_TOKENS[name].light, light, `--${name} light value moved`);
+  }
+});
+
+test("every token declares both a light and a dark value", () => {
+  for (const [name, v] of Object.entries(THEME_TOKENS)) {
+    assert.equal(typeof v.light, "string", `--${name} has no light value`);
+    assert.equal(typeof v.dark, "string", `--${name} has no dark value`);
+    assert.match(v.light, /^#[0-9A-Fa-f]{3,8}$/, `--${name} light is not a hex`);
+    assert.match(v.dark, /^#[0-9A-Fa-f]{3,8}$/, `--${name} dark is not a hex`);
+  }
+});
+
+test("the text/fill split exists, because a filled button must stay saturated", () => {
+  // --red lightens for contrast as TEXT on a dark page; --red-fill stays
+  // saturated because white text sits on top of it.
+  assert.notEqual(THEME_TOKENS["red"].dark, THEME_TOKENS["red-fill"].dark);
+  assert.equal(THEME_TOKENS["red-fill"].light, THEME_TOKENS["red"].light);
+});
+
+test("surfaces already dark in light mode lift rather than stay put", () => {
+  // --slab is #1A2433 on light paper. If its dark value equalled --paper it
+  // would dissolve into the page and the emphasis would vanish.
+  assert.notEqual(THEME_TOKENS["slab"].dark, THEME_TOKENS["paper"].dark);
+});
+
+test("rootCss emits both blocks with every token", () => {
+  const css = rootCss();
+  assert.match(css, /^:root\{/);
+  assert.match(css, /\[data-theme="dark"\]\{/);
+  for (const [name, v] of Object.entries(THEME_TOKENS)) {
+    assert.ok(css.includes(`--${name}:${v.light}`), `light --${name} missing`);
+    assert.ok(css.includes(`--${name}:${v.dark}`), `dark --${name} missing`);
+  }
+});
+
+test("rootCss is safe to interpolate into a template literal", () => {
+  // Every in-scope stylesheet is a JS template literal. A backtick or a
+  // ${ in this string would end it and break the module that embeds it.
+  const css = rootCss();
+  assert.equal(css.includes("`"), false);
+  assert.equal(css.includes("${"), false);
+});
+
+test("rootCss's dark block is screen-only, so a print run never resolves dark values", () => {
+  // The OBVIOUS test here -- grep every in-scope stylesheet's @media print
+  // span for the literal text "[data-theme" -- is exactly what the print-
+  // safety tests below already do, and it is not enough. Custom properties
+  // resolve by CASCADE, not by media type: an unscoped
+  // [data-theme="dark"]{--ink:#E2E8F0} declaration keeps --ink resolving to
+  // its dark value everywhere, including inside @media print, for every
+  // var()-driven rule in the codebase -- not just the ones a Tailwind-
+  // utility bridge covers. None of THOSE rules contain the string
+  // "[data-theme" themselves (they just say `color: var(--ink)`), so a scan
+  // for that text inside the print span would stay green while a printed
+  // report came out in dark-mode colours on forced-white paper. This test
+  // checks STRUCTURE instead: the dark declaration must be nested inside
+  // @media screen, and :root must NOT be (or print loses every colour, not
+  // just the wrong ones).
+  const css = rootCss();
+  assert.match(css, /^:root\{[^}]*\}@media screen\{\[data-theme="dark"\]\{/,
+    ":root must be unscoped and the dark block must sit inside @media screen");
+});
+
+const fs = require("node:fs");
+const path = require("node:path");
+// Normalize CRLF -> LF: this checkout is on Windows (core.autocrlf), so
+// server.js is checked out with CRLF even though the repo stores LF: a
+// literal "\n" search below would otherwise never match.
+const root = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8").replace(/\r\n/g, "\n");
+
+// The stylesheets in scope. The four admin dashboards are deliberately NOT
+// here: they declare their own :root and are out of scope (spec section 1).
+const SERVER_JS = root("server.js");
+const VAULT_JS = root("vault-page.js");
+
+// Slice one template-literal CSS constant out of server.js by name.
+function cssBlock(name) {
+  const start = SERVER_JS.indexOf(`const ${name} = \``);
+  assert.notEqual(start, -1, `${name} not found`);
+  const from = SERVER_JS.indexOf("`", start) + 1;
+  // The closing backtick isn't always preceded by a newline (a block whose
+  // last line is `${ACCOUNT_NAV_CSS}` puts the backtick right after the
+  // interpolation), so match on the "`;" pair itself rather than assuming
+  // a preceding "\n". None of these blocks contain a literal backtick.
+  const end = SERVER_JS.indexOf("`;", from);
+  assert.notEqual(end, -1, `${name} has no closing backtick`);
+  return SERVER_JS.slice(from, end);
+}
+
+test("no in-scope stylesheet references an undefined variable", () => {
+  const defined = new Set(Object.keys(THEME_TOKENS).map((n) => `--${n}`));
+  const blocks = {
+    MARKET_CSS: cssBlock("MARKET_CSS"),
+    HOW_CSS: cssBlock("HOW_CSS"),
+    ACCOUNT_NAV_CSS: cssBlock("ACCOUNT_NAV_CSS"),
+    "index.html": root("index.html").split("</style>")[0],
+    "vault-page.js": VAULT_JS,
+  };
+  for (const [where, css] of Object.entries(blocks)) {
+    for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
+      // vault-page.js and the market CSS also carry non-colour scales
+      // (--t1..--t6 type, --s1..--s9 spacing, --r radius, --serif, and the
+      // vault redesign's --shadow). Those are page-local and not the theme's
+      // business.
+      if (/^--(t\d|s\d|r|serif|shadow)$/.test(m[1])) continue;
+      assert.ok(defined.has(m[1]), `${where} uses undefined ${m[1]}`);
+    }
+  }
+});
+
+test("no in-scope stylesheet paints a background with the TEXT red", () => {
+  // --red lightens to brand-400 in dark mode for contrast as text. Used as
+  // a background it turns a filled button pale pink, and only in dark mode
+  // on one page -- exactly what manual review misses. --red-fill exists
+  // for backgrounds.
+  //
+  // VAULT_JS is included: Task 6 fixed its one offending declaration
+  // (`.btn{background:var(--red)}`, shipped 2026-08-06, long before this
+  // project) to `--red-fill` / `--red-fill-hover`, so this file is now held
+  // to the same rule as every other in-scope stylesheet.
+  const blocks = [
+    cssBlock("MARKET_CSS"), cssBlock("HOW_CSS"), cssBlock("ACCOUNT_NAV_CSS"), VAULT_JS,
+  ];
+  for (const css of blocks) {
+    for (const m of css.matchAll(/background[^;{}]*var\((--red|--red-deep)\)/g)) {
+      assert.fail(`background uses ${m[1]}; use --red-fill / --red-fill-hover`);
+    }
+  }
+});
+
+test("every in-scope server page can set the theme before first paint", () => {
+  // The snippet is render-blocking and lives in <head> on purpose: anything
+  // deferred paints the light theme first and flashes white on a dark page.
+  assert.ok(SERVER_JS.includes("const THEME_BOOT ="), "THEME_BOOT not declared");
+  // marketShell covers /markets, /market/<slug>, /brokers, /broker/<slug>,
+  // /1031-exchange, /terms, /privacy.
+  const shell = SERVER_JS.slice(SERVER_JS.indexOf("function marketShell("));
+  assert.ok(shell.slice(0, 2000).includes("THEME_BOOT"), "marketShell lacks the boot script");
+  // renderHowItWorksHTML covers / and /how-it-works, and is a SEPARATE shell
+  // from marketShell -- checking one is not evidence about the other. A
+  // future edit that removed the boot script from just this function would
+  // otherwise pass the suite and reintroduce a white flash on / and
+  // /how-it-works. Bounded by the NEXT top-level function rather than a
+  // fixed character window: this function is long (it also carries HOW_FAQ
+  // and the scroll-choreography script), so a short window like marketShell's
+  // would land before THEME_BOOT and produce a false failure.
+  const howStart = SERVER_JS.indexOf("function renderHowItWorksHTML(");
+  const howEnd = SERVER_JS.indexOf("\nfunction ", howStart + 10);
+  const howShell = SERVER_JS.slice(howStart, howEnd);
+  assert.ok(howShell.includes("THEME_BOOT"), "renderHowItWorksHTML lacks the boot script");
+  // vault-page.js: Task 6 landed THEME_BOOT in its <head> (interpolated, not
+  // a literal copy -- see the "vault takes its tokens from theme.js" test).
+  assert.ok(VAULT_JS.includes("THEME_BOOT"), "vault-page.js lacks the boot script");
+});
+
+test("the toggle is rendered once per page, in the shared nav", () => {
+  const slots = SERVER_JS.slice(SERVER_JS.indexOf("function accountNavSlots("));
+  assert.ok(slots.slice(0, 1500).includes(`id="themeToggle"`), "no toggle in accountNavSlots");
+  // accountNavSlots is the ONE place it may live. A second copy in
+  // marketBar or the how-it-works header would render two toggles on the
+  // pages that call both.
+  const occurrences = SERVER_JS.split(`id="themeToggle"`).length - 1;
+  assert.equal(occurrences, 1, "themeToggle is declared more than once in server.js");
+});
+
+const INDEX = root("index.html");
+const INDEX_STYLE = INDEX.slice(INDEX.indexOf("<style>"), INDEX.indexOf("</style>"));
+
+// Deliberately NOT darkened. These sit on a filled red button or a dark
+// slab, both of which stay dark in dark mode, so white text remains
+// correct. Listed explicitly so the coverage test below stays honest
+// rather than being loosened.
+const NOT_DARKENED = new Set(["text-white", "hover:text-white"]);
+
+// Every colour utility index.html actually uses, base and state-variant.
+// The prefix group must list every variant actually used with a colour
+// utility in this file -- `focus-visible` was missing (fix round 2), which
+// let `.outline-[#B8C0CC]` (a bridge rule with neither the focus-visible
+// prefix nor the :focus-visible pseudo-class) match nothing in the DOM while
+// still "passing" coverage, because this scan's unprefixed fallback and the
+// bridge-selector scan below both landed on the same bare substring by
+// accident. Checked against the file directly (not from memory) with:
+//   grep -oE '(hover|focus|focus-visible|group-hover|active|disabled|
+//     checked|peer-checked|focus-within):(bg|text|border|ring|outline|
+//     decoration|divide|accent|fill|stroke)-...' index.html | sort -u
+// -- focus-visible was the only variant beyond the three already listed.
+function colorUtilities(html) {
+  const P = "(?:bg|text|border|ring|outline|decoration|divide|accent|fill|stroke)";
+  const V = "(?:\\[#[0-9A-Fa-f]{3,8}\\]|white|black|(?:slate|brand|red|emerald|amber|gray)-\\d{2,3})";
+  const re = new RegExp(`(?:(?:hover|focus-visible|focus|group-hover):)?${P}-${V}`, "g");
+  return new Set([...html.matchAll(re)].map((m) => m[0]));
+}
+
+// Strips the Tailwind-utility bridge's OWN text before scanning for "used"
+// utilities (fix round 2, MINOR finding). Escaped selectors like
+// `.hover\:bg-slate-50:hover` contain the BARE class name as a literal
+// substring -- the backslash breaks colorUtilities' prefix match but not
+// its base P-V match -- which manufactured phantom "used" entries for
+// classes that appear nowhere in the real markup (`bg-slate-50`,
+// `ring-brand-600`, `decoration-brand-700`), and the coverage test passed
+// anyway because those three rules were added purely to satisfy a scan the
+// bridge's own text was polluting. This is the actual fix; the three dead
+// rules are gone from the bridge now that the scan no longer needs them.
+function withoutBridge(html) {
+  const bridgeAt = html.indexOf("/* ---- Dark mode bridge");
+  if (bridgeAt === -1) return html;
+  const screenAt = html.indexOf("@media screen", bridgeAt);
+  let depth = 0, started = false, i = html.indexOf("{", screenAt);
+  for (; i < html.length; i++) {
+    if (html[i] === "{") { depth++; started = true; }
+    if (html[i] === "}") { depth--; if (started && depth === 0) { i++; break; } }
+  }
+  return html.slice(0, bridgeAt) + html.slice(i);
+}
+
+test("index.html declares the same token values theme.js does", () => {
+  // The one place a token is written twice, because index.html is static
+  // and server.js never templates it. Pin it or it drifts.
+  for (const [name, v] of Object.entries(THEME_TOKENS)) {
+    assert.ok(INDEX_STYLE.includes(`--${name}:${v.light}`), `index.html light --${name} missing or wrong`);
+    assert.ok(INDEX_STYLE.includes(`--${name}:${v.dark}`), `index.html dark --${name} missing or wrong`);
+  }
+});
+
+test("index.html's dark token block is screen-only too, mirroring rootCss's shape exactly", () => {
+  // Same blind spot as the rootCss test above, but for index.html's own
+  // literal copy, which rootCss() cannot reach -- index.html is static and
+  // server.js never templates it, so this structure has to be pinned here
+  // separately or it can drift out of sync with theme.js silently (the
+  // substring test just above would still pass: it only checks that each
+  // --token:value pair appears SOMEWHERE, not that the dark block is scoped
+  // correctly). Whitespace-tolerant because this copy is hand-formatted
+  // across multiple lines for readability, unlike rootCss()'s single line.
+  assert.match(
+    INDEX_STYLE,
+    /:root\{--paper:#FBFBF9[^]*?\}\s*@media screen\{\s*\[data-theme="dark"\]\{--paper:#020617/,
+    ":root must be unscoped and the dark token block must sit inside @media screen"
+  );
+});
+
+test("every colour utility in index.html has a dark rule", () => {
+  // THE test. The known weakness of a hex-keyed bridge is that a colour
+  // added later gets no dark rule and renders dark-on-dark -- and the
+  // failure is silent, because light mode still looks perfect. This turns
+  // it into a build failure.
+  const used = colorUtilities(withoutBridge(INDEX));
+  // What the bridge covers. Tailwind escapes [ # ] in the emitted class
+  // name, so the bridge selectors do too; unescape to compare. The
+  // TRAILING pseudo-class must also come off: the markup carries
+  // `hover:bg-[#F5F4EF]` while the selector is
+  // `.hover\:bg-\[\#F5F4EF\]:hover`, and comparing those raw reports every
+  // state variant as missing. `focus-visible` added in fix round 2 --
+  // without it, the corrected `.focus-visible\:outline-\[\#B8C0CC\]
+  // \:focus-visible` selector left a trailing ":focus-visible" on the
+  // bridged entry that never matched colorUtilities' pseudo-free output,
+  // so a CORRECT selector still failed this test until this line moved too.
+  const bridged = new Set(
+    [...INDEX_STYLE.matchAll(/\[data-theme="dark"\][^{]*?\.([A-Za-z0-9\\:#\[\]-]+)/g)]
+      .map((m) => m[1].replace(/\\/g, "").replace(/:(focus-visible|hover|focus|active|disabled|checked)$/, ""))
+  );
+  const missing = [...used].filter((u) => !NOT_DARKENED.has(u) && !bridged.has(u));
+  assert.deepEqual(missing, [], `utilities with no dark rule: ${missing.join(" ")}`);
+});
+
+test("the bridge cannot reach the print stylesheet", () => {
+  // Wrapping the bridge in @media screen is what makes the 70-line
+  // @media print block unreachable by the theme, so printing cannot
+  // regress and that block needs no edits. Removing the wrapper would
+  // print light text onto white paper.
+  const printAt = INDEX_STYLE.indexOf("@media print");
+  assert.notEqual(printAt, -1, "the print block vanished");
+  const printBlock = INDEX_STYLE.slice(printAt);
+  assert.equal(printBlock.includes("[data-theme"), false,
+    "a data-theme selector reached the print block");
+  const bridgeAt = INDEX_STYLE.indexOf(`[data-theme="dark"] .`);
+  const screenAt = INDEX_STYLE.lastIndexOf("@media screen", bridgeAt);
+  assert.notEqual(screenAt, -1, "the bridge is not inside @media screen");
+});
+
+test("no raw hex colour remains in index.html's style block outside :root/dark declarations or @media print", () => {
+  // 2026-08-10: a whole second colour system -- the "Research Desk" CSS
+  // (.rd-*, plus a handful of un-prefixed rules like .spread-fill and the
+  // loading ninja) -- went untouched by the bridge above because the
+  // coverage test only scans Tailwind CLASS NAMES. About 120 raw hex values
+  // sat there unthemed until this was caught by eye in a browser. This test
+  // is the permanent fix: any FUTURE raw hex added anywhere in this
+  // stylesheet (outside the token declarations and the print stylesheet,
+  // which is deliberately pinned light) fails the build instead of quietly
+  // rendering unthemed.
+  const anchor = "Design tokens — the whole site draws from these";
+  const anchorAt = INDEX_STYLE.indexOf(anchor);
+  assert.notEqual(anchorAt, -1, "the Design tokens comment moved or was renamed");
+  const commentOpenAt = INDEX_STYLE.lastIndexOf("/*", anchorAt);
+  let scoped = INDEX_STYLE.slice(commentOpenAt);
+
+  // @media print is pinned light on purpose (previous test) and must never
+  // be asked to theme -- exclude its whole span rather than flag its
+  // intentional literals (e.g. "body { background: #fff }").
+  const printAt = scoped.indexOf("@media print");
+  assert.notEqual(printAt, -1, "the print block vanished");
+  {
+    let depth = 0, started = false, i = scoped.indexOf("{", printAt);
+    for (; i < scoped.length; i++) {
+      if (scoped[i] === "{") { depth++; started = true; }
+      if (scoped[i] === "}") { depth--; if (started && depth === 0) { i++; break; } }
+    }
+    scoped = scoped.slice(0, printAt) + scoped.slice(i);
+  }
+
+  const noComments = scoped.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Only look inside declaration bodies ({ ... }), never selector text --
+  // an ID like #addressInput would otherwise read as a 3-digit hex colour
+  // ("#add"). insideBraces keeps everything at brace-depth >= 1 (any
+  // nesting, e.g. inside @media), which is exactly "declaration bodies".
+  function insideBraces(css) {
+    let d = 0, out = "";
+    for (const c of css) {
+      if (c === "{") { d++; out += ""; continue; }
+      if (c === "}") { d = Math.max(0, d - 1); out += ""; continue; }
+      if (d > 0) out += c;
+    }
+    return out;
+  }
+  const blocks = insideBraces(noComments).split(/[]/).filter((b) => b.trim());
+
+  // Deliberate literals, keyed by (property, hex) rather than hex alone --
+  // a NEW rule that reuses one of these hex values under a DIFFERENT
+  // property must still be caught. Each is explained in index.html at its
+  // declaration and in task-4-report.md.
+  const ALLOWLIST = new Set([
+    "color:#fff",          // text on a filled red/dark surface (::selection)
+    "box-shadow:#b91c1c",  // .rd-cell:focus-within's focus ring -- box-shadow is exempt, same as .card-hover / tileSpot
+    "fill:#334155",        // .loading-ninja .ninja-body's light-only base value, fully replaced by an explicit dark-mode rule right below it
+    "fill:#dc2626",        // .loading-ninja .ninja-band -- this IS --red-fill's dark value, so tokenizing it would change the light theme
+    "color:#9a3412",       // .rd-badge.e (estimate) -- deliberately sienna, distinct from .li's amber; no matching token
+    "background:#f8e9dc",  // .rd-badge.e's background, same reasoning
+    "color:#4c3a8c",       // .rd-badge.bv (broker vault) -- deliberately purple, not green; no matching token
+    "background:#ede9f8",  // .rd-badge.bv's background, same reasoning
+    "color:#46536a",        // .rd-badge.p's text -- kept literal alongside its background (see the fix-round-2 note at the declaration: a half conversion measured 1.28:1)
+    "background:#eaeef4",  // .rd-badge.p's background -- pale blue-gray, no matching token
+    "background:#fca5a5",  // .spread-fill's gradient start -- this is --red-deep's dark value, so tokenizing it would change the light theme
+    "background:#8a929e",  // .rd-scat-tick's mark colour -- no matching token
+  ]);
+
+  const offenders = [];
+  for (const block of blocks) {
+    for (const decl of block.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) {
+        const key = `${prop}:${hex.toLowerCase()}`;
+        if (!ALLOWLIST.has(key)) offenders.push(`${prop}: ${hex}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `raw hex colour(s) outside the token system: ${offenders.join(", ")}`);
+});
+
+test("no raw colour literal remains in index.html's generated markup (the JS half)", () => {
+  // The test above only ever scans the <style> block, which structurally
+  // cannot see a colour baked into markup the SCRIPT builds — an inline
+  // style="" string, an SVG fill/stroke attribute, or a canvas/html2canvas
+  // colour assignment. That blind spot has bitten this project four
+  // separate times, most recently the vault's year chart, whose headline
+  // number rendered at 1.14:1 in dark mode (test/theme.test.js's own
+  // "generated markup" test for vault-page.js, added in that fix). This is
+  // the same fix for index.html, which never had one: writing it turned up
+  // the report's own market-position chart (renderMarketChart) and the
+  // header/report-lockup logo icon rendering dark-on-dark in dark mode,
+  // both fixed alongside this test by switching their fill/stroke to
+  // var(--token) rather than by loosening the allowlist below.
+  //
+  // A blind hex scan of everything after </style> does not work here the
+  // way it does for vault-page.js: index.html's <body> is thousands of
+  // Tailwind arbitrary-value classes (bg-[#F5F4EF], text-[#5A6473], ...),
+  // and every one of those is a literal hex substring that is ALREADY
+  // covered by the "every colour utility has a dark rule" test above via
+  // the class-name bridge, not by this one. So this scan is deliberately
+  // scoped to colour-bearing PROPERTY CONTEXTS only — inline style=""
+  // declarations (prop:#hex, split the same way the style-block test above
+  // splits CSS declarations, so "border:2px solid #fff" is still caught),
+  // bare SVG/HTML attributes (fill="#hex", stroke="#hex"), and JS
+  // assignments (ctx.fillStyle = "#hex", backgroundColor: "#hex") — which
+  // is exactly what a Tailwind class name never looks like: the hex in
+  // `bg-[#F5F4EF]` sits directly after `[`, never after `:`/`=`, so it
+  // never enters this scan at all. Comments (HTML <!-- --> only — this
+  // file's // and /* */ JS comments were checked by hand and none mention a
+  // hex value) are stripped first so prose like "dark mode's own --slab:
+  // #1E293B" in a code comment can't read as a declaration.
+  const styleEnd = INDEX.indexOf("</style>");
+  assert.notEqual(styleEnd, -1, "index.html's </style> tag not found");
+  let jsHalf = INDEX.slice(styleEnd).replace(/<!--[\s\S]*?-->/g, "");
+
+  // pinColors() is the theming IMPLEMENTATION for the Leaflet map pins and
+  // aerial-photo placeholder, not a literal that forgot to theme: it is a
+  // plain isDark() ? {...} : {...} object literal, so BOTH themes' real
+  // values necessarily sit in the source as hex, the same way :root's own
+  // dark block does. Carved out here the same way the CSS test above carves
+  // out @media print — a scan that can't evaluate a ternary has no way to
+  // know these are already correct, so it would either flag genuinely
+  // themed code or need every one of its six values individually
+  // allowlisted with no real offender left to explain them.
+  const pcStart = jsHalf.indexOf("const pinColors = ()");
+  assert.notEqual(pcStart, -1, "pinColors() moved or was renamed");
+  const pcEnd = jsHalf.indexOf(";", pcStart);
+  jsHalf = jsHalf.slice(0, pcStart) + jsHalf.slice(pcEnd + 1);
+
+  const offenders = [];
+
+  // Pass 1: inline style="..." attributes. Consumed and removed (not just
+  // read) so pass 2's simpler attr="#hex" scan below can't double-count a
+  // hex that already got its property from this pass's declaration split.
+  const rest = jsHalf.replace(/style="([^"]*)"/g, (whole, styleVal) => {
+    for (const decl of styleVal.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) offenders.push(`${prop}:${hex.toLowerCase()}`);
+    }
+    return "";
+  });
+
+  // Pass 2: bare SVG/HTML attributes (fill="#hex") and JS assignments
+  // (ctx.fillStyle = "#hex", backgroundColor: "#hex") — anything shaped
+  // like identifier, then `:` or `=`, then an optional quote, then hex,
+  // immediately. The identifier may contain dots (ctx.fillStyle) so a
+  // property access reads as one token instead of matching bare "fillStyle".
+  for (const m of rest.matchAll(/([a-zA-Z_$][\w.]*)\s*[:=]\s*["']?(#[0-9A-Fa-f]{3,8})\b/g)) {
+    offenders.push(`${m[1].toLowerCase()}:${m[2].toLowerCase()}`);
+  }
+
+  // Keyed by "property:hex" like the style-block test above, each with its
+  // own one-line reason. Tight on purpose — a future addition should invert
+  // its own colours with var(--token) first and reach for this list only
+  // when a token genuinely can't apply.
+  const ALLOWLIST = new Set([
+    // Aerial-photo placeholder's red point marker and the "© Esri" caption
+    // chip: both are drawn ON the stitched satellite photo itself, not on a
+    // themed page surface, so a site theme has no business repainting them
+    // (aerialThumb; the map basemap and pins around the photo DO theme, via
+    // pinColors()).
+    "background:#dc2626", "border:#fff", "color:#fff",
+    // Footer wordmark + its CompNinja icon: this lockup sits on
+    // bg-[#1A2433], a slab that is dark in BOTH themes (see the comment at
+    // the declaration), so literal white text and brand red read correctly
+    // regardless of site theme.
+    "color:#ef4444", "fill:#ffffff", "fill:#b91c1c",
+    // Print letterhead's CompNinja icon: .print-only is display:none on
+    // screen, so this markup is only ever seen by print, which is pinned
+    // light on purpose and never reads data-theme at all.
+    "fill:#1a2433",
+    // My Desk portfolio sparkline's polyline: no matching token (same
+    // allowance already given to .rd-scat-tick in the CSS bridge above) —
+    // measured legible against both --card values, so left literal rather
+    // than shifting the light-mode shade to fit an existing token.
+    "stroke:#8a93a0",
+    // Uploaded logo re-encode (readLogoFile): fills a transient <canvas>
+    // white before flattening a transparent PNG to JPEG. Image-processing
+    // math, not page theming — the canvas is never inserted into the page.
+    "ctx.fillstyle:#fff",
+    // PNG export (downloadImage/html2canvas): deliberately light-only, so a
+    // report exported from a dark screen still reads as a normal client
+    // deliverable. Pinned by the "the PNG export is never dark" test below.
+    "backgroundcolor:#fbfbf9",
+  ]);
+
+  const named = offenders.filter((o) => !ALLOWLIST.has(o));
+  assert.deepEqual(named, [],
+    `raw colour literal(s) in index.html's generated markup, outside the allowlist: ${named.join(", ")}`);
+});
+
+test("index.html sets the theme before first paint", () => {
+  const head = INDEX.slice(0, INDEX.indexOf("<style>"));
+  assert.ok(head.includes(`setAttribute("data-theme"`), "no boot script in <head>");
+  assert.ok(head.includes("prefers-color-scheme"), "boot script ignores the OS preference");
+});
+
+test("the PNG export is never dark", () => {
+  // html2canvas CLONES the document, so data-theme would ride along into
+  // the capture. A dark PNG pasted into a client's light deck reads as
+  // broken. The existing onclone hook strips it.
+  const clone = INDEX.slice(INDEX.indexOf("onclone:"), INDEX.indexOf("onclone:") + 800);
+  assert.ok(clone.includes(`removeAttribute("data-theme")`),
+    "onclone does not strip data-theme -- the PNG export would render dark");
+  assert.ok(INDEX.includes(`backgroundColor: "#FBFBF9"`),
+    "the PNG background is no longer the light paper");
+});
+
+test("index.html's theme boot script and toggle handler mirror server.js's THEME_BOOT and toggle logic", () => {
+  // index.html is static -- server.js never templates it -- so its boot
+  // script and its #themeToggleApp click handler are hand-copies of
+  // THEME_BOOT and ACCOUNT_NAV_JS's toggle handler. Nothing keeps the two in
+  // step but a paired ⚠ comment at each of the four declarations; this test
+  // is the actual guardrail. It checks the facts that matter -- same
+  // localStorage key, same stored values, same attribute, same element --
+  // rather than requiring byte-identical text, since the two live in
+  // different quoting/scripting contexts (index.html's hand-written
+  // multi-line JS vs server.js's concatenated template-literal strings), and
+  // the two toggle handlers additionally differ in unrelated ways (var vs
+  // const, a jQuery-style $() lookup vs getElementById, index.html's also
+  // re-tiling the map) that a stricter comparison would falsely flag.
+  function facts(s) {
+    return {
+      storageKey: [...new Set([...s.matchAll(/localStorage\.(?:get|set)Item\(\s*"([^"]+)"/g)].map((m) => m[1]))],
+      attribute: [...new Set([...s.matchAll(/(?:setAttribute|removeAttribute)\(\s*"([^"]+)"/g)].map((m) => m[1]))],
+      element: s.includes("document.documentElement"),
+      values: { dark: s.includes(`"dark"`), light: s.includes(`"light"`) },
+    };
+  }
+
+  // facts() above checks PRESENCE only -- it would still pass if one copy's
+  // ternary picked "dark"/"light" in the opposite order, because the same
+  // two strings are still present somewhere in the text; deepEqual on sets
+  // of used values cannot see which branch produced which. That is exactly
+  // the drift that matters most here: an inverted `dark ? "dark" : "light"`
+  // (instead of the correct `dark ? "light" : "dark"`) stores the CURRENT
+  // theme instead of the NEW one on every toggle, so the visitor's choice
+  // never actually sticks across a reload, while every fact above still
+  // matches. ternaries() extracts the true/false branch of every
+  // `? "dark"|"light" : "dark"|"light"` ternary, IN ORDER, so the two
+  // copies are compared on the relationship, not just the vocabulary.
+  // Proved this catches the inversion by temporarily editing index.html's
+  // toggle to `dark ? "dark" : "light"` and re-running this test: it failed
+  // with a clear branch-order mismatch, and facts()-only comparison (run the
+  // same way) did not; reverted immediately after.
+  function ternaries(s) {
+    return [...s.matchAll(/\?\s*"(dark|light)"\s*:\s*"(dark|light)"/g)].map((m) => [m[1], m[2]]);
+  }
+
+  const bootStart = SERVER_JS.indexOf("const THEME_BOOT =");
+  assert.notEqual(bootStart, -1, "THEME_BOOT not found");
+  const bootEnd = SERVER_JS.indexOf(";\n", bootStart);
+  const serverBootText = SERVER_JS.slice(bootStart, bootEnd);
+  const serverBoot = facts(serverBootText);
+
+  const indexHead = INDEX.slice(0, INDEX.indexOf("<style>"));
+  const indexBootStart = indexHead.indexOf("<script>(function(){try{var t=localStorage");
+  assert.notEqual(indexBootStart, -1, "index.html's boot script not found");
+  const indexBootEnd = indexHead.indexOf("</script>", indexBootStart);
+  const indexBootText = indexHead.slice(indexBootStart, indexBootEnd);
+  const indexBoot = facts(indexBootText);
+
+  assert.deepEqual(indexBoot, serverBoot,
+    "index.html's boot script disagrees with THEME_BOOT (storage key / stored values / attribute / element)");
+  assert.deepEqual(ternaries(indexBootText), ternaries(serverBootText),
+    "index.html's boot script picks \"dark\"/\"light\" in a different branch order than THEME_BOOT -- one of them has an inverted ternary");
+
+  const navStart = SERVER_JS.indexOf("const ACCOUNT_NAV_JS =");
+  assert.notEqual(navStart, -1, "ACCOUNT_NAV_JS not found");
+  const toggleAt = SERVER_JS.indexOf(`$("themeToggle")`, navStart);
+  assert.notEqual(toggleAt, -1, "the shared theme toggle handler not found in ACCOUNT_NAV_JS");
+  const toggleEnd = SERVER_JS.indexOf("catch(e){}});", toggleAt);
+  const serverToggleText = SERVER_JS.slice(toggleAt, toggleEnd);
+  const serverToggle = facts(serverToggleText);
+
+  const toggleAppAt = INDEX.indexOf(`getElementById("themeToggleApp")`);
+  assert.notEqual(toggleAppAt, -1, "index.html's themeToggleApp handler not found");
+  const toggleAppEnd = INDEX.indexOf("});", INDEX.indexOf("catch (e) {}", toggleAppAt));
+  const indexToggleText = INDEX.slice(toggleAppAt, toggleAppEnd);
+  const indexToggle = facts(indexToggleText);
+
+  assert.deepEqual(indexToggle, serverToggle,
+    "index.html's toggle handler disagrees with the shared toggle handler (storage key / stored values / attribute / element)");
+  assert.deepEqual(ternaries(indexToggleText), ternaries(serverToggleText),
+    "index.html's toggle handler picks \"dark\"/\"light\" in a different branch order than the shared toggle handler -- one of them has an inverted ternary, which means the visitor's choice would not survive a reload");
+});
+
+test("the vault takes its tokens from theme.js rather than its own copy", () => {
+  // vault-page.js was already tokenized against this exact vocabulary,
+  // which is why theme.js adopted its names instead of inventing new ones.
+  // It must not keep a literal copy that can drift.
+  assert.equal(/:root\{\s*--ink:#/.test(VAULT_JS), false,
+    "vault-page.js still declares its own literal :root token block");
+  assert.ok(VAULT_JS.includes("THEME_CSS"), "vault-page.js does not interpolate THEME_CSS");
+});
+
+test("no raw hex colour remains in vault-page.js's style block outside the deliberate allowlist", () => {
+  // 2026-08-10 fix round 1: the "no sweep needed" claim in this task's brief
+  // was wrong -- 20 raw hex values needed sweeping in vault-page.js's
+  // <style> block (3 more, all `color:#fff` text-on-red, were already
+  // correct and are the allowlist below; the 2 paired theme-color META TAGS
+  // outside this block were correct from the start and were never part of
+  // the count), invisible to every other test here because the "no
+  // undefined variable" test only scans var() usage and index.html's own
+  // raw-hex test (above) is scoped to index.html only. This is the vault's
+  // equivalent of that test, so the same class of regression can't recur
+  // here unnoticed either.
+  const styleStart = VAULT_JS.indexOf("<style>");
+  const styleEnd = VAULT_JS.indexOf("</style>");
+  assert.notEqual(styleStart, -1, "vault-page.js's <style> tag not found");
+  const style = VAULT_JS.slice(styleStart, styleEnd);
+
+  // vault-page.js carries no @media print block (unlike index.html), so
+  // there is no print span to carve out here.
+  const noComments = style.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Same brace-depth walk as index.html's test: only declaration BODIES,
+  // never selector text (an id like #tbl would otherwise read as a hex).
+  function insideBraces(css) {
+    let d = 0, out = "";
+    for (const c of css) {
+      if (c === "{") { d++; out += ""; continue; }
+      if (c === "}") { d = Math.max(0, d - 1); out += ""; continue; }
+      if (d > 0) out += c;
+    }
+    return out;
+  }
+  const blocks = insideBraces(noComments).split(/[]/).filter((b) => b.trim());
+
+  // The only deliberate literals left after the round-1 sweep: white TEXT
+  // sitting on the filled red .btn (and its a.btn twin) -- that surface
+  // stays dark in dark mode, so the text must stay literal white, not
+  // lighten with --red. Keyed by (property, hex), matching index.html's
+  // allowlist shape.
+  const ALLOWLIST = new Set([
+    "color:#fff", // .btn / a.btn / a.btn:hover -- text on --red-fill, a surface that stays dark
+  ]);
+
+  const offenders = [];
+  for (const block of blocks) {
+    for (const decl of block.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) {
+        const key = `${prop}:${hex.toLowerCase()}`;
+        if (!ALLOWLIST.has(key)) offenders.push(key);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `raw hex colour(s) outside the token system in vault-page.js: ${offenders.join(", ")}`);
+});
+
+test("no raw hex colour remains in vault-page.js's generated markup (the JS half)", () => {
+  // 2026-08-10 fix round 2: the round-1 test above only ever scanned the
+  // <style> block, so it had nothing to say about the year-over-year chart
+  // (drawChart, further down this file) building its own SVG in JavaScript
+  // with six hardcoded fill/stroke hex literals on the generated elements --
+  // invisible in dark mode (the endpoint label, the one number the panel
+  // exists to show, measured 1.14:1 against --card dark before the fix).
+  // This is the fourth time in this project colour hid outside whatever
+  // surface was swept, so the fix is structural: the chart now sets a CSS
+  // class per element (.chart-grid / .chart-axis / .chart-bar / .chart-bar.hi
+  // / .chart-endpoint, all declared in the <style> block and covered by the
+  // test above) instead of an inline fill="var(...)" attribute, which is not
+  // reliably honoured anyway. This test is the other half of making that
+  // stick: it scans everything AFTER </style> -- every template string that
+  // builds HTML or SVG markup -- for a bare hex literal, so a color future
+  // generated markup adds by mistake fails the build instead of quietly
+  // shipping unthemed.
+  const styleEnd = VAULT_JS.indexOf("</style>");
+  assert.notEqual(styleEnd, -1, "vault-page.js's </style> tag not found");
+  const jsHalf = VAULT_JS.slice(styleEnd);
+
+  // Empty on purpose: nothing in the generated markup has a legitimate raw
+  // hex today. If one is ever added deliberately (e.g. a colour that can't
+  // be a CSS class for some structural reason), name it here the same way
+  // the style-block allowlist above does, keyed loosely since generated
+  // markup has no single "property:" shape the way a CSS declaration does.
+  const ALLOWLIST = new Set([]);
+
+  const offenders = [...jsHalf.matchAll(/#[0-9A-Fa-f]{3,8}\b/g)]
+    .map((m) => m[0].toLowerCase())
+    .filter((hex) => !ALLOWLIST.has(hex));
+  assert.deepEqual(offenders, [],
+    `raw hex colour(s) in vault-page.js's generated markup, outside the <style> block: ${offenders.join(", ")}`);
+});
+
+test("a dark basemap never ships without the pin recolour", () => {
+  // The comp roundel is drawn to read against a LIGHT basemap. On
+  // dark_all it disappears. These two must land together. pinColors()'s
+  // returned keys are named pinInk/pinInkText/pinEdge/pinSubject (not the
+  // brief's generic ink/edge/subject) specifically so this substring check
+  // is a real, load-bearing fact about the code rather than an incidental
+  // one -- "pinInk" only appears in the file because the pin-recolour
+  // function actually declares a property by that name.
+  const dark = INDEX.includes("dark_all");
+  const pins = INDEX.includes("pinInk") || INDEX.includes("--pin-ink");
+  assert.equal(dark, pins,
+    "dark_all tiles and the pin recolour must ship together, not one without the other");
+});
+
+test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {
+  // Found live during 2026-08-10 fix round 1: a comment reading
+  // "--ok-*/--err-* triads" contains the literal sequence "*/" mid-sentence
+  // (the trailing * of "--ok-*" immediately followed by the "/" of
+  // "/--err-*"), which is a real CSS comment terminator. It closed the
+  // comment three sentences early; the leftover comment TEXT then parsed as
+  // CSS, and the browser's recovery silently dropped every rule after it
+  // (verified via the live page's CSSOM: .hide and everything past .msg
+  // were simply absent, with no console error) -- #app never hid, so a
+  // signed-out visitor saw the whole workspace shell. `/* */` cannot nest,
+  // so a stray "*/" inside comment prose is exactly as dangerous here as a
+  // stray backtick is to the outer JS template literal (the hazard this
+  // file's own comments already warn about), and nothing else catches it:
+  // test/vault-page.test.js compiles the emitted JS, not this CSS. Simple
+  // open/close count parity is enough to catch the exact failure mode
+  // (a comment that closes somewhere other than intended still balances
+  // open/close *counts* only if it reopens correctly after -- this file's
+  // comments are never nested, so a mismatch here is unambiguous).
+  const styleStart = VAULT_JS.indexOf("<style>");
+  const styleEnd = VAULT_JS.indexOf("</style>");
+  const style = VAULT_JS.slice(styleStart, styleEnd);
+  const opens = (style.match(/\/\*/g) || []).length;
+  const closes = (style.match(/\*\//g) || []).length;
+  assert.equal(opens, closes,
+    `vault-page.js's style block has ${opens} "/*" but ${closes} "*/" -- a comment closes early or never closes`);
+  // The whole page is one template literal. A backtick inside a CSS comment
+  // (the round-1 note wrapping MARKET_CSS in one) terminates it and the
+  // module fails to parse -- test/vault-page.test.js never even loads.
+  // Same class of hazard as a stray */ , caught the same way.
+  assert.equal((style.match(/`/g) || []).length, 0,
+    "vault-page.js's style block contains a backtick -- that ends the outer template literal");
+});
+
+test("every [data-theme] rule in index.html sits inside @media screen", () => {
+  // Print isolation is cascade, not a grep: an unscoped [data-theme="dark"]
+  // keeps custom properties resolving to their dark values inside @media
+  // print even when no print rule mentions the attribute. The token block
+  // and the utility bridge are already pinned above; this catches a THIRD
+  // copy (the loading-ninja fill, any future one-off) drifting outside
+  // @media screen. Comments are blanked (not deleted) so indices stay
+  // aligned -- several notes in this stylesheet mention the selector in
+  // prose, and a raw scan would flag those as unscoped rules.
+  const css = INDEX_STYLE.replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length));
+  function mediaQueryAt(src, pos) {
+    let depth = 0;
+    const mediaAt = new Map();
+    for (let i = 0; i < pos; i++) {
+      if (src.startsWith("@media", i)) {
+        const brace = src.indexOf("{", i);
+        if (brace === -1 || brace >= pos) break;
+        const query = src.slice(i + 6, brace).trim();
+        i = brace;
+        depth++;
+        mediaAt.set(depth, query);
+        continue;
+      }
+      if (src[i] === "{") { depth++; continue; }
+      if (src[i] === "}") {
+        mediaAt.delete(depth);
+        depth = Math.max(0, depth - 1);
+      }
+    }
+    for (let d = depth; d >= 1; d--) {
+      if (mediaAt.has(d)) return mediaAt.get(d);
+    }
+    return null;
+  }
+  const hits = [...css.matchAll(/\[data-theme/g)];
+  assert.ok(hits.length > 0, "index.html lost every [data-theme] selector");
+  for (const m of hits) {
+    assert.equal(mediaQueryAt(css, m.index), "screen",
+      `[data-theme] at index ${m.index} is not inside @media screen`);
+  }
+});
+
+test("the header CompNinja mark themes, and the footer mark does not", () => {
+  // CN_LOGO's rect is near-black (#1A2433). On the dark header that is
+  // --paper, that measured ~1.27:1. The class plus a stylesheet rule is
+  // the same pattern the vault chart and index.html's own header icon
+  // already use: a presentation-attribute fill= is the fallback (admin
+  // dashboards, out of scope, have no .cn-logo rule and keep rendering
+  // as before), and the in-scope stylesheets override it. CN_LOGO_LIGHT
+  // sits on the footer slab, which is dark in BOTH themes, so it must
+  // stay literal white -- var(--ink) would be navy in light mode.
+  const logo = SERVER_JS.slice(
+    SERVER_JS.indexOf("const CN_LOGO ="),
+    SERVER_JS.indexOf("const CN_LOGO_LIGHT =")
+  );
+  const light = SERVER_JS.slice(
+    SERVER_JS.indexOf("const CN_LOGO_LIGHT ="),
+    SERVER_JS.indexOf("const THEME_CSS =")
+  );
+  assert.match(logo, /class="cn-logo"/, "CN_LOGO is missing class=\"cn-logo\"");
+  assert.equal(light.includes("cn-logo"), false,
+    "CN_LOGO_LIGHT picked up the themed class -- the footer mark would invert");
+  for (const [where, css] of [
+    ["MARKET_CSS", cssBlock("MARKET_CSS")],
+    ["HOW_CSS", cssBlock("HOW_CSS")],
+    ["vault-page.js", VAULT_JS],
+  ]) {
+    assert.ok(css.includes(".cn-logo rect{fill:var(--ink)}"),
+      `${where} is missing the .cn-logo rect rule`);
+    assert.ok(css.includes(".cn-logo polygon{fill:var(--red-fill)}"),
+      `${where} is missing the .cn-logo polygon rule`);
+  }
+});
+
+function hexOffendersInCss(css) {
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  function insideBraces(src) {
+    let d = 0, out = "";
+    for (const c of src) {
+      if (c === "{") { d++; out += "\u0001"; continue; }
+      if (c === "}") { d = Math.max(0, d - 1); out += "\u0002"; continue; }
+      if (d > 0) out += c;
+    }
+    return out;
+  }
+  const blocks = insideBraces(noComments).split(/[\u0001\u0002]/).filter((b) => b.trim());
+  const offenders = [];
+  for (const block of blocks) {
+    for (const decl of block.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) offenders.push(`${prop}:${hex.toLowerCase()}`);
+    }
+  }
+  return offenders;
+}
+
+test("no raw hex colour remains in in-scope server stylesheets outside the deliberate allowlist", () => {
+  // 2026-08-12 Task 8 fix round 1: index.html and vault-page.js already
+  // pin their stylesheets; MARKET_CSS / HOW_CSS / ACCOUNT_NAV_CSS did not,
+  // so a literal on a public page (the header logo, the market trend
+  // chart, the brokers Verified chip) could ship unthemed. Admin
+  // dashboards are out of scope and are not in this list.
+  const ALLOWLIST = new Set([
+    "color:#fff", // text on --red-fill buttons and on the --slab footer
+  ]);
+  const blocks = {
+    MARKET_CSS: cssBlock("MARKET_CSS"),
+    HOW_CSS: cssBlock("HOW_CSS"),
+    ACCOUNT_NAV_CSS: cssBlock("ACCOUNT_NAV_CSS"),
+  };
+  const offenders = [];
+  for (const [where, css] of Object.entries(blocks)) {
+    for (const key of hexOffendersInCss(css)) {
+      if (!ALLOWLIST.has(key)) offenders.push(`${where} ${key}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    `raw hex colour(s) outside the token system in server stylesheets: ${offenders.join(", ")}`);
+});
+
+test("no raw colour literal remains in in-scope server.js generated markup", () => {
+  // The stylesheet test above cannot see a colour baked into HTML the
+  // server concatenates -- an SVG fill=, an inline style="", a theme-color
+  // meta. That is how the header logo (1.27:1) and the market trend chart
+  // shipped unthemed. Slice stops at renderAdminHTML: the four dashboards
+  // after it are out of scope (spec section 1). CSS template-literal
+  // bodies are carved out so this test does not double-count what the
+  // stylesheet test already pins.
+  const logoAt = SERVER_JS.indexOf("const CN_LOGO =");
+  const adminAt = SERVER_JS.indexOf("function renderAdminHTML(");
+  assert.notEqual(logoAt, -1, "CN_LOGO not found");
+  assert.notEqual(adminAt, -1, "renderAdminHTML not found");
+  let inScope = SERVER_JS.slice(logoAt, adminAt);
+  for (const name of ["MARKET_CSS", "HOW_CSS", "ACCOUNT_NAV_CSS"]) {
+    const block = cssBlock(name);
+    assert.ok(inScope.includes(block), `${name} missing from the in-scope slice`);
+    inScope = inScope.replace(block, "");
+  }
+
+  const offenders = [];
+  const rest = inScope.replace(/style="([^"]*)"/g, (whole, styleVal) => {
+    for (const decl of styleVal.split(";")) {
+      const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+      if (!hexMatches) continue;
+      const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+      const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+      for (const hex of hexMatches) offenders.push(`${prop}:${hex.toLowerCase()}`);
+    }
+    return "";
+  });
+  for (const m of rest.matchAll(/([a-zA-Z_$][\w.-]*)\s*[:=]\s*["']?(#[0-9A-Fa-f]{3,8})\b/g)) {
+    offenders.push(`${m[1].toLowerCase()}:${m[2].toLowerCase()}`);
+  }
+
+  const ALLOWLIST = new Set([
+    // CN_LOGO presentation-attribute fallback: in-scope pages override via
+    // .cn-logo; admin dashboards (no rule) keep the original navy/red.
+    "fill:#1a2433", "fill:#b91c1c",
+    // CN_LOGO_LIGHT: footer slab is dark in both themes, so white stays.
+    "fill:#ffffff",
+    // Footer wordmark accent on that same slab (MARKET_FOOTER and the
+    // how-it-works footer). Matches index.html's own allowlist.
+    "color:#ef4444",
+    // <meta name="theme-color"> paired with prefers-color-scheme, so the
+    // browser chrome tracks the OS rather than data-theme. Same pair as
+    // --paper's light/dark values; not a page colour.
+    "content:#fbfbf9", "content:#020617",
+  ]);
+
+  const named = offenders.filter((o) => !ALLOWLIST.has(o));
+  assert.deepEqual(named, [],
+    `raw colour literal(s) in in-scope server.js generated markup: ${named.join(", ")}`);
+});
+

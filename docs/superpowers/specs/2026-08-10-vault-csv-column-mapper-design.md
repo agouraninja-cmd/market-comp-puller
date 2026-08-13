@@ -58,8 +58,9 @@ Out of scope, deliberately:
 - Excel (`.xlsx`) parsing. The repo has no dependencies and hand-rolling a
   workbook reader is a project of its own. Every system that exports to Excel
   also exports to CSV.
-- PDF ingestion, despite the Ecosystem Plan's "CSV/PDF" phrasing. Same reason,
-  larger.
+- PDF ingestion of **flyers / offering memos** (one property per file). Table
+  PDFs (CoStar / ARGUS / CMA) shipped separately in
+  `docs/superpowers/specs/2026-08-13-vault-pdf-import-design.md`.
 - Splitting or combining columns (one "City, ST" column into two, or a
   first-plus-last name join). Nothing in the template needs it.
 - Transforming values. The mapper decides which column is which and never what

@@ -3,7 +3,7 @@
 // Gemini half of the provider seam. Same pure contract as
 // search-provider-anthropic.js: no fetch, no timers, no env reads.
 //
-// Prices are per million tokens for gemini-3.6-flash. Google Search grounding
+// Prices are per million tokens for gemini-3.7-flash. Google Search grounding
 // is billed per query ($14/1,000) with 5,000 free per month across the Gemini
 // 3 family, so at this volume grounding is free and is deliberately not
 // modelled here. Revisit if report volume ever approaches that ceiling.
@@ -20,6 +20,7 @@ const capabilities = {
   // Gemini caches implicitly and reports total_cached_tokens, but exposes no
   // breakpoint to place, so there is nothing for us to control.
   promptCaching: "implicit",
+  pdfExtract: true,
 };
 
 function buildRequestBody({ model, prompt, maxComps }) {
@@ -51,6 +52,48 @@ function requestInit({ apiKey }) {
       "content-type": "application/json",
       "x-goog-api-key": apiKey,
     },
+  };
+}
+
+function buildExtractBody({ model, prompt, pdfBase64 }) {
+  return {
+    contents: [{
+      parts: [
+        { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
+        { text: prompt },
+      ],
+    }],
+    // Same smaller search-path cap: thought tokens count toward output, and
+    // an Anthropic-sized 8k/10k truncates a table mid-array.
+    generationConfig: { maxOutputTokens: 24000 },
+  };
+}
+
+function extractRequestInit({ apiKey, model }) {
+  return {
+    url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+  };
+}
+
+function parseExtractResponse(data) {
+  const cand = ((data || {}).candidates || [])[0] || {};
+  const parts = ((cand.content || {}).parts) || [];
+  const text = parts.filter((p) => p && typeof p.text === "string").map((p) => p.text).join("");
+  const meta = (data && data.usageMetadata) || {};
+  return {
+    text: text.trim(),
+    // generateContent uses finishReason (MAX_TOKENS); keep Interactions
+    // `status: "incomplete"` in case that shape ever appears here.
+    stopReason: cand.finishReason || (data && data.status) || "",
+    usage: normalizeUsage({
+      total_input_tokens: meta.promptTokenCount,
+      total_output_tokens: meta.candidatesTokenCount,
+      total_thought_tokens: meta.thoughtsTokenCount,
+    }),
   };
 }
 
@@ -139,7 +182,7 @@ module.exports = {
     "aistudio.google.com/apikey, and the Google Cloud billing account behind the project " +
     "that owns GEMINI_API_KEY. Search grounding requires a PAID-tier project: a free-tier " +
     "key authenticates and runs the model but 429s on every grounded search.",
-  defaultModel: "gemini-3.6-flash",
+  defaultModel: "gemini-3.7-flash",
   capabilities,
   buildRequestBody,
   requestInit,
@@ -147,5 +190,8 @@ module.exports = {
   normalizeUsage,
   costOf,
   deadlineTokens,
+  buildExtractBody,
+  extractRequestInit,
+  parseExtractResponse,
   USD_PER_MTOK,
 };

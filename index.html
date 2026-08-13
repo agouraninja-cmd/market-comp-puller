@@ -7,7 +7,21 @@
   <meta name="description" content="Enter any commercial property address and get recent sale and lease comps in under a minute. Free reports with maps, price per square foot, and PDF export." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://market-comp-puller.onrender.com/" />
-  <meta name="theme-color" content="#FBFBF9" />
+  <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)" />
+  <!-- Sets data-theme before the first frame. Render-blocking and inline on
+       purpose: anything deferred paints light first and flashes white on a
+       dark page. try/catch because localStorage throws outright in a Safari
+       private window, and a theme preference must never blank the app.
+       This is also the rollback lever -- nothing else ever sets data-theme,
+       so short-circuiting this script disables dark mode everywhere.
+       ⚠ This is a hand-copy of server.js's THEME_BOOT constant -- this file
+       is static and server.js never templates it. Nothing keeps the two in
+       step but this comment and the "index.html's theme boot script and
+       toggle handler mirror server.js" test in test/theme.test.js. -->
+  <script>(function(){try{var t=localStorage.getItem("theme");
+if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
   <!-- Social sharing previews -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CompNinja" />
@@ -46,6 +60,198 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
+    /* ---- Colour tokens. MIRRORED FROM theme.js ⚠ ------------------------
+       index.html is a static file server.js never templates, so unlike
+       MARKET_CSS / HOW_CSS / vault-page.js these cannot be interpolated and
+       are the ONE place a token value is written twice. test/theme.test.js
+       compares them against theme.js character for character; if you change
+       a value, change it in theme.js and copy it here.
+       The dark block is wrapped in @media screen and :root is left unscoped
+       -- mirrors theme.js's rootCss() exactly, and for the same reason:
+       custom properties resolve by CASCADE, not by media type, so an
+       unscoped dark block would still resolve --ink etc. to their dark
+       values during a print run (every var()-driven rule in this file, not
+       only the Tailwind-utility bridge below, which has its OWN separate
+       @media screen wrapper). :root must stay unscoped or print loses all
+       colour. -------------------------------------------------------------------- */
+    :root{--paper:#FBFBF9;--card:#ffffff;--wash:#F5F4EF;--wash-2:#F5F4EF;--slab:#1A2433;
+      --edge:#D8D4C9;--line:#E4E2DA;--hair:#F0EFE9;
+      --ink:#1A2433;--ink-body:#374253;--ink-2:#4C5665;--ink-mute:#5A6473;--ink-3:#68707E;
+      --ink-faint:#9AA2AD;--ink-4:#C7CBD2;
+      --red:#B91C1C;--red-deep:#991B1B;--red-fill:#B91C1C;--red-fill-hover:#991B1B;
+      --green:#15803D;--ok-text:#06603A;--ok-bg:#E7F5EE;--ok-rule:#BFE5D2;
+      --warn-text:#8A6D1A;--warn-bg:#FBF3DC;--warn-rule:#EDDFB0;
+      --err-text:#7F1D1D;--err-bg:#FCF1EF;--err-rule:#F0C7C7}
+    @media screen{
+    [data-theme="dark"]{--paper:#020617;--card:#0F172A;--wash:#1E293B;--wash-2:#334155;--slab:#1E293B;
+      --edge:#334155;--line:#273244;--hair:#1E293B;
+      --ink:#E2E8F0;--ink-body:#CBD5E1;--ink-2:#C2CCDA;--ink-mute:#AEBACB;--ink-3:#94A3B8;
+      --ink-faint:#7C8899;--ink-4:#475569;
+      --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
+      --green:#34D399;--ok-text:#6EE7B7;--ok-bg:#0C2B21;--ok-rule:#155E43;
+      --warn-text:#FCD34D;--warn-bg:#2A2410;--warn-rule:#5B4A16;
+      --err-text:#F87171;--err-bg:#2A1517;--err-rule:#C27070}
+    }
+
+    /* ---- Dark mode bridge ----------------------------------------------
+       index.html's colours live in Tailwind CLASS NAMES, not declarations,
+       so they cannot be swapped by redefining a variable the way
+       MARKET_CSS / HOW_CSS / vault-page.js are. Each utility is re-pointed
+       at a token instead. Specificity does the work with no !important:
+       a rule here is (0,2,0) against Tailwind's own (0,1,0), and the state
+       variants are matched at their own (0,3,0).
+
+       Placed here, ABOVE the print stylesheet further down, on purpose: CSS
+       media-query rules don't care about source order relative to selectors
+       they don't share, so this changes nothing about how either renders,
+       but the print-safety test in theme.test.js does a plain text scan
+       from the print block's own opening marker to the end of the
+       stylesheet for the data-theme selector -- if any part of this block
+       (including this very comment) sat below that marker in the file, the
+       scan would flag it even though nothing here is actually reachable
+       from print.
+
+       @media screen IS ALSO LOAD-BEARING, independent of the above. It is
+       what keeps the theme out of the print stylesheet further down: a
+       print run never evaluates anything in here. Do not unwrap it.
+
+       Adding a new colour utility to this file? Add its rule here too.
+       test/theme.test.js fails the build if you forget, because the
+       failure is otherwise silent -- dark-on-dark text, with light mode
+       still looking perfect. -------------------------------------------- */
+    @media screen {
+      /* surfaces */
+      [data-theme="dark"] .bg-\[\#FBFBF9\]   { background-color: var(--paper) }
+      [data-theme="dark"] .bg-white          { background-color: var(--card) }
+      [data-theme="dark"] .bg-\[\#F5F4EF\]   { background-color: var(--wash) }
+      [data-theme="dark"] .bg-\[\#F0EFE9\]   { background-color: var(--wash) }
+      [data-theme="dark"] .bg-\[\#F1F0EC\]   { background-color: var(--wash) }
+      [data-theme="dark"] .bg-\[\#E4E2DA\]   { background-color: var(--line) }
+      /* already dark in light mode -- these LIFT, or they dissolve into the page */
+      [data-theme="dark"] .bg-\[\#1A2433\]   { background-color: var(--slab) }
+      [data-theme="dark"] .bg-slate-900      { background-color: var(--slab) }
+      /* filled brand: stays saturated, white text sits on it */
+      [data-theme="dark"] .bg-\[\#B91C1C\]   { background-color: var(--red-fill) }
+      [data-theme="dark"] .bg-brand-600      { background-color: var(--red-fill) }
+      /* status tints */
+      [data-theme="dark"] .bg-\[\#E7F5EE\]   { background-color: var(--ok-bg) }
+      [data-theme="dark"] .bg-\[\#F4FAF6\]   { background-color: var(--ok-bg) }
+      [data-theme="dark"] .bg-\[\#FBF3DC\]   { background-color: var(--warn-bg) }
+      [data-theme="dark"] .bg-\[\#FBF8EF\]   { background-color: var(--warn-bg) }
+      [data-theme="dark"] .bg-\[\#FCF1EF\]   { background-color: var(--err-bg) }
+      [data-theme="dark"] .bg-red-50         { background-color: var(--err-bg) }
+      /* surface hovers */
+      [data-theme="dark"] .hover\:bg-\[\#F5F4EF\]:hover { background-color: var(--wash-2) }
+      [data-theme="dark"] .hover\:bg-\[\#FBFBF9\]:hover { background-color: var(--wash) }
+      [data-theme="dark"] .hover\:bg-slate-50:hover     { background-color: var(--wash-2) }
+      [data-theme="dark"] .hover\:bg-\[\#991B1B\]:hover { background-color: var(--red-fill-hover) }
+      [data-theme="dark"] .hover\:bg-brand-700:hover    { background-color: var(--red-fill-hover) }
+      [data-theme="dark"] .hover\:bg-red-50:hover       { background-color: var(--err-bg) }
+
+      /* ink */
+      [data-theme="dark"] .text-\[\#1A2433\] { color: var(--ink) }
+      [data-theme="dark"] .text-\[\#374253\] { color: var(--ink-body) }
+      [data-theme="dark"] .text-\[\#46536A\] { color: var(--ink-body) }
+      [data-theme="dark"] .text-\[\#4C5665\] { color: var(--ink-2) }
+      [data-theme="dark"] .text-\[\#5A6473\] { color: var(--ink-mute) }
+      [data-theme="dark"] .text-\[\#68707E\] { color: var(--ink-3) }
+      [data-theme="dark"] .text-\[\#8A8577\] { color: var(--ink-3) }
+      [data-theme="dark"] .text-\[\#8F99A8\] { color: var(--ink-faint) }
+      [data-theme="dark"] .text-\[\#9AA2AD\] { color: var(--ink-faint) }
+      /* --ink-4 is right for an OUTLINE (see the focus-visible outline rule
+         below) but nearly invisible as TEXT on a dark surface -- its dark
+         value #475569 measured 2.06:1 against the footer's dark slab, well
+         under WCAG AA. --ink-faint was tried next (fix round 1) and was
+         ALSO wrong, at 4.07:1: that number was checked against --paper,
+         not against the --slab background this text actually sits on (fix
+         round 2). --ink-3's dark value (#94A3B8) measures 5.71:1 against
+         --slab, clearing AA (4.5:1 for this size/weight) with margin. */
+      [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-3) }
+      [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-3) }
+      [data-theme="dark"] .hover\:text-\[\#1A2433\]:hover { color: var(--ink) }
+      [data-theme="dark"] .hover\:text-\[\#374253\]:hover { color: var(--ink-body) }
+
+      /* brand text -- lightens for contrast; NOT the same value as the fill */
+      [data-theme="dark"] .text-\[\#B91C1C\] { color: var(--red) }
+      [data-theme="dark"] .text-brand-700    { color: var(--red) }
+      [data-theme="dark"] .text-brand-800    { color: var(--red) }
+      [data-theme="dark"] .text-red-600      { color: var(--red) }
+      [data-theme="dark"] .text-red-700      { color: var(--red) }
+      [data-theme="dark"] .text-red-800      { color: var(--red) }
+      [data-theme="dark"] .hover\:text-\[\#B91C1C\]:hover { color: var(--red) }
+      [data-theme="dark"] .hover\:text-red-700:hover      { color: var(--red) }
+      [data-theme="dark"] .hover\:text-\[\#991B1B\]:hover { color: var(--red-deep) }
+
+      /* status text */
+      [data-theme="dark"] .text-\[\#06603A\] { color: var(--ok-text) }
+      [data-theme="dark"] .text-emerald-700  { color: var(--ok-text) }
+      [data-theme="dark"] .hover\:text-\[\#04452A\]:hover { color: var(--ok-text) }
+      [data-theme="dark"] .text-\[\#8A6D1A\] { color: var(--warn-text) }
+      [data-theme="dark"] .text-\[\#7A5B12\] { color: var(--warn-text) }
+
+      /* rules */
+      [data-theme="dark"] .border-\[\#D8D4C9\] { border-color: var(--edge) }
+      [data-theme="dark"] .border-\[\#E4E2DA\] { border-color: var(--line) }
+      [data-theme="dark"] .border-\[\#ECEAE3\] { border-color: var(--hair) }
+      [data-theme="dark"] .border-\[\#EFEDE7\] { border-color: var(--hair) }
+      [data-theme="dark"] .border-\[\#F0EFE9\] { border-color: var(--hair) }
+      [data-theme="dark"] .border-\[\#1A2433\] { border-color: var(--ink) }
+      [data-theme="dark"] .border-\[\#B91C1C\] { border-color: var(--red) }
+      [data-theme="dark"] .border-brand-600    { border-color: var(--red) }
+      [data-theme="dark"] .border-brand-700    { border-color: var(--red) }
+      [data-theme="dark"] .border-\[\#BFE5D2\] { border-color: var(--ok-rule) }
+      [data-theme="dark"] .border-emerald-300  { border-color: var(--ok-rule) }
+      [data-theme="dark"] .border-\[\#EDDFB0\] { border-color: var(--warn-rule) }
+      [data-theme="dark"] .border-red-200      { border-color: var(--red) }
+      [data-theme="dark"] .hover\:border-\[\#1A2433\]:hover { border-color: var(--ink) }
+      [data-theme="dark"] .focus\:border-\[\#B91C1C\]:focus { border-color: var(--red) }
+      [data-theme="dark"] .focus\:border-brand-600:focus    { border-color: var(--red) }
+
+      /* rings, outlines, decoration, accent */
+      [data-theme="dark"] .focus\:ring-\[\#B91C1C\]:focus { --tw-ring-color: var(--red) }
+      [data-theme="dark"] .focus\:ring-brand-600:focus    { --tw-ring-color: var(--red) }
+      [data-theme="dark"] .outline-\[\#B91C1C\]  { outline-color: var(--red) }
+      /* Every real usage is focus-visible:outline-[#B8C0CC] (a keyboard-focus
+         ring on the footer links), never the bare utility -- Tailwind emits
+         .focus-visible\:outline-\[\#B8C0CC\]:focus-visible, which a selector
+         with neither the prefix nor the pseudo-class cannot match (fix
+         round 2; the old bare rule matched nothing and slipped past
+         coverage by an accident of two unrelated regexes agreeing on the
+         same bare substring). Targets --ink-3, not --ink-4: --ink-4 dark
+         (#475569) measured 1.93:1 as a focus indicator against --slab,
+         where --ink-3 dark (#94A3B8) measures ~5.7:1. */
+      [data-theme="dark"] .focus-visible\:outline-\[\#B8C0CC\]:focus-visible { outline-color: var(--ink-3) }
+      [data-theme="dark"] .decoration-\[\#D8D4C9\] { text-decoration-color: var(--edge) }
+      [data-theme="dark"] .decoration-\[\#46536A\] { text-decoration-color: var(--ink-body) }
+      [data-theme="dark"] .decoration-brand-300    { text-decoration-color: var(--red) }
+      [data-theme="dark"] .hover\:decoration-brand-700:hover { text-decoration-color: var(--red) }
+      [data-theme="dark"] .accent-\[\#B91C1C\]   { accent-color: var(--red) }
+      /* divide-* sets border-colour on CHILDREN, so the selector must match
+         Tailwind's own shape or it silently does nothing. */
+      [data-theme="dark"] .divide-\[\#F0EFE9\] > :not([hidden]) ~ :not([hidden]) { border-color: var(--hair) }
+
+      /* Leaflet's own chrome (zoom/layers controls, attribution, popups) --
+         not a Tailwind utility, so it needs its own rules rather than a
+         class-name bridge entry. The tile layer and pins theme separately
+         in JS (see basemapUrl()/pinColors() above renderMap in the script
+         below); this is the surrounding control/popup furniture only. */
+      [data-theme="dark"] .leaflet-control-attribution,
+      [data-theme="dark"] .leaflet-bar a {
+        background: var(--card); color: var(--ink-3); border-color: var(--edge);
+      }
+      [data-theme="dark"] .leaflet-bar a:hover { background: var(--wash) }
+      [data-theme="dark"] .leaflet-popup-content-wrapper,
+      [data-theme="dark"] .leaflet-popup-tip { background: var(--card); color: var(--ink) }
+
+      /* Member logos are uploaded as data URIs and are almost always drawn
+         for white paper, so a black-on-transparent mark disappears on a
+         dark letterhead. The chip is presentation only -- the stored
+         profile is untouched, and print/PNG never see this rule at all. */
+      [data-theme="dark"] .brand-logo {
+        background: #fff; padding: 4px 6px; border-radius: 3px;
+      }
+    }
+
     /* ------------------------------------------------------------------------
        Design tokens — the whole site draws from these; don't invent new values.
        Dark surfaces (slate only): slate-950 #020617 bookends (hero start,
@@ -66,11 +272,25 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     /* Skeleton loading — calm gray placeholders shaped like the report. The
        sweep is slow and faint on purpose; the progress bar carries the motion. */
-    .skeleton { position: relative; overflow: hidden; background: #E4E2DA; border-radius: 6px; }
+    .skeleton { position: relative; overflow: hidden; background: var(--wash); border-radius: 6px; }
     .skeleton::after {
       content: ""; position: absolute; inset: 0; transform: translateX(-100%);
       background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent);
       animation: shimmer 2.2s ease-in-out infinite;
+    }
+    /* @media screen wrapper here for the same reason Critical 1 wraps the
+       token block and the bridge: a bare [data-theme="dark"] attribute
+       selector is not restricted by media type any more than a custom
+       property is, so without this an element with data-theme="dark" set
+       would still match during print. Practically inert today (the
+       loading skeleton only ever shows inside #loadingCard, which carries
+       no-print), but structurally identical to the bug, so it gets the
+       same fix on the same pass rather than being left as a second,
+       smaller version of it. */
+    @media screen {
+      [data-theme="dark"] .skeleton::after {
+        background: linear-gradient(90deg, transparent, rgb(255 255 255 / .06), transparent);
+      }
     }
     @keyframes shimmer { 100% { transform: translateX(100%); } }
     /* Assembling report: children of #results outside the data-assemble
@@ -80,7 +300,7 @@
     .asm-hidden { display: none !important; }
 
     th.sortable { cursor: pointer; user-select: none; }
-    #compsTable th.sortable:hover { background-color: #F5F4EF; color: #374253; }
+    #compsTable th.sortable:hover { background-color: var(--wash-2); color: var(--ink-body); }
 
     /* Page-load entrance — the brand bar, heading, and form drift in on first paint. */
     .enter { opacity: 0; animation: fadeIn .5s ease-out forwards; }
@@ -103,7 +323,7 @@
     .comp-num {
       display: inline-flex; align-items: center; justify-content: center;
       width: 1.25rem; height: 1.25rem; border-radius: 9999px; flex-shrink: 0;
-      background: #F5F4EF; color: #5A6473; border: 1px solid #E4E2DA;
+      background: var(--wash); color: var(--ink-mute); border: 1px solid var(--line);
       font-size: 10px; font-weight: 600; line-height: 1;
       font-variant-numeric: normal;
     }
@@ -118,7 +338,7 @@
     .reveal.revealed { opacity: 1; transform: none; }
 
     /* Brand micro-moment: ninja-red text selection. */
-    ::selection { background: #B91C1C; color: #fff; }
+    ::selection { background: var(--red-fill); color: #fff; }
 
     /* Loading card: the ninja jogs along the progress bar's leading edge while
        the search runs, and the stage headline cross-fades between steps. */
@@ -132,6 +352,11 @@
     }
     .loading-ninja svg { display: block; width: 100%; height: 100%; animation: ninjaJog .38s ease-in-out infinite alternate; }
     .loading-ninja .ninja-body { fill: #334155; }
+    /* @media screen wrapper: same reasoning as .skeleton::after above --
+       #loadingCard (the ninja's only container) carries no-print, so this
+       is practically inert, but structurally the same bug Critical 1
+       describes and gets the same fix. */
+    @media screen { [data-theme="dark"] .loading-ninja .ninja-body { fill: var(--ink-3); } }
     .loading-ninja .ninja-band { fill: #DC2626; }
     @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
     #loadingHeadline { transition: opacity .22s ease; }
@@ -167,7 +392,7 @@
 
     /* Export buttons briefly confirm a finished download (element+class beats
        the Tailwind color utilities without !important). */
-    button.export-done { color: #047857; background-color: #ecfdf5; border-color: #6ee7b7; }
+    button.export-done { color: var(--ok-text); background-color: var(--ok-bg); border-color: var(--ok-rule); }
 
     /* Report arrival: the Avg $/SF tile pulses a soft brand ring once, and its
        spread bar sweeps low→high with the comp average marked. Both start
@@ -180,15 +405,19 @@
       30%  { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 4px rgb(185 28 28 / .22); }
       100% { box-shadow: 0 1px 2px 0 rgb(0 0 0 / .05), 0 0 0 0 rgb(185 28 28 / 0); }
     }
-    .spread-track { position: relative; height: 5px; border-radius: 999px; background: #E4E2DA; }
+    .spread-track { position: relative; height: 5px; border-radius: 999px; background: var(--line); }
+    /* #FCA5A5 stays literal: it's --red-deep's DARK value, not its light one
+       (light red-deep is #991B1B), so mapping it to a token would change
+       this gradient's LIGHT-mode start colour, which must not happen. No
+       token has #FCA5A5 as its light value. Flagged in task-4-report.md. */
     .spread-fill {
       position: absolute; inset: 0; border-radius: 999px;
-      background: linear-gradient(90deg, #FCA5A5, #B91C1C);
+      background: linear-gradient(90deg, #FCA5A5, var(--red-fill));
       transform: scaleX(0); transform-origin: left;
     }
     .spread-marker {
       position: absolute; top: 50%; width: 2px; height: 11px;
-      background: #1A2433; border-radius: 2px; transform: translate(-50%, -50%) scaleY(0);
+      background: var(--slab); border-radius: 2px; transform: translate(-50%, -50%) scaleY(0);
     }
     #statTiles.in-view .spread-fill { animation: spreadSweep .6s ease-out .1s forwards; }
     #statTiles.in-view .spread-marker { animation: markerPop .3s ease-out .5s forwards; }
@@ -251,10 +480,10 @@
        the server never sent the values, so there is nothing here to recover
        from the DOM. The shimmer reads as "content withheld", not "loading":
        it is slow and low-contrast, and it stops for reduced-motion users. */
-    .comp-locked { background: #FCFCFA; }
+    .comp-locked { background: var(--paper); }
     .lock-bar {
       display: block; height: 9px; border-radius: 3px;
-      background: linear-gradient(90deg, #ECEAE3 0%, #F5F4EF 50%, #ECEAE3 100%);
+      background: linear-gradient(90deg, var(--hair) 0%, var(--wash) 50%, var(--hair) 100%);
       background-size: 200% 100%;
       animation: lockShimmer 3.2s ease-in-out infinite;
     }
@@ -359,27 +588,27 @@
     }
 
     /* ---------------- Research Desk landing system ---------------- */
-    .rd-kicker { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #B91C1C; font-weight: 600; }
-    .rd-h { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; }
-    .rd-hairline { border-color: #E4E2DA; }
-    .rd-wordmark { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: #1A2433; }
-    .rd-wordmark b { color: #B91C1C; font-weight: 600; }
+    .rd-kicker { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); font-weight: 600; }
+    .rd-h { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
+    .rd-hairline { border-color: var(--line); }
+    .rd-wordmark { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: var(--ink); }
+    .rd-wordmark b { color: var(--red); font-weight: 600; }
     /* Form-as-unit: bordered cells, micro labels, borderless inputs */
-    .rd-form { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; }
-    .rd-cell { padding: 11px 16px; border-right: 1px solid #ECEAE3; }
+    .rd-form { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; }
+    .rd-cell { padding: 11px 16px; border-right: 1px solid var(--hair); }
     .rd-cell:last-child { border-right: 0; }
-    .rd-row { border-bottom: 1px solid #ECEAE3; }
-    .rd-lab { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #68707E; font-weight: 600; margin-bottom: 2px; }
+    .rd-row { border-bottom: 1px solid var(--hair); }
+    .rd-lab { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 2px; }
     /* 16px is load-bearing, not a taste choice: iOS Safari auto-zooms on focus
        for any input under 16px and never zooms back out, leaving the page
        zoomed and side-scrolled after tapping the address field — the site's
        single most-tapped control. Do not "tidy" this back down. */
-    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: #1A2433; background: transparent; }
+    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: var(--ink); background: transparent; }
     /* #68707E, same as the swept caption gray: #9AA2AD measured 2.6:1, below
        even the relaxed placeholder bar, and the example addresses rotating in
        the search field are real guidance, not decoration. Still clearly
        lighter than typed ink (#1A2433). */
-    .rd-in::placeholder { color: #68707E; }
+    .rd-in::placeholder { color: var(--ink-3); }
     /* There was a mutual-exclusivity rule here (#sizeEstimateNote hiding a
        standing #sizeHint sentence) until 2026-08-10. Both the rule and that
        sentence are gone: the size field moved into Refine, which states the
@@ -408,40 +637,51 @@
        the ring off a legitimately focused address field. Same notion on both
        sides means they cannot drift apart. */
     .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
-    @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid #ECEAE3; } .rd-row { border-bottom: 0; } }
+    @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid var(--hair); } .rd-row { border-bottom: 0; } }
     /* Card frame — shared by the live map and comps cards. (The sample-report
        exhibit that also used it now lives on /how-it-works, which is
        server-rendered with its own copy of these rules.) */
-    .rd-exhibit { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; overflow: hidden; }
+    .rd-exhibit { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; overflow: hidden; }
     /* Own line-height so the chip box stays compact even inside a roomier
        parent line (the badge legend uses leading-6 to keep wrapped rows apart). */
     .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
-    .rd-badge.v { color: #06603A; background: #E3F2EA; }
+    .rd-badge.v { color: var(--ok-text); background: var(--ok-bg); }
+    /* .rd-badge.p (a pale blue-gray pair) has no matching token -- flagged in
+       task-4-report.md, left fully literal on purpose rather than guessed.
+       Both colour AND background must be literal together: a HALF
+       conversion (text tokenized, background left at #EAEEF4) measured
+       1.28:1 in dark mode, because --ink-body's dark value (#CBD5E1, a
+       near-white meant for a near-black page) sits on this background's
+       unchanged light value. Matches the .e / .bv pattern. */
     .rd-badge.p { color: #46536A; background: #EAEEF4; }
-    .rd-badge.li { color: #7A5B12; background: #F7EFDC; }
+    .rd-badge.li { color: var(--warn-text); background: var(--warn-bg); }
     /* Full-bleed alt band — the background spans the whole viewport while the
-       content stays in the centered column (the mockup's #F5F4EF section grounds). */
-    .rd-band { background: #F5F4EF; box-shadow: 0 0 0 100vmax #F5F4EF; clip-path: inset(0 -100vmax); }
+       content stays in the centered column (the mockup's #F5F4EF section grounds).
+       The box-shadow here is a full-bleed-background TECHNIQUE, not a drop
+       shadow (it simulates a background fill outside a max-width column), so
+       unlike an ordinary elevation shadow it must track --wash too or the
+       band shows a bright light stripe across an otherwise dark page. */
+    .rd-band { background: var(--wash); box-shadow: 0 0 0 100vmax var(--wash); clip-path: inset(0 -100vmax); }
     /* Broker cards */
-    .rd-bcard { border: 1px solid #D8D4C9; background: #fff; border-radius: 6px; padding: 24px; }
+    .rd-bcard { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; padding: 24px; }
 
     /* ------------- Research Desk report tokens (live report restyle) ------------- */
     /* Neutral value tile: paper alt tone + hairline — replaces the slate-50 bubbles. */
-    .rd-tile { background: #F5F4EF; border: 1px solid #E4E2DA; border-radius: 6px; padding: 16px; }
+    .rd-tile { background: var(--wash); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
     /* Highlight tile (Likely / Hold DCF): white with a single red hairline and a
        red uppercase label — quietly distinct, editorial, not a colored bubble. */
-    .rd-tile-hi { background: #fff; border: 1px solid #B91C1C; border-radius: 6px; padding: 16px; }
-    .rd-tile-hi .rd-lab { color: #B91C1C; }
+    .rd-tile-hi { background: var(--card); border: 1px solid var(--red); border-radius: 6px; padding: 16px; }
+    .rd-tile-hi .rd-lab { color: var(--red); }
     /* Ledger hero (Direction A, owner-approved 2026-08-08): the Low/Likely/High
        tiles as one ruled ledger line — serif figures, red spent only on the
        LIKELY label. Flex without gap on purpose: #ownerHero IS captured by the
        PNG exporter, which can't render flex gap; the hairlines carry the
        separation instead. */
-    .rd-ledger { display: flex; border: 1px solid #D8D4C9; border-radius: 6px; overflow: hidden; }
-    .rd-ledger .rd-lcell { flex: 1 1 0; min-width: 0; padding: 14px 18px; border-right: 1px solid #ECEAE3; background: #fff; }
+    .rd-ledger { display: flex; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; }
+    .rd-ledger .rd-lcell { flex: 1 1 0; min-width: 0; padding: 14px 18px; border-right: 1px solid var(--hair); background: var(--card); }
     .rd-ledger .rd-lcell:last-child { border-right: 0; }
-    .rd-ledger .rd-lcell.mid { background: #FCFBF8; }
-    .rd-ledger .rd-lcell.mid .rd-lab { color: #B91C1C; }
+    .rd-ledger .rd-lcell.mid { background: var(--wash); }
+    .rd-ledger .rd-lcell.mid .rd-lab { color: var(--red); }
     .rd-lfig { font-size: 26px; }
     .rd-lcell.mid .rd-lfig { font-size: 32px; }
     /* Comp scatter (owner-approved 2026-08-09): the hairline number line under
@@ -454,12 +694,14 @@
        flex gap and no transform: html2canvas silently collapses gap, and its
        transform support is partial. Keep it that way. */
     .rd-scat { position: relative; height: 26px; }
-    .rd-scat-band { position: absolute; top: 0; height: 100%; background: #F1EFE8; border-radius: 2px; }
-    .rd-scat-rule { position: absolute; left: 0; right: 0; top: 12px; height: 1px; background: #D8D4C9; }
+    .rd-scat-band { position: absolute; top: 0; height: 100%; background: var(--wash); border-radius: 2px; }
+    .rd-scat-rule { position: absolute; left: 0; right: 0; top: 12px; height: 1px; background: var(--edge); }
+    /* #8A929E (the tick mark colour) has no matching token -- flagged in
+       task-4-report.md, left literal on purpose rather than guessed. */
     .rd-scat-tick { position: absolute; top: 7px; width: 1px; height: 12px; background: #8A929E; opacity: .55; }
-    .rd-scat-mid { position: absolute; top: 3px; width: 2px; height: 20px; background: #B91C1C; }
-    .rd-scat-midlab { position: absolute; top: -13px; width: 60px; margin-left: -30px; text-align: center; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: #B91C1C; }
-    .rd-scat-ends { display: flex; justify-content: space-between; font-size: 11px; color: #68707E; margin-top: 3px; }
+    .rd-scat-mid { position: absolute; top: 3px; width: 2px; height: 20px; background: var(--red-fill); }
+    .rd-scat-midlab { position: absolute; top: -13px; width: 60px; margin-left: -30px; text-align: center; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--red); }
+    .rd-scat-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
     /* Every mark on this line IS a background color, and browsers drop
        backgrounds on paper unless the visitor ticks "Background graphics".
        Without this the printed report shows a bare rule with no ticks, no
@@ -481,14 +723,14 @@
        exporter captures, and html2canvas silently collapses flex gap. Same
        reason the scatter above is absolute-positioned. */
     .ap-stmt { width: 100%; border-collapse: collapse; }
-    .ap-stmt th { text-align: left; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: #68707E; font-weight: 600; padding: 0 0 6px; border-bottom: 1px solid #1A2433; }
+    .ap-stmt th { text-align: left; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 0 0 6px; border-bottom: 1px solid var(--ink); }
     .ap-stmt th.num, .ap-stmt td.num { text-align: right; }
-    .ap-stmt td { padding: 9px 0; border-bottom: 1px solid #F0EFE9; vertical-align: baseline; font-size: 13px; color: #4C5665; line-height: 1.5; }
+    .ap-stmt td { padding: 9px 0; border-bottom: 1px solid var(--hair); vertical-align: baseline; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
     .ap-stmt tr:last-child td { border-bottom: 0; }
-    .ap-stmt td.num { white-space: nowrap; padding-left: 14px; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; font-variant-numeric: tabular-nums; }
-    .ap-stmt .ap-lab { font-weight: 600; color: #1A2433; }
-    .ap-stmt tr.muted td { font-size: 12px; color: #68707E; }
-    .ap-stmt tr.muted .ap-lab { color: #68707E; }
+    .ap-stmt td.num { white-space: nowrap; padding-left: 14px; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .ap-stmt .ap-lab { font-weight: 600; color: var(--ink); }
+    .ap-stmt tr.muted td { font-size: 12px; color: var(--ink-3); }
+    .ap-stmt tr.muted .ap-lab { color: var(--ink-3); }
     /* Two columns need a phone treatment. The value column is nowrap by
        design (a wrapped "$7,925,000 – $8,625,000" is unreadable), which at
        343px leaves the evidence about 150px and turns every row into a
@@ -499,7 +741,7 @@
     @media (max-width: 559.98px) {
       .ap-stmt, .ap-stmt tbody, .ap-stmt tr, .ap-stmt td { display: block; width: 100%; }
       .ap-stmt .ap-head { display: none; }
-      .ap-stmt tr { padding: 10px 0; border-bottom: 1px solid #F0EFE9; }
+      .ap-stmt tr { padding: 10px 0; border-bottom: 1px solid var(--hair); }
       .ap-stmt tr:last-child { border-bottom: 0; padding-bottom: 0; }
       .ap-stmt tr:first-of-type { padding-top: 0; }
       .ap-stmt td { padding: 0; border-bottom: 0; }
@@ -511,19 +753,22 @@
        behind the compare toggle — price sealed under the double rule, where
        this site puts a figure that is final. */
     .pr-cell { display: flex; flex-direction: column; }
-    .pr-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; font-size: 23px; margin-top: 3px; }
+    .pr-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); font-size: 23px; margin-top: 3px; }
     .rd-lcell.mid .pr-fig { font-size: 28px; }
-    .pr-per { font-size: 11px; color: #68707E; }
-    .pr-sum { font-size: 12px; color: #4C5665; margin-top: 6px; flex: 1; }
+    .pr-per { font-size: 11px; color: var(--ink-3); }
+    .pr-sum { font-size: 12px; color: var(--ink-2); margin-top: 6px; flex: 1; }
     .pr-stmt { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-    .pr-stmt th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #68707E; font-weight: 600; padding: 7px 10px; border-bottom: 2px solid #1A2433; }
+    .pr-stmt th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 7px 10px; border-bottom: 2px solid var(--ink); }
     .pr-stmt th.c, .pr-stmt td.c { text-align: center; width: 92px; }
-    .pr-stmt th.c.pro { color: #B91C1C; }
-    .pr-stmt td { padding: 7px 10px; border-bottom: 1px solid #F0EFE9; color: #374253; }
-    .pr-stmt td.c { color: #1A2433; font-weight: 500; }
-    .pr-stmt td.c .no { color: #C9CDD3; }
-    .pr-stmt col.pro-col { background: #FCFBF8; }
-    .pr-stmt tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; padding: 9px 10px; }
+    .pr-stmt th.c.pro { color: var(--red); }
+    .pr-stmt td { padding: 7px 10px; border-bottom: 1px solid var(--hair); color: var(--ink-body); }
+    .pr-stmt td.c { color: var(--ink); font-weight: 500; }
+    /* text/fill-style split, applied to --ink-4: as TEXT (this "not included"
+       mark) it must read var(--ink-faint), not var(--ink-4) -- see the
+       footer-link fix in the bridge above for the same reasoning. */
+    .pr-stmt td.c .no { color: var(--ink-faint); }
+    .pr-stmt col.pro-col { background: var(--wash); }
+    .pr-stmt tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; padding: 9px 10px; }
     .pr-stmt tfoot .fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 17px; }
     /* My Desk (Directions K+L, owner-approved 2026-08-09): the portfolio as a
        book — ledger strip, statement table closing on the combined total,
@@ -531,58 +776,64 @@
        stores — and the watchlist as a ruled briefing. .dk-rule is the
        section-head-on-an-ink-rule treatment every desk section now uses in
        place of the old floating labels. */
-    .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid #1A2433; padding-bottom: 4px; }
-    .dk-rule .rd-lab { margin-bottom: 0; color: #1A2433; letter-spacing: .12em; }
-    .dk-note { font-size: 10.5px; color: #68707E; text-align: right; }
-    .dk-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: #1A2433; }
+    .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid var(--ink); padding-bottom: 4px; }
+    .dk-rule .rd-lab { margin-bottom: 0; color: var(--ink); letter-spacing: .12em; }
+    .dk-note { font-size: 10.5px; color: var(--ink-3); text-align: right; }
+    .dk-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
     .dk-stmt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 560px; }
-    .dk-stmt th { text-align: left; color: #68707E; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 7px 10px 7px 0; border-bottom: 1px solid #ECEAE3; }
-    .dk-stmt td { padding: 9px 10px 9px 0; border-bottom: 1px solid #F0EFE9; color: #374253; vertical-align: middle; }
+    .dk-stmt th { text-align: left; color: var(--ink-3); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--hair); }
+    .dk-stmt td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--hair); color: var(--ink-body); vertical-align: middle; }
     .dk-stmt th.num, .dk-stmt td.num { text-align: right; }
-    .dk-stmt tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; color: #1A2433; }
-    .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: #5A6473; }
-    .dk-up { color: #047857; font-size: 11px; font-weight: 500; }
-    .dk-down { color: #B91C1C; font-size: 11px; font-weight: 500; }
-    .dk-mkt { padding: 14px 0; border-bottom: 1px solid #F0EFE9; }
+    .dk-stmt tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; color: var(--ink); }
+    .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
+    .dk-up { color: var(--ok-text); font-size: 11px; font-weight: 500; }
+    .dk-down { color: var(--red); font-size: 11px; font-weight: 500; }
+    .dk-mkt { padding: 14px 0; border-bottom: 1px solid var(--hair); }
     .dk-mkt:last-child { border-bottom: 0; }
-    .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: #1A2433; }
-    .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #B91C1C; margin-top: 6px; }
-    .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: #374253; padding: 4px 0; border-bottom: 1px solid #F7F6F2; flex-wrap: wrap; }
+    .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: var(--ink); }
+    .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
+    .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
     @media (max-width: 639.98px) {
       .rd-ledger { flex-direction: column; }
-      .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid #ECEAE3; }
+      .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid var(--hair); }
       .rd-ledger .rd-lcell:last-child { border-bottom: 0; }
     }
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
-    .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: #4C5665; background: #F0EFE9; border: 1px solid #E4E2DA; border-radius: 3px; padding: 2px 8px; }
-    .rd-chip.o { background: #fff; border-color: #D8D4C9; color: #5A6473; }
+    .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
+    .rd-chip.o { background: var(--card); border-color: var(--edge); color: var(--ink-mute); }
     /* Badge tiers the live report needs beyond the landing set: news (weakest,
        nearly typographic) + estimate (caution sienna, distinct from .li gold). */
-    .rd-badge.n { color: #5A6473; background: #F0EFE9; }
+    .rd-badge.n { color: var(--ink-mute); background: var(--wash); }
+    /* .rd-badge.e's colours (a sienna "caution" pair, deliberately distinct
+       from the amber .li badge per the comment above) have no matching
+       tokens -- flagged in task-4-report.md, left literal rather than
+       guessed or folded into --warn-*, which would erase that distinction. */
     .rd-badge.e { color: #9A3412; background: #F8E9DC; }
-    .rd-badge.u { background:#F4F3EE; color:#5A6473; border:1px solid #D8D4C9; }
+    .rd-badge.u { background: var(--wash); color: var(--ink-mute); border: 1px solid var(--edge); }
     /* A comp from the signed-in broker's own private vault. Deliberately NOT
        green: Verified is a public claim, earned by vouching for a comp in the
-       public records, and a private row has earned none of it. */
-    .rd-badge.bv { color:#4C3A8C; background:#EDE9F8; }
+       public records, and a private row has earned none of it. Its purple
+       identity (also deliberately distinct) has no matching token either --
+       flagged in task-4-report.md, left literal rather than guessed. */
+    .rd-badge.bv { color: #4C3A8C; background: #EDE9F8; }
     tr.comp-excluded td > div, .card-excluded > :not(.cur-head), .card-excluded .cur-head > :not(.cur-ctrl) { opacity:.45; }
     /* Live comps table header — the landing exhibit's editorial th at the live
        table's own geometry (padding/alignment stay in the JS-built classes).
        No background here so the sortable hover rule can win. */
-    #compsTable thead th { color: #68707E; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid #1A2433; }
+    #compsTable thead th { color: var(--ink-3); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid var(--ink); }
     /* Statement table (Direction B, owner-approved 2026-08-08): the header
        closes under a strong ink rule (above) and the table ends in a median
        row sealed with a double rule — the audited-statement mark for "this
        figure is final". Built by renderTableFoot() from the same
        valuationComps() sales median the chart and hero read, so the three
        can never disagree on one report. */
-    #compsTable tfoot td { border-top: 1px solid #1A2433; border-bottom: 3px double #1A2433; font-weight: 600; }
-    #compsTable tfoot .tf-lab { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: #5A6473; }
+    #compsTable tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; }
+    #compsTable tfoot .tf-lab { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-mute); }
     /* Driver rows: .rd-drv's hairline rhythm without flex gap (PNG exporter). */
-    #driversList p { border-top: 1px solid #F0EFE9; padding: 7px 0; margin: 0; }
+    #driversList p { border-top: 1px solid var(--hair); padding: 7px 0; margin: 0; }
     #driversList p:first-child { border-top: 0; }
-    #driversList b { color: #B91C1C; }
+    #driversList b { color: var(--red); }
     /* Map fullscreen: a CSS viewport takeover (works on iOS too, where the
        native Fullscreen API doesn't cover arbitrary elements). !important
        beats the container's inline 340px height; dvh tracks mobile browser
@@ -1061,8 +1312,8 @@
     <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-2.5" aria-label="CompNinja home">
         <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
-          <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-          <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+          <rect x="2" y="4" width="26" height="22" rx="2" fill="var(--ink)"/>
+          <polygon points="3.5,26 28,5.5 28,10 8,26" fill="var(--red-fill)"/>
         </svg>
         <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </a>
@@ -1071,6 +1322,11 @@
              items on every screen; My Desk and Sign in are actions and stay
              visible. Mirrored (as a no-JS <details>) on the server-rendered
              market / brokers / how-it-works headers in server.js. -->
+        <button id="themeToggleApp" type="button" class="hover:text-[#1A2433] leading-none"
+          aria-label="Switch colour theme" title="Switch colour theme">
+          <svg viewBox="0 0 20 20" class="w-4 h-4" aria-hidden="true"><path fill="currentColor"
+            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
+        </button>
         <div id="exploreMenuWrap" class="relative">
           <button id="exploreMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
             class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
@@ -1683,7 +1939,10 @@
       <!-- Captured / printed region -->
       <div id="reportArea" class="space-y-6">
 
-        <!-- Print letterhead: appears only on the printed / PDF report -->
+        <!-- Print letterhead: appears only on the printed / PDF report.
+             .print-only is display:none on screen, so this icon is never
+             seen in dark mode -- literal fill values stay on purpose, since
+             print always renders light regardless of the site theme. -->
         <div class="print-only pb-3 mb-2 border-b-2 border-brand-700">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -1717,8 +1976,8 @@
             <div class="report-lockup shrink-0 flex items-center gap-2">
               <div id="reportLockupDefault" class="flex items-center gap-2">
                 <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
-                  <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
-                  <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+                  <rect x="2" y="4" width="26" height="22" rx="2" fill="var(--ink)"/>
+                  <polygon points="3.5,26 28,5.5 28,10 8,26" fill="var(--red-fill)"/>
                 </svg>
                 <div class="rd-wordmark uppercase">Comp<b>Ninja</b></div>
               </div>
@@ -2354,7 +2613,7 @@
   </div>
 
   <!-- Site footer — navy ink, plain-English disclosure -->
-  <footer class="mt-14 no-print" style="background:#1A2433">
+  <footer class="mt-14 no-print bg-[#1A2433]">
     <div class="max-w-5xl mx-auto px-4 py-10 text-[13px] text-[#B8C0CC]">
       <div class="flex flex-col sm:flex-row justify-between gap-8">
         <div class="max-w-[68ch]">
@@ -2363,6 +2622,16 @@
               <rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>
               <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
             </svg>
+            <!-- .rd-wordmark's default colours (var(--ink) / var(--red))
+                 are for the wordmark on the page background, which themes.
+                 This one sits on bg-[#1A2433] -- a slab that is dark in
+                 BOTH themes (light: #1A2433, dark mode's own --slab:
+                 #1E293B; see the "surfaces already dark in light mode
+                 lift" comment in theme.js) -- so white text and this
+                 bright accent red read correctly regardless of site theme,
+                 the same reasoning already applied to plain text-white
+                 elsewhere on this dark footer. Left literal on purpose;
+                 not a missed dark-mode case. -->
             <span class="rd-wordmark uppercase" style="color:#fff">Comp<b style="color:#EF4444">Ninja</b></span>
           </div>
           <p class="mt-3 leading-relaxed text-[#8F99A8]">Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage: we connect you with local brokers for opinions of value. Comparables derive from publicly available data; verify independently before underwriting.</p>
@@ -2412,7 +2681,7 @@
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, compWeight, trendFactor, valueFromComps } = VALUATION;
+          compAgeYears, compWeight, trendFactor, valueFromComps, subjectSizeFit } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -4110,13 +4379,31 @@
     // class (down-weighted, never hidden), and say plainly when only 2-3
     // comps back the range - below 4 there is no outlier trim, so the band
     // is the raw spread and deserves rougher treatment.
-    const offSizeN = subjSFMid > 0
-      ? saleComps.filter((x) => {
-          const csf = numericValue(x.comp.size_sqft);
-          return csf > 0 && Math.abs(Math.log2(csf / subjSFMid)) > 1;
-        }).length
-      : 0;
-    const sizeNote = offSizeN > 0
+    //
+    // The comparison itself belongs to VALUATION.subjectSizeFit, which owns the
+    // 0.5x-2x window compWeight discounts by. Computing it here too would be a
+    // second copy of the rule deciding both this note and the warning below it.
+    const sizeFit = subjectSizeFit(subjSFMid, saleComps.map((x) => x.comp));
+    const offSizeN = sizeFit ? sizeFit.offSize : 0;
+    // When EVERY sized comp is a different size class the note above is the
+    // wrong way round, and dangerously so: it blames the comps for a gap the
+    // SIZE BOX is far likelier to have caused, and that box is the number the
+    // range is multiplied by. So say which figure to doubt, in the size box's
+    // own words, and name the closest comp so the gap is checkable at a glance.
+    // The pointer names the FORM's own label for the box, which is already
+    // per-type (SIZE_LABELS), rather than a second hardcoded "Building Size"
+    // that sent a homeowner looking for a field that says something else.
+    // Read from SIZE_LABELS rather than off #targetSizeLabel: a shared report
+    // renders somebody else's type into a form still labelled for whatever
+    // this visitor last searched. Shared with the basis line below, which
+    // points at the same box for the same reason.
+    const sizeFieldLabel = (SIZE_LABELS[meta.type] || "Building size (SF)").replace(/\s*\(SF\)\s*$/, "");
+    const sizeNote = sizeFit && sizeFit.unsupported
+      ? ` Every one of the ${sizeFit.sized} sized comps is a different size class from the `
+        + `${Math.round(subjSFMid).toLocaleString()} SF used here — the closest is `
+        + `${Math.round(sizeFit.nearest).toLocaleString()} SF — so this range is extrapolated `
+        + `${sizeFit.factor}x beyond the comps. Check ${sizeFieldLabel} above before relying on it.`
+      : offSizeN > 0
       ? ` ${offSizeN} comp${offSizeN === 1 ? " is" : "s are"} a different size class and count${offSizeN === 1 ? "s" : ""} less (‡ in the table).`
       : "";
     const smallNNote = (n) => n < 4
@@ -4309,13 +4596,6 @@
       const compsPhrase = rr.trimmed
         ? `the middle range of ${ppsfs.length} sale comps`
         : `$/SF from ${ppsfs.length} sale comps`;
-      // The pointer names the FORM's own label for the box, which is already
-      // per-type (SIZE_LABELS), rather than a second hardcoded "Building Size"
-      // that sent a homeowner looking for a field that says something else.
-      // Read from SIZE_LABELS rather than off #targetSizeLabel: a shared report
-      // renders somebody else's type into a form still labelled for whatever
-      // this visitor last searched.
-      const sizeFieldLabel = (SIZE_LABELS[meta.type] || "Building size (SF)").replace(/\s*\(SF\)\s*$/, "");
       basisEl.textContent = srcPhrase
         ? `${sizeLabel} (${srcPhrase}; edit ${sizeFieldLabel} above if wrong) × ${compsPhrase}`
         : `${sizeLabel} × ${compsPhrase}`;
@@ -5644,19 +5924,23 @@
     const baseY = compact ? 76 : 62;
     const avgExt = compact ? 28 : 22;            // avg line half-height
     const bandHalf = compact ? 18 : 14;          // subject band half-height
+    // Colours are CSS custom properties, not literal hex -- so this SVG,
+    // once inserted, repaints with the site theme on its own (a toggle mid-
+    // report needs no re-render). fill/stroke on an SVG presentation
+    // attribute resolve var() exactly like a stylesheet declaration would.
     let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sale comps by price per square foot">`;
-    svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="#E4E2DA" stroke-width="2"/>`;
+    svg += `<line class="ch-fade" x1="${EDGE}" y1="${baseY}" x2="${W - EDGE}" y2="${baseY}" stroke="var(--line)" stroke-width="2"/>`;
 
     // Subject band behind everything else.
     if (youLo !== null && isBand) {
-      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="#B91C1C" fill-opacity="0.12"/>`;
+      svg += `<rect class="ch-fade" style="animation-delay:.1s" x="${x(youLo).toFixed(1)}" y="${baseY - bandHalf}" width="${(x(youHi) - x(youLo)).toFixed(1)}" height="${bandHalf * 2}" fill="var(--red-fill)" fill-opacity="0.12"/>`;
     }
 
     // Median line + label, anchor flipped near the edges so it stays inside.
     const ax = x(med);
     const aAnchor = ax < EDGE + 40 ? "start" : ax > W - EDGE - 40 ? "end" : "middle";
-    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="#1A2433" stroke-width="2"/>`;
-    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="#1A2433" font-family="Inter, sans-serif">Median ${formatUsd(med, { maximumFractionDigits: 0 })}</text>`;
+    svg += `<line class="ch-fade" style="animation-delay:.55s" x1="${ax.toFixed(1)}" y1="${baseY - avgExt}" x2="${ax.toFixed(1)}" y2="${baseY + avgExt}" stroke="var(--ink)" stroke-width="2"/>`;
+    svg += `<text class="ch-fade" style="animation-delay:.55s" x="${ax.toFixed(1)}" y="${baseY - avgExt - 8}" text-anchor="${aAnchor}" font-size="${fs}" font-weight="600" fill="var(--ink)" font-family="Inter, sans-serif">Median ${formatUsd(med, { maximumFractionDigits: 0 })}</text>`;
 
     // Comp dots with vertical jitter when they crowd each other.
     const offsets = [0, -11, 11, -22];
@@ -5667,21 +5951,21 @@
       const py = baseY + offsets[oi];
       prevX = px;
       const delay = Math.min(0.15 + i * 0.07, 0.8).toFixed(2);
-      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="#5A6473" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
+      svg += `<circle class="ch-pop" style="animation-delay:${delay}s" cx="${px.toFixed(1)}" cy="${py}" r="6" fill="var(--ink-mute)" fill-opacity="0.85" stroke="var(--card)" stroke-width="1.5"><title>${esc(p.address)} · ${formatUsd(p.v)}/SF</title></circle>`;
     });
 
     // Min/max labels under the strip.
     const lo = pts[0].v, hi = pts[pts.length - 1].v;
     const loHiY = compact ? baseY + 52 : baseY + 38;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="#68707E" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
-    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="#68707E" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(lo).toFixed(1)}" y="${loHiY}" text-anchor="start" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(lo)}</text>`;
+    svg += `<text class="ch-fade" style="animation-delay:.5s" x="${x(hi).toFixed(1)}" y="${loHiY}" text-anchor="end" font-size="${fs}" fill="var(--ink-3)" font-family="Inter, sans-serif">${formatUsd(hi)}</text>`;
 
     // "You" marker on top.
     if (youLo !== null) {
       const yx = x(youMid);
-      svg += `<circle class="ch-pop" style="animation-delay:.75s" cx="${yx.toFixed(1)}" cy="${baseY}" r="7" fill="#B91C1C" stroke="#fff" stroke-width="1.5"/>`;
+      svg += `<circle class="ch-pop" style="animation-delay:.75s" cx="${yx.toFixed(1)}" cy="${baseY}" r="7" fill="var(--red-fill)" stroke="var(--card)" stroke-width="1.5"/>`;
       const yAnchor = yx < EDGE + 20 ? "start" : yx > W - EDGE - 20 ? "end" : "middle";
-      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="#B91C1C" font-family="Inter, sans-serif">You</text>`;
+      svg += `<text class="ch-fade" style="animation-delay:.8s" x="${yx.toFixed(1)}" y="${compact ? baseY + 36 : baseY + 28}" text-anchor="${yAnchor}" font-size="${fs}" font-weight="700" fill="var(--red)" font-family="Inter, sans-serif">You</text>`;
     }
     svg += `</svg>`;
 
@@ -6262,6 +6546,47 @@
     const hay = String(address).toLowerCase();
     return toks.some((t) => hay.indexOf(t) >= 0);
   }
+  // A unit designator means the street address names a SITE, not a structure:
+  // one trailer in a park, one suite in an office building, one apartment in a
+  // block. Geocoders drop it — Census answered "6728 W Fairview Ave Trailer 51"
+  // with "6728 FAIRVIEW AVE" and no complaint — so the point that comes back
+  // identifies the whole site and no footprint near it can be shown to be the
+  // subject's. Every consumer of that point which makes a claim about ONE
+  // building (the footprint size estimate, the popup photo) has to stand down;
+  // the pin itself is fine, because it only ever claimed to be the address.
+  //
+  // Real case, 2026-08-13: that trailer's report valued a $52k mobile home at
+  // $795,000. Nothing was wrong with the comps — the model found eight
+  // manufactured homes at $61-158/SF — but the size box had been auto-filled
+  // with 10,100 SF measured off Bob's Bicycles, a bike shop 81 m up Fairview,
+  // and the pin's photo showed that shop too. One heuristic, both symptoms.
+  //
+  // Kept deliberately narrow: only forms that unambiguously name a subdivision
+  // of an address. A bare "#" is included because "#45" is how most people
+  // write it, but a lone number is not — "6728 W Fairview Ave 51" is more often
+  // a typo than a space number, and this returns a REFUSAL, so a false positive
+  // silently costs a size estimate and a photo on an ordinary house.
+  //
+  // After a keyword the identifier must carry a digit ("Apt 3B", "Ste 200",
+  // "Trailer 51") or be one or two bare letters ("Bldg B", "Unit A"). Matching
+  // any following word instead reads "123 Ste Genevieve Ave" as suite
+  // "Genevieve" and quietly strips that address of its photo forever.
+  //
+  // The bare-letter form REQUIRES whitespace after the keyword; the
+  // digit-bearing one does not. Without that asymmetry a keyword plus one or
+  // two letters spells ordinary words and the vocabulary eats real street
+  // names: "100 Roomy Lane" is room + y, "Lotus" is lot + us, "United" is
+  // unit + ed. No English word is a keyword followed by digits, so "Apt3B"
+  // stays safe to match tight.
+  var UNIT_KEYWORDS = "apt|apartment|unit|ste|suite|spc|space|lot|trlr|trailer" +
+    "|bldg|building|rm|room|fl|floor|penthouse|ph";
+  var UNIT_DESIGNATOR_RE = new RegExp(
+    "(?:^|[\\s,])(?:#\\s*[a-z0-9-]+|(?:" + UNIT_KEYWORDS + ")\\.?" +
+    "(?:\\s*[a-z0-9-]*\\d[a-z0-9-]*|\\s+[a-z]{1,2}))(?=$|[\\s,])", "i");
+  function unitDesignatorOf(address) {
+    const m = UNIT_DESIGNATOR_RE.exec(String(address || ""));
+    return m ? m[0].trim() : null;
+  }
 
   const typeGuessCache = new Map();
 
@@ -6411,7 +6736,7 @@
     el.appendChild(door);
   }
 
-  // Per-address type memory: re-runs never re-ask. Bounded like fpSize.v1.
+  // Per-address type memory: re-runs never re-ask. Bounded like fpSize.v2.
   const ADDR_TYPE_KEY = "addrType.v1";
   let addrTypeCache = (() => { try { return JSON.parse(localStorage.getItem(ADDR_TYPE_KEY)) || {}; } catch (_) { return {}; } })();
   function addrTypeStore(addr, type) {
@@ -6451,7 +6776,7 @@
     const undo = document.createElement("button");
     undo.type = "button";
     undo.textContent = "Undo";
-    undo.style.cssText = "text-decoration:underline;color:#B91C1C;background:none;border:0;padding:0;font:inherit;cursor:pointer";
+    undo.style.cssText = "text-decoration:underline;color:var(--red);background:none;border:0;padding:0;font:inherit;cursor:pointer";
     undo.addEventListener("click", () => {
       propertyTypeSel.value = prevType;
       // selectedLookbackMonths() returns null for a half-typed custom window —
@@ -6556,7 +6881,13 @@
   // the map photos (verified geocode + street-numbered address), and the
   // value lands in the USER-EDITABLE field under a visible "estimated"
   // note - never presented as a record.
-  const FP_SIZE_CACHE_KEY = "fpSize.v1";
+  //
+  // v2 (2026-08-13): entries are keyed by ADDRESS as well as coordinates, and a
+  // footprint must now prove the address to be measured (see below). The bump
+  // retires every size cached under v1 — including the 10,100 SF bike shop
+  // sitting in the owner's own browser for a mobile home, which the fix would
+  // otherwise never be seen to have corrected.
+  const FP_SIZE_CACHE_KEY = "fpSize.v2";
   let fpSizeCache = (() => { try { return JSON.parse(localStorage.getItem(FP_SIZE_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
   function fpSizeStore(key, val) {
     fpSizeCache[key] = val;
@@ -6578,30 +6909,49 @@
     }
     return Math.abs(area / 2) * 10.7639;
   }
-  async function estimateSizeFromFootprint(geo) {
-    const key = `${geo.lat.toFixed(6)},${geo.lng.toFixed(6)}`;
+  // The footprint must PROVE it is the searched address — the same
+  // addr:housenumber + addr:street filter detectPropertyType has used since the
+  // Phoenix "Mandarin Super Buffet" bug, applied here because this number is
+  // worth far more than a type guess: the hero MULTIPLIES it. Without the
+  // filter, "biggest footprint near the pin" measures whatever commercial
+  // building shares the block, and on a strip like W Fairview Ave that is a
+  // 10,064 sq ft bike shop standing in for a 900 sq ft mobile home.
+  //
+  // Two footprints proving the same address means the address does not identify
+  // one structure (a trailer park, a campus, a complex mapped unit by unit —
+  // Fairview had 38), and there is no way to tell which is the subject, so this
+  // refuses. That is the deliberate opposite of detectPropertyType, which
+  // prefers the main mass in the same situation and is right to: every part of
+  // a campus shares one property TYPE, while only one of them is the building
+  // whose square footage the value hangs on. A refusal is cheap — the server
+  // then spends its two searches looking the size up from public records,
+  // which is what it did before this estimate existed and is better data than a
+  // measurement of the wrong building.
+  async function estimateSizeFromFootprint(geo, address) {
+    const want = houseNumberOf(address);
+    if (!want) return null;
+    const key = `${geo.lat.toFixed(6)},${geo.lng.toFixed(6)}|${sizeAddrKey(address)}`;
     if (key in fpSizeCache) return fpSizeCache[key] || null;
-    const j = await overpassQuery(`[out:json][timeout:10];way(around:120,${geo.lat.toFixed(6)},${geo.lng.toFixed(6)})["building"];out geom;`);
+    const j = await overpassQuery(`[out:json][timeout:10];way(around:120,${geo.lat.toFixed(6)},${geo.lng.toFixed(6)})["building"];out tags geom;`);
     // An Overpass outage must NOT be cached as a known miss — that would
     // permanently poison this address. No answer today, try again next time.
     if (!j) return null;
-    let best = null, bestScore = 0;
+    const proving = [];
     for (const w of (j && j.elements) || []) {
       if (!Array.isArray(w.geometry) || w.geometry.length < 3) continue;
+      const tags = w.tags || {};
+      if (!osmNumberMatches(tags["addr:housenumber"], want)) continue;
+      if (!streetLooksSame(tags["addr:street"], address)) continue;
       const cLat = w.geometry.reduce((s, p) => s + p.lat, 0) / w.geometry.length;
       const cLng = w.geometry.reduce((s, p) => s + p.lon, 0) / w.geometry.length;
       const dLat = (cLat - geo.lat) * 111320;
       const dLng = (cLng - geo.lng) * 111320 * Math.cos(geo.lat * Math.PI / 180);
-      const dist = Math.hypot(dLat, dLng);
-      if (dist > 120) continue;
-      // Biggest footprint near the pin, distance-discounted - the same idea
-      // the photo snap uses, so both features pick the same main building.
-      const sqft = footprintSqft(w.geometry, geo.lat, geo.lng);
-      const score = Math.max(sqft, 100) / (dist + 25);
-      if (score > bestScore) { bestScore = score; best = { sqft, tags: w.tags || {} }; }
+      if (Math.hypot(dLat, dLng) > 120) continue;
+      proving.push({ sqft: footprintSqft(w.geometry, geo.lat, geo.lng), tags });
     }
     let est = null;
-    if (best) {
+    if (proving.length === 1) {
+      const best = proving[0];
       const levels = Math.min(6, Math.max(1, parseInt(best.tags["building:levels"] || "1", 10) || 1));
       const total = best.sqft * levels;
       if (total >= 800 && total <= 2000000) est = Math.round(total / 100) * 100;
@@ -6672,9 +7022,10 @@
     if (sizeInput.value.trim() !== "") return;
     if (!/^\s*\d+\s+\S/.test(typed)) return;   // a submarket point must never size a random building
     if (!geoLabelMatches(typed, geo)) return;  // a wrong-street geocode must never size the wrong building
+    if (unitDesignatorOf(typed)) return;       // one unit of a site: no footprint here is provably the subject's
     if (document.getElementById("propertyType").value === "Land") return;
     try {
-      const est = await estimateSizeFromFootprint(geo);
+      const est = await estimateSizeFromFootprint(geo, typed);
       // Fill only if nothing changed while we looked: no typed size, no
       // search already in flight (a fast confirm just runs sizeless, as
       // today, and the estimate waits for the next run).
@@ -6692,7 +7043,12 @@
     } catch (_) { /* Overpass down - no estimate, exactly today */ }
   }
 
-  const BLDG_CACHE_KEY = "bldgCache.v1";
+  // v2 (2026-08-13): the snap now consults the marker's ADDRESS, so an entry
+  // keyed by coordinates alone is both stale and wrong — every unit of a
+  // trailer park geocodes to one point, so one bucket used to hold one answer
+  // for fifty different addresses. The bump also retires the wrong-building
+  // snaps already cached in browsers, the same reason geoCache went to v2.
+  const BLDG_CACHE_KEY = "bldgCache.v2";
   let bldgCache = (() => { try { return JSON.parse(localStorage.getItem(BLDG_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
   function bldgCacheStore(key, val) {
     bldgCache[key] = val;
@@ -6702,10 +7058,14 @@
       localStorage.setItem(BLDG_CACHE_KEY, JSON.stringify(bldgCache));
     } catch (_) { /* private mode — the cache is a nicety */ }
   }
-  const bldgKey = (ll) => ll.lat.toFixed(4) + "," + ll.lng.toFixed(4);   // ~11 m buckets
+  // ~11 m buckets, plus the address the pin came from (markers carry it as
+  // _addr, set beside _geoOk).
+  const bldgKey = (ll, addr) =>
+    ll.lat.toFixed(4) + "," + ll.lng.toFixed(4) + "|" + String(addr || "").trim().toLowerCase();
+  const markerKey = (m) => bldgKey(m.getLatLng(), m._addr);
 
   async function snapMarkersToBuildings(markers) {
-    const pending = markers.filter((m) => !(bldgKey(m.getLatLng()) in bldgCache));
+    const pending = markers.filter((m) => !(markerKey(m) in bldgCache));
     if (pending.length) {
       const parts = pending.map((m) => {
         const ll = m.getLatLng();
@@ -6714,34 +7074,56 @@
       try {
         // Mirrors are tried inside overpassQuery — with photos gated on
         // footprints, an outage means a photo-less report, not a wrong-photo one.
-        const j = await overpassQuery(`[out:json][timeout:10];(${parts});out bb;`);
+        const j = await overpassQuery(`[out:json][timeout:10];(${parts});out tags bb;`);
         if (!j) throw new Error("all Overpass endpoints failed");
-        // `out bb;` carries bounds only — the bbox midpoint stands in for the
-        // centroid, which is all the photo needs to frame the building.
+        // `out tags bb;` carries bounds and tags — the bbox midpoint stands in
+        // for the centroid, which is all the photo needs to frame the building,
+        // and the tags are what let a footprint prove the address below.
         const ways = (j.elements || []).filter((e) => e.bounds)
-          .map((e) => ({ bounds: e.bounds, center: { lat: (e.bounds.minlat + e.bounds.maxlat) / 2, lon: (e.bounds.minlon + e.bounds.maxlon) / 2 } }));
+          .map((e) => ({ bounds: e.bounds, tags: e.tags || {},
+            center: { lat: (e.bounds.minlat + e.bounds.maxlat) / 2, lon: (e.bounds.minlon + e.bounds.maxlon) / 2 } }));
         pending.forEach((m) => {
           const ll = m.getLatLng();
-          let best = null, bestScore = 0;
-          for (const w of ways) {
+          const want = houseNumberOf(m._addr);
+          // Which footprints are candidates at all. Where OSM knows house
+          // numbers around this pin, only a footprint carrying OURS can be the
+          // property — proximity cannot tell two sides of a street apart, let
+          // alone a bike shop from the mobile home park it sits beside. Where
+          // NOTHING in range is addressed the map simply cannot answer, and
+          // the pre-2026-08-13 behaviour (main mass near the pin) stands: it
+          // is the only guess available, and refusing there would strip photos
+          // from the ordinary suburban reports where they work fine.
+          const inRange = ways.filter((w) => {
             const dLat = (w.center.lat - ll.lat) * 111320;
             const dLng = (w.center.lon - ll.lng) * 111320 * Math.cos(ll.lat * Math.PI / 180);
-            const dist = Math.hypot(dLat, dLng);
-            if (dist > 120) continue;
+            w._dist = Math.hypot(dLat, dLng);
+            return w._dist <= 120;
+          });
+          const proving = want ? inRange.filter((w) =>
+            osmNumberMatches(w.tags["addr:housenumber"], want) && streetLooksSame(w.tags["addr:street"], m._addr)) : [];
+          const addressedNearby = inRange.some((w) => w.tags["addr:housenumber"]);
+          const candidates = proving.length ? proving : (addressedNearby && want ? [] : inRange);
+          let best = null, bestScore = 0;
+          for (const w of candidates) {
             // Prefer a big footprint near the pin — the main building, not a
             // guard shack or the neighbor's shed. Area is distance-discounted
             // so a far-off giant doesn't beat the building right at the pin.
+            // Among footprints that all prove the address (one building mapped
+            // in parts) any of them frames the right property, so this stays a
+            // main-mass pick rather than the refusal the SIZE estimate makes —
+            // a photo of the wrong wing is still a photo of the building, while
+            // its square footage would be a different number.
             const aLat = (w.bounds.maxlat - w.bounds.minlat) * 111320;
             const aLng = (w.bounds.maxlon - w.bounds.minlon) * 111320 * Math.cos(ll.lat * Math.PI / 180);
-            const score = Math.max(aLat * aLng, 100) / (dist + 25);
+            const score = Math.max(aLat * aLng, 100) / (w._dist + 25);
             if (score > bestScore) { bestScore = score; best = w; }
           }
-          bldgCacheStore(bldgKey(ll), best ? { lat: best.center.lat, lng: best.center.lon } : 0);
+          bldgCacheStore(markerKey(m), best ? { lat: best.center.lat, lng: best.center.lon } : 0);
         });
       } catch (_) { /* Overpass down/slow — photos keep centering on the pin */ }
     }
     markers.forEach((m) => {
-      const hit = bldgCache[bldgKey(m.getLatLng())];
+      const hit = bldgCache[markerKey(m)];
       if (hit && isFinite(hit.lat)) {
         m._bldgLL = L.latLng(hit.lat, hit.lng);
         // A popup opened before the snap landed re-renders onto the building.
@@ -6773,7 +7155,13 @@
           `alt="" onerror="this.style.display='none'">`;
       }
     }
-    return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:#e2e8f0">` +
+    // The placeholder container behind the stitched tiles is chrome, not
+    // photo, so it themes; the red point-marker on the photo and the Esri
+    // caption chip below stay literal in both themes -- they sit on the
+    // photograph itself, whose colours a site theme has no business
+    // changing (same reasoning as the Street View caption chip elsewhere).
+    const p = pinColors();
+    return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:${p.aerialBg}">` +
       imgs +
       `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
       `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
@@ -6823,6 +7211,26 @@
     if (e.target.parentElement === document.getElementById("reportArea")) e.target.classList.add("entrance-done");
   });
 
+  // CartoDB serves light_all and dark_all at the same URL shape, keyless,
+  // under the same terms, so this is a one-word swap. The pins change with
+  // it -- see pinColors() below.
+  const isDark = () => document.documentElement.getAttribute("data-theme") === "dark";
+  const basemapUrl = () =>
+    `https://{s}.basemaps.cartocdn.com/${isDark() ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`;
+  // The comp roundel is dark-on-white for a light basemap. On a dark
+  // basemap that is invisible, so it inverts. The subject pin keeps its
+  // brand red either way -- it is the one mark that must never change
+  // meaning -- and only its border flips. aerialBg is the keyless aerial
+  // popup's placeholder container (visible only while its Esri tiles are
+  // loading or on a failed tile) matched to the popup chrome around it --
+  // the point marker drawn ON that photo, and the Street View caption chip
+  // beside it, stay literal in both themes on purpose (see aerialThumb):
+  // they sit on a photograph, whose own colours don't change with the site
+  // theme, the same reasoning as the caption chip.
+  const pinColors = () => isDark()
+    ? { pinInk: "#E2E8F0", pinInkText: "#0F172A", pinEdge: "#0F172A", pinSubject: "#EF4444", aerialBg: "#1E293B" }
+    : { pinInk: "#1e293b", pinInkText: "#fff",    pinEdge: "#fff",    pinSubject: "#DC2626", aerialBg: "#e2e8f0" };
+
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
     const gen = ++mapGeneration;
@@ -6870,7 +7278,7 @@
     // "Map" — Carto Positron, muted light-gray so the pins carry the color;
     // "Satellite" — Esri photorealistic imagery with a street/place label
     // overlay. The choice persists and is reapplied on every report's map.
-    const streetLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    const streetLayer = L.tileLayer(basemapUrl(), {
       maxZoom: 18,
       crossOrigin: "anonymous",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -7036,6 +7444,15 @@
       // keeps real-but-numberless comps IN the corpus, where they're valid
       // data; a photo needs location precision the corpus doesn't.
       if (!/^\s*\d+\s+\S/.test(String(address || ""))) return "";
+      // ...and only when that street number names a whole property rather than
+      // one unit inside it. "6728 W Fairview Ave Trailer 51" geocodes to the
+      // park's entrance, where 38 footprints share the number: the snap can
+      // pick a trailer, but not THAT trailer, and photographing a stranger's
+      // home is exactly the failure the rule above exists to prevent. Comps
+      // are gated too, deliberately — the model returns unit addresses of its
+      // own ("Trailer 20" was comp 1 on that report) and the same photo would
+      // be just as wrong beside a comp as beside the subject.
+      if (unitDesignatorOf(address)) return "";
       // Size the photo to the map: on a phone the map is ~341px wide and a
       // 260px photo made the whole popup wider than the map — the left edge
       // clipped and no pan can fix a popup that simply doesn't fit. Content
@@ -7155,9 +7572,10 @@
       });
     };
     const addSubjMarker = (lat, lng) => {
+      const p = pinColors();
       const subjIcon = L.divIcon({
         className: "",
-        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
+        html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${p.pinSubject};transform:rotate(-45deg);border:2px solid ${p.pinEdge};box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>`,
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
@@ -7170,9 +7588,10 @@
     };
     const addCompMarker = (c, lat, lng) => {
       // Each pin carries the comp's report-wide number, matching its table row.
+      const p = pinColors();
       const dotIcon = L.divIcon({
         className: "",
-        html: '<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#1e293b;color:#fff;font:600 11px Inter,sans-serif;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.35)">' + (c._num || "") + '</div>',
+        html: `<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${p.pinInk};color:${p.pinInkText};font:600 11px Inter,sans-serif;border:2px solid ${p.pinEdge};box-shadow:0 1px 3px rgb(0 0 0/.35)">` + (c._num || "") + '</div>',
         iconSize: [20, 20], iconAnchor: [10, 10],
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
@@ -7270,7 +7689,10 @@
           // Photo eligibility: did the geocoder demonstrably match THIS
           // address? Markers that never pass here (geocode miss → the pin
           // keeps the model's block-level guess) stay unverified — no photo.
+          // _addr rides along because the building snap needs the address too,
+          // to ask whether a footprint carries this house number.
           subjMarker._geoOk = geoLabelMatches(meta.address, r.ll);
+          subjMarker._addr = meta.address;
           parsed.subject_lat = String(r.ll.lat);
           parsed.subject_lng = String(r.ll.lng);
         } else {
@@ -7278,6 +7700,7 @@
           if (existing) existing.setLatLng([r.ll.lat, r.ll.lng]);
           else compMarkersByNum[r.c._num] = addCompMarker(r.c, r.ll.lat, r.ll.lng);
           compMarkersByNum[r.c._num]._geoOk = geoLabelMatches(String(r.c.address), r.ll);
+          compMarkersByNum[r.c._num]._addr = String(r.c.address);
           r.c.lat = String(r.ll.lat);
           r.c.lng = String(r.ll.lng);
         }
@@ -7302,6 +7725,17 @@
       // Corrected coordinates ride along in the saved copy of the report.
       if (!meta.sample && !meta.fromHistory && !meta.shared) saveHistory(meta, parsed);
     })();
+  }
+
+  // Called by the theme toggle. Both the tile layer and every pin are
+  // built from the theme, so a report already on screen has to redraw.
+  // renderMap is idempotent, so re-running it is the whole implementation.
+  // Guarded because the toggle also exists on a page with no report yet.
+  // Deliberately NOT passed isRetry -- that third argument drives the
+  // geocode-retry path, and forcing it here would re-run geocoding (an
+  // async network round trip) on every theme toggle.
+  function refreshMapTheme() {
+    if (currentParsed) renderMap(currentParsed, currentMeta);
   }
 
   // ----------------------------------------------------------------------------
@@ -7974,6 +8408,24 @@
   document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
   document.getElementById("acctMenuBtn").addEventListener("click", () =>
     document.getElementById("acctMenu").classList.toggle("hidden"));
+  // The theme toggle. Two states: it flips and remembers. The OS
+  // preference is only the INITIAL default (see the boot script in
+  // <head>); once someone clicks, their explicit choice wins forever.
+  // ⚠ This is a hand-copy of server.js's ACCOUNT_NAV_JS toggle handler --
+  // this file is static and server.js never templates it. Nothing keeps the
+  // two in step but this comment and the "index.html's theme boot script and
+  // toggle handler mirror server.js" test in test/theme.test.js -- same
+  // storage key, same stored values, same attribute, same element.
+  const themeToggleApp = document.getElementById("themeToggleApp");
+  if (themeToggleApp) themeToggleApp.addEventListener("click", () => {
+    const el = document.documentElement;
+    const dark = el.getAttribute("data-theme") === "dark";
+    if (dark) el.removeAttribute("data-theme"); else el.setAttribute("data-theme", "dark");
+    try { localStorage.setItem("theme", dark ? "light" : "dark"); } catch (e) {}
+    // The map's basemap is chosen per theme, so an open report must
+    // re-tile. renderMap() is idempotent and cheap; see Task 7.
+    if (typeof refreshMapTheme === "function") refreshMapTheme();
+  });
   document.getElementById("exploreMenuBtn").addEventListener("click", () => {
     const menu = document.getElementById("exploreMenu");
     menu.classList.toggle("hidden");
@@ -8296,8 +8748,12 @@
       svg.setAttribute("width", w); svg.setAttribute("height", h);
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.setAttribute("aria-label", `${vals.length} valuations tracked`);
+      // The polyline's #8A93A0 has no matching token (same allowance as
+      // .rd-scat-tick in the CSS bridge) but reads fine unlit against both
+      // card colours; the endpoint dot has an exact one and gets it, so its
+      // dark value stays vivid rather than fading with the line.
       svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="#8A93A0" stroke-width="1.4"/>` +
-        `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="#B91C1C"/>`;
+        `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="var(--red-fill)"/>`;
       return svg;
     };
     let combined = 0, curOfPaired = 0, prevOfPaired = 0;
@@ -9048,7 +9504,7 @@
       const img = document.createElement("img");
       img.src = brand.logo;
       img.alt = brand.firmName || "";
-      img.className = logoClass || "h-7";
+      img.className = "brand-logo " + (logoClass || "h-7");
       img.onerror = function () {
         // A stored logo can be corrupt, or truncated by an older save. A
         // broken image icon on a document a broker is handing to a client is
@@ -9193,7 +9649,7 @@
       const img = document.createElement("img");
       img.src = b.logo;
       img.alt = "";
-      img.className = "h-9";
+      img.className = "brand-logo h-9";
       box.appendChild(img);
     }
     if (b.firmName) {
@@ -12111,6 +12567,13 @@
         // so without this override the whole capture paints transparent —
         // the export was a correctly-sized blank PNG.
         onclone: (doc) => {
+          // html2canvas clones the document, so data-theme rides along and
+          // the export would come out dark. A dark PNG pasted into a
+          // client's light deck reads as broken, so every export is light
+          // regardless of what the sender is looking at. The @media print
+          // block is protected differently -- the whole dark bridge lives
+          // inside @media screen, which a print run never sees.
+          doc.documentElement.removeAttribute("data-theme");
           const s = doc.createElement("style");
           s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }";
           doc.head.appendChild(s);
@@ -12711,14 +13174,15 @@
     } else {
       mapEl.classList.remove("hidden");
       confirmMapInstance = L.map("confirmMap", { scrollWheelZoom: false, zoomControl: false });
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer(basemapUrl(), {
         maxZoom: 18,
         crossOrigin: "anonymous",
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       }).addTo(confirmMapInstance);
+      const p = pinColors();
       const pinIcon = L.divIcon({
         className: "",
-        html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#DC2626;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>',
+        html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${p.pinSubject};transform:rotate(-45deg);border:2px solid ${p.pinEdge};box-shadow:0 1px 4px rgb(0 0 0/.4)"></div>`,
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       L.marker([geo.lat, geo.lng], { icon: pinIcon }).addTo(confirmMapInstance);

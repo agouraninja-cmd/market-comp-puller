@@ -6,6 +6,54 @@
     "details": "Leads and the BOV tracker described one flow in two sections 500px apart, repeating the same four columns, with nothing on screen connecting an intro request to the engagement it opened. They are now one table with a stage column. A lead is a New chip whose only action is requesting an introduction; a BOV keeps its status select and Remove. The four tiles became a five-cell stage strip plus a note for this year and the win rate. Coverage collapses under Markets you watch, and logging a BOV is the deck action behind a closed panel, matching Add comps. No new endpoint: the browser already had both payloads."
   },
   {
+    "date": "2026-08-13",
+    "type": "fix",
+    "title": "A mobile home was valued at $795,000 because the size came off a bike shop",
+    "details": "Reported live: a trailer at 6728 W Fairview Ave listed on Zillow at $52,000 came back as $795,000, with a photo of the wrong building. The comps were right — the model found eight manufactured homes at $61-158/SF and said so in the summary. The size box was wrong. The confirm dialog's footprint estimate takes the biggest OSM building within 120 m of the geocoded point, and on a commercial strip that was Bob's Bicycles, 10,064 sq ft, 81 m away: 10,100 SF x $78/SF = $795,000 exactly. The map's photo snap scores footprints the same way, so one heuristic produced both symptoms. Three fixes. A footprint must now PROVE the address (addr:housenumber + addr:street) before it can be measured or photographed — the same filter detectPropertyType has used since the Phoenix Mandarin Buffet bug, which the size estimate and the photo never adopted; at Fairview 38 footprints prove #6728 (the trailers, several tagged static_caravan) and the bike shop proves nothing. An address naming one unit of a site (Trailer 51, Apt 3B, SPC 12, #45) gets no footprint size and no photo at all, because the geocoder drops the unit and no footprint near the point can be shown to be the subject's. And VALUATION.subjectSizeFit now flags a subject size that every sized comp contradicts: the report already whispered '8 comps are a different size class', which blamed the comps for a gap the size box had caused, and it now names the figure to doubt and how far the range is extrapolated. fpSize and bldgCache are bumped to v2 so browsers holding the wrong answers re-ask."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
+    "title": "/healthz names the model that is actually running",
+    "details": "Asked whether a live report had run on Gemini 3.7 Flash, the only way to answer was a git argument: MODEL is a startup constant an env var can override, and a provider's defaultModel moves with the code, so reading the repo proves what the source says rather than what production serves. /healthz already reported the provider; it now reports the model beside it. (The answer was 3.6 Flash — the 3.7 switch is sitting on an unmerged branch.)"
+  },
+  {
+    "date": "2026-08-13",
+    "type": "fix",
+    "title": "Vault PDF extract no longer looks like a search outage or an empty table",
+    "details": "Gemini extract now asks for 24k output tokens and maps usageMetadata including thought tokens. A vendor failure on extract returns the spec copy at 502 and does not trip UPSTREAM_HEALTH. Truncation (max_tokens / MAX_TOKENS / incomplete) is a 400 instead of We could not find a deals table. The model is no longer asked for lat/lng. Returning brokers see the vendor disclosure on the drop zone."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
+    "title": "The vault header matches the rest of the site, and its forms finally look like forms",
+    "details": "The workspace kept a short Search / My Desk / Vault / Brokers bar after every other server-rendered page grew an Explore menu and an account circle, so leaving My Desk for the vault still read as having been signed out. It now lifts the same chrome (desk:false, so My Desk is not drawn twice) and keeps Vault as the current page. First-run no longer parks the empty leads inbox under the two quiet cards; the coverage form still lives in step 2, and the inbox only returns if a watched market already has owners waiting. Add-comp, BOV, identity, and the inline edit row share one grid instead of a wrapping stack of labels, and the column mapper names sample values as chips above a ruled action row. Visual only — same IDs, same two decks, still one file input and one relocating coverage form."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
+    "title": "Comp and market searches now run on Gemini 3.7 Flash",
+    "details": "The default search model moved from gemini-3.6-flash to gemini-3.7-flash. Comp reports and Market Explorer share the same provider default, so both pick it up. MODEL still overrides if set."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
+    "title": "The broker vault looks like a finished workspace",
+    "details": "The page kept the two-deck structure, the trust ledger, and the statement tables, and raised everything around them: Inter is loaded, the header sticks, the masthead has a private-workspace kicker, figures sit in lightly shadowed panels, forms stack their labels, the comps filter is a toolbar, tables are framed, coverage is pill chips, and the footer matches the rest of the site. First-run stays two quiet cards rather than a coloured empty state. No route or entitlement change — it is the same book, drawn as a product a broker would hand a colleague."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "feature",
+    "title": "Vault PDF import for table exports",
+    "details": "A broker can drop a CoStar/ARGUS/CMA PDF onto Build your own comp set. The file is sent to the extract vendor with no search tools, never stored, and the rows land only after a confirm table. Spreadsheets are unchanged."
+  },
+  {
+    "date": "2026-08-10",
+    "type": "feature",
+    "title": "Dark mode across the site",
+    "details": "Follows your system setting, with a toggle in the header to override. Covers the app, the report, My Desk, the vault, and every public page. Print and PNG export stay light on purpose, so a client deliverable still looks like one."
+  },
+  {
     "date": "2026-08-12",
     "type": "fix",
     "title": "The per-account vault grant reached the database but not the code",

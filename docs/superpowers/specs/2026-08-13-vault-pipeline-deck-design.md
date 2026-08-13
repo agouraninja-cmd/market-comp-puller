@@ -47,7 +47,10 @@ Three further symptoms, all structural:
 - Not a kanban. Considered and rejected: no drag-and-drop exists in the repo,
   status would still change through a select, and columns of cards contradict
   the page's typographic language and collapse badly when narrow.
-- Not a change to the book deck, the first run, or the file input.
+- Not a change to the book deck or the file input. The empty first-run
+  page was later replaced (2026-08-13, spec
+  `docs/superpowers/specs/2026-08-13-vault-empty-workspace-design.md`):
+  both decks now show on day one.
 
 ## 3. Decisions locked during brainstorming
 
@@ -196,8 +199,9 @@ Empty states collapse from two lines to one, and say which situation it is:
 - the lead-privacy line appears exactly once
 - the win rate is a dash below three decided BOVs
 
-`test/vault-first-run.test.js` — unchanged in intent: exactly one `#covForm`,
-exactly one `<input type=file>`, first run hides both decks.
+`test/vault-first-run.test.js` — empty workspace (2026-08-13): exactly one
+`#covForm`, exactly one `<input type=file>`, both decks and the trust line
+ship visible. `#firstRun` is gone.
 
 ## 8. Out of scope
 

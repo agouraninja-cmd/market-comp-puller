@@ -236,6 +236,14 @@ test("the Address Explorer is Pro-only once the tier is on", () => {
     false, "expired");
 });
 
+test("a free account gets the full itemized report", () => {
+  assert.equal(FREE_MAX_COMPS, "all");
+  const e = ent({ user: USER });
+  assert.equal(e.plan, "free");
+  assert.equal(e.maxComps, "all");
+  assert.equal(compLimit(e), Infinity);
+});
+
 test("free account: FREE_MAX_COMPS comps and three exports a month", () => {
   const e = ent({ user: USER });
   assert.equal(e.plan, "free");

@@ -1118,14 +1118,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
   it done on `/dev` and add the devlog entry.
 - **Pro tier** (added 2026-07-31; launched to the public 2026-08-03). Paid plan
-  gating free reports to **4 comps**, a **36-month** lookback ceiling, and
+  gating free reports to a **36-month** lookback ceiling and
   **5 exports/month** (0 for anonymous visitors — exporting requires an
   account), against Pro's unlimited everything plus report branding.
-  The free lookback was **12 months until 2026-08-04**. It was widened because
+  Free accounts get the **full itemized report** (`FREE_MAX_COMPS` is `"all"`
+  since 2026-08-13; it was 4 at launch, then 10). The free lookback was
+  **12 months until 2026-08-04**. It was widened because
   at 12 months the free report often could not compute a valuation at all (the
-  hero needs two priced sale comps and dense markets returned one), and because
-  a window that short usually returned ≤4 comps, so the 4-comp gate withheld
-  nothing and the $39 tile never appeared. Not widened further: the window is
+  hero needs two priced sale comps and dense markets returned one). Not widened
+  further: the window is
   clamped BEFORE the search and the model is asked for up to 12 comps
   regardless of plan, so a longer free window grows output — the cost and
   wall-clock driver — on the majority of traffic. The numbers live in
@@ -1151,7 +1152,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   60s subscription cache that serves its last known answer if a DB read
   fails.
   **Comp gating** lives in **`comp-gate.js`** (also pure, also tested).
-  `gateReport()` is applied at **serialization time only** — `/api/comps`
+  Free accounts currently receive `maxComps: "all"`, so the list gate is
+  idle for them; the machinery still runs for a numeric cap. `gateReport()`
+  is applied at **serialization time only** — `/api/comps`
   gates at all three exits (cache hit, SSE `result`, plain JSON) while the
   cache, `harvestComps()`, and `maybePublishMarketSnapshot()` keep seeing
   **whole** reports, so one cached search serves free and Pro alike and the
@@ -1160,12 +1163,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   the number above it) then best-first by a weight that **mirrors
   index.html's `compWeight()`** — a deliberate second copy that must stay in
   sync; there is a `⚠` comment on both.
-  **`locked_basis`** is the load-bearing idea: one anonymized row per
+  **`locked_basis`** is the load-bearing idea when a cap is numeric: one
+  anonymized row per
   withheld comp carrying `date`/`transaction`/`size_sqft`/`price_per_sqft`/
   `source_type` (+`verified`, +`price_per_unit`/`price_per_acre`) and
   **nothing identifying**. Client-side `valuationComps()` =
   `includedComps()` + `lockedBasis()`, so the hero, the market comparison,
-  the chart median and the stat tiles all read the FULL set — a free
+  the chart median and the stat tiles all read the FULL set — a gated
   report's value range is identical to a Pro one (verified: the same report
   gated and ungated both produce $6,206,732–$6,529,080 from 14 sale comps).
   Basis rows must never reach the table, map, exports, or curation — they
@@ -1174,11 +1178,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   CSS blur would leave the values in the DOM, and the whole point is that
   the server never sent them.
   Two side doors are closed to match: `/api/corpus-comps` and
-  `/api/watchlist/feed` return a `locked_count` instead of rows for free
-  users (the feed keeps its aggregates — `new_count`, `median_psf`, trend —
-  which are market figures, not comp data). `gen-market-seed.js` sends
+  `/api/watchlist/feed` return a `locked_count` instead of rows when
+  `maxComps` is a number (the feed keeps its aggregates — `new_count`,
+  `median_psf`, trend —
+  which are market figures, not comp data). With free at `"all"` those
+  doors currently return the same rows Pro sees. `gen-market-seed.js` sends
   `x-admin-key` to bypass the gate and **throws if it gets a gated report
-  back**, rather than silently seeding 4-comp market pages.
+  back**, rather than silently seeding a shortened market page.
   **Billing (phases 3-7, done).** Stripe is spoken to over its REST API with
   plain fetch (`stripe.js`) — still zero npm deps. Server: `POST /api/checkout`,
   `POST /api/billing-portal`, `POST /api/stripe/webhook` (raw body, signature

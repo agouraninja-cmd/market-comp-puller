@@ -2,6 +2,12 @@
   {
     "date": "2026-08-13",
     "type": "improvement",
+    "title": "Free accounts get the full itemized report",
+    "details": "The free list is no longer capped. A signed-in free account, and an anonymous visitor if the wall is off, sees every comparable the search found, the same itemized table Pro sees. The 3-year lookback, five exports a month, the vault, Address Explorer, and branding stay Pro. The gate machinery is still there for a numeric cap; it is idle on today's free entitlement."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
     "title": "The vault header matches the rest of the site, and its forms finally look like forms",
     "details": "The workspace kept a short Search / My Desk / Vault / Brokers bar after every other server-rendered page grew an Explore menu and an account circle, so leaving My Desk for the vault still read as having been signed out. It now lifts the same chrome (desk:false, so My Desk is not drawn twice) and keeps Vault as the current page. First-run no longer parks the empty leads inbox under the two quiet cards; the coverage form still lives in step 2, and the inbox only returns if a watched market already has owners waiting. Add-comp, BOV, identity, and the inline edit row share one grid instead of a wrapping stack of labels, and the column mapper names sample values as chips above a ruled action row. Visual only — same IDs, same two decks, still one file input and one relocating coverage form."
   },

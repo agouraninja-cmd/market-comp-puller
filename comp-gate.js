@@ -2,10 +2,13 @@
 // Comp gating — which comps a visitor actually receives, and what stands in
 // for the ones they don't.
 //
-// The rule this enforces: the itemized LIST is gated, the VALUATION is not.
-// A free report shows 10 comps but its headline value range is computed from
-// every comp the search found, because an inaccurate free number would cost
-// more in credibility than the tier earns in subscriptions.
+// The rule this enforces: when a visitor's maxComps is a number, the itemized
+// LIST is gated and the VALUATION is not. A shortened report's headline value
+// range is still computed from every comp the search found (locked_basis),
+// because an inaccurate free number would cost more in credibility than the
+// tier earns in subscriptions. Free accounts currently receive maxComps "all",
+// so this gate is idle for them; it still runs for any future numeric cap and
+// is what the tests pin.
 //
 // That is why gateReport() returns two things: the visible comps in full, and
 // a `locked_basis` array of anonymized rows carrying ONLY what the valuation

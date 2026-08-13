@@ -35,6 +35,10 @@ function comp(over = {}) {
 }
 const report = (comps) => ({ summary: "A market.", avg_price_per_sqft: "$140", comps });
 const freeEnt = computeEntitlements({ user: null, now: NOW, enabled: true });
+// The gate machinery is tested against a numeric cap, not today's free
+// entitlement (which is maxComps "all"). Without this, every "does the
+// paywall hold" test would pass vacuously the moment free reports went whole.
+const gatedEnt = { maxComps: 10 };
 const proEnt = computeEntitlements({
   user: { id: "u1" }, now: NOW, enabled: true,
   subscription: { plan: "pro_monthly", status: "active", current_period_end: "2026-09-01T00:00:00Z" },
@@ -42,8 +46,15 @@ const proEnt = computeEntitlements({
 
 // --- the gate itself -------------------------------------------------------
 
-test("free report is cut to 10 comps and says how many are locked", () => {
+test("a free account's report is not cut", () => {
   const r = gateReport(report(Array.from({ length: 18 }, () => comp())), freeEnt, { asOfMs: NOW });
+  assert.equal(r.comps.length, 18);
+  assert.equal(r.locked_count, 0);
+  assert.equal(r.locked_basis, undefined);
+});
+
+test("a numeric maxComps still cuts the list and says how many are locked", () => {
+  const r = gateReport(report(Array.from({ length: 18 }, () => comp())), gatedEnt, { asOfMs: NOW });
   assert.equal(r.comps.length, 10);
   assert.equal(r.locked_count, 8);
   assert.equal(r.locked_basis.length, 8);
@@ -72,7 +83,7 @@ test("gating never mutates the caller's report (the cache keeps the full set)", 
 // --- the non-negotiable: no identity in a basis row ------------------------
 
 test("basis rows carry arithmetic only — no address, price, url, notes or coords", () => {
-  const r = gateReport(report(Array.from({ length: 12 }, () => comp())), freeEnt, { asOfMs: NOW });
+  const r = gateReport(report(Array.from({ length: 12 }, () => comp())), gatedEnt, { asOfMs: NOW });
   const serialized = JSON.stringify(r.locked_basis);
   for (const row of r.locked_basis) {
     for (const field of IDENTIFYING) {
@@ -92,7 +103,7 @@ test("a whole gated response leaks nothing about a locked comp", () => {
     ...Array.from({ length: 10 }, (_, i) => comp({ address: `${i} Visible Way, Dallas, TX`, date: "Jul 2026" })),
     comp({ address: "999 SECRET BLVD, Dallas, TX", date: "Feb 2024", source_url: "https://secret.example" }),
   ];
-  const wire = JSON.stringify(gateReport(report(comps), freeEnt, { asOfMs: NOW }));
+  const wire = JSON.stringify(gateReport(report(comps), gatedEnt, { asOfMs: NOW }));
   assert.ok(!wire.includes("SECRET"), "the locked comp's address must not appear anywhere in the response");
   assert.ok(!wire.includes("secret.example"));
   assert.ok(wire.includes("Visible Way"), "the ten visible comps still arrive in full");
@@ -120,7 +131,7 @@ test("a broker-verified locked comp keeps its tier but not its identity", () => 
   assert.ok(!("address" in row));
 });
 
-// --- which 10 get shown ------------------------------------------------------
+// --- which comps get shown when a numeric cap is set ----------------------
 
 test("sales fill the free slots before leases", () => {
   const comps = [
@@ -130,7 +141,7 @@ test("sales fill the free slots before leases", () => {
     ...Array.from({ length: 10 }, (_, i) =>
       comp({ transaction: "Sale", address: `S${i + 1}`, date: "Jan 2025" })),
   ];
-  const r = gateReport(report(comps), freeEnt, { asOfMs: NOW });
+  const r = gateReport(report(comps), gatedEnt, { asOfMs: NOW });
   const shown = r.comps.map((c) => c.address);
   assert.deepEqual(shown, Array.from({ length: 10 }, (_, i) => `S${i + 1}`),
     "even though the leases are far more recent, the valuation is sales-based");
@@ -143,7 +154,7 @@ test("leases fill the slots sales cannot", () => {
     comp({ transaction: "Sale", address: "S3" }),
     ...Array.from({ length: 10 }, (_, i) => comp({ transaction: "Lease", address: `L${i + 1}` })),
   ];
-  const r = gateReport(report(comps), freeEnt, { asOfMs: NOW });
+  const r = gateReport(report(comps), gatedEnt, { asOfMs: NOW });
   assert.equal(r.comps.length, 10);
   assert.ok(["S1", "S2", "S3"].every((a) => r.comps.some((c) => c.address === a)),
     "every sale is always shown");
@@ -198,7 +209,7 @@ test("free and Pro compute the same $/SF set from the same report", () => {
   const psfOf = (c) => Number(String(c.price_per_sqft).replace(/[^0-9.]/g, ""));
   const proSet = full.comps.map(psfOf).sort((a, b) => a - b);
   const freeSet = free.comps.map(psfOf)
-    .concat(free.locked_basis.map(psfOf))
+    .concat((free.locked_basis || []).map(psfOf))
     .sort((a, b) => a - b);
 
   assert.deepEqual(freeSet, proSet,

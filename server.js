@@ -3058,7 +3058,7 @@ const LANE_GUIDANCE = {
 
 const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a table PDF (CoStar, ARGUS, CMA, or similar). Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
 
-Each object may only use these keys: ${[...VAULT.TEMPLATE_COLUMNS, ...VAULT.OPTIONAL_SPEC_COLUMNS].join(", ")}.
+Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
 property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
 transaction must be "sale" or "lease".
 deal_date must be YYYY-MM-DD.
@@ -3947,10 +3947,16 @@ async function extractPdfOnce(pdfBase64) {
     });
     if (!r.ok) {
       const detail = (await r.text().catch(() => "")).slice(0, 200);
-      throw upstreamError(r.status, detail);
+      console.error(`${PROVIDER.logLabel} pdf-extract failed (${r.status}): ${detail}`);
+      throw VAULT.extractVendorError(r.status);
     }
     const parsed = PROVIDER.parseExtractResponse(await r.json());
     console.log(`${PROVIDER.logLabel} pdf-extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
+    if (VAULT.extractWasTruncated(parsed.stopReason)) {
+      const err = new Error("That PDF has more rows than we can read in one pass. Nothing was saved.");
+      err.statusCode = 400;
+      throw err;
+    }
     return parsed.text || "";
   } catch (err) {
     if (err && err.name === "AbortError") {

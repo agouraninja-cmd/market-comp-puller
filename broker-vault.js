@@ -258,6 +258,10 @@ function isRateHeader(raw) {
 // Every field a column may be mapped onto.
 const MAPPABLE_TARGETS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
 const VAULT_FIELD_KEYS = [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS];
+// Keys offered to the extract model. lat/lng stay on the confirm table so a
+// broker can type them, but a table PDF almost never carries them and a
+// hallucinated coordinate permanently locates a private property.
+const EXTRACT_KEYS = VAULT_FIELD_KEYS.filter((k) => k !== "lat" && k !== "lng");
 
 // The four fields normalizeRow refuses a row without. Kept here as one list so
 // the mapper and the row parser cannot disagree about what "required" means.
@@ -1344,6 +1348,25 @@ function looksLikePdf(bytes) {
   return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
 }
 
+// A vendor failure on extract is not a site-wide search outage. Search's
+// upstreamError paints /admin red and tells the broker "comp search is
+// unavailable"; this returns the spec copy and a status the extract route
+// can send, with no UPSTREAM_HEALTH side effects.
+function extractVendorError(status) {
+  const n = Number(status) || 0;
+  const err = new Error(n === 429
+    ? "Too many uploads. Please wait a moment."
+    : "Could not read that PDF. Nothing was saved.");
+  err.statusCode = n === 429 ? 429 : 502;
+  err.userMessage = err.message;
+  return err;
+}
+
+function extractWasTruncated(stopReason) {
+  const r = String(stopReason || "");
+  return r === "max_tokens" || r === "MAX_TOKENS" || r === "incomplete";
+}
+
 function parseExtractJson(rawText) {
   const empty = { ok: false, rows: [], error: "We couldn't find a deals table in that PDF." };
   let text = String(rawText || "").trim();
@@ -1476,8 +1499,11 @@ module.exports = {
   MAPPABLE_TARGETS,
   REQUIRED_TARGETS,
   VAULT_FIELD_KEYS,
+  EXTRACT_KEYS,
   looksLikePdf,
   parseExtractJson,
   classifyExtractRows,
   uploadPayloadToCsv,
+  extractVendorError,
+  extractWasTruncated,
 };

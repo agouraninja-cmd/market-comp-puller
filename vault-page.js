@@ -577,9 +577,10 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
 
     <div id="addSec" class="addpanel hide">
       <div class="drop" id="drop">
-        <p class="drop-k">Import a spreadsheet</p>
+        <p class="drop-k">Import a spreadsheet or PDF</p>
         <button class="btn" id="pick">Choose a spreadsheet or PDF</button>
         <p>or drop a .csv or .pdf here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
+        <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
         <input type="file" id="file" accept=".csv,.pdf,text/csv,application/pdf" class="hide"/>
       </div>
       <div id="res"></div>
@@ -1823,7 +1824,7 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
     // result can be SEEN: #res lives inside #addSec, which is hidden while
     // the panel is open, so a failure written there would be invisible.
     var viaMapper=!!mapInfo;
-    var viaPdf=!!pdfPending;
+    var viaPdf=!!rows;
     // Not via the mapper means every word about this import — "Importing", the
     // row counts, the line-numbered errors — is written into #res, which lives
     // inside the uploader panel. Open it, or the broker watches nothing happen.

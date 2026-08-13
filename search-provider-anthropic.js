@@ -81,7 +81,7 @@ function extractRequestInit({ apiKey }) {
 
 function parseExtractResponse(data) {
   const parsed = parseResponse(data);
-  return { text: parsed.text, usage: parsed.usage };
+  return { text: parsed.text, usage: parsed.usage, stopReason: parsed.stopReason };
 }
 
 // Non-streaming branch only. The streaming branch stays in server.js for now;

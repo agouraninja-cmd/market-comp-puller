@@ -208,8 +208,46 @@ function parseSelects(html) {
 // classList is REAL (backed by className) and listeners are recorded, because
 // the mapper's behavior is expressed entirely in those two things: which
 // sections are hidden, and what a click on Import or Cancel does.
+function stubInput(attrs) {
+  const on = {};
+  const attr = (a) => {
+    if (a === "data-i") return attrs.dataI;
+    if (a === "data-k") return attrs.dataK;
+    return null;
+  };
+  return {
+    type: attrs.type,
+    checked: attrs.checked,
+    value: attrs.value,
+    getAttribute: attr,
+    addEventListener(t, fn) { (on[t] = on[t] || []).push(fn); },
+    fire(t, ev) { (on[t] || []).forEach((fn) => fn(ev || {})); },
+  };
+}
+function parseInputs(html) {
+  const out = [];
+  const re = /<input\b([^>]*)\/?>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    const attrs = m[1];
+    const type = (/\btype="([^"]*)"/.exec(attrs) || [])[1] || "text";
+    const dataI = (/\bdata-i="([^"]*)"/.exec(attrs) || [])[1] || null;
+    const dataK = (/\bdata-k="([^"]*)"/.exec(attrs) || [])[1] || null;
+    const valueM = /\bvalue="([^"]*)"/.exec(attrs);
+    const checked = /\schecked(?:\s|\/|>|$)/.test(" " + attrs) || /\bchecked="/.test(attrs);
+    out.push(stubInput({
+      type,
+      dataI,
+      dataK,
+      value: valueM ? valueM[1] : "",
+      checked,
+    }));
+  }
+  return out;
+}
+
 function stubElement() {
-  let cls = "", html = "", text = "", val = "", selects = null;
+  let cls = "", html = "", text = "", val = "", selects = null, inputs = null;
   const on = {};
   const has = (c) => cls.split(/\s+/).indexOf(c) >= 0;
   const classList = {
@@ -220,7 +258,7 @@ function stubElement() {
   };
   return {
     get className() { return cls; }, set className(v) { cls = v; },
-    get innerHTML() { return html; }, set innerHTML(v) { html = v; selects = null; },
+    get innerHTML() { return html; }, set innerHTML(v) { html = v; selects = null; inputs = null; },
     get textContent() { return text; }, set textContent(v) { text = v; },
     get value() { return val; }, set value(v) { val = v; },
     disabled: false,
@@ -236,9 +274,15 @@ function stubElement() {
     // What the browser would do when the broker clicks / picks a file.
     fire(t, ev) { (on[t] || []).forEach((fn) => fn(ev || {})); },
     querySelectorAll(sel) {
-      if (sel !== "select") return [];
-      if (!selects) selects = parseSelects(html);
-      return selects;
+      if (sel === "select") {
+        if (!selects) selects = parseSelects(html);
+        return selects;
+      }
+      if (sel === "input") {
+        if (!inputs) inputs = parseInputs(html);
+        return inputs;
+      }
+      return [];
     },
     click() { (on.click || []).forEach((fn) => fn({})); },
     focus() {}, scrollIntoView() {},
@@ -542,6 +586,35 @@ test("PDF_REQUIRED is address,property_type,transaction,deal_date", () => {
   assert.ok(m, "PDF_REQUIRED is missing from the emitted script");
   const keys = m[1].split(",").map((s) => s.replace(/["'\s]/g, ""));
   assert.equal(keys.join(","), "address,property_type,transaction,deal_date");
+});
+
+test("PDF_KEYS matches TEMPLATE_COLUMNS plus OPTIONAL_SPEC_COLUMNS", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const m = script.match(/var PDF_KEYS=\[([^\]]*)\]/);
+  assert.ok(m, "PDF_KEYS is missing from the emitted script");
+  const keys = m[1].split(",").map((s) => s.replace(/["'\s]/g, ""));
+  assert.deepEqual(keys, [...VAULT.TEMPLATE_COLUMNS, ...VAULT.OPTIONAL_SPEC_COLUMNS]);
+});
+
+test("doImport keys the PDF failure panel off the rows argument, not pdfPending", () => {
+  // openMapper hides #pdfSec without clearing pdfPending, so a later CSV
+  // failure keyed off pdfPending would write into a hidden #pdfMsg.
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  assert.match(script, /var viaPdf=!!rows/);
+  assert.equal(script.includes("var viaPdf=!!pdfPending"), false);
+});
+
+test("the deck drop zone names the extract vendor", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const drop = html.indexOf('id="drop"');
+  assert.ok(drop >= 0, "#drop is missing");
+  assert.match(html.slice(drop), /extract vendor/,
+    "a returning broker never sees #firstRun; the drop zone has to name the vendor");
+});
+
+test("the drop-k heading mentions PDF", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /class="drop-k">[^<]*PDF/);
 });
 
 test("the mapping panel names the ignored columns", () => {
@@ -849,6 +922,55 @@ test("a CSV still goes through inspect", async () => {
   await chooseFile(doc, CLEAN_CSV);
   assert.ok(calls.some((c) => c.url.indexOf("/api/vault/inspect") === 0),
     "spreadsheets must not start taking the PDF path");
+});
+
+test("unchecking a ready row keeps it off the import post", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [
+        { values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" }, error: null },
+        { values: { address: "500 E Front St, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-02-01" }, error: null },
+      ],
+    })),
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const box = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.type === "checkbox" && el.getAttribute("data-i") === "0");
+  assert.ok(box, "the confirm table should emit a checkbox per row");
+  box.checked = false;
+  box.fire("change");
+  doc.getElementById("pdfGo").click();
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].body.rows.length, 1);
+  assert.equal(up[0].body.rows[0].address, "500 E Front St, Boise ID");
+});
+
+test("editing a cell posts the edited value", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" },
+        error: null,
+      }],
+    })),
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const addr = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "address");
+  assert.ok(addr, "the confirm table should emit an address input");
+  addr.value = "999 New St, Boise ID";
+  addr.fire("input");
+  doc.getElementById("pdfGo").click();
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].body.rows[0].address, "999 New St, Boise ID");
 });
 
 test("Import posts only checked rows under the PDF filename", async () => {

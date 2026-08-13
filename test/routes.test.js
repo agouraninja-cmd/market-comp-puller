@@ -1139,3 +1139,35 @@ test("every user flag entitlements reads is carried by getSessionUser", () => {
       "the flag would read as undefined and the feature would be silently inert");
   }
 });
+
+test("extractPdfOnce does not trip site-wide search outage on a vendor failure", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("async function extractPdfOnce");
+  assert.ok(start >= 0, "extractPdfOnce should still exist");
+  const end = src.indexOf("async function callAnthropicOnce", start);
+  assert.ok(end > start, "could not bound extractPdfOnce");
+  const body = src.slice(start, end);
+  assert.equal(body.includes("upstreamError"), false,
+    "a vendor 5xx on extract must not call upstreamError (that paints /admin as a search outage)");
+  assert.match(body, /extractVendorError/,
+    "vendor HTTP failures should go through extractVendorError");
+  assert.match(body, /extractWasTruncated/,
+    "a truncated extract must not look like an empty table");
+});
+
+test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  assert.ok(start >= 0, "EXTRACT_PROMPT should still exist");
+  const end = src.indexOf("function buildPrompt", start);
+  assert.ok(end > start, "could not bound EXTRACT_PROMPT");
+  const body = src.slice(start, end);
+  assert.match(body, /EXTRACT_KEYS/,
+    "the prompt must interpolate EXTRACT_KEYS so lat/lng cannot sneak back in via TEMPLATE_COLUMNS");
+  assert.equal(/\blat\b/.test(body), false, "the extract prompt must not request lat");
+  assert.equal(/\blng\b/.test(body), false, "the extract prompt must not request lng");
+});

@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-13",
+    "type": "fix",
+    "title": "Vault PDF extract no longer looks like a search outage or an empty table",
+    "details": "Gemini extract now asks for 24k output tokens and maps usageMetadata including thought tokens. A vendor failure on extract returns the spec copy at 502 and does not trip UPSTREAM_HEALTH. Truncation (max_tokens / MAX_TOKENS / incomplete) is a 400 instead of We could not find a deals table. The model is no longer asked for lat/lng. Returning brokers see the vendor disclosure on the drop zone."
+  },
+  {
+    "date": "2026-08-13",
     "type": "improvement",
     "title": "The broker vault looks like a finished workspace",
     "details": "The page kept the two-deck structure, the trust ledger, and the statement tables, and raised everything around them: Inter is loaded, the header sticks, the masthead has a private-workspace kicker, figures sit in lightly shadowed panels, forms stack their labels, the comps filter is a toolbar, tables are framed, coverage is pill chips, and the footer matches the rest of the site. First-run stays two quiet cards rather than a coloured empty state. No route or entitlement change — it is the same book, drawn as a product a broker would hand a colleague."

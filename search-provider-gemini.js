@@ -63,7 +63,9 @@ function buildExtractBody({ model, prompt, pdfBase64 }) {
         { text: prompt },
       ],
     }],
-    generationConfig: { maxOutputTokens: 8192 },
+    // Same smaller search-path cap: thought tokens count toward output, and
+    // an Anthropic-sized 8k/10k truncates a table mid-array.
+    generationConfig: { maxOutputTokens: 24000 },
   };
 }
 
@@ -78,9 +80,21 @@ function extractRequestInit({ apiKey, model }) {
 }
 
 function parseExtractResponse(data) {
-  const parts = ((((data || {}).candidates || [])[0] || {}).content || {}).parts || [];
+  const cand = ((data || {}).candidates || [])[0] || {};
+  const parts = ((cand.content || {}).parts) || [];
   const text = parts.filter((p) => p && typeof p.text === "string").map((p) => p.text).join("");
-  return { text: text.trim(), usage: normalizeUsage(data && data.usage) };
+  const meta = (data && data.usageMetadata) || {};
+  return {
+    text: text.trim(),
+    // generateContent uses finishReason (MAX_TOKENS); keep Interactions
+    // `status: "incomplete"` in case that shape ever appears here.
+    stopReason: cand.finishReason || (data && data.status) || "",
+    usage: normalizeUsage({
+      total_input_tokens: meta.promptTokenCount,
+      total_output_tokens: meta.candidatesTokenCount,
+      total_thought_tokens: meta.thoughtsTokenCount,
+    }),
+  };
 }
 
 // VERIFIED against live calls 2026-08-10. Response shape:

@@ -25,7 +25,8 @@ const {
   exportColumns, exportCsv, exportRowsWithCoords,
   guardFormula, csvCell,
   looksLikePdf, parseExtractJson, classifyExtractRows, uploadPayloadToCsv,
-  MAX_PDF_BYTES, VAULT_FIELD_KEYS,
+  MAX_PDF_BYTES, VAULT_FIELD_KEYS, EXTRACT_KEYS,
+  extractVendorError, extractWasTruncated,
 } = require("../broker-vault");
 
 // Shared with vault-api.test.js: parses the columns a table actually has out
@@ -1676,4 +1677,37 @@ test("uploadPayloadToCsv refuses csv and rows together, and an empty rows array"
 
 test("VAULT_FIELD_KEYS is template plus optional spec, nothing else", () => {
   assert.deepEqual(VAULT_FIELD_KEYS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]);
+});
+
+test("EXTRACT_KEYS is the vault fields minus lat and lng", () => {
+  assert.deepEqual(EXTRACT_KEYS, [...TEMPLATE_COLUMNS, ...OPTIONAL_SPEC_COLUMNS]
+    .filter((k) => k !== "lat" && k !== "lng"));
+  assert.ok(!EXTRACT_KEYS.includes("lat"));
+  assert.ok(!EXTRACT_KEYS.includes("lng"));
+  assert.ok(EXTRACT_KEYS.includes("address"));
+  assert.ok(EXTRACT_KEYS.includes("beds_baths"));
+});
+
+test("extractVendorError maps a vendor 5xx to 502 and the spec copy, never search-outage copy", () => {
+  const err = extractVendorError(500, "internal");
+  assert.equal(err.statusCode, 502);
+  assert.equal(err.userMessage, "Could not read that PDF. Nothing was saved.");
+  assert.equal(err.userMessage.includes("comp search"), false);
+});
+
+test("extractVendorError maps a vendor 429 to the upload-busy line, not the search-busy line", () => {
+  const err = extractVendorError(429, "resource exhausted");
+  assert.equal(err.statusCode, 429);
+  assert.equal(err.userMessage, "Too many uploads. Please wait a moment.");
+  assert.equal(err.userMessage.includes("comp search"), false);
+});
+
+test("extractWasTruncated is true for Anthropic max_tokens and Gemini MAX_TOKENS or incomplete", () => {
+  assert.equal(extractWasTruncated("max_tokens"), true);
+  assert.equal(extractWasTruncated("MAX_TOKENS"), true);
+  assert.equal(extractWasTruncated("incomplete"), true);
+  assert.equal(extractWasTruncated("end_turn"), false);
+  assert.equal(extractWasTruncated("STOP"), false);
+  assert.equal(extractWasTruncated(""), false);
+  assert.equal(extractWasTruncated(undefined), false);
 });

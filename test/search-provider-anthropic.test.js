@@ -82,3 +82,20 @@ test("declares pdfExtract and buildExtractBody has no tools", () => {
   assert.equal(blocks[0].source.data, "AAA");
   assert.equal(blocks[1].text, "EXTRACT");
 });
+
+test("parseExtractResponse keeps text, usage, and stop_reason", () => {
+  const out = P.parseExtractResponse(FIXTURE);
+  assert.equal(out.text, "Here is the report.\n{\"comps\":[]}");
+  assert.equal(out.stopReason, "end_turn");
+  assert.equal(out.usage.input_tokens, 3300);
+  assert.equal(out.usage.output_tokens, 4100);
+});
+
+test("parseExtractResponse surfaces stop_reason max_tokens so truncation is visible", () => {
+  const out = P.parseExtractResponse({
+    stop_reason: "max_tokens",
+    content: [{ type: "text", text: "[{\"address\":\"1 Main\"}" }],
+    usage: { input_tokens: 100, output_tokens: 8000 },
+  });
+  assert.equal(out.stopReason, "max_tokens");
+});

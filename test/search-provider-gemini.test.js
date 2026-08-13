@@ -91,7 +91,8 @@ test("declares pdfExtract and buildExtractBody has no google_search", () => {
   assert.equal(body.contents[0].parts[0].inline_data.mime_type, "application/pdf");
   assert.equal(body.contents[0].parts[0].inline_data.data, "AAA");
   assert.equal(body.contents[0].parts[1].text, "EXTRACT");
-  assert.equal(body.generationConfig.maxOutputTokens, 8192);
+  assert.equal(body.generationConfig.maxOutputTokens, 24000,
+    "thought tokens count toward output; 8192 truncates a table mid-array");
 });
 
 test("extractRequestInit hits generateContent, not Interactions", () => {
@@ -104,7 +105,29 @@ test("extractRequestInit hits generateContent, not Interactions", () => {
 test("parseExtractResponse reads generateContent candidates, not Interactions steps", () => {
   const out = P.parseExtractResponse({
     candidates: [{ content: { parts: [{ text: "[{\"address\":\"1 Main\"}]" }] } }],
-    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4 },
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, thoughtsTokenCount: 20 },
   });
   assert.equal(out.text, "[{\"address\":\"1 Main\"}]");
+  assert.equal(out.usage.input_tokens, 10);
+  assert.equal(out.usage.output_tokens, 4 + 20,
+    "thought tokens fold into output, same as search");
+  assert.equal(out.stopReason, "");
+});
+
+test("parseExtractResponse surfaces generateContent finishReason, including MAX_TOKENS", () => {
+  const out = P.parseExtractResponse({
+    candidates: [{
+      finishReason: "MAX_TOKENS",
+      content: { parts: [{ text: "[{\"address\":\"1 Main\"}" }] },
+    }],
+  });
+  assert.equal(out.stopReason, "MAX_TOKENS");
+});
+
+test("parseExtractResponse also reads Interactions-style incomplete status", () => {
+  const out = P.parseExtractResponse({
+    status: "incomplete",
+    candidates: [{ content: { parts: [{ text: "[" }] } }],
+  });
+  assert.equal(out.stopReason, "incomplete");
 });

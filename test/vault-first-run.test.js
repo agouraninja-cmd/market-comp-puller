@@ -105,7 +105,12 @@ test("the file input accepts csv and pdf", () => {
 });
 
 test("the first-run disclosure names the extract vendor", () => {
-  assert.match(html(), /extract vendor/);
+  const page = html();
+  const start = page.indexOf('id="firstRun"');
+  assert.ok(start >= 0, "#firstRun is missing");
+  const end = page.indexOf('id="deckBook"', start);
+  const firstRun = page.slice(start, end > start ? end : undefined);
+  assert.match(firstRun, /extract vendor/);
 });
 
 test("picker copy mentions PDF", () => {

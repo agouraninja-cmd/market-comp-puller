@@ -11788,12 +11788,18 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
 
-          const { filename, csv, mapping } = JSON.parse(body || "{}");
+          const parsedBody = JSON.parse(body || "{}");
+          const { filename, mapping } = parsedBody;
+          const made = VAULT.uploadPayloadToCsv({ csv: parsedBody.csv, rows: parsedBody.rows });
+          if (!made.ok) {
+            return sendJson(res, 400, { error: made.error || "Nothing to import." });
+          }
+          const csv = made.csv;
           // `mapping` absent means today's behaviour byte for byte, so
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
           // wrong, which is why nothing is checked here.
-          const parsed = VAULT.parseUpload(csv, { mapping: mapping || null });
+          const parsed = VAULT.parseUpload(csv, { mapping: parsedBody.rows ? null : (mapping || null) });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {

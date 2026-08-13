@@ -6,6 +6,12 @@
     "details": "The page kept the two-deck structure, the trust ledger, and the statement tables, and raised everything around them: Inter is loaded, the header sticks, the masthead has a private-workspace kicker, figures sit in lightly shadowed panels, forms stack their labels, the comps filter is a toolbar, tables are framed, coverage is pill chips, and the footer matches the rest of the site. First-run stays two quiet cards rather than a coloured empty state. No route or entitlement change — it is the same book, drawn as a product a broker would hand a colleague."
   },
   {
+    "date": "2026-08-13",
+    "type": "feature",
+    "title": "Vault PDF import for table exports",
+    "details": "A broker can drop a CoStar/ARGUS/CMA PDF onto Build your own comp set. The file is sent to the extract vendor with no search tools, never stored, and the rows land only after a confirm table. Spreadsheets are unchanged."
+  },
+  {
     "date": "2026-08-12",
     "type": "fix",
     "title": "The per-account vault grant reached the database but not the code",

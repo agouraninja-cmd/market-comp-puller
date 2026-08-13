@@ -250,6 +250,7 @@ test("bare environment", async (t) => {
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/vault/benchmarks"],
       ["POST",   "/api/vault/inspect"],
+      ["POST",   "/api/vault/extract"],
       // Writes broker_profiles, whose display_name/company become PUBLIC the
       // moment somebody opts in — so an unauthenticated caller reaching it
       // could put words in a named broker's mouth.
@@ -290,6 +291,15 @@ test("bare environment", async (t) => {
       body: JSON.stringify({ csv: "address\n1 A St, Boise, ID\n" }),
     });
     assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
+  });
+
+  await t.test("/api/vault/extract is gated like the rest of the vault", async () => {
+    const r = await fetch(srv.base + "/api/vault/extract", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: "book.pdf", pdf: "AAAA" }),
+    });
+    assert.equal(r.status, 401, "an anonymous caller must not send a file to the extract vendor");
   });
 
   // Per-comp edit/delete is a new door into the same private table as every

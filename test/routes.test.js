@@ -1100,6 +1100,25 @@ test("SEARCH_PROVIDER wiring", async (t) => {
     } finally { srv.stop(); }
   });
 
+  await t.test("/healthz names the live model, including a MODEL override", async () => {
+    // The provider is only half of "what answered this report" — MODEL is a
+    // startup constant an env var can override, so the repo cannot be read as
+    // proof of what production is running. Both halves are asserted because
+    // reporting PROVIDER.defaultModel instead of MODEL would satisfy the
+    // default case and silently lie on every overridden deployment, which is
+    // exactly the deployment whose model somebody is asking about.
+    const dflt = await boot({});
+    try {
+      assert.equal((await (await fetch(dflt.base + "/healthz")).json()).model,
+        require("../search-provider-gemini").defaultModel);
+    } finally { dflt.stop(); }
+
+    const over = await boot({ MODEL: "gemini-9.9-imaginary" });
+    try {
+      assert.equal((await (await fetch(over.base + "/healthz")).json()).model, "gemini-9.9-imaginary");
+    } finally { over.stop(); }
+  });
+
   await t.test("an unrecognized SEARCH_PROVIDER refuses to boot", async () => {
     // boot() throws "server exited early" when the child exits before /healthz.
     // A silent fallback to anthropic would boot healthy and fail this test.

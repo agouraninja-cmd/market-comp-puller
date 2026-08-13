@@ -11831,7 +11831,9 @@ const server = http.createServer((req, res) => {
 
           // Saved only once the import actually succeeded, so a mapping that
           // produced nothing usable is never offered back to them next time.
-          if (mapping) saveCsvMapping(user.id, mapping);
+          // Row uploads (PDF confirm) ignore mapping entirely — do not overwrite
+          // the broker's remembered CSV mapping.
+          if (mapping && !parsedBody.rows) saveCsvMapping(user.id, mapping);
 
           // `market` is attached HERE, with server.js's own marketOf() and no
           // other parse, so broker_comps.market agrees byte for byte with

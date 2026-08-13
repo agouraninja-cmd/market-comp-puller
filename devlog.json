@@ -26,6 +26,12 @@
   {
     "date": "2026-08-13",
     "type": "improvement",
+    "title": "Comp and market searches now run on Gemini 3.7 Flash",
+    "details": "The default search model moved from gemini-3.6-flash to gemini-3.7-flash. Comp reports and Market Explorer share the same provider default, so both pick it up. MODEL still overrides if set."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
     "title": "The broker vault looks like a finished workspace",
     "details": "The page kept the two-deck structure, the trust ledger, and the statement tables, and raised everything around them: Inter is loaded, the header sticks, the masthead has a private-workspace kicker, figures sit in lightly shadowed panels, forms stack their labels, the comps filter is a toolbar, tables are framed, coverage is pill chips, and the footer matches the rest of the site. First-run stays two quiet cards rather than a coloured empty state. No route or entitlement change — it is the same book, drawn as a product a broker would hand a colleague."
   },

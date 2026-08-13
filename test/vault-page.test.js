@@ -227,10 +227,10 @@ function stubElement() {
     classList,
     addEventListener(t, fn) { (on[t] = on[t] || []).push(fn); },
     removeEventListener() {},
-    // applyFirstRun relocates the one #covForm node between step 2 and the
-    // leads section. This harness is an id-keyed bag with no notion of
-    // position, so relocation is a no-op here on purpose — elements stay
-    // reachable by id either way, which is all these tests read.
+    // applyFirstRun relocates the one #covForm node between step 2 and
+    // #covBox. This harness is an id-keyed bag with no notion of position,
+    // so relocation is a no-op here on purpose — elements stay reachable
+    // by id either way, which is all these tests read.
     appendChild() {},
     insertBefore() {},
     // What the browser would do when the broker clicks / picks a file.
@@ -300,7 +300,9 @@ async function runPage(comps, benchResult, opts, identity) {
     const u = String(url);
     calls.push({ url: u, body: init && init.body ? JSON.parse(init.body) : null });
     if (u.indexOf("/api/broker/leads") === 0) {
-      return Promise.resolve(jsonResponse(200, { coverage: [], leads: [] }));
+      return opts.leads
+        ? opts.leads(init, u)
+        : Promise.resolve(jsonResponse(200, { coverage: [], leads: [] }));
     }
     if (u.indexOf("/api/vault/benchmarks") === 0) {
       return benchResult ? benchResult() : Promise.resolve(jsonResponse(200, { buckets: [] }));
@@ -476,28 +478,40 @@ test("the gut check degrades to a one-line note when the benchmarks fetch fails,
 });
 
 // ---------------------------------------------------------------------------
-// The BOV tracker (v4 slice 2)
+// The pipeline deck (2026-08-13): one table from lead to won
 // ---------------------------------------------------------------------------
 
-test("the BOV tracker section is present and first-run hides it", () => {
+test("the pipeline is one table and neither old wrapper remains", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
-  assert.ok(html.includes('id="bovSec"'), "the tracker section is missing");
-  // First run keys on comps AND uploads (the standing rule); the tracker
-  // hides with everything else so the start page stays a two-step page.
+  assert.ok(html.includes('id="pipeTbl"'), "the pipeline table is missing");
+  assert.ok(html.includes('id="pipeSec"'));
+  assert.ok(!html.includes('id="bovSec"'), "the old BOV section must be gone");
+  assert.ok(!html.includes('id="leadTableWrap"'), "the old leads wrapper must be gone");
+  assert.ok(!html.includes('id="bovTableWrap"'), "the old BOV wrapper must be gone");
   const js = pageScript(html);
-  assert.match(js, /\$\("bovSec"\)\.className=first\?"hide":""/,
-    "applyFirstRun does not hide the tracker");
+  assert.match(js, /\$\("pipeSec"\)\.className=first\?"hide":""/,
+    "applyFirstRun does not hide the pipeline");
 });
 
-test("the tracker's empty state is a sentence, not an empty table", () => {
+test("the pipeline's empty state is a sentence, not an empty table", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
-  // The table wrapper starts hidden and #noBovs exists: with zero rows the
-  // section is prose plus the form, never a header row over nothing.
-  assert.ok(html.includes('class="tw hide" id="bovTableWrap"'));
-  assert.ok(html.includes('id="noBovs"'));
+  assert.ok(html.includes('class="tw hide" id="pipeTableWrap"'));
+  assert.ok(html.includes('id="noPipe"'));
 });
 
-test("the emitted script still parses with the tracker in it", () => {
+test("the lead-privacy line appears exactly once", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.equal((html.match(/id="leadPrivacy"/g) || []).length, 1);
+  assert.match(html, /A lead&rsquo;s address and contact details stay/);
+});
+
+test("the log-a-BOV panel ships closed", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<div id="bovAddSec" class="addpanel hide">/);
+  assert.match(html, /id="bovToggle"[^>]*aria-expanded="false"/);
+});
+
+test("the emitted script still parses with the pipeline in it", () => {
   assert.doesNotThrow(() => new Function(pageScript(renderVaultHTML(boot([]), CHROME))));
 });
 
@@ -1379,11 +1393,10 @@ test("an unpriced comp in a second type cannot suppress the median", async () =>
 });
 
 // ---------------------------------------------------------------------------
-// The BOV panel's empty state (2026-08-12)
+// The pipeline deck's merged table (2026-08-13)
 //
-// Nothing in this file had ever stubbed /api/broker/bovs, so every page here
-// ran loadBovs through its catch branch — which hides the empty line, and so
-// could never have caught it lingering over a populated log.
+// The two sources are stubbed independently so a failure of one cannot
+// masquerade as an empty other. Default runPage answers both as empty-ok.
 // ---------------------------------------------------------------------------
 
 const A_BOV = {
@@ -1391,12 +1404,17 @@ const A_BOV = {
   status: "open", source: "compninja", received_on: "2026-08-01",
   size_sqft: 40000, address: "1 Ind St", notes: "",
 };
+const A_LEAD = {
+  id: "l1", market: "Meridian, ID", type: "Industrial",
+  ts: "2026-08-10T12:00:00.000Z", size_sqft: 34000, intro_requested: false,
+};
+const A_COV = { id: "cov1", market: "Boise, ID", property_type: "Industrial", source: "added" };
 
-test("an empty BOV log shows its line and no table", async () => {
+test("an empty pipeline shows its line and no table", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK);
-  assert.equal(doc.getElementById("noBovs").className, "empty",
-    "with nothing logged the line is the only thing to show");
-  assert.match(doc.getElementById("bovTableWrap").className, /hide/,
+  assert.equal(doc.getElementById("noPipe").className, "empty",
+    "with nothing in either source the line is the only thing to show");
+  assert.match(doc.getElementById("pipeTableWrap").className, /hide/,
     "a header row over no rows is the empty table the first-run work removed");
 });
 
@@ -1407,19 +1425,93 @@ test("the first logged BOV puts the empty line away", async () => {
       rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
     })),
   });
-  assert.match(doc.getElementById("noBovs").className, /hide/,
+  assert.match(doc.getElementById("noPipe").className, /hide/,
     '"Nothing logged yet" over a logged BOV contradicts the row beneath it');
-  assert.equal(doc.getElementById("bovTableWrap").className, "tw");
-  assert.match(doc.getElementById("bovRows").innerHTML, /Boise, ID/);
+  assert.equal(doc.getElementById("pipeTableWrap").className, "tw");
+  assert.match(doc.getElementById("pipeRows").innerHTML, /Boise, ID/);
 });
 
-test("a failed BOV load shows neither the empty line nor a stale table", async () => {
-  // The error message is the answer here. An empty-state line would claim the
-  // log is empty when the truth is that it could not be read.
+test("a BOV row renders its status select and a Remove button", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    bovs: () => Promise.resolve(jsonResponse(200, {
+      bovs: [A_BOV],
+      rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
+    })),
+  });
+  const row = doc.getElementById("pipeRows").innerHTML;
+  assert.match(row, /<select data-bov="b1"/);
+  assert.match(row, /data-bovdel="b1">Remove<\/button>/);
+  assert.doesNotMatch(row, /data-intro=/);
+  assert.doesNotMatch(row, /class="stg new"/);
+});
+
+test("a lead row renders the New chip and an intro button, and no status select", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD] })),
+  });
+  const row = doc.getElementById("pipeRows").innerHTML;
+  assert.match(row, /<span class="stg new">New<\/span>/);
+  assert.match(row, /data-intro="l1">Request introduction<\/button>/);
+  assert.match(row, /CompNinja lead/);
+  assert.doesNotMatch(row, /<select data-bov=/);
+  assert.doesNotMatch(row, /data-bovdel=/);
+  assert.equal(doc.getElementById("leadPrivacy").className, "note");
+});
+
+test("a stage cell with a zero count is not a button", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    bovs: () => Promise.resolve(jsonResponse(200, {
+      bovs: [A_BOV],
+      rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
+    })),
+  });
+  const strip = doc.getElementById("pipeStrip").innerHTML;
+  assert.match(strip, /<button class="scell act" type="button" data-stage="open"/);
+  assert.match(strip, /<div class="scell"[^>]*>[\s\S]*New/);
+  assert.doesNotMatch(strip, /data-stage="new"/);
+  assert.doesNotMatch(strip, /data-stage="won"/);
+});
+
+test("leads failing still renders BOV rows", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    leads: () => Promise.resolve(jsonResponse(503, { error: "Couldn't load leads." })),
+    bovs: () => Promise.resolve(jsonResponse(200, {
+      bovs: [A_BOV],
+      rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
+    })),
+  });
+  assert.match(doc.getElementById("pipeRows").innerHTML, /Boise, ID/);
+  assert.match(doc.getElementById("pipeMsg").innerHTML, /Couldn.t load leads/);
+  assert.equal(doc.getElementById("pipeTableWrap").className, "tw");
+});
+
+test("BOVs failing still renders lead rows", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    leads: () => Promise.resolve(jsonResponse(200, { coverage: [A_COV], leads: [A_LEAD] })),
+    bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
+  });
+  assert.match(doc.getElementById("pipeRows").innerHTML, /<span class="stg new">New<\/span>/);
+  assert.match(doc.getElementById("pipeRows").innerHTML, /Meridian, ID/);
+  assert.match(doc.getElementById("pipeMsg").innerHTML, /unavailable/i);
+  assert.match(doc.getElementById("noPipe").className, /hide/);
+});
+
+test("a failed BOV load shows neither the empty line nor a stale table when leads are empty too", async () => {
   const { doc } = await runPage(ONE_TYPE_BOOK, null, {
     bovs: () => Promise.resolve(jsonResponse(503, { error: "unavailable" })),
   });
-  assert.match(doc.getElementById("noBovs").className, /hide/);
-  assert.match(doc.getElementById("bovTableWrap").className, /hide/);
-  assert.match(doc.getElementById("bovMsg").innerHTML, /unavailable/i);
+  assert.match(doc.getElementById("noPipe").className, /hide/);
+  assert.match(doc.getElementById("pipeTableWrap").className, /hide/);
+  assert.match(doc.getElementById("pipeMsg").innerHTML, /unavailable/i);
+});
+
+test("the win rate is a dash below three decided BOVs", async () => {
+  const { doc } = await runPage(ONE_TYPE_BOOK, null, {
+    bovs: () => Promise.resolve(jsonResponse(200, {
+      bovs: [A_BOV],
+      rollup: { total: 1, thisYear: 1, open: 1, delivered: 0, winRate: null },
+    })),
+  });
+  assert.match(doc.getElementById("pipeNote").innerHTML, /1 this year/);
+  assert.match(doc.getElementById("pipeNote").innerHTML, /win rate (?:—|&mdash;|\\u2014|\u2014)/);
 });

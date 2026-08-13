@@ -66,7 +66,7 @@ test("every element the first run hides ships hidden or is toggled by id", () =>
   // Direction U neither addSec nor importsSec is a <section> — one is a panel
   // under the book deck, the other a disclosure under the comps table — so
   // this pins the id, which is what the toggling actually needs.
-  for (const id of ["addSec", "compsSec", "importsSec"]) {
+  for (const id of ["addSec", "compsSec", "importsSec", "pipeSec"]) {
     assert.match(page, new RegExp('id="' + id + '"'), id + " has no id to toggle");
   }
 });
@@ -79,8 +79,8 @@ test("the uploader ships closed, so the book is what a returning broker sees", (
   assert.match(html(), /id="addToggle"[^>]*aria-expanded="false"/);
 });
 
-test("the leads table ships hidden, so a header row never stands alone", () => {
-  assert.match(html(), /<div class="tw hide" id="leadTableWrap">/);
+test("the pipeline table ships hidden, so a header row never stands alone", () => {
+  assert.match(html(), /<div class="tw hide" id="pipeTableWrap">/);
 });
 
 test("applyFirstRun keys on comps AND uploads", () => {

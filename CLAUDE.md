@@ -1435,7 +1435,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     two products sharing one scroll, so it carries exactly two deck rules —
     serif label, ink rule, the deck's one action — and they are the level
     ABOVE `h2`. **Your book** holds the uploader, the market rollup and the
-    comps; **Your pipeline** holds leads and the BOV tracker. Five rules:
+    comps; **Your pipeline** holds one table from a new lead through won or
+    lost (leads and BOVs used to be two sections; they merged 2026-08-13).
+    Five rules:
     - **`#addSec` is a panel, not a section, and ships CLOSED.** "Add comps"
       was a section above the comps table, so a broker with 200 comps opened
       their book and was handed an uploader. It is the book deck's action now.
@@ -1646,11 +1648,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     individual sale comps >25% outside the band get an outlier marker in
     the comps table. No migration.
   - **BOV tracker** (v4 slice 2, 2026-08-08; spec
-    `docs/superpowers/specs/2026-08-08-bov-tracking-design.md`). A panel on
-    `/vault`: the broker's private log of BOV engagements from any source,
-    statuses open/delivered/won/lost (vocabulary validated, transitions
-    deliberately unpoliced), tiles for this year / open / delivered / win
-    rate (dash under 3 decided). Rules in the pure, tested **`bov-log.js`**;
+    `docs/superpowers/specs/2026-08-08-bov-tracking-design.md`). The broker's
+    private log of BOV engagements from any source, statuses
+    open/delivered/won/lost (vocabulary validated, transitions deliberately
+    unpoliced). Rules in the pure, tested **`bov-log.js`**;
     table `broker_bovs` (migration 019), vault-class private: DB-only, every
     read/write user-scoped, read by no owner surface (`/admin`'s
     intro-requests card is unchanged). Intro requests auto-create rows
@@ -1666,6 +1667,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the reason migration 019 has no SQL backfill (`marketOf()` is JS).
     Routes go through `requireBroker`. Manual adds log a PII-free `bov`
     analytics event. Lapse locks the log, never deletes it.
+    **On `/vault` those rows share one table with the lead inbox**
+    (2026-08-13; spec
+    `docs/superpowers/specs/2026-08-13-vault-pipeline-deck-design.md`). A
+    lead is a `New` stage whose only action is requesting an introduction;
+    a BOV keeps its status select and Remove. The four tiles became a
+    five-cell stage strip (New / Open / Delivered / Won / Lost) plus a note
+    line for this year and the win rate (dash under 3 decided). Coverage
+    collapses under "Markets you watch". No new endpoint — the browser
+    already had both payloads.
   - **The credit identity is STATED, never inherited** (2026-08-12).
     `POST /api/vault/identity` writes `broker_profiles.display_name` and
     `.company`, creating the row if needed; `vaultReadPayload` returns an

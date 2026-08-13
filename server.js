@@ -14227,7 +14227,14 @@ const server = http.createServer((req, res) => {
         "cache-control": "no-store",
         "x-robots-tag": "noindex, nofollow",
       });
-      res.end(renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }));
+      res.end(renderVaultHTML(boot, {
+        CN_LOGO,
+        MARKET_CSS,
+        ACCOUNT_NAV_CSS,
+        ACCOUNT_NAV_JS,
+        ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
+        ACCOUNT_NAV_PRICING,
+      }));
     })();
     return;
   }

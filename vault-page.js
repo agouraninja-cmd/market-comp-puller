@@ -19,13 +19,25 @@
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 
-// CN_LOGO and MARKET_CSS are the site's shared chrome: one definition in
-// server.js, used by seven other server-rendered pages. They are passed IN
-// rather than copied here, because a second copy would drift from the first
-// (server.js already carries a "keep the two in step" warning about exactly
-// that hazard elsewhere). Passing them keeps one source of truth and means
-// this file never has to reach back into server.js.
-function renderVaultHTML(boot, { CN_LOGO, MARKET_CSS }) {
+// CN_LOGO and the account-nav pieces are the site's shared chrome: one
+// definition in server.js, used by the other server-rendered pages. They are
+// passed IN rather than copied here, because a second copy would drift from
+// the first (server.js already carries a "keep the two in step" warning about
+// exactly that hazard elsewhere). Passing them keeps one source of truth and
+// means this file never has to reach back into server.js. The vault keeps its
+// own sticky header and stylesheet; it lifts the circle, Pricing slot, and
+// hydration script so a member leaving /desk does not appear to have signed
+// out.
+function renderVaultHTML(boot, chrome) {
+  chrome = chrome || {};
+  const CN_LOGO = chrome.CN_LOGO || "";
+  // MARKET_CSS is accepted so the page keeps taking the site's shared chrome
+  // object; the vault draws its own stylesheet and only lifts the account-nav
+  // pieces from it, because a second copy of MARKET_BAR would drift.
+  const ACCOUNT_NAV_CSS = chrome.ACCOUNT_NAV_CSS || "";
+  const ACCOUNT_NAV_JS = chrome.ACCOUNT_NAV_JS || "";
+  const ACCOUNT_NAV_SLOTS = chrome.ACCOUNT_NAV_SLOTS || "";
+  const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
@@ -74,9 +86,24 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .brand svg{height:28px;width:28px;flex-shrink:0}
 .wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
 .wordmark b{color:var(--red);font-weight:600}
-.hdr nav{display:flex;align-items:center;gap:var(--s5);font-size:13px}
-.hdr nav a{color:var(--ink-2);padding:4px 0}.hdr nav a:hover{color:var(--ink)}
+.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
+.hdr nav a{color:var(--ink-2);padding:4px 0;white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
 .hdr nav a[aria-current="page"]{color:var(--ink);font-weight:600}
+/* Explore + account circle, matching MARKET_BAR so the vault is not the one
+   signed-in page whose bar drops Pricing and the circle. Load-bearing:
+   .hdr nav .dd a sets display:block, which out-specifies [hidden], so the
+   injected ACCOUNT_NAV_CSS (and the copy below) must keep slots hidden. */
+.hdr nav [hidden]{display:none!important}
+.hdr nav details{position:relative}
+.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-2);white-space:nowrap;user-select:none}
+.hdr nav summary::-webkit-details-marker{display:none}
+.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
+.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-3)}
+.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:#fff;
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+  padding:4px 0;min-width:176px}
+.hdr nav .dd a{display:block;padding:8px 12px;color:#374253}
+.hdr nav .dd a:hover{background:#F8FAFC;color:var(--ink)}
 main{flex:1;padding:40px 0 72px}
 .kicker{margin:0 0 var(--s3);font-size:var(--t6);font-weight:600;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-3)}
@@ -133,10 +160,17 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 .btn.ghost{background:#fff;color:var(--ink-2);border:1px solid var(--edge)}
 .btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-4)}
 .row{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
-#covRow{align-items:center;margin-top:8px}
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px 16px;align-items:end}
+.form .span2{grid-column:1/-1}
+.form .span-all{grid-column:1/-1}
+.formact{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.form input,.form select{width:100%}
+@media (min-width:720px){.form .span2{grid-column:span 2}}
+#addTypeFields{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px 16px}
+#covRow{align-items:center;margin-top:8px;gap:8px}
 #covRow .empty{padding:4px 0;text-align:left}
 .addpanel .tw,.mappanel .tw{box-shadow:none}
-.row label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
+.row label,.form label,.editrow label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink-3);font-weight:600}
 select,input[type=text],input[type=date]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:16px;background:#fff;color:var(--ink);min-height:40px}
@@ -222,11 +256,14 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 td.rowact{white-space:nowrap}
 /* The inline edit row: one form spanning every column, not per-cell inputs —
    a comp carries fields (cap_rate, tenancy, year_built, notes) the table has
-   no column for at all, so a per-cell form could not hold them. */
-.editrow td{background:var(--wash)}
-.editrow label{display:flex;flex-direction:column;gap:4px;font-size:var(--t6);color:var(--ink-3);
-  letter-spacing:.06em;text-transform:uppercase;font-weight:600}
-.editrow input{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+   no column for at all, so a per-cell form could not hold them. Same grid as
+   the add-by-hand and BOV forms, so the three data-entry surfaces read as
+   one vocabulary. */
+.editrow td{background:var(--wash);padding:16px 18px}
+.editk{margin:0 0 12px;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600}
+.editrow .form{max-width:920px}
+.editrow input,.editrow select{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:16px;background:#fff;color:var(--ink);width:100%;min-height:40px}
 /* ---- The market rollup: the page's lead view ----------------------------
    A broker with 400 comps learns nothing from 400 rows. This is the index to
@@ -306,10 +343,12 @@ td.rowact{white-space:nowrap}
 .step details summary{cursor:pointer;color:var(--ink-3);font-size:var(--t5);user-select:none;list-style-position:inside}
 .step details summary:hover{color:var(--ink-2)}
 .step details .fine{margin:var(--s3) 0 0}
-/* When first-run is the page, the leads section sits directly under the two
-   steps (the book deck is hidden). A hairline keeps it from reading as a
-   leftover empty table. */
-#firstRun:not(.hide) ~ #leads{margin-top:var(--s8);padding-top:var(--s7);border-top:1px solid var(--line)}
+/* When first-run is the page, a lead TABLE can still appear under the two
+   cards if a watched market already has owners waiting — that is the one
+   leftover that earns its place. The empty inbox, the heading over nothing,
+   and the BOV tracker stay hidden. A hairline keeps a real table from
+   reading as a leftover empty section. */
+#firstRun:not(.hide) ~ #leads:not(.hide){margin-top:var(--s8);padding-top:var(--s7);border-top:1px solid var(--line)}
 /* The template link is an <a> styled as a button, so it needs the same box the
    <button>s get — .btn alone leaves it inline and underlined. */
 a.btn{display:inline-block;text-decoration:none;color:#fff}
@@ -346,6 +385,11 @@ a.btn.ghost:hover{color:var(--ink)}
 .addpanel,.mappanel{margin-top:var(--s5);padding:20px;border:1px solid var(--edge);border-radius:var(--r);
   background:#fff;box-shadow:var(--shadow)}
 .mappanel h2{margin-bottom:var(--s3)}
+#mapTable td:first-child{font-weight:500;color:var(--ink)}
+#mapTable select{width:100%;min-width:160px}
+.samp{display:inline-block;background:var(--wash);border-radius:3px;padding:2px 7px;
+  margin:0 4px 4px 0;font-size:11px;color:var(--ink-2);line-height:1.4}
+.mapact{margin-top:var(--s5);padding-top:var(--s4);border-top:1px solid var(--hair)}
 /* The one hidden-sibling pair left. #rollupSec hides itself when the book has
    no markets to roll up, and the divider above #compsSec would then be drawn
    under nothing. Scoped to this pair on purpose, exactly like the two rules
@@ -395,16 +439,29 @@ footer{background:var(--ink);color:#B8C0CC;font-size:13px;padding:0;border:0;mar
 footer .wrap{padding:36px var(--s6)}
 footer .wordmark{color:#fff}
 footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
+${ACCOUNT_NAV_CSS}
 </style></head><body>
 <header class="hdr"><div class="wrap">
   <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
   <nav>
-    <a href="/">Search</a>
+    <details>
+      <summary>Explore<span class="car">▾</span></summary>
+      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>
+      <a href="/markets">Markets</a><a href="/how-it-works">How it works</a>
+      <a href="/1031-exchange">1031 Guide</a><a href="/">Run a report</a></div>
+    </details>
     <a href="/desk">My Desk</a>
     <a href="/vault" aria-current="page">Vault</a>
-    <a href="/brokers">Brokers</a>
+    ${ACCOUNT_NAV_SLOTS}
   </nav>
-</div></header>
+</div></header>${ACCOUNT_NAV_JS}
+<script>document.addEventListener("click",function(e){
+document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
+if(!d.contains(e.target))d.open=false;});});
+document.addEventListener("keydown",function(e){
+if(e.key!=="Escape")return;
+var dd=document.querySelector(".hdr nav details[open]");
+if(dd)dd.open=false;});</script>
 <main><div class="wrap">
   <p class="kicker">Private workspace</p>
   <h1 class="h">Broker Vault</h1>
@@ -450,11 +507,13 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
            name the publish route would not actually use. -->
       <p class="note" id="creditLine"></p>
       <div id="idForm" class="hide">
-        <div class="row">
+        <div class="form">
           <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
           <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
-          <button class="btn ghost" id="idSave">Save</button>
-          <button class="btn ghost" id="idCancel">Cancel</button>
+          <div class="formact">
+            <button class="btn" id="idSave">Save</button>
+            <button class="btn ghost" id="idCancel">Cancel</button>
+          </div>
         </div>
         <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
           when you have one, otherwise to your name. This is not a public listing &mdash; it only
@@ -537,11 +596,13 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
                  add a market. One node, relocated — never a second copy that
                  would drift from the coverage rules. -->
             <div id="covFormHome"><div id="covForm">
-              <div class="row">
-                <label>Market <input id="covMarket" type="text" placeholder="City, ST"/></label>
+              <div class="form">
+                <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST"/></label>
                 <label>Type <select id="covType"></select></label>
-                <button class="btn ghost" id="covAdd">Watch this market</button>
+                <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
               </div>
+              <div class="row" id="covRow"></div>
+              <div id="leadMsg"></div>
               <!-- Plain-language rewrite (2026-08-12). The old line read
                    "Removing every market re-fills earned ones on your next
                    visit", which assumes the reader knows markets can be
@@ -592,26 +653,26 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
            isn't in one. -->
       <details class="dbox" id="addOneSec">
         <summary>Or add one comp by hand</summary>
-        <div class="row" style="margin-top:var(--s4)">
-          <label>Address <input id="addComp_address" type="text"/></label>
+        <div class="form" style="margin-top:var(--s4)">
+          <label class="span2">Address <input id="addComp_address" type="text"/></label>
           <label>Type <select id="addComp_property_type"></select></label>
           <label>Sale/lease <select id="addComp_transaction">
             <option value="sale">Sale</option>
             <option value="lease">Lease</option>
           </select></label>
           <label>Date <input id="addComp_deal_date" type="date"/></label>
-          <label>Price <input id="addComp_price" type="text" style="width:110px"/></label>
-          <label>Size (SF) <input id="addComp_size_sqft" type="text" style="width:90px"/></label>
-          <label>Cap rate <input id="addComp_cap_rate" type="text" style="width:70px" placeholder="optional"/></label>
+          <label>Price <input id="addComp_price" type="text"/></label>
+          <label>Size (SF) <input id="addComp_size_sqft" type="text"/></label>
+          <label>Cap rate <input id="addComp_cap_rate" type="text" placeholder="optional"/></label>
           <label>Tenancy <input id="addComp_tenancy" type="text" placeholder="optional"/></label>
-          <label>Year built <input id="addComp_year_built" type="text" style="width:70px" placeholder="optional"/></label>
-          <label>Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
-          <label>Lat <input id="addComp_lat" type="text" style="width:90px" placeholder="optional"/></label>
-          <label>Lng <input id="addComp_lng" type="text" style="width:90px" placeholder="optional"/></label>
-          <!-- Repopulated on every property-type change; its own nested .row
-               so the type's fields still get the same gap as the base ones. -->
-          <div class="row" id="addTypeFields" style="width:100%"></div>
-          <button class="btn ghost" id="addCompBtn" type="button">Add comp</button>
+          <label>Year built <input id="addComp_year_built" type="text" placeholder="optional"/></label>
+          <label class="span-all">Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
+          <label>Lat <input id="addComp_lat" type="text" placeholder="optional"/></label>
+          <label>Lng <input id="addComp_lng" type="text" placeholder="optional"/></label>
+          <div class="span-all" id="addTypeFields"></div>
+          <div class="formact span-all">
+            <button class="btn" id="addCompBtn" type="button">Add comp</button>
+          </div>
         </div>
         <!-- Its own message, NOT #compMsg. #compMsg sits at the top of
              #compsSec, well below this panel in document order — for a
@@ -635,7 +696,7 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       </table></div>
       <p class="note" id="mapIgnored"></p>
       <p id="mapMsg" class="msg bad hide"></p>
-      <div class="row">
+      <div class="formact mapact">
         <button class="btn" id="mapGo">Import</button>
         <button class="btn ghost" id="mapCancel">Cancel</button>
       </div>
@@ -725,16 +786,15 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
     <!-- Display only since 2026-08-10: the market-adding form (#covForm) lives
          in Start-here step 2 on a first run and is moved to the top of this
          section by applyFirstRun once the vault has content. Do not add a
-         second form here — one node, relocated, is the rule. -->
-    <section id="leads">
+         second form here — one node, relocated, is the rule. Ships hidden so
+         an empty vault does not flash the inbox under the two first-run cards
+         before applyFirstRun runs; revealed when there is a book, or when a
+         watched market already has leads waiting. -->
+    <section id="leads" class="hide">
       <h2>Leads in your markets</h2>
       <p class="sub" style="margin-top:0">Property owners requesting a Broker Opinion of Value
         show up here for any market you&rsquo;re watching.</p>
-      <div class="row" id="covRow"></div>
-      <div id="leadMsg"></div>
-      <!-- Hidden while there are no rows: a header row with nothing under it is
-           the same "is this broken?" signal the empty comps table gave, and a
-           broker sent here by step 1 of the first run lands on it directly. -->
+      <div id="covFormSlot"></div>
       <div class="tw hide" id="leadTableWrap"><table>
         <thead><tr><th>Received</th><th>Market</th><th>Type</th><th class="num">Size</th><th></th></tr></thead>
         <tbody id="leadRows"></tbody>
@@ -742,13 +802,13 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       <div class="empty hide" id="noLeads">No leads in your markets in the last 90 days.</div>
     </section>
 
-    <section id="bovSec">
+    <section id="bovSec" class="hide">
       <h2>BOV tracker</h2>
       <p class="sub" style="margin-top:0">Every Broker Opinion of Value you&rsquo;re working,
         from any source. Introductions you request above land here automatically; log the
         rest yourself. This is your private log: only you can see it.</p>
       <div class="cards" id="bovCards"></div>
-      <div class="row" style="margin-top:var(--s4)">
+      <div class="form" style="margin-top:var(--s4)">
         <label>Market <input id="bovMarket" type="text" placeholder="City, ST"/></label>
         <label>Type <select id="bovType"></select></label>
         <label>Source <select id="bovSource">
@@ -756,11 +816,13 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
           <option value="repeat_client">Repeat client</option>
           <option value="other" selected>Other</option>
         </select></label>
-        <label>Size (SF) <input id="bovSize" type="text" style="width:90px"/></label>
+        <label>Size (SF) <input id="bovSize" type="text"/></label>
         <label>Received <input id="bovDate" type="date"/></label>
-        <label>Address <input id="bovAddr" type="text" placeholder="optional"/></label>
-        <label>Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
-        <button class="btn ghost" id="bovAdd">Log a BOV</button>
+        <label class="span2">Address <input id="bovAddr" type="text" placeholder="optional"/></label>
+        <label class="span2">Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
+        <div class="formact span-all">
+          <button class="btn" id="bovAdd">Log a BOV</button>
+        </div>
       </div>
       <div id="bovMsg"></div>
       <div class="tw hide" id="bovTableWrap"><table id="bovTbl">
@@ -1015,12 +1077,13 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
   function editRow(c){
     var fields=EDIT_FIELDS.map(function(f){
       var v=c[f]==null?"":c[f];
-      return "<label>"+esc(EDIT_LABELS[f]||f)+
+      var wide=(f==="address"||f==="notes")?' class="span2"':"";
+      return "<label"+wide+">"+esc(EDIT_LABELS[f]||f)+
         '<input type="text" id="edit_'+f+'" value="'+escA(v)+'"/></label>';
     }).join("");
-    return '<tr class="editrow"><td colspan="10"><div class="row">'+fields+
-      '<button class="btn ghost" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
-      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button>'+
+    return '<tr class="editrow"><td colspan="10"><p class="editk">Editing this comp</p><div class="form">'+fields+
+      '<div class="formact span-all"><button class="btn" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
+      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button></div>'+
       "</div></td></tr>";
   }
 
@@ -1432,18 +1495,21 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
     var first=compCount===0&&uploadCount===0;
     $("firstRun").className=first?"":"hide";
     // Both decks stand down on a first run: there is no book to head, and the
-    // pipeline rule over a single section reads as furniture. The Start-here
-    // panel is the whole page then, exactly as before.
+    // pipeline rule over a single section reads as furniture. The two cards
+    // are the whole page then — leads and the BOV tracker hide with the decks
+    // unless a watched market already has owners waiting.
     $("deckBook").className=first?"deck hide":"deck";
     $("deckPipe").className=first?"deck hide":"deck";
     // The market form is ONE node, placed wherever the broker can see it:
-    // its home (#covFormHome) in Start-here step 2 on a first run, the top of
-    // the leads section otherwise (step 2 is hidden then, and a broker with a
-    // full book must still be able to add a market). appendChild/insertBefore
-    // MOVE an attached node, so no copy ever exists — and deleting the last
-    // import walks it home again, since this function re-applies both ways.
+    // its home (#covFormHome) in Start-here step 2 on a first run, the slot
+    // at the top of the leads section otherwise (step 2 is hidden then, and
+    // a broker with a full book must still be able to add a market).
+    // appendChild MOVES an attached node, so no copy ever exists — and
+    // deleting the last import walks it home again, since this function
+    // re-applies both ways. Chips and the form's own error line travel
+    // inside #covForm, so they cannot be stranded in a hidden section.
     if(first)$("covFormHome").appendChild($("covForm"));
-    else $("leads").insertBefore($("covForm"),$("covRow"));
+    else $("covFormSlot").appendChild($("covForm"));
     // The uploader is step 1's job on a first run and the book deck's action
     // otherwise, so it is closed by default in BOTH cases and this only
     // re-asserts whatever the broker last chose. It deliberately does not
@@ -1454,6 +1520,7 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
     $("trustLine").className=first?"trust hide":"trust";
     $("compsSec").className=first?"hide":"";
     $("importsSec").className=first?"dbox hide":"dbox";
+    $("leads").className=first?"hide":"";
     $("bovSec").className=first?"hide":"";
   }
 
@@ -1569,12 +1636,13 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       });
   }
   function renderCoverage(cov){
+    var emptyHint='<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
     $("covRow").innerHTML=cov.length?cov.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
       return '<span class="chip">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
         ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
         '">&times;</button></span>';
-    }).join(" "):'<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
+    }).join(" "):((firstRunCounts[0]===0&&firstRunCounts[1]===0)?"":emptyHint);
   }
   // covCount lets an empty inbox tell two situations apart: nothing to show
   // because there is no coverage yet (the covRow hint above already says so,
@@ -1591,6 +1659,12 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
       return "<tr><td>"+esc(String(l.ts||"").slice(0,10))+"</td><td>"+esc(l.market)+"</td><td>"+esc(l.type)+
         '</td><td class="num">'+(l.size_sqft?num(l.size_sqft)+" SF":"")+"</td><td>"+btn+"</td></tr>";
     }).join("");
+    // On a genuine empty vault the inbox is hidden with the pipeline. If a
+    // watched market already has owners waiting, surface the table under the
+    // two first-run cards — that is the one leftover that is not furniture.
+    if(firstRunCounts[0]===0&&firstRunCounts[1]===0){
+      $("leads").className=leads.length?"":"hide";
+    }
   }
   $("covType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
   $("covMarket").addEventListener("keydown",function(e){
@@ -1961,7 +2035,9 @@ footer p{color:#8F99A8;margin:10px 0 0;max-width:62ch;line-height:1.6}
         (info.targets||[]).map(function(t){
           return '<option value="'+esc(t)+'"'+(start[n]===t?" selected":"")+">"+esc(tLabel(t))+"</option>";
         })).join("");
-      var samp=(info.samples[n]||[]).map(esc).join("<br>");
+      var samp=(info.samples[n]||[]).map(function(v){
+        return '<span class="samp">'+esc(v)+"</span>";
+      }).join(" ");
       return "<tr><td>"+esc(info.headers[i])+'</td><td><select data-src="'+esc(n)+'">'+opts+
              '</select></td><td class="note">'+samp+"</td></tr>";
     }).join("");

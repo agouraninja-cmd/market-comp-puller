@@ -2,6 +2,12 @@
   {
     "date": "2026-08-13",
     "type": "improvement",
+    "title": "The vault header matches the rest of the site, and its forms finally look like forms",
+    "details": "The workspace kept a short Search / My Desk / Vault / Brokers bar after every other server-rendered page grew an Explore menu and an account circle, so leaving My Desk for the vault still read as having been signed out. It now lifts the same chrome (desk:false, so My Desk is not drawn twice) and keeps Vault as the current page. First-run no longer parks the empty leads inbox under the two quiet cards; the coverage form still lives in step 2, and the inbox only returns if a watched market already has owners waiting. Add-comp, BOV, identity, and the inline edit row share one grid instead of a wrapping stack of labels, and the column mapper names sample values as chips above a ruled action row. Visual only — same IDs, same two decks, still one file input and one relocating coverage form."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
     "title": "The broker vault looks like a finished workspace",
     "details": "The page kept the two-deck structure, the trust ledger, and the statement tables, and raised everything around them: Inter is loaded, the header sticks, the masthead has a private-workspace kicker, figures sit in lightly shadowed panels, forms stack their labels, the comps filter is a toolbar, tables are framed, coverage is pill chips, and the footer matches the rest of the site. First-run stays two quiet cards rather than a coloured empty state. No route or entitlement change — it is the same book, drawn as a product a broker would hand a colleague."
   },

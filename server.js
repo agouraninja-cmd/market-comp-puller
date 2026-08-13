@@ -11676,6 +11676,11 @@ const server = http.createServer((req, res) => {
             rows,
           });
         } catch (err) {
+          // Same guard as /api/vault/inspect: V8 quotes the input in a
+          // JSON.parse error, so a malformed body would otherwise print a
+          // fragment of the broker's private PDF into Render's logs (and
+          // echo it back via clientErrorMessage). A bad body is 400.
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault extract error:", err.message);
           const status = err.statusCode || 500;
           sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that PDF. Nothing was saved." });

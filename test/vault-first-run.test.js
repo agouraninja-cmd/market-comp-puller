@@ -83,6 +83,26 @@ test("the leads table ships hidden, so a header row never stands alone", () => {
   assert.match(html(), /<div class="tw hide" id="leadTableWrap">/);
 });
 
+test("the leads section ships hidden, so an empty vault does not flash the inbox", () => {
+  // Same first-paint rule as the BOV tracker: applyFirstRun reveals it once
+  // there is a book, and renderLeads can unhide it if a watched market already
+  // has owners waiting. Shipping it visible put the empty inbox under the two
+  // first-run cards until the script ran.
+  assert.match(html(), /<section id="leads" class="hide">/);
+});
+
+test("applyFirstRun hides the leads section on a genuine empty vault", () => {
+  assert.match(html(), /\$\("leads"\)\.className=first\?"hide":""/);
+});
+
+test("the coverage form is one relocating node with a slot in the leads section", () => {
+  const page = html();
+  assert.equal((page.match(/id="covForm"/g) || []).length, 1,
+    "a second coverage form would drift from the coverage rules");
+  assert.match(page, /id="covFormSlot"/);
+  assert.match(page, /id="covFormHome"/);
+});
+
 test("applyFirstRun keys on comps AND uploads", () => {
   // An import that landed but produced no comps still means the broker has
   // been through the door; showing "Start here" again would read as their

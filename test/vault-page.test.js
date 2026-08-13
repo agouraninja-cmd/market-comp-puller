@@ -129,6 +129,34 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
   assert.match(html, /id="repBox"[^>]*class="dbox hide"|class="dbox hide" id="repBox"/);
 });
 
+test("the vault header uses the site Explore menu, not a short Search bar", () => {
+  const html = renderVaultHTML(boot([]), CHROME);
+  assert.match(html, /<summary>Explore/);
+  assert.match(html, /href="\/how-it-works"/);
+  assert.match(html, /aria-current="page">Vault/);
+  assert.doesNotMatch(html, />Search</);
+});
+
+test("passed-in account-nav chrome lands in the vault header", () => {
+  const html = renderVaultHTML(boot([]), {
+    CN_LOGO: "<svg></svg>",
+    MARKET_CSS: "",
+    ACCOUNT_NAV_CSS: ".hdr nav [hidden]{display:none!important}",
+    ACCOUNT_NAV_JS: "<script>(function(){})();</script>",
+    ACCOUNT_NAV_SLOTS: '<details id="navAcct" class="acct" hidden></details>',
+    ACCOUNT_NAV_PRICING: '<a id="navPricing" href="/?pricing=1" hidden>Pricing</a>',
+  });
+  assert.match(html, /id="navAcct"/);
+  assert.match(html, /id="navPricing"/);
+  assert.match(html, /\.hdr nav \[hidden\]\{display:none!important\}/);
+});
+
+test("add-comp and BOV use a form grid rather than a wrapping row", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<div class="form" style="margin-top:var\(--s4\)">[\s\S]*id="addComp_address"/);
+  assert.match(html, /<div class="form" style="margin-top:var\(--s4\)">[\s\S]*id="bovMarket"/);
+});
+
 // ---------------------------------------------------------------------------
 // The gut check (v4 slice 1)
 // ---------------------------------------------------------------------------
@@ -487,6 +515,8 @@ test("the BOV tracker section is present and first-run hides it", () => {
   const js = pageScript(html);
   assert.match(js, /\$\("bovSec"\)\.className=first\?"hide":""/,
     "applyFirstRun does not hide the tracker");
+  assert.match(js, /\$\("leads"\)\.className=first\?"hide":""/,
+    "applyFirstRun does not hide the leftover leads section");
 });
 
 test("the tracker's empty state is a sentence, not an empty table", () => {

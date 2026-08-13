@@ -14063,8 +14063,18 @@ const server = http.createServer((req, res) => {
     // test can verify the responder is ITS child and not a foreign server on
     // the same port — two concurrent suite runs once cross-talked exactly
     // that way. Absent in production, where the env var is never set.
+    //
+    // `model` answers a question that was unanswerable from outside the box:
+    // "which model wrote this report?" MODEL is a startup constant that a
+    // deployment can override with an env var nobody can read from here, and
+    // a provider's defaultModel moves with the code, so inspecting the repo
+    // proves what the SOURCE says rather than what production is running.
+    // Asked on 2026-08-13 about a live report ("was this Gemini 3.7 Flash?")
+    // and the only honest answer was a git argument. It is the same class of
+    // fact as `provider`, which is already here, and it names a model — not
+    // a credential.
     return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
-      provider: PROVIDER.name, search_budget: PROVIDER.capabilities.searchBudget,
+      provider: PROVIDER.name, model: MODEL, search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 

@@ -2681,7 +2681,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, compWeight, trendFactor, valueFromComps } = VALUATION;
+          compAgeYears, compWeight, trendFactor, valueFromComps, subjectSizeFit } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -4379,13 +4379,31 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // class (down-weighted, never hidden), and say plainly when only 2-3
     // comps back the range - below 4 there is no outlier trim, so the band
     // is the raw spread and deserves rougher treatment.
-    const offSizeN = subjSFMid > 0
-      ? saleComps.filter((x) => {
-          const csf = numericValue(x.comp.size_sqft);
-          return csf > 0 && Math.abs(Math.log2(csf / subjSFMid)) > 1;
-        }).length
-      : 0;
-    const sizeNote = offSizeN > 0
+    //
+    // The comparison itself belongs to VALUATION.subjectSizeFit, which owns the
+    // 0.5x-2x window compWeight discounts by. Computing it here too would be a
+    // second copy of the rule deciding both this note and the warning below it.
+    const sizeFit = subjectSizeFit(subjSFMid, saleComps.map((x) => x.comp));
+    const offSizeN = sizeFit ? sizeFit.offSize : 0;
+    // When EVERY sized comp is a different size class the note above is the
+    // wrong way round, and dangerously so: it blames the comps for a gap the
+    // SIZE BOX is far likelier to have caused, and that box is the number the
+    // range is multiplied by. So say which figure to doubt, in the size box's
+    // own words, and name the closest comp so the gap is checkable at a glance.
+    // The pointer names the FORM's own label for the box, which is already
+    // per-type (SIZE_LABELS), rather than a second hardcoded "Building Size"
+    // that sent a homeowner looking for a field that says something else.
+    // Read from SIZE_LABELS rather than off #targetSizeLabel: a shared report
+    // renders somebody else's type into a form still labelled for whatever
+    // this visitor last searched. Shared with the basis line below, which
+    // points at the same box for the same reason.
+    const sizeFieldLabel = (SIZE_LABELS[meta.type] || "Building size (SF)").replace(/\s*\(SF\)\s*$/, "");
+    const sizeNote = sizeFit && sizeFit.unsupported
+      ? ` Every one of the ${sizeFit.sized} sized comps is a different size class from the `
+        + `${Math.round(subjSFMid).toLocaleString()} SF used here — the closest is `
+        + `${Math.round(sizeFit.nearest).toLocaleString()} SF — so this range is extrapolated `
+        + `${sizeFit.factor}x beyond the comps. Check ${sizeFieldLabel} above before relying on it.`
+      : offSizeN > 0
       ? ` ${offSizeN} comp${offSizeN === 1 ? " is" : "s are"} a different size class and count${offSizeN === 1 ? "s" : ""} less (‡ in the table).`
       : "";
     const smallNNote = (n) => n < 4
@@ -4578,13 +4596,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const compsPhrase = rr.trimmed
         ? `the middle range of ${ppsfs.length} sale comps`
         : `$/SF from ${ppsfs.length} sale comps`;
-      // The pointer names the FORM's own label for the box, which is already
-      // per-type (SIZE_LABELS), rather than a second hardcoded "Building Size"
-      // that sent a homeowner looking for a field that says something else.
-      // Read from SIZE_LABELS rather than off #targetSizeLabel: a shared report
-      // renders somebody else's type into a form still labelled for whatever
-      // this visitor last searched.
-      const sizeFieldLabel = (SIZE_LABELS[meta.type] || "Building size (SF)").replace(/\s*\(SF\)\s*$/, "");
       basisEl.textContent = srcPhrase
         ? `${sizeLabel} (${srcPhrase}; edit ${sizeFieldLabel} above if wrong) × ${compsPhrase}`
         : `${sizeLabel} × ${compsPhrase}`;
@@ -6535,6 +6546,47 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const hay = String(address).toLowerCase();
     return toks.some((t) => hay.indexOf(t) >= 0);
   }
+  // A unit designator means the street address names a SITE, not a structure:
+  // one trailer in a park, one suite in an office building, one apartment in a
+  // block. Geocoders drop it — Census answered "6728 W Fairview Ave Trailer 51"
+  // with "6728 FAIRVIEW AVE" and no complaint — so the point that comes back
+  // identifies the whole site and no footprint near it can be shown to be the
+  // subject's. Every consumer of that point which makes a claim about ONE
+  // building (the footprint size estimate, the popup photo) has to stand down;
+  // the pin itself is fine, because it only ever claimed to be the address.
+  //
+  // Real case, 2026-08-13: that trailer's report valued a $52k mobile home at
+  // $795,000. Nothing was wrong with the comps — the model found eight
+  // manufactured homes at $61-158/SF — but the size box had been auto-filled
+  // with 10,100 SF measured off Bob's Bicycles, a bike shop 81 m up Fairview,
+  // and the pin's photo showed that shop too. One heuristic, both symptoms.
+  //
+  // Kept deliberately narrow: only forms that unambiguously name a subdivision
+  // of an address. A bare "#" is included because "#45" is how most people
+  // write it, but a lone number is not — "6728 W Fairview Ave 51" is more often
+  // a typo than a space number, and this returns a REFUSAL, so a false positive
+  // silently costs a size estimate and a photo on an ordinary house.
+  //
+  // After a keyword the identifier must carry a digit ("Apt 3B", "Ste 200",
+  // "Trailer 51") or be one or two bare letters ("Bldg B", "Unit A"). Matching
+  // any following word instead reads "123 Ste Genevieve Ave" as suite
+  // "Genevieve" and quietly strips that address of its photo forever.
+  //
+  // The bare-letter form REQUIRES whitespace after the keyword; the
+  // digit-bearing one does not. Without that asymmetry a keyword plus one or
+  // two letters spells ordinary words and the vocabulary eats real street
+  // names: "100 Roomy Lane" is room + y, "Lotus" is lot + us, "United" is
+  // unit + ed. No English word is a keyword followed by digits, so "Apt3B"
+  // stays safe to match tight.
+  var UNIT_KEYWORDS = "apt|apartment|unit|ste|suite|spc|space|lot|trlr|trailer" +
+    "|bldg|building|rm|room|fl|floor|penthouse|ph";
+  var UNIT_DESIGNATOR_RE = new RegExp(
+    "(?:^|[\\s,])(?:#\\s*[a-z0-9-]+|(?:" + UNIT_KEYWORDS + ")\\.?" +
+    "(?:\\s*[a-z0-9-]*\\d[a-z0-9-]*|\\s+[a-z]{1,2}))(?=$|[\\s,])", "i");
+  function unitDesignatorOf(address) {
+    const m = UNIT_DESIGNATOR_RE.exec(String(address || ""));
+    return m ? m[0].trim() : null;
+  }
 
   const typeGuessCache = new Map();
 
@@ -6684,7 +6736,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.appendChild(door);
   }
 
-  // Per-address type memory: re-runs never re-ask. Bounded like fpSize.v1.
+  // Per-address type memory: re-runs never re-ask. Bounded like fpSize.v2.
   const ADDR_TYPE_KEY = "addrType.v1";
   let addrTypeCache = (() => { try { return JSON.parse(localStorage.getItem(ADDR_TYPE_KEY)) || {}; } catch (_) { return {}; } })();
   function addrTypeStore(addr, type) {
@@ -6829,7 +6881,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // the map photos (verified geocode + street-numbered address), and the
   // value lands in the USER-EDITABLE field under a visible "estimated"
   // note - never presented as a record.
-  const FP_SIZE_CACHE_KEY = "fpSize.v1";
+  //
+  // v2 (2026-08-13): entries are keyed by ADDRESS as well as coordinates, and a
+  // footprint must now prove the address to be measured (see below). The bump
+  // retires every size cached under v1 — including the 10,100 SF bike shop
+  // sitting in the owner's own browser for a mobile home, which the fix would
+  // otherwise never be seen to have corrected.
+  const FP_SIZE_CACHE_KEY = "fpSize.v2";
   let fpSizeCache = (() => { try { return JSON.parse(localStorage.getItem(FP_SIZE_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
   function fpSizeStore(key, val) {
     fpSizeCache[key] = val;
@@ -6851,30 +6909,49 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     return Math.abs(area / 2) * 10.7639;
   }
-  async function estimateSizeFromFootprint(geo) {
-    const key = `${geo.lat.toFixed(6)},${geo.lng.toFixed(6)}`;
+  // The footprint must PROVE it is the searched address — the same
+  // addr:housenumber + addr:street filter detectPropertyType has used since the
+  // Phoenix "Mandarin Super Buffet" bug, applied here because this number is
+  // worth far more than a type guess: the hero MULTIPLIES it. Without the
+  // filter, "biggest footprint near the pin" measures whatever commercial
+  // building shares the block, and on a strip like W Fairview Ave that is a
+  // 10,064 sq ft bike shop standing in for a 900 sq ft mobile home.
+  //
+  // Two footprints proving the same address means the address does not identify
+  // one structure (a trailer park, a campus, a complex mapped unit by unit —
+  // Fairview had 38), and there is no way to tell which is the subject, so this
+  // refuses. That is the deliberate opposite of detectPropertyType, which
+  // prefers the main mass in the same situation and is right to: every part of
+  // a campus shares one property TYPE, while only one of them is the building
+  // whose square footage the value hangs on. A refusal is cheap — the server
+  // then spends its two searches looking the size up from public records,
+  // which is what it did before this estimate existed and is better data than a
+  // measurement of the wrong building.
+  async function estimateSizeFromFootprint(geo, address) {
+    const want = houseNumberOf(address);
+    if (!want) return null;
+    const key = `${geo.lat.toFixed(6)},${geo.lng.toFixed(6)}|${sizeAddrKey(address)}`;
     if (key in fpSizeCache) return fpSizeCache[key] || null;
-    const j = await overpassQuery(`[out:json][timeout:10];way(around:120,${geo.lat.toFixed(6)},${geo.lng.toFixed(6)})["building"];out geom;`);
+    const j = await overpassQuery(`[out:json][timeout:10];way(around:120,${geo.lat.toFixed(6)},${geo.lng.toFixed(6)})["building"];out tags geom;`);
     // An Overpass outage must NOT be cached as a known miss — that would
     // permanently poison this address. No answer today, try again next time.
     if (!j) return null;
-    let best = null, bestScore = 0;
+    const proving = [];
     for (const w of (j && j.elements) || []) {
       if (!Array.isArray(w.geometry) || w.geometry.length < 3) continue;
+      const tags = w.tags || {};
+      if (!osmNumberMatches(tags["addr:housenumber"], want)) continue;
+      if (!streetLooksSame(tags["addr:street"], address)) continue;
       const cLat = w.geometry.reduce((s, p) => s + p.lat, 0) / w.geometry.length;
       const cLng = w.geometry.reduce((s, p) => s + p.lon, 0) / w.geometry.length;
       const dLat = (cLat - geo.lat) * 111320;
       const dLng = (cLng - geo.lng) * 111320 * Math.cos(geo.lat * Math.PI / 180);
-      const dist = Math.hypot(dLat, dLng);
-      if (dist > 120) continue;
-      // Biggest footprint near the pin, distance-discounted - the same idea
-      // the photo snap uses, so both features pick the same main building.
-      const sqft = footprintSqft(w.geometry, geo.lat, geo.lng);
-      const score = Math.max(sqft, 100) / (dist + 25);
-      if (score > bestScore) { bestScore = score; best = { sqft, tags: w.tags || {} }; }
+      if (Math.hypot(dLat, dLng) > 120) continue;
+      proving.push({ sqft: footprintSqft(w.geometry, geo.lat, geo.lng), tags });
     }
     let est = null;
-    if (best) {
+    if (proving.length === 1) {
+      const best = proving[0];
       const levels = Math.min(6, Math.max(1, parseInt(best.tags["building:levels"] || "1", 10) || 1));
       const total = best.sqft * levels;
       if (total >= 800 && total <= 2000000) est = Math.round(total / 100) * 100;
@@ -6945,9 +7022,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (sizeInput.value.trim() !== "") return;
     if (!/^\s*\d+\s+\S/.test(typed)) return;   // a submarket point must never size a random building
     if (!geoLabelMatches(typed, geo)) return;  // a wrong-street geocode must never size the wrong building
+    if (unitDesignatorOf(typed)) return;       // one unit of a site: no footprint here is provably the subject's
     if (document.getElementById("propertyType").value === "Land") return;
     try {
-      const est = await estimateSizeFromFootprint(geo);
+      const est = await estimateSizeFromFootprint(geo, typed);
       // Fill only if nothing changed while we looked: no typed size, no
       // search already in flight (a fast confirm just runs sizeless, as
       // today, and the estimate waits for the next run).
@@ -6965,7 +7043,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } catch (_) { /* Overpass down - no estimate, exactly today */ }
   }
 
-  const BLDG_CACHE_KEY = "bldgCache.v1";
+  // v2 (2026-08-13): the snap now consults the marker's ADDRESS, so an entry
+  // keyed by coordinates alone is both stale and wrong — every unit of a
+  // trailer park geocodes to one point, so one bucket used to hold one answer
+  // for fifty different addresses. The bump also retires the wrong-building
+  // snaps already cached in browsers, the same reason geoCache went to v2.
+  const BLDG_CACHE_KEY = "bldgCache.v2";
   let bldgCache = (() => { try { return JSON.parse(localStorage.getItem(BLDG_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
   function bldgCacheStore(key, val) {
     bldgCache[key] = val;
@@ -6975,10 +7058,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       localStorage.setItem(BLDG_CACHE_KEY, JSON.stringify(bldgCache));
     } catch (_) { /* private mode — the cache is a nicety */ }
   }
-  const bldgKey = (ll) => ll.lat.toFixed(4) + "," + ll.lng.toFixed(4);   // ~11 m buckets
+  // ~11 m buckets, plus the address the pin came from (markers carry it as
+  // _addr, set beside _geoOk).
+  const bldgKey = (ll, addr) =>
+    ll.lat.toFixed(4) + "," + ll.lng.toFixed(4) + "|" + String(addr || "").trim().toLowerCase();
+  const markerKey = (m) => bldgKey(m.getLatLng(), m._addr);
 
   async function snapMarkersToBuildings(markers) {
-    const pending = markers.filter((m) => !(bldgKey(m.getLatLng()) in bldgCache));
+    const pending = markers.filter((m) => !(markerKey(m) in bldgCache));
     if (pending.length) {
       const parts = pending.map((m) => {
         const ll = m.getLatLng();
@@ -6987,34 +7074,56 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       try {
         // Mirrors are tried inside overpassQuery — with photos gated on
         // footprints, an outage means a photo-less report, not a wrong-photo one.
-        const j = await overpassQuery(`[out:json][timeout:10];(${parts});out bb;`);
+        const j = await overpassQuery(`[out:json][timeout:10];(${parts});out tags bb;`);
         if (!j) throw new Error("all Overpass endpoints failed");
-        // `out bb;` carries bounds only — the bbox midpoint stands in for the
-        // centroid, which is all the photo needs to frame the building.
+        // `out tags bb;` carries bounds and tags — the bbox midpoint stands in
+        // for the centroid, which is all the photo needs to frame the building,
+        // and the tags are what let a footprint prove the address below.
         const ways = (j.elements || []).filter((e) => e.bounds)
-          .map((e) => ({ bounds: e.bounds, center: { lat: (e.bounds.minlat + e.bounds.maxlat) / 2, lon: (e.bounds.minlon + e.bounds.maxlon) / 2 } }));
+          .map((e) => ({ bounds: e.bounds, tags: e.tags || {},
+            center: { lat: (e.bounds.minlat + e.bounds.maxlat) / 2, lon: (e.bounds.minlon + e.bounds.maxlon) / 2 } }));
         pending.forEach((m) => {
           const ll = m.getLatLng();
-          let best = null, bestScore = 0;
-          for (const w of ways) {
+          const want = houseNumberOf(m._addr);
+          // Which footprints are candidates at all. Where OSM knows house
+          // numbers around this pin, only a footprint carrying OURS can be the
+          // property — proximity cannot tell two sides of a street apart, let
+          // alone a bike shop from the mobile home park it sits beside. Where
+          // NOTHING in range is addressed the map simply cannot answer, and
+          // the pre-2026-08-13 behaviour (main mass near the pin) stands: it
+          // is the only guess available, and refusing there would strip photos
+          // from the ordinary suburban reports where they work fine.
+          const inRange = ways.filter((w) => {
             const dLat = (w.center.lat - ll.lat) * 111320;
             const dLng = (w.center.lon - ll.lng) * 111320 * Math.cos(ll.lat * Math.PI / 180);
-            const dist = Math.hypot(dLat, dLng);
-            if (dist > 120) continue;
+            w._dist = Math.hypot(dLat, dLng);
+            return w._dist <= 120;
+          });
+          const proving = want ? inRange.filter((w) =>
+            osmNumberMatches(w.tags["addr:housenumber"], want) && streetLooksSame(w.tags["addr:street"], m._addr)) : [];
+          const addressedNearby = inRange.some((w) => w.tags["addr:housenumber"]);
+          const candidates = proving.length ? proving : (addressedNearby && want ? [] : inRange);
+          let best = null, bestScore = 0;
+          for (const w of candidates) {
             // Prefer a big footprint near the pin — the main building, not a
             // guard shack or the neighbor's shed. Area is distance-discounted
             // so a far-off giant doesn't beat the building right at the pin.
+            // Among footprints that all prove the address (one building mapped
+            // in parts) any of them frames the right property, so this stays a
+            // main-mass pick rather than the refusal the SIZE estimate makes —
+            // a photo of the wrong wing is still a photo of the building, while
+            // its square footage would be a different number.
             const aLat = (w.bounds.maxlat - w.bounds.minlat) * 111320;
             const aLng = (w.bounds.maxlon - w.bounds.minlon) * 111320 * Math.cos(ll.lat * Math.PI / 180);
-            const score = Math.max(aLat * aLng, 100) / (dist + 25);
+            const score = Math.max(aLat * aLng, 100) / (w._dist + 25);
             if (score > bestScore) { bestScore = score; best = w; }
           }
-          bldgCacheStore(bldgKey(ll), best ? { lat: best.center.lat, lng: best.center.lon } : 0);
+          bldgCacheStore(markerKey(m), best ? { lat: best.center.lat, lng: best.center.lon } : 0);
         });
       } catch (_) { /* Overpass down/slow — photos keep centering on the pin */ }
     }
     markers.forEach((m) => {
-      const hit = bldgCache[bldgKey(m.getLatLng())];
+      const hit = bldgCache[markerKey(m)];
       if (hit && isFinite(hit.lat)) {
         m._bldgLL = L.latLng(hit.lat, hit.lng);
         // A popup opened before the snap landed re-renders onto the building.
@@ -7335,6 +7444,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // keeps real-but-numberless comps IN the corpus, where they're valid
       // data; a photo needs location precision the corpus doesn't.
       if (!/^\s*\d+\s+\S/.test(String(address || ""))) return "";
+      // ...and only when that street number names a whole property rather than
+      // one unit inside it. "6728 W Fairview Ave Trailer 51" geocodes to the
+      // park's entrance, where 38 footprints share the number: the snap can
+      // pick a trailer, but not THAT trailer, and photographing a stranger's
+      // home is exactly the failure the rule above exists to prevent. Comps
+      // are gated too, deliberately — the model returns unit addresses of its
+      // own ("Trailer 20" was comp 1 on that report) and the same photo would
+      // be just as wrong beside a comp as beside the subject.
+      if (unitDesignatorOf(address)) return "";
       // Size the photo to the map: on a phone the map is ~341px wide and a
       // 260px photo made the whole popup wider than the map — the left edge
       // clipped and no pan can fix a popup that simply doesn't fit. Content
@@ -7571,7 +7689,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // Photo eligibility: did the geocoder demonstrably match THIS
           // address? Markers that never pass here (geocode miss → the pin
           // keeps the model's block-level guess) stay unverified — no photo.
+          // _addr rides along because the building snap needs the address too,
+          // to ask whether a footprint carries this house number.
           subjMarker._geoOk = geoLabelMatches(meta.address, r.ll);
+          subjMarker._addr = meta.address;
           parsed.subject_lat = String(r.ll.lat);
           parsed.subject_lng = String(r.ll.lng);
         } else {
@@ -7579,6 +7700,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           if (existing) existing.setLatLng([r.ll.lat, r.ll.lng]);
           else compMarkersByNum[r.c._num] = addCompMarker(r.c, r.ll.lat, r.ll.lng);
           compMarkersByNum[r.c._num]._geoOk = geoLabelMatches(String(r.c.address), r.ll);
+          compMarkersByNum[r.c._num]._addr = String(r.c.address);
           r.c.lat = String(r.ll.lat);
           r.c.lng = String(r.ll.lng);
         }

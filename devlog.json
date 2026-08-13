@@ -2,6 +2,18 @@
   {
     "date": "2026-08-13",
     "type": "fix",
+    "title": "A mobile home was valued at $795,000 because the size came off a bike shop",
+    "details": "Reported live: a trailer at 6728 W Fairview Ave listed on Zillow at $52,000 came back as $795,000, with a photo of the wrong building. The comps were right — the model found eight manufactured homes at $61-158/SF and said so in the summary. The size box was wrong. The confirm dialog's footprint estimate takes the biggest OSM building within 120 m of the geocoded point, and on a commercial strip that was Bob's Bicycles, 10,064 sq ft, 81 m away: 10,100 SF x $78/SF = $795,000 exactly. The map's photo snap scores footprints the same way, so one heuristic produced both symptoms. Three fixes. A footprint must now PROVE the address (addr:housenumber + addr:street) before it can be measured or photographed — the same filter detectPropertyType has used since the Phoenix Mandarin Buffet bug, which the size estimate and the photo never adopted; at Fairview 38 footprints prove #6728 (the trailers, several tagged static_caravan) and the bike shop proves nothing. An address naming one unit of a site (Trailer 51, Apt 3B, SPC 12, #45) gets no footprint size and no photo at all, because the geocoder drops the unit and no footprint near the point can be shown to be the subject's. And VALUATION.subjectSizeFit now flags a subject size that every sized comp contradicts: the report already whispered '8 comps are a different size class', which blamed the comps for a gap the size box had caused, and it now names the figure to doubt and how far the range is extrapolated. fpSize and bldgCache are bumped to v2 so browsers holding the wrong answers re-ask."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
+    "title": "/healthz names the model that is actually running",
+    "details": "Asked whether a live report had run on Gemini 3.7 Flash, the only way to answer was a git argument: MODEL is a startup constant an env var can override, and a provider's defaultModel moves with the code, so reading the repo proves what the source says rather than what production serves. /healthz already reported the provider; it now reports the model beside it. (The answer was 3.6 Flash — the 3.7 switch is sitting on an unmerged branch.)"
+  },
+  {
+    "date": "2026-08-13",
+    "type": "fix",
     "title": "Vault PDF extract no longer looks like a search outage or an empty table",
     "details": "Gemini extract now asks for 24k output tokens and maps usageMetadata including thought tokens. A vendor failure on extract returns the spec copy at 502 and does not trip UPSTREAM_HEALTH. Truncation (max_tokens / MAX_TOKENS / incomplete) is a 400 instead of We could not find a deals table. The model is no longer asked for lat/lng. Returning brokers see the vendor disclosure on the drop zone."
   },

@@ -119,3 +119,20 @@ test("the emitted page script still parses", () => {
   assert.ok(m, "could not find the page's inline script");
   assert.doesNotThrow(() => new Function(m[0].replace(/^<script>/, "").replace(/<\/script>$/, "")));
 });
+
+test("the file input accepts csv and pdf", () => {
+  assert.match(html(), /id="file"[^>]*accept="[^"]*\.pdf/);
+});
+
+test("the first-run disclosure names the extract vendor", () => {
+  const page = html();
+  const start = page.indexOf('id="firstRun"');
+  assert.ok(start >= 0, "#firstRun is missing");
+  const end = page.indexOf('id="deckBook"', start);
+  const firstRun = page.slice(start, end > start ? end : undefined);
+  assert.match(firstRun, /extract vendor/);
+});
+
+test("picker copy mentions PDF", () => {
+  assert.match(html(), /Choose a spreadsheet or PDF/);
+});

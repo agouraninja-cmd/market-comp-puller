@@ -3056,6 +3056,19 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
+const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a table PDF (CoStar, ARGUS, CMA, or similar). Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
+
+Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
+property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
+transaction must be "sale" or "lease".
+deal_date must be YYYY-MM-DD.
+
+Rules:
+- Extract every deal row from tables. Omit header rows, totals, averages, and submarket-summary rows.
+- Omit a field rather than invent it. Never invent a price, date, or size.
+- address must be a specific property with a street number, not a district or "general submarket estimate".
+- Do not include a verified flag or a source_url.`;
+
 function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
@@ -3903,6 +3916,55 @@ async function repairCompJson(brokenText, maxTokens) {
       .map((b) => b.text)
       .join("\n")
       .trim();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function extractPdfOnce(pdfBase64) {
+  if (!PROVIDER.capabilities.pdfExtract) {
+    const err = new Error("PDF import isn't available on this deployment.");
+    err.statusCode = 503;
+    throw err;
+  }
+  const apiKey = providerApiKey();
+  if (!apiKey) {
+    const err = new Error(`Server is missing the ${PROVIDER.apiKeyEnv} environment variable.`);
+    err.statusCode = 503;
+    throw err;
+  }
+  const init = PROVIDER.extractRequestInit({ apiKey, model: MODEL });
+  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, pdfBase64 });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  const startedAt = Date.now();
+  try {
+    const r = await fetch(init.url, {
+      method: "POST",
+      headers: init.headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!r.ok) {
+      const detail = (await r.text().catch(() => "")).slice(0, 200);
+      console.error(`${PROVIDER.logLabel} pdf-extract failed (${r.status}): ${detail}`);
+      throw VAULT.extractVendorError(r.status);
+    }
+    const parsed = PROVIDER.parseExtractResponse(await r.json());
+    console.log(`${PROVIDER.logLabel} pdf-extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
+    if (VAULT.extractWasTruncated(parsed.stopReason)) {
+      const err = new Error("That PDF has more rows than we can read in one pass. Nothing was saved.");
+      err.statusCode = 400;
+      throw err;
+    }
+    return parsed.text || "";
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      const e = new Error("Could not read that PDF. Nothing was saved.");
+      e.statusCode = 504;
+      throw e;
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -11714,6 +11776,60 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // Read a broker's own PDF and return classified rows for a confirm table.
+    // Stores NOTHING: the PDF never lands in broker_uploads or broker_comps.
+    if (req.method === "POST" && path === "/api/vault/extract") {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > 8e6 && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultex:" + clientIp(req), 8)) {
+            return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
+          }
+          const { filename, pdf } = JSON.parse(body || "{}");
+          const b64 = String(pdf || "").replace(/^data:application\/pdf;base64,/i, "");
+          let bytes;
+          try { bytes = Buffer.from(b64, "base64"); }
+          catch (err) { return sendJson(res, 400, { error: "That doesn't look like a PDF." }); }
+          if (!VAULT.looksLikePdf(bytes)) {
+            return sendJson(res, 400, { error: "That doesn't look like a PDF." });
+          }
+          if (bytes.length > VAULT.MAX_PDF_BYTES) {
+            return sendJson(res, 400, { error: "That file is too large to read." });
+          }
+          const text = await extractPdfOnce(b64);
+          const parsed = VAULT.parseExtractJson(text);
+          if (!parsed.ok || parsed.rows.length === 0) {
+            logEvent("vault_extract", { source: "empty:0" });
+            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that PDF." });
+          }
+          const rows = VAULT.classifyExtractRows(parsed.rows);
+          logEvent("vault_extract", { source: `ok:${rows.length}` });
+          sendJson(res, 200, {
+            filename: String(filename || "").trim().slice(0, 200),
+            rows,
+          });
+        } catch (err) {
+          // Same guard as /api/vault/inspect: V8 quotes the input in a
+          // JSON.parse error, so a malformed body would otherwise print a
+          // fragment of the broker's private PDF into Render's logs (and
+          // echo it back via clientErrorMessage). A bad body is 400.
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault extract error:", err.message);
+          const status = err.statusCode || 500;
+          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that PDF. Nothing was saved." });
+        }
+      });
+      return;
+    }
+
     // Public market benchmarks for the /vault gut check. POST, not GET:
     // market names carry commas ("Boise, ID") and a JSON body beats
     // query-string escaping.
@@ -11813,12 +11929,18 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
 
-          const { filename, csv, mapping } = JSON.parse(body || "{}");
+          const parsedBody = JSON.parse(body || "{}");
+          const { filename, mapping } = parsedBody;
+          const made = VAULT.uploadPayloadToCsv({ csv: parsedBody.csv, rows: parsedBody.rows });
+          if (!made.ok) {
+            return sendJson(res, 400, { error: made.error || "Nothing to import." });
+          }
+          const csv = made.csv;
           // `mapping` absent means today's behaviour byte for byte, so
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
           // wrong, which is why nothing is checked here.
-          const parsed = VAULT.parseUpload(csv, { mapping: mapping || null });
+          const parsed = VAULT.parseUpload(csv, { mapping: parsedBody.rows ? null : (mapping || null) });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -11850,7 +11972,9 @@ const server = http.createServer((req, res) => {
 
           // Saved only once the import actually succeeded, so a mapping that
           // produced nothing usable is never offered back to them next time.
-          if (mapping) saveCsvMapping(user.id, mapping);
+          // Row uploads (PDF confirm) ignore mapping entirely — do not overwrite
+          // the broker's remembered CSV mapping.
+          if (mapping && !parsedBody.rows) saveCsvMapping(user.id, mapping);
 
           // `market` is attached HERE, with server.js's own marketOf() and no
           // other parse, so broker_comps.market agrees byte for byte with

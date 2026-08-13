@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-13",
+    "type": "fix",
+    "title": "Vault PDF extract no longer looks like a search outage or an empty table",
+    "details": "Gemini extract now asks for 24k output tokens and maps usageMetadata including thought tokens. A vendor failure on extract returns the spec copy at 502 and does not trip UPSTREAM_HEALTH. Truncation (max_tokens / MAX_TOKENS / incomplete) is a 400 instead of We could not find a deals table. The model is no longer asked for lat/lng. Returning brokers see the vendor disclosure on the drop zone."
+  },
+  {
+    "date": "2026-08-13",
     "type": "improvement",
     "title": "The vault header matches the rest of the site, and its forms finally look like forms",
     "details": "The workspace kept a short Search / My Desk / Vault / Brokers bar after every other server-rendered page grew an Explore menu and an account circle, so leaving My Desk for the vault still read as having been signed out. It now lifts the same chrome (desk:false, so My Desk is not drawn twice) and keeps Vault as the current page. First-run no longer parks the empty leads inbox under the two quiet cards; the coverage form still lives in step 2, and the inbox only returns if a watched market already has owners waiting. Add-comp, BOV, identity, and the inline edit row share one grid instead of a wrapping stack of labels, and the column mapper names sample values as chips above a ruled action row. Visual only — same IDs, same two decks, still one file input and one relocating coverage form."
@@ -10,6 +16,12 @@
     "type": "improvement",
     "title": "The broker vault looks like a finished workspace",
     "details": "The page kept the two-deck structure, the trust ledger, and the statement tables, and raised everything around them: Inter is loaded, the header sticks, the masthead has a private-workspace kicker, figures sit in lightly shadowed panels, forms stack their labels, the comps filter is a toolbar, tables are framed, coverage is pill chips, and the footer matches the rest of the site. First-run stays two quiet cards rather than a coloured empty state. No route or entitlement change — it is the same book, drawn as a product a broker would hand a colleague."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "feature",
+    "title": "Vault PDF import for table exports",
+    "details": "A broker can drop a CoStar/ARGUS/CMA PDF onto Build your own comp set. The file is sent to the extract vendor with no search tools, never stored, and the rows land only after a confirm table. Spreadsheets are unchanged."
   },
   {
     "date": "2026-08-10",

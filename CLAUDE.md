@@ -1337,10 +1337,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `GET /api/vault/template` (the CSV a broker fills in), `POST
   /api/vault/upload` (JSON `{filename, csv}` — deliberately not multipart,
   which would be hundreds of lines of hand-rolled parsing in a repo with no
-  dependencies), `GET /api/vault` (filters by `market` and `type`), and
+  dependencies; also accepts `{filename, rows}` from the PDF confirm table,
+  converted through `exportCsv` then `parseUpload` — the CSV path is
+  unchanged), `POST /api/vault/extract` (JSON `{filename, pdf}` — base64 —
+  sends the file to the extract vendor with no search tools, writes nothing,
+  and returns `{ rows: [{ values, error }] }` for the confirm table),
+  `GET /api/vault` (filters by `market` and `type`), and
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
-  All four go through one `openVault()` helper: 401 not signed in → 403 not a
-  broker (`canUseVault`) → 503 no database.
+  All of these routes go through one `openVault()` helper: 401 not signed in →
+  403 not a broker (`canUseVault`) → 503 no database.
   - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
@@ -1531,11 +1536,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       already say where to start. `#firstRun` is not a `section+section`, so
       it takes no top padding and `.steps`' own top margin collapses into the
       section's — the gap is unchanged with the h2 gone, and no CSS pins it.
-    - **There is exactly ONE `<input type=file>`.** Step 1's button and the
-      ordinary "Add comps" button both call `$("file").click()`. Two inputs
-      would mean two values and two change handlers, and an upload started
-      from one would be invisible to the other's result message. A test pins
-      this.
+    - **There is exactly ONE `<input type=file>`.** Its `accept` includes
+      `.pdf` as well as `.csv`. Step 1's button and the ordinary "Add comps"
+      button both call `$("file").click()`. Two inputs would mean two values
+      and two change handlers, and an upload started from one would be
+      invisible to the other's result message. Table PDFs land in `#pdfSec`
+      (the confirm table), not the CSV column mapper. A test pins this.
     - **The coverage form is ONE relocating node** (`#covForm`). Its home is
       step 2; `applyFirstRun` moves it to the top of the leads section once
       the vault has content (step 2 hides then), and walks it home again if

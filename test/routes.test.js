@@ -261,6 +261,7 @@ test("bare environment", async (t) => {
       ["DELETE", "/api/vault/upload?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/vault/benchmarks"],
       ["POST",   "/api/vault/inspect"],
+      ["POST",   "/api/vault/extract"],
       // Writes broker_profiles, whose display_name/company become PUBLIC the
       // moment somebody opts in — so an unauthenticated caller reaching it
       // could put words in a named broker's mouth.
@@ -301,6 +302,15 @@ test("bare environment", async (t) => {
       body: JSON.stringify({ csv: "address\n1 A St, Boise, ID\n" }),
     });
     assert.equal(r.status, 401, "an anonymous caller must not learn anything about a file");
+  });
+
+  await t.test("/api/vault/extract is gated like the rest of the vault", async () => {
+    const r = await fetch(srv.base + "/api/vault/extract", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: "book.pdf", pdf: "AAAA" }),
+    });
+    assert.equal(r.status, 401, "an anonymous caller must not send a file to the extract vendor");
   });
 
   // Per-comp edit/delete is a new door into the same private table as every
@@ -1139,4 +1149,36 @@ test("every user flag entitlements reads is carried by getSessionUser", () => {
       `getEntitlements reads user.${flag}, but getSessionUser does not carry it — ` +
       "the flag would read as undefined and the feature would be silently inert");
   }
+});
+
+test("extractPdfOnce does not trip site-wide search outage on a vendor failure", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("async function extractPdfOnce");
+  assert.ok(start >= 0, "extractPdfOnce should still exist");
+  const end = src.indexOf("async function callAnthropicOnce", start);
+  assert.ok(end > start, "could not bound extractPdfOnce");
+  const body = src.slice(start, end);
+  assert.equal(body.includes("upstreamError"), false,
+    "a vendor 5xx on extract must not call upstreamError (that paints /admin as a search outage)");
+  assert.match(body, /extractVendorError/,
+    "vendor HTTP failures should go through extractVendorError");
+  assert.match(body, /extractWasTruncated/,
+    "a truncated extract must not look like an empty table");
+});
+
+test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  assert.ok(start >= 0, "EXTRACT_PROMPT should still exist");
+  const end = src.indexOf("function buildPrompt", start);
+  assert.ok(end > start, "could not bound EXTRACT_PROMPT");
+  const body = src.slice(start, end);
+  assert.match(body, /EXTRACT_KEYS/,
+    "the prompt must interpolate EXTRACT_KEYS so lat/lng cannot sneak back in via TEMPLATE_COLUMNS");
+  assert.equal(/\blat\b/.test(body), false, "the extract prompt must not request lat");
+  assert.equal(/\blng\b/.test(body), false, "the extract prompt must not request lng");
 });

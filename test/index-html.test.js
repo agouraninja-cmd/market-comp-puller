@@ -695,6 +695,13 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
     !/\.rd-desk \{[^}]*overflow:\s*hidden/.test(html),
     "overflow:hidden on .rd-desk would clip the explorer dropdown"
   );
+  assert.ok(
+    !/\.rd-desk-market \{[^}]*overflow:\s*hidden/.test(html),
+    "overflow:hidden on .rd-desk-market would clip the explorer dropdown"
+  );
+  // Square heads would poke past the 6px card; the desk cannot clip them.
+  assert.match(html, /\.rd-desk-build > \.rd-chamber-head \{[^}]*border-radius:\s*6px 0 0 0/);
+  assert.match(html, /\.rd-desk-market > \.rd-chamber-head \{[^}]*border-radius:\s*0 6px 0 0/);
 
   const home = html.slice(html.indexOf('id="homeInfo"'), html.indexOf("Site footer"));
   assert.match(home, /href="\/how-it-works"/);

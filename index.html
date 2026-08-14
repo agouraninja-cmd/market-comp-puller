@@ -739,13 +739,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       border-bottom: 1px solid var(--hair);
       background: var(--card);
     }
+    /* The desk cannot overflow:hidden (dropdown clips), so each fill that
+       reaches a card corner has to carry the radius itself. The white head
+       is new; a square head on a 6px card is the top-right notch. */
+    .rd-desk-build > .rd-chamber-head { border-radius: 6px 0 0 0; }
     .rd-desk-market {
       min-width: 0;
       background: var(--wash);
       padding: 0;
       border-radius: 0 6px 6px 0;
     }
-    .rd-desk-market > .rd-chamber-head { padding-left: 18px; padding-right: 18px; }
+    .rd-desk-market > .rd-chamber-head {
+      padding-left: 18px;
+      padding-right: 18px;
+      border-radius: 0 6px 0 0;
+    }
     .rd-desk-market-body { padding: 12px 18px 18px; }
     .rd-chamber-lab {
       font-size: 10.5px;
@@ -777,7 +785,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     @media (max-width: 639.98px) {
       .rd-desk { grid-template-columns: 1fr; }
       .rd-desk-build { border-right: 0; border-bottom: 1px solid var(--hair); }
+      .rd-desk-build > .rd-chamber-head { border-radius: 6px 6px 0 0; }
       .rd-desk-market { border-radius: 0 0 6px 6px; }
+      .rd-desk-market > .rd-chamber-head { border-radius: 0; }
     }
     /* Card frame — shared by the live map and comps cards. (The sample-report
        exhibit that also used it now lives on /how-it-works, which is

@@ -8619,6 +8619,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           ? "Create a free account to get started. Browsing whole markets is part of Pro; free reports work on any single address."
           : "Create a free account to run a report. It's free, no card needed.");
     }
+    try {
+      var pendingAddr = sessionStorage.getItem("pendingLandingAddress.v1");
+      if (pendingAddr) {
+        sessionStorage.removeItem("pendingLandingAddress.v1");
+        var addrEl = document.getElementById("address");
+        if (addrEl && pendingAddr.trim()) addrEl.value = pendingAddr;
+      }
+    } catch (err) {}
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off
     // different query params (?checkout= vs ?purchase=), so at most one acts.

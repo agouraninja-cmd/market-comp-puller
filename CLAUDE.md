@@ -896,17 +896,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   sharing one submarket, never a whole statistical area, and a test pins every
   entry against `marketOf` because an exact-match key that never matches is
   invisible.
-- `GET /how-it-works` — the standalone proof/FAQ page, reached from the header
-  nav (the old "Methodology" item) and the footer. Holds the four blocks that
-  used to sit below the fold on the home page: the stat strip, the sample-report
-  exhibit, the three-step Method, and the FAQ. **Server-rendered and
+- `GET /how-it-works` — the account-wall front door, reached from the header
+  nav (the old "Methodology" item) and the footer. Under the wall, `/` *is*
+  this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +
+  address field + one sample exhibit), the three-step Method, the FAQ, and a
+  one-block Brokers path to `/brokers`. There is no stat strip. The address
+  field is not `#compForm`; it stores `pendingLandingAddress.v1` and opens
+  `/?auth=signup` (signed-in: `/`). **Server-rendered and
   self-contained** like the market pages (`HOW_CSS` — the Research Desk `rd-*`
   system re-expressed as plain class names — so it does NOT depend on the purged
   `tailwind.css`). Two things live here and nowhere else: `HOW_FAQ`, the single
   Q/A array feeding both the visible accordions and the **FAQPage JSON-LD** (it
   moved off `index.html`'s `<head>` with the copy it describes), and the sample
-  exhibit's illustrative figures. The home page keeps only a one-line pointer
-  strip linking here. Listed in `sitemap.xml`.
+  exhibit's illustrative figures. Listed in `sitemap.xml`.
   **It renders two variants, and the caching split between them is
   load-bearing** (2026-08-08). The page is linked from inside the signed-in
   app, and while it served one static body to everyone its "Log in / Create

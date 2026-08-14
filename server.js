@@ -14,9 +14,13 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const dns = require("dns");
+// Request-scoped context for analytics (see "Who an event came from" below).
+// Built-in, so the zero-dependency rule holds.
+const { AsyncLocalStorage, AsyncResource } = require("node:async_hooks");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
-const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot } = require("./market-snapshot");
+const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot,
+  dateKey, safeHttpUrl, isLease, rentFromComps } = require("./market-snapshot");
 // Pro-tier entitlement rules. Pure and dependency-free so `npm test` can
 // exercise the whole decision table without a database — see the Pro section
 // below for the reads that feed it.
@@ -69,6 +73,10 @@ const GUTCHECK = require("./gut-check");
 // customer-facing email's text in this HTML shell; see the note on that
 // function before changing how it is applied.
 const EMAILSHELL = require("./email-shell");
+// The watchlist digest's copy and its "is this worth sending?" rule. Pure and
+// tested, because every judgment in it is about what a person is worth
+// interrupting for — see its header.
+const DIGEST = require("./watchlist-digest");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
@@ -220,6 +228,33 @@ function proEnabledFor(user) {
 // except the broker vault) and what it cannot override (PRO_ENABLED, and a
 // real paid subscription).
 const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
+
+// The vault's own shared passkey — the broker-onboarding door, and the reason
+// it exists is operational rather than technical. `users.vault_beta`
+// (migration 023) was set by hand in the SQL editor, one broker at a time,
+// which puts the owner in the loop for every single onboarding and makes
+// "hand three brokers a vault at a meeting" a note-to-self instead of
+// something that happens in the room. This is that same grant, self-serve.
+//
+// It redeems through the SAME route and the SAME input as TESTER_PASSKEY,
+// because a broker should be handed one code and not also be told which box
+// to type it into; the route decides which grant a code opens by which
+// secret it matches. Both are compared on every redemption, so the two are
+// independent: setting this one does not require setting the other.
+//
+// Deliberately a SEPARATE secret rather than widening TESTER_PASSKEY to
+// include the vault. entitlements.js excludes the vault from the tester
+// grant on purpose — the vault is a private-data workspace with an upload
+// endpoint, so it should not open for everyone who was ever handed a
+// try-Pro code. Two codes keep those two audiences separately revocable: a
+// rotation here does not lock testers out, and vice versa.
+//
+// And it grants the vault ONLY. A redeeming broker gets `broker` /
+// `canUseVault` and not one Pro report feature (see the vault_beta branch in
+// entitlements.js), so this code cannot be passed around as a way to get Pro
+// for free. Unset = it simply never matches, and a deployment with neither
+// passkey set 404s the route exactly as before.
+const VAULT_PASSKEY = (process.env.VAULT_PASSKEY || "").trim();
 
 // Stripe. Keys live only in the environment — never in the repo, never in a
 // response, never in the browser. The price IDs are not secret (they identify
@@ -938,6 +973,17 @@ async function setUserTester(id) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.pro_tester = true; await saveAccountStore(); }
 }
+// Grants the broker vault to one account (the redeemed vault passkey). The
+// same one-row UPDATE that has always been run by hand in the SQL editor.
+// Throws for the same reason setUserTester does.
+async function setUserVaultBeta(id) {
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { vault_beta: true });
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.vault_beta = true; await saveAccountStore(); }
+}
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -1008,6 +1054,15 @@ async function getSessionUser(req) {
   if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
   try {
     const user = await findUserById(sess.user_id);
+    // Stamp the analytics context (2026-08-13). Every route that cares who is
+    // calling already goes through here, so attributing events to an account
+    // costs nothing at the call sites and cannot be forgotten by a route
+    // added later. Presentation-free and one-way: this records who the
+    // session ALREADY resolved to, and no decision anywhere reads it back.
+    if (user) {
+      const ctx = REQUEST_CONTEXT.getStore();
+      if (ctx) ctx.userId = user.id;
+    }
     return user ? {
       id: user.id,
       email: user.email,
@@ -1232,6 +1287,140 @@ async function markWatchlistSeen(userId) {
   const s = await accountStore();
   s.watchlist.forEach((x) => { if (x.user_id === userId) x.last_seen_at = now; });
   await saveAccountStore();
+}
+
+// The feed itself, shared by GET /api/watchlist/feed and the digest so the
+// two can never quote different numbers for the same market. Extracted
+// 2026-08-13 when the digest arrived; the body is the route's, unchanged.
+//
+// `cutoffOf(item)` is the only difference between the two callers, and it is
+// the whole argument between them: the page asks what is new since the
+// reader last LOOKED, the digest asks what is new since they were last
+// TOLD. Passing it in keeps that decision at the call site where it can be
+// read, rather than as a flag inside a function that would then have to
+// explain itself twice.
+//
+// `ent` is passed in rather than resolved here because the two callers get it
+// from different places (a request, versus a loop over accounts) and
+// resolving entitlements is the one thing in this app that must have exactly
+// one owner.
+async function buildWatchlistFeed(user, ent, cutoffOf) {
+  const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
+  const items = await listWatchlist(user.id);
+  const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
+  let unseen = 0;
+  const out = [];
+  for (const w of items) {
+    const rows = await corpusRowsForMarket(w.market, w.property_type, 500);
+    const cutoff = String(cutoffOf(w) || "");
+    const fresh = rows.filter((r) => String(r.ts) > cutoff).slice(0, 20);
+    unseen += fresh.length;
+    // Median $/SF: sale rows only, trailing ~6 months — matches the
+    // client-side rule that lease $/SF never mixes into valuation.
+    const salePsf = rows
+      .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
+      .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .map((r) => corpusNum(r.price_per_sqft))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+    const median_psf = salePsf.length
+      ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
+    // Direction: deal-date medians, last 6 months vs the 6 before —
+    // >=3 comps each side or the field is omitted entirely.
+    const datedSales = saleRowsWithDates(rows);
+    const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
+    const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
+    const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
+    const median_trend = curWin.length >= 3 && priWin.length >= 3
+      ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    out.push({
+      id: w.id, market: w.market, property_type: w.property_type,
+      median_psf, new_count: fresh.length,
+      ...(median_trend ? { median_trend } : {}),
+      // new_count above stays the TRUE number of new comps — the visitor
+      // is told what they are missing, they just don't receive it.
+      ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
+      comps: fresh.slice(0, feedRowCap).map((r) => ({
+        ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
+        price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
+        cap_rate: r.cap_rate, source_url: r.source_url,
+      })),
+    });
+  }
+  return { unseen, items: out };
+}
+
+// --- digest state (migration 025) -------------------------------------------
+//
+// DB-only, and the digest route refuses without a database rather than
+// falling back to the file store. That is the vault's rule, for the vault's
+// reason: Render erases the local disk on every deploy, so an "already
+// mailed" marker written there would be lost and every watcher would be re-sent the
+// same comps after each deploy. Losing a convenience is acceptable; mailing
+// people the same thing twice is what teaches them to filter us.
+// A PostgREST `in.(...)` value list: each value quoted and percent-encoded,
+// the separating commas left LITERAL. This is corpusRowsForMarkets' idiom,
+// lifted out so the three call sites cannot drift apart.
+//
+// Encoding the joined string instead — which is what these callers did first —
+// happens to work for the ids they pass today, because %2C decodes back to a
+// comma before PostgREST's own parser sees it, and a uuid contains no comma of
+// its own to be confused with a separator. It stops working the moment a value
+// contains a comma, which in this codebase is not hypothetical: a market key
+// IS "Boise, ID", and that is exactly the trap corpusRowsForMarkets documents.
+// So this is consistency and one less edge to remember, not a bug fix.
+function pgInList(values) {
+  return values.map((v) => `"${encodeURIComponent(String(v))}"`).join(",");
+}
+
+async function allWatchlistItems(limit = 5000) {
+  if (!DB_CONFIGURED) return [];
+  return await sbRequest("GET", `watchlist_items?order=user_id.asc&limit=${Number(limit) || 5000}`) || [];
+}
+// Marks only the rows that were actually IN the mail. A watcher whose market
+// had nothing new keeps its old high-water mark, so the day it does get a
+// comp the digest still reaches back to when they started watching.
+async function markWatchlistDigested(userId, ids) {
+  if (!DB_CONFIGURED || !ids.length) return;
+  const now = new Date().toISOString();
+  await sbRequest("PATCH",
+    `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
+    { last_digest_at: now });
+}
+async function setDigestOptout(userId, optout) {
+  if (!DB_CONFIGURED) throw new Error("Supabase not configured.");
+  await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
+}
+async function findUsersByIds(ids) {
+  if (!DB_CONFIGURED || !ids.length) return [];
+  return await sbRequest("GET",
+    `users?id=in.(${pgInList(ids)})&select=id,email,digest_optout`) || [];
+}
+
+// The unsubscribe link has to work for somebody who is not signed in, months
+// later, from a phone that has never seen this site — so it authenticates
+// itself. The token is an HMAC of the user id, which makes the link
+// unguessable and unforgeable while storing nothing new.
+//
+// It is keyed on SUPABASE_SERVICE_KEY rather than ADMIN_KEY or a new env var,
+// for two reasons worth stating so nobody "tidies" it: the digest refuses to
+// run without a database at all, so that key is guaranteed present wherever a
+// link could have been minted (ADMIN_KEY is optional and a deployment without
+// one would mint links that can never be honored); and the string is
+// domain-separated, so this cannot collide with any other use of the key and
+// no amount of collecting these tokens reveals it. Rotating the service key
+// invalidates outstanding unsubscribe links — acceptable, because rotating it
+// also takes the whole database connection with it.
+function digestMac(userId) {
+  return crypto.createHmac("sha256", SUPABASE_SERVICE_KEY || "unset")
+    .update(`watchlist-digest-unsubscribe:${userId}`).digest("hex").slice(0, 32);
+}
+function digestTokenValid(userId, token) {
+  if (!SUPABASE_SERVICE_KEY || !userId) return false;
+  return secretMatches(String(token || ""), digestMac(userId));
+}
+function unsubscribeUrlFor(userId) {
+  return `${SITE_URL}/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&t=${digestMac(userId)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -3059,9 +3248,19 @@ const STATE_NAMES = {
 //                       in Resend; until then these calls silently no-op
 //                       (with a console line so tests can see the skip).
 // ---------------------------------------------------------------------------
+// Where the mail actually goes. Overridable ONLY so the suite can prove that
+// something was sent, to whom, and with what body — the watchlist digest is
+// the one feature whose whole point is an email leaving the building, and
+// until this existed the tests could reach the send call and then had to stop
+// and assume. Unset everywhere except in tests; production never sets it, so
+// the constant below is the live value. It is not a secret and authorizes
+// nothing (RESEND_API_KEY still does), but it does decide where mail is
+// posted, so it belongs in the same trusted place as the key itself.
+const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com/emails").trim();
+
 function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
   if (!RESEND_API_KEY) return;
-  fetch("https://api.resend.com/emails", {
+  fetch(RESEND_API_URL, {
     method: "POST",
     headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
@@ -3232,6 +3431,9 @@ const FIELD_LABELS = {
   zoning: "Zoning",
   price_per_acre: "$/Acre",
   beds_baths: "Beds / Baths",
+  cap_rate: "Cap Rate",
+  tenancy: "Tenancy",
+  year_built: "Year Built",
 };
 
 // ---------------------------------------------------------------------------
@@ -4805,6 +5007,11 @@ function marketPageTitle(p) {
 }
 function marketUrl(slug) { return `${SITE_URL}/market/${slug}`; }
 function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
+function usd2(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return "";
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 // Brand mark, shared by every server-rendered page (market pages, /markets,
 // /broker, /how-it-works, /admin). Declared HERE, above MARKET_BAR: that
@@ -5156,6 +5363,18 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .cta .alt:hover{color:var(--ink)}
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
+button.btn{border:0;cursor:pointer;font-family:inherit}
+.cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--ink-mute);
+  text-decoration:underline;text-decoration-color:var(--edge)}
+.cta button.alt:hover{color:var(--ink)}
+.ledger.aux{margin-top:-14px}
+.ledger.aux .v{font-size:20px}
+.mkt-tx{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.mkt-tx button{font:inherit;font-size:13px;padding:4px 10px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--edge);background:var(--card);color:var(--ink-body)}
+.mkt-tx button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);font-weight:600;background:var(--wash)}
+table.stmt th[data-k]{cursor:pointer;user-select:none}
+table.stmt th[data-k]:hover{color:var(--ink)}
 /* Header-sized variant, for the auth controls in the market bar. Mirrors the
    same rule in HOW_CSS so the two site headers sit at the same height. The nav
    rule below it exists because .hdr nav a would otherwise grey the button out.
@@ -5658,6 +5877,124 @@ const MARKET_MAP_JS = `(function(){
   });
 })();`;
 
+// Sort / Sale-Lease filter / CSV / Watch on the market-page comps table.
+// Inlined like MARKET_MAP_JS so the page stays self-contained (no extra asset,
+// no tailwind). No ${} — this string is interpolated into a <script>.
+const MARKET_RESEARCH_JS = `(function(){
+  var table = document.getElementById("mktComps");
+  if (!table) return;
+  var tbody = table.tBodies[0];
+  if (!tbody) return;
+  var rows = [].slice.call(tbody.rows);
+  var filter = "all";
+  function applyFilter() {
+    var n = 0;
+    rows.forEach(function (tr) {
+      var tx = tr.getAttribute("data-tx") || "sale";
+      var on = filter === "all" || tx === filter;
+      tr.hidden = !on;
+      if (on) n++;
+    });
+    if (table.tFoot) table.tFoot.hidden = filter === "lease";
+    var empty = document.getElementById("mktTxEmpty");
+    if (empty) empty.hidden = n > 0;
+  }
+  var bar = document.getElementById("mktTxBar");
+  if (bar) {
+    bar.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-tx]");
+      if (!b) return;
+      filter = b.getAttribute("data-tx");
+      [].forEach.call(bar.querySelectorAll("button[data-tx]"), function (x) {
+        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      });
+      applyFilter();
+    });
+  }
+  var sortCol = -1, sortDir = 1;
+  if (table.tHead) {
+    table.tHead.addEventListener("click", function (e) {
+      var th = e.target.closest("th[data-k]");
+      if (!th) return;
+      var idx = [].indexOf.call(th.parentNode.children, th);
+      if (idx === sortCol) sortDir = -sortDir;
+      else { sortCol = idx; sortDir = 1; }
+      var numeric = th.getAttribute("data-num") === "1";
+      rows.sort(function (a, b) {
+        var av = a.cells[idx] ? (a.cells[idx].getAttribute("data-s") || "") : "";
+        var bv = b.cells[idx] ? (b.cells[idx].getAttribute("data-s") || "") : "";
+        var an = parseFloat(av), bn = parseFloat(bv);
+        var cmp;
+        if (numeric) {
+          an = isFinite(an) ? an : (sortDir > 0 ? Infinity : -Infinity);
+          bn = isFinite(bn) ? bn : (sortDir > 0 ? Infinity : -Infinity);
+          cmp = an - bn;
+        } else {
+          cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+        }
+        return cmp === 0 ? 0 : (cmp < 0 ? -sortDir : sortDir);
+      });
+      rows.forEach(function (tr) { tbody.appendChild(tr); });
+    });
+  }
+  var csvBtn = document.getElementById("mktCsv");
+  if (csvBtn) {
+    csvBtn.addEventListener("click", function () {
+      function esc(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
+      var ths = [].slice.call(table.tHead.rows[0].cells);
+      var header = ths.map(function (th) { return esc(th.textContent.trim()); }).concat(esc("Source URL")).join(",");
+      var body = rows.filter(function (tr) { return !tr.hidden; }).map(function (tr) {
+        var cells = [].slice.call(tr.cells).map(function (td) { return esc(td.textContent.trim()); });
+        cells.push(esc(tr.getAttribute("data-src") || ""));
+        return cells.join(",");
+      });
+      var slug = csvBtn.getAttribute("data-slug") || "market";
+      var blob = new Blob([header + "\\r\\n" + body.join("\\r\\n")], { type: "text/csv;charset=utf-8;" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "compninja-" + slug + ".csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+  var watch = document.getElementById("mktWatch");
+  if (watch) {
+    var market = watch.getAttribute("data-market") || "";
+    var type = watch.getAttribute("data-type") || "";
+    function setWatching() {
+      watch.disabled = true;
+      watch.textContent = "Watching — see My Desk";
+    }
+    fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (d) {
+      if (!d || !d.items) return;
+      var hit = d.items.some(function (it) {
+        return String(it.market || "").toLowerCase() === market.toLowerCase()
+          && String(it.property_type || "") === type;
+      });
+      if (hit) setWatching();
+    }).catch(function () {});
+    watch.addEventListener("click", function () {
+      watch.disabled = true;
+      fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ market: market, property_type: type })
+      }).then(function (r) {
+        return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+      }).then(function (res) {
+        if (res.ok) { setWatching(); return; }
+        watch.disabled = false;
+        alert((res.j && res.j.error) || "Could not watch this market.");
+      }).catch(function () {
+        watch.disabled = false;
+        alert("Could not watch this market.");
+      });
+    });
+  }
+})();`;
+
 // ---------------------------------------------------------------------------
 // Brand entity — the one Organization node every server-rendered page points
 // at by @id. CompNinja is online-only, so it is NOT eligible for a Google
@@ -5911,6 +6248,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const isPricing = (c) => c.key.startsWith("price_per_");
   const specCols = typeCols.filter((c) => !isPricing(c));
   const priceCols = typeCols.filter(isPricing);
+  // Cap / tenancy / year built: stored since 2026-07-27, rendered 2026-08-14.
+  // Empty-on-every-comp drop is the same rule as the per-type specs, so seeded
+  // pages without those fields do not sprout blank columns.
+  const extraCols = [
+    { key: "cap_rate", label: "Cap Rate" },
+    ...(p.type === "Land" ? [] : [
+      { key: "tenancy", label: "Tenancy" },
+      { key: "year_built", label: "Year Built" },
+    ]),
+  ].filter((col) => marketComps.some((c) => String(c[col.key] || "").trim()));
   const compCols = [
     { key: "address", label: "Address" },
     { key: "date", label: "Date" },
@@ -5920,16 +6267,36 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     { key: "price_or_rate", label: "Price / Rate" },
     { key: "price_per_sqft", label: "$/SF" },
     ...priceCols,
+    ...extraCols,
   ];
+  const numCol = (k) => /^(date|size_sqft|price_or_rate|price_per_|cap_rate|year_built|units|dock_doors|clear_height|lot_acres|floor_plate)/.test(k);
+  const cellSort = (col, c) => {
+    if (col.key === "date") {
+      const k = dateKey(c.date);
+      return isFinite(k) ? String(k) : String(c.date || "").toLowerCase();
+    }
+    if (numCol(col.key)) {
+      const n = parseFloat(String(c[col.key] || "").replace(/[^0-9.\-]/g, ""));
+      return isFinite(n) ? String(n) : "";
+    }
+    return String(c[col.key] || "").toLowerCase();
+  };
   const compRows = marketComps.map((c) => {
     // Same badge tiers the report table uses; anything else stays neutral, so
     // provenance can be under-claimed but never over-claimed.
     const tier = { verified: " v", listing: " li" }[String(c.source_type || "").toLowerCase()] || "";
     const badge = c.source_type
       ? `<span class="badge${tier}">${escHtml(c.source_type.replace("_", " "))}</span>` : "";
-    return "<tr>" + compCols.map((col) => (col.key === "address"
-      ? `<td>${escHtml(c.address)} ${badge}</td>`
-      : `<td>${escHtml(c[col.key] || "")}</td>`)).join("") + "</tr>";
+    const src = safeHttpUrl(c.source_url);
+    const addrInner = src
+      ? `<a href="${escHtml(src)}" target="_blank" rel="noopener noreferrer">${escHtml(c.address)}</a>`
+      : escHtml(c.address);
+    const tx = isLease(c) ? "lease" : "sale";
+    return `<tr data-tx="${tx}"${src ? ` data-src="${escHtml(src)}"` : ""}>` +
+      compCols.map((col) => {
+        const inner = col.key === "address" ? `${addrInner} ${badge}` : escHtml(c[col.key] || "");
+        return `<td data-s="${escHtml(cellSort(col, c))}">${inner}</td>`;
+      }).join("") + "</tr>";
   }).join("");
   // Statement closing row (Direction H): the sales median under a double
   // rule — quoting p.ppsf, the page's OWN headline statistic, so the table's
@@ -5944,11 +6311,60 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     ? `<tfoot><tr><td class="tl" colspan="${psfIdx}">Median of ${p.ppsf.count} recent sales &middot; ${usd0(p.ppsf.median)}/SF</td>` +
       `<td>${usd0(p.ppsf.median)}</td>${restCols > 0 ? `<td colspan="${restCols}"></td>` : ""}</tr></tfoot>`
     : "";
+  const nSale = marketComps.filter((c) => !isLease(c)).length;
+  const nLease = marketComps.filter(isLease).length;
+  const txBar = (nSale && nLease)
+    ? `<div class="mkt-tx" id="mktTxBar" role="group" aria-label="Filter by transaction type">` +
+      `<button type="button" data-tx="all" aria-pressed="true">All (${marketComps.length})</button>` +
+      `<button type="button" data-tx="sale" aria-pressed="false">Sales (${nSale})</button>` +
+      `<button type="button" data-tx="lease" aria-pressed="false">Leases (${nLease})</button></div>`
+    : "";
   const compsTable = compRows
     ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
-      `<div class="scroll"><table class="stmt"><thead><tr>` +
-      compCols.map((col) => `<th>${escHtml(col.label)}</th>`).join("") +
-      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div></div>`
+      txBar +
+      `<div class="scroll"><table class="stmt" id="mktComps"><thead><tr>` +
+      compCols.map((col) =>
+        `<th data-k="${escHtml(col.key)}"${numCol(col.key) ? " data-num=\"1\"" : ""}>${escHtml(col.label)}</th>`).join("") +
+      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div>` +
+      `<p class="disc" id="mktTxEmpty" hidden>No comps in this filter.</p>` +
+      `<script>${MARKET_RESEARCH_JS}</script></div>`
+    : "";
+
+  // Analyst extras sit on a second ledger row so the headline strip stays
+  // two or three cells (median emphasized). Each cell is omitted rather than
+  // invented. Rent is derived from this page's comps so seeded snapshots
+  // with leases gain it without a regeneration.
+  const auxCells = [];
+  const opex = p.market_opex_range && String(p.market_opex_range.low || "").trim()
+    && String(p.market_opex_range.high || "").trim() ? p.market_opex_range : null;
+  if (opex) {
+    auxCells.push([
+      "OpEx / EGI",
+      `${escHtml(opex.low)}–${escHtml(opex.high)}`,
+      String(opex.note || "").trim() || "typical, % of effective gross income",
+    ]);
+  }
+  const trendN = Number(p.annual_price_trend_pct);
+  if (Number.isFinite(trendN) && trendN !== 0 && Math.abs(trendN) <= 30) {
+    auxCells.push([
+      "Price trend",
+      `${trendN > 0 ? "+" : ""}${trendN}%/yr`,
+      "sale prices over the search window",
+    ]);
+  }
+  const rent = rentFromComps(marketComps);
+  if (rent) {
+    const rentRange = rent.low === rent.high ? usd2(rent.median) : `${usd2(rent.low)}–${usd2(rent.high)}`;
+    auxCells.push([
+      "Typical rent",
+      usd2(rent.median),
+      `${rentRange} · ${rent.count} lease${rent.count === 1 ? "" : "s"} · $/SF/yr`,
+    ]);
+  }
+  const auxLedger = auxCells.length
+    ? `<div class="ledger aux">${auxCells.map(([k, v, n]) =>
+      `<div class="lcell"><span class="k">${escHtml(k)}</span><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`
+    ).join("")}</div>`
     : "";
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
@@ -6065,12 +6481,36 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `</ul></div>`
     : "";
 
+  // The loudest CTA on the site's biggest SEO surface. Anonymous visitors
+  // still get the owner valuation door (auth=signup is the one query form
+  // ACCOUNT_WALL never 302s). Signed-in visitors get Watch + CSV instead —
+  // spec 2026-08-14. The Address Explorer deep link stays on both; members
+  // skip the signup query because they already have an account.
+  const exploreHref = (signedIn ? "/?explore=" : "/?auth=signup&explore=")
+    + encodeURIComponent(p.city + ", " + p.state)
+    + "&type=" + encodeURIComponent(p.type);
+  const exploreLink =
+    `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(exploreHref)}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p>`;
+  const cta = signedIn
+    ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
+      `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
+      (compRows
+        ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
+        : "") +
+      exploreLink + `</div>`
+    : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
+      `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
+      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
+      exploreLink + `</div>`;
+
   const body =
     `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
     `<h1>${escHtml(title)}</h1>` +
     `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
+    auxLedger +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     intelCard +
@@ -6078,26 +6518,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     compsTable +
     creditLine +
     brokersCard +
-    `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
-    `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
-    // The loudest CTA on the site's biggest SEO surface, so it carries the
-    // market the visitor is standing in. It used to be a bare href="/", which
-    // under the wall answers an anonymous visitor with the landing page: they
-    // ask to value their building and get another marketing page, then have
-    // to find "Create account" a second time. The `alt` link directly below
-    // already did this properly; the big button was the one ignoring it.
-    // A member skips the signup door (index.html ignores ?auth= when signed
-    // in anyway) and just arrives with the type prefilled.
-    `<a class="btn" href="${escHtml(
-      (signedIn ? "/?" : "/?auth=signup&") + "type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
-    // The Address Explorer deep link (spec 2026-08-03, "Deep link" section).
-    // auth=signup is the one query form ACCOUNT_WALL never 302s, so this same
-    // static href serves everyone: anonymous visitors get the signup modal
-    // (the explorer input arrives prefilled behind it), signed-in Pro members
-    // skip the modal and the panel opens fetching this market's list.
-    `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(
-      "/?auth=signup&explore=" + encodeURIComponent(p.city + ", " + p.state)
-      + "&type=" + encodeURIComponent(p.type))}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p></div>` +
+    cta +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -6792,10 +7213,14 @@ function renderPrivacyPageHTML(signedIn) {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets two essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
-    `you signed in, and <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
-    `allowance for visitors without an account. For the same purpose the Service stores a one-way hashed ` +
-    `form of your IP address; the address itself is not retained. Neither cookie is used for advertising ` +
+    `<p>The Service sets three essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `you signed in; <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
+    `allowance for visitors without an account; and <code>cn_vid</code>, an httpOnly cookie holding a ` +
+    `random identifier so that our own usage statistics can tell one visit apart from another. That ` +
+    `identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
+    `about you, and it is never combined with data from other sites. For the free-search allowance the ` +
+    `Service also stores a one-way hashed form of your IP address; the address itself is not retained. ` +
+    `None of these cookies is used for advertising ` +
     `or cross-site tracking. Your browser's local storage holds preferences, report history, and map caches; ` +
     `that data remains on your own device.</p>` +
 
@@ -7265,7 +7690,133 @@ ${ACCOUNT_NAV_JS}
 // extracted 2026-08-08 so `npm test` pins the corpus key. The parse is
 // load-bearing — see market.js's header before touching it.
 
+// --- Who an event came from (2026-08-13) ------------------------------------
+//
+// Every event above records WHAT happened and nothing about WHOSE visit it
+// was, so the log can count signups and count reports and can never say
+// whether one person did both. "Did anybody get from the landing page to a
+// first report?" — the question the first broker cohort will raise, and the
+// one the 2026-08-06 measurement had to answer by hand-assembling rows out of
+// Supabase — is not askable of this table. These two columns make it askable.
+//
+//   visitor_id  an opaque random id in the `cn_vid` cookie. NOT derived from
+//               IP, user agent or anything else about the person: it is a
+//               random number handed to a browser, which is the least this
+//               can be and still join two events together. It says "the same
+//               browser did these things" and cannot say who that is.
+//   user_id     the account id, once there is a session. Already the key
+//               everything else about them is stored under, so it adds no
+//               new fact — it just puts the funnel and the account in the
+//               same join.
+//
+// Deliberately still PII-free in the sense this file's header claims: no
+// email, no name, no street address, no IP. The privacy policy names
+// `cn_vid` alongside `cn_guest`; keep it in step.
+const VISITOR_COOKIE = "cn_vid";
+const VISITOR_COOKIE_MAX_AGE_SEC = 365 * 24 * 60 * 60;
+
+// Ambient request context, rather than a `req` argument threaded through
+// logEvent's ~35 call sites. That choice is about the failure mode, not the
+// typing: an argument every future call site must remember to pass is
+// EXACTLY the shape that has silently broken a dimension here twice already
+// — `vault_beta` missing from getSessionUser's return (the grant was set and
+// the vault still refused, and nothing failed), and `plan`, which three
+// /api/comps call sites pass to logEvent today and which the row has never
+// carried. A forgotten argument produces a plausible row with a blank
+// column, so nothing anywhere goes red and the gap is found months later by
+// noticing a number looks wrong. With the context ambient there is nothing
+// to forget: a call site inside a request is attributed because it is inside
+// a request.
+//
+// AsyncLocalStorage propagates through awaits and timers, so the whole
+// handler tree — including work that finishes after the response — stays
+// attributed. Work genuinely detached from a request (startup, the harvest
+// path's link check) has no store and logs an empty visitor, which is
+// correct: those are not somebody's visit.
+const REQUEST_CONTEXT = new AsyncLocalStorage();
+
+// AsyncLocalStorage does NOT reach a `req.on("data"/"end")` callback, and that
+// is not a detail — it is most of this server. Every route that reads a
+// request body registers those listeners, so without this the funnel would
+// have attributed GETs correctly and recorded every signup, lead, share,
+// vault import and BOV as an anonymous visitor. Measured, not assumed: with a
+// plain `run()` around the handler, a POST's `end` callback sees a null store.
+// `enterWith()` does not fix it either. The reason is that Node emits those
+// events from the connection's async context, which is a SIBLING of the
+// handler's, not a descendant — so the store was never propagated to it.
+// Timers and awaits inside the handler are descendants and do inherit it,
+// which is exactly what makes this fail quietly: the GET routes work.
+//
+// AsyncResource.bind captures the context at registration time, so binding
+// the registration functions makes every listener added afterward run inside
+// this request's context. Only `req` is bound: nothing logs an event from a
+// `res` callback, and the patch is per-request on an object that is discarded
+// when the response ends. Safe here because server.js never removes a
+// listener — a wrapped function cannot be matched by removeListener — so
+// check that before adding a `.off()` anywhere.
+const REQ_LISTENER_METHODS = ["on", "once", "addListener", "prependListener", "prependOnceListener"];
+function bindRequestListeners(req) {
+  for (const m of REQ_LISTENER_METHODS) {
+    const orig = req[m];
+    if (typeof orig !== "function") continue;
+    req[m] = function (ev, fn) {
+      return orig.call(this, ev, typeof fn === "function" ? AsyncResource.bind(fn) : fn);
+    };
+  }
+}
+
+function newVisitorId() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+// Mint only on document navigations. A first page load fires a dozen parallel
+// requests (CSS, /valuation.js, /api/config), and minting on whichever
+// arrives first would race: each sees no cookie, each mints a different id,
+// the browser keeps the last, and that visit's own events end up split across
+// ids that never appear again. A navigation is one request per page load, and
+// it lands before the assets it references, so everything after it carries
+// the same id. Non-document requests read the cookie and never create one.
+function isDocumentRequest(req) {
+  // Chrome/Safari/Firefox all send Sec-Fetch-Dest; the Accept sniff is the
+  // fallback for anything that does not, and for curl (which sends neither,
+  // gets no cookie, and is not a visitor worth counting anyway).
+  const dest = req.headers["sec-fetch-dest"];
+  if (dest) return dest === "document";
+  return String(req.headers.accept || "").includes("text/html");
+}
+
+function setVisitorCookie(res, req, value) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  // Append rather than assign, same rule as setAdminCookie/setGuestCookie: a
+  // document response can carry a session cookie too, and clobbering it would
+  // be a silent sign-out.
+  const prior = res.getHeader("set-cookie");
+  const cookie = `${VISITOR_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${VISITOR_COOKIE_MAX_AGE_SEC}${secure}`;
+  res.setHeader("set-cookie", prior ? [].concat(prior, cookie) : cookie);
+}
+
+// Builds the store for one request. Never throws: analytics must not be able
+// to fail a page load, so a malformed cookie header or an already-sent
+// response degrades to an unattributed event rather than a 500.
+function newRequestContext(req, res) {
+  const ctx = { visitor: "", userId: "" };
+  try {
+    const existing = String(parseCookies(req)[VISITOR_COOKIE] || "");
+    // Shape-checked before it is trusted into a column: this value comes from
+    // a client and is written to the database, so accept only what this
+    // server mints.
+    if (/^[0-9a-f]{32}$/.test(existing)) {
+      ctx.visitor = existing;
+    } else if (isDocumentRequest(req) && !res.headersSent) {
+      ctx.visitor = newVisitorId();
+      setVisitorCookie(res, req, ctx.visitor);
+    }
+  } catch (e) { /* unattributed is fine; a broken page load is not */ }
+  return ctx;
+}
+
 function logEvent(kind, dims) {
+  const ctx = REQUEST_CONTEXT.getStore();
   const row = {
     ts: new Date().toISOString(),
     kind: String(kind),
@@ -7279,6 +7830,22 @@ function logEvent(kind, dims) {
     searches: dims && Number.isFinite(dims.searches) ? dims.searches : null,
     out_tokens: dims && Number.isFinite(dims.out_tokens) ? dims.out_tokens : null,
     rescue: (dims && dims.rescue) || "",
+    // Which tier ran this search (2026-08-13, migration 026). Three
+    // /api/comps call sites have passed `plan: ent.plan` since the Pro tier
+    // shipped and this row never carried it, so the value was built and
+    // thrown away on every search: the code read as though "do free users
+    // search more than Pro ones" was answerable and it never was. That is
+    // the same silently-inert shape as vault_beta missing from
+    // getSessionUser, and the reason logEvent now takes its dimensions from
+    // an ambient context rather than trusting call sites to remember.
+    // "anonymous" / "free" / a paid plan name, per entitlements.js.
+    plan: (dims && dims.plan) || "",
+    // Whose visit this was (2026-08-13, migration 026). Empty string rather
+    // than null for the same reason every other text dimension here is:
+    // aggregateStats treats blank as "unknown" and never has to test two
+    // kinds of missing.
+    visitor_id: (ctx && ctx.visitor) || "",
+    user_id: (ctx && ctx.userId) || "",
   };
   // Analytics must never delay or break a real request.
   storeRow("analytics_events", ANALYTICS_FILE, row).catch((e) =>
@@ -7341,6 +7908,15 @@ function aggregateStats(rows) {
     conversionPct: searches.length ? Math.round((leads.length / searches.length) * 1000) / 10 : 0,
     daily,
     byType: countBy(searches, "prop_type"),
+    // Which tier is doing the searching (2026-08-13, migration 026). The
+    // question this answers is whether the paid tier is used more per head
+    // than the free one, which is the argument for or against every gate in
+    // entitlements.js — and it was unanswerable until now even though three
+    // call sites had been passing `plan` to logEvent since Pro shipped.
+    // Rows predating the column read "(unknown)" via countBy's own blank
+    // handling rather than being dropped, so the total still reconciles with
+    // the Searches tile above.
+    byPlan: countBy(searches, "plan"),
     topMarkets: countBy(searches, "market").slice(0, 12),
     leadsBySource: countBy(leads, "source"),
     // Property-type autofill. `applied` is the only outcome the visitor ever
@@ -7395,6 +7971,79 @@ function aggregateStats(rows) {
         templates: rows.filter((r) => r.kind === "vault_template").length,
         imports: imports.length,
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
+      };
+    })(),
+    // Watchlist digest runs (2026-08-13). The digest is deliberately driven
+    // from outside this process, which buys a schedule somebody chose and
+    // costs the thing every external scheduler eventually does: it stops, and
+    // nothing says so. A cron that silently dies looks exactly like a quiet
+    // few weeks — no error, no bounce, just people not being mailed. So the
+    // card reports when it last ran and what happened, and "never" is a real
+    // answer rather than an empty space.
+    //
+    // Dry runs are counted SEPARATELY, not folded in: a preview is not a
+    // send, and a card that said "last run 2 days ago" off a preview would
+    // report a healthy schedule while nobody had been mailed in a month.
+    digestRuns: (() => {
+      const all = rows.filter((r) => r.kind === "watchlist_digest");
+      const real = all.filter((r) => !String(r.source || "").startsWith("dry:"));
+      // Max by ts rather than the last element: readRows concatenates the
+      // database's ts-ascending page with any rows that fell back to the
+      // local file during an outage, so array order is not time order.
+      const last = (list) => list.reduce((newest, r) =>
+        (!newest || String(r.ts) > String(newest.ts) ? r : newest), null);
+      const lastReal = last(real);
+      const lastAny = last(all);
+      return {
+        runs: real.length,
+        previews: all.length - real.length,
+        lastAt: lastReal ? lastReal.ts : null,
+        // "sent:3" — the outcome rides the source column, since the analytics
+        // schema is fixed and a migration for one integer is not worth it.
+        lastOutcome: lastReal ? String(lastReal.source || "") : "",
+        lastAnyAt: lastAny ? lastAny.ts : null,
+      };
+    })(),
+    // Visitor funnel (2026-08-13, migration 026). The one question every
+    // other block here cannot answer: not how many signups and how many
+    // reports, but how many of the SAME browsers did both. Counted over
+    // distinct visitor_id, so one person reloading five times is one arrival
+    // and one person on two devices is two.
+    //
+    // Three rules worth keeping. The stages are **cumulative sets, not
+    // per-stage counts** — `report` counts arrivals that ran a search, so it
+    // can never exceed `arrived` and the drop between two numbers is a real
+    // drop-off rather than an artifact of counting different populations.
+    // Rows with no visitor_id are **excluded outright rather than bucketed
+    // as one unknown visitor**: every event predating this migration has a
+    // blank id, and lumping them together would invent a single visitor who
+    // did everything the product has ever seen. And `signedUp` counts the
+    // signup EVENT, not the presence of a user_id, so an arrival who signed
+    // in on a later visit is not retroactively counted as converting on this
+    // one.
+    funnel: (() => {
+      const seen = (pred) => {
+        const set = new Set();
+        rows.forEach((r) => {
+          const v = String(r.visitor_id || "");
+          if (v && pred(r)) set.add(v);
+        });
+        return set;
+      };
+      const arrived = seen(() => true);
+      const searched = seen((r) => r.kind === "search");
+      const within = (set) => [...set].filter((v) => arrived.has(v)).length;
+      return {
+        arrived: arrived.size,
+        // Hit the wall: asked for something and were told to sign in first.
+        gated: within(seen((r) => r.kind === "signup_gate")),
+        signedUp: within(seen((r) => r.kind === "signup")),
+        report: within(searched),
+        // Attributed rows only. Below a handful of arrivals every ratio above
+        // is noise, and a dashboard reading "100% converted" off two visits
+        // is worse than no number, so the page has the denominator to say so.
+        attributed: rows.filter((r) => String(r.visitor_id || "")).length,
+        identified: new Set(rows.map((r) => String(r.user_id || "")).filter(Boolean)).size,
       };
     })(),
     // Anthropic call failures since the last restart. Customers only ever see
@@ -7644,6 +8293,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div id="dash" style="display:none"></div>
 <div id="auditPanel"></div>
 <div id="accuracy"></div>
+<div id="digest" style="display:none"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -7759,6 +8409,36 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
+  // migration 026. The card is one line per stage plus its own denominator,
+  // because the honest reading of a tiny sample is the sample size: two
+  // arrivals converting reads "100%" and means nothing, so the count is
+  // always shown next to the percentage and the percentage is withheld
+  // entirely below ten arrivals.
+  var fn=d.funnel;
+  var pctOf=function(n,base){return base?Math.round(n/base*1000)/10:0;};
+  var stage=function(label,n,base,note){
+    return "<tr><td>"+label+"</td><td style='text-align:right'><b>"+n+"</b></td>"+
+      "<td style='text-align:right' class=muted>"+(base>=10?pctOf(n,base)+"%":"&mdash;")+"</td>"+
+      "<td class=muted>"+(note||"")+"</td></tr>";
+  };
+  var funnelCard=(fn===undefined)?"":
+    "<div class=card><h2>Visitor funnel</h2>"+
+    (!fn.arrived
+      ? "<p class=muted>No attributed visits yet &mdash; visitor ids land from the 2026-08-13 deploy onward, "+
+        "and only after migration 026 has been run. Every event before that is counted in the totals above "+
+        "and deliberately excluded here rather than lumped together as one unknown visitor.</p>"
+      : "<table><tr><td>Arrived</td><td style='text-align:right'><b>"+fn.arrived+"</b></td>"+
+        "<td style='text-align:right' class=muted>100%</td><td class=muted>distinct browsers</td></tr>"+
+        stage("Hit the sign-in wall", fn.gated, fn.arrived, "asked for something gated")+
+        stage("Created an account", fn.signedUp, fn.arrived, "signed up on this visit")+
+        stage("Ran a report", fn.report, fn.arrived, "the one that matters")+
+        "</table>"+
+        "<div class=muted style='margin-top:10px'>"+fn.attributed+" of "+d.eventCount+" events carry a visitor id &middot; "+
+        fn.identified+" distinct account(s) seen. Percentages are of arrivals and are withheld below 10 "+
+        "arrivals, where they are noise. One person on two devices counts twice; a browser that "+
+        "clears cookies starts over.</div>")+
+    "</div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
@@ -7805,9 +8485,20 @@ function render(d){
     "<div class=card><h2>Searches per day (last 30 days)</h2><div class=chart>"+bars+"</div><div class=xax>"+xax+"</div>"+
     "<div class=leg><span class=sb></span>Billed<span class=sc></span>Cache hit</div></div>"+
     "<div class=card><h2>Searches by property type</h2><table>"+rows(d.byType)+"</table></div>"+
+    // Searches by tier. undefined = a stale /api/stats from before migration
+    // 026. Deliberately a count of SEARCHES and not of people: one Pro member
+    // running fifty searches is the signal the gates exist to price, and a
+    // per-head figure would need the visitor funnel's denominator, which is a
+    // different card answering a different question.
+    (d.byPlan===undefined?"":
+      "<div class=card><h2>Searches by plan</h2><table>"+rows(d.byPlan)+"</table>"+
+      "<div class=muted style='margin-top:10px'>anonymous = no account &middot; free = signed in, not paying &middot; "+
+      "anything else is the paid plan name. Searches logged before 2026-08-13 carry no plan and show as "+
+      "(unknown); they are counted here so this table still totals to the Searches tile.</div></div>")+
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
+    funnelCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -7937,6 +8628,101 @@ function loadAccuracy(key,force){
     .then(renderAccuracy)
     .catch(function(e){console.error(e);renderAccuracy({error:1});});
 }
+
+// --- The watchlist digest, from the page the owner already has open ---------
+//
+// The route is deliberately manual (see its comment: a timer fires at an hour
+// nobody chose and again after every restart), but "manual" was curl-only,
+// which is a feature nobody runs. This is the trigger.
+//
+// Preview is the primary button and Send is the quiet one, on purpose. This
+// is the only thing the product sends unprompted, so the default gesture
+// should be to READ what would go out. Nothing here renders until a run is
+// asked for — the page must not fire a digest just by being opened.
+// Set once from /api/stats, read by the card's idle state. Module-level
+// rather than an argument because the card re-renders itself after every run
+// and would otherwise lose it — and the idle state is the only place it is
+// shown, so a stale copy after a run costs nothing.
+var DIGEST_RUNS=null;
+function digestBtn(id,label,cls){
+  return "<button id='"+id+"' class='btn"+(cls?" "+cls:"")+"'>"+label+"</button> ";
+}
+function renderDigestCard(state){
+  var el=document.getElementById("digest");
+  var body;
+  if(state&&state.error){
+    body="<p class=muted>"+esc(state.error)+"</p>";
+  }else if(state&&state.summary){
+    var s=state.summary;
+    var line="<p><b>"+esc(s.watchers)+"</b> watcher(s) &middot; "+
+      (state.dry?"<b>"+esc((s.previews||[]).length)+"</b> would be mailed"
+                :"<b>"+esc(s.sent)+"</b> mailed")+
+      " &middot; "+esc(s.nothingNew)+" had nothing new &middot; "+esc(s.optedOut)+" opted out"+
+      (s.failed?" &middot; <b>"+esc(s.failed)+" failed</b>":"")+"</p>";
+    var previews=(s.previews||[]).map(function(p){
+      // Preformatted: the plain text IS the email (email-shell only dresses
+      // it), so this is literally what lands, wrapping and all.
+      return "<div style='margin-top:12px'><div class=muted>"+esc(p.to)+"</div>"+
+        "<div style='font-weight:600'>"+esc(p.subject)+"</div>"+
+        "<pre style='white-space:pre-wrap;background:#F7F6F3;border:1px solid #E4E2DA;border-radius:8px;padding:10px;margin-top:6px;font-size:13px'>"+
+        esc(p.text)+"</pre></div>";
+    }).join("");
+    body=line+previews;
+  }else{
+    // Idle state. The last-run line is the point of this card between runs:
+    // the schedule lives outside this process, so a cron that quietly died
+    // looks exactly like a quiet few weeks unless something says when it last
+    // actually mailed anybody.
+    var r=DIGEST_RUNS||{};
+    var ago=function(ts){
+      if(!ts)return "";
+      var days=Math.floor((Date.now()-Date.parse(ts))/86400000);
+      return days<=0?"today":(days===1?"yesterday":days+" days ago");
+    };
+    var lastLine;
+    if(r.lastAt){
+      // Local date, not the ISO string's leading 10 characters: that is UTC,
+      // and an evening run in Mountain time renders as "today (tomorrow's
+      // date)", which reads as a bug in the dashboard rather than a timezone.
+      lastLine="Last sent <b>"+esc(ago(r.lastAt))+"</b> ("+esc(new Date(r.lastAt).toLocaleDateString())+")"+
+        (r.lastOutcome?" &middot; "+esc(r.lastOutcome.replace("sent:","")+" mailed"):"")+
+        " &middot; "+esc(r.runs)+" run(s) logged";
+    }else if(r.previews){
+      // Deliberately distinguished: previews prove somebody has been here,
+      // and reporting them as a run would say the schedule is healthy while
+      // nobody has ever been mailed.
+      lastLine="<b>Never sent</b> &mdash; "+esc(r.previews)+" preview(s) only";
+    }else{
+      lastLine="<b>Never run.</b>";
+    }
+    body="<p class=muted>Mails each watcher the markets of theirs that have new comps. "+
+      "Preview builds every email and sends none.</p><p>"+lastLine+"</p>";
+  }
+  el.innerHTML="<div class=card><h2>Watchlist digest</h2>"+body+
+    "<p style='margin-top:12px'>"+digestBtn("dgPrev","Preview (sends nothing)")+
+    digestBtn("dgSend","Send now","mute")+"</p></div>";
+  el.style.display="block";
+  var run=function(dry){
+    var key=sessionStorage.getItem(KEYK);
+    if(!dry&&!confirm("Send the digest now? Real email goes to every watcher with new comps, and it cannot be recalled."))return;
+    document.getElementById("dgPrev").disabled=true;
+    document.getElementById("dgSend").disabled=true;
+    fetch("/api/watchlist/digest",{method:"POST",
+      headers:{"content-type":"application/json","x-admin-key":key||""},
+      body:JSON.stringify({dryRun:dry})})
+    .then(function(r){return r.json().then(function(j){
+      // The route's refusals are the useful part of this feature, so show the
+      // reason rather than a status code: "no database" and "no outbound mail
+      // configured" are different problems with different fixes.
+      if(!r.ok)throw new Error(j.error||("Error "+r.status));
+      return j;
+    });})
+    .then(function(j){renderDigestCard({summary:j,dry:dry});})
+    .catch(function(e){renderDigestCard({error:e.message});});
+  };
+  document.getElementById("dgPrev").addEventListener("click",function(){run(true);});
+  document.getElementById("dgSend").addEventListener("click",function(){run(false);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -7951,7 +8737,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard();})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -9955,7 +10741,16 @@ async function checkExploreCity(req, city, state) {
   return verdict;
 }
 
-const server = http.createServer((req, res) => {
+// Every request runs inside its own analytics context, so logEvent can say
+// whose visit an event belongs to without 35 call sites passing `req` (see
+// REQUEST_CONTEXT above for why that is the safer shape, not merely the
+// shorter one). The wrap is the outermost thing that happens to a request:
+// anything inside it, at any await depth, is attributed.
+const server = http.createServer((req, res) =>
+  REQUEST_CONTEXT.run(newRequestContext(req, res), () => {
+  // Must run INSIDE the store, and before any route registers a body
+  // listener — see bindRequestListeners for why a plain run() is not enough.
+  bindRequestListeners(req);
   // --- API endpoint ---
   if (req.method === "POST" && req.url === "/api/comps") {
     let body = "";
@@ -10790,20 +11585,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Redeem the tester passkey: comped Pro for a signed-in account --------
+  // --- Redeem a passkey: comped Pro, or the broker vault --------------------
+  //
+  // ONE route and ONE input for two different codes, because the person
+  // typing has been handed a code and should not also have to know which
+  // kind it is. TESTER_PASSKEY comps Pro (never the vault); VAULT_PASSKEY
+  // grants the vault (never Pro). The route decides which by which secret
+  // the code matches, so the two audiences stay separately revocable —
+  // rotating one does not lock the other out.
   //
   // Refusal order mirrors the vault's openVault() and requireBroker(): the
   // feature not existing, then the caller, then the secret.
   //
   // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
-  // /contacts, so it can never be the thing handed to testers; this grants
-  // Pro and nothing else, and touches neither the dashboards nor the
-  // header-only `internal` bypass in /api/comps.
+  // /contacts, so it can never be the thing handed to a tester or a broker;
+  // these grants touch neither the dashboards nor the header-only `internal`
+  // bypass in /api/comps.
   if (req.method === "POST" && req.url === "/api/redeem-passkey") {
-    // Unset = the feature does not exist on this deployment. 404 rather than
-    // 403, matching how the ADMIN_KEY-gated routes go dark when unconfigured:
-    // a probe cannot tell a wrong code from a deployment that has no code.
-    if (!TESTER_PASSKEY) {
+    // Neither configured = the feature does not exist on this deployment. 404
+    // rather than 403, matching how the ADMIN_KEY-gated routes go dark when
+    // unconfigured: a probe cannot tell a wrong code from a deployment that
+    // has no code. Either one alone is enough to open the route — the two
+    // passkeys are independent, so a deployment can run only the vault door.
+    if (!TESTER_PASSKEY && !VAULT_PASSKEY) {
       res.writeHead(404, { "content-type": "text/plain" });
       return res.end("Not found");
     }
@@ -10817,25 +11621,54 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
         }
         const user = await getSessionUser(req);
-        // The grant is stored on an account, so there is nothing to store it
-        // on for an anonymous caller. Checked BEFORE the secret compare so a
-        // signed-out prober cannot use this route to test codes at all.
+        // Both grants are stored on an account, so there is nothing to store
+        // them on for an anonymous caller. Checked BEFORE the secret compare
+        // so a signed-out prober cannot use this route to test codes at all.
         if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
-        // Idempotent: a second redemption is a no-op, not an error. Also
-        // checked before the compare, so someone who already has access
-        // cannot be told "incorrect code" by a rotated passkey.
-        if (user.pro_tester) return sendJson(res, 200, { ok: true, already: true });
         const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
-        if (!secretMatches(passkey, TESTER_PASSKEY)) {
+
+        // Which doors this code opens. BOTH secrets are compared on every
+        // redemption rather than stopping at the first hit: the answer is a
+        // list, so a deployment that (by mistake) sets the same string for
+        // both grants what the code plainly says it does, instead of
+        // silently preferring whichever comparison happened to run first.
+        const opens = [];
+        if (TESTER_PASSKEY && secretMatches(passkey, TESTER_PASSKEY)) opens.push("tester");
+        if (VAULT_PASSKEY && secretMatches(passkey, VAULT_PASSKEY)) opens.push("vault");
+
+        if (!opens.length) {
+          // Someone who already has everything this deployment can give is
+          // told "already", never "incorrect code" — otherwise a rotated or
+          // mistyped passkey would deny an account that is already inside.
+          // This is the old pre-compare idempotency check, generalized: with
+          // two codes the route cannot know which grant is being claimed
+          // until it compares, so the check moved after the compare and
+          // asks whether anything is left to redeem at all. On a deployment
+          // with only TESTER_PASSKEY set it is exactly the old behavior.
+          const nothingLeft = (!TESTER_PASSKEY || user.pro_tester) && (!VAULT_PASSKEY || user.vault_beta);
+          if (nothingLeft) return sendJson(res, 200, { ok: true, already: true });
           return sendJson(res, 401, { error: "That code isn't right." });
         }
-        await setUserTester(user.id);
-        console.log(`Tester passkey redeemed by ${user.email}`);
-        return sendJson(res, 200, { ok: true });
+
+        // Idempotent: re-redeeming a code you already hold is a no-op, not an
+        // error. Skipping the write also keeps a re-redemption off the
+        // database entirely.
+        const granted = [];
+        if (opens.includes("tester") && !user.pro_tester) {
+          await setUserTester(user.id);
+          granted.push("tester");
+        }
+        if (opens.includes("vault") && !user.vault_beta) {
+          await setUserVaultBeta(user.id);
+          granted.push("vault");
+        }
+        if (!granted.length) return sendJson(res, 200, { ok: true, already: true });
+        console.log(`Passkey redeemed by ${user.email}: ${granted.join(", ")}`);
+        return sendJson(res, 200, { ok: true, granted });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
-        // setUserTester throws on a failed write — never report success for a
-        // grant that did not land.
+        // setUserTester/setUserVaultBeta throw on a failed write — never
+        // report success for a grant that did not land.
         console.error("redeem-passkey error:", err);
         return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
       }
@@ -10983,50 +11816,182 @@ const server = http.createServer((req, res) => {
       // most of why the feed is useful. Only the itemized rows are gated,
       // the same rule the report itself follows.
       const ent = await getEntitlements(user, undefined, isAdminRequest(req));
-      const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
-      const items = await listWatchlist(user.id);
-      const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
-      let unseen = 0;
-      const out = [];
-      for (const w of items) {
-        const rows = await corpusRowsForMarket(w.market, w.property_type, 500);
-        const fresh = rows.filter((r) => String(r.ts) > String(w.last_seen_at)).slice(0, 20);
-        unseen += fresh.length;
-        // Median $/SF: sale rows only, trailing ~6 months — matches the
-        // client-side rule that lease $/SF never mixes into valuation.
-        const salePsf = rows
-          .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
-          .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
-          .map((r) => corpusNum(r.price_per_sqft))
-          .filter(Boolean)
-          .sort((a, b) => a - b);
-        const median_psf = salePsf.length
-          ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
-        // Direction: deal-date medians, last 6 months vs the 6 before —
-        // >=3 comps each side or the field is omitted entirely.
-        const datedSales = saleRowsWithDates(rows);
-        const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
-        const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
-        const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
-        const median_trend = curWin.length >= 3 && priWin.length >= 3
-          ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
-        out.push({
-          id: w.id, market: w.market, property_type: w.property_type,
-          median_psf, new_count: fresh.length,
-          ...(median_trend ? { median_trend } : {}),
-          // new_count above stays the TRUE number of new comps — the visitor
-          // is told what they are missing, they just don't receive it.
-          ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
-          comps: fresh.slice(0, feedRowCap).map((r) => ({
-            ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
-            price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
-            cap_rate: r.cap_rate, source_url: r.source_url,
-          })),
-        });
-      }
+      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at);
       logEvent("feed_view", {});
       return sendJson(res, 200, { unseen, items: out });
     })().catch((err) => { console.error("feed error:", err); sendJson(res, 500, { error: "Feed read failed." }); });
+    return;
+  }
+
+  // --- The watchlist digest -------------------------------------------------
+  //
+  // The one thing CompNinja sends on its own initiative. Everything else it
+  // mails answers something a person just did.
+  //
+  // ADMIN_KEY-gated and manually triggered rather than run on a timer inside
+  // this process, deliberately. A setInterval would fire at an hour nobody
+  // chose, would fire again after every deploy restart, and would fire twice
+  // the day this runs on two instances — and the failure mode of all three is
+  // mailing real people the same comps again. A route makes the schedule
+  // somebody's explicit decision (a Render cron, a GitHub Action, a scheduled
+  // agent, or a person), and makes "run it and see" possible without waiting.
+  //
+  // Refuses rather than degrading, in this order, because each refusal is a
+  // different thing being wrong:
+  //   401/403  not an admin — this reads every account's email address.
+  //   503      no database — the "already mailed" marker has no file
+  //            fallback (see markWatchlistDigested), and without it every
+  //            watcher is re-sent the same comps after each deploy.
+  //   503      no outbound mail — sendOutboundEmail is a silent no-op when
+  //            EMAIL_FROM/RESEND_API_KEY are unset, so running blind would
+  //            advance every high-water mark and DELETE a digest nobody got.
+  //            This is the only caller for which that no-op is destructive,
+  //            which is why it is checked here and not there.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/watchlist/digest") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!DB_CONFIGURED) {
+          return sendJson(res, 503, { error: "The digest needs a database: without one, nothing records who has already been mailed." });
+        }
+        const opts = JSON.parse(body || "{}");
+        // A dry run builds every email and sends none, and advances no
+        // marker. It is how this gets looked at before it reaches anyone,
+        // and it is the reason the outbound-mail check below is skipped for
+        // it — inspecting the copy must not require a verified domain.
+        const dryRun = opts.dryRun === true;
+        if (!dryRun && !(EMAIL_FROM && RESEND_API_KEY)) {
+          return sendJson(res, 503, {
+            error: "Outbound email is not configured (EMAIL_FROM + RESEND_API_KEY). " +
+              "Refusing rather than marking everyone as mailed. Use { dryRun: true } to see the copy.",
+          });
+        }
+
+        const rows = await allWatchlistItems();
+        const byUser = new Map();
+        rows.forEach((w) => {
+          if (!byUser.has(w.user_id)) byUser.set(w.user_id, []);
+          byUser.get(w.user_id).push(w);
+        });
+        const accounts = await findUsersByIds([...byUser.keys()]);
+
+        const summary = { watchers: byUser.size, sent: 0, nothingNew: 0, optedOut: 0, failed: 0, previews: [] };
+        for (const account of accounts) {
+          if (account.digest_optout) { summary.optedOut += 1; continue; }
+          const items = byUser.get(account.id) || [];
+          try {
+            const ent = await getEntitlements(account, undefined, false);
+            // The send cutoff is the LATER of the two markers. Reaching back
+            // only to last_digest_at would mail comps the reader already saw
+            // in the app; reaching back only to last_seen_at would mail the
+            // same ones forever to somebody who never clicks the bell. The
+            // happy consequence is that an active user quietly stops getting
+            // digests without ever having to unsubscribe.
+            const { items: feed } = await buildWatchlistFeed(account, ent, (w) => {
+              const a = String(w.last_digest_at || w.created_at || "");
+              const b = String(w.last_seen_at || "");
+              return a > b ? a : b;
+            });
+            const mail = DIGEST.buildDigest({
+              items: feed,
+              deskUrl: `${SITE_URL}/desk`,
+              unsubscribeUrl: unsubscribeUrlFor(account.id),
+            });
+            if (!mail) { summary.nothingNew += 1; continue; }
+            if (dryRun) {
+              summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
+              continue;
+            }
+            sendOutboundEmail(account.email, mail.subject, mail.text);
+            // Marked AFTER the send is handed off, and only for the markets
+            // that actually carried news. If this write fails the reader gets
+            // one duplicate next run, which is the right way round: marking
+            // first would lose the digest outright on a failed send, and a
+            // lost digest is invisible where a duplicate is merely annoying.
+            const mailed = feed.filter(DIGEST.hasNews).map((i) => i.id).filter(Boolean);
+            await markWatchlistDigested(account.id, mailed);
+            summary.sent += 1;
+          } catch (err) {
+            // One bad account must never stop the run: the rest of the list
+            // is still owed its mail.
+            console.error(`Digest failed for ${account.id}:`, err.message);
+            summary.failed += 1;
+          }
+        }
+        logEvent("watchlist_digest", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
+        console.log(`📬 Watchlist digest${dryRun ? " (dry run)" : ""}: ${summary.sent} sent, ` +
+          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed`);
+        return sendJson(res, 200, summary);
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("digest error:", err);
+        return sendJson(res, 500, { error: "The digest run failed." });
+      }
+    });
+    return;
+  }
+
+  // Unsubscribe. A GET renders a confirmation with a button; the POST behind
+  // that button is what actually flips the flag.
+  //
+  // The second click is not politeness, it is correctness: corporate mail
+  // scanners and link-preview bots fetch every URL in an email, and a GET
+  // that unsubscribes would silently opt people out of mail they never even
+  // opened. The token makes the link unguessable; nothing makes it
+  // un-prefetchable.
+  if (req.url.split("?")[0] === "/watchlist/unsubscribe" && (req.method === "GET" || req.method === "POST")) {
+    (async () => {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const userId = q.get("u") || "";
+      const resubscribe = q.get("on") === "1";
+      if (!digestTokenValid(userId, q.get("t"))) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: "Link not recognized | CompNinja",
+          description: "This unsubscribe link could not be verified.",
+          noindex: true,
+          body: `<div class="wrap"><h1>This link is not recognized</h1>` +
+            `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
+            `You can turn the emails off from My Desk, or reply to any CompNinja email and we will do it for you.</p></div>`,
+        }));
+      }
+      if (req.method === "POST") {
+        await setDigestOptout(userId, !resubscribe);
+        logEvent("watchlist_digest_optout", { source: resubscribe ? "on" : "off" });
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: (resubscribe ? "Digest turned back on" : "Digest turned off") + " | CompNinja",
+          description: "Watchlist email preference updated.",
+          noindex: true,
+          body: `<div class="wrap"><h1>${resubscribe ? "These emails are back on" : "That&rsquo;s done"}</h1>` +
+            `<p>${resubscribe
+              ? "You will get a digest again when a market you watch has new comps."
+              : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
+            `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+        }));
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+      return res.end(marketShell({
+        title: (resubscribe ? "Turn the digest back on?" : "Turn off watchlist emails?") + " | CompNinja",
+        description: "Confirm your watchlist email preference.",
+        noindex: true,
+        body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
+          `<p>${resubscribe
+            ? "You will get an email when a market you watch has new comps."
+            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on My Desk."}</p>` +
+          `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
+          `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
+          `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
+      }));
+    })().catch((err) => {
+      console.error("unsubscribe error:", err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
+    });
     return;
   }
 
@@ -13506,6 +14471,13 @@ const server = http.createServer((req, res) => {
           // modal can hide a redeem row that could only ever fail. NOT a secret and
           // not an entitlement: it says a door exists, never what opens it.
           testerPasskey: Boolean(TESTER_PASSKEY),
+          // The vault's own door, reported separately because the two codes
+          // unlock different things and a deployment can run either alone.
+          // The redeem row shows while EITHER is set and this caller still
+          // has something left to redeem, so a broker with the vault but no
+          // Pro is not shown a row whose only remaining use is a code they
+          // were never given.
+          vaultPasskey: Boolean(VAULT_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
@@ -14690,7 +15662,27 @@ const server = http.createServer((req, res) => {
       if (!shared && auth !== "signup" && auth !== "signin" && submit !== "comp"
           && pricing !== "1") {
         if (staticPath === "/desk") {
-          res.writeHead(302, { location: "/", "cache-control": "no-store" });
+          // To the SIGN-IN door, not the front door (changed 2026-08-13).
+          // Asking for /desk is asking for your own account, and answering
+          // that with the marketing page tells somebody who already has one
+          // to go read about the product. The wall's actual rule — never
+          // render a personal workspace anonymously — is unchanged; only the
+          // destination moves, to a door two lines below that already serves
+          // the app so the account modal can open.
+          //
+          // It became visible with the watchlist digest, whose only call to
+          // action is "see them all in your desk". A reader signed in on that
+          // device is fine, which is most of them at a 90-day session, but a
+          // new phone or cleared cookies dead-ended the email on marketing
+          // copy. Any future mail linking to /desk inherits the fix.
+          //
+          // Still a 302 and still no-store, for the spec's original reason:
+          // what lives here depends on auth state, so a cached permanent
+          // redirect would outlive the visitor getting an account. Query
+          // strings are dropped exactly as before (a signed-out
+          // /desk?checkout=success loses the param either way, and a real
+          // checkout return carries a session cookie and never reaches here).
+          res.writeHead(302, { location: "/?auth=signin", "cache-control": "no-store" });
           return res.end();
         }
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -15105,7 +16097,7 @@ const server = http.createServer((req, res) => {
     const key = new URL(req.url, "http://localhost").searchParams.get("key");
     if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     Promise.all([
-      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"]),
+      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue", "visitor_id", "user_id", "plan"]),
       // Never rejects: readIntroRequests catches its own errors and returns
       // null, so an intro-table outage can't take the whole dashboard down.
       readIntroRequests(),
@@ -15310,7 +16302,7 @@ const server = http.createServer((req, res) => {
   }
 
   sendNotFound(req, res);
-});
+}));
 
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
@@ -15380,4 +16372,16 @@ server.listen(PORT, () => {
   console.log(TESTER_PASSKEY
     ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
     : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
+  console.log(VAULT_PASSKEY
+    ? "🔑 Vault passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.vault_beta column (migrations/023-vault-beta.sql)."
+    : "🔑 Vault passkey not set (set VAULT_PASSKEY to hand brokers a vault without a SQL update).");
+  // Same string for both codes is a configuration mistake, not a feature: the
+  // route would then hand every tester the private-data workspace the tester
+  // grant exists to withhold. Loud rather than fatal — refusing to boot over
+  // it would take the site down for a misconfiguration that opens nothing a
+  // rotation cannot close.
+  if (TESTER_PASSKEY && VAULT_PASSKEY && TESTER_PASSKEY === VAULT_PASSKEY) {
+    console.error("⛔ TESTER_PASSKEY and VAULT_PASSKEY are the SAME string, so every tester code " +
+      "also opens the broker vault. Set them to different values.");
+  }
 });

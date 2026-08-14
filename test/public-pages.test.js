@@ -301,3 +301,48 @@ test("the landing is a product page, not two copies of a methodology exhibit", a
     assert.match(html, /kicker">Method[\s\S]*?class="steps"/, "Method still has its steps");
   });
 });
+
+// ---------------------------------------------------------------------------
+// The BOV promise and the broker directory are the same fact, said twice.
+//
+// `brokersCard` renders nothing when nobody covers a market, which is every
+// market today — while the CTA under it promised "a no-cost Broker Opinion of
+// Value from a licensed local broker" on all 38 pages. Those two cannot be
+// allowed to disagree: the card is the evidence for the sentence.
+// ---------------------------------------------------------------------------
+
+test("a market page with no brokers does not promise a Broker Opinion of Value", async (t) => {
+  // No database here, so brokersCoveringMarket() answers with nobody — the
+  // live state of every market page on 2026-08-13.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+  assert.ok(!/Broker Opinion of Value/.test(html),
+    "with no broker covering this market, the page must not promise one");
+  assert.match(html, /with the source cited on every one/,
+    "the fallback should sell the report, which is the thing that exists");
+  // The hand-raise itself is unaffected: the CTA still opens the app.
+  assert.match(html, /<a class="btn" href="[^"]*auth=signup/,
+    "the primary CTA must still be there");
+});
+
+test("the BOV promise is governed by the same list the broker card renders", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const brokerList = Array.isArray(opts.brokers)");
+  assert.ok(start >= 0, "brokerList should still be how the page learns who covers it");
+  const end = src.indexOf("return marketShell({", start);
+  assert.ok(end > start, "could not bound the market page body");
+  const body = src.slice(start, end);
+
+  const promises = [...body.matchAll(/Broker Opinion of Value/g)];
+  assert.equal(promises.length, 1, "there should be exactly one BOV promise in the page body");
+
+  // It has to sit on the true side of a brokerList test. A promise written
+  // outside that conditional is the bug this exists to prevent, and it reads
+  // identically on the page when the list happens to be non-empty.
+  const guarded = /brokerList\.length[\s\S]{0,200}Broker Opinion of Value/.test(body);
+  assert.ok(guarded, "the BOV sentence must be conditional on a broker actually covering the market");
+});

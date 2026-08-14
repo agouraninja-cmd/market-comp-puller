@@ -5873,7 +5873,22 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     creditLine +
     brokersCard +
     `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
-    `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
+    // The BOV half of this promise is made ONLY where a broker actually covers
+    // this market and type. `brokerList` is the same list `brokersCard` above
+    // renders, which is empty on every market today, so the loudest CTA on the
+    // site's biggest public surface was promising "a no-cost Broker Opinion of
+    // Value from a licensed local broker" against a directory of nobody —
+    // fulfillable only by the owner going and finding someone by hand, which
+    // is not what the sentence says. Reading the list already in scope costs
+    // no query and self-corrects: the promise appears the moment a broker
+    // opts in to this market, and retreats if they leave.
+    //
+    // The fallback is not a weaker version of the same promise. It sells the
+    // report, which is the thing that exists.
+    `<p>${brokerList.length
+      ? `Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value ` +
+        `from a licensed local broker who covers ${escHtml(p.city)}.`
+      : `Get a free, instant estimate from recent comps, with the source cited on every one.`}</p>` +
     // The loudest CTA on the site's biggest SEO surface, so it carries the
     // market the visitor is standing in. It used to be a bare href="/", which
     // under the wall answers an anonymous visitor with the landing page: they
@@ -10411,8 +10426,10 @@ const server = http.createServer((req, res) => {
               ``,
               `What happens next:`,
               `1. We review your request.`,
-              `2. We connect you with a licensed local broker who knows your market,`,
-              `   usually within a couple of business days.`,
+              // No timeline, deliberately. Every one of these is fulfilled by
+              // hand today, and a self-imposed deadline that slips is the first
+              // impression a real lead gets. Say what happens, not when.
+              `2. We connect you with a licensed local broker who knows your market.`,
               `3. The broker prepares a no-cost opinion of value. No obligation.`,
               ``,
               `A note on the numbers: everything in the report is an automated estimate`,

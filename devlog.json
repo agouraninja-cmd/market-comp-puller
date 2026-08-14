@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-13",
+    "type": "fix",
+    "title": "The market pages stop promising a broker nobody has",
+    "details": "The loudest call to action on the site biggest public surface offered a no-cost Broker Opinion of Value from a licensed local broker, on all 38 market pages, while the broker card directly above it rendered nothing at all because no broker has opted into any market yet. The promise was fulfillable only by going and finding someone by hand, which is not what the sentence said. It now reads the same list that card reads: a market with a covering broker keeps the full promise and names the city, and every other market sells the report instead, with the source cited on every comp. That costs no extra query, since the page already had the list in hand, and it corrects itself in both directions as brokers opt in or leave. A test pins the two to each other so the sentence cannot drift back outside the condition. The BOV follow-up email also dropped its two-business-day estimate: every one of these is answered by hand today, and a self-imposed deadline that slips is the first impression a real lead gets."
+  },
+  {
+    "date": "2026-08-13",
     "type": "feature",
     "title": "The vault takes a screenshot of a comp table, not only a PDF",
     "details": "Brokers were being asked for a spreadsheet or an exported PDF, which is not usually what they have. A CoStar table on screen, a photo of a printed comp sheet, or a cropped screenshot from a colleague all now go through the same door: the file is read by the extract vendor, the deals come back as the same confirm table, and nothing is stored until the rows are imported. PNG, JPEG and WebP are accepted alongside PDF. That list is the intersection of what both search providers read rather than the union, so a file that imports today cannot start refusing after a provider switch. The file type is decided by its bytes, never by its name, so a renamed spreadsheet still cannot reach the vendor. iPhone HEIC photos are refused by name with what to do instead, since a generic unsupported-file line would send a broker looking for a fault in their comp sheet."

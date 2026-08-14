@@ -44,10 +44,17 @@ const BLEND = require("./blend-comps");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
+// Who may read, write and add to a messaging hub. Same pure, fails-closed
+// contract as report-access.js: this file owns the reads, that one owns the
+// rules. NOT the connection hub at /brokers — see the spec's naming warning
+// in docs/superpowers/specs/2026-08-13-messaging-hub-design.md.
+const HUB = require("./hub-access.js");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
 const { renderVaultHTML } = require("./vault-page");
+// The /hub/<id> screen. Same shape as vault-page.js: a pure render, no I/O.
+const { renderHubHTML } = require("./hub-page");
 // The 1031 exchange guide's content. A web page, so it is not server code —
 // the vault-page.js precedent; server.js only dresses it in marketShell.
 const G1031 = require("./guide-1031");
@@ -1090,7 +1097,14 @@ async function requireUser(req, res) {
 // them together if a third broker area appears. Hoisted to module scope
 // (not a closure inside the request handler) so routes above the vault's old
 // position can call it without a TDZ trap.
-async function requireBroker(req, res) {
+// `area` names the surface in the 403 copy. The comment above said to fold
+// the copies together if a third broker area appeared; the messaging hub is
+// that third area (2026-08-13), so the string is a parameter now rather than
+// a third near-identical function. It DEFAULTS to the lead inbox's own
+// wording, so every existing caller is unchanged, and every value must obey
+// the same rule as the original: name Pro, the one subscription, and never a
+// "broker plan", which has not been buyable since 2026-08-05.
+async function requireBroker(req, res, area) {
   const user = await requireUser(req, res);
   if (!user) return null;
   const ent = await entitlementsFor(req);
@@ -1099,9 +1113,8 @@ async function requireBroker(req, res) {
       // This string REACHES THE SCREEN verbatim — vault-page.js renders
       // `o.j.error` straight into the leads panel, with no 403 branch of its
       // own like the vault gate has. So it is product copy, not developer
-      // text: it must name Pro, the one subscription, and never a "broker
-      // plan", which has not been buyable since 2026-08-05.
-      error: "The lead inbox is part of Pro.",
+      // text.
+      error: `${area || "The lead inbox"} is part of Pro.`,
       code: "broker_required",
     });
     return null;
@@ -2709,6 +2722,199 @@ async function listSharesForViewer(email) {
     `report_viewers?email=eq.${encodeURIComponent(email)}` +
     `&select=share_id,invited_at,shared_reports(id,payload,visibility,revoked_at,created_at)` +
     `&order=invited_at.desc&limit=200`)) || [];
+}
+
+// ---------------------------------------------------------------------------
+// The messaging hub (migration 024) — the reads and writes behind /api/hub*.
+//
+// NOT the connection hub at /brokers, which is what ROADMAP's "Hub ratings"
+// and "Hub monetization" mean. See the spec's naming warning:
+// docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+//
+// EVERY access decision in this file belongs to hub-access.js. This section
+// owns only the I/O — the hub row, its participants, the session, the cookie
+// — and hands them in. A second opinion anywhere here is how a gate guarding
+// a broker's private deals grows a hole, which is the same rule
+// report-access.js and entitlements.js already carry.
+//
+// DATABASE ONLY, no file fallback, for the reason 013 and 018 both give: an
+// access-control list in a JSON file on an ephemeral disk is not one. Every
+// route 503s when DB_CONFIGURED is false rather than degrading into something
+// that looks like it works.
+// ---------------------------------------------------------------------------
+
+// Same alphabet and width as newShareId: these ids sit in the same kind of
+// URL and are matched by the same route regex shape.
+function newHubId() { return crypto.randomBytes(8).toString("base64url"); }
+
+// 24 bytes, not 8. A share id only names a row; this IS the credential that
+// opens somebody's private comps to a reader with no account, so it gets
+// session-token entropy rather than id entropy.
+function newHubToken() { return crypto.randomBytes(24).toString("base64url"); }
+
+// The raw token exists exactly once, in the invite link the create route
+// returns. Only its hash is stored, the same discipline as a password: a
+// database read must not hand someone the keys to every live hub.
+function hubTokenMatches(presented, storedHash) {
+  const a = Buffer.from(sha256Hex(String(presented || "")), "utf8");
+  const b = Buffer.from(String(storedHash || ""), "utf8");
+  // timingSafeEqual throws on a length mismatch, so the guard is required and
+  // is not itself a leak: both sides are fixed-width sha256 hex here, and an
+  // absent storedHash is the only way to hit it.
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// One cookie per hub, holding the participant's own token. A tenant in two
+// hubs carries two cookies, which is the honest shape: each is a separate
+// grant, revoked separately by stamping removed_at on that one row.
+function hubCookieName(hubId) { return `cn_hub_${hubId}`; }
+
+async function getHubRow(hubId) {
+  const rows = await sbRequest("GET",
+    `hubs?id=eq.${encodeURIComponent(hubId)}` +
+    `&select=id,owner_user_id,title,market,property_type,subject_address,status,created_at,updated_at,closed_at&limit=1`);
+  return (rows && rows[0]) || null;
+}
+
+async function getHubParticipants(hubId) {
+  return (await sbRequest("GET",
+    `hub_participants?hub_id=eq.${encodeURIComponent(hubId)}` +
+    `&select=id,email,role,user_id,token_hash,invited_at,first_viewed_at,last_seen_at,removed_at` +
+    `&order=invited_at.asc&limit=50`)) || [];
+}
+
+/**
+ * Resolve who is asking, so hub-access.js can decide what they may do.
+ *
+ * The SESSION wins when there is one, and the token only authenticates
+ * whoever the session already identified. Resolving by token first would
+ * mean a participant who happens to hold a colleague's forwarded link gets
+ * matched to the colleague's row, and then fails their own write with
+ * not_invited — refusing the person the hub was actually shared with.
+ */
+async function resolveHubCaller(req, hubId) {
+  const user = await getSessionUser(req);
+  const hub = await getHubRow(hubId);
+  if (!hub) return { hub: null, participant: null, tokenValid: false, user, participants: [] };
+
+  const participants = await getHubParticipants(hubId);
+  const presented = parseCookies(req)[hubCookieName(hubId)] || "";
+
+  let participant = null;
+  if (user) {
+    const mine = HUB.normalizeEmail(user.email);
+    participant = participants.find((p) =>
+      (p.user_id && String(p.user_id) === String(user.id)) ||
+      (mine && HUB.normalizeEmail(p.email) === mine)) || null;
+  }
+  if (!participant && presented) {
+    participant = participants.find((p) => hubTokenMatches(presented, p.token_hash)) || null;
+  }
+  // Strictly boolean: hub-access.js refuses anything that is not `true`.
+  const tokenValid = Boolean(participant && presented &&
+    hubTokenMatches(presented, participant.token_hash));
+
+  return { hub, participant, tokenValid, user, participants };
+}
+
+// Fire and forget, exactly like stampShareView: a failed stamp must never
+// cost a tenant their read. last_seen_at is the unread count and nothing more.
+function stampHubView(participantId) {
+  if (!DB_CONFIGURED || !participantId) return;
+  const now = new Date().toISOString();
+  (async () => {
+    const q = `hub_participants?id=eq.${encodeURIComponent(participantId)}`;
+    await sbRequest("PATCH", q, { last_seen_at: now }, { prefer: "return=minimal" });
+    // first_viewed_at only while it is still null, so it keeps meaning "first"
+    // — it is half of the feature's own score (see the spec's "How this
+    // fails": the gap between a first view and a first message).
+    await sbRequest("PATCH", `${q}&first_viewed_at=is.null`, { first_viewed_at: now },
+      { prefer: "return=minimal" });
+  })().catch((err) => console.error("Hub view stamp failed:", err.message));
+}
+
+// A hub is only as fresh as its last post; the broker's list sorts on this.
+function touchHub(hubId) {
+  if (!DB_CONFIGURED || !hubId) return;
+  sbRequest("PATCH", `hubs?id=eq.${encodeURIComponent(hubId)}`,
+    { updated_at: new Date().toISOString() }, { prefer: "return=minimal" })
+    .catch((err) => console.error("Hub touch failed:", err.message));
+}
+
+async function listHubsForOwner(userId) {
+  return (await sbRequest("GET",
+    `hubs?owner_user_id=eq.${encodeURIComponent(userId)}` +
+    `&select=id,title,market,property_type,subject_address,status,created_at,updated_at,closed_at,` +
+    `hub_participants(email,role,first_viewed_at,last_seen_at,removed_at)` +
+    `&order=updated_at.desc&limit=200`)) || [];
+}
+
+// Read by EMAIL, the same shape as listSharesForViewer and for the same
+// reason (018): a tenant invited before they had an account is recognized the
+// moment they sign up with that address, with nothing to reconcile.
+async function listHubsForParticipant(email) {
+  return (await sbRequest("GET",
+    `hub_participants?email=eq.${encodeURIComponent(email)}&removed_at=is.null` +
+    `&select=hub_id,role,invited_at,last_seen_at,hubs(id,title,market,property_type,subject_address,status,updated_at,closed_at)` +
+    `&order=invited_at.desc&limit=200`)) || [];
+}
+
+// Live items only. A removed item stays in the table as a record of what was
+// disclosed (the snapshot rule) but leaves the conversation.
+async function getHubItems(hubId) {
+  return (await sbRequest("GET",
+    `hub_items?hub_id=eq.${encodeURIComponent(hubId)}&removed_at=is.null` +
+    `&select=id,kind,source,source_ref,snapshot,private,status,added_by_email,added_at` +
+    `&order=added_at.asc&limit=500`)) || [];
+}
+
+// The API's shape for an item. An allowlist, like VAULTAPI.toApiComp: the
+// snapshot is a jsonb blob written by us, but a column added to hub_items
+// later must not start reaching tenants because a select said `*`.
+function hubItemForClient(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    source: row.source,
+    snapshot: row.snapshot,
+    private: row.private === true,
+    status: row.status,
+    addedBy: row.added_by_email,
+    addedAt: row.added_at,
+  };
+}
+
+// EVERY refusal string here REACHES THE SCREEN verbatim, so this is product
+// copy and not developer text. No em dashes, plain trades, and it never
+// blames the reader for a decision the broker made.
+//
+// The distinctions are the ones hub-access.js draws, and they matter to the
+// person reading them: "not invited" and "removed" are different events, and
+// a tenant who was deliberately taken out of a hub should not be told their
+// link was never valid.
+function hubRefusalCopy(reason) {
+  switch (reason) {
+    case "not_found":       return "That hub does not exist, or the link is incomplete.";
+    case "signin_required": return "Please sign in to open this hub.";
+    case "not_invited":     return "This hub was not shared with your account.";
+    case "removed":         return "Your access to this hub was turned off by the broker who created it.";
+    case "closed":          return "This hub is closed. You can still read everything in it, but no one can post.";
+    case "ownerless":       return "The account that created this hub is gone, so it is now read only.";
+    case "read_only":       return "You can read this hub but not post in it.";
+    case "owner_only":      return "Only the broker who created this hub can send comps into it.";
+    default:                return "You cannot open this hub.";
+  }
+}
+
+// `since` is the polling cursor. An absent or unparseable value reads the
+// whole thread rather than nothing: a client that loses its cursor must
+// re-render the conversation, never silently show an empty one.
+async function getHubMessages(hubId, since) {
+  let q = `hub_messages?hub_id=eq.${encodeURIComponent(hubId)}&deleted_at=is.null`;
+  const t = since ? Date.parse(since) : NaN;
+  if (Number.isFinite(t)) q += `&created_at=gt.${encodeURIComponent(new Date(t).toISOString())}`;
+  return (await sbRequest("GET",
+    `${q}&select=id,item_id,author_email,body,created_at&order=created_at.asc&limit=500`)) || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -14840,6 +15046,565 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // ==========================================================================
+  // The messaging hub — /api/hubs and /api/hub/*
+  //
+  // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+  // Schema: migrations/024-messaging-hub.sql   Gate: hub-access.js
+  //
+  // NOT the connection hub at /brokers.
+  //
+  // The shape of every route here: read the row, the participant and the
+  // session, ask hub-access.js, then act. No route makes its own access
+  // decision, and no route trusts anything the browser said about who it is.
+  // ==========================================================================
+  const hubPath = req.url.split("?")[0];
+  // All three shapes, and the bare `/api/hub` is easy to leave out: it is the
+  // READ and the polling endpoint, it is the only one that carries its id in a
+  // query string, and without it here the hub renders a shell that can never
+  // load. test/hub-routes.test.js caught exactly that.
+  if (hubPath === "/api/hubs" || hubPath === "/api/hub" || hubPath.startsWith("/api/hub/")) {
+    // Bodies here are small by nature: a message, a list of emails, a handful
+    // of comp ids. The one exception is item snapshots, which the caller caps
+    // itself. This is a runaway guard, not a product limit.
+    const readHubBody = (max = 2e5) => new Promise((resolve, reject) => {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > max && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", () => {
+        if (tooBig) return reject(new Error("too_big"));
+        try { resolve(JSON.parse(body || "{}")); }
+        // A malformed body is the client's error, and it is never logged: the
+        // same reasoning as /api/vault/inspect, where V8 quotes the input in
+        // its parse error and would print a fragment of private data into
+        // Render's logs.
+        catch (_) { reject(new SyntaxError("bad_json")); }
+      });
+      req.on("error", () => reject(new Error("aborted")));
+    });
+
+    // Resolve the caller and apply one of hub-access.js's three answers. The
+    // refusal's `reason` is carried to the client verbatim, because the UI
+    // genuinely branches on it: signin_required opens the account modal,
+    // not_invited must not (they are already past it), and closed/read_only
+    // explain a page that renders but will not accept a post.
+    const hubGate = async (hubId, decide) => {
+      const ctx = await resolveHubCaller(req, hubId);
+      const d = decide(ctx);
+      if (!d.ok) {
+        const status = d.reason === "not_found" ? 404
+          : d.reason === "signin_required" ? 401
+          : d.reason === "closed" || d.reason === "ownerless" ? 409
+          : 403;
+        sendJson(res, status, { error: hubRefusalCopy(d.reason), code: d.reason });
+        return null;
+      }
+      return { ...ctx, decision: d };
+    };
+
+    // Every hub route is database-only. See the section comment on the store
+    // helpers: an access-control list in a JSON file on an ephemeral disk is
+    // not one, so this refuses rather than degrading.
+    if (!DB_CONFIGURED) {
+      return sendJson(res, 503, { error: "Hubs are unavailable right now. Please try again in a minute." });
+    }
+
+    // --- Create a hub ------------------------------------------------------
+    if (req.method === "POST" && hubPath === "/api/hubs") {
+      (async () => {
+        try {
+          // canUseVault, not ent.pro (owner's answer, 2026-08-13): a hub is a
+          // broker surface and its comps come out of the vault, so it travels
+          // with the vault the way the lead inbox does. requireBroker replies
+          // 401/403/503 itself.
+          const user = await requireBroker(req, res, "Comp hubs");
+          if (!user) return;
+          if (rateLimited("hubnew:" + clientIp(req), 20)) {
+            return sendJson(res, 429, { error: "Too many hubs created. Please wait a few minutes." });
+          }
+          const b = await readHubBody();
+
+          // Capped at 20, the same ceiling as a share's viewer list, and
+          // normalized through hub-access.js's own normalizeEmail so an
+          // invitation and an account agree on what one person is.
+          const emails = [...new Set((Array.isArray(b.participants) ? b.participants : [])
+            .map((e) => HUB.normalizeEmail(e)).filter(Boolean))].slice(0, 20);
+
+          // Seeding from a shared report (the owner's Q5 yes): the only
+          // in-product discovery path a hub has. Scoped by user_id in the
+          // QUERY, never checked after the fact — knowing a share id must not
+          // be enough to read its payload.
+          let seed = null;
+          if (b.fromShare && /^[A-Za-z0-9_-]{6,32}$/.test(String(b.fromShare))) {
+            const rows = await sbRequest("GET",
+              `shared_reports?id=eq.${encodeURIComponent(b.fromShare)}&user_id=eq.${encodeURIComponent(user.id)}` +
+              `&select=id,payload,report_viewers(email)&limit=1`);
+            seed = (rows && rows[0]) || null;
+            if (!seed) return sendJson(res, 404, { error: "That shared report was not found." });
+            for (const v of seed.report_viewers || []) {
+              const e = HUB.normalizeEmail(v && v.email);
+              if (e && !emails.includes(e) && emails.length < 20) emails.push(e);
+            }
+          }
+
+          const meta = (seed && seed.payload && seed.payload.meta) || {};
+          const id = newHubId();
+          await sbRequest("POST", "hubs", [{
+            id,
+            owner_user_id: user.id,
+            title: String(b.title || meta.address || "").slice(0, 200),
+            // marketOf() here and nowhere else, so hubs.market agrees byte for
+            // byte with broker_comps.market — the same rule the vault upload
+            // follows for the same reason.
+            market: marketOf(String(b.subjectAddress || meta.address || "")) || null,
+            property_type: String(b.propertyType || meta.type || "").slice(0, 60) || null,
+            subject_address: String(b.subjectAddress || meta.address || "").slice(0, 300) || null,
+          }], { prefer: "return=minimal" });
+
+          // One token per participant, hashed. The raw token exists only in
+          // the link returned below and is never recoverable after this
+          // response — which is why the response IS the delivery mechanism
+          // while outbound email is off (EMAIL_FROM unset; see the spec's
+          // notification reality).
+          const invites = emails.map((email) => ({ email, token: newHubToken() }));
+          if (invites.length) {
+            await sbRequest("POST", "hub_participants",
+              invites.map((i) => ({
+                hub_id: id, email: i.email, role: "tenant", token_hash: sha256Hex(i.token),
+              })), { prefer: "return=minimal" });
+          }
+
+          // A seeded hub carries the report's comps as items. They are
+          // snapshots the moment they land (the snapshot rule), and they come
+          // from a share payload, whose private comps were already stripped at
+          // share time unless the broker opted in — so nothing here can
+          // disclose more than that share already did.
+          const comps = (seed && seed.payload && seed.payload.data && seed.payload.data.comps) || [];
+          if (Array.isArray(comps) && comps.length) {
+            await sbRequest("POST", "hub_items", comps.slice(0, 100).map((c, i) => ({
+              hub_id: id,
+              kind: "comp",
+              source: "report",
+              source_ref: `${seed.id}:${i}`,
+              snapshot: c,
+              private: false,
+              added_by_email: HUB.normalizeEmail(user.email),
+            })), { prefer: "return=minimal" });
+          }
+
+          logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
+          return sendJson(res, 201, {
+            ok: true,
+            id,
+            url: `${SITE_URL}/hub/${id}`,
+            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub create failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't create that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Both lists in one call, because both surfaces need them on a
+    // page-load path. Same shape decision as GET /api/shares. ---------------
+    if (req.method === "GET" && hubPath === "/api/hubs") {
+      (async () => {
+        try {
+          const user = await requireUser(req, res);
+          if (!user) return;
+          const email = HUB.normalizeEmail(user.email);
+          const [mine, theirs] = await Promise.all([
+            listHubsForOwner(user.id),
+            email ? listHubsForParticipant(email) : Promise.resolve([]),
+          ]);
+          return sendJson(res, 200, {
+            mine: mine.map((h) => ({
+              id: h.id, title: h.title, market: h.market, propertyType: h.property_type,
+              subjectAddress: h.subject_address, status: h.status,
+              createdAt: h.created_at, updatedAt: h.updated_at, closedAt: h.closed_at,
+              participants: (h.hub_participants || [])
+                .filter((p) => !p.removed_at)
+                .map((p) => ({ email: p.email, role: p.role, firstViewedAt: p.first_viewed_at })),
+            })),
+            // A hub the caller OWNS is never also "shared with me", or a
+            // broker who put their own address in their own hub would see it
+            // twice on two different pages.
+            theirs: theirs
+              .filter((r) => r.hubs && String(r.hubs.id) !== "" )
+              .map((r) => ({
+                id: r.hubs.id, title: r.hubs.title, market: r.hubs.market,
+                propertyType: r.hubs.property_type, subjectAddress: r.hubs.subject_address,
+                status: r.hubs.status, updatedAt: r.hubs.updated_at, closedAt: r.hubs.closed_at,
+                role: r.role, lastSeenAt: r.last_seen_at,
+              })),
+          });
+        } catch (err) {
+          console.error("Hub list failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your hubs. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Exchange an invite token for a cookie -----------------------------
+    //
+    // A POST, and the token arrives in the BODY, because the invite link
+    // carries it in the URL FRAGMENT: a fragment is never sent to a server,
+    // so the credential stays out of Render's access logs and out of every
+    // outbound Referer. Same reasoning as POST /api/report-access, and the
+    // same reasoning behind the roadmap's move of /api/geocode off a query
+    // string.
+    if (req.method === "POST" && hubPath === "/api/hub/access") {
+      (async () => {
+        try {
+          if (rateLimited("hubtok:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const hub = await getHubRow(id);
+          if (!hub) return sendJson(res, 404, { error: hubRefusalCopy("not_found"), code: "not_found" });
+
+          const parts = await getHubParticipants(id);
+          const hit = parts.find((p) => hubTokenMatches(String(b.token || ""), p.token_hash));
+          // A removed participant's token is dead, and says so rather than
+          // reading as a bad link — removal is a deliberate act by the broker
+          // and the tenant should be able to tell the difference.
+          if (!hit) return sendJson(res, 403, { error: hubRefusalCopy("not_invited"), code: "not_invited" });
+          if (hit.removed_at) return sendJson(res, 403, { error: hubRefusalCopy("removed"), code: "removed" });
+
+          stampHubView(hit.id);
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "set-cookie": `${hubCookieName(id)}=${String(b.token)}; HttpOnly; Path=/; Max-Age=${60 * 60 * 24 * 180}; SameSite=Lax${SITE_URL.startsWith("https") ? "; Secure" : ""}`,
+          });
+          return res.end(JSON.stringify({ ok: true, id, role: HUB.roleOf(hit), email: hit.email }));
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub access failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't open that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Read a hub (also the polling endpoint) ----------------------------
+    if (req.method === "GET" && hubPath === "/api/hub") {
+      (async () => {
+        try {
+          const qs = new URLSearchParams(req.url.split("?")[1] || "");
+          const id = String(qs.get("id") || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const g = await hubGate(id, (c) => HUB.canReadHub(c));
+          if (!g) return;
+
+          const since = qs.get("since") || "";
+          const [items, messages] = await Promise.all([
+            // A polling read skips the item list: items change rarely and the
+            // snapshots are the largest thing here. A client that needs them
+            // again drops `since`.
+            since ? Promise.resolve(null) : getHubItems(id),
+            getHubMessages(id, since),
+          ]);
+          if (g.participant) stampHubView(g.participant.id);
+
+          return sendJson(res, 200, {
+            hub: {
+              id: g.hub.id, title: g.hub.title, market: g.hub.market,
+              propertyType: g.hub.property_type, subjectAddress: g.hub.subject_address,
+              status: g.hub.status, closedAt: g.hub.closed_at, updatedAt: g.hub.updated_at,
+            },
+            role: g.decision.role,
+            // What the UI needs to decide whether to render a composer, and
+            // it is the SERVER's answer to that question, not the browser's
+            // guess from the role string.
+            canWrite: HUB.canWriteHub(g).ok,
+            canAdd: HUB.canAddItems(g).ok,
+            ...(items ? { items: items.map(hubItemForClient) } : {}),
+            messages: messages.map((m) => ({
+              id: m.id, itemId: m.item_id, author: m.author_email,
+              body: m.body, createdAt: m.created_at,
+            })),
+            // The client's next cursor. Sent by the server so a clock skew in
+            // the browser cannot skip a message or replay the whole thread.
+            cursor: messages.length ? messages[messages.length - 1].created_at : (since || new Date(0).toISOString()),
+          });
+        } catch (err) {
+          console.error("Hub read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Add comps (slice 1: the owner only) -------------------------------
+    if (req.method === "POST" && hubPath === "/api/hub/items") {
+      (async () => {
+        try {
+          const b = await readHubBody();
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const g = await hubGate(id, (c) => HUB.canAddItems(c));
+          if (!g) return;
+
+          const wanted = (Array.isArray(b.items) ? b.items : []).slice(0, 50);
+          if (!wanted.length) return sendJson(res, 400, { error: "No comps were selected." });
+
+          // Vault ids are read back from broker_comps SCOPED BY user_id, and
+          // the snapshot is built from what the database returns — never from
+          // anything the browser sent. A browser that could hand us a comp
+          // body could put any address and any price in front of a tenant
+          // under the broker's name.
+          const vaultIds = wanted.filter((i) => i && i.source === "vault" && i.ref).map((i) => String(i.ref));
+          let vaultRows = [];
+          if (vaultIds.length) {
+            vaultRows = (await sbRequest("GET",
+              `broker_comps?user_id=eq.${encodeURIComponent(g.user.id)}` +
+              `&id=in.(${vaultIds.map((v) => encodeURIComponent(v)).join(",")})&select=*&limit=50`)) || [];
+          }
+
+          const rows = vaultRows.map((r) => ({
+            hub_id: id,
+            kind: "comp",
+            source: "vault",
+            source_ref: String(r.id),
+            // toApiComp is the same allowlist the vault dashboard reads
+            // through, so a hub can never show a column the vault's own API
+            // does not expose.
+            snapshot: VAULTAPI.toApiComp(r),
+            // From the vault, so it carries the badge and the confirm copy.
+            // It does NOT mean the tenant sees less: the owner answered full
+            // detail, per-comp opt-in, and per-comp is what `wanted` already
+            // is — this route never takes "send my whole book".
+            private: true,
+            added_by_email: HUB.normalizeEmail(g.user.email),
+          }));
+          if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your vault." });
+
+          // ignore-duplicates against hub_items_live_source_uidx: sending the
+          // same comp twice is a no-op, not an error. Re-sending one that was
+          // REMOVED does insert, which is how a corrected price travels.
+          const saved = await sbRequest("POST",
+            "hub_items?on_conflict=hub_id,source,source_ref&select=id",
+            rows, { prefer: "resolution=ignore-duplicates,return=representation" });
+          touchHub(id);
+          logEvent("hub_items_added", { market: g.hub.market || "", source: "vault" });
+          return sendJson(res, 201, {
+            ok: true,
+            added: Array.isArray(saved) ? saved.length : rows.length,
+            // Says how many of the requested ids actually landed, the same
+            // honesty rule the vault upload learned: a broker told something
+            // was sent will not go looking for it.
+            requested: wanted.length,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub items add failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't send those comps. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Remove an item. Slice 1 ships removal only; the status pipeline is
+    // slice 2, and the column is already there for it. ----------------------
+    if (req.method === "PATCH" && hubPath === "/api/hub/item") {
+      (async () => {
+        try {
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          if (b.removed !== true) {
+            return sendJson(res, 400, { error: "Comp statuses are not available yet." });
+          }
+          // Removing a comp from the conversation is the owner's call, the
+          // same as adding one.
+          const g = await hubGate(id, (c) => HUB.canAddItems(c));
+          if (!g) return;
+          const itemId = String(b.itemId || "");
+          if (!itemId) return sendJson(res, 400, { error: "Invalid item." });
+          // Scoped by hub_id in the query: an item id alone must never be
+          // enough to touch a row in someone else's hub.
+          const done = await sbRequest("PATCH",
+            `hub_items?id=eq.${encodeURIComponent(itemId)}&hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null`,
+            { removed_at: new Date().toISOString() }, { prefer: "return=representation" });
+          if (!done || !done.length) return sendJson(res, 404, { error: "That comp was not found." });
+          touchHub(id);
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub item update failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't update that comp. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Post a message ----------------------------------------------------
+    if (req.method === "POST" && hubPath === "/api/hub/message") {
+      (async () => {
+        try {
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          // canWriteHub is where the account ask lives: a token got them in to
+          // READ, and this is the first thing that needs a session.
+          const g = await hubGate(id, (c) => HUB.canWriteHub(c));
+          if (!g) return;
+          if (rateLimited("hubmsg:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many messages. Please wait a moment." });
+          }
+          const body = String(b.body == null ? "" : b.body).trim().slice(0, 4000);
+          if (!body) return sendJson(res, 400, { error: "Write something first." });
+
+          // A note on a comp has to be a note on a comp IN THIS HUB. Checked
+          // rather than trusted, or a message could be filed against an item
+          // in a hub the author cannot read.
+          let itemId = null;
+          if (b.itemId) {
+            const owned = await sbRequest("GET",
+              `hub_items?id=eq.${encodeURIComponent(String(b.itemId))}&hub_id=eq.${encodeURIComponent(id)}&select=id&limit=1`);
+            if (!owned || !owned[0]) return sendJson(res, 400, { error: "That comp is not in this hub." });
+            itemId = owned[0].id;
+          }
+
+          const saved = await sbRequest("POST", "hub_messages?select=id,created_at", [{
+            hub_id: id,
+            item_id: itemId,
+            // The AUTHOR is the session, never the participant row and never
+            // anything the browser sent.
+            author_email: HUB.normalizeEmail(g.user.email),
+            author_user_id: g.user.id,
+            body,
+          }], { prefer: "return=representation" });
+          touchHub(id);
+          if (g.participant) stampHubView(g.participant.id);
+          logEvent("hub_message", { market: g.hub.market || "", source: g.decision.role });
+          return sendJson(res, 201, {
+            ok: true,
+            message: {
+              id: saved && saved[0] && saved[0].id,
+              itemId,
+              author: HUB.normalizeEmail(g.user.email),
+              body,
+              createdAt: (saved && saved[0] && saved[0].created_at) || new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub message failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't post that. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Replace the participant list wholesale ----------------------------
+    //
+    // Mirrors PUT /api/shares/viewers: one state to reason about instead of
+    // three. Removal is a STAMP, not a delete, because a removed participant's
+    // messages stay in the thread and their row is what proves who wrote them.
+    if (req.method === "PUT" && hubPath === "/api/hub/participants") {
+      (async () => {
+        try {
+          const b = await readHubBody(5e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          // Only the owner manages the guest list. canAddItems is the
+          // owner-only answer; using it keeps that meaning in one place.
+          const g = await hubGate(id, (c) => HUB.canAddItems(c));
+          if (!g) return;
+
+          const wanted = [...new Set((Array.isArray(b.emails) ? b.emails : [])
+            .map((e) => HUB.normalizeEmail(e)).filter(Boolean))].slice(0, 20);
+          const existing = g.participants;
+          const invites = [];
+
+          for (const email of wanted) {
+            const row = existing.find((p) => HUB.normalizeEmail(p.email) === email);
+            if (!row) {
+              const token = newHubToken();
+              invites.push({ email, token });
+              await sbRequest("POST", "hub_participants", [{
+                hub_id: id, email, role: "tenant", token_hash: sha256Hex(token),
+              }], { prefer: "return=minimal" });
+            } else if (row.removed_at) {
+              // Re-inviting someone previously removed issues a NEW token: the
+              // old link was revoked and must stay revoked, or "removed" would
+              // only mean "removed until I change my mind about someone else".
+              const token = newHubToken();
+              invites.push({ email, token });
+              await sbRequest("PATCH", `hub_participants?id=eq.${encodeURIComponent(row.id)}`,
+                { removed_at: null, token_hash: sha256Hex(token) }, { prefer: "return=minimal" });
+            }
+          }
+          // Everyone not on the new list is stamped removed. Their cookie
+          // stops working on their next read, because hub-access.js checks
+          // removed_at before anything else.
+          for (const p of existing) {
+            if (p.removed_at) continue;
+            if (!wanted.includes(HUB.normalizeEmail(p.email))) {
+              await sbRequest("PATCH", `hub_participants?id=eq.${encodeURIComponent(p.id)}`,
+                { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
+            }
+          }
+          return sendJson(res, 200, {
+            ok: true,
+            participants: wanted,
+            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub participants update failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't update that list. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Close a hub. One way, like revoking a share, but NOT the same act:
+    // closing stops new posts and leaves every reader their access. ---------
+    if (req.method === "POST" && hubPath === "/api/hub/close") {
+      (async () => {
+        try {
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const user = await requireUser(req, res);
+          if (!user) return;
+          // Scoped by owner in the query, so an id is never enough.
+          const done = await sbRequest("PATCH",
+            `hubs?id=eq.${encodeURIComponent(id)}&owner_user_id=eq.${encodeURIComponent(user.id)}`,
+            { status: "closed", closed_at: new Date().toISOString() },
+            { prefer: "return=representation" });
+          if (!done || !done.length) return sendJson(res, 404, { error: "That hub was not found." });
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub close failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't close that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    return sendJson(res, 404, { error: "Not found." });
+  }
+
   // --- Static: serve index.html for "/", "/index.html", a /r/<id> share link,
   // or /desk (the SPA's My Desk view — the client reads the path and shows the
   // desk instead of the home stack). ---
@@ -15444,6 +16209,37 @@ const server = http.createServer((req, res) =>
         ACCOUNT_NAV_PRICING,
       }));
     })();
+    return;
+  }
+
+  // The messaging hub page. NOT the connection hub at /brokers.
+  //
+  // Its own route rather than another index.html path, which is what makes it
+  // exempt from ACCOUNT_WALL: the wall lives inside the static handler for
+  // "/", "/index.html", "/desk" and /r/<id>, and this never reaches it. That
+  // exemption IS the tenant-access decision (read without an account), so
+  // test/routes.test.js pins it rather than leaving it as a side effect of
+  // where the route happens to sit.
+  //
+  // The page ships with NO hub data in it, deliberately: the invite token is
+  // in the URL fragment, which never reaches a server, so at render time we
+  // do not know who is asking. hub-page.js explains the round trip.
+  const hubPageMatch = /^\/hub\/([A-Za-z0-9_-]{6,32})$/.exec(req.url.split("?")[0]);
+  if (req.method === "GET" && hubPageMatch) {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    res.end(renderHubHTML(hubPageMatch[1], {
+      CN_LOGO,
+      THEME_CSS,
+      THEME_BOOT,
+      ACCOUNT_NAV_CSS,
+      ACCOUNT_NAV_JS,
+      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
+      ACCOUNT_NAV_PRICING,
+    }));
     return;
   }
 

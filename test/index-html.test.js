@@ -406,6 +406,25 @@ test("a house report's CTA says talk to a local agent and still stores source bo
   assert.match(html, /renderSubjectYearBuilt\(parsed, meta\)/);
 });
 
+test("a glued street number still counts as a house, so the value hero shows", () => {
+  // 1210N17th st (Boise North End) is a real address people type without a
+  // space after the number. The hero used /^\s*\d+\s/, which hid
+  // Low/Likely/High and treated it as a city-only search.
+  const src = html.match(/function houseNumberOf\(address\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find houseNumberOf — was it renamed or moved?");
+  const ctx = vm.createContext({});
+  new vm.Script(src[0] + "\n;this.fn = houseNumberOf;", { filename: "index.html" }).runInContext(ctx);
+  assert.equal(ctx.fn("1210N17th st"), "1210");
+  assert.equal(ctx.fn("1210 N 17th St, Boise, ID"), "1210");
+  assert.equal(ctx.fn("Boise ID"), null);
+  assert.equal(ctx.fn("One Wilshire Blvd"), null);
+  const hero = html.match(/function renderOwnerHero\(parsed, meta\) \{[\s\S]{0,1200}/);
+  assert.ok(hero, "could not bound renderOwnerHero");
+  assert.match(hero[0], /houseNumberOf\(meta\.address\)/);
+  assert.equal(/hasStreetNumber = \/\^\\s\*\\d\+\\s\//.test(hero[0]), false,
+    "the hero must not still require a space after the house number");
+});
+
 // ---------------------------------------------------------------------------
 // The shared-report lock card. A stranger holding a forwarded link is the one
 // visitor who reaches this app without choosing to, and /r/<id> is the only

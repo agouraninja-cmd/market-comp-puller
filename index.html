@@ -4650,7 +4650,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // no building to value, so the whole hero (incl. the BOV button) hides.
     // Any user-entered subject value signals building intent and re-shows it,
     // which also serves street-number-less real addresses ("One Wilshire Blvd").
-    const hasStreetNumber = /^\s*\d+\s/.test(String(meta.address || ""));
+    // houseNumberOf, not digits-then-space: "1210N17th st" is a real house
+    // (Boise North End) that people type without a space after the number, and
+    // the old /^\s*\d+\s/ gate hid Low/Likely/High for it.
+    const hasStreetNumber = Boolean(houseNumberOf(meta.address));
     const s = meta.subject || {};
     const hasUserSubject = [s.sizeMin, s.sizeMax, s.priceMin, s.priceMax, s.noi, s.capRate].some((v) => v > 0)
       || numericValue((s.details || {}).lot_acres) > 0;

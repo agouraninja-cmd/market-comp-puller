@@ -247,15 +247,10 @@ test("a lost visitor gets a page, not a bare string", async (t) => {
   });
 });
 
-test("the landing stats tell the truth in both directions", async (t) => {
+test("the landing names the real search cost without a stat strip", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
-  // "3–6 cited comps" undersold the product (the model is asked for up to 12
-  // and dense markets deliver them), and "~40s" oversold it (the model alone
-  // spends 40–70s writing; a full search runs longer). A first search that
-  // takes double the promised time costs trust at the exact moment the
-  // product is proving itself.
   await t.test("the old numbers are gone from both pages", async () => {
     for (const p of ["/", "/how-it-works"]) {
       const html = await (await fetch(srv.base + p)).text();
@@ -268,5 +263,41 @@ test("the landing stats tell the truth in both directions", async (t) => {
     const html = await (await fetch(srv.base + "/")).text();
     assert.match(html, /Up to 12/, "the comp ask is 12; say so");
     assert.match(html, /minute/i, "a minute is the honest unit for a live search");
+  });
+
+  await t.test("there is no stat strip and no To start hedge", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.ok(!/class="stats"/.test(html), "the four-cell strip is gone");
+    assert.ok(!/To start/.test(html), "Free / To start was a hedge, not a number");
+  });
+});
+
+test("the landing is a product page, not two copies of a methodology exhibit", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  await t.test("exactly one sample exhibit, plus an address field that is not the app form", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    const exhibits = html.match(/class="exhibit\b/g) || [];
+    assert.equal(exhibits.length, 1, "one sample report; the mini + full pair is the bug");
+    assert.match(html, /id="landingAddress"/, "the hero asks for a building");
+    assert.match(html, /class="heroCta"/, "account-wall tests still have to recognise the landing");
+    assert.ok(!/id="compForm"/.test(html), "the real search form lives only in index.html");
+    assert.ok(
+      !/<input[^>]*id="landingAddress"[^>]*\bname\s*=/i.test(html),
+      "a named input would put the street address on GET /?auth=signup"
+    );
+    assert.match(html, /pendingLandingAddress\.v1/, "the form must hand off through sessionStorage");
+    assert.ok(!/Here is exactly how that gets built/.test(html), "that line is how-it-works voice");
+    assert.match(html, /Run a report/, "the button names the product, not the gate");
+  });
+
+  await t.test("brokers is one block, not a second Method 3-up", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    const afterBrokers = html.split(/kicker">Brokers/)[1];
+    assert.ok(afterBrokers, "the Brokers kicker stays");
+    const brokersBlock = afterBrokers.split(/class="cta/)[0];
+    assert.ok(!/class="steps"/.test(brokersBlock), "do not reuse Method's 3-up for brokers");
+    assert.match(html, /kicker">Method[\s\S]*?class="steps"/, "Method still has its steps");
   });
 });

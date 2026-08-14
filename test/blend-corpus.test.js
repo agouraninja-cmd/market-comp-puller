@@ -1,0 +1,209 @@
+// Radius corpus blend — saved public deals inside a nearby report.
+//
+// Spec: docs/superpowers/specs/2026-08-14-radius-corpus-blend-design.md
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+
+const {
+  blendNearbyComps,
+  toReportComp,
+  parseCoords,
+  milesBetween,
+  RADIUS_MILES,
+} = require("../blend-corpus");
+
+const BOISE = { lat: 43.615, lng: -116.2023 };
+const NOW = Date.parse("2026-08-14T00:00:00Z");
+
+function parseDealDate(s) {
+  const t = String(s || "").trim();
+  const m = t.match(/^([A-Za-z]{3,9})\s+((?:19|20)\d{2})$/);
+  if (!m) return null;
+  const months = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const mo = months[m[1].slice(0, 3).toLowerCase()];
+  return mo ? Number(m[2]) + (mo - 0.5) / 12 : null;
+}
+
+function keyOf(c) {
+  const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return [norm(c.address), norm(c.date || c.deal_date), norm(c.price_or_rate)].join("|");
+}
+
+function offsetMiles(from, milesNorth) {
+  return { lat: from.lat + milesNorth / 69, lng: from.lng };
+}
+
+function row(over = {}) {
+  const ll = over.ll || offsetMiles(BOISE, 5);
+  return {
+    address: "500 Nearby Rd, Garden City, ID",
+    deal_date: "Mar 2026",
+    transaction: "Sale",
+    price_or_rate: "2500000",
+    price_per_sqft: "85",
+    size_sqft: "29400",
+    source_type: "public_record",
+    lat: String(ll.lat),
+    lng: String(ll.lng),
+    ...over,
+    ll: undefined,
+  };
+}
+
+function report(over = {}) {
+  return {
+    subject_lat: String(BOISE.lat),
+    subject_lng: String(BOISE.lng),
+    comps: [
+      { address: "1 Search Ave, Boise, ID", date: "Feb 2026", price_or_rate: "3000000", source_type: "listing" },
+    ],
+    ...over,
+  };
+}
+
+const OPTS = {
+  months: 12,
+  now: NOW,
+  parseDealDate,
+  keyOf,
+  subjectAddress: "100 Subject St, Boise, ID",
+};
+
+test("parseCoords refuses missing, one-sided, blank, and Null Island", () => {
+  assert.equal(parseCoords(null), null);
+  assert.equal(parseCoords({}), null);
+  assert.equal(parseCoords({ lat: "43.6" }), null);
+  assert.equal(parseCoords({ lat: "", lng: "-116.2" }), null);
+  assert.equal(parseCoords({ lat: null, lng: "-116.2" }), null);
+  assert.equal(parseCoords({ lat: 0, lng: 0 }), null);
+  const ll = parseCoords({ lat: "43.615", lng: "-116.2023" });
+  assert.equal(ll.lat, 43.615);
+  assert.equal(ll.lng, -116.2023);
+});
+
+test("milesBetween uses the same 3959-mile haversine as the report map", () => {
+  const five = offsetMiles(BOISE, 5);
+  const mi = milesBetween(BOISE, five);
+  assert.ok(mi > 4.9 && mi < 5.1, `expected ~5 miles, got ${mi}`);
+});
+
+test("an in-range dated sale is appended as an ordinary report comp", () => {
+  const out = blendNearbyComps(report(), [row()], OPTS);
+  assert.equal(out.comps.length, 2);
+  assert.equal(out.corpus_count, 1);
+  const added = out.comps[1];
+  assert.equal(added.address, "500 Nearby Rd, Garden City, ID");
+  assert.equal(added.date, "Mar 2026");
+  assert.equal(added.deal_date, undefined);
+  assert.equal(added.from_corpus, true);
+  assert.equal(added.source_type, "public_record");
+});
+
+test("empty extras return the same object, with no corpus_count key", () => {
+  const rep = report();
+  const out = blendNearbyComps(rep, [], OPTS);
+  assert.equal(out, rep);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("a deal more than 10 miles away is dropped", () => {
+  const far = row({ ll: offsetMiles(BOISE, 15) });
+  const out = blendNearbyComps(report(), [far], OPTS);
+  assert.equal(out.comps.length, 1);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("the 10-mile boundary is inclusive", () => {
+  const edge = offsetMiles(BOISE, 0);
+  // Walk north until haversine says just inside / just outside.
+  let inner = null, outer = null;
+  for (let mi = 9.7; mi <= 10.4; mi += 0.05) {
+    const pt = offsetMiles(BOISE, mi);
+    const d = milesBetween(BOISE, pt);
+    if (d <= RADIUS_MILES) inner = pt;
+    if (d > RADIUS_MILES && !outer) outer = pt;
+  }
+  assert.ok(inner && outer, "need points on both sides of 10 miles");
+  const inRep = blendNearbyComps(report(), [row({ ll: inner })], OPTS);
+  const outRep = blendNearbyComps(report(), [row({ ll: outer })], OPTS);
+  assert.equal(inRep.corpus_count, 1);
+  assert.equal("corpus_count" in outRep, false);
+});
+
+test("a deal outside the lookback is dropped", () => {
+  const old = row({ deal_date: "Mar 2024" });
+  const out = blendNearbyComps(report(), [old], OPTS);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("an unparseable date (Active listing) is dropped", () => {
+  const live = row({ deal_date: "Active" });
+  const out = blendNearbyComps(report(), [live], OPTS);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("an unpriced row is dropped", () => {
+  const out = blendNearbyComps(report(), [row({ price_or_rate: "", price_per_sqft: "" })], OPTS);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("an aggregate address is dropped", () => {
+  const out = blendNearbyComps(report(), [row({ address: "Boise industrial market average" })], OPTS);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("a row with no coordinates is dropped, not guessed as same-city", () => {
+  const out = blendNearbyComps(report(), [row({ lat: "", lng: "" })], OPTS);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("the subject property is never added as a comp of itself", () => {
+  const self = row({ address: "100 Subject St, Boise, ID" });
+  const out = blendNearbyComps(report(), [self], OPTS);
+  assert.equal("corpus_count" in out, false);
+});
+
+test("a duplicate of a search comp is not added twice", () => {
+  const dup = row({
+    address: "1 Search Ave, Boise, ID",
+    deal_date: "Feb 2026",
+    price_or_rate: "3000000",
+  });
+  const out = blendNearbyComps(report(), [dup], OPTS);
+  assert.equal(out.comps.length, 1);
+});
+
+test("estimate, news, and lease rows that pass the bars are kept", () => {
+  const rows = [
+    row({ address: "10 Guess St, Boise, ID", source_type: "estimate" }),
+    row({ address: "11 News St, Boise, ID", source_type: "news", ll: offsetMiles(BOISE, 4) }),
+    row({ address: "12 Lease St, Boise, ID", transaction: "Lease", ll: offsetMiles(BOISE, 3) }),
+  ];
+  const out = blendNearbyComps(report(), rows, OPTS);
+  assert.equal(out.corpus_count, 3);
+});
+
+test("missing subject coordinates leave the report untouched", () => {
+  const rep = report({ subject_lat: "", subject_lng: "" });
+  const out = blendNearbyComps(rep, [row()], { ...OPTS, subject: null });
+  assert.equal(out, rep);
+});
+
+test("opts.subject is used when the report has no subject_lat", () => {
+  const rep = report({ subject_lat: "", subject_lng: "" });
+  const out = blendNearbyComps(rep, [row()], { ...OPTS, subject: BOISE });
+  assert.equal(out.corpus_count, 1);
+});
+
+test("toReportComp never carries corpus plumbing columns", () => {
+  const c = toReportComp(row({
+    dedupe_key: "x", user_id: "nope", market: "Boise, ID", ts: "2026-08-14",
+  }));
+  assert.equal(c.dedupe_key, undefined);
+  assert.equal(c.user_id, undefined);
+  assert.equal(c.market, undefined);
+  assert.equal(c.ts, undefined);
+  assert.equal(c.from_corpus, true);
+});

@@ -40,6 +40,11 @@ const VAULT = require("./broker-vault");
 // broker product, so it has to be PROVABLE rather than reviewed. This module
 // only shapes and merges; the read below is scoped by user_id here.
 const BLEND = require("./blend-comps");
+// Saved public deals within 10 miles of the subject, folded into the report
+// at serialization (before the paywall). Pure and tested; server.js owns the
+// corpus read and the Census geocode. Spec:
+// docs/superpowers/specs/2026-08-14-radius-corpus-blend-design.md
+const RADIUSBLEND = require("./blend-corpus");
 // Who may read a shared report. Pure and tested for the same reason as the
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
@@ -2069,6 +2074,31 @@ async function corpusRowsForMarket(market, property_type, limit) {
   return corpusRowsForMarkets([market], property_type, limit);
 }
 
+// Type-wide read for the 10-mile blend. A radius from a city edge is a
+// different city, so this must NOT filter on marketOf / METRO_GROUPS.
+// Failure returns [] — the search-only report still goes out.
+async function corpusRowsForType(property_type, limit) {
+  const cap = Math.max(1, Math.min(Number(limit) || 2000, 2000));
+  if (!property_type) return [];
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        `comp_corpus?property_type=eq.${encodeURIComponent(property_type)}` +
+        `&select=ts,dedupe_key,address,transaction,deal_date,size_sqft,price_or_rate,price_per_sqft,cap_rate,` +
+        `${ALL_TYPE_COMP_FIELDS.join(",")},market,source_url,source_type,verified,lat,lng,year_built,tenancy` +
+        `&order=ts.desc&limit=${cap}`) || [];
+    } catch (e) { noteCorpusFailure("read", e); }
+  }
+  const fileRows = (await readRowsFromFile(COMP_CORPUS_FILE))
+    .filter((r) => r && r.property_type === property_type);
+  const merged = [...dbRows, ...fileRows]
+    .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
+    .slice(0, cap);
+  scheduleCorpusLocate(merged);
+  return merged;
+}
+
 // Whole-corpus read for the audit: no market or type filter, newest first,
 // hard-capped. Selects only the columns the audit reads, deliberately NOT
 // ALL_TYPE_COMP_FIELDS — a missing per-type column is exactly what froze the
@@ -2248,6 +2278,10 @@ const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SE
 // immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a
 // reason to search less. Default ON; `off` restores exact-market matching.
 const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
+
+// Saved deals within 10 miles join the report at serialization. Default ON;
+// `off` restores search-only reports. Harvest still writes either way.
+const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
@@ -3195,6 +3229,77 @@ function corpusKeyOf(c) {
   return [norm(c.address), norm(c.date || c.deal_date), norm(c.price_or_rate)].join("|");
 }
 
+// Census geocode, in-process. Public addresses only. Cached so harvest and
+// the /api/geocode route and a missing subject_lat do not triple-hit the
+// same string. A 200 with no match caches as null; a network outage does
+// not, so the next search can retry.
+const GEO_MEM = new Map();
+const GEO_MEM_MAX = 500;
+
+function parseCensusMatch(j) {
+  const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+  if (m && m.coordinates && Number.isFinite(m.coordinates.y) && Number.isFinite(m.coordinates.x)) {
+    return { lat: m.coordinates.y, lng: m.coordinates.x, matchedAddress: m.matchedAddress || undefined };
+  }
+  return null;
+}
+
+async function geocodeCensus(address) {
+  const key = String(address || "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!key) return null;
+  if (GEO_MEM.has(key)) return GEO_MEM.get(key);
+  let ll = null;
+  let cacheable = false;
+  try {
+    const r = await fetch(
+      "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=" +
+        encodeURIComponent(String(address).trim().slice(0, 200)),
+      { signal: AbortSignal.timeout(6000) }
+    );
+    ll = parseCensusMatch(await r.json());
+    cacheable = true; // a 200 with no match is a real miss, not an outage
+  } catch (_) {
+    return null; // outage: do not cache, the next search may succeed
+  }
+  if (cacheable) {
+    if (GEO_MEM.size >= GEO_MEM_MAX) GEO_MEM.delete(GEO_MEM.keys().next().value);
+    GEO_MEM.set(key, ll);
+  }
+  return ll;
+}
+
+async function locateCorpusRows(rows) {
+  await Promise.all((Array.isArray(rows) ? rows : []).map(async (row) => {
+    if (!row || RADIUSBLEND.parseCoords(row)) return;
+    const ll = await geocodeCensus(row.address);
+    if (!ll) return;
+    row.lat = String(ll.lat);
+    row.lng = String(ll.lng);
+  }));
+}
+
+// Fire-and-forget backfill for rows harvested before we stored coordinates.
+// Never awaited on the request path: a cache hit must stay a cache hit.
+function scheduleCorpusLocate(rows) {
+  const missing = (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && r.dedupe_key && !RADIUSBLEND.parseCoords(r))
+    .slice(0, 8);
+  if (!missing.length) return;
+  Promise.resolve().then(async () => {
+    await locateCorpusRows(missing);
+    if (!DB_CONFIGURED) return;
+    for (const row of missing) {
+      if (!RADIUSBLEND.parseCoords(row)) continue;
+      try {
+        await sbRequest("PATCH",
+          `comp_corpus?dedupe_key=eq.${encodeURIComponent(row.dedupe_key)}`,
+          { lat: String(row.lat), lng: String(row.lng) },
+          { prefer: "return=minimal" });
+      } catch (_) { /* backfill is best-effort */ }
+    }
+  }).catch(() => {});
+}
+
 async function seedCorpusSeen() {
   if (corpusSeenSeeded) return;
   corpusSeenSeeded = true;
@@ -3260,6 +3365,9 @@ async function harvestComps(type, searchAddress, payload) {
       });
     }
     if (!rows.length) return;
+    // Locate before the write so the next search's 10-mile blend can see
+    // these points. Harvest is already fire-and-forget from the handler.
+    await locateCorpusRows(rows);
     let stored = false;
     if (DB_CONFIGURED) {
       try {
@@ -11130,11 +11238,37 @@ const server = http.createServer((req, res) =>
           : await vaultCompsForReport(req, ent, {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
+        // Filled after the guest gate so a blocked anonymous visitor does not
+        // pay for a type-wide corpus read. The closure below captures this
+        // binding; cache-hit and billed exits both run after it is assigned.
+        let corpusRadiusRows = [];
 
-        const gate = (rep) => {
+        const gate = async (rep) => {
           if (internal) return rep;
-          const subjectSqft = sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0;
-          const gated = GATE.gateReport(rep, ent, { asOfMs: Date.now(), subjectSqft });
+          // Public saved deals first, then the paywall, then the vault.
+          // Radius blend is before gateReport so extras become locked_basis
+          // for a free visitor instead of printing their addresses. Vault
+          // blend stays last: brokers are Pro, and a private row must never
+          // become a public locked_basis row.
+          let merged = rep;
+          if (CORPUS_RADIUS) {
+            const subject = RADIUSBLEND.coordsFromReport(rep)
+              || await geocodeCensus(addressOk);
+            merged = RADIUSBLEND.blendNearbyComps(rep, corpusRadiusRows, {
+              subject,
+              months: monthsOk,
+              now: Date.now(),
+              parseDealDate,
+              keyOf: corpusKeyOf,
+              subjectAddress: addressOk,
+              isAggregateAddress,
+            });
+            if (merged && merged.corpus_count) {
+              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${RADIUSBLEND.RADIUS_MILES} mi of ${addressOk}`);
+            }
+          }
+          const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
+          const gated = GATE.gateReport(merged, ent, { asOfMs: Date.now(), subjectSqft });
           if (!gated || typeof gated !== "object") return gated;
           // `ent` was resolved with THIS report's id, so it already knows a single-report
           // unlock makes its exports unlimited — /api/config cannot, because it
@@ -11202,6 +11336,10 @@ const server = http.createServer((req, res) =>
         const consumeGuestSearch = (headersOpen) =>
           consumeGuestSearchFor(guestGate, req, res, headersOpen);
 
+        if (!internal && CORPUS_RADIUS) {
+          corpusRadiusRows = await corpusRowsForType(typeOk, 2000);
+        }
+
         const cached = skipCache ? null : await getCachedSearch(cacheKey);
         if (cached) {
           // Legacy cache entries predate $/SF reconciliation — correct them at
@@ -11212,7 +11350,7 @@ const server = http.createServer((req, res) =>
           maybePublishMarketSnapshot(typeOk, addressOk, cached);
           harvestComps(typeOk, addressOk, cached);
           consumeGuestSearch(false);
-          return sendJson(res, 200, gate(cached));
+          return sendJson(res, 200, await gate(cached));
         }
 
         // Exact key missed — but a shorter lookback is a subset of a longer
@@ -11232,7 +11370,7 @@ const server = http.createServer((req, res) =>
           maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
           harvestComps(typeOk, addressOk, dw.parent);
           consumeGuestSearch(false);
-          return sendJson(res, 200, gate(dw.derived));
+          return sendJson(res, 200, await gate(dw.derived));
         }
 
         // A paying subscriber must never be told the site is out of searches
@@ -11306,8 +11444,8 @@ const server = http.createServer((req, res) =>
         maybePublishMarketSnapshot(typeOk, addressOk, result);
         harvestComps(typeOk, addressOk, result);
         consumeGuestSearch(Boolean(sse));
-        if (sse) return sse.finish("result", gate(result));
-        return sendJson(res, 200, gate(result));
+        if (sse) return sse.finish("result", await gate(result));
+        return sendJson(res, 200, await gate(result));
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         // A failed search used to leave NO trace: logEvent fires on the success
@@ -14008,16 +14146,8 @@ const server = http.createServer((req, res) =>
     }
     (async () => {
       try {
-        const r = await fetch(
-          "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=" +
-            encodeURIComponent(address),
-          { signal: AbortSignal.timeout(6000) }
-        );
-        const j = await r.json();
-        const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
-        if (m && m.coordinates && isFinite(m.coordinates.y) && isFinite(m.coordinates.x)) {
-          return sendJson(res, 200, { lat: m.coordinates.y, lng: m.coordinates.x, matchedAddress: m.matchedAddress || undefined, source: "census" });
-        }
+        const ll = await geocodeCensus(address);
+        if (ll) return sendJson(res, 200, { lat: ll.lat, lng: ll.lng, matchedAddress: ll.matchedAddress, source: "census" });
         return sendJson(res, 200, {});
       } catch (_) {
         return sendJson(res, 200, {}); // soft failure — the client falls back
@@ -16634,6 +16764,9 @@ server.listen(PORT, () => {
   console.log(ACCOUNT_WALL
     ? "🔐 Account wall ON — anonymous visitors get the landing page at / (200, not a redirect; /desk redirects home), and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
     : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");
+  console.log(CORPUS_RADIUS
+    ? "📍 Corpus radius blend ON — saved deals within 10 miles join the report (set CORPUS_RADIUS=off to disable)."
+    : "📍 Corpus radius blend off (CORPUS_RADIUS=off) — reports are search-only.");
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`
     : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);

@@ -40,7 +40,8 @@ plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 There is one small test suite: `npm test` (`node --test`, no dependencies)
 covers the nine pure modules — **`entitlements.js`** (the Pro tier's
 decision table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`**,
-**`corpus-audit.js`**, **`broker-leads.js`** (the broker lead inbox's
+**`corpus-audit.js`**, **`blend-corpus.js`** (saved deals within 10 miles
+join the report at serialization, before the paywall), **`broker-leads.js`** (the broker lead inbox's
 rules: coverage matching, lead anonymization allowlist, coverage seeding,
 notify dedupe), **`valuation.js`** (the value-range math shared by the
 browser and the accuracy backtest — the one pure module here that loads in a
@@ -892,6 +893,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   on; the DDL lives in `migrations/001-comp-corpus.sql` (+ `004` for the
   per-type columns).
   `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`).
+  **Radius blend (2026-08-14).** At serialization, inside `gate()` and
+  **before** `gateReport()`, `blendNearbyComps` folds in harvested deals of
+  the same property type whose date is inside the lookback, that have
+  coordinates, and that sit within 10 miles of the subject — even across city
+  lines. They join the table and the Low / Likely / High math; a free report
+  turns extras into `locked_basis` so the dollar range still matches Pro.
+  Harvest Census-geocodes new rows before the insert (fire-and-forget with
+  the rest of harvest); unlocated existing rows backfill up to 8 per request
+  and join the *next* search. A deal with no point is skipped, not guessed as
+  same-city. Cache, harvest, and market snapshots still see the search-only
+  report, so a later search in the area picks up deals saved after the cache
+  write. Rollback is `CORPUS_RADIUS=off`. Vault rows are never read. Spec:
+  `docs/superpowers/specs/2026-08-14-radius-corpus-blend-design.md`.
   **Corpus health (`CORPUS_HEALTH` + `noteCorpusFailure()`).** Fire-and-forget
   means both the write (`harvestComps`) and the read (`corpusRowsForMarket`)
   swallow their errors, which once hid a total outage: ten per-comp columns

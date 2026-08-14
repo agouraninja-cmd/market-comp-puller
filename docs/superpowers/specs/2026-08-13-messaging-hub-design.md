@@ -368,9 +368,42 @@ database can answer — the token hash round trip through
 `resolveHubCaller`, the seeded-from-a-share path, and whether
 `hub_items_live_source_uidx` really lets a removed comp be re-sent.
 
-**Slice 2.** The status pipeline (new / shortlist / toured / passed) with
-per-comp message threads and unread counts. Tenant-added comps (Q4). Verified
-Resend domain, then invite emails and a daily activity digest.
+**Slice 2 — partly built 2026-08-14, on `feat/hub-statuses`, not merged.**
+
+Done, and needing no migration because 024 shipped the columns:
+
+- **The status pipeline.** `PATCH /api/hub/item` is now two acts down one
+  route: removing a comp stays the owner's (`canAddItems`), setting a status
+  is any participant's (`canSetStatus`). That split is the feature — a
+  pipeline only the broker can move records what the broker hopes rather than
+  what the client decided. `status_by`/`status_at` come from the session,
+  never the browser.
+- **Per-comp note threads.** A note filed against one comp reads under that
+  comp's own row; notes about the requirement stay in the stream. One message
+  list split at render on `item_id`, and one post path for both kinds.
+
+The status vocabulary now lives in three necessary places — `hub-access.js`
+(which requests are allowed), 024's CHECK (which rows are), and the page's
+`<select>` (what a person can pick). All three are pinned against each other
+by test, one of them by reading the constraint out of the SQL file. A page
+offering a status the server refuses is a control that fails on click.
+
+`test/hub-page.test.js` is new and earns its place the way
+`test/vault-page.test.js` does: the page is one template literal emitting
+browser JavaScript, so a stray `${` ships a dead page silently.
+
+**Still open in slice 2:**
+
+- **Unread counts.** Blocked on a model decision, not on effort:
+  `last_seen_at` lives on `hub_participants`, and a hub's OWNER has no
+  participant row, so there is nothing to compare their last read against.
+  Either the owner becomes a participant on create (free, but then the
+  "N of M opened" count on `/vault` includes the broker themselves and stops
+  meaning what it says), or `hubs` gains an `owner_seen_at` (a migration, and
+  the next free number is 027 — 025 and 026 are taken). Do not guess this one.
+- **Tenant-added comps** (Q4), which needs an untrusted-comp path with no
+  vault row to validate against.
+- **Anything email**, still gated on a verified Resend domain.
 
 **Slice 3.** Tenant-posted requirements matched against `broker_coverage`,
 which is the marketplace and reuses the lead inbox's matching wholesale.

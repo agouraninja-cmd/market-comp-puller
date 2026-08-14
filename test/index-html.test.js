@@ -494,6 +494,9 @@ test("the desk branches on portfolioValues, not a raw isPro", () => {
   assert.match(fn, /Likely value/);
   // Free path: the value columns are gated, not deleted from the file.
   assert.match(fn, /if \(showValues\)/);
+  // movement.line is market median $/SF — a dollar figure. Gate it with the
+  // rest of the book; do not strip it from the GET.
+  assert.match(fn, /if \(showValues && item\.movement && item\.movement\.line\)/);
 });
 
 test("portfolioValuesOn falls back so a missing field cannot blank a Pro-off desk", () => {

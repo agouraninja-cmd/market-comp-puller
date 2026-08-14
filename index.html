@@ -9440,7 +9440,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         // property's own valuation change in the Change column, and painting a
         // market statistic the same green would read as this building being
         // worth more, which is a search nobody has run.
-        if (item.movement && item.movement.line) {
+        //
+        // Gated on showValues: the line is market median $/SF, a dollar
+        // figure. The GET still carries `movement` so upgrading reveals it.
+        if (showValues && item.movement && item.movement.line) {
           const mv = document.createElement("div");
           // Inline margin rather than mt-0.5: that utility is not in the
           // vendored tailwind.css, and a class missing from that build styles

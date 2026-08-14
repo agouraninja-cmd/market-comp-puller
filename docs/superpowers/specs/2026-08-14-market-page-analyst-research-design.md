@@ -1,7 +1,7 @@
 # Market page as analyst research table — Design
 
 Date: 2026-08-14
-Status: implementing (first slice of the Market Explorer analyst brief)
+Status: implemented (first slice of the Market Explorer analyst brief)
 
 Touches: `market-snapshot.js`, `server.js` (`renderMarketPageHTML`,
 `MARKET_CSS`, `MARKET_RESEARCH_JS`), `test/market-snapshot.test.js`,

@@ -249,3 +249,17 @@ test("polling goes dormant when nobody is there, and wakes on any sign of one", 
   // Waking must catch up in the same moment, or the wake is visible as a lag.
   assert.match(js, /if \(wasIdle\) tick\(\)/);
 });
+
+test("a reader who cannot post is given something to click", () => {
+  // This shipped as a sentence with no control: the composer that carries the
+  // account ask is hidden from exactly the people the line addresses, and the
+  // header's signed-out slots do not render on this page. A client read their
+  // broker's comps, went to reply, and hit a dead end — on the one path the
+  // whole feature is justified by. Found by opening a real invite link.
+  const js = pageScript(html);
+  assert.match(js, /a\.href = "\/\?auth=signin"/);
+  assert.match(js, /Sign in or create an account/);
+  // Only for the signed-out case. A CLOSED hub is finished, and offering a
+  // sign-in there would promise something signing in cannot deliver.
+  assert.match(js, /if \(d\.hub\.closedAt\)\s*\{[\s\S]*?\}\s*else\s*\{[\s\S]*?auth=signin/);
+});

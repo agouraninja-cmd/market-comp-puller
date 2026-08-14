@@ -55,6 +55,10 @@ h1{font-size:22px;margin:0 0 4px;line-height:1.2}
 .msg{padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--wash);
   color:var(--ink-body);font-size:14px}
 .msg.bad{border-color:var(--bad,#b4433a)}
+/* The one thing an unsigned reader can act on. Underlined rather than a
+   button: it sits inside a sentence, and a button would read as the primary
+   act of a page whose primary act is reading the comps. */
+a.signin{text-decoration:underline;font-weight:600;white-space:nowrap}
 h2{font-size:15px;margin:0 0 12px;letter-spacing:.01em}
 .tblwrap{overflow-x:auto}
 table{width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px}
@@ -254,9 +258,33 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     // hub that lets you talk but not point at a building is half a workspace.
     show("addWrap", !!d.canWrite);
     if (!d.canWrite) {
-      el("readonly").textContent = d.hub.closedAt
-        ? "This hub is closed. You can still read everything in it, but no one can post."
-        : "Sign in with the address this hub was shared with to post a note.";
+      // TWO different read-only states, and only one of them is a thing the
+      // reader can act on.
+      //
+      // A closed hub is finished; there is nothing to offer. But "sign in to
+      // post" shipped as a sentence with NOTHING TO CLICK — the composer that
+      // carries the account ask is hidden from exactly the people this line is
+      // addressed to, and the header's signed-out slots do not render here. So
+      // a client read their broker's comps, went to reply, and hit a dead end
+      // on the one path this whole feature is justified by. Found by opening a
+      // real invite link as a real client.
+      var ro = el("readonly");
+      ro.textContent = "";
+      if (d.hub.closedAt) {
+        ro.textContent = "This hub is closed. You can still read everything in it, but no one can post.";
+      } else {
+        ro.appendChild(document.createTextNode(
+          "Sign in with the address this hub was shared with to post a note. "));
+        var a = document.createElement("a");
+        // The same door askForAccount() uses, so there is one destination for
+        // the account ask however a person reaches it. Their invite token is
+        // already exchanged into a cookie by this point, so coming back to
+        // this URL after signing in works with or without the link.
+        a.href = "/?auth=signin";
+        a.className = "signin";
+        a.textContent = "Sign in or create an account";
+        ro.appendChild(a);
+      }
       show("readonly", true);
     } else {
       show("readonly", false);

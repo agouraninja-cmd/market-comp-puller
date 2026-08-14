@@ -1626,3 +1626,49 @@ test("/admin's watchlist digest card", async (t) => {
     assert.match(run, /if\(!dry&&!confirm\(/, "the confirm is gated on it being a real send");
   });
 });
+
+// Every dimension a logEvent CALL SITE passes must exist in logEvent's row.
+//
+// The sibling of "every user flag entitlements reads is carried by
+// getSessionUser", and written for the same reason after the same thing
+// happened a second time: three /api/comps call sites passed `plan: ent.plan`
+// from the day the Pro tier shipped, logEvent's row never had a `plan` field,
+// and the value was discarded on every search for months. Nothing failed. The
+// code read as though "do free users search more than Pro ones" was
+// answerable, and it was not.
+//
+// A dropped dimension cannot fail loudly by its nature — the row still writes,
+// the column is simply absent — so this reads both sides out of server.js and
+// pairs them. Adding a dimension at a call site now fails the build until
+// logEvent records it.
+test("every dimension passed to logEvent is recorded by it", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  const start = src.indexOf("function logEvent(kind, dims)");
+  assert.ok(start >= 0, "logEvent should still exist");
+  const end = src.indexOf("function aggregateStats", start);
+  assert.ok(end > start, "could not bound logEvent");
+  const row = src.slice(start, end);
+
+  // Keys the row actually writes.
+  const recorded = new Set([...row.matchAll(/^\s{4}([a-z_]+):/gm)].map((m) => m[1]));
+  assert.ok(recorded.has("kind") && recorded.has("market"),
+    "expected to have parsed logEvent's row; got " + JSON.stringify([...recorded]));
+
+  // Keys the call sites pass. Only the single-line object literals are
+  // scanned, which is every call site's shape today; a multi-line one would
+  // be missed, so this is a floor on coverage rather than a proof.
+  const passed = new Set();
+  for (const call of src.matchAll(/logEvent\("[a-z_]+",\s*\{([^}]*)\}/g)) {
+    for (const key of call[1].matchAll(/(?:^|,)\s*([a-z_]+)\s*:/g)) passed.add(key[1]);
+  }
+  assert.ok(passed.size >= 3, "expected to have found call-site dimensions; got " + JSON.stringify([...passed]));
+
+  for (const dim of passed) {
+    assert.ok(recorded.has(dim),
+      `a logEvent call site passes "${dim}", but logEvent's row does not record it — ` +
+      "the value is built and thrown away, and nothing anywhere fails");
+  }
+});

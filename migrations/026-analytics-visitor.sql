@@ -57,12 +57,13 @@
 
 alter table public.analytics_events
   add column if not exists visitor_id text,
-  add column if not exists user_id text;
+  add column if not exists user_id text,
+  add column if not exists plan text;
 
 create index if not exists analytics_events_visitor_ts_idx
   on public.analytics_events (visitor_id, ts);
 
 -- Verify (zero rows = schema complete):
---   select c from unnest(array['visitor_id','user_id']) as c
+--   select c from unnest(array['visitor_id','user_id','plan']) as c
 --   where not exists (select 1 from information_schema.columns
 --                     where table_name = 'analytics_events' and column_name = c);

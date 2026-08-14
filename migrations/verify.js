@@ -128,7 +128,7 @@ const COLUMNS = [
   // PostgREST 400s an insert naming a column that does not exist, so every
   // analytics event diverts to the ephemeral file fallback and the dashboard
   // silently flattens. Checking it here is cheaper than noticing the graph.
-  ["analytics_events",  ["visitor_id", "user_id"],              "026-analytics-visitor.sql"],
+  ["analytics_events",  ["visitor_id", "user_id", "plan"],      "026-analytics-visitor.sql"],
   // 025's absence is caught by the digest route's own 503, but only after
   // somebody triggers it. Checking here says so before the first send rather
   // than during it.

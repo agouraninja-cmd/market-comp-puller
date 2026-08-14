@@ -1785,3 +1785,24 @@ test("every dimension passed to logEvent is recorded by it", () => {
       "the value is built and thrown away, and nothing anywhere fails");
   }
 });
+
+test("radius blend is wired inside gate, before the paywall and before vault blend", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const gate = async (rep)");
+  assert.ok(start >= 0, "gate() should still exist as an async closure");
+  const end = src.indexOf("const maxIdentified", start);
+  assert.ok(end > start, "could not bound gate()");
+  const body = src.slice(start, end);
+  const radiusAt = body.indexOf("RADIUSBLEND.blendNearbyComps");
+  const paywallAt = body.indexOf("GATE.gateReport");
+  const vaultAt = body.indexOf("BLEND.blendPrivateComps");
+  assert.ok(radiusAt >= 0, "gate() must call blendNearbyComps");
+  assert.ok(paywallAt >= 0, "gate() must call gateReport");
+  assert.ok(vaultAt >= 0, "gate() must call blendPrivateComps");
+  assert.ok(radiusAt < paywallAt, "saved public deals must enter BEFORE the paywall so extras become locked_basis");
+  assert.ok(paywallAt < vaultAt, "vault blend must stay AFTER the paywall");
+  assert.equal(/harvestComps\s*\(\s*typeOk/.test(body), false,
+    "harvest must not run inside gate() — extras would re-enter the corpus from a serialization-only merge");
+});

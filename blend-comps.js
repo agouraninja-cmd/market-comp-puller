@@ -21,6 +21,7 @@
 //   search -> parse -> harvestComps()             <- public report only
 //                   -> cache write                <- public report only
 //                   -> maybePublishMarketSnapshot() <- public report only
+//                   -> blendNearbyComps()         <- saved public deals, before the paywall
 //                   -> gateReport()
 //                   -> blendPrivateComps()        <- private comps enter HERE
 //                   -> response

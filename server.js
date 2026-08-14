@@ -5640,6 +5640,9 @@ details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transit
 details.q[open] summary::after{transform:rotate(180deg)}
 details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 .faqhead{margin-bottom:20px}
+/* Last FAQ row used to sit 12px+26px above the Submit card and read as
+   part of it. This junction is the only #faq in MARKET_CSS. */
+#faq + .cta{margin-top:56px}
 @media(min-width:900px){
   .bkhero{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}
   .bkpath{grid-template-columns:1fr 1fr 1fr}

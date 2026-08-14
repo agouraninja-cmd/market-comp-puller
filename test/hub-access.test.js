@@ -5,7 +5,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const {
-  canReadHub, canWriteHub, canAddItems, normalizeEmail, roleOf,
+  canReadHub, canWriteHub, canAddItems, canSetStatus, isItemStatus, normalizeEmail, roleOf, ITEM_STATUSES,
 } = require("../hub-access.js");
 
 const BROKER = { id: "u1", email: "broker@firm.com" };
@@ -202,4 +202,48 @@ test("two participants with unnormalizable emails are not the same person", () =
   const junk = { ...tenantRow, email: "not an email" };
   const junkUser = { id: "u9", email: "also not an email" };
   assert.equal(canReadHub({ hub, participant: junk, user: junkUser, tokenValid: false }).ok, false);
+});
+
+// --- the comp pipeline (slice 2) -----------------------------------------
+
+test("a TENANT can set a status, which is the whole point of the pipeline", () => {
+  // Deliberately not the owner-only answer canAddItems gives. A pipeline only
+  // the broker can move says what the broker hopes, not what the client
+  // decided, and the shortlist is the client's answer to "where are we".
+  const d = canSetStatus({ hub, participant: tenantRow, user: TENANT, tokenValid: true });
+  assert.equal(d.ok, true);
+  assert.equal(d.role, "tenant");
+});
+
+test("setting a status still requires an account, and inherits every write refusal", () => {
+  assert.equal(canSetStatus({ hub, participant: tenantRow, user: null, tokenValid: true }).reason, "signin_required");
+  assert.equal(canSetStatus({ hub: closed, participant: tenantRow, user: TENANT, tokenValid: true }).reason, "closed");
+  assert.equal(canSetStatus({ hub, participant: removedRow, user: TENANT, tokenValid: true }).reason, "removed");
+  assert.equal(canSetStatus({ hub, participant: observerRow, user: { id: "u4", email: "watcher@firm.com" }, tokenValid: true }).reason, "read_only");
+});
+
+test("the owner can set a status too", () => {
+  assert.equal(canSetStatus({ hub, participant: null, user: BROKER, tokenValid: false }).ok, true);
+});
+
+test("isItemStatus accepts the pipeline and nothing else", () => {
+  for (const s of ["new", "shortlist", "toured", "passed"]) assert.equal(isItemStatus(s), true, s);
+  assert.equal(isItemStatus(" Shortlist "), true, "case and space tolerated");
+  for (const s of ["won", "lost", "", null, undefined, "drop table", "NEW;"]) {
+    assert.equal(isItemStatus(s), false, String(s));
+  }
+});
+
+test("ITEM_STATUSES agrees with migration 024's CHECK constraint", () => {
+  // Three copies of this vocabulary exist by necessity: the module (requests),
+  // the CHECK (rows), and the page's select (what a person can pick). This
+  // pins the two that live in the repo; the page's copy is pinned in
+  // test/hub-page.test.js.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const sql = fs.readFileSync(path.join(__dirname, "..", "migrations", "024-messaging-hub.sql"), "utf8");
+  const m = sql.match(/status text not null default 'new' check \(status in \(([^)]*)\)\)/);
+  assert.ok(m, "024 must still constrain hub_items.status");
+  const inSql = m[1].split(",").map((s) => s.trim().replace(/'/g, ""));
+  assert.deepEqual(inSql, ITEM_STATUSES);
 });

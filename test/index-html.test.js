@@ -721,6 +721,15 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(desk[0], /id="marketSearch"/);
   assert.match(desk[0], /id="marketSearchResults"/);
   assert.match(desk[0], /Or read a market/);
+  // The chamber is the narrow 1fr column of a max-w-5xl desk. The old
+  // "Try any market, e.g. industrial Boise ID" ran past the input's
+  // inner width and clipped the state. The note above already says
+  // search any market; the placeholder is only the example, with the
+  // comma the rest of the product uses. appearance:none drops the
+  // searchfield cancel gutter that ate the last letters on top of that.
+  assert.match(desk[0], /placeholder="e\.g\. industrial Boise, ID"/);
+  assert.doesNotMatch(desk[0], /Try any market, e\.g\./);
+  assert.match(html, /\.rd-desk-market-in \{[^}]*appearance:\s*none/);
   assert.equal((desk[0].match(/class="rd-chamber-head"/g) || []).length, 2,
     "both chambers share a rd-chamber-head so the title hairline is one rule");
 

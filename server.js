@@ -6974,6 +6974,15 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .step:last-child{border-bottom:0}
 .num{font-family:Georgia,serif;font-size:13px;color:var(--red);margin-bottom:8px}
 .step p{font-size:13.5px;color:var(--ink-mute);margin:0}
+/* Brokers ledger — three trades as a statement, not a process. Do not reuse
+   .steps: Method's 3-up encodes sequence; Private / Credit / Leads do not. */
+.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:20px}
+.bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
+.bkrow:last-child{border-bottom:0}
+.bklag{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red);padding-top:2px}
+.bk p{font-size:13.5px;color:var(--ink-mute);margin:0}
+.bk .badge{margin:0 0 8px}
+.bkmore{margin:18px 0 40px}
 /* FAQ accordions — chevron marker, matching the home page's disclosure style */
 details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
 details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:var(--ink)}
@@ -7030,6 +7039,7 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
   .steps{grid-template-columns:repeat(3,1fr)}
   .step{border-bottom:0;border-right:1px solid var(--hair)}
   .step:last-child{border-right:0}
+  .bkrow{grid-template-columns:7.5rem 1fr;gap:20px;align-items:start}
   h1.h{font-size:42px}
   footer .wrap{flex-direction:row}
   footer .right{flex-shrink:0}
@@ -7095,23 +7105,23 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 .anim .exhibit tbody tr:nth-child(5),.anim .exhibit tbody tr:nth-child(5) td{transition-delay:.68s}
 .anim .exhibit tfoot tr,.anim .exhibit tfoot td{transition-delay:.75s}
 /* Method steps arrive one after another. */
-.anim .steps .step{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
-.anim .steps.on .step{opacity:1;transform:none}
-.anim .steps .step:nth-child(2){transition-delay:.07s}
-.anim .steps .step:nth-child(3){transition-delay:.14s}
+.anim .steps .step,.anim .bk .bkrow{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
+.anim .steps.on .step,.anim .bk.on .bkrow{opacity:1;transform:none}
+.anim .steps .step:nth-child(2),.anim .bk .bkrow:nth-child(2){transition-delay:.07s}
+.anim .steps .step:nth-child(3),.anim .bk .bkrow:nth-child(3){transition-delay:.14s}
 /* A counting figure reserves its finished width before the first tick (the
    script measures it and sets min-width), so a number growing from 0 to
    $4,580,000 never reflows the cell it sits in. */
 .cu{display:inline-block}
 /* Motion is decoration. These two contexts get the finished page instead. */
 @media (prefers-reduced-motion:reduce){
-  .anim .rv,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
+  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
   .anim .exhibit .secrule{clip-path:none;transition:none}
   .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
   .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
 }
 @media print{
-  .anim .rv,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
+  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
   .anim .exhibit .secrule{clip-path:none!important}
   .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
   .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
@@ -7570,6 +7580,26 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   ].map(([n, h, p]) =>
     `<div class="step"><div class="num">${n}</div><h3>${escHtml(h)}</h3><p>${escHtml(p)}</p></div>`).join("");
 
+  // Three trades, not a sequence. Same copy the collapsed paragraph used to
+  // carry in one breath, split so Credit can SHOW the chip instead of only
+  // naming it. Tests pin the privacy sentence and the "Verified badge and
+  // your firm's name" line; do not rewrite those for style.
+  const brokerLedger = [
+    ["Private", "Your closed deals stay yours",
+     "Upload your book to a private vault. It is visible only to you, and it never enters CompNinja's public records unless you choose to publish a comp.",
+     ""],
+    ["Credit", "Submitted comps carry your name",
+     "A comp you publish shows a green Verified badge and your firm's name on every report that uses it.",
+     `<span class="badge v">Verified &middot; via Your Firm</span>`],
+    ["Leads", "Owners in your markets",
+     "When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand.",
+     ""],
+  ].map(([lab, h, p, chip]) =>
+    `<div class="bkrow"><div class="bklag">${escHtml(lab)}</div><div>` +
+    `<h3>${escHtml(h)}</h3>` +
+    (chip ? chip : "") +
+    `<p>${escHtml(p)}</p></div></div>`).join("");
+
   const faqBlock = HOW_FAQ.map(([q, a]) =>
     `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
 
@@ -7753,8 +7783,8 @@ ${ACCOUNT_NAV_JS}
     <section class="rv" data-rv>
       <div class="kicker">Brokers</div>
       <h2 class="h">What brokers get.</h2>
-      <p class="sub">A comp you publish shows a <span class="badge v">Verified</span> badge and your firm&#39;s name on every report that uses it. Upload your book to a private vault. It is visible only to you, and it never enters CompNinja&#39;s public records unless you choose to publish a comp. When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand.</p>
-      <p style="margin:18px 0 40px"><a href="/brokers">See the broker side &rarr;</a></p>
+      <div class="bk" data-rv>${brokerLedger}</div>
+      <p class="bkmore"><a href="/brokers">See the broker side &rarr;</a></p>
     </section>
 
     <div class="cta rv" data-rv>

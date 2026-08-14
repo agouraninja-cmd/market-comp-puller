@@ -5579,6 +5579,20 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
 .card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
 .card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* /brokers offer — two stacked ledgers. Do not reuse .steps (sequence) or
+   .grid (the old two-card band). /markets still uses .grid; this page does
+   not. Rows are visible on first paint: this sheet has no html.anim. */
+.bkhead{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
+  margin:28px 0 0;letter-spacing:normal;text-transform:none}
+.sub + .bkhead{margin-top:8px}
+.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:12px}
+.bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
+.bkrow:last-child{border-bottom:0}
+.bklag{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red);padding-top:2px}
+.bk h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 8px}
+.bk p{font-size:13.5px;color:var(--ink-mute);margin:0}
+.bk .badge{margin:0 0 8px}
+.bklinks{margin:14px 0 0}
 /* Market page's median-$/SF-by-half-year trend chart (renderMarketPageHTML's
    trendSvg). Dark-mode fix (2026-08-10, fix round 1) -- the same class-based
    approach as .cn-logo above, and for the same reason: colours in generated
@@ -5687,6 +5701,7 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
+  .bkrow{grid-template-columns:7.5rem 1fr;gap:20px;align-items:start}
   footer .wrap{flex-direction:row}
   footer .right{flex-shrink:0}
 }
@@ -7323,20 +7338,13 @@ function renderBrokersPageHTML(signedIn) {
     ],
   });
 
-  // Reworked 2026-08-10 (owner-approved wireframe). The standing rules from
-  // the 2026-08-09 pass still hold —
-  //   - ONE submit door: the bottom CTA button. Nothing above it links to
-  //     the form; adding a second door back is the regression.
+  // Reworked 2026-08-13 (two stacked ledgers). Standing rules:
+  //   - ONE submit door: the bottom CTA. Nothing above it links to the form.
   //   - Compliance line stays: we connect, we never broker.
-  // What the rework adds —
-  //   - The h1 is the BROKER'S payoff, not our product story.
-  //   - The Verified badge is SHOWN (the report's own .badge.v chip), not
-  //     described. Seeing the reward beats reading about it.
-  //   - Free vs Pro is an explicit ladder: contribute → intros + profile
-  //     (free), subscribe → the vault (Pro), told in the vault page's own
-  //     three verbs so the two pages tell one story.
-  //   - A proof line of real credited firms from MARKET_CREDIT. It renders
-  //     NOTHING while the data is thin — no fake logos, ever.
+  //   - The Verified chip is SHOWN (inline green on span.badge — NOT
+  //     class="badge v", whose .v collides with .tile .v in MARKET_CSS).
+  //   - Contribute and Pro are two ledgers, not one list, so the vault does
+  //     not read as free. Proof line is real MARKET_CREDIT or nothing.
 
   // Proof: up to four real firm · market credits. byMarket keys are
   // lowercased "city, st"; re-case for display (title-case city, upper state).
@@ -7351,53 +7359,45 @@ function renderBrokersPageHTML(signedIn) {
     ? `<p class="disc" style="margin:22px 0 0">Recently credited: ${credits.slice(0, 4).join(" &ensp;&bull;&ensp; ")}</p>`
     : "";
 
+  const contributeRows = [
+    ["CREDIT", "Submitted comps carry your name",
+     "Every report that uses one of your comps shows a green Verified badge and your firm's name.",
+     `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span>`],
+    ["INTROS", "Owners in your markets",
+     "When an owner in your market wants a broker's opinion of value, we introduce them to you.",
+     ""],
+    ["PROFILE", "A public page with your comps",
+     "A public profile page with your verified comps.",
+     ""],
+  ];
+  const proRows = [
+    ["BOOK", "Upload and organize your book",
+     "Upload and organize your comp book.", ""],
+    ["PIPELINE", "Watch your markets",
+     "Watch your markets for leads.", ""],
+    ["PRIVATE", "Exclusively yours",
+     "Exclusively private to you.", ""],
+  ];
+  const ledgerHtml = (rows) => rows.map(([lab, h, p, chip]) =>
+    `<div class="bkrow"><div class="bklag">${lab}</div><div>` +
+    `<h3>${escHtml(h)}</h3>` +
+    (chip ? chip : "") +
+    `<p>${escHtml(p)}</p></div></div>`).join("");
+
   const body =
     `<h1>Your comps, your name, on every report that uses them.</h1>` +
     `<p class="sub">We build valuation reports from public data. Comps confirmed by a local ` +
     `broker rank highest, and they carry that broker's name.</p>` +
 
-    // Owner 2026-08-10: no step band — the hero and the two cards carry the
-    // page. Cards are bullets, not paragraphs. The Verified chip (the
-    // report's own .badge, green inlined — NOT class="badge v", whose .v
-    // would collide with .tile/.card stat styling) leads the free card, so
-    // the reward is still shown rather than described.
-    `<div class="grid">` +
-    // Owner 2026-08-10: the old card ("Free, earned by contributing" + a
-    // dangling "Get introduced" mailto) read as fragments. This one states
-    // the trade in plain words, and the action stays the ONE submit door
-    // below — no mailto here; introductions come to contributors, they are
-    // not something a visitor applies for.
-    `<div class="card"><h2>What you get for submitting comps</h2>` +
-    `<ul>` +
-    `<li>Every report that uses one of your comps shows ` +
-    // Dark-mode fix (2026-08-10, fix round 1): var(--ok-text)/var(--ok-bg),
-    // not the literal pair this used to carry -- the same substitution
-    // Task 2/4 already made for the report table's own Verified badge and
-    // vault-page.js's .pubbtn.on repeats (see its comment on that rule):
-    // the text value matches --ok-text's light value exactly, and the
-    // background is within that same already-approved tolerance of
-    // --ok-bg's. A style="" attribute on a plain span, unlike an SVG
-    // presentation attribute, resolves var() reliably, so no class is
-    // needed here the way CN_LOGO and the trend chart needed one.
-    `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span></li>` +
-    `<li>When an owner in your market wants a broker&rsquo;s opinion of value, we introduce them to you</li>` +
-    `<li>A public profile page with your verified comps</li>` +
-    `</ul></div>` +
-    `<div class="card"><h2>Pro: the Broker Vault</h2>` +
-    `<ul>` +
-    `<li>Upload and organize your comp book</li>` +
-    `<li>Watch your markets for leads</li>` +
-    `<li>Exclusively private to you</li>` +
-    `</ul>` +
-    // The upgrade link hides itself for members: ACCOUNT_NAV_JS reads
-    // /api/config's pro block and sets [hidden] on this id (also when
-    // billing isn't live, so it can't dead-end). Server-side would need a
-    // DB read this cached synchronous render must never make.
-    `<p style="margin:14px 0 0"><a href="/vault">Open your vault &rarr;</a>` +
-    `<span id="upgradeProLink"> &nbsp;&middot;&nbsp; ` +
-    `<a href="/?pricing=1">Upgrade to Pro &rarr;</a></span></p></div>` +
-    `</div>` +
+    `<h2 class="bkhead">For submitting a comp.</h2>` +
+    `<div class="bk">${ledgerHtml(contributeRows)}</div>` +
     proof +
+
+    `<h2 class="bkhead">With Pro.</h2>` +
+    `<div class="bk">${ledgerHtml(proRows)}</div>` +
+    `<p class="bklinks"><a href="/vault">Open your vault &rarr;</a>` +
+    `<span id="upgradeProLink"> &nbsp;&middot;&nbsp; ` +
+    `<a href="/?pricing=1">Upgrade to Pro &rarr;</a></span></p>` +
 
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +

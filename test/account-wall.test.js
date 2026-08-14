@@ -123,13 +123,31 @@ test("the wall serves the landing page at the root", async (t) => {
       "under the wall this page is a duplicate of / and must say so");
   });
 
-  await t.test("/desk still redirects, to the front door at /", async () => {
+  await t.test("/desk still redirects, to the sign-in door", async () => {
+    // The wall's rule is that a personal workspace never renders anonymously,
+    // and that has not changed. Where it sends them did (2026-08-13): asking
+    // for /desk is asking for your own account, so the answer is the sign-in
+    // modal, not the marketing page. It used to be "/", which told somebody
+    // who already had an account to go read about the product — visible the
+    // moment the watchlist digest started linking to /desk from email.
+    //
+    // ?auth=signin is not a new door: the case below proves it serves the app
+    // so the account modal has somewhere to live.
     for (const p of ["/desk", "/desk?checkout=success"]) {
       const r = await get(p);
       assert.equal(r.status, 302, p + " is a personal workspace with no anonymous rendering");
-      assert.equal(r.headers.get("location"), "/", p + " should land on the front door");
+      assert.equal(r.headers.get("location"), "/?auth=signin", p + " should land on the sign-in door");
       assert.match(r.headers.get("cache-control") || "", /no-store/, p + " redirect must not be cached");
     }
+  });
+
+  await t.test("that redirect target actually serves the app", async () => {
+    // The two halves are only correct together: a redirect to a door that
+    // bounced back to the landing page would be a loop, and the loop would
+    // look exactly like the bug this replaced.
+    const r = await get("/?auth=signin");
+    assert.equal(r.status, 200);
+    assert.ok(isApp(await r.text()), "the sign-in door must serve the app, not the landing page");
   });
 
   await t.test("shared reports stay public", async () => {

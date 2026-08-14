@@ -466,6 +466,54 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
   }
 });
 
+test("empty desk copy no longer tells them to press Save", () => {
+  assert.match(html, /id="deskEmpty"[^>]*>Run a report — it will show up here\./);
+  assert.doesNotMatch(html, /press "Save to portfolio"/);
+});
+
+test("auto-save lives inside saveHistory, behind the same three guards", () => {
+  const start = html.indexOf("function saveHistory(");
+  const end = html.indexOf("function dropLegacyHistoryKeys");
+  assert.ok(start >= 0 && end > start, "saveHistory / dropLegacyHistoryKeys moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /pendingPortfolioRefresh/);
+  assert.match(fn, /else if \(currentUser\)/);
+  assert.match(fn, /acctApi\("POST", "\/api\/portfolio"/);
+
+  const guarded = html.match(/if \(!\w+\.sample && !\w+\.fromHistory && !\w+\.shared\)[\s\S]{0,80}saveHistory/g) || [];
+  assert.ok(guarded.length >= 2, "every renderResults saveHistory call must keep the sample/fromHistory/shared guard");
+});
+
+test("the desk branches on portfolioValues, not a raw isPro", () => {
+  const start = html.indexOf("async function renderMyDesk");
+  const end = html.indexOf("// /desk — My Desk lives on its own URL");
+  assert.ok(start >= 0 && end > start);
+  const fn = html.slice(start, end);
+  assert.match(fn, /portfolioValuesOn\(\)/);
+  assert.match(fn, /History/);
+  assert.match(fn, /Likely value/);
+  // Free path: the value columns are gated, not deleted from the file.
+  assert.match(fn, /if \(showValues\)/);
+  // movement.line is market median $/SF — a dollar figure. Gate it with the
+  // rest of the book; do not strip it from the GET.
+  assert.match(fn, /if \(showValues && item\.movement && item\.movement\.line\)/);
+});
+
+test("portfolioValuesOn falls back so a missing field cannot blank a Pro-off desk", () => {
+  // An old /api/config (or the boot-time { enabled: false } default) has no
+  // portfolioValues key. Keying the desk on isPro alone would hide dollars
+  // from everyone while PRO_ENABLED is off — today's desk already shows them.
+  const fn = html.match(/function portfolioValuesOn\(\)[\s\S]{0,400}?\n  \}/);
+  assert.ok(fn, "index.html must define portfolioValuesOn()");
+  assert.match(fn[0], /typeof proConfig\.portfolioValues === "boolean"/);
+  assert.match(fn[0], /!proConfig\.enabled \|\| Boolean\(proConfig\.isPro\)/);
+});
+
+test("pricing states the Portfolio split in the compare table", () => {
+  assert.match(html, /<tr><td>Portfolio<\/td><td class="c">Saved reports, address list<\/td><td class="c">Saved reports, with estimated values<\/td><\/tr>/);
+  assert.doesNotMatch(html, /unlimited saved reports/i);
+});
+
 test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () => {
   // Owner signed off on composition A (2026-08-14). This is the signed-in
   // app, not renderHowItWorksHTML. A future edit that puts #marketSearch

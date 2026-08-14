@@ -1234,7 +1234,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - **Accounts + My Desk** (added 2026-07-19; spec/plan in `docs/superpowers/`):
   email+password accounts with a server-synced property **portfolio**
   (value-snapshot history per re-run) and an in-app market **watchlist** whose
-  updates feed reads the comp corpus. Auth is built into server.js — scrypt
+  updates feed reads the comp corpus. Signed-in searches auto-save to
+  `portfolio_items` (upsert on address + type); Free My Desk is an address
+  list, Pro is the book of values, and the caps (100 / 500) live in
+  `entitlements.js` as `portfolioMaxItems` / `portfolioValues`. The `$20`
+  unlock does not auto-save. Auth is built into server.js — scrypt
   (Node built-in) password hashes, 90-day session tokens stored as SHA-256
   hashes, `cn_session` httpOnly cookie. Routes: `POST /api/account/signup|
   login|logout|forgot|reset`, `GET /api/account/me`, `DELETE /api/account`,
@@ -1367,7 +1371,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   regardless of plan, so a longer free window grows output — the cost and
   wall-clock driver — on the majority of traffic. The numbers live in
   `entitlements.js`; the pricing modal and both plan-card strings hard-code
-  them in prose and must be edited together.
+  them in prose and must be edited together. The desk split belongs with
+  those numbers: Free My Desk is an address list (cap 100), Pro is the book
+  of values (cap 500), and the pricing compare table's Portfolio row restates
+  it.
   The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the
   amendment in its spec for why that gate needs a browser half AND a server
   half, and for the `proConfig` temporal-dead-zone trap that shapes the

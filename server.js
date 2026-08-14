@@ -5458,6 +5458,9 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center}
 .cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
+/* The BOV band at the top of a covered market page. Same card, tighter to the
+   h1 above it, since it is answering the heading rather than closing the page. */
+.cta.lead{margin:18px 0 30px}
 .cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
 .cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
 .cta .alt:hover{color:var(--ink)}
@@ -6420,7 +6423,10 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `<button type="button" data-tx="lease" aria-pressed="false">Leases (${nLease})</button></div>`
     : "";
   const compsTable = compRows
-    ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
+    // id="comps" is the target of the BOV band's "read the numbers first"
+    // link. It is on the CARD, not the table, so the heading lands under the
+    // viewport top rather than the first data row.
+    ? `<div class="card" id="comps"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
       txBar +
       `<div class="scroll"><table class="stmt" id="mktComps"><thead><tr>` +
       compCols.map((col) =>
@@ -6581,6 +6587,33 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `</ul></div>`
     : "";
 
+  // The BOV lead band. Same condition as brokersCard and the CTA below, and
+  // the same reason: the offer is only made where somebody can fulfil it.
+  //
+  // Why it sits ABOVE the data rather than under it. An owner asking a broker
+  // to price their building is the only event on a market page that has cash
+  // value to a broker, and it was the second clause of the last sentence on
+  // the page. The comps are the evidence for the offer, so the offer goes
+  // first and the evidence follows. This is a framing test, and it is
+  // reversible by deleting this block: nothing else reads it.
+  //
+  // It names the broker because they opted into being named (broker_profiles
+  // .public, the second of the two consents) and brokersCard already prints
+  // it lower down. It carries no contact details, for the same reason that
+  // card does not: routing here is owner-mediated.
+  //
+  // The link is the ordinary signup door with this market's type prefilled.
+  // There is deliberately no direct BOV form for a logged-out visitor: the
+  // request is made against a report, and the report needs an account.
+  const bovLead = brokerList.length && !opts.preview
+    ? `<div class="cta lead"><h2>Get a broker's opinion of value on your ${escHtml(p.type.toLowerCase())} property, free</h2>` +
+      `<p>${escHtml(brokerList[0].company || brokerList[0].display_name)} covers ${escHtml(p.city)} ` +
+      `${escHtml(p.type.toLowerCase())} and prepares opinions of value for owners here. Ask, and we make the ` +
+      `introduction. Nothing about you reaches them until you say yes, and there is no obligation either way.</p>` +
+      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Ask for an introduction &rarr;</a>` +
+      `<p style="margin:10px 0 0"><a class="alt" href="#comps">Or read the ${escHtml(p.city)} numbers first &darr;</a></p></div>`
+    : "";
+
   // The loudest CTA on the site's biggest SEO surface. Anonymous visitors
   // still get the owner valuation door (auth=signup is the one query form
   // ACCOUNT_WALL never 302s). Signed-in visitors get Watch + CSV instead —
@@ -6600,7 +6633,14 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
         : "") +
       exploreLink + `</div>`
     : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
-      `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
+      // The BOV half of this promise is made ONLY where a broker actually
+      // covers this market and type. `brokerList` is the same list
+      // `brokersCard` renders, which is empty on every market today, so this
+      // promised a licensed local broker against a directory of nobody.
+      `<p>${brokerList.length
+        ? `Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value ` +
+          `from a licensed local broker who covers ${escHtml(p.city)}.`
+        : `Get a free, instant estimate from recent comps, with the source cited on every one.`}</p>` +
       `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
       exploreLink + `</div>`;
 
@@ -6608,6 +6648,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
     `<h1>${escHtml(title)}</h1>` +
     `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
+    bovLead +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
     auxLedger +
@@ -11512,8 +11553,10 @@ const server = http.createServer((req, res) =>
               ``,
               `What happens next:`,
               `1. We review your request.`,
-              `2. We connect you with a licensed local broker who knows your market,`,
-              `   usually within a couple of business days.`,
+              // No timeline, deliberately. Every one of these is fulfilled by
+              // hand today, and a self-imposed deadline that slips is the first
+              // impression a real lead gets. Say what happens, not when.
+              `2. We connect you with a licensed local broker who knows your market.`,
               `3. The broker prepares a no-cost opinion of value. No obligation.`,
               ``,
               `A note on the numbers: everything in the report is an automated estimate`,

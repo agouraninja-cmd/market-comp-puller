@@ -237,12 +237,38 @@ outbound `Referer`.
 
 ### Polling, not SSE
 
-`GET /api/hub?since=` is polled every 15s while the tab is visible, 60s when
-hidden, and stops after 10 minutes with no interaction (a keystroke or a
-focus restarts it). `openSse` exists and works, but a hub is a minutes-apart
-conversation, and an SSE stream holds a Render connection open per open tab
-for the entire workday to deliver four events. Revisit only if a real hub
-shows sustained sub-minute traffic.
+`GET /api/hub?since=` is polled every 15s while the tab is visible. A hidden
+tab is skipped ENTIRELY rather than polled more slowly — there is nobody to
+show it to, and returning to the tab catches up in the same moment. After ten
+minutes with no sign of a person the timer keeps running and does nothing;
+a key, a click or a refocus both wakes it and catches up, so waking is
+invisible.
+
+`openSse` exists and works, but a hub is a minutes-apart conversation, and an
+SSE stream holds a Render connection open per open tab for the entire workday
+to deliver four events. Revisit only if a real hub shows sustained sub-minute
+traffic.
+
+**The poll carries the comps, not just the messages** (corrected 2026-08-14).
+It originally skipped the item list when `since` was set, reasoning that
+"items change rarely". True in slice 1, where only the owner could change an
+item; false the moment statuses shipped, because every status change is an
+item change and a status is the one thing two people move at once. Until it
+was fixed, a tenant shortlisting a building was invisible on the broker's
+open page until they reloaded, which is the opposite of what a shared
+workspace is for. The saving was a few KB on a page somebody is actively
+looking at.
+
+Two consequences of polling that only appear once it repaints often, both
+handled: the page repaints the comp table only when something visibly
+DIFFERS, and a half-typed note is held by comp id across repaints — otherwise
+a tenant writing carefully about clear height loses it because the broker
+shortlisted something in another tab.
+
+**This section has been wrong once already.** It described 60s-when-hidden
+and a 10-minute idle stop, and the code implemented neither; the idle stop is
+now real and the hidden-tab behaviour is described as built. If the polling
+changes again, change this paragraph in the same commit.
 
 ### `/hub/<id>` must be exempt from `ACCOUNT_WALL`
 
@@ -368,9 +394,51 @@ database can answer — the token hash round trip through
 `resolveHubCaller`, the seeded-from-a-share path, and whether
 `hub_items_live_source_uidx` really lets a removed comp be re-sent.
 
-**Slice 2.** The status pipeline (new / shortlist / toured / passed) with
-per-comp message threads and unread counts. Tenant-added comps (Q4). Verified
-Resend domain, then invite emails and a daily activity digest.
+**Slice 2 — partly built 2026-08-14, on `feat/hub-statuses`, not merged.**
+
+Done, and needing no migration because 024 shipped the columns:
+
+- **The status pipeline.** `PATCH /api/hub/item` is now two acts down one
+  route: removing a comp stays the owner's (`canAddItems`), setting a status
+  is any participant's (`canSetStatus`). That split is the feature — a
+  pipeline only the broker can move records what the broker hopes rather than
+  what the client decided. `status_by`/`status_at` come from the session,
+  never the browser.
+- **Per-comp note threads.** A note filed against one comp reads under that
+  comp's own row; notes about the requirement stay in the stream. One message
+  list split at render on `item_id`, and one post path for both kinds.
+
+The status vocabulary now lives in three necessary places — `hub-access.js`
+(which requests are allowed), 024's CHECK (which rows are), and the page's
+`<select>` (what a person can pick). All three are pinned against each other
+by test, one of them by reading the constraint out of the SQL file. A page
+offering a status the server refuses is a control that fails on click.
+
+`test/hub-page.test.js` is new and earns its place the way
+`test/vault-page.test.js` does: the page is one template literal emitting
+browser JavaScript, so a stray `${` ships a dead page silently.
+
+**Still open in slice 2:**
+
+- **Unread counts: DROPPED for now** (owner's decision, 2026-08-14). The
+  problem was real — `last_seen_at` lives on `hub_participants` and a hub's
+  OWNER has no participant row, so there was nothing to compare their last
+  read against — and both fixes cost something: making the owner a
+  participant breaks what `/vault`'s "N of M opened" count means, and an
+  `owner_seen_at` column is a migration (027) for a convenience. Both lists
+  already show when a hub was last updated, which answers "has anything
+  happened" without either cost. Revisit once a real hub is running and the
+  date can be judged sufficient or not, rather than guessed at with zero
+  hubs in existence.
+
+  It did leave one thing worth having: chasing it found that `GET /api/hubs`
+  carried a comment claiming it dropped hubs the caller owns from the
+  "shared with me" side, and no such check existed. Fixed, since a comment
+  that disagrees with its code is cheapest to close while it is still
+  harmless.
+- **Tenant-added comps** (Q4), which needs an untrusted-comp path with no
+  vault row to validate against.
+- **Anything email**, still gated on a verified Resend domain.
 
 **Slice 3.** Tenant-posted requirements matched against `broker_coverage`,
 which is the marketplace and reuses the lead inbox's matching wholesale.

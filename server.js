@@ -54,6 +54,9 @@ const SHAREACCESS = require("./report-access.js");
 // rules. NOT the connection hub at /brokers — see the spec's naming warning
 // in docs/superpowers/specs/2026-08-13-messaging-hub-design.md.
 const HUB = require("./hub-access.js");
+// A comp a participant typed in, validated with the vault importer's own
+// parsers so "1.2M" means the same thing in both places.
+const HUBCOMP = require("./hub-comp.js");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
@@ -3004,7 +3007,9 @@ async function listHubsForOwner(userId) {
 async function listHubsForParticipant(email) {
   return (await sbRequest("GET",
     `hub_participants?email=eq.${encodeURIComponent(email)}&removed_at=is.null` +
-    `&select=hub_id,role,invited_at,last_seen_at,hubs(id,title,market,property_type,subject_address,status,updated_at,closed_at)` +
+    // owner_user_id is selected only so the caller can drop hubs they own —
+    // see the dedupe in GET /api/hubs. It is never sent to the client.
+    `&select=hub_id,role,invited_at,last_seen_at,hubs(id,owner_user_id,title,market,property_type,subject_address,status,updated_at,closed_at)` +
     `&order=invited_at.desc&limit=200`)) || [];
 }
 
@@ -15662,8 +15667,17 @@ const server = http.createServer((req, res) =>
             // A hub the caller OWNS is never also "shared with me", or a
             // broker who put their own address in their own hub would see it
             // twice on two different pages.
+            //
+            // This comment shipped on 2026-08-13 describing a check that was
+            // not actually written — the filter only tested that the hub row
+            // existed. Harmless so far (nothing adds an owner to their own
+            // participant list), and it would have become visible the moment
+            // anything did, which is exactly the kind of latent disagreement
+            // between a comment and its code that is worth closing while it is
+            // still free.
             theirs: theirs
-              .filter((r) => r.hubs && String(r.hubs.id) !== "" )
+              .filter((r) => r.hubs && String(r.hubs.id) !== "" &&
+                !(r.hubs.owner_user_id && String(r.hubs.owner_user_id) === String(user.id)))
               .map((r) => ({
                 id: r.hubs.id, title: r.hubs.title, market: r.hubs.market,
                 propertyType: r.hubs.property_type, subjectAddress: r.hubs.subject_address,
@@ -15735,10 +15749,23 @@ const server = http.createServer((req, res) =>
 
           const since = qs.get("since") || "";
           const [items, messages] = await Promise.all([
-            // A polling read skips the item list: items change rarely and the
-            // snapshots are the largest thing here. A client that needs them
-            // again drops `since`.
-            since ? Promise.resolve(null) : getHubItems(id),
+            // ALWAYS the items, including on a poll.
+            //
+            // This skipped them when `since` was set, on the reasoning that
+            // "items change rarely and the snapshots are the largest thing
+            // here". That was true in slice 1, where only the owner could
+            // change an item, by sending a comp. Slice 2 made it false: every
+            // status change IS an item change, and a status is the one thing
+            // in a hub that two people move at once. The consequence was that
+            // a tenant shortlisting a building was invisible on the broker's
+            // open page until they reloaded, which is the opposite of what a
+            // shared workspace is for.
+            //
+            // The saving was never large enough to buy that. A hub holds a
+            // handful of comps rather than a book, so this is a few KB every
+            // 15 seconds on a page somebody is actively looking at, against a
+            // whole class of "why is it not updating" that no comment can fix.
+            getHubItems(id),
             getHubMessages(id, since),
           ]);
           if (g.participant) stampHubView(g.participant.id);
@@ -15755,7 +15782,10 @@ const server = http.createServer((req, res) =>
             // guess from the role string.
             canWrite: HUB.canWriteHub(g).ok,
             canAdd: HUB.canAddItems(g).ok,
-            ...(items ? { items: items.map(hubItemForClient) } : {}),
+            // Unconditional, now that a poll carries them too. It was a
+            // conditional spread while `since` could suppress the list;
+            // leaving that in would be a branch that can no longer be false.
+            items: items.map(hubItemForClient),
             messages: messages.map((m) => ({
               id: m.id, itemId: m.item_id, author: m.author_email,
               body: m.body, createdAt: m.created_at,
@@ -15779,6 +15809,50 @@ const server = http.createServer((req, res) =>
           const b = await readHubBody();
           const id = String(b.id || "");
           if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+
+          // A comp the CLIENT found themselves, typed into the hub. Any
+          // participant may add one (slice 2, Q4) — that is the difference
+          // between a delivery channel and a shared workspace, and a tenant
+          // who finds a building and has nowhere to put it goes back to
+          // email, which is the failure this feature exists to prevent.
+          //
+          // Deliberately a different gate AND a different shape from the
+          // vault send below: that one is the owner's, reads rows back from
+          // broker_comps, and carries private: true. This one is nobody's
+          // book of record and claims no provenance at all.
+          if (b.comp) {
+            const g = await hubGate(id, (c) => HUB.canWriteHub(c));
+            if (!g) return;
+            if (rateLimited("hubcomp:" + clientIp(req), 60)) {
+              return sendJson(res, 429, { error: "Too many comps added. Please wait a moment." });
+            }
+            const { comp, errors } = HUBCOMP.normalizeManualComp(b.comp);
+            // Every problem at once, not just the first: a form that reveals
+            // its objections one at a time is the vault importer's own
+            // complaint, and this is a shorter form with a less patient user.
+            if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+
+            const saved = await sbRequest("POST", "hub_items?select=*", [{
+              hub_id: id,
+              kind: "comp",
+              source: "manual",
+              // No source_ref: this comp exists nowhere else, which is the
+              // honest answer and also what keeps it out of the live-source
+              // unique index (partial on source_ref not null), so a client may
+              // add two buildings that happen to share an address.
+              source_ref: null,
+              snapshot: comp,
+              // NOT private. `private` means "out of the broker's vault" and
+              // drives the badge that says so; a client's own find is neither
+              // private data nor the broker's.
+              private: false,
+              added_by_email: HUB.normalizeEmail(g.user.email),
+            }], { prefer: "return=representation" });
+            touchHub(id);
+            logEvent("hub_comp_added", { market: g.hub.market || "", source: g.decision.role });
+            return sendJson(res, 201, { ok: true, added: 1, item: hubItemForClient(saved[0]) });
+          }
+
           const g = await hubGate(id, (c) => HUB.canAddItems(c));
           if (!g) return;
 
@@ -15850,23 +15924,79 @@ const server = http.createServer((req, res) =>
           const b = await readHubBody(2e4);
           const id = String(b.id || "");
           if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
-          if (b.removed !== true) {
-            return sendJson(res, 400, { error: "Comp statuses are not available yet." });
-          }
-          // Removing a comp from the conversation is the owner's call, the
-          // same as adding one.
-          const g = await hubGate(id, (c) => HUB.canAddItems(c));
-          if (!g) return;
           const itemId = String(b.itemId || "");
           if (!itemId) return sendJson(res, 400, { error: "Invalid item." });
-          // Scoped by hub_id in the query: an item id alone must never be
-          // enough to touch a row in someone else's hub.
-          const done = await sbRequest("PATCH",
-            `hub_items?id=eq.${encodeURIComponent(itemId)}&hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null`,
-            { removed_at: new Date().toISOString() }, { prefer: "return=representation" });
-          if (!done || !done.length) return sendJson(res, 404, { error: "That comp was not found." });
+
+          // TWO different acts down one route, with two different gates, and
+          // the difference is the point of the feature:
+          //
+          //   removing a comp  = the owner's call, like adding one
+          //   setting a status = ANY participant's, the tenant above all
+          //
+          // A pipeline only the broker can move would say what the broker
+          // hopes rather than what the client decided. hub-access.js owns
+          // both answers; this only picks which question to ask.
+          const removing = b.removed === true;
+          // Removal needs the ROW before it can decide, because a client may
+          // take back a comp they added themselves (see below), so the gate
+          // here is only "are you in this hub at all"; the real decision is a
+          // few lines down. Status keeps its own gate, which needs no row.
+          const g = await hubGate(id, (c) => (removing ? HUB.canWriteHub(c) : HUB.canSetStatus(c)));
+          if (!g) return;
+
+          // Scoped by hub_id in the QUERY on both branches: an item id alone
+          // must never be enough to touch a row in someone else's hub.
+          const scope = `hub_items?id=eq.${encodeURIComponent(itemId)}` +
+            `&hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null`;
+
+          if (removing) {
+            const rows = await sbRequest("GET",
+              `${scope}&select=id,source,added_by_email&limit=1`);
+            const row = rows && rows[0];
+            if (!row) return sendJson(res, 404, { error: "That comp was not found." });
+            // The owner may remove anything in their hub. Anyone else may
+            // remove ONLY a comp they added themselves, and only the kind a
+            // participant can add — a client must be able to take back their
+            // own find without being able to delete the broker's evidence.
+            const mine = HUB.normalizeEmail(g.user.email);
+            const isOwner = g.decision.reason === "owner";
+            const isTheirs = row.source === "manual" &&
+              HUB.normalizeEmail(row.added_by_email) === mine && !!mine;
+            if (!isOwner && !isTheirs) {
+              return sendJson(res, 403, {
+                error: "Only the broker who created this hub can remove that comp.",
+                code: "owner_only",
+              });
+            }
+            const done = await sbRequest("PATCH", scope,
+              { removed_at: new Date().toISOString() }, { prefer: "return=representation" });
+            if (!done || !done.length) return sendJson(res, 404, { error: "That comp was not found." });
+            touchHub(id);
+            return sendJson(res, 200, { ok: true, removed: true });
+          }
+
+          // Validated against hub-access.js's vocabulary before the write, so
+          // an unknown value is a sentence rather than a PostgREST 400 from
+          // the CHECK constraint behind it. Both exist on purpose: the
+          // constraint stops a bad row, this stops a bad request.
+          if (!HUB.isItemStatus(b.status)) {
+            return sendJson(res, 400, { error: "That is not a status a comp can have." });
+          }
+          const status = String(b.status).trim().toLowerCase();
+          const saved = await sbRequest("PATCH", scope, {
+            status,
+            // WHO decided, and when. Stamped from the session, never from the
+            // browser: the whole value of a shortlist is that it records the
+            // client's own judgement, so an unattributable status is worth
+            // less than none.
+            status_by: g.user.id,
+            status_at: new Date().toISOString(),
+          }, { prefer: "return=representation" });
+          if (!saved || !saved.length) return sendJson(res, 404, { error: "That comp was not found." });
           touchHub(id);
-          return sendJson(res, 200, { ok: true });
+          if (g.participant) stampHubView(g.participant.id);
+          logEvent("hub_status", { market: g.hub.market || "", source: status });
+          return sendJson(res, 200, { ok: true, item: hubItemForClient(saved[0]) });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           if (err.message === "too_big") return;

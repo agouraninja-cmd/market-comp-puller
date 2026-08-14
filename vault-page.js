@@ -564,21 +564,21 @@ if(dd)dd.open=false;});</script>
         <p class="fine">Your comps are never read into CompNinja&rsquo;s public
           records, never included in an export or a shared link, and never shown
           to another broker.</p>
-        <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
       </details>
       <div class="row">
         <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
-        <button class="btn ghost" id="bookPick">Choose a spreadsheet or PDF</button>
+        <button class="btn ghost" id="bookPick">Choose a spreadsheet, PDF or screenshot</button>
       </div>
     </div>
 
     <div id="addSec" class="addpanel hide">
       <div class="drop" id="drop">
-        <p class="drop-k">Import a spreadsheet or PDF</p>
-        <button class="btn" id="pick">Choose a spreadsheet or PDF</button>
-        <p>or drop a .csv or .pdf here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
-        <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
-        <input type="file" id="file" accept=".csv,.pdf,text/csv,application/pdf" class="hide"/>
+        <p class="drop-k">Import a spreadsheet, PDF or screenshot</p>
+        <button class="btn" id="pick">Choose a spreadsheet, PDF or screenshot</button>
+        <p>or drop a .csv, .pdf or an image here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+        <input type="file" id="file" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp" class="hide"/>
       </div>
       <div id="res"></div>
 
@@ -713,7 +713,7 @@ if(dd)dd.open=false;});</script>
       </table></div>
       <!-- "above" used to point at a section in plain view. The uploader is a
            closed panel now, so this names the control that opens it. -->
-      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet or PDF.</div>
+      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet, PDF or screenshot.</div>
       <!-- Imports is provenance for the table it now sits under, not a tenth
            peer section at the foot of the page. Collapsed, because the one
            thing a broker does here (remove an import) is rare and destructive,
@@ -2058,10 +2058,16 @@ if(dd)dd.open=false;});</script>
       .catch(function(){ failed("The upload did not reach the server. Nothing was saved.",""); });
   }
 
-  function isPdfFile(file){
+  // Anything the extract route reads: a table PDF, or a screenshot or photo of
+  // one. This is a courtesy check only, so a broker learns in the browser
+  // rather than after a 4 MB round trip; the file the vendor actually sees is
+  // decided by the server sniffing its bytes, never by this name or this type.
+  function isExtractFile(file){
     var n=String(file&&file.name||"").toLowerCase();
     var t=String(file&&file.type||"");
-    return t==="application/pdf" || /\\.pdf$/.test(n);
+    return t==="application/pdf" || /\\.pdf$/.test(n) ||
+           t==="image/png" || t==="image/jpeg" || t==="image/webp" ||
+           /\\.(png|jpe?g|webp)$/.test(n);
   }
   function isCsvFile(file){
     var n=String(file&&file.name||"").toLowerCase();
@@ -2071,15 +2077,15 @@ if(dd)dd.open=false;});</script>
 
   function upload(file){
     if(!file)return;
-    if(!isPdfFile(file) && !isCsvFile(file)){
-      $("res").innerHTML='<div class="msg bad">Use a .csv or .pdf.</div>';
+    if(!isExtractFile(file) && !isCsvFile(file)){
+      $("res").innerHTML='<div class="msg bad">Use a .csv, a .pdf, or a screenshot (PNG, JPEG or WebP).</div>';
       return;
     }
     if(file.size>4*1024*1024){
-      $("res").innerHTML='<div class="msg bad">That file is too large to read.</div>';
+      $("res").innerHTML='<div class="msg bad">That file is too large to read. The limit is 4 MB.</div>';
       return;
     }
-    if(isPdfFile(file)){ extractPdf(file); return; }
+    if(isExtractFile(file)){ extractFile(file); return; }
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
@@ -2107,7 +2113,7 @@ if(dd)dd.open=false;});</script>
     fr.readAsText(file);
   }
 
-  function extractPdf(file){
+  function extractFile(file){
     setAddOpen(true);
     $("pick").disabled=true;
     $("res").innerHTML='<div class="msg ok">Reading the table in '+esc(file.name)+"&hellip;</div>";
@@ -2118,12 +2124,12 @@ if(dd)dd.open=false;});</script>
       var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
       fetch("/api/vault/extract",{method:"POST",credentials:"same-origin",
         headers:{"content-type":"application/json"},
-        body:JSON.stringify({filename:file.name,pdf:b64})})
+        body:JSON.stringify({filename:file.name,file:b64})})
         .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
         .then(function(o){
           $("pick").disabled=false;
           if(o.s!==200){
-            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that PDF. Nothing was saved.")+"</div>";
+            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that file. Nothing was saved.")+"</div>";
             return;
           }
           $("res").innerHTML="";

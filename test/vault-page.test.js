@@ -456,6 +456,22 @@ async function choosePdf(doc, name) {
   await tick();
   await tick();
 }
+// A screenshot of a deals table takes the same door as a PDF. Its data URL
+// carries a DIFFERENT media type, which is the part a PDF-shaped client would
+// get wrong.
+async function chooseImage(doc, name, type) {
+  doc.getElementById("file").fire("change", {
+    target: {
+      files: [{
+        name: name || "costar.png", type: type || "image/png", size: 240000,
+        dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      }],
+      value: "x",
+    },
+  });
+  await tick();
+  await tick();
+}
 const selectsOf = (doc) => doc.getElementById("mapBody").querySelectorAll("select");
 const selectFor = (doc, src) =>
   selectsOf(doc).filter((s) => s.getAttribute("data-src") === src)[0];
@@ -1049,7 +1065,68 @@ test("a non-csv non-pdf file never hits inspect", async () => {
   });
   await tick();
   assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0);
-  assert.match(doc.getElementById("res").innerHTML, /Use a \.csv or \.pdf/);
+  assert.match(doc.getElementById("res").innerHTML, /Use a \.csv, a \.pdf, or a screenshot/);
+});
+
+// ---------------------------------------------------------------------------
+// Screenshots and photos take the PDF's door
+// ---------------------------------------------------------------------------
+
+test("a screenshot posts to extract, not inspect, and opens the confirm table", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "costar.png",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" },
+        error: null,
+      }],
+    })),
+  });
+  await chooseImage(doc, "costar.png");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0,
+    "an image has no columns to map; it must never reach the CSV mapper");
+  assert.ok(doc.getElementById("mapSec").classList.contains("hide"));
+  assert.ok(!doc.getElementById("pdfSec").classList.contains("hide"));
+});
+
+test("the extract post carries the base64 under `file`, with the data: prefix stripped", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, { filename: "costar.png", rows: [] })),
+  });
+  await chooseImage(doc, "costar.png");
+  const ex = calls.filter((c) => c.url.indexOf("/api/vault/extract") === 0);
+  assert.equal(ex.length, 1);
+  assert.equal(ex[0].body.file, "iVBORw0KGgo=",
+    "the server sniffs raw bytes; a data: prefix left in place would fail that sniff");
+  assert.equal(ex[0].body.filename, "costar.png");
+});
+
+test("a jpeg and a webp take the same door as a png", async () => {
+  for (const [name, type] of [["sheet.jpg", "image/jpeg"], ["sheet.webp", "image/webp"]]) {
+    const { doc, calls } = await runPage([], null, {
+      extract: () => Promise.resolve(jsonResponse(200, { filename: name, rows: [] })),
+    });
+    await chooseImage(doc, name, type);
+    assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/extract") === 0).length, 1, name);
+  }
+});
+
+test("a file with no type still routes on its extension, both ways", async () => {
+  // Drag-and-drop and some browsers hand over an empty `type`, so the
+  // extension is the only signal left; a .csv must not fall into extract.
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, { filename: "shot.JPEG", rows: [] })),
+  });
+  doc.getElementById("file").fire("change", {
+    target: { files: [{ name: "shot.JPEG", type: "", size: 1200, dataUrl: "data:;base64,/9j/" }], value: "x" },
+  });
+  await tick(); await tick();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/extract") === 0).length, 1);
+
+  const second = await runPage([]);
+  await chooseFile(second.doc, CLEAN_CSV, "book.csv");
+  assert.equal(second.calls.filter((c) => c.url.indexOf("/api/vault/extract") === 0).length, 0,
+    "a spreadsheet must never be sent to the extract vendor");
 });
 
 // ---------------------------------------------------------------------------

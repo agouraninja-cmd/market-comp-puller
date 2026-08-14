@@ -1121,7 +1121,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `analytics_events` is queryable directly in
   Supabase when the dashboard is unavailable: `source = 'corpus'` marks a hit.
   **Whose visit an event was** (2026-08-13; migration
-  `024-analytics-visitor.sql`, **run before deploying — see below**). Events
+  `026-analytics-visitor.sql`, **run before deploying — see below**). Events
   recorded what happened and nothing about whose visit it was, so the table
   could count signups and count reports and never say whether the same
   browser did both. `visitor_id` (an opaque random id in the httpOnly

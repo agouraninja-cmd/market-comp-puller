@@ -7378,7 +7378,7 @@ function logEvent(kind, dims) {
     searches: dims && Number.isFinite(dims.searches) ? dims.searches : null,
     out_tokens: dims && Number.isFinite(dims.out_tokens) ? dims.out_tokens : null,
     rescue: (dims && dims.rescue) || "",
-    // Whose visit this was (2026-08-13, migration 024). Empty string rather
+    // Whose visit this was (2026-08-13, migration 026). Empty string rather
     // than null for the same reason every other text dimension here is:
     // aggregateStats treats blank as "unknown" and never has to test two
     // kinds of missing.
@@ -7502,7 +7502,7 @@ function aggregateStats(rows) {
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
-    // Visitor funnel (2026-08-13, migration 024). The one question every
+    // Visitor funnel (2026-08-13, migration 026). The one question every
     // other block here cannot answer: not how many signups and how many
     // reports, but how many of the SAME browsers did both. Counted over
     // distinct visitor_id, so one person reloading five times is one arrival
@@ -7907,7 +7907,7 @@ function render(d){
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
   // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
-  // migration 024. The card is one line per stage plus its own denominator,
+  // migration 026. The card is one line per stage plus its own denominator,
   // because the honest reading of a tiny sample is the sample size: two
   // arrivals converting reads "100%" and means nothing, so the count is
   // always shown next to the percentage and the percentage is withheld
@@ -7923,7 +7923,7 @@ function render(d){
     "<div class=card><h2>Visitor funnel</h2>"+
     (!fn.arrived
       ? "<p class=muted>No attributed visits yet &mdash; visitor ids land from the 2026-08-13 deploy onward, "+
-        "and only after migration 024 has been run. Every event before that is counted in the totals above "+
+        "and only after migration 026 has been run. Every event before that is counted in the totals above "+
         "and deliberately excluded here rather than lumped together as one unknown visitor.</p>"
       : "<table><tr><td>Arrived</td><td style='text-align:right'><b>"+fn.arrived+"</b></td>"+
         "<td style='text-align:right' class=muted>100%</td><td class=muted>distinct browsers</td></tr>"+

@@ -1332,7 +1332,7 @@ test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
 
 // --- Analytics visitor attribution ------------------------------------------
 //
-// migration 024's two columns exist so the event log can answer "did the same
+// migration 026's two columns exist so the event log can answer "did the same
 // browser arrive, sign up, and run a report?" — which it could not, because a
 // row said what happened and nothing about whose visit it was.
 //

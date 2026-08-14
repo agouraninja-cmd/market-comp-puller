@@ -1,5 +1,5 @@
--- migrations/024-analytics-visitor.sql
--- 024 · Which visit an analytics event belongs to (2026-08-13)
+-- migrations/026-analytics-visitor.sql
+-- 026 · Which visit an analytics event belongs to (2026-08-13)
 --
 -- Why this exists: analytics_events records WHAT happened and nothing about
 -- WHOSE visit it was, so the table can count signups and count reports and

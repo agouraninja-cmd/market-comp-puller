@@ -96,6 +96,42 @@ test("the broker contribution path is not a dead end", async (t) => {
     assert.match(html, /href="\/\?submit=comp"/, "the CTA needs a query the wall can see");
   });
 
+  await t.test("/brokers is two stacked ledgers, not two cards", async () => {
+    // Spec: docs/superpowers/specs/2026-08-13-brokers-page-ledger-design.md
+    // Contribute vs Pro must stay two statements. One list makes the vault
+    // look like it comes with a submitted comp.
+    const html = await (await fetch(srv.base + "/brokers")).text();
+    const offer = html.split("<h1>")[1].split('class="cta"')[0];
+    assert.equal((offer.match(/class="bk"/g) || []).length, 2,
+      "/brokers should show two ledgers");
+    const contribute = offer.split("For submitting a comp.")[1].split("With Pro.")[0];
+    const pro = offer.split("With Pro.")[1];
+    assert.ok(contribute && pro, "both ledger headings must exist");
+    assert.equal((contribute.match(/class="bkrow"/g) || []).length, 3,
+      "contribute ledger is three trades");
+    assert.match(contribute, /class="bklag">CREDIT</);
+    assert.match(contribute, /class="bklag">INTROS</);
+    assert.match(contribute, /class="bklag">PROFILE</);
+    assert.equal((contribute.match(/Verified &middot; via Your Firm/g) || []).length, 1,
+      "the credit chip is shown on Credit, once");
+    assert.ok(!/class="badge v"/.test(contribute),
+      "MARKET_CSS .v collides with .tile .v; the chip stays inline-styled");
+    assert.equal((pro.match(/class="bkrow"/g) || []).length, 3,
+      "Pro ledger is three trades");
+    assert.match(pro, /class="bklag">BOOK</);
+    assert.match(pro, /class="bklag">PIPELINE</);
+    assert.match(pro, /class="bklag">PRIVATE</);
+    assert.ok(!/Verified &middot; via Your Firm/.test(pro),
+      "the chip belongs on Credit, not on the vault");
+    assert.equal((html.match(/href="\/\?submit=comp"/g) || []).length, 1,
+      "exactly one Submit door");
+    assert.ok(!/class="steps"/.test(html), "do not reuse Method's 3-up");
+    assert.ok(!/class="grid"/.test(offer), "the offer is not a two-card grid");
+    assert.match(html, /Working a 1031 exchange\?/);
+    assert.match(html, /CompNinja is not a licensed brokerage/);
+    assert.match(html, /id="upgradeProLink"/);
+  });
+
   await t.test("that door serves the app, not the landing page", async () => {
     const r = await fetch(srv.base + "/?submit=comp", { redirect: "manual" });
     assert.equal(r.status, 200);

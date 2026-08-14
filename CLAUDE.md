@@ -2068,6 +2068,24 @@ private row has not earned. Two rules matter when editing anything down here:
    harvested into `comp_corpus`, which holds comps and not a property's own
    sale of itself.
 
+3d. **`subject_asking` and `subject_year_built` — the live list price and vintage**
+   (2026-08-14). A 1994 Rosedale house listed at $1.25M ($454/SF, at the
+   neighborhood median) was reported at $1.65M because the comps were the
+   expensive tail ($486–$653/SF) and a +5.5%/yr trend was applied in a
+   declining market. The listing was sitting on the same page the size was
+   read from. Four rules, the last-sale pattern reused. **It costs no extra
+   search**: both fields ride the SUBJECT SIZE step. **The list price is
+   evidence, not a fourth figure** — `renderSubjectAsking` draws one line
+   under the approaches; `askFit` (pure, in `valuation.js`, same 25% rule as
+   `outlierOf`) names a gap of more than 25% on the trust line and never
+   changes the range. **Vintage is a fourth `compWeight` factor** — free pass
+   within 15 years of `subject_year_built`, then halving per further 15
+   years — so a 2024 teardown-rebuild does not price a 1994 resale at full
+   weight. `year_built` rides `locked_basis` so free and Pro ranges still
+   match. **User-typed asking price wins** (`askingRangeFrom`); the looked-up
+   listing is the fallback that lights the comparison card when the visitor
+   never typed one.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

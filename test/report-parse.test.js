@@ -372,3 +372,78 @@ test("scrub never throws on junk", () => {
   const parsed = { comps: [null, "x", {}], summary: undefined, value_drivers: "not an array" };
   assert.equal(RP.scrubUnearnedVerifiedClaims(parsed), parsed);
 });
+
+// --- subject asking / year built --------------------------------------------
+//
+// The 2026-08-13 Austin Rosedale report looked up the subject's size from the
+// listing page and never took the $1,250,000 ask sitting next to it. These
+// two fields ride that same lookup; the normalizers are the guarantee that
+// a junk value cannot become an href or a vintage weight.
+
+test("normalizeSubjectAsking keeps a priced listing and drops a javascript URL", () => {
+  const parsed = RP.normalizeSubjectAsking({
+    subject_asking: { price: "$1,250,000", source_url: "javascript:alert(1)" },
+  });
+  assert.equal(parsed.subject_asking.price, "$1,250,000");
+  assert.equal(parsed.subject_asking.source_url, "");
+});
+
+test("normalizeSubjectAsking keeps an http(s) source", () => {
+  const parsed = RP.normalizeSubjectAsking({
+    subject_asking: { price: "$1,250,000", source_url: "https://www.zillow.com/homedetails/x" },
+  });
+  assert.equal(parsed.subject_asking.source_url, "https://www.zillow.com/homedetails/x");
+});
+
+test("normalizeSubjectAsking drops a listing with no parseable price", () => {
+  const parsed = RP.normalizeSubjectAsking({
+    subject_asking: { price: "", source_url: "https://example.com" },
+  });
+  assert.equal("subject_asking" in parsed, false);
+  const none = RP.normalizeSubjectAsking({ subject_asking: { price: "call for pricing" } });
+  assert.equal("subject_asking" in none, false);
+});
+
+test("normalizeSubjectAsking drops a non-object and returns the same object", () => {
+  assert.equal(RP.normalizeSubjectAsking(null), null);
+  const parsed = { subject_asking: "1.25M" };
+  assert.equal(RP.normalizeSubjectAsking(parsed), parsed);
+  assert.equal("subject_asking" in parsed, false);
+});
+
+test("normalizeSubjectYearBuilt keeps a 4-digit year as a number", () => {
+  assert.equal(RP.normalizeSubjectYearBuilt({ subject_year_built: "1994" }).subject_year_built, 1994);
+  assert.equal(RP.normalizeSubjectYearBuilt({ subject_year_built: 1994 }).subject_year_built, 1994);
+  assert.equal(RP.normalizeSubjectYearBuilt({ subject_year_built: "2019" }).subject_year_built, 2019);
+});
+
+test("normalizeSubjectYearBuilt drops anything that is not a year", () => {
+  const drop = (v) => {
+    const p = RP.normalizeSubjectYearBuilt({ subject_year_built: v });
+    assert.equal("subject_year_built" in p, false, "should drop " + JSON.stringify(v));
+  };
+  drop("");
+  drop("c. 1994");
+  drop("built 1994");
+  drop(2752);
+  drop("1250000");
+  drop("94");
+});
+
+test("the search prompt asks for subject_asking and subject_year_built on the size lookup", () => {
+  // File search, not a model run. The Austin failure was that the size step
+  // opened the listing and never asked for the ask or the year.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(start >= 0 && end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+  assert.match(body, /"subject_asking"/);
+  assert.match(body, /"subject_year_built"/);
+  // Wired into finishReport, not merely declared. A prompt field nobody
+  // normalizes would reach the browser as model-written free text.
+  assert.match(src, /normalizeSubjectAsking\(/);
+  assert.match(src, /normalizeSubjectYearBuilt\(/);
+});

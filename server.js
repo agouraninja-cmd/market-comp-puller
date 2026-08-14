@@ -3088,7 +3088,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // pricier pocket a mile away) and the hero range lands far above what
     // the subject's own street trades at (seen live 2026-08-04: a ~$750k
     // house shown a $927k LOW end off 4 such comps).
-    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
+    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
 
   // The subject-size lookup belongs to whichever lane searches assessor data:
@@ -3238,7 +3238,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // The neighbor guard matters: adjacent parcels' sizes surface readily in
     // search results, and a wrong "found" size is worse than an honest "".
     wantsSize
-      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off the property's own last sale date and price for "subject_last_sale" below - the same record usually carries both, so it costs you nothing here and is one of the most valuable things in the report.`
+      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off three things that usually sit next to the size and cost you nothing extra: the property's own last sale date and price for "subject_last_sale" below; the current asking or list price if the property is actively listed, for "subject_asking"; and the year the building was constructed, for "subject_year_built". A live list price is the current market's own ask for THIS property, and a 1994 house must not be priced by 2024 new construction even on the next block.`
       : "",
     typeGuidance[type] || "",
     // Size class moves $/SF (economies of scale) — steer comp selection
@@ -3294,6 +3294,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // (wantsSize) and of the sole/primary lane regardless; mergeLaneReports
     // carries whichever one answers.
     ...(wantsSize || !compsOnly ? [`  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`] : []),
+    ...(wantsSize || !compsOnly ? [`  "subject_asking": { "price": "", "source_url": "" },`, `  "subject_year_built": "",`] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -3331,7 +3332,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ...(compsOnly ? [] : [
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
-    `"value_drivers" = 2 to 3 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. Each entry must stay under about 80 characters: the named factor and its direction, then stop - no explanations, no tenant or company name lists. "market_trend" = one SHORT sentence, under about 140 characters, on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
+    `"value_drivers" = 2 to 3 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. Each entry must stay under about 80 characters: the named factor and its direction, then stop - no explanations, no tenant or company name lists. "market_trend" = one SHORT sentence, under about 140 characters, on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use sold prices in the subject's own neighborhood over this window, not a metro-wide figure, a different asset class, or a prior cycle; if those sales are down, the number is negative. Use "" if your searches did not show a clear trend - do not guess.`,
     `"search_radius" = a short phrase (a few words) naming the geographic scope you actually used to gather these comps and whether you widened it, e.g. "Immediate submarket, ~3 miles" or "Widened to ~20 miles, limited local activity". Keep it under about 10 words. Use "" if not applicable.`,
     `"transactions_reviewed" = your rough estimate, as a plain number, of how many recent ${type} transactions you came across in this market and window before narrowing to the most comparable ones above. An approximation is expected (e.g. 34) - it conveys how much market activity you weighed. It must be greater than the number of comps you returned. Use "" if you cannot reasonably estimate it; never invent a large number to look thorough.`,
     `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 short sentences, under about 200 characters total, on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
@@ -3348,6 +3349,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // with the size already known there is no subject search to ride along on,
     // and buying one would come out of the comp budget.
     ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent closed sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000", "source_url" = the page that states it. This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
+    ...(wantsSize || !compsOnly ? [`"subject_asking" = the TARGET property's current asking or list price if it is actively listed for sale, as one number like "$1,250,000". ${wantsSize ? "The listing page you open for the subject size above carries this next to the square footage, so read it off that page - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "source_url" = the listing page that states it. This is the current ASK, not a closed sale and not a comp, and it must NOT also appear in "comps". Leave both fields "" if the property is not listed. "subject_year_built" = the year the TARGET building was constructed, as a 4-digit year like "1994". Same lookup as the size; use "" if you cannot determine it. Do not guess.`] : []),
   ].join("\n");
 }
 
@@ -3363,7 +3365,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
-const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims } = RPARSE;
+const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
+        normalizeSubjectAsking, normalizeSubjectYearBuilt } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -4218,12 +4221,18 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // the final `verified` flags, so it has to run after attachVerifiedAttribution
   // has cleared the unearned ones. Inside that call it would read the model's
   // own claims and conclude the narrative was justified.
-  const finishReport = (raw) =>
-    scrubUnearnedVerifiedClaims(
-      attachVerifiedAttribution(
+  const finishReport = (raw) => {
+    const parsed = normalizeSubjectYearBuilt(
+      normalizeSubjectAsking(
         normalizeSubjectLastSale(
-          reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
-        verifiedComps));
+          reconcilePricePerSqft(
+            normalizeTrendPct(
+              normalizeCurrency(
+                normalizeSourceTypes(
+                  expandCompKeys(parseCompJson(raw, stats), type))))))));
+    return scrubUnearnedVerifiedClaims(
+      attachVerifiedAttribution(parsed, verifiedComps));
+  };
   try {
     return finishReport(text);
   } catch (err) {
@@ -4294,6 +4303,12 @@ function mergeLaneReports(primary, records, maxComps) {
   // pages, which is where a sale history lives.
   if (records.subject_last_sale && records.subject_last_sale.date && !(primary.subject_last_sale || {}).date) {
     primary.subject_last_sale = records.subject_last_sale;
+  }
+  if (records.subject_asking && records.subject_asking.price && !(primary.subject_asking || {}).price) {
+    primary.subject_asking = records.subject_asking;
+  }
+  if (records.subject_year_built && !primary.subject_year_built) {
+    primary.subject_year_built = records.subject_year_built;
   }
 
   console.log(`Lane merge: ${a.length} listing-lane + ${fresh.length} records-lane comp(s), ${records.comps.length - fresh.length} duplicate(s) dropped, ${primary.comps.length} kept.`);

@@ -182,3 +182,13 @@ test("landing address handoff fills #address from sessionStorage and drops the k
     "filling the box is the whole handoff; do not auto-run a search"
   );
 });
+
+test("the hero has a listing line so an ask the size lookup already saw cannot stay invisible", () => {
+  // The 2026-08-13 Austin Rosedale report looked up 2,752 SF from the listing
+  // and never mentioned the $1,250,000 ask sitting next to it.
+  assert.match(html, /id="ownerAsking"/);
+  assert.match(html, /function renderSubjectAsking\(/);
+  assert.match(html, /function askingRangeFrom\(/);
+  assert.match(html, /Currently listed at/);
+  assert.match(html, /askFit\(/);
+});

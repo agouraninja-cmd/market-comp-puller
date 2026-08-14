@@ -119,16 +119,37 @@
     return yrs > 0 ? Math.min(yrs, 5) : 0;
   }
 
-  // Three quiet factors, multiplied:
+  // A 4-digit construction year, or null. Accepts a number or a string that
+  // IS the year ("1994"); a note like "c. 1994" or "built 1994" is dropped
+  // rather than guessed, matching the rest of this module's reject-not-guess
+  // stance. Bounded to 1800-2100 so a size or a price that leaked into the
+  // year field cannot become a vintage penalty.
+  function yearOf(v) {
+    if (v == null || v === "") return null;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      const y = Math.round(v);
+      return y >= 1800 && y <= 2100 ? y : null;
+    }
+    const m = String(v).trim().match(/^(18|19|20)\d{2}$/);
+    return m ? Number(m[0]) : null;
+  }
+
+  // Four quiet factors, multiplied:
   //   recency      2-year half-life on the comp's age at the report date
   //   size match   free pass within 0.5x-2x of the subject, halving per
   //                further doubling (a 5k SF building should not be priced by
   //                a 100k SF warehouse: big buildings trade at lower $/SF)
+  //   vintage      free pass within 15 years of the subject's year built,
+  //                then halving per further 15 years (a 1994 house should not
+  //                be priced by 2024 new construction: they are different
+  //                products even on the same block)
   //   source       verified/public-record full weight, down to half for model
   //                estimates (mirrors the badge tiers)
   // Floored at 0.15 so no comp silently vanishes from a range it visibly sits
-  // in. Missing data is neutral, never a penalty.
-  function compWeight(c, asOf, subjSF) {
+  // in. Missing data is neutral, never a penalty. `subjYear` is optional so
+  // callers that have no year (the accuracy backtest, a report whose lookup
+  // found none) keep the pre-vintage weights exactly.
+  function compWeight(c, asOf, subjSF, subjYear) {
     let w = 1;
     const age = compAgeYears(c, asOf);
     if (age !== null) w *= Math.pow(0.5, age / 2);
@@ -136,6 +157,11 @@
     if (subjSF > 0 && compSF > 0) {
       const octaves = Math.abs(Math.log2(compSF / subjSF));
       if (octaves > 1) w *= Math.pow(0.5, octaves - 1);
+    }
+    const ySub = yearOf(subjYear), yComp = yearOf(c && c.year_built);
+    if (ySub != null && yComp != null) {
+      const dy = Math.abs(yComp - ySub);
+      if (dy > 15) w *= Math.pow(0.5, (dy - 15) / 15);
     }
     const tier = tierOf(c);
     if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
@@ -189,7 +215,7 @@
 
     const rr = robustPpsfRange(items.map((x) => ({
       v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
-      w: compWeight(x.comp, o.asOf, sizeMid),
+      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear),
     })));
 
     return {
@@ -265,9 +291,37 @@
     return null;
   }
 
+  // Is the sales-comparison mid far from a known asking / listing price?
+  // Same 25% rule as outlierOf (OUTLIER_PCT): inside that band the listing
+  // and the comps agree closely enough to leave alone; past it, one of them
+  // is the wrong product.
+  //
+  // The 2026-08-13 Austin Rosedale case: a 1994 house listed at $1,250,000
+  // ($454/SF, at the neighborhood median) was reported at $1,650,000
+  // ($599/SF) because the comps were the expensive tail ($486–$653/SF) and
+  // a +5.5%/yr trend was applied in a market whose sold prices were falling.
+  // Size was right; the comp set was a different vintage and pocket. The
+  // listing was sitting on the same page the size was read from and never
+  // entered the report.
+  //
+  // This never changes the range — a list price is not a fourth valuation
+  // figure, any more than the subject's last sale is. It says when the
+  // comps and the listing disagree enough that the reader should look at
+  // Year Built before trusting the headline.
+  function askFit(askPrice, midValue) {
+    var ask = Number(askPrice), mid = Number(midValue);
+    if (!(ask > 0) || !(mid > 0)) return null;
+    var pct = (mid - ask) / ask;
+    var dir = pct > 0 ? "above" : (pct < 0 ? "below" : "even");
+    var out = { skewed: false, dir: dir, pct: Math.round(Math.abs(pct) * 100), ask: ask, mid: mid };
+    if (Math.abs(pct) <= OUTLIER_PCT) return out;
+    out.skewed = true;
+    return out;
+  }
+
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
-    TIER_WEIGHT, tierOf, compAgeYears, compWeight, trendFactor,
-    valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit,
+    TIER_WEIGHT, tierOf, compAgeYears, yearOf, compWeight, trendFactor,
+    valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
   };
 });

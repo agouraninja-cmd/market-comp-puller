@@ -958,7 +958,7 @@ test("market explorer with the guest gate disabled", async (t) => {
 // run for free with no database.
 
 test("tester passkey", async (t) => {
-  await t.test("the route does not exist when TESTER_PASSKEY is unset", async () => {
+  await t.test("the route does not exist when NEITHER passkey is set", async () => {
     const srv = await boot({});
     t.after(() => srv.stop());
     const r = await fetch(srv.base + "/api/redeem-passkey", {
@@ -974,6 +974,10 @@ test("tester passkey", async (t) => {
     // route's per-IP limiter.
     const cfg = await (await fetch(srv.base + "/api/config")).json();
     assert.equal(cfg.pro.testerPasskey, false);
+    // Both doors, since either one alone is enough to open the route: a 404
+    // here means neither was configured, and the row must stay hidden for
+    // both reasons rather than one.
+    assert.equal(cfg.pro.vaultPasskey, false);
   });
 
   await t.test("configured: refuses anonymous and wrong codes, accepts the right one", async () => {
@@ -1048,6 +1052,130 @@ test("tester passkey", async (t) => {
     // /api/redeem-passkey call — a new case needs its own boot() or a fresh
     // client IP.
     const wrongAfter = await redeem("still-not-the-passkey", cookie);
+    assert.equal(wrongAfter.status, 200);
+    assert.equal((await wrongAfter.json()).already, true);
+  });
+});
+
+// --- The vault passkey ------------------------------------------------------
+//
+// The same route and the same input as the tester passkey, a different
+// secret, and a deliberately different grant: the broker vault and NOT Pro.
+// It replaces the one-row `update users set vault_beta = true` that had to be
+// typed into the SQL editor for every broker onboarded.
+//
+// entitlements.js already proves what users.vault_beta grants. What can only
+// be proved here is that the door is WIRED: that a code reaching this route
+// actually lands on the column, that the column actually reaches
+// /api/config's canUseVault (it did not for the first day of vault_beta's
+// life — the grant was set and the vault still refused, because
+// getSessionUser's narrowed user object never carried the flag), and that
+// the two codes stay separate in both directions.
+//
+// Each case boots its own server, which is also what keeps them inside the
+// route's 5-per-15-minute per-IP limiter: the limiter is in-memory, so a
+// fresh process is a fresh budget.
+
+test("vault passkey", async (t) => {
+  const signUp = async (srv, label) => {
+    const r = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: `${label}-${Date.now()}@example.com`, password: "correct-horse-battery" }),
+    });
+    assert.equal(r.status, 200, "signup should succeed against the file store");
+    const cookie = String(r.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_session="), "expected a session cookie, got " + cookie);
+    return cookie;
+  };
+  const redeemer = (srv) => (passkey, cookie) => fetch(srv.base + "/api/redeem-passkey", {
+    method: "POST",
+    headers: Object.assign({ "content-type": "application/json" }, cookie ? { cookie } : {}),
+    body: JSON.stringify({ passkey }),
+  });
+
+  await t.test("VAULT_PASSKEY alone opens the route, and grants the vault without Pro", async () => {
+    const VAULT = "give-me-the-vault";
+    // Deliberately NO TESTER_PASSKEY: the two are independent, and a
+    // deployment running only the broker door must still answer this route.
+    const srv = await boot({ PRO_ENABLED: "on", VAULT_PASSKEY: VAULT });
+    t.after(() => srv.stop());
+    const redeem = redeemer(srv);
+    const cookie = await signUp(srv, "broker");
+
+    const before = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(before.pro.vaultPasskey, true, "a configured deployment must say the door exists");
+    assert.equal(before.pro.testerPasskey, false, "the tester door is unset here");
+    assert.equal(before.pro.canUseVault, false);
+
+    const ok = await redeem(VAULT, cookie);
+    assert.equal(ok.status, 200);
+    const body = await ok.json();
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.granted, ["vault"], "the response must name which door opened");
+
+    // The whole point of the feature, and the exact seam that was broken for
+    // vault_beta's first day: the column has to reach the entitlements the UI
+    // reads, not merely be written.
+    const after = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(after.pro.canUseVault, true);
+    assert.equal(after.pro.broker, true);
+    // And ONLY the vault. A code handed to an outside broker must not be a
+    // way to get Pro's report features for free.
+    assert.equal(after.pro.isPro, false);
+    assert.equal(after.pro.tester, false);
+    assert.equal(after.pro.status, "none");
+
+    // Idempotent, and it says nothing was newly granted.
+    const again = await redeem(VAULT, cookie);
+    assert.equal(again.status, 200);
+    assert.equal((await again.json()).already, true);
+  });
+
+  await t.test("the two codes are separate in both directions", async () => {
+    const TESTER = "try-pro-please";
+    const VAULT = "vault-please";
+    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: VAULT });
+    t.after(() => srv.stop());
+    const redeem = redeemer(srv);
+
+    // A tester code must not open the vault — that exclusion is the reason
+    // this second secret exists at all.
+    const testerCookie = await signUp(srv, "tester-only");
+    assert.equal((await redeem(TESTER, testerCookie)).status, 200);
+    const t1 = await (await fetch(srv.base + "/api/config", { headers: { cookie: testerCookie } })).json();
+    assert.equal(t1.pro.isPro, true);
+    assert.equal(t1.pro.canUseVault, false, "the tester grant must still exclude the vault");
+
+    // ...and a tester still holding no vault grant is told a wrong code is
+    // wrong, rather than "already": there IS something left for them to
+    // redeem on this deployment.
+    const wrong = await redeem("neither-of-them", testerCookie);
+    assert.equal(wrong.status, 401);
+
+    // The reverse: a vault code must not comp Pro.
+    const vaultCookie = await signUp(srv, "vault-only");
+    assert.equal((await redeem(VAULT, vaultCookie)).status, 200);
+    const v1 = await (await fetch(srv.base + "/api/config", { headers: { cookie: vaultCookie } })).json();
+    assert.equal(v1.pro.canUseVault, true);
+    assert.equal(v1.pro.isPro, false, "the vault grant must not comp Pro");
+  });
+
+  await t.test("holding every configured grant answers already, even to a wrong code", async () => {
+    const TESTER = "pro-code";
+    const VAULT = "vault-code";
+    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: VAULT });
+    t.after(() => srv.stop());
+    const redeem = redeemer(srv);
+    const cookie = await signUp(srv, "both");
+
+    assert.equal((await redeem(TESTER, cookie)).status, 200);
+    assert.equal((await redeem(VAULT, cookie)).status, 200);
+
+    // The generalized form of the tester route's pre-compare idempotency
+    // rule: once an account holds everything this deployment can give, a
+    // rotated or mistyped code must not tell them they are locked out.
+    const wrongAfter = await redeem("not-either-code", cookie);
     assert.equal(wrongAfter.status, 200);
     assert.equal((await wrongAfter.json()).already, true);
   });

@@ -164,8 +164,9 @@ dependency. `.env` is git-ignored — never commit it.
   Rules live in `entitlements.js`, so `npm test` covers them; four of them
   matter. It grants everything Pro **except the broker vault** — the vault is a
   private-data workspace with an upload endpoint, and a passkey shared with a
-  wider group is a bigger surface than "try Pro's reports". (The narrow door
-  for handing a specific broker the vault is `users.vault_beta` — see below.) It **cannot switch
+  wider group is a bigger surface than "try Pro's reports". (The door for
+  handing a broker the vault is `VAULT_PASSKEY` / `users.vault_beta` — see
+  the next bullet.) It **cannot switch
   a dark deployment on** (`PRO_ENABLED` still wins, same as the admin branch).
   Its `status` is `"tester"`, never `"active"`, so the UI never offers a
   billing portal to an account with no Stripe customer. And unlike the admin
@@ -174,6 +175,36 @@ dependency. `.env` is git-ignored — never commit it.
   status and their billing portal, and comped access resumes if that
   subscription lapses. A tester is also NOT the `internal` bypass in
   `/api/comps`, which stays header-only.
+- `VAULT_PASSKEY` — optional shared passkey that grants the **broker vault**
+  (and only the vault) to a signed-in account. It exists because
+  `users.vault_beta` was set by hand in the Supabase SQL editor, one broker at
+  a time, which put the owner in the loop for every onboarding — "hand three
+  brokers a vault at a meeting" was a note-to-self rather than something that
+  happened in the room. Redeeming sets the same `users.vault_beta` column
+  (migration 023), so everything already true of that grant stays true:
+  entitlements gives `broker`/`canUseVault` and **not one Pro report feature**,
+  it cannot switch a dark deployment on (`PRO_ENABLED` still wins), it does not
+  ride the subscription lapse rules, and revoking is the one-row `update users
+  set vault_beta = false where email = …`.
+  **It is a SECOND secret, not a widening of `TESTER_PASSKEY`**, and the two
+  are independent — either can be set alone. The tester grant excludes the
+  vault deliberately (see the bullet above), so folding the vault into that
+  code would open a private-data workspace with an upload endpoint to everyone
+  ever handed a try-Pro code. Two codes also keep the two audiences separately
+  revocable: rotating one does not lock the other out. Setting them to the
+  same string is a configuration mistake and the startup banner says so
+  loudly (it is not fatal — a rotation closes it).
+  **Both codes redeem through the same `POST /api/redeem-passkey` and the same
+  input**, because someone handed a code should not also have to know which
+  kind it is; the route compares against both secrets and its `granted` array
+  names which door opened. The route 404s only when NEITHER is set. One
+  behavior deliberately changed to make room for the second code: the
+  idempotency check used to run BEFORE the secret compare, so an existing
+  tester typing a rotated code was told "already" rather than "incorrect". It
+  now runs after (the route cannot know which grant is claimed until it
+  compares) and asks whether the account holds *everything this deployment can
+  give* — identical behavior on a tester-only deployment, and pinned by tests
+  in both shapes.
 - `RESEND_API_KEY` — optional. When set, every stored lead AND every broker
   comp submission fires an email notification via Resend's REST API (plain
   fetch, free tier is plenty). Fire-and-forget: a failing provider is logged
@@ -536,18 +567,29 @@ user row rather than in a cookie. Admin wins outright and skips the billing
 reads; a tester deliberately yields to a real subscription.
 
 There is also one comped-VAULT door, **`users.vault_beta`** (migration 023,
-2026-08-11) — the broker-onboarding grant, set per account by hand
-(`update users set vault_beta = true where email = …`), no env var and no
-shared secret. It exists because neither existing door could ever be handed
-to a real broker: the tester passkey deliberately excludes the vault, and
-`ADMIN_KEY` also unlocks the dashboards. Rules in `entitlements.js`, covered
-by `npm test`, and deliberately narrow: it grants the broker surfaces only
-(vault, lead inbox, blended comps — `broker`/`canUseVault`), never Pro's
-report features; it cannot switch a dark deployment on (`PRO_ENABLED` still
-wins); and unlike everything else vault-shaped it does NOT ride the
-subscription lapse rules — the grant was never billing, so only the one-row
-UPDATE revokes it, and a beta broker whose trial subscription lapses keeps
-their book.
+2026-08-11) — the broker-onboarding grant. It exists because neither existing
+door could ever be handed to a real broker: the tester passkey deliberately
+excludes the vault, and `ADMIN_KEY` also unlocks the dashboards. Rules in
+`entitlements.js`, covered by `npm test`, and deliberately narrow: it grants
+the broker surfaces only (vault, lead inbox, blended comps —
+`broker`/`canUseVault`), never Pro's report features; it cannot switch a dark
+deployment on (`PRO_ENABLED` still wins); and unlike everything else
+vault-shaped it does NOT ride the subscription lapse rules — the grant was
+never billing, so only the one-row UPDATE revokes it, and a beta broker whose
+trial subscription lapses keeps their book.
+
+**Two ways to set it**, and the column is the same either way:
+
+1. by hand, `update users set vault_beta = true where email = …` — still the
+   right tool for one specific account, and the only tool for revoking; and
+2. **`VAULT_PASSKEY`** (2026-08-13), a shared code the broker redeems
+   themselves at `POST /api/redeem-passkey`. This is the one to reach for
+   when access is being handed out in person: the SQL path made every
+   onboarding wait on the owner opening the SQL editor later, which is the
+   wrong shape for the channel the product actually grows through. See the
+   `VAULT_PASSKEY` bullet under Configuration for why it is a separate secret
+   from `TESTER_PASSKEY` and what changed about the redeem route's
+   idempotency ordering to fit two codes on one input.
 
 `MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`

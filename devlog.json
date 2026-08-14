@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-13",
+    "type": "feature",
+    "title": "A broker can open their own vault with a code, without a SQL update",
+    "details": "Granting the vault meant typing 'update users set vault_beta = true' into the Supabase SQL editor, one broker at a time, so handing three brokers a vault at a meeting was a note to run later rather than something that happened in the room. VAULT_PASSKEY is that same grant, self-serve: the broker signs in, opens Have a code, and lands on their own vault. It sets the same users.vault_beta column, so nothing about the grant changed. It stays a separate secret from TESTER_PASSKEY on purpose, because the tester code deliberately excludes the vault and folding them together would open a private-data workspace with an upload endpoint to everyone ever handed a try-Pro code; two codes also mean rotating one does not lock the other audience out. Both redeem through the same route and the same input, since someone handed a code should not also have to know which kind it is, and the response names which door opened so the modal can point a new broker at the vault instead of closing silently. One deliberate change to make room for the second code: the redeem route's idempotency check used to run before the secret compare, and now runs after and asks whether the account holds everything this deployment can give, which is identical behavior wherever only the tester code is set."
+  },
+  {
+    "date": "2026-08-13",
     "type": "improvement",
     "title": "An empty vault is the real vault, not a numbered onboarding page",
     "details": "Day one used to be two cards, with Your book and Your pipeline hidden until a spreadsheet landed, so the pipeline table shipped yesterday was invisible on an empty account. The empty vault is now the same two decks. The trust line shows zeros. Each empty body is a short invitation: upload closed deals, or watch a market. Add comps and Log a BOV stay closed. The watch-market form sits in the pipeline body until a lead or BOV exists, then collapses under Markets you watch. Watching a market on day one no longer hides waiting leads."

@@ -1,4 +1,5 @@
 [
+  {"date": "2026-08-14", "type": "fix", "title": "Comp table marks are words, and the type chip names the real count", "details": "Residential reports showed gray † ‡ § next to Size and $/SF; the section mark next to a dollar figure read as a second $. Those are now calc / size / adj with a legend. The chip beside the property type is the table's own comp count, so a bare 5 can no longer sit next to Residential while the map holds 8."},
   {
     "date": "2026-08-14",
     "type": "fix",

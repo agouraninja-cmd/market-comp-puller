@@ -774,6 +774,33 @@ test("once pins settle, the hero re-runs so distance weighting actually moves th
   assert.match(html, /nearby/);
 });
 
+test("comp table marks are words, not gray footnote glyphs", () => {
+  assert.match(html, /\.comp-mark \{/);
+  assert.match(html, /function appendCompMark\(/);
+  assert.match(html, /id="compMarksLegend"/);
+  assert.match(html, /appendCompMark\(cell, "calc"/);
+  assert.match(html, /appendCompMark\(cell, "size"/);
+  assert.match(html, /appendCompMark\(cell, "adj"/);
+  assert.match(html, /appendCompMark\(dd, "calc"/);
+  assert.match(html, /appendCompMark\(dd, "size"/);
+  assert.match(html, /appendCompMark\(dd, "adj"/);
+  assert.doesNotMatch(html, /sup\.textContent = "[†‡§]"/);
+  assert.match(html, /adj in the table shows each indexed figure/);
+  assert.match(html, /less \(size in the table\)/);
+});
+
+test("the type chip is followed by the table's own comp count, never a bare digit", () => {
+  const start = html.indexOf("function metaParts(meta)");
+  const end = html.indexOf("function selectedLookbackMonths");
+  assert.ok(start >= 0 && end > start, "metaParts / selectedLookbackMonths moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /currentComps\.length/);
+  assert.match(fn, /n \+ " comps"/);
+  assert.match(fn, /"Note: " \+ note/);
+  assert.match(html, /function renderReportMeta\(/);
+  assert.match(html, /renderReportMeta\(currentMeta\)/);
+});
+
 test("My Desk and the account circle have a place to put a profile photo", () => {
   assert.match(html, /id="acctMenuPhoto"/);
   assert.match(html, /id="acctMenuInitial"/);

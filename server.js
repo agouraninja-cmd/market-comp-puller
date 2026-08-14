@@ -5251,7 +5251,7 @@ const THEME_BOOT =
 // Paired so the mobile browser chrome agrees with the page it frames.
 const THEME_META =
   `<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>\n` +
-  `<meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)"/>\n`;
+  `<meta name="theme-color" content="#121826" media="(prefers-color-scheme: dark)"/>\n`;
 
 const ACCOUNT_NAV_CSS = `
 /* Account circle + menu, revealed by ACCOUNT_NAV_JS once it knows the visitor.

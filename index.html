@@ -8,7 +8,7 @@
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://market-comp-puller.onrender.com/" />
   <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#121826" media="(prefers-color-scheme: dark)" />
   <!-- Sets data-theme before the first frame. Render-blocking and inline on
        purpose: anything deferred paints light first and flashes white on a
        dark page. try/catch because localStorage throws outright in a Safari
@@ -83,9 +83,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       --warn-text:#8A6D1A;--warn-bg:#FBF3DC;--warn-rule:#EDDFB0;
       --err-text:#7F1D1D;--err-bg:#FCF1EF;--err-rule:#F0C7C7}
     @media screen{
-    [data-theme="dark"]{--paper:#020617;--card:#0F172A;--wash:#1E293B;--wash-2:#334155;--slab:#1E293B;
-      --edge:#334155;--line:#273244;--hair:#1E293B;
-      --ink:#E2E8F0;--ink-body:#CBD5E1;--ink-2:#C2CCDA;--ink-mute:#AEBACB;--ink-3:#94A3B8;
+    [data-theme="dark"]{--paper:#121826;--card:#1A2433;--wash:#243044;--wash-2:#334155;--slab:#243044;
+      --edge:#3D4B5F;--line:#2A3648;--hair:#1E2938;
+      --ink:#C9D3E0;--ink-body:#A8B4C4;--ink-2:#9AABC0;--ink-mute:#8A97A8;--ink-3:#7D8B9C;
       --ink-faint:#7C8899;--ink-4:#475569;
       --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
       --green:#34D399;--ok-text:#6EE7B7;--ok-bg:#0C2B21;--ok-rule:#155E43;
@@ -254,9 +254,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     /* ------------------------------------------------------------------------
        Design tokens — the whole site draws from these; don't invent new values.
-       Dark surfaces (slate only): slate-950 #020617 bookends (hero start,
-         footer) · slate-900 #0F172A ink · slate-800 #1E293B lifted ink (logo
-         tile, table header; hover = slate-700 #334155).
+       Dark surfaces (cool slate, lifted 2026-08-13): #121826 paper · #1A2433
+         cards · #243044 lifted (table header, already-dark slabs; hover =
+         #334155).
        Accents: brand red = actions + the subject property · slate-900 ink =
          selected state (segmented controls) · emerald = verified/positive ·
          amber = caution · plain red + left rule = errors. No blues.
@@ -10692,8 +10692,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // ----------------------------------------------------------------------------
   // Rotating example addresses — the search field quietly cycles through
-  // realistic placeholders while it sits empty.
+  // realistic placeholders while it sits empty. Tab on an empty field
+  // accepts the current example (without the "e.g.") so a visitor can try
+  // a real building without typing one. Second Tab then moves on, because
+  // the field is no longer empty. Shift+Tab is back-tab and is never
+  // intercepted. A placeholder that is not an example (a field label, a
+  // hint) is never a fill — only the "e.g." prefix names a building.
   // ----------------------------------------------------------------------------
+  function exampleValueFromPlaceholder(placeholder) {
+    const s = String(placeholder || "");
+    const m = /^\s*e\.g\.\s+/i.exec(s);
+    if (!m) return "";
+    return s.slice(m[0].length).trim();
+  }
+
+  function tabFillExample(e, currentValue, placeholder) {
+    if (!e || e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return "";
+    if (String(currentValue || "").trim()) return "";
+    return exampleValueFromPlaceholder(placeholder);
+  }
+
+  function bindTabFillExample(input) {
+    if (!input) return;
+    input.addEventListener("keydown", (e) => {
+      const filled = tabFillExample(e, input.value, input.placeholder);
+      if (!filled) return;
+      e.preventDefault();
+      input.value = filled;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
   const ADDRESS_EXAMPLES = [
     "e.g. 1200 W Industrial Blvd, Dallas, TX",
     "e.g. 4500 Commerce St, Phoenix, AZ",
@@ -10715,6 +10745,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }, 300);
     }, 4000);
   }
+  bindTabFillExample(document.getElementById("address"));
+  bindTabFillExample(document.getElementById("lockAddress"));
 
   // ----------------------------------------------------------------------------
   // Sample report — canned, illustrative data so visitors can see the product

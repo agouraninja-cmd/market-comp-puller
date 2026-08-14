@@ -15910,12 +15910,49 @@ const server = http.createServer((req, res) =>
           }));
           if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your vault." });
 
-          // ignore-duplicates against hub_items_live_source_uidx: sending the
-          // same comp twice is a no-op, not an error. Re-sending one that was
-          // REMOVED does insert, which is how a corrected price travels.
-          const saved = await sbRequest("POST",
-            "hub_items?on_conflict=hub_id,source,source_ref&select=id",
-            rows, { prefer: "resolution=ignore-duplicates,return=representation" });
+          // Duplicates are filtered HERE rather than by ON CONFLICT, and the
+          // reason is a bug this route shipped with: it asked PostgREST for
+          // `on_conflict=hub_id,source,source_ref`, but
+          // `hub_items_live_source_uidx` is a PARTIAL index (`where removed_at
+          // is null and source_ref is not null`). PostgREST's on_conflict can
+          // only name COLUMNS, so it cannot supply the index predicate, and
+          // Postgres refuses to infer a partial index without one:
+          //
+          //   42P10 — there is no unique or exclusion constraint matching the
+          //           ON CONFLICT specification
+          //
+          // So EVERY vault send failed, 100% of the time, with the route's
+          // generic 503. It was invisible to `npm test` because the route
+          // tests run against a bare server with no database, where this path
+          // 503s by design long before it reaches SQL. Found by sending a real
+          // comp into a real hub.
+          //
+          // The index stays partial: being able to re-send a comp that was
+          // REMOVED is the snapshot rule's correction path and is worth more
+          // than the convenience of ON CONFLICT.
+          const live = await sbRequest("GET",
+            `hub_items?hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null&source=eq.vault` +
+            `&select=source_ref`);
+          const already = new Set((live || []).map((r) => String(r.source_ref)));
+          const fresh = rows.filter((r) => !already.has(String(r.source_ref)));
+          if (!fresh.length) {
+            // Sending the same comp twice stays a no-op rather than an error,
+            // which is what the ON CONFLICT was there to buy.
+            return sendJson(res, 200, { ok: true, added: 0, requested: wanted.length });
+          }
+          let saved;
+          try {
+            saved = await sbRequest("POST", "hub_items?select=id", fresh,
+              { prefer: "return=representation" });
+          } catch (err) {
+            // The read-then-write above has a race window a second sender can
+            // land in. The index is what actually enforces it, so a duplicate
+            // here is the correct outcome, not a failure to report.
+            if (/\b409\b|23505/.test(String(err.message))) {
+              return sendJson(res, 200, { ok: true, added: 0, requested: wanted.length });
+            }
+            throw err;
+          }
           touchHub(id);
           logEvent("hub_items_added", { market: g.hub.market || "", source: "vault" });
           return sendJson(res, 201, {

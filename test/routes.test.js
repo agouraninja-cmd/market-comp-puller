@@ -1227,3 +1227,35 @@ test("/api/vault/extract sniffs the media type and never takes it from the body"
   assert.equal(route.includes("data:application\\/pdf"), false,
     "the data: prefix stripper must not be PDF-only");
 });
+
+test("buildPrompt asks for subject_assessed next to last-sale, not in summary", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  assert.ok(start >= 0, "buildPrompt should still exist");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+  assert.match(body, /"subject_assessed": \{ "value": "", "year": "", "source_url": "" \}/);
+  assert.match(body, /wantsSize \|\| !compsOnly/);
+  assert.match(body, /Do not put it in "summary"/);
+  assert.match(body, /whole parcel, never land-only or improvements-only/);
+  assert.match(body, /do not spend an additional search on it/);
+  const assessedRule = body.slice(body.indexOf('"subject_assessed" ='));
+  assert.equal(assessedRule.includes('mention it in "summary"'), false,
+    "assessed must not earn last-sale's protected summary slot");
+});
+
+test("finishReport and mergeLaneReports wire subject_assessed", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const finish = src.slice(src.indexOf("const finishReport"), src.indexOf("try {", src.indexOf("const finishReport")));
+  assert.match(finish, /normalizeSubjectAssessed\(/);
+  assert.match(finish, /new Date\(\)/);
+  const mergeStart = src.indexOf("function mergeLaneReports");
+  const merge = src.slice(mergeStart, src.indexOf("Dead-at-birth source-link check", mergeStart));
+  assert.match(merge, /records\.subject_assessed && records\.subject_assessed\.value/);
+  assert.match(merge, /primary\.subject_assessed = records\.subject_assessed/);
+});

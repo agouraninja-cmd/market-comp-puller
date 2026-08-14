@@ -2681,7 +2681,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, compWeight, trendFactor, valueFromComps, subjectSizeFit } = VALUATION;
+          compAgeYears, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -4472,6 +4472,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         lab.textContent = e.label + ": ";
         td.appendChild(lab);
         td.appendChild(document.createTextNode(e.text));
+        if (e.href && /^https?:\/\//i.test(e.href)) {
+          td.appendChild(document.createTextNode(" "));
+          const a = document.createElement("a");
+          a.href = e.href;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.className = "underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+          a.textContent = "Source";
+          td.appendChild(a);
+        }
         tr.appendChild(td);
         if (e.value) {
           const num = document.createElement("td");
@@ -4551,6 +4561,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           : `not run: enter your NOI under 'Details for comps' and the ${noun} gets valued on its income too.`,
         muted: true,
       }];
+    };
+
+    // County assessed value — a public-record cross-check, never a headline
+    // and never the cost approach. Built once so every hero branch cannot
+    // drift. Disagreement uses VALUATION.outlierOf (the same 25% nearest-edge
+    // rule as the table chips and the vault gut check). Spec:
+    // docs/superpowers/specs/2026-08-14-tax-assessed-approach-design.md
+    const assessedApproachEntry = (parsed, salesLo, salesHi) => {
+      const ass = parsed && parsed.subject_assessed;
+      if (!ass || !ass.value) return null;
+      const assessedNum = numericValue(ass.value);
+      if (!(assessedNum > 0)) return null;
+      let text = "the county's assessed value"
+        + (ass.year ? ` for tax year ${ass.year}` : "")
+        + ". Counties often lag the market; this is a public-record cross-check, not a third valuation method.";
+      if (Number.isFinite(salesLo) && Number.isFinite(salesHi) && salesLo > 0 && salesHi >= salesLo) {
+        const gap = outlierOf(assessedNum, { low: salesLo, high: salesHi });
+        if (gap) {
+          text += ` ${gap.pct}% ${gap.dir} the range above — the size box or the comps deserve a second look.`;
+        }
+      }
+      const row = {
+        label: "County assessment",
+        value: displayMoney(ass.value),
+        text,
+      };
+      if (/^https?:\/\//i.test(String(ass.source_url || ""))) row.href = ass.source_url;
+      return row;
+    };
+    const withAssessed = (entries, salesLo, salesHi) => {
+      const row = assessedApproachEntry(parsed, salesLo, salesHi);
+      if (row) {
+        const i = entries.findIndex((e) => e.label === "Cost approach");
+        if (i >= 0) entries.splice(i, 0, row);
+        else entries.push(row);
+      }
+      return entries;
     };
 
     // Sales comparison on a per-unit / per-acre basis, when the type trades
@@ -4638,7 +4685,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (altEntry) entries.push(altEntry);
       entries.push(...incomeApproachEntries(rr.low * sizeR.min, rr.high * sizeR.max));
       entries.push(costApproachEntry);
-      renderApproaches(entries);
+      renderApproaches(withAssessed(entries, rr.low * sizeR.min, rr.high * sizeR.max));
     } else if (altRange) {
       // No usable $/SF range, but this asset class doesn't price on square feet
       // anyway. A multifamily owner often doesn't know the building's SF and
@@ -4693,7 +4740,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
       entries.push(...incomeApproachEntries(rr.low * qty, rr.high * qty));
       entries.push(costApproachEntry);
-      renderApproaches(entries);
+      renderApproaches(withAssessed(entries, rr.low * qty, rr.high * qty));
     } else if (noi && capOk) {
       // No usable sale range — lead with the income approach instead.
       const loVal = noi / (capHi / 100);
@@ -4705,7 +4752,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setPpsf("ownerMidPpsf", "income approach midpoint");
       setPpsf("ownerHighPpsf", "at a " + capLo + "% cap rate");
       basisEl.textContent = "Your NOI over the market cap-rate range (income approach)";
-      renderApproaches([
+      renderApproaches(withAssessed([
         {
           label: "Income approach",
           value: `${fmtTotal(loVal)} – ${fmtTotal(hiVal)}`,
@@ -4722,7 +4769,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           muted: true,
         },
         costApproachEntry,
-      ]);
+      ], loVal, hiVal));
     } else if (noi && userCap) {
       // Same shortfall as the branch above — no usable sale range — but the
       // only cap rate we have is the owner's own. A single rate produces a
@@ -4740,7 +4787,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       basisEl.textContent = "Your NOI at your own cap rate (income approach). "
         + "One rate gives one figure rather than a range: this search returned no market cap-rate range, "
         + "and not enough priced sale comps to build one either.";
-      renderApproaches([
+      renderApproaches(withAssessed([
         ...incomeApproachEntries(v, v),
         {
           label: "Sales comparison approach",
@@ -4748,7 +4795,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           muted: true,
         },
         costApproachEntry,
-      ]);
+      ], v, v));
     } else if (ppsfs.length >= 2) {
       // No building size from any source, but priced sale comps exist - lead
       // with the per-square-foot band. A unit-price range is a real valuation
@@ -4778,7 +4825,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }];
       entries.push(...incomeApproachEntries(rr.low, rr.high));
       entries.push(costApproachEntry);
-      renderApproaches(entries);
+      // rr is $/SF here, not a dollar total — no disagreement sentence.
+      renderApproaches(withAssessed(entries, NaN, NaN));
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
@@ -4838,6 +4886,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           widenBtn.onclick = () => rerunHistory({ ...meta, months: target, txFocus: "sales" });
           widenWrap.classList.remove("hidden");
         }
+      }
+      // A report that cannot value the building can still show what the county
+      // says. No dollar range, so no disagreement sentence. Hidden entirely
+      // when assessed is absent — this branch used to show no approaches table.
+      if (assessedApproachEntry(parsed, NaN, NaN)) {
+        renderApproaches(withAssessed([costApproachEntry], NaN, NaN));
       }
     }
 
@@ -12413,6 +12467,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
       const s = currentMeta.subject || {};
       const capR = currentParsed && currentParsed.market_cap_rate_range;
+      const assessed = currentParsed && currentParsed.subject_assessed;
+      const assessedN = assessed ? numericValue(assessed.value) : NaN;
       const sell = sellTodayEstimate(currentParsed, currentMeta);
       const cc = curationCounts();
       const brand = activeBrand();
@@ -12470,6 +12526,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ...(s.noi > 0 ? [["NOI (yours)", xlsxMoney(s.noi)]] : []),
         ...(s.capRate > 0 ? [["Cap rate (yours)", `${s.capRate}%`]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
+        ...(assessedN > 0 ? [[
+          assessed.year ? `County assessed value (tax year ${assessed.year})` : "County assessed value",
+          xlsxMoney(assessedN),
+        ]] : []),
         [],
         ["Automated estimate, not an appraisal. Verify independently before underwriting."],
       ];

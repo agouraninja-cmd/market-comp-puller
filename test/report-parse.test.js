@@ -372,3 +372,116 @@ test("scrub never throws on junk", () => {
   const parsed = { comps: [null, "x", {}], summary: undefined, value_drivers: "not an array" };
   assert.equal(RP.scrubUnearnedVerifiedClaims(parsed), parsed);
 });
+
+// --- normalizeSubjectAssessed ----------------------------------------------
+// County assessed value is a public-record cross-check, not a headline. The
+// opposite of last-sale: VALUE is required (a year with no number is useless)
+// and YEAR is optional (an assessment with no year is still a public number).
+// Caller passes `now` so this module never reads the clock.
+const ASSESSED_NOW = new Date("2026-08-14T00:00:00Z");
+
+test("normalizeSubjectAssessed passes non-objects through untouched", () => {
+  assert.equal(RP.normalizeSubjectAssessed(null, ASSESSED_NOW), null);
+  assert.equal(RP.normalizeSubjectAssessed(undefined, ASSESSED_NOW), undefined);
+  assert.equal(RP.normalizeSubjectAssessed("raw", ASSESSED_NOW), "raw");
+});
+
+test("normalizeSubjectAssessed returns the same object it was given", () => {
+  const parsed = { subject_assessed: { value: "$412,000", year: "2025", source_url: "https://county.example/p" } };
+  assert.equal(RP.normalizeSubjectAssessed(parsed, ASSESSED_NOW), parsed);
+});
+
+test("normalizeSubjectAssessed keeps a valid whole-parcel assessed value", () => {
+  const parsed = RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$412,000", year: "2025", source_url: "https://county.example/p" },
+  }, ASSESSED_NOW);
+  assert.deepEqual(parsed.subject_assessed, {
+    value: "$412,000",
+    year: "2025",
+    source_url: "https://county.example/p",
+  });
+});
+
+test("normalizeSubjectAssessed drops the key when there is no usable value", () => {
+  const noValue = RP.normalizeSubjectAssessed({ subject_assessed: { year: "2025" } }, ASSESSED_NOW);
+  assert.equal(noValue.subject_assessed, undefined);
+  const zero = RP.normalizeSubjectAssessed({ subject_assessed: { value: "$0" } }, ASSESSED_NOW);
+  assert.equal(zero.subject_assessed, undefined);
+  const junk = RP.normalizeSubjectAssessed({ subject_assessed: { value: "n/a" } }, ASSESSED_NOW);
+  assert.equal(junk.subject_assessed, undefined);
+  const missing = RP.normalizeSubjectAssessed({ subject_assessed: null }, ASSESSED_NOW);
+  assert.equal(missing.subject_assessed, undefined);
+  const arr = RP.normalizeSubjectAssessed({ subject_assessed: ["$412,000"] }, ASSESSED_NOW);
+  assert.equal(arr.subject_assessed, undefined);
+});
+
+test("normalizeSubjectAssessed keeps a value with no year", () => {
+  const parsed = RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$412,000", year: "", source_url: "" },
+  }, ASSESSED_NOW);
+  assert.equal(parsed.subject_assessed.value, "$412,000");
+  assert.equal(parsed.subject_assessed.year, "");
+});
+
+test("normalizeSubjectAssessed accepts a 4-digit tax year and 'tax year YYYY'", () => {
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", year: "2025" },
+  }, ASSESSED_NOW).subject_assessed.year, "2025");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", year: "tax year 2025" },
+  }, ASSESSED_NOW).subject_assessed.year, "2025");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", year: "1990" },
+  }, ASSESSED_NOW).subject_assessed.year, "1990");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", year: "2027" },
+  }, ASSESSED_NOW).subject_assessed.year, "2027", "current year + 1 is still a plausible tax year");
+});
+
+test("normalizeSubjectAssessed drops a fiscal span, a pre-1990 year, and a far-future year", () => {
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", year: "2025/26" },
+  }, ASSESSED_NOW).subject_assessed.year, "", "do not guess 2025 out of 2025/26");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", year: "1989" },
+  }, ASSESSED_NOW).subject_assessed.year, "");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", year: "2028" },
+  }, ASSESSED_NOW).subject_assessed.year, "", "current + 2 is not a tax year yet");
+});
+
+test("normalizeSubjectAssessed drops the year rather than reading the clock when now is missing", () => {
+  const parsed = RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$412,000", year: "2025" },
+  });
+  assert.equal(parsed.subject_assessed.value, "$412,000");
+  assert.equal(parsed.subject_assessed.year, "");
+});
+
+test("normalizeSubjectAssessed keeps http(s) source URLs and strips the rest", () => {
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", source_url: "https://county.example/p" },
+  }, ASSESSED_NOW).subject_assessed.source_url, "https://county.example/p");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", source_url: "http://county.example/p" },
+  }, ASSESSED_NOW).subject_assessed.source_url, "http://county.example/p");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", source_url: "javascript:alert(1)" },
+  }, ASSESSED_NOW).subject_assessed.source_url, "");
+  assert.equal(RP.normalizeSubjectAssessed({
+    subject_assessed: { value: "$1", source_url: "data:text/html,x" },
+  }, ASSESSED_NOW).subject_assessed.source_url, "");
+});
+
+test("normalizeSubjectAssessed clips long fields rather than rejecting them", () => {
+  const parsed = RP.normalizeSubjectAssessed({
+    subject_assessed: {
+      value: "$" + "9".repeat(50),
+      year: "2025",
+      source_url: "https://county.example/" + "p".repeat(600),
+    },
+  }, ASSESSED_NOW);
+  assert.equal(parsed.subject_assessed.value.length, 40);
+  assert.equal(parsed.subject_assessed.source_url.length, 500);
+});
+

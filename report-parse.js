@@ -7,8 +7,9 @@
 //
 // This file is the whole /api/comps parse pipeline
 // (parseCompJson → expandCompKeys → normalizeSourceTypes → normalizeCurrency
-// → normalizeTrendPct → reconcilePricePerSqft), extracted from server.js
-// 2026-08-08. A new pipeline step belongs HERE, not in a new file.
+// → normalizeTrendPct → reconcilePricePerSqft → normalizeSubjectAssessed),
+// extracted from server.js 2026-08-08. A new pipeline step belongs HERE, not
+// in a new file. (normalizeSubjectLastSale still lives in server.js.)
 //
 // Two deliberate injections keep this module require-free:
 // TYPE_COMP_FIELDS stays in server.js — it is the prompt's source of truth
@@ -359,6 +360,46 @@ function scrubUnearnedVerifiedClaims(parsed) {
   return parsed;
 }
 
+// The subject's county assessed (taxable) value — a public-record cross-check
+// for the hero's approaches table, never a headline. Opposite of last-sale:
+// VALUE is required (a year with no number is useless) and YEAR is optional
+// (an assessment with no year is still a public number). Pure: the caller
+// passes `now` so this module never reads the clock. Spec:
+// docs/superpowers/specs/2026-08-14-tax-assessed-approach-design.md
+function assessedYearOf(raw, now) {
+  const s = String(raw == null ? "" : raw).trim();
+  const m = /^(?:tax\s*year\s*)?(\d{4})$/i.exec(s);
+  if (!m) return "";
+  const y = Number(m[1]);
+  if (y < 1990) return "";
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) return "";
+  if (y > now.getUTCFullYear() + 1) return "";
+  return String(y);
+}
+
+function normalizeSubjectAssessed(parsed, now) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_assessed;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    delete parsed.subject_assessed;
+    return parsed;
+  }
+  const str = (v) => String(v == null ? "" : v).trim();
+  const value = str(raw.value).slice(0, 40);
+  if (parseSalePrice(value) == null) {
+    delete parsed.subject_assessed;
+    return parsed;
+  }
+  let url = str(raw.source_url).slice(0, 500);
+  if (!/^https?:\/\//i.test(url)) url = "";
+  parsed.subject_assessed = {
+    value,
+    year: assessedYearOf(raw.year, now),
+    source_url: url,
+  };
+  return parsed;
+}
+
 module.exports = {
   extractFirstJsonObject,
   parseCompJson,
@@ -373,4 +414,5 @@ module.exports = {
   parsePsf,
   reconcilePricePerSqft,
   scrubUnearnedVerifiedClaims,
+  normalizeSubjectAssessed,
 };

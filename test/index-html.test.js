@@ -182,3 +182,19 @@ test("landing address handoff fills #address from sessionStorage and drops the k
     "filling the box is the whole handoff; do not auto-run a search"
   );
 });
+
+test("hero draws county assessment as a cross-check, never a headline", () => {
+  assert.match(html, /const assessedApproachEntry = /);
+  assert.match(html, /label: "County assessment"/);
+  assert.match(html, /Counties often lag the market/);
+  assert.match(html, /outlierOf\(assessedNum/);
+  assert.match(html, /withAssessed\(/);
+  assert.match(html, /County assessed value/);
+  assert.match(html, /e\.href && \/\^https\?:\\\/\\\//);
+  assert.ok(!/innerHTML/.test(html.match(/const renderApproaches = [\s\S]*?const costApproachEntry/)[0]),
+    "renderApproaches must keep using DOM nodes, not innerHTML, when adding the Source link");
+  const hero = html.match(/function renderOwnerHero[\s\S]*?card\.classList\.remove\("hidden"\)/);
+  assert.ok(hero, "could not bound renderOwnerHero");
+  assert.equal(/lowEl\.textContent = assessed|animateValue\(midEl, assessed/.test(hero[0]), false,
+    "assessed value must never be written into Low/Likely/High");
+});

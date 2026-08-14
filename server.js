@@ -3238,7 +3238,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // The neighbor guard matters: adjacent parcels' sizes surface readily in
     // search results, and a wrong "found" size is worse than an honest "".
     wantsSize
-      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off the property's own last sale date and price for "subject_last_sale" below - the same record usually carries both, so it costs you nothing here and is one of the most valuable things in the report.`
+      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off the property's own last sale date and price for "subject_last_sale" below, and the county's total assessed or taxable value for "subject_assessed" below - the same record usually carries all three, so it costs you nothing here.`
       : "",
     typeGuidance[type] || "",
     // Size class moves $/SF (economies of scale) — steer comp selection
@@ -3293,7 +3293,10 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // that can actually see a sale history. Asked of whichever lane is looking
     // (wantsSize) and of the sole/primary lane regardless; mergeLaneReports
     // carries whichever one answers.
-    ...(wantsSize || !compsOnly ? [`  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`] : []),
+    ...(wantsSize || !compsOnly ? [
+      `  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`,
+      `  "subject_assessed": { "value": "", "year": "", "source_url": "" },`,
+    ] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -3348,6 +3351,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // with the size already known there is no subject search to ride along on,
     // and buying one would come out of the comp budget.
     ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent closed sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000", "source_url" = the page that states it. This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
+    // County assessed/taxable value — a public-record cross-check, not a
+    // headline and not the cost approach. Same ride-along as last-sale: the
+    // SUBJECT SIZE pages already print it. Whole parcel or nothing (a land-only
+    // figure next to a building valuation is the wrong-building bug in reverse).
+    // Do NOT put it in summary: the three-sentence cap protects honesty caveats.
+    ...(wantsSize || !compsOnly ? [`"subject_assessed" = the TARGET parcel's total assessed or taxable value, if the sources you are already looking at show one. ${wantsSize ? "The assessor and parcel pages you open for the subject size above normally print this number, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "value" = the county's total assessed (or taxable) value as one number like "$412,000". "year" = the four-digit tax year like "2025", or "" if the year is not shown. "source_url" = the page that states it. This is the whole parcel, never land-only or improvements-only - if the source splits those, leave all three fields "". This is not a comp and must NOT appear in "comps". Do not put it in "summary". Leave all three fields "" if nothing findable, and never infer one from a neighboring or similar property. Never use a listing ask, a Zestimate, or a separate "market value" the assessor printed as an opinion - only the assessed or taxable number the county uses to tax the parcel.`] : []),
   ].join("\n");
 }
 
@@ -3363,7 +3372,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
-const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims } = RPARSE;
+const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims, normalizeSubjectAssessed } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -4221,8 +4230,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const finishReport = (raw) =>
     scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(
-        normalizeSubjectLastSale(
-          reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
+        normalizeSubjectAssessed(
+          normalizeSubjectLastSale(
+            reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
+          new Date()),
         verifiedComps));
   try {
     return finishReport(text);
@@ -4294,6 +4305,12 @@ function mergeLaneReports(primary, records, maxComps) {
   // pages, which is where a sale history lives.
   if (records.subject_last_sale && records.subject_last_sale.date && !(primary.subject_last_sale || {}).date) {
     primary.subject_last_sale = records.subject_last_sale;
+  }
+  // Assessed value lives on the same assessor pages, so the records lane is
+  // again the likelier finder. Copy only when the primary has none — value is
+  // required after normalizeSubjectAssessed, matching last-sale's date check.
+  if (records.subject_assessed && records.subject_assessed.value && !(primary.subject_assessed || {}).value) {
+    primary.subject_assessed = records.subject_assessed;
   }
 
   console.log(`Lane merge: ${a.length} listing-lane + ${fresh.length} records-lane comp(s), ${records.comps.length - fresh.length} duplicate(s) dropped, ${primary.comps.length} kept.`);

@@ -2068,6 +2068,25 @@ private row has not earned. Two rules matter when editing anything down here:
    harvested into `comp_corpus`, which holds comps and not a property's own
    sale of itself.
 
+3d. **`subject_assessed` — the county's assessed value** (2026-08-14). Same
+   ride-along as last-sale: the SUBJECT SIZE assessor pages already print the
+   taxable/assessed figure, so it costs no extra search (`wantsSize` first;
+   opportunistic otherwise). The model returns `{ value, year, source_url }`.
+   **It is a cross-check, never a headline** — Low/Likely/High stay sales-comp
+   or income math, and it is not the cost approach (that row stays "not
+   modeled"). `assessedApproachEntry` draws one **County assessment** row in
+   `#ownerApproaches` before the cost row, on every hero branch including the
+   dashes branch when a value is present. **Value is required, year is not**
+   (the opposite of last-sale): `normalizeSubjectAssessed` in `report-parse.js`
+   drops the key without a parseable positive value, keeps a 4-digit tax year
+   in 1990…current+1 (caller passes `now`), and strips non-http URLs.
+   **Whole parcel or nothing** — land-only or improvements-only is a prompt
+   refusal, not a parser guess. Disagreement with a dollar headline uses
+   `VALUATION.outlierOf` (the same 25% nearest-edge rule as the table chips
+   and the vault gut check), so the three cannot drift. Not harvested, not in
+   `summary`, kept in shares (public record, not NOI-class). Spec:
+   `docs/superpowers/specs/2026-08-14-tax-assessed-approach-design.md`.
+
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High
    range from sale-comp $/SF (leases are excluded even on mixed searches) ×

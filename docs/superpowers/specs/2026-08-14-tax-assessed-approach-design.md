@@ -1,7 +1,7 @@
 # Tax-assessed value as a hero cross-check
 
 **Date:** 2026-08-14
-**Status:** proposed (not yet owner-approved)
+**Status:** agreed (Jacob, 2026-08-14)
 **Audience pick:** first-session owner. The 2026-08-14 usefulness ranking put
 trust in the first report above returning-member loops and the unused vault.
 **Single idea:** the county's assessed value as a labeled cross-check in the
@@ -207,25 +207,11 @@ CSV is unchanged. Last-sale is not in the CSV today; assessed follows that.
 
 ## Implementation (when this is built)
 
-Not this commit. When the owner agrees:
-
-1. Tests first in `test/report-parse.test.js` for `normalizeSubjectAssessed`
-   (keep / drop / year bounds / URL / pipeline identity / land-only is a
-   prompt rule, not a parser rule).
-2. `normalizeSubjectAssessed` in `report-parse.js`; wire into `finishReport`
-   and `mergeLaneReports`.
-3. Prompt shape + SUBJECT SIZE sentence + field description, gated like
-   last-sale.
-4. `assessedApproachEntry` + `renderApproaches` optional `href`; every
-   dollar-headline branch; XLSX row.
-5. CLAUDE.md Non-obvious flow 3c sibling: `subject_assessed` — evidence not
-   a fourth figure, no extra search, whole-parcel rule, `outlierOf` reuse,
-   not harvested.
-6. Do not add this to [docs/ROADMAP.md](../../ROADMAP.md) until the owner
-   promotes it. Specs do not reorder Next.
-
-No migration. No new route. No Tailwind regen unless a new utility class
-appears (none planned — reuse approaches table classes).
+Shipped on this branch. Tests first in `test/report-parse.test.js`;
+`normalizeSubjectAssessed` in `report-parse.js`; wired into `finishReport`
+and `mergeLaneReports`; prompt gated like last-sale; `assessedApproachEntry`
++ `withAssessed` on every hero branch; XLSX row; CLAUDE.md flow 3d.
+Roadmap Next was not reordered.
 
 ## Out of scope (rejected for this spec, not forgotten)
 

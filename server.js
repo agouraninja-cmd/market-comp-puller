@@ -1425,6 +1425,35 @@ async function recordReportPurchase({ userId, reportId, paymentIntentId }) {
   return true;
 }
 
+// Undoes a paid unlock after a full refund. Returns the rows it removed, so the
+// caller can tell "a buyer lost the report they were refunded for" from "this
+// charge was never a report purchase" — a refunded Pro invoice arrives at the
+// same handler and must not be reported as an unlock being pulled.
+//
+// A DELETE rather than a `revoked_at` column, deliberately. `report_purchases`
+// is read by exactly one function — findReportPurchase, an existence check —
+// so a soft delete would need a new column, a migration, and a filter added to
+// that read, and forgetting the filter leaves the unlock live, which is the
+// bug this exists to fix. The audit trail is Stripe's own refund record, which
+// outlives this table anyway.
+//
+// Matched on the payment intent, the only field a charge and this table share.
+// `stripe_payment_intent_id` is nullable, so a row written without one cannot
+// be matched — the caller reports that as unmatched rather than falling back to
+// a guess by user or amount.
+//
+// THROWS on failure, like recordReportPurchase and for the same reason: the
+// webhook route releases the event so it can be replayed from the dashboard,
+// and a swallowed error here means a refunded customer keeps their report with
+// nothing anywhere saying so.
+async function revokeReportPurchase(paymentIntentId) {
+  if (!DB_CONFIGURED || !paymentIntentId) return [];
+  const rows = await sbRequest("DELETE",
+    `report_purchases?stripe_payment_intent_id=eq.${encodeURIComponent(paymentIntentId)}`,
+    undefined, { prefer: "return=representation" });
+  return Array.isArray(rows) ? rows : [];
+}
+
 // Find the user a Stripe customer belongs to. Checkout stamps our user id into
 // the session metadata, but subscription.* events arrive with only a customer
 // id, so the mapping has to be recoverable from the DB too.
@@ -1536,6 +1565,22 @@ async function handleStripeEvent(evt) {
   if (!obj) return;
 
   switch (evt.type) {
+    // Both events carry a checkout session and are handled identically, which
+    // is the fix for a payment method that settles AFTER the session closes
+    // (bank debits, some wallets, anything Stripe calls delayed). Those sessions
+    // arrive `complete` but `unpaid`, take the payment_status guard below, and
+    // log "no unlock yet" — and until this line existed nothing ever revisited
+    // them. The customer was charged when the payment cleared and stayed locked
+    // out forever, with no error and no retry, because
+    // `checkout.session.async_payment_succeeded` is the ONLY event that ever
+    // follows. Rare on cards, ordinary on the delayed methods.
+    //
+    // Nothing special-cases which of the two arrived: the paid session is the
+    // paid session. The subscription branch is idempotent (it re-reads the
+    // subscription and upserts one row) and the purchase branch is idempotent
+    // on (user_id, report_id), so the pair cannot double-grant even when both
+    // events describe the same money.
+    case "checkout.session.async_payment_succeeded":
     case "checkout.session.completed": {
       // The one event that reliably carries our user id.
       const userId = (obj.metadata && obj.metadata.user_id) || obj.client_reference_id;
@@ -1648,8 +1693,63 @@ async function handleStripeEvent(evt) {
       return;
     }
 
+    case "checkout.session.async_payment_failed": {
+      // The other half of the delayed-payment pair. Nothing to undo — the
+      // session never unlocked anything — so this exists to be visible: without
+      // it a bank debit that bounces leaves no trace on our side at all, and
+      // "the customer says they bought it" has no log to check against. Stripe
+      // owns telling the customer, as it does for a failed renewal.
+      console.log(`Checkout session ${obj.id} failed to settle (${obj.payment_status}) — nothing unlocked.`);
+      return;
+    }
+
+    case "charge.refunded": {
+      // A refund takes back what the money bought. Until this branch existed a
+      // refunded buyer kept their report permanently: the unlock is a row in
+      // report_purchases and nothing ever deleted one.
+      //
+      // Scope is deliberately the single-report unlock ONLY. A refunded Pro
+      // invoice reaches here too and is left alone — subscription access is
+      // governed by the subscription's own lifecycle events, and cancelling it
+      // from a refund would end a paid-up member's access early on nothing more
+      // than a goodwill credit.
+      const { paymentIntentId, full } = STRIPE.refundOf(obj);
+      if (!paymentIntentId) {
+        return console.log(`Refund on charge ${obj.id} carries no payment intent — nothing to match.`);
+      }
+      if (!full) {
+        // A partial refund is a negotiation, not an undo, and either automatic
+        // answer is wrong often enough to be worth a human: revoking takes back
+        // a report the customer still mostly paid for, and doing nothing quietly
+        // gives away whatever was refunded. So: say so, change nothing.
+        console.log(`⚠ Partial refund on charge ${obj.id} — unlock left in place, decide by hand.`);
+        sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a partial refund needs a decision",
+          `Charge ${obj.id} was partially refunded (${obj.amount_refunded} of ${obj.amount}).\n` +
+          `Any report unlock on payment intent ${paymentIntentId} is STILL ACTIVE.\n` +
+          `Revoke it by deleting that row from report_purchases, or leave it.`);
+        return;
+      }
+      const removed = await revokeReportPurchase(paymentIntentId);
+      if (!removed.length) {
+        // Overwhelmingly a refunded subscription invoice, which is not ours to
+        // act on. Also covers a replayed event and a purchase row written
+        // before the payment intent was recorded. Not an error either way.
+        console.log(`Refund on charge ${obj.id} matched no report unlock — nothing revoked.`);
+        return;
+      }
+      for (const row of removed) {
+        console.log(`↩ Report unlock revoked after refund: ${row.report_id} (user ${row.user_id})`);
+      }
+      sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a refunded report unlock was revoked",
+        `Charge ${obj.id} was fully refunded.\n` +
+        `${removed.length} report unlock(s) removed: ` +
+        removed.map((r) => `${r.report_id} (user ${r.user_id})`).join(", ") + `\n` +
+        `The customer keeps their free-tier view of that report.`);
+      return;
+    }
+
     default:
-      return;   // subscribed to six events; anything else is noise
+      return;   // subscribed to the events named in PRO-BILLING-SETUP.md; anything else is noise
   }
 }
 

@@ -134,15 +134,35 @@ way, and roll it from Stripe → Developers → API keys if it ever is.
 ### Stripe — Webhook destination
 URL: `https://market-comp-puller.onrender.com/api/stripe/webhook`
 
-Six events, matching the switch in `handleStripeEvent()`:
+Nine events, matching the switch in `handleStripeEvent()` — a test reads this
+list out of this file and fails the build if the two disagree, so edit them
+together:
 ```
 checkout.session.completed
+checkout.session.async_payment_succeeded
+checkout.session.async_payment_failed
 customer.subscription.created
 customer.subscription.updated
 customer.subscription.deleted
 invoice.payment_succeeded
 invoice.payment_failed
+charge.refunded
 ```
+
+**The last three are newer than the deployment — enable them in the Stripe
+dashboard, or the code that handles them never runs.** What each one costs
+while it is missing:
+
+- `checkout.session.async_payment_succeeded` — a payment method that settles
+  after checkout closes (bank debits, some wallets) charges the customer and
+  never unlocks their report. It is the only follow-up event such a session
+  ever gets. Rare on cards, ordinary on delayed methods.
+- `checkout.session.async_payment_failed` — a bounced delayed payment leaves
+  no trace on our side. Nothing to undo; this is a log line.
+- `charge.refunded` — a refunded buyer keeps their report unlock forever.
+  Only a FULL refund revokes; a partial one emails the owner and changes
+  nothing. A refunded subscription invoice matches no unlock and is left to
+  the subscription's own lifecycle events.
 
 Note: Render free tier sleeps, so the first webhook after idle can exceed
 Stripe's 20s timeout and show as failed, then succeed on retry. That's expected

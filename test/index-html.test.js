@@ -503,3 +503,60 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(home, /href="\/brokers"/);
   assert.ok(!/id="marketSearch"/.test(home), "explorer moved out of homeInfo");
 });
+
+// ----------------------------------------------------------------------------
+// Tab fills the rotating "e.g." address. The placeholder is a real building
+// someone can try, but it used to be display-only: Tab jumped to the next
+// field and left the box empty. The strip and the "should Tab accept?"
+// decision are pure so they can be tested without a DOM; the listener is
+// pinned as wiring so a later edit cannot keep the helper and drop the Tab.
+// ----------------------------------------------------------------------------
+
+function loadTabFillExample() {
+  const fromPh = html.match(/function exampleValueFromPlaceholder\(placeholder\) \{[\s\S]*?\n  \}/);
+  const tabFill = html.match(/function tabFillExample\(e, currentValue, placeholder\) \{[\s\S]*?\n  \}/);
+  assert.ok(fromPh, "could not find exampleValueFromPlaceholder in index.html");
+  assert.ok(tabFill, "could not find tabFillExample in index.html");
+  const ctx = vm.createContext({});
+  new vm.Script(fromPh[0] + "\n" + tabFill[0] +
+    "\n;this.fromPh = exampleValueFromPlaceholder; this.tabFill = tabFillExample;",
+    { filename: "index.html" }).runInContext(ctx);
+  return ctx;
+}
+
+test("exampleValueFromPlaceholder strips the e.g. prefix off a real address", () => {
+  const { fromPh } = loadTabFillExample();
+  assert.equal(fromPh("e.g. 1200 W Industrial Blvd, Dallas, TX"), "1200 W Industrial Blvd, Dallas, TX");
+  assert.equal(fromPh("E.G. 4500 Commerce St, Phoenix, AZ"), "4500 Commerce St, Phoenix, AZ");
+  assert.equal(fromPh("  e.g.  15 Enterprise Pkwy, Columbus, OH"), "15 Enterprise Pkwy, Columbus, OH");
+});
+
+test("exampleValueFromPlaceholder refuses a placeholder that is not an example", () => {
+  const { fromPh } = loadTabFillExample();
+  assert.equal(fromPh("Property address"), "");
+  assert.equal(fromPh("City, ST or 5-digit zip"), "");
+  assert.equal(fromPh(""), "");
+  assert.equal(fromPh(null), "");
+});
+
+test("Tab on an empty field accepts the current example; anything else leaves Tab alone", () => {
+  const { tabFill } = loadTabFillExample();
+  const ph = "e.g. 1200 W Industrial Blvd, Dallas, TX";
+  const addr = "1200 W Industrial Blvd, Dallas, TX";
+  assert.equal(tabFill({ key: "Tab" }, "", ph), addr);
+  assert.equal(tabFill({ key: "Tab" }, "   ", ph), addr, "whitespace-only is still empty");
+  assert.equal(tabFill({ key: "Tab" }, "12", ph), "", "already typing: Tab must move on");
+  assert.equal(tabFill({ key: "Tab", shiftKey: true }, "", ph), "", "Shift+Tab is back, not accept");
+  assert.equal(tabFill({ key: "Enter" }, "", ph), "");
+  assert.equal(tabFill({ key: "Tab" }, "", "Property address"), "", "non-example placeholder is not a fill");
+});
+
+test("the address field and the shared-report lock field both wire Tab-to-fill", () => {
+  const fn = html.match(/function bindTabFillExample\(input\)[\s\S]*?\n  \}/);
+  assert.ok(fn, "index.html must define bindTabFillExample()");
+  assert.match(fn[0], /preventDefault\(\)/);
+  assert.match(fn[0], /tabFillExample\(/);
+  assert.match(fn[0], /dispatchEvent\(new Event\("change"/);
+  assert.match(html, /bindTabFillExample\(document\.getElementById\("address"\)\)/);
+  assert.match(html, /bindTabFillExample\(document\.getElementById\("lockAddress"\)\)/);
+});

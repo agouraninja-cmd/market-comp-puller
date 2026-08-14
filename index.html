@@ -10692,8 +10692,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // ----------------------------------------------------------------------------
   // Rotating example addresses — the search field quietly cycles through
-  // realistic placeholders while it sits empty.
+  // realistic placeholders while it sits empty. Tab on an empty field
+  // accepts the current example (without the "e.g.") so a visitor can try
+  // a real building without typing one. Second Tab then moves on, because
+  // the field is no longer empty. Shift+Tab is back-tab and is never
+  // intercepted. A placeholder that is not an example (a field label, a
+  // hint) is never a fill — only the "e.g." prefix names a building.
   // ----------------------------------------------------------------------------
+  function exampleValueFromPlaceholder(placeholder) {
+    const s = String(placeholder || "");
+    const m = /^\s*e\.g\.\s+/i.exec(s);
+    if (!m) return "";
+    return s.slice(m[0].length).trim();
+  }
+
+  function tabFillExample(e, currentValue, placeholder) {
+    if (!e || e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return "";
+    if (String(currentValue || "").trim()) return "";
+    return exampleValueFromPlaceholder(placeholder);
+  }
+
+  function bindTabFillExample(input) {
+    if (!input) return;
+    input.addEventListener("keydown", (e) => {
+      const filled = tabFillExample(e, input.value, input.placeholder);
+      if (!filled) return;
+      e.preventDefault();
+      input.value = filled;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
   const ADDRESS_EXAMPLES = [
     "e.g. 1200 W Industrial Blvd, Dallas, TX",
     "e.g. 4500 Commerce St, Phoenix, AZ",
@@ -10715,6 +10745,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }, 300);
     }, 4000);
   }
+  bindTabFillExample(document.getElementById("address"));
+  bindTabFillExample(document.getElementById("lockAddress"));
 
   // ----------------------------------------------------------------------------
   // Sample report — canned, illustrative data so visitors can see the product

@@ -508,3 +508,8 @@ test("portfolioValuesOn falls back so a missing field cannot blank a Pro-off des
   assert.match(fn[0], /typeof proConfig\.portfolioValues === "boolean"/);
   assert.match(fn[0], /!proConfig\.enabled \|\| Boolean\(proConfig\.isPro\)/);
 });
+
+test("pricing states the Portfolio split in the compare table", () => {
+  assert.match(html, /<tr><td>Portfolio<\/td><td class="c">Saved reports, address list<\/td><td class="c">Saved reports, with estimated values<\/td><\/tr>/);
+  assert.doesNotMatch(html, /unlimited saved reports/i);
+});

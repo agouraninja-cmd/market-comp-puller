@@ -7544,6 +7544,37 @@ function aggregateStats(rows) {
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
+    // Watchlist digest runs (2026-08-13). The digest is deliberately driven
+    // from outside this process, which buys a schedule somebody chose and
+    // costs the thing every external scheduler eventually does: it stops, and
+    // nothing says so. A cron that silently dies looks exactly like a quiet
+    // few weeks — no error, no bounce, just people not being mailed. So the
+    // card reports when it last ran and what happened, and "never" is a real
+    // answer rather than an empty space.
+    //
+    // Dry runs are counted SEPARATELY, not folded in: a preview is not a
+    // send, and a card that said "last run 2 days ago" off a preview would
+    // report a healthy schedule while nobody had been mailed in a month.
+    digestRuns: (() => {
+      const all = rows.filter((r) => r.kind === "watchlist_digest");
+      const real = all.filter((r) => !String(r.source || "").startsWith("dry:"));
+      // Max by ts rather than the last element: readRows concatenates the
+      // database's ts-ascending page with any rows that fell back to the
+      // local file during an outage, so array order is not time order.
+      const last = (list) => list.reduce((newest, r) =>
+        (!newest || String(r.ts) > String(newest.ts) ? r : newest), null);
+      const lastReal = last(real);
+      const lastAny = last(all);
+      return {
+        runs: real.length,
+        previews: all.length - real.length,
+        lastAt: lastReal ? lastReal.ts : null,
+        // "sent:3" — the outcome rides the source column, since the analytics
+        // schema is fixed and a migration for one integer is not worth it.
+        lastOutcome: lastReal ? String(lastReal.source || "") : "",
+        lastAnyAt: lastAny ? lastAny.ts : null,
+      };
+    })(),
     // Visitor funnel (2026-08-13, migration 026). The one question every
     // other block here cannot answer: not how many signups and how many
     // reports, but how many of the SAME browsers did both. Counted over
@@ -8179,6 +8210,11 @@ function loadAccuracy(key,force){
 // is the only thing the product sends unprompted, so the default gesture
 // should be to READ what would go out. Nothing here renders until a run is
 // asked for — the page must not fire a digest just by being opened.
+// Set once from /api/stats, read by the card's idle state. Module-level
+// rather than an argument because the card re-renders itself after every run
+// and would otherwise lose it — and the idle state is the only place it is
+// shown, so a stale copy after a run costs nothing.
+var DIGEST_RUNS=null;
 function digestBtn(id,label,cls){
   return "<button id='"+id+"' class='btn"+(cls?" "+cls:"")+"'>"+label+"</button> ";
 }
@@ -8204,8 +8240,34 @@ function renderDigestCard(state){
     }).join("");
     body=line+previews;
   }else{
+    // Idle state. The last-run line is the point of this card between runs:
+    // the schedule lives outside this process, so a cron that quietly died
+    // looks exactly like a quiet few weeks unless something says when it last
+    // actually mailed anybody.
+    var r=DIGEST_RUNS||{};
+    var ago=function(ts){
+      if(!ts)return "";
+      var days=Math.floor((Date.now()-Date.parse(ts))/86400000);
+      return days<=0?"today":(days===1?"yesterday":days+" days ago");
+    };
+    var lastLine;
+    if(r.lastAt){
+      // Local date, not the ISO string's leading 10 characters: that is UTC,
+      // and an evening run in Mountain time renders as "today (tomorrow's
+      // date)", which reads as a bug in the dashboard rather than a timezone.
+      lastLine="Last sent <b>"+esc(ago(r.lastAt))+"</b> ("+esc(new Date(r.lastAt).toLocaleDateString())+")"+
+        (r.lastOutcome?" &middot; "+esc(r.lastOutcome.replace("sent:","")+" mailed"):"")+
+        " &middot; "+esc(r.runs)+" run(s) logged";
+    }else if(r.previews){
+      // Deliberately distinguished: previews prove somebody has been here,
+      // and reporting them as a run would say the schedule is healthy while
+      // nobody has ever been mailed.
+      lastLine="<b>Never sent</b> &mdash; "+esc(r.previews)+" preview(s) only";
+    }else{
+      lastLine="<b>Never run.</b>";
+    }
     body="<p class=muted>Mails each watcher the markets of theirs that have new comps. "+
-      "Preview builds every email and sends none.</p>";
+      "Preview builds every email and sends none.</p><p>"+lastLine+"</p>";
   }
   el.innerHTML="<div class=card><h2>Watchlist digest</h2>"+body+
     "<p style='margin-top:12px'>"+digestBtn("dgPrev","Preview (sends nothing)")+
@@ -8246,7 +8308,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); renderDigestCard();})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard();})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }

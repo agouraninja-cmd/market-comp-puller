@@ -418,3 +418,50 @@ test("unsubscribing actually stops the mail", async (t) => {
       "a refused token must not have reached the write");
   });
 });
+
+test("the run log distinguishes a preview from a send", async (t) => {
+  // /admin's card reports when the digest last MAILED anybody, because the
+  // schedule lives outside this process and an external cron that quietly
+  // dies looks exactly like a quiet few weeks. That only works if a preview
+  // is not counted as a run: a card reading "last sent 2 days ago" off
+  // somebody clicking Preview would report a healthy schedule while nobody
+  // had been mailed in a month, which is worse than reporting nothing.
+  const tables = {
+    users: [{ id: "u1", email: "watcher@example.com", digest_optout: false }],
+    watchlist_items: [
+      { id: "w1", user_id: "u1", market: MARKET, property_type: "Industrial",
+        created_at: ISO(now - 30 * DAY), last_seen_at: ISO(now - 30 * DAY), last_digest_at: null },
+    ],
+    comp_corpus: [corpusRow()],
+  };
+  const { db, srv, stop } = await bootWithDb(tables, { ADMIN_KEY: "digest-key" });
+  t.after(stop);
+  const stats = async () => (await (await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": "digest-key" } })).json()).digestRuns;
+
+  await t.test("nothing run yet reads as never", async () => {
+    const d = await stats();
+    assert.equal(d.runs, 0);
+    assert.equal(d.previews, 0);
+    assert.equal(d.lastAt, null, "never run must be null, not a zero date");
+  });
+
+  await t.test("a preview counts as a preview and never as a send", async () => {
+    await runDigest(srv, { dryRun: true });
+    await new Promise((r) => setTimeout(r, 200));
+    const d = await stats();
+    assert.equal(d.previews, 1);
+    assert.equal(d.runs, 0, "a preview is not a run");
+    assert.equal(d.lastAt, null, "a preview must not set the last-SENT stamp");
+    assert.ok(d.lastAnyAt, "but it is still visible, so the card can say previews-only");
+  });
+
+  await t.test("a real send stamps it, with the outcome", async () => {
+    await runDigest(srv);
+    await settle(db, 1);
+    await new Promise((r) => setTimeout(r, 200));
+    const d = await stats();
+    assert.equal(d.runs, 1);
+    assert.ok(d.lastAt, "a real send must stamp the last-sent time");
+    assert.equal(d.lastOutcome, "sent:1", "the card reads the count off this");
+  });
+});

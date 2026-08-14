@@ -3724,7 +3724,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // pricier pocket a mile away) and the hero range lands far above what
     // the subject's own street trades at (seen live 2026-08-04: a ~$750k
     // house shown a $927k LOW end off 4 such comps).
-    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
+    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size, vintage, AND bedroom count: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A 2-bed is a different product from a 4-bed even at the same square footage and on the same street, so prefer comps within one bedroom of the subject; if SUBJECT DETAILS include beds/baths, treat that as ground truth. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, a different bed count, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
 
   // The subject-size lookup belongs to whichever lane searches assessor data:
@@ -3820,7 +3820,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   ].join("\n") : "";
 
   return [
-    `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
+    // Residential is a home-buyer CMA, not a CRE analyst write-up. The CRE
+    // role line sent the model hunting LoopNet-shaped deals and writing
+    // warehouse prose around a house. Neighborhood / vintage / beds rules
+    // below still apply; only the job description changes.
+    type === "Residential"
+      ? `You are preparing a comparable market analysis for a home buyer. Use web search to find recent comparable closed home sales. Cite the page you found each sale on. This is an automated estimate with sources, not an appraisal.`
+      : `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
     ``,
     `TARGET PROPERTY:`,
     `- Address: ${address}`,
@@ -3885,6 +3891,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
         ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
         : ` (once you determine the target's size)`
     } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
+    // Bedroom count is not in the valuation math (beds_baths is a display
+    // field), so the prompt is the only place a 2-bed can be stopped from
+    // pulling a 4-bed headline. Same "fewer local matches beat a padded
+    // list" shape as NEIGHBORHOOD above.
+    type === "Residential"
+      ? `BEDS FIT: a home's bedroom count is a product line, not a footnote. Prefer comps within one bedroom of the subject. A 2-bed must not set the price of a 4-bed (or the reverse) just because the square footage is close. If you must include a different bed count to reach 3 local sales, keep them and say so in "summary".`
+      : "",
     `PRICED BUT UNSIZED COMPS: a sale comp that has a price but no building size cannot support the valuation math. If a sale comp you are including has a price but you could not find its size, spend one of your searches specifically on that building's size (an assessor or listing page) before finalizing. Completing the size on 2-3 priced sale comps matters more than adding one more marginal comp.`,
     subjectDetailBlock,
     typeSpec
@@ -3897,7 +3910,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     corpusBlock,
     nearbyBlock,
     ``,
-    LANE_GUIDANCE[lane] || "",
+    // LoopNet / Crexi / brokerage-listing lane copy is for commercial
+    // assets. A house search that starts there comes back empty or padded
+    // with the wrong product; residential sources are already named in
+    // typeGuidance (assessor + recently-sold listing pages).
+    type === "Residential" ? "" : (LANE_GUIDANCE[lane] || ""),
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,
@@ -5546,7 +5563,7 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
    render 2-4 of these depending on the data, so a fixed column count that
    divides evenly (which the mesh needs to avoid a half-empty row) is out. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px;box-shadow:var(--lift)}
 .tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:600}
 .tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
@@ -5557,10 +5574,10 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
    paper, red label. The .tiles grid above stays for its OTHER consumers
    (the Explorer preview page and the /markets client tiles); only the
    market page itself moved to the ledger. */
-.ledger{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin:22px 0}
+.ledger{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin:22px 0;box-shadow:var(--lift)}
 .lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash)}
+.lcell.mid{background:var(--wash-2)}
 .lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .lcell.mid .k{color:var(--red)}
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
@@ -5578,7 +5595,7 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 /* Cards. Headings stay serif at reading size rather than the uppercase
    micro-label used elsewhere — these are sentence-length ("What's driving
    Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
-.card{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:22px;margin:18px 0}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:22px;margin:18px 0;box-shadow:var(--lift)}
 .card h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:0 0 12px;letter-spacing:normal;text-transform:none}
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
@@ -5590,7 +5607,7 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .bkhead{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:28px 0 0;letter-spacing:normal;text-transform:none}
 .sub + .bkhead{margin-top:8px}
-.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:12px}
+.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:12px;box-shadow:var(--lift)}
 .bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
 .bkrow:last-child{border-bottom:0}
 .bklag{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red);padding-top:2px}
@@ -5617,7 +5634,7 @@ td:first-child,th:first-child{min-width:180px}
 th{background:var(--wash);color:var(--ink-3);text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
   text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--edge)}
 td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-align:top}
-.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card)}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card);box-shadow:var(--lift)}
 /* Source badges use the report's own colour language: green Verified, amber
    Listing, neutral for public record / news / estimate. */
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;
@@ -5625,7 +5642,7 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
 /* CTA — the calm bordered block from the landing page, not the old gradient. */
-.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center}
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center;box-shadow:var(--lift)}
 .cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
 /* The BOV band at the top of a covered market page. Same card, tighter to the
@@ -5658,7 +5675,7 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .related a{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:6px 14px;font-size:13px;color:var(--ink-body)}
 .related a:hover{border-color:var(--ink-3);color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
-.mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit}
+.mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit;box-shadow:var(--lift)}
 .mcard:hover{border-color:var(--ink-3)}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:var(--ink)}
 .mcard .s{color:var(--ink-mute);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
@@ -7064,7 +7081,7 @@ section{padding:48px 0}
    closing on its double-ruled median. Keep it in step with index.html's
    .rd-ledger and #compsTable rules — when the report changes shape, this
    exhibit is what tells visitors it did. */
-.exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden}
+.exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
 .cap{padding:12px 20px;border-bottom:1px solid var(--hair);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .exbody{padding:20px}
 .exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);letter-spacing:-.005em}
@@ -7079,7 +7096,7 @@ section{padding:48px 0}
 .ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash)}
+.lcell.mid{background:var(--wash-2)}
 .lcell.mid .lab{color:var(--red)}
 .fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}
@@ -7108,14 +7125,14 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
-.steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px}
+.steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
 .step{padding:22px 24px;border-bottom:1px solid var(--hair)}
 .step:last-child{border-bottom:0}
 .num{font-family:Georgia,serif;font-size:13px;color:var(--red);margin-bottom:8px}
 .step p{font-size:13.5px;color:var(--ink-mute);margin:0}
 /* Brokers ledger — three trades as a statement, not a process. Do not reuse
    .steps: Method's 3-up encodes sequence; Private / Credit / Leads do not. */
-.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:20px}
+.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:20px;box-shadow:var(--lift)}
 .bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
 .bkrow:last-child{border-bottom:0}
 .bklag{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red);padding-top:2px}
@@ -7123,7 +7140,7 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .bk .badge{margin:0 0 8px}
 .bkmore{margin:18px 0 40px}
 /* FAQ accordions — chevron marker, matching the home page's disclosure style */
-details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
+details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px;box-shadow:var(--lift)}
 details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:var(--ink)}
 details.q summary::-webkit-details-marker{display:none}
 /* This chevron's stroke color is %2394a3b8 -- #94A3B8 URL-encoded inside an
@@ -7138,7 +7155,7 @@ details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transit
 details.q[open] summary::after{transform:rotate(180deg)}
 details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 /* Closing CTA */
-.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px}
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px;box-shadow:var(--lift)}
 .cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
@@ -7148,7 +7165,7 @@ details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 .btn.sm{padding:7px 14px;font-size:13px}
 .band section{padding:72px 0}
 .landForm{margin-top:0}
-.landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden}
+.landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden;box-shadow:var(--lift)}
 .landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink);outline:none}
 .landRow input::placeholder{color:var(--ink-3)}
 button.btn{border:0;cursor:pointer;font-family:inherit}

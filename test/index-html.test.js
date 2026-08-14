@@ -360,6 +360,52 @@ test("the hero has a listing line so an ask the size lookup already saw cannot s
   assert.match(html, /askFit\(/);
 });
 
+test("Residential reports compare list price to Low/Likely/High without a typed Refine size", () => {
+  // The CRE comparison card hid itself unless BOTH a size and a price were
+  // typed. A house buyer who pasted a Zillow address never filled Refine, and
+  // the useful question is ask vs this estimate, not $/SF vs market avg.
+  assert.match(html, /function renderResidentialAskComparison\(/);
+  const fn = html.match(/function renderResidentialAskComparison\(parsed, card\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound renderResidentialAskComparison");
+  assert.match(fn[0], /askingRangeFrom\(parsed\)/);
+  assert.match(fn[0], /lastValuation/);
+  assert.match(fn[0], /askFit\(/);
+  assert.equal(/subjectRangeFromMeta\("size"\)/.test(fn[0]), false,
+    "the house-buyer card is dollars vs dollars; a missing Refine size must not hide it");
+  const gate = html.match(/function renderComparison\(parsed\) \{[\s\S]{0,400}/);
+  assert.ok(gate, "could not bound renderComparison");
+  assert.match(gate[0], /currentMeta\.type === "Residential"/);
+  assert.match(gate[0], /renderResidentialAskComparison/);
+});
+
+test("Residential size label is Living area, and the CRE toolkit stays behind Refine", () => {
+  assert.match(html, /Residential: "Living area \(SF\)"/);
+  assert.equal(/Residential: "Property size \(SF\)"/.test(html), false,
+    "the 2026-07-27 spec's Living area label is the live one");
+  const cluster = html.match(/function renderAnalysisCluster\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(cluster, "could not bound renderAnalysisCluster");
+  assert.match(cluster[0], /hideResiToolkit/);
+  assert.match(cluster[0], /type === "Residential" && !hasNoi/);
+  assert.match(cluster[0], /reportTabs[\s\S]{0,80}hidden/);
+});
+
+test("a house report's CTA says talk to a local agent and still stores source bov", () => {
+  const src = html.match(/function bovCopy\(meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find bovCopy in index.html — was it renamed or moved?");
+  const ctx = vm.createContext({});
+  new vm.Script(src[0] + "\n;this.fn = bovCopy;", { filename: "index.html" }).runInContext(ctx);
+  const house = ctx.fn({ type: "Residential" });
+  const warehouse = ctx.fn({ type: "Industrial" });
+  assert.equal(house.button, "Talk to a local agent");
+  assert.match(house.helper, /not a brokerage/);
+  assert.equal(warehouse.button, "Get a free Broker Opinion of Value");
+  assert.match(html, /openLeadModal\("bov"\)/,
+    "the click still stores source bov; only the label changed");
+  assert.match(html, /id="ownerYearBuilt"/);
+  assert.match(html, /function renderSubjectYearBuilt\(/);
+  assert.match(html, /renderSubjectYearBuilt\(parsed, meta\)/);
+});
+
 // ---------------------------------------------------------------------------
 // The shared-report lock card. A stranger holding a forwarded link is the one
 // visitor who reaches this app without choosing to, and /r/<id> is the only

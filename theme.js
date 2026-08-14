@@ -21,9 +21,11 @@ const THEME_TOKENS = {
   paper:            { light: "#FBFBF9", dark: "#121826" }, // page
   card:             { light: "#ffffff", dark: "#1A2433" }, // card, above paper
   wash:             { light: "#F5F4EF", dark: "#243044" }, // lifted panel
-  // Same light value as --wash on purpose: in light mode a hover above a
-  // washed surface DARKENS, in dark mode it must LIGHTEN. One token cannot
-  // express both directions, so this one changes nothing today.
+  // Same light value as --wash on purpose: in light mode a hover (or an
+  // inner tile) above a washed surface DARKENS, in dark mode it must
+  // LIGHTEN. One token cannot express both directions. Dark #334155 is
+  // also the inner-panel step (rd-tile, ledger mid-cell) so a tile on a
+  // card reads as a second surface rather than the same charcoal.
   "wash-2":         { light: "#F5F4EF", dark: "#334155" },
   // Surfaces that are ALREADY dark in light mode (bg-[#1A2433], bg-slate-900,
   // the footer). Left equal to --paper they would dissolve into the page and
@@ -78,6 +80,15 @@ const THEME_TOKENS = {
   "err-text":       { light: "#7F1D1D", dark: "#F87171" },
   "err-bg":         { light: "#FCF1EF", dark: "#2A1517" },
   "err-rule":       { light: "#F0C7C7", dark: "#C27070" },
+  // Estimate and vault-comp badges. Light values are the literals those
+  // chips already used, so light mode does not move. Dark values keep the
+  // sienna / purple identities rather than borrowing --warn-* or --ok-*,
+  // which would collapse Estimate into Listing and From-your-vault into
+  // Verified.
+  "est-text":       { light: "#9A3412", dark: "#FDBA74" },
+  "est-bg":         { light: "#F8E9DC", dark: "#2A1C12" },
+  "bv-text":        { light: "#4C3A8C", dark: "#C4B5FD" },
+  "bv-bg":          { light: "#EDE9F8", dark: "#1C1730" },
 };
 
 // Emits both custom-property blocks as one line. Every in-scope stylesheet
@@ -94,10 +105,19 @@ const THEME_TOKENS = {
 // consuming rules, fixes every current and future var()-driven rule at the
 // source with one change, and :root must stay unscoped or print loses all
 // colour (nothing would define the light values a print run needs).
+// Dark-only card elevation. Not a colour token (the hex test on
+// THEME_TOKENS would reject a box-shadow), and --lift is `none` on :root
+// so applying `box-shadow: var(--lift)` in light mode is a no-op — light
+// stays byte-identical. The inset highlight is what actually separates a
+// card from charcoal paper; the drop is a whisper so a stack of report
+// cards does not look like a lightbox.
+const DARK_LIFT =
+  "0 1px 0 rgba(201,211,224,.08) inset,0 10px 28px -10px rgba(0,0,0,.55)";
+
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")}}@media screen{[data-theme="dark"]{${decl("dark")}}}`;
+  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}`;
 }
 
-module.exports = { THEME_TOKENS, rootCss };
+module.exports = { THEME_TOKENS, DARK_LIFT, rootCss };

@@ -827,6 +827,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       color: var(--ink);
       outline: 0;
       margin-top: 14px;
+      /* type=search otherwise keeps WebKit's searchfield chrome, which
+         reserves room for a cancel control and clips the placeholder's
+         last letters ("ID") in this narrow chamber. */
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .rd-desk-market-in::-webkit-search-decoration,
+    .rd-desk-market-in::-webkit-search-cancel-button,
+    .rd-desk-market-in::-webkit-search-results-button {
+      -webkit-appearance: none;
+      appearance: none;
     }
     .rd-desk-market-in::placeholder { color: var(--ink-3); }
     .rd-desk-market-in:focus { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
@@ -1895,7 +1906,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="rd-desk-market-body">
           <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
           <div class="relative">
-            <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
+            <input id="marketSearch" type="search" placeholder="e.g. industrial Boise, ID" autocomplete="off"
                    class="rd-desk-market-in" />
             <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
           </div>

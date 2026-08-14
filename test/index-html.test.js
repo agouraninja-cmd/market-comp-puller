@@ -614,7 +614,8 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(html, /Find out what a property is worth, with comparables to prove it/);
   assert.ok(!html.includes("3–6 cited"), "stale 3–6 cited comps copy must not return");
   assert.ok(!html.includes("3-6 cited"));
-  assert.match(html, /Up to 12 cited comps · about a minute · every source disclosed/);
+  assert.ok(!html.includes("Up to 12"), "a 12-comp cap is a lie once nearby deals join the table");
+  assert.match(html, /Cited comps · about a minute · every source disclosed/);
   assert.match(html, /No address\? Find one/);
   assert.ok(!html.includes("No address? Explore a market"));
 

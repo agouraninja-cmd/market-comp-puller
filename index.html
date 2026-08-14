@@ -1631,17 +1631,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  selection and the title should say so. Structure and field
                  list are upstream's 2026-08-10 redesign (price promoted to
                  the form, size demoted here, market note tucked here). -->
-            <span id="subjectSummary">+ Details for comps <span class="text-[#68707E] font-normal">(size, NOI, cap rate, market note: optional, sharpens the match)</span></span>
+            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(size, NOI, cap rate, market note: optional, sharpens the match)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in size and specs.</span> Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis. Size and property type come from public records automatically, so set a size here only to override what we found.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in size and specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Size and property type come from public records automatically, so set a size here only to override what we found.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <!-- Size is one range in one cell again, the shape it had before
                      Direction N: a half-width Refine cell has room for two
                      inputs and a "to", which a third-of-a-row cell did not.
                      Every id here is unchanged, and all of the size machinery
-                     (SIZE_LABELS relabelling to Lot size / Property size, the
+                     (SIZE_LABELS relabelling to Lot size / Living area, the
                      footprint estimate, the autoFor/autoValue machine-size
                      markers, saved-report restores) reads by getElementById and
                      never by position, so it keeps working from down here — the
@@ -2215,6 +2215,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                next to it, so a $1.65M estimate had nothing to be checked
                against. Prints and captures with the hero. -->
           <p id="ownerAsking" class="hidden text-xs text-[#5A6473] mt-2"></p>
+          <!-- Year built, when the size lookup found one. Same provenance-line
+               treatment as last sale / ask: it already steers compWeight, but
+               a house buyer scanning the hero never saw it. Not a ledger
+               figure. -->
+          <p id="ownerYearBuilt" class="hidden text-xs text-[#5A6473] mt-2"></p>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
@@ -2229,7 +2234,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  what happens next instead of a dead control. -->
             <div id="bovConfirmPanel" class="hidden rd-tile">
               <p class="text-sm font-semibold text-[#1A2433]">Request received.</p>
-              <p class="text-sm text-[#4C5665] mt-1">We'll review your request and connect you with a licensed local broker who knows your market, usually within a couple of business days. The broker's opinion of value is free, with no obligation.</p>
+              <p id="bovConfirmBody" class="text-sm text-[#4C5665] mt-1">We'll review your request and connect you with a licensed local broker who knows your market, usually within a couple of business days. The broker's opinion of value is free, with no obligation.</p>
               <p id="bovShareLinkWrap" class="hidden text-sm text-[#4C5665] mt-2">Meanwhile, here's a link to this report you can keep or forward:<br>
                 <a id="bovShareLink" class="text-brand-700 underline break-all" href="#" target="_blank" rel="noopener"></a></p>
             </div>
@@ -2540,20 +2545,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
         <!-- Target comparison card -->
         <div id="compareCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433] mb-4">Your Property vs. Market</h2>
+          <h2 id="compareTitle" class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433] mb-4">Your Property vs. Market</h2>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="rd-tile">
-              <div class="rd-lab">Your Property $/SF</div>
+              <div id="compareLeftLab" class="rd-lab">Your Property $/SF</div>
               <div id="targetPpsfVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
               <div id="targetBasis" class="text-xs text-[#68707E] mt-1"></div>
             </div>
             <div class="rd-tile">
-              <div class="rd-lab">Market Avg $/SF</div>
+              <div id="compareMidLab" class="rd-lab">Market Avg $/SF</div>
               <div id="marketPpsfVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div class="text-xs text-[#68707E] mt-1">from pulled comps</div>
+              <div id="compareMidSub" class="text-xs text-[#68707E] mt-1">from pulled comps</div>
             </div>
             <div id="deltaTile" class="rd-tile">
-              <div class="text-xs font-semibold uppercase tracking-wider opacity-70">Difference vs. Market</div>
+              <div id="compareRightLab" class="text-xs font-semibold uppercase tracking-wider opacity-70">Difference vs. Market</div>
               <div id="deltaVal" class="text-2xl font-semibold mt-1">-</div>
               <div id="deltaPct" class="text-xs opacity-80 mt-1"></div>
             </div>
@@ -2933,7 +2938,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   };
 
   // "Building size" is wrong for two types; Land has no income to report.
-  const SIZE_LABELS = { Land: "Lot size (SF)", Residential: "Property size (SF)" };
+  const SIZE_LABELS = { Land: "Lot size (SF)", Residential: "Living area (SF)" };
 
   // What to CALL the thing being valued, per type. The report said "building"
   // everywhere regardless — a house was handed a hero reading "WHAT THIS
@@ -3022,6 +3027,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const noun = assetNoun(type);
     document.getElementById("subjectHintLead").textContent =
       `What you enter here steers which comps we pick — ${assetNounPlural(type)} like yours in size and specs.`;
+    const hintIncome = document.getElementById("subjectHintIncome");
+    const summaryBits = document.getElementById("subjectSummaryBits");
+    if (type === "Residential") {
+      hintIncome.textContent = "If this is a rental, add NOI for an income-approach cross-check.";
+      summaryBits.textContent = "(living area, beds/baths: optional)";
+    } else if (type === "Land") {
+      hintIncome.textContent = "";
+      summaryBits.textContent = "(lot size, zoning, market note: optional, sharpens the match)";
+    } else {
+      hintIncome.textContent = "Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.";
+      summaryBits.textContent = "(size, NOI, cap rate, market note: optional, sharpens the match)";
+    }
     document.getElementById("targetSizeHint").textContent = type === "Land"
       ? "Left blank, it comes from public records."
       : `Left blank, it comes from public records or the ${noun}'s footprint.`;
@@ -3781,7 +3798,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerTrust", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -4119,8 +4136,85 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return v > 0 && v < 100 ? v : null;
   }
 
+  function setCompareLabels(title, left, mid, midSub, right) {
+    document.getElementById("compareTitle").textContent = title;
+    document.getElementById("compareLeftLab").textContent = left;
+    document.getElementById("compareMidLab").textContent = mid;
+    document.getElementById("compareMidSub").textContent = midSub;
+    document.getElementById("compareRightLab").textContent = right;
+  }
+
+  // House-buyer comparison: list price vs Low/Likely/High. Does not need a
+  // typed size — the listing and the hero range are dollar figures. The
+  // listing stays evidence, never a fourth ledger number; askFit is the
+  // same 25% rule the trust line uses so the two cannot disagree.
+  function renderResidentialAskComparison(parsed, card) {
+    const priceR = askingRangeFrom(parsed);
+    const val = lastValuation;
+    const ask = priceR ? (priceR.min + priceR.max) / 2 : 0;
+    if (!(ask > 0) || !val || !(val.likely > 0)) { card.classList.add("hidden"); return; }
+
+    const money = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+    setCompareLabels(
+      "List Price vs. This Estimate",
+      "Listed at",
+      "This estimate (likely)",
+      "Low " + money(val.low) + " – High " + money(val.high),
+      "Difference vs. list"
+    );
+
+    const ppsfEl = document.getElementById("targetPpsfVal");
+    ppsfEl.classList.add("text-2xl");
+    ppsfEl.classList.remove("text-xl");
+    animateValue(ppsfEl, ask, money);
+    document.getElementById("targetBasis").textContent =
+      priceR.min === priceR.max ? "current ask" : "ask range midpoint";
+    animateValue(document.getElementById("marketPpsfVal"), val.likely, money);
+
+    const gap = askFit(ask, val.likely);
+    const deltaTile = document.getElementById("deltaTile");
+    const deltaVal = document.getElementById("deltaVal");
+    const deltaPct = document.getElementById("deltaPct");
+    const verdict = document.getElementById("verdictText");
+    const inBand = ask >= val.low && ask <= val.high;
+
+    if (!gap || inBand || !gap.skewed) {
+      deltaTile.className = "rd-tile text-[#1A2433]";
+      deltaVal.textContent = "In range";
+      deltaPct.textContent = inBand
+        ? "the ask sits inside Low–High"
+        : "within 25% of this estimate";
+      verdict.textContent = inBand
+        ? `The list price (${money(ask)}) sits inside this estimate's range of ${money(val.low)}–${money(val.high)} (likely ${money(val.likely)}). The ask and the comps agree.`
+        : `The list price (${money(ask)}) is close to this estimate's likely value of ${money(val.likely)} (range ${money(val.low)}–${money(val.high)}). A gap this small is ordinary noise, not a signal.`;
+      card.classList.remove("hidden");
+      return;
+    }
+
+    const aboveAsk = gap.dir === "above"; // estimate above the ask
+    deltaTile.className = "rd-tile " + (aboveAsk ? "text-[#06603A]" : "text-[#7A5B12]");
+    animateValue(deltaVal, Math.abs(val.likely - ask), money, aboveAsk ? "+" : "−");
+    deltaPct.textContent = gap.pct + "% " + (aboveAsk ? "below" : "above") + " this estimate";
+    verdict.textContent = aboveAsk
+      ? `Currently listed at ${money(ask)} — ${gap.pct}% below this estimate (likely ${money(val.likely)}, range ${money(val.low)}–${money(val.high)}). A gap this large usually means the comps are a different vintage or a pricier pocket than this property, not that the list price is a steal.`
+      : `Currently listed at ${money(ask)} — ${gap.pct}% above this estimate (likely ${money(val.likely)}, range ${money(val.low)}–${money(val.high)}). The ask may be ambitious relative to these comps.`;
+    card.classList.remove("hidden");
+  }
+
   function renderComparison(parsed) {
     const card = document.getElementById("compareCard");
+    if (currentMeta && currentMeta.type === "Residential") {
+      return renderResidentialAskComparison(parsed, card);
+    }
+
+    setCompareLabels(
+      "Your Property vs. Market",
+      "Your Property $/SF",
+      "Market Avg $/SF",
+      "from pulled comps",
+      "Difference vs. Market"
+    );
+
     const sizeR = subjectRangeFromMeta("size");
     const priceR = askingRangeFrom(parsed);
 
@@ -4507,6 +4601,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.classList.remove("hidden");
   }
 
+  // Year the subject was built, when the size lookup found one. Provenance
+  // line, not a fourth figure: it already steers vintage weighting, but a
+  // house buyer scanning the hero never saw it. Same DOM-build discipline
+  // as last sale / ask even though the year is a number — keep the three
+  // lines one shape.
+  function renderSubjectYearBuilt(parsed, meta) {
+    const el = document.getElementById("ownerYearBuilt");
+    if (!el) return;
+    el.textContent = "";
+    el.classList.add("hidden");
+    const y = yearOf(parsed && parsed.subject_year_built);
+    if (y == null) return;
+    el.appendChild(document.createTextNode(
+      `This ${assetNoun(meta && meta.type)} was built in ${y}.`));
+    el.classList.remove("hidden");
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
@@ -4516,6 +4627,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     setHeroTitle(meta.type);
     renderSubjectLastSale(parsed, meta);
     renderSubjectAsking(parsed, meta);
+    renderSubjectYearBuilt(parsed, meta);
     // Market-level search (a city like "Boise ID", no street number) — there's
     // no building to value, so the whole hero (incl. the BOV button) hides.
     // Any user-entered subject value signals building intent and re-shows it,
@@ -5140,6 +5252,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.
+    applyBovCopy(meta);
     const btn = document.getElementById("bovCtaBtn");
     btn.disabled = false;
     btn.classList.remove("hidden");
@@ -6022,8 +6135,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderSensCard(parsed, meta);
     renderRentRollCard(parsed, meta, resetAssumptions);
     const hasNoi = Boolean(meta && meta.subject && meta.subject.noi > 0);
+    // A house report without NOI is a CMA, not a hold-or-sell toolkit. Hide
+    // the Analysis tab (and its "enter an NOI" empty state) until they open
+    // Details and type one — investment SFR still unlocks the same cards.
+    const hideResiToolkit = Boolean(meta && meta.type === "Residential" && !hasNoi);
+    if (hideResiToolkit) setReportTab("report");
+    document.getElementById("tabBtnAnalysis").classList.toggle("hidden", hideResiToolkit);
+    document.getElementById("reportTabs").classList.toggle("hidden", hideResiToolkit);
     document.getElementById("analysisLockCard").classList.toggle("hidden", Boolean(currentUser) || !hasNoi);
-    document.getElementById("analysisEmpty").classList.toggle("hidden", hasNoi);
+    document.getElementById("analysisEmpty").classList.toggle("hidden", hasNoi || hideResiToolkit);
   }
   document.getElementById("analysisLockBtn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to unlock the expense benchmark, debt, sensitivity, and rent-roll analysis for this report."));
@@ -13224,7 +13344,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "mt-3 text-sm font-semibold text-[#B91C1C] hover:text-[#991B1B] underline decoration-[#D8D4C9] underline-offset-2";
-    btn.textContent = "Get a free Broker Opinion of Value";
+    btn.textContent = bovCopy(currentMeta).emptyBtn;
     btn.addEventListener("click", () => openLeadModal("bov"));
     wrap.append(head, tip, btn);
     return wrap;
@@ -13611,17 +13731,53 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     catch (_) { return true; }      // storage unavailable — don't dead-end exports
   }
 
+  // One CTA, two audiences. Same lead funnel (source: "bov"), same "we
+  // connect you with a licensed local broker, we are not one" rule. A house
+  // buyer bouncing off "Broker Opinion of Value" is why Residential gets
+  // agent wording; the stored lead is still bov.
+  function bovCopy(meta) {
+    const residential = (meta && meta.type) === "Residential";
+    if (residential) {
+      return {
+        button: "Talk to a local agent",
+        helper: "Want a local take on this house? We'll connect you with a licensed agent who knows the neighborhood. No cost, no obligation. We are not a brokerage.",
+        confirm: "We'll review your request and connect you with a licensed local agent who knows this neighborhood. No cost, no obligation.",
+        modalTitle: "Talk to a local agent",
+        modalSubtitle: "Leave your details and we'll connect you with a licensed local agent. No cost, no obligation. We are not a brokerage.",
+        modalSubmit: "Request an introduction",
+        emptyBtn: "Talk to a local agent",
+      };
+    }
+    return {
+      button: "Get a free Broker Opinion of Value",
+      helper: "Want a real number? We'll connect you with a licensed local broker who knows your market. No cost, no obligation.",
+      confirm: "We'll review your request and connect you with a licensed local broker who knows your market, usually within a couple of business days. The broker's opinion of value is free, with no obligation.",
+      modalTitle: "Get a free Broker Opinion of Value",
+      modalSubtitle: "Leave your details and we'll connect you with a licensed local broker for a no-cost opinion of value. No obligation.",
+      modalSubmit: "Request my free BOV",
+      emptyBtn: "Get a free Broker Opinion of Value",
+    };
+  }
+  function applyBovCopy(meta) {
+    const copy = bovCopy(meta);
+    document.getElementById("bovCtaBtn").textContent = copy.button;
+    document.getElementById("bovCtaHelper").textContent = copy.helper;
+    const confirmBody = document.getElementById("bovConfirmBody");
+    if (confirmBody) confirmBody.textContent = copy.confirm;
+  }
+
   // One modal, two asks — the copy and the stored lead's source swap per context.
   function openLeadModal(context) {
     leadContext = context === "bov" ? "bov" : "export";
     const bov = leadContext === "bov";
+    const copy = bovCopy(currentMeta);
     document.getElementById("leadTitle").textContent = bov
-      ? "Get a free Broker Opinion of Value"
+      ? copy.modalTitle
       : "Unlock your export";
     document.getElementById("leadSubtitle").textContent = bov
-      ? "Leave your details and we'll connect you with a licensed local broker for a no-cost opinion of value. No obligation."
+      ? copy.modalSubtitle
       : "Tell us who you are and we'll unlock CSV, image, and PDF exports for this browser, and follow up about your property and market.";
-    document.getElementById("leadSubmit").textContent = bov ? "Request my free BOV" : "Unlock exports";
+    document.getElementById("leadSubmit").textContent = bov ? copy.modalSubmit : "Unlock exports";
     if (bov) {
       // A returning visitor shouldn't retype what we already know.
       try {

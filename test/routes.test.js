@@ -1670,6 +1670,32 @@ test("/api/vault/extract sniffs the media type and never takes it from the body"
     "the data: prefix stripper must not be PDF-only");
 });
 
+test("buildPrompt treats Residential as a home-buyer CMA, not a CRE analyst write-up", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(start >= 0 && end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+
+  assert.match(body, /type === "Residential"/,
+    "Residential must branch the role line, not share the CRE analyst opener");
+  assert.match(body, /comparable market analysis for a home buyer/);
+  assert.match(body, /You are a commercial real estate analyst/,
+    "the CRE role stays for every other type");
+  assert.match(body, /BEDS FIT:/,
+    "bedroom match has to be a prompt rule; it is not in compWeight");
+  assert.match(body, /within one bedroom of the subject/);
+  // LoopNet/Crexi lane copy is for commercial assets. A house search that
+  // still interpolates it starts in the wrong places.
+  assert.match(body, /type === "Residential" \? "" : \(LANE_GUIDANCE/);
+  const laneLine = body.split("\n").find((l) => l.includes("LANE_GUIDANCE[lane]"));
+  assert.ok(laneLine, "LANE_GUIDANCE interpolation should still exist");
+  assert.match(laneLine, /Residential/,
+    "Residential must skip LANE_GUIDANCE, not merely fall through when lane is solo");
+});
+
 test("buildPrompt asks for subject_assessed next to last-sale, not in summary", () => {
   const fs = require("node:fs");
   const path = require("node:path");

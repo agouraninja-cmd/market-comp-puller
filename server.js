@@ -3724,7 +3724,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // pricier pocket a mile away) and the hero range lands far above what
     // the subject's own street trades at (seen live 2026-08-04: a ~$750k
     // house shown a $927k LOW end off 4 such comps).
-    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
+    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size, vintage, AND bedroom count: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A 2-bed is a different product from a 4-bed even at the same square footage and on the same street, so prefer comps within one bedroom of the subject; if SUBJECT DETAILS include beds/baths, treat that as ground truth. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, a different bed count, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
 
   // The subject-size lookup belongs to whichever lane searches assessor data:
@@ -3820,7 +3820,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   ].join("\n") : "";
 
   return [
-    `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
+    // Residential is a home-buyer CMA, not a CRE analyst write-up. The CRE
+    // role line sent the model hunting LoopNet-shaped deals and writing
+    // warehouse prose around a house. Neighborhood / vintage / beds rules
+    // below still apply; only the job description changes.
+    type === "Residential"
+      ? `You are preparing a comparable market analysis for a home buyer. Use web search to find recent comparable closed home sales. Cite the page you found each sale on. This is an automated estimate with sources, not an appraisal.`
+      : `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
     ``,
     `TARGET PROPERTY:`,
     `- Address: ${address}`,
@@ -3885,6 +3891,13 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
         ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
         : ` (once you determine the target's size)`
     } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
+    // Bedroom count is not in the valuation math (beds_baths is a display
+    // field), so the prompt is the only place a 2-bed can be stopped from
+    // pulling a 4-bed headline. Same "fewer local matches beat a padded
+    // list" shape as NEIGHBORHOOD above.
+    type === "Residential"
+      ? `BEDS FIT: a home's bedroom count is a product line, not a footnote. Prefer comps within one bedroom of the subject. A 2-bed must not set the price of a 4-bed (or the reverse) just because the square footage is close. If you must include a different bed count to reach 3 local sales, keep them and say so in "summary".`
+      : "",
     `PRICED BUT UNSIZED COMPS: a sale comp that has a price but no building size cannot support the valuation math. If a sale comp you are including has a price but you could not find its size, spend one of your searches specifically on that building's size (an assessor or listing page) before finalizing. Completing the size on 2-3 priced sale comps matters more than adding one more marginal comp.`,
     subjectDetailBlock,
     typeSpec
@@ -3897,7 +3910,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     corpusBlock,
     nearbyBlock,
     ``,
-    LANE_GUIDANCE[lane] || "",
+    // LoopNet / Crexi / brokerage-listing lane copy is for commercial
+    // assets. A house search that starts there comes back empty or padded
+    // with the wrong product; residential sources are already named in
+    // typeGuidance (assessor + recently-sold listing pages).
+    type === "Residential" ? "" : (LANE_GUIDANCE[lane] || ""),
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,

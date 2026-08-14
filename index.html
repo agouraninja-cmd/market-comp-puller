@@ -252,6 +252,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          aerial photos are not in this pane). */
       [data-theme="dark"] .leaflet-tile-pane { filter: brightness(1.22) contrast(0.92) saturate(0.85) }
 
+      /* Hover previews: Leaflet's 200ms popup fade stacked on the close
+         delay and made the photo linger after the cursor left. Instant
+         opacity so the open/close timers are the only wait. */
+      .leaflet-fade-anim .leaflet-popup { transition: none; opacity: 1 }
+
       /* Public-record chips have no matching token — wash/ink in dark.
          Estimate and vault chips tokenized as --est-* / --bv-*. Scatter
          ticks use --ink-3. The Likely tile keeps a red LABEL and drops
@@ -3619,7 +3624,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } catch (_) { /* if config fails, treat as open */ }
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
-    streetviewEnabled = Boolean(cfg.streetview);
     // Missing `pro` is the Pro-off default. Do not plant portfolioValues
     // here: an old config body with no such key must fall through
     // portfolioValuesOn()'s `!enabled || isPro` branch, not a hardcoded false
@@ -7651,32 +7655,46 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // Aerial close-up for a pin popup: free Esri World Imagery tiles stitched
   // into a crop centered on the property (a crop smaller than one 256px tile
-  // touches at most 4 tiles). No key, no billing — the popup photo whenever
-  // Street View is off, and the stand-in when Street View has no imagery for
-  // a spot. A red dot marks the exact point; tiles that fail to load simply
-  // hide. (First shipped 2026-07-13 as 427ff44, retired for the basemap
-  // toggle, revived once hover previews made popup photos the point.)
-  // Module-scoped (no closure deps) so the inline onerror fallback below can
-  // reach it.
-  function aerialThumb(ll, w = 260, h = 156, z = 18) {
+  // touches at most 4 tiles). No key, no billing. A red dot marks the exact
+  // point; tiles that fail to load simply hide. Street View used to be the
+  // popup photo and was the wrong picture ~80% of the time (nearest pano
+  // aimed at a fence, parking lot, or neighbor); the roof with a pin on it
+  // is the CRE picture. (First shipped 2026-07-13 as 427ff44, retired for
+  // the basemap toggle, revived once hover previews made popup photos the
+  // point; Street View dropped 2026-08-14.)
+  // Tile math lives in one place so prefetch after the building snap hits
+  // the same URLs the popup will request.
+  function aerialTileSpec(ll, w, h, z) {
     const scale = 256 * Math.pow(2, z);
     const x = ((ll.lng + 180) / 360) * scale;
     const latRad = (ll.lat * Math.PI) / 180;
     const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale;
     const ox = x - w / 2, oy = y - h / 2;   // crop origin in global pixels
-    let imgs = "";
+    const tiles = [];
     for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + h - 1) / 256); ty++) {
       for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + w - 1) / 256); tx++) {
-        imgs += `<img src="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}" ` +
-          `style="position:absolute;left:${Math.round(tx * 256 - ox)}px;top:${Math.round(ty * 256 - oy)}px;width:256px;height:256px;max-width:none" ` +
-          `alt="" onerror="this.style.display='none'">`;
+        tiles.push({
+          src: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`,
+          left: Math.round(tx * 256 - ox),
+          top: Math.round(ty * 256 - oy),
+        });
       }
+    }
+    return tiles;
+  }
+  function aerialThumb(ll, w = 260, h = 156, z = 18) {
+    const tiles = aerialTileSpec(ll, w, h, z);
+    let imgs = "";
+    for (const t of tiles) {
+      imgs += `<img src="${t.src}" ` +
+        `style="position:absolute;left:${t.left}px;top:${t.top}px;width:256px;height:256px;max-width:none" ` +
+        `alt="" onerror="this.style.display='none'">`;
     }
     // The placeholder container behind the stitched tiles is chrome, not
     // photo, so it themes; the red point-marker on the photo and the Esri
     // caption chip below stay literal in both themes -- they sit on the
     // photograph itself, whose colours a site theme has no business
-    // changing (same reasoning as the Street View caption chip elsewhere).
+    // changing.
     const p = pinColors();
     return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:${p.aerialBg}">` +
       imgs +
@@ -7684,15 +7702,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
       `</div>`;
   }
-  // Called from the Street View img's inline onerror: a 404 (no imagery for
-  // this spot / rate limit) swaps the img for the keyless aerial instead of
-  // leaving the popup photo-less. Coordinates ride on the img's data
-  // attributes — numbers we wrote ourselves, nothing user-authored.
-  function aerialFallbackFor(img) {
-    const lat = parseFloat(img.dataset.lat), lng = parseFloat(img.dataset.lng);
-    const z = parseInt(img.dataset.zoom, 10);
-    if (!isFinite(lat) || !isFinite(lng)) return "";
-    return aerialThumb({ lat, lng }, 260, 156, isFinite(z) ? z : 17);
+  // Warm the Esri tiles a popup will ask for, after the building snap
+  // lands. The overview map tops out at zoom 14, so these z17–18 tiles are
+  // not already in cache; without this, hover starts the fetch at open
+  // time. 260×156 is the desktop crop — a superset of the phone size — at
+  // each pin's own zoom. Deduped: neighboring pins often share a tile.
+  function prefetchAerialThumbs(markers) {
+    const seen = {};
+    for (const m of markers) {
+      const ll = m && m._bldgLL;
+      if (!ll || !isFinite(ll.lat) || !isFinite(ll.lng)) continue;
+      const z = m._aerialZoom || 17;
+      for (const t of aerialTileSpec(ll, 260, 156, z)) {
+        if (seen[t.src]) continue;
+        seen[t.src] = true;
+        const img = new Image();
+        img.src = t.src;
+      }
+    }
   }
 
   // ----------------------------------------------------------------------------
@@ -7701,7 +7728,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // then move to geocoded positions as lookups resolve.
   // ----------------------------------------------------------------------------
   let mapInstance = null;
-  let streetviewEnabled = false; // set from /api/config in initGate()
   // Pins preview on hover only where there's a real pointer. Touch devices
   // have no hover state (and emulate mouseover on tap), so they keep
   // Leaflet's default tap-to-open and nothing changes for them.
@@ -7731,7 +7757,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // CartoDB serves light_all and dark_all at the same URL shape, keyless,
   // under the same terms, so this is a one-word swap. dark_all is near-black;
   // a CSS filter on .leaflet-tile-pane lifts it toward charcoal paper (the
-  // pins still invert — see pinColors()). Street View and aerials are not
+  // pins still invert — see pinColors()). Aerial popup photos are not
   // in that pane.
   const isDark = () => document.documentElement.getAttribute("data-theme") === "dark";
   const basemapUrl = () =>
@@ -7742,10 +7768,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // meaning -- and only its border flips. aerialBg is the keyless aerial
   // popup's placeholder container (visible only while its Esri tiles are
   // loading or on a failed tile) matched to the popup chrome around it --
-  // the point marker drawn ON that photo, and the Street View caption chip
-  // beside it, stay literal in both themes on purpose (see aerialThumb):
+  // the point marker drawn ON that photo, and the Esri caption chip
+  // on it, stay literal in both themes on purpose (see aerialThumb):
   // they sit on a photograph, whose own colours don't change with the site
-  // theme, the same reasoning as the caption chip.
+  // theme.
   const pinColors = () => isDark()
     ? { pinInk: "#E2E8F0", pinInkText: "#0F172A", pinEdge: "#0F172A", pinSubject: "#EF4444", aerialBg: "#1E293B" }
     : { pinInk: "#1e293b", pinInkText: "#fff",    pinEdge: "#fff",    pinSubject: "#DC2626", aerialBg: "#e2e8f0" };
@@ -7926,25 +7952,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (n >= 40000) return 17;
       return 18;
     };
-    // Popup photo. Street View (server-proxied, needs the Google key) when
-    // enabled; the keyless aerial close-up otherwise — and when Street View
-    // 404s (no imagery for this spot / rate limit), its onerror swaps in the
-    // aerial rather than leaving the popup photo-less, so a hover always
-    // shows a picture of the property. Popup content is a FUNCTION so
-    // Leaflet builds it at open time from the marker's CURRENT position —
-    // refinePins() moves pins after first paint. Coordinates come from
-    // getLatLng() / the snapped centroid — numbers, nothing user-authored.
+    // Popup photo: the aerial close-up of the snapped building. Popup content
+    // is a FUNCTION so Leaflet builds it at open time from the marker's
+    // CURRENT position — refinePins() moves pins after first paint.
+    // Coordinates come from the snapped centroid — numbers, nothing
+    // user-authored.
     const svPhoto = (marker, zoom, address) => {
       // Photo ONLY when OSM maps the building. The footprint is the one
       // signal that guarantees the picture shows the PROPERTY: with it, the
-      // aerial centers on the structure and Street View's camera aims at
-      // it. Without it, every guess degrades — the aerial centers on the
-      // street point (a photo of a dirt road), Street View shoots whatever
-      // faces the pavement (trees), and address-aiming showed the road on
-      // unmapped parcels. Owner's rule after a rural McCall report served
-      // all three failures at once: show the actual property or show
-      // nothing. Footprint coverage is strong exactly where photos work
-      // (cities/suburbs) and thin exactly where they embarrassed us.
+      // aerial centers on the structure. Without it, the aerial would
+      // center on the street point (a photo of a dirt road). Owner's rule
+      // after a rural McCall report served that failure: show the actual
+      // property or show nothing. Footprint coverage is strong exactly
+      // where photos work (cities/suburbs) and thin exactly where they
+      // embarrassed us.
       const snapped = marker._bldgLL;
       if (!snapped) return "";
       // ...and only when the geocoder's answer demonstrably matches the
@@ -7981,11 +8002,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // builds at open time, so the map's CURRENT width is known here.
       const w = Math.min(260, Math.max(180, (mapInstance ? mapInstance.getSize().x : 400) - 110));
       const h = Math.round(w * 0.6);
-      if (!streetviewEnabled) return aerialThumb(snapped, w, h, zoom || 17);
-      return '<img src="/api/streetview?lat=' + snapped.lat.toFixed(6) + '&lng=' + snapped.lng.toFixed(6) +
-        '" width="' + w + '" height="' + h + '" style="display:block;border-radius:4px;margin-bottom:6px;object-fit:cover" alt=""' +
-        ' data-lat="' + snapped.lat.toFixed(6) + '" data-lng="' + snapped.lng.toFixed(6) + '" data-zoom="' + (zoom || 17) + '"' +
-        ' onerror="this.outerHTML = aerialFallbackFor(this)">';
+      return aerialThumb(snapped, w, h, zoom || 17);
     };
     // Popups must never be wider than the map (a too-wide popup clips and
     // even autoPan can't help). Leaflet's maxWidth governs the text; the
@@ -8003,25 +8020,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       });
     };
     // Hover preview: pause on a pin and its popup opens (photo included);
-    // move away and it closes. The short open delay stops a mouse merely
-    // crossing the map from flashing popups on every pin it passes, and
-    // moving ONTO the popup cancels the close so the photo can be looked at.
-    // A click still pins the popup open until it's dismissed — otherwise
-    // clicking a pin then moving the mouse away would yank it shut.
-    // autoPan is off on hover devices: the map lurching under an idle cursor
-    // reads as a glitch, and it's the calmer behavior.
+    // move away and it closes. 60ms open stops a mouse merely crossing the
+    // map from flashing popups on every pin it passes; 80ms close is just
+    // enough to reach the popup (moving ONTO it cancels the close) without
+    // the photo lingering. A click still pins the popup open until it's
+    // dismissed — otherwise clicking a pin then moving the mouse away would
+    // yank it shut. autoPan is off on hover devices: the map lurching under
+    // an idle cursor reads as a glitch, and it's the calmer behavior.
     const wireHoverPreview = (m) => {
       if (!CAN_HOVER) return;
       let openT = null, closeT = null, pinned = false;
       const scheduleClose = () => {
         clearTimeout(closeT);
         if (pinned) return;
-        closeT = setTimeout(() => m.closePopup(), 320);
+        closeT = setTimeout(() => m.closePopup(), 80);
       };
       m.on("mouseover", () => {
         clearTimeout(closeT);
         clearTimeout(openT);
-        openT = setTimeout(() => m.openPopup(), 120);
+        openT = setTimeout(() => m.openPopup(), 60);
       });
       m.on("mouseout", () => {
         clearTimeout(openT);
@@ -8101,7 +8118,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         iconSize: [22, 22], iconAnchor: [11, 22],
       });
       const m = L.marker([lat, lng], { icon: subjIcon, zIndexOffset: 1000 }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m, aerialZoomFor(meta.subject && meta.subject.sizeMin), meta.address) +
+      m._aerialZoom = aerialZoomFor(meta.subject && meta.subject.sizeMin);
+      m.bindPopup(() => svPhoto(m, m._aerialZoom, meta.address) +
         `<strong>Your property:</strong> ${escMap(meta.address)}`,
         { autoPan: !CAN_HOVER });
       fitPopupToMap(m);
@@ -8130,7 +8148,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           SOURCE_TIERS[tier].label + "</span>" : "";
       };
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
-      m.bindPopup(() => svPhoto(m, aerialZoomFor(c.size_sqft), c.address) +
+      m._aerialZoom = aerialZoomFor(c.size_sqft);
+      m.bindPopup(() => svPhoto(m, m._aerialZoom, c.address) +
         `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}` + popupBadge(),
         { autoPan: !CAN_HOVER });
       fitPopupToMap(m);
@@ -8227,7 +8246,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           r.c.lng = String(r.ll.lng);
         }
       });
-      snapMarkersToBuildings(allMarkers());
+      snapMarkersToBuildings(allMarkers()).then(() => {
+        if (gen !== mapGeneration) return;
+        prefetchAerialThumbs(allMarkers());
+      });
       // Pins are final, so this is the one moment we know which comps never got
       // one. A comp whose address will not geocode simply produced no marker
       // and said nothing about it, so the map showed fewer comps than the table

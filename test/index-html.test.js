@@ -317,6 +317,45 @@ test("the print button waits for the raster", () => {
   assert.ok(wait < print, "the raster must be awaited BEFORE the print dialog opens");
 });
 
+// ----------------------------------------------------------------------------
+// Map pin popups — aerial close-up, snappy hover. Street View was both the
+// wrong picture (nearest pano of a fence/neighbor) and the slow one (proxy
+// round-trip after the popup opened).
+// ----------------------------------------------------------------------------
+
+test("map pin popup photos are aerial Esri tiles, never Street View", () => {
+  const fn = html.match(/const svPhoto = \(marker, zoom, address\) => \{[\s\S]*?\n    \};\n    \/\/ Popups must never/);
+  assert.ok(fn, "index.html must define svPhoto()");
+  assert.match(fn[0], /return aerialThumb\(snapped,/);
+  assert.doesNotMatch(fn[0], /\/api\/streetview/);
+  assert.doesNotMatch(fn[0], /streetviewEnabled/);
+  // The rest of the app page must not start a Street View fetch either —
+  // the proxy stays on the server, unused by hover/click.
+  const scripts = extractScriptBlocks(html).filter(isRealJsBlock).map((b) => b.body).join("\n");
+  assert.doesNotMatch(scripts, /\/api\/streetview/);
+});
+
+test("map pin hover opens in 60ms and closes in 80ms", () => {
+  const fn = html.match(/const wireHoverPreview = \(m\) => \{[\s\S]*?\n    \};\n    const addSubjMarker/);
+  assert.ok(fn, "index.html must define wireHoverPreview()");
+  assert.match(fn[0], /setTimeout\(\(\) => m\.openPopup\(\), 60\)/);
+  assert.match(fn[0], /setTimeout\(\(\) => m\.closePopup\(\), 80\)/);
+  assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.openPopup\(\), 120\)/);
+  assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.closePopup\(\), 320\)/);
+});
+
+test("Leaflet popup fade is disabled so hover close is the timer, not a 200ms fade", () => {
+  assert.match(html, /\.leaflet-fade-anim \.leaflet-popup \{ transition: none; opacity: 1 \}/);
+});
+
+test("aerial popup tiles are prefetched after the building snap", () => {
+  assert.match(html, /function prefetchAerialThumbs\(markers\)/);
+  assert.match(html, /function aerialTileSpec\(/);
+  const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,280}/);
+  assert.ok(snap, "renderMap must call snapMarkersToBuildings");
+  assert.match(snap[0], /prefetchAerialThumbs\(allMarkers\(\)\)/);
+});
+
 test("landing address handoff fills #address from sessionStorage and drops the key", () => {
   // File search, not a browser. The landing cannot reach this script;
   // this only proves the app side of the handoff is actually wired.

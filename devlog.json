@@ -2,6 +2,12 @@
   {
     "date": "2026-08-13",
     "type": "improvement",
+    "title": "The homepage asks for a building and shows one sample report",
+    "details": "The account-wall landing was a how-it-works page: Create a free account, then the same Rancho Cucamonga sample twice, then Method. It now has an address field in the hero, one full sample exhibit, and a proof line (up to 12 comps, about a minute) instead of a stat strip. Brokers is one block with the Verified chip, not a second Method row. The typed address goes through sessionStorage into the search box after signup, never in the URL."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
     "title": "An empty vault is the real vault, not a numbered onboarding page",
     "details": "Day one used to be two cards, with Your book and Your pipeline hidden until a spreadsheet landed, so the pipeline table shipped yesterday was invisible on an empty account. The empty vault is now the same two decks. The trust line shows zeros. Each empty body is a short invitation: upload closed deals, or watch a market. Add comps and Log a BOV stay closed. The watch-market form sits in the pipeline body until a lead or BOV exists, then collapses under Markets you watch. Watching a market on day one no longer hides waiting leads."
   },

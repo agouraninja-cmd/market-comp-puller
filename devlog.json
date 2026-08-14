@@ -19,6 +19,18 @@
   },
   {
     "date": "2026-08-13",
+    "type": "feature",
+    "title": "The vault takes a screenshot of a comp table, not only a PDF",
+    "details": "Brokers were being asked for a spreadsheet or an exported PDF, which is not usually what they have. A CoStar table on screen, a photo of a printed comp sheet, or a cropped screenshot from a colleague all now go through the same door: the file is read by the extract vendor, the deals come back as the same confirm table, and nothing is stored until the rows are imported. PNG, JPEG and WebP are accepted alongside PDF. That list is the intersection of what both search providers read rather than the union, so a file that imports today cannot start refusing after a provider switch. The file type is decided by its bytes, never by its name, so a renamed spreadsheet still cannot reach the vendor. iPhone HEIC photos are refused by name with what to do instead, since a generic unsupported-file line would send a broker looking for a fault in their comp sheet."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
+    "title": "The homepage asks for a building and shows one sample report",
+    "details": "The account-wall landing was a how-it-works page: Create a free account, then the same Rancho Cucamonga sample twice, then Method. It now has an address field in the hero, one full sample exhibit, and a proof line (up to 12 comps, about a minute) instead of a stat strip. Brokers is one block with the Verified chip, not a second Method row. The typed address goes through sessionStorage into the search box after signup, never in the URL."
+  },
+  {
+    "date": "2026-08-13",
     "type": "improvement",
     "title": "An empty vault is the real vault, not a numbered onboarding page",
     "details": "Day one used to be two cards, with Your book and Your pipeline hidden until a spreadsheet landed, so the pipeline table shipped yesterday was invisible on an empty account. The empty vault is now the same two decks. The trust line shows zeros. Each empty body is a short invitation: upload closed deals, or watch a market. Add comps and Log a BOV stay closed. The watch-market form sits in the pipeline body until a lead or BOV exists, then collapses under Markets you watch. Watching a market on day one no longer hides waiting leads."

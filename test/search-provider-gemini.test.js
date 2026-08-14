@@ -86,9 +86,25 @@ test("deadlineTokens returns a fixed figure, never max_output_tokens", () => {
   assert.equal(P.deadlineTokens(undefined), 12000);
 });
 
+test("buildExtractBody carries a screenshot on the same inline_data part as a PDF", () => {
+  assert.equal(P.capabilities.imageExtract, true);
+  for (const media of ["image/png", "image/jpeg", "image/webp"]) {
+    const body = P.buildExtractBody({
+      model: "gemini-3.6-flash", prompt: "EXTRACT",
+      fileBase64: "AAA", mediaType: media,
+    });
+    assert.equal(body.contents[0].parts[0].inline_data.mime_type, media);
+    assert.equal(body.contents[0].parts[0].inline_data.data, "AAA");
+    assert.equal("tools" in body, false);
+  }
+});
+
 test("declares pdfExtract and buildExtractBody has no google_search", () => {
   assert.equal(P.capabilities.pdfExtract, true);
-  const body = P.buildExtractBody({ model: "gemini-3.6-flash", prompt: "EXTRACT", pdfBase64: "AAA" });
+  const body = P.buildExtractBody({
+    model: "gemini-3.6-flash", prompt: "EXTRACT",
+    fileBase64: "AAA", mediaType: "application/pdf",
+  });
   assert.equal("tools" in body, false);
   const wire = JSON.stringify(body);
   assert.equal(wire.includes("google_search"), false);

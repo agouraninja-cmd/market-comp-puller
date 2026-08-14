@@ -102,8 +102,16 @@ test("the emitted page script still parses", () => {
   assert.doesNotThrow(() => new Function(m[0].replace(/^<script>/, "").replace(/<\/script>$/, "")));
 });
 
-test("the file input accepts csv and pdf", () => {
-  assert.match(html(), /id="file"[^>]*accept="[^"]*\.pdf/);
+test("the file input accepts csv, pdf and screenshots", () => {
+  const accept = (html().match(/id="file"[^>]*accept="([^"]*)"/) || [])[1];
+  assert.ok(accept, "the one file input should still declare an accept list");
+  // One input, so this list is the whole vocabulary of the picker. A missing
+  // image type means the file the broker came to upload is greyed out in the
+  // dialog, with nothing on the page saying why.
+  for (const kind of [".csv", ".pdf", ".png", ".jpg", ".jpeg", ".webp",
+                      "image/png", "image/jpeg", "image/webp"]) {
+    assert.ok(accept.split(",").includes(kind), `accept is missing ${kind}`);
+  }
 });
 
 test("the book invitation disclosure names the extract vendor", () => {
@@ -116,6 +124,6 @@ test("the book invitation disclosure names the extract vendor", () => {
   assert.match(block, /Upload closed deals/);
 });
 
-test("picker copy mentions PDF", () => {
-  assert.match(html(), /Choose a spreadsheet or PDF/);
+test("picker copy names all three things it takes", () => {
+  assert.match(html(), /Choose a spreadsheet, PDF or screenshot/);
 });

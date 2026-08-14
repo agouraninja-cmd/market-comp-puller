@@ -3231,7 +3231,7 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
-const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a table PDF (CoStar, ARGUS, CMA, or similar). Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
+const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a deals table (CoStar, ARGUS, CMA, MLS, or similar). The table may arrive as a PDF, as a screenshot, or as a photograph of a printed sheet. Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
 
 Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
 property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
@@ -4096,9 +4096,16 @@ async function repairCompJson(brokenText, maxTokens) {
   }
 }
 
-async function extractPdfOnce(pdfBase64) {
-  if (!PROVIDER.capabilities.pdfExtract) {
-    const err = new Error("PDF import isn't available on this deployment.");
+// One call for a table PDF and for a screenshot of one. The media type is
+// SNIFFED from the bytes by the route before it gets here (never taken from
+// the filename), so this only has to ask whether the provider reads that kind
+// of file and hand it over.
+async function extractFileOnce(fileBase64, mediaType) {
+  const isPdf = mediaType === "application/pdf";
+  if (!PROVIDER.capabilities[isPdf ? "pdfExtract" : "imageExtract"]) {
+    const err = new Error(isPdf
+      ? "PDF import isn't available on this deployment."
+      : "Image import isn't available on this deployment.");
     err.statusCode = 503;
     throw err;
   }
@@ -4109,7 +4116,7 @@ async function extractPdfOnce(pdfBase64) {
     throw err;
   }
   const init = PROVIDER.extractRequestInit({ apiKey, model: MODEL });
-  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, pdfBase64 });
+  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, fileBase64, mediaType });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000);
   const startedAt = Date.now();
@@ -4122,20 +4129,20 @@ async function extractPdfOnce(pdfBase64) {
     });
     if (!r.ok) {
       const detail = (await r.text().catch(() => "")).slice(0, 200);
-      console.error(`${PROVIDER.logLabel} pdf-extract failed (${r.status}): ${detail}`);
+      console.error(`${PROVIDER.logLabel} ${mediaType} extract failed (${r.status}): ${detail}`);
       throw VAULT.extractVendorError(r.status);
     }
     const parsed = PROVIDER.parseExtractResponse(await r.json());
-    console.log(`${PROVIDER.logLabel} pdf-extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
+    console.log(`${PROVIDER.logLabel} ${mediaType} extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
     if (VAULT.extractWasTruncated(parsed.stopReason)) {
-      const err = new Error("That PDF has more rows than we can read in one pass. Nothing was saved.");
+      const err = new Error("That file has more rows than we can read in one pass. Nothing was saved.");
       err.statusCode = 400;
       throw err;
     }
     return parsed.text || "";
   } catch (err) {
     if (err && err.name === "AbortError") {
-      const e = new Error("Could not read that PDF. Nothing was saved.");
+      const e = new Error("Could not read that file. Nothing was saved.");
       e.statusCode = 504;
       throw e;
     }
@@ -6223,12 +6230,6 @@ h3{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px}
 section{padding:48px 0}
 .band{background:var(--wash);box-shadow:0 0 0 100vmax var(--wash);clip-path:inset(0 -100vmax)}
 .lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
-/* Stat strip */
-.stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.stat{padding:18px}
-.stat:nth-child(1),.stat:nth-child(3){border-right:1px solid var(--line)}
-.stat .n{font-size:22px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
-.stat .l{font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
 /* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
    the ONLY place a visitor sees the product before signing up, so it is built
    as a faithful miniature of the real report rather than a layout of its own:
@@ -6273,20 +6274,6 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .hero2 h1.h{max-width:none}
 .hero2 .lead{max-width:48ch}
 @media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
-/* The hero's copy is the same document at a smaller scale: the answer and a
-   few comps, where the exhibit below carries the whole file. */
-.exmini .cap{padding:9px 14px;font-size:10px}
-.exmini .exbody{padding:16px}
-.exmini .exaddr{font-size:15px}
-.exmini .lcell{padding:9px 11px}
-.exmini .fig{font-size:15px}
-.exmini .lcell.mid .fig{font-size:19px}
-.mrows{margin-top:12px;border-top:1px solid var(--hair);padding-top:8px}
-.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--hair);font-variant-numeric:tabular-nums}
-.mrow:last-of-type{border-bottom:0}
-.mrow .a{color:var(--ink);font-weight:500}
-.mrow .badge{margin-left:6px}
-.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute);font-weight:600;border-top:1px solid var(--ink);border-bottom:3px double var(--ink);padding:6px 0;margin-top:2px}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.p{color:var(--ink-body);background:var(--wash)}
@@ -6323,7 +6310,16 @@ details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
    .btn, so the white has to be restated at that specificity. */
 .hdr nav a.btn,.hdr nav a.btn:hover{color:#fff}
 .btn.sm{padding:7px 14px;font-size:13px}
-.heroCta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:24px}
+.band section{padding:72px 0}
+.landForm{margin-top:0}
+.landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden}
+.landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink);outline:none}
+.landRow input::placeholder{color:var(--ink-3)}
+button.btn{border:0;cursor:pointer;font-family:inherit}
+.landRow .btn{border-radius:0;flex-shrink:0}
+.landFine,.landProof{font-size:13px;color:var(--ink-mute);margin:10px 0 0}
+.landProof{color:var(--ink-2)}
+.heroCta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:24px}
 .heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
 footer{background:var(--slab);color:var(--ink-4);font-size:13px}
@@ -6343,11 +6339,6 @@ footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
-  .stats{grid-template-columns:repeat(4,1fr)}
-  .stat{padding:20px}
-  /* Four across: rule between every pair, so the divider the two-column
-     layout only needs after 1 and 3 also lands between 2 and 3. */
-  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid var(--line)}
   .steps{grid-template-columns:repeat(3,1fr)}
   .step{border-bottom:0;border-right:1px solid var(--hair)}
   .step:last-child{border-right:0}
@@ -6382,13 +6373,13 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 /* Ink rules draw left to right. clip-path, not scaleX: scaling a 1.5px border
    blurs it at fractional widths, and it would squash the label riding on the
    same line instead of wiping it in beside the rule. */
-.anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:inset(0 100% 0 0);transition:clip-path .55s ease-out}
-.anim .exhibit.on .secrule,.anim .exhibit.on .mmed{clip-path:inset(0 0 0 0)}
+.anim .exhibit .secrule{clip-path:inset(0 100% 0 0);transition:clip-path .55s ease-out}
+.anim .exhibit.on .secrule{clip-path:inset(0 0 0 0)}
 /* Comp rows deal in behind the rules. The stagger is per-row CSS rather than
    per-element JS, so it costs nothing at runtime. Their NUMBERS never animate:
    this exhibit's whole pitch is that the arithmetic checks out, so every
    figure in it appears correct and stays correct. */
-.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:0;transform:translateY(6px);transition:opacity .4s ease-out,transform .4s ease-out}
+.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:0;transform:translateY(6px);transition:opacity .4s ease-out,transform .4s ease-out}
 /* The row separators fade WITH their row. A collapsed table's borders are
    painted by the TABLE, not by the row, so a row at opacity 0 still drew its
    own rule: the body sat there as an empty ruled grid while the text arrived,
@@ -6400,7 +6391,7 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
    under it is correct from the first frame. */
 .anim .exhibit tbody td{border-bottom-color:transparent;transition:border-bottom-color .4s ease-out}
 .anim .exhibit tfoot td{border-top-color:transparent;border-bottom-color:transparent;transition:border-top-color .4s ease-out,border-bottom-color .4s ease-out}
-.anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr,.anim .exhibit.on .mrow{opacity:1;transform:none}
+.anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr{opacity:1;transform:none}
 .anim .exhibit.on tbody td{border-bottom-color:var(--hair)}
 .anim .exhibit.on tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink)}
 /* The delays come LAST on purpose. A transition SHORTHAND resets
@@ -6409,32 +6400,31 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
    shorthands after these and the footer silently loses its stagger and
    arrives with the first row. (Caught in the browser: the footer's rule was
    99% opaque 300ms in, when it should not have started.) */
-.anim .exhibit tbody tr:nth-child(1),.anim .exhibit tbody tr:nth-child(1) td,.anim .exhibit .mrow:nth-of-type(1){transition-delay:.40s}
-.anim .exhibit tbody tr:nth-child(2),.anim .exhibit tbody tr:nth-child(2) td,.anim .exhibit .mrow:nth-of-type(2){transition-delay:.47s}
-.anim .exhibit tbody tr:nth-child(3),.anim .exhibit tbody tr:nth-child(3) td,.anim .exhibit .mrow:nth-of-type(3){transition-delay:.54s}
+.anim .exhibit tbody tr:nth-child(1),.anim .exhibit tbody tr:nth-child(1) td{transition-delay:.40s}
+.anim .exhibit tbody tr:nth-child(2),.anim .exhibit tbody tr:nth-child(2) td{transition-delay:.47s}
+.anim .exhibit tbody tr:nth-child(3),.anim .exhibit tbody tr:nth-child(3) td{transition-delay:.54s}
 .anim .exhibit tbody tr:nth-child(4),.anim .exhibit tbody tr:nth-child(4) td{transition-delay:.61s}
 .anim .exhibit tbody tr:nth-child(5),.anim .exhibit tbody tr:nth-child(5) td{transition-delay:.68s}
 .anim .exhibit tfoot tr,.anim .exhibit tfoot td{transition-delay:.75s}
-/* Stat cells and Method steps arrive one after another. */
-.anim .stats .stat,.anim .steps .step{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
-.anim .stats.on .stat,.anim .steps.on .step{opacity:1;transform:none}
-.anim .stats .stat:nth-child(2),.anim .steps .step:nth-child(2){transition-delay:.07s}
-.anim .stats .stat:nth-child(3),.anim .steps .step:nth-child(3){transition-delay:.14s}
-.anim .stats .stat:nth-child(4){transition-delay:.21s}
+/* Method steps arrive one after another. */
+.anim .steps .step{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
+.anim .steps.on .step{opacity:1;transform:none}
+.anim .steps .step:nth-child(2){transition-delay:.07s}
+.anim .steps .step:nth-child(3){transition-delay:.14s}
 /* A counting figure reserves its finished width before the first tick (the
    script measures it and sets min-width), so a number growing from 0 to
    $4,580,000 never reflows the cell it sits in. */
 .cu{display:inline-block}
 /* Motion is decoration. These two contexts get the finished page instead. */
 @media (prefers-reduced-motion:reduce){
-  .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1;transform:none;transition:none}
-  .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none;transition:none}
+  .anim .rv,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
+  .anim .exhibit .secrule{clip-path:none;transition:none}
   .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
   .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
 }
 @media print{
-  .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1!important;transform:none!important}
-  .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none!important}
+  .anim .rv,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
+  .anim .exhibit .secrule{clip-path:none!important}
   .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
   .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
 }
@@ -6836,46 +6826,14 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     "How a CompNinja report is built: live searches of public records and listings, " +
     "a source badge on every comp, and a value range for your building.";
 
-  // Both numbers were wrong in opposite directions until 2026-08-08: "3–6"
-  // undersold a product whose search asks for up to 12 comps, and "~40s"
-  // oversold one whose model alone spends 40–70s writing (a corpus-strong
-  // 2-search run still clocked 74s). Promising 40 and delivering 75 costs
-  // trust on the very first search — the one the visitor is timing.
-  const stats = [
-    // "To start", not "Every report": every report IS free to run, but the
-    // strip sits two scrolls above an FAQ describing $129/mo Pro and a $20
-    // report unlock, and "free / every report" reads as denying both. Same
-    // wording the approved Direction E card carried.
-    ["Free", "To start"],
-    ["Up to 12", "Cited comps per report", "12"],
-    ["~1 min", "Search to report"],
-    ["100%", "Sources disclosed", "100"],
-  ].map(([n, l, cu]) => {
-    // The third entry is the numeral that counts up on scroll. Only two of the
-    // four have one, on purpose: "Free" has no number, and counting to 1 looks
-    // like a bug rather than an effect. A cell with no numeral just fades in
-    // with the rest of the row.
-    //
-    // The numeral is named in an ATTRIBUTE and the copy is left as one plain
-    // string; the script splits it out at runtime. Wrapping it in a span here
-    // instead would break "Up to 12" into three nodes, and that phrase is a
-    // promise about the product pinned by test/public-pages.test.js — the
-    // served page has to keep saying it in one piece, to that test and to
-    // anything else reading the HTML.
-    const count = cu ? ` data-count="${cu}"` : "";
-    return `<div class="stat"><div class="n"${count}>${n}</div><div class="l">${l}</div></div>`;
-  }).join("");
-
   // Illustrative sample, clearly captioned as such — the same exhibit that
   // used to sit on the home page. Figures are representative, not a live pull.
-  // ONE illustrative comp set feeds both the hero's compact exhibit and the
-  // full one below, so the two can never quote different numbers at each
-  // other. The figures are also internally honest, which the previous set was
-  // not: SAMPLE_MEDIAN is the real median of these five $/SF values, the
-  // "Likely" value equals that median x the subject size (21,600 SF), and Low
-  // and High are the size x the cheapest and dearest comp. A visitor who
-  // checks the arithmetic finds it holds, and that is the whole pitch of the
-  // page it sits on.
+  // ONE illustrative comp set feeds the hero exhibit. The figures are
+  // internally honest, which the previous set was not: SAMPLE_MEDIAN is the
+  // real median of these five $/SF values, the "Likely" value equals that
+  // median x the subject size (21,600 SF), and Low and High are the size x
+  // the cheapest and dearest comp. A visitor who checks the arithmetic finds
+  // it holds, and that is the whole pitch of the page it sits on.
   const SAMPLE_SIZE_SQFT = "21,600";
   const SAMPLE_MEDIAN = "$219";
   const SAMPLE_COMPS = [
@@ -6893,10 +6851,6 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   const sampleComps = SAMPLE_COMPS.map((c) =>
     `<tr><td>${escHtml(c.addr)}</td><td>${escHtml(c.sold)}</td><td class="n">${escHtml(c.sf)}</td>` +
     `<td class="n">${escHtml(c.psf)}</td><td>${c.badge}</td></tr>`).join("");
-  // The hero shows the answer and the first few comps; the exhibit below
-  // carries the whole file.
-  const sampleMiniRows = SAMPLE_COMPS.slice(0, 3).map((c) =>
-    `<div class="mrow"><span class="a">${escHtml(c.addr)}${c.short}</span><span>${escHtml(c.psf)}</span></div>`).join("");
   // Low / Likely / High, as the report itself renders them: Likely IS the
   // comp median, which is why it carries that label in the sub-line.
   const sampleLedger = [
@@ -6904,15 +6858,12 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     ["Likely", "$4,730,000", `at ${SAMPLE_MEDIAN}/SF`],
     ["High", "$5,140,000", "at $238/SF"],
   ];
-  // The full exhibit names the statistic under "Likely"; the hero's compact
-  // copy leaves it off, because its own median row says it one line below and
-  // the extra words wrap the cell to two lines at that width.
-  // The dollar figure counts up on scroll. Like the stat strip, it names its
-  // numeral in an attribute and leaves the copy alone — the script does the
-  // splitting, so the served page still reads "$4,580,000" as one string.
-  // Derived from the display value rather than carried as a second numeric
-  // field, so the two can never disagree; a figure that stops matching this
-  // shape simply gets no counter rather than a broken one.
+  // The dollar figure counts up on scroll. It names its numeral in an
+  // attribute and leaves the copy alone — the script does the splitting, so
+  // the served page still reads "$4,580,000" as one string. Derived from the
+  // display value rather than carried as a second numeric field, so the two
+  // can never disagree; a figure that stops matching this shape simply gets
+  // no counter rather than a broken one.
   const countAttr = (fig) => {
     const m = /^\$([\d,]+)$/.exec(fig);
     return m ? ` data-count="${m[1]}"` : "";
@@ -6934,24 +6885,7 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   const faqBlock = HOW_FAQ.map(([q, a]) =>
     `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
 
-  // The broker half of the product, on the page brokers actually land on.
-  // Until now this page spoke only to owners: a broker arriving here met one
-  // FAQ row and a link buried in the Explore dropdown, which is a poor showing
-  // for the audience the owner considers the better acquisition lever.
-  //
-  // Three concrete trades, no pitch. Same `.steps` idiom as Method above so it
-  // needs no new CSS, with the numeral slot carrying a short label instead.
-  // Copy rules (they have been enforced before): no em dashes, one idea per
-  // line, name the real thing rather than gesturing at it.
-  const brokerPoints = [
-    ["Private", "Your closed deals stay yours",
-     "Upload your book to a private vault. It is visible only to you, and it never enters CompNinja's public records unless you choose to publish a comp."],
-    ["Credit", "Submitted comps carry your name",
-     "A comp you publish shows a green Verified badge and your firm's name on every report that uses it."],
-    ["Leads", "Owners in your markets",
-     "When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand."],
-  ].map(([n, h, p]) =>
-    `<div class="step"><div class="num">${escHtml(n)}</div><h3>${escHtml(h)}</h3><p>${escHtml(p)}</p></div>`).join("");
+  const landingDest = signedIn ? "/" : "/?auth=signup";
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -7056,60 +6990,46 @@ ${ACCOUNT_NAV_JS}
       <div class="hero2">
         <div>
           <h1 class="h">A report you can hand to someone who will argue with it.</h1>
-          <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
-            subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
+          <p class="lead">Every report answers the question and then shows its work: a value
+            range, the comps behind it, and where each one came from.</p>
           <div class="heroCta">
-            ${signedIn
-              ? `<a class="btn" href="/">Run a report</a>
-            <span class="alt">You're signed in. Reports are free.</span>`
-              : `<a class="btn" href="/?auth=signup">Create a free account</a>
-            <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
+            <form id="landingSearch" class="landForm" action="${signedIn ? "/" : "/?auth=signup"}" method="get">
+              <label class="lab" for="landingAddress">Address</label>
+              <div class="landRow">
+                <input id="landingAddress" type="text" required autocomplete="street-address"
+                  placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX">
+                <button class="btn" type="submit">Run a report</button>
+              </div>
+            </form>
+            <p class="landFine">Free account. Automated estimate, not an appraisal.</p>
+            <p class="landProof">Up to 12 cited comps &middot; about a minute &middot; every source disclosed.</p>
+            ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
         </div>
-        <div class="exhibit exmini" data-rv>
-          <div class="cap"><span>Sample report &middot; Industrial</span><span>Illustrative</span></div>
+        <div class="exhibit" data-rv>
+          <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
           <div class="exbody">
             <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
-            <div class="exmeta plain">${SAMPLE_SIZE_SQFT} SF from public record &middot; 24-month lookback</div>
-            <div class="ledger">${ledgerCells(false)}</div>
-            <div class="mrows">${sampleMiniRows}</div>
-            <div class="mmed"><span>Median of 5 sale comps</span><span>${SAMPLE_MEDIAN}/SF</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
-    <div class="stats" data-rv>${stats}</div>
-  </div>
-
-  <div class="wrap">
-    <section class="rv" data-rv>
-      <div class="kicker">The Report</div>
-      <h2 class="h">One page that answers, then proves.</h2>
-      <p class="sub">A value range for the subject, what's driving prices in the market, and the comp table behind
-        both, with a confidence badge on every source.</p>
-      <div class="exhibit" data-rv>
-        <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
-        <div class="exbody">
-          <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
-          <div class="exmeta"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF (public record)</span><span>24-month lookback</span><span>5 comparables</span></div>
-          <div class="exsec">
-            <div class="secrule"><span class="seclab">What This Building Is Worth</span><span class="secnote">from 5 comparable sales</span></div>
-            <div class="ledger">${ledgerCells(true)}</div>
-          </div>
-          <div class="exsec">
-            <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
-            <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
-            <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
-            <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
-          </div>
-          <div class="exsec">
-            <div class="secrule"><span class="seclab">Comparable Properties</span><span class="secnote">source badged per comp</span></div>
-            <div class="exscroll">
-              <table class="comps">
-                <thead><tr><th>Address</th><th>Sold</th><th class="n">SF</th><th class="n">$/SF</th><th>Source</th></tr></thead>
-                <tbody>${sampleComps}</tbody>
-                <tfoot><tr><td class="tl" colspan="3">Median of 5 sale comps &middot; ${SAMPLE_MEDIAN}/SF</td><td class="n">${SAMPLE_MEDIAN}</td><td></td></tr></tfoot>
-              </table>
+            <div class="exmeta"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF (public record)</span><span>24-month lookback</span><span>5 comparables</span></div>
+            <div class="exsec">
+              <div class="secrule"><span class="seclab">What This Building Is Worth</span><span class="secnote">from 5 comparable sales</span></div>
+              <div class="ledger">${ledgerCells(true)}</div>
+            </div>
+            <div class="exsec">
+              <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
+              <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
+              <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
+              <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
+            </div>
+            <div class="exsec">
+              <div class="secrule"><span class="seclab">Comparable Properties</span><span class="secnote">source badged per comp</span></div>
+              <div class="exscroll">
+                <table class="comps">
+                  <thead><tr><th>Address</th><th>Sold</th><th class="n">SF</th><th class="n">$/SF</th><th>Source</th></tr></thead>
+                  <tbody>${sampleComps}</tbody>
+                  <tfoot><tr><td class="tl" colspan="3">Median of 5 sale comps &middot; ${SAMPLE_MEDIAN}/SF</td><td class="n">${SAMPLE_MEDIAN}</td><td></td></tr></tfoot>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -7145,7 +7065,7 @@ ${ACCOUNT_NAV_JS}
     <section class="rv" data-rv>
       <div class="kicker">Brokers</div>
       <h2 class="h">What brokers get.</h2>
-      <div class="steps" data-rv>${brokerPoints}</div>
+      <p class="sub">A comp you publish shows a <span class="badge v">Verified</span> badge and your firm&#39;s name on every report that uses it. Upload your book to a private vault. It is visible only to you, and it never enters CompNinja&#39;s public records unless you choose to publish a comp. When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand.</p>
       <p style="margin:18px 0 40px"><a href="/brokers">See the broker side &rarr;</a></p>
     </section>
 
@@ -7155,7 +7075,7 @@ ${ACCOUNT_NAV_JS}
         ? `<p>Reports are free and take about a minute. Run one on your own building.</p>
       <a class="btn" href="/">Run a report &rarr;</a>`
         : `<p>Reports are free and take about a minute. Create an account and run one on your own building.</p>
-      <a class="btn" href="/?auth=signup">Create a free account &rarr;</a>`}
+      <a class="btn" href="/?auth=signup">Run a report &rarr;</a>`}
     </div>
   </div>
 </main>
@@ -7194,6 +7114,20 @@ ${ACCOUNT_NAV_JS}
     </div>
   </div>
 </footer>
+<script>
+(function(){
+  var f=document.getElementById("landingSearch");
+  if(!f)return;
+  f.addEventListener("submit",function(e){
+    e.preventDefault();
+    var el=document.getElementById("landingAddress");
+    var addr=((el&&el.value)||"").trim();
+    if(!addr)return;
+    try{sessionStorage.setItem("pendingLandingAddress.v1",addr);}catch(err){}
+    location.href=${JSON.stringify(landingDest)};
+  });
+})();
+</script>
 <script>
 (function(){
   if(!document.documentElement.classList.contains("anim"))return;
@@ -12339,8 +12273,9 @@ const server = http.createServer((req, res) =>
       return;
     }
 
-    // Read a broker's own PDF and return classified rows for a confirm table.
-    // Stores NOTHING: the PDF never lands in broker_uploads or broker_comps.
+    // Read a broker's own table PDF or screenshot and return classified rows
+    // for a confirm table.
+    // Stores NOTHING: the file never lands in broker_uploads or broker_comps.
     if (req.method === "POST" && path === "/api/vault/extract") {
       let body = "";
       let tooBig = false;
@@ -12356,25 +12291,35 @@ const server = http.createServer((req, res) =>
           if (rateLimited("vaultex:" + clientIp(req), 8)) {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
-          const { filename, pdf } = JSON.parse(body || "{}");
-          const b64 = String(pdf || "").replace(/^data:application\/pdf;base64,/i, "");
+          const payload = JSON.parse(body || "{}");
+          const { filename } = payload;
+          // `pdf` is the field this route shipped with, kept because it costs
+          // one `||` and a browser holding a cached copy of the old page would
+          // otherwise post a body this route reads as empty.
+          const raw = String((payload.file != null ? payload.file : payload.pdf) || "");
+          // Any data: prefix, not application/pdf's alone — FileReader labels a
+          // screenshot image/png, and a prefix left in place would corrupt the
+          // first bytes and fail the sniff below with a confusing message.
+          const b64 = raw.replace(/^data:[^;,]*;base64,/i, "");
           let bytes;
           try { bytes = Buffer.from(b64, "base64"); }
-          catch (err) { return sendJson(res, 400, { error: "That doesn't look like a PDF." }); }
-          if (!VAULT.looksLikePdf(bytes)) {
-            return sendJson(res, 400, { error: "That doesn't look like a PDF." });
-          }
-          if (bytes.length > VAULT.MAX_PDF_BYTES) {
-            return sendJson(res, 400, { error: "That file is too large to read." });
-          }
-          const text = await extractPdfOnce(b64);
+          catch (err) { bytes = Buffer.alloc(0); }
+          // Type and size in one call, so the refusal copy lives in one place.
+          const file = VAULT.checkExtractFile(bytes);
+          if (!file.ok) return sendJson(res, 400, { error: file.error });
+          // Which KIND of file brokers actually bring is a product question
+          // (the vault's own bottleneck is whether anyone imports at all), and
+          // this event is the only place it can be counted. PII-free: a media
+          // type and a row count, the same shape as before.
+          const kind = file.mediaType === "application/pdf" ? "pdf" : "image";
+          const text = await extractFileOnce(b64, file.mediaType);
           const parsed = VAULT.parseExtractJson(text);
           if (!parsed.ok || parsed.rows.length === 0) {
-            logEvent("vault_extract", { source: "empty:0" });
-            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that PDF." });
+            logEvent("vault_extract", { source: `empty:${kind}:0` });
+            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that file." });
           }
           const rows = VAULT.classifyExtractRows(parsed.rows);
-          logEvent("vault_extract", { source: `ok:${rows.length}` });
+          logEvent("vault_extract", { source: `ok:${kind}:${rows.length}` });
           sendJson(res, 200, {
             filename: String(filename || "").trim().slice(0, 200),
             rows,
@@ -12382,12 +12327,12 @@ const server = http.createServer((req, res) =>
         } catch (err) {
           // Same guard as /api/vault/inspect: V8 quotes the input in a
           // JSON.parse error, so a malformed body would otherwise print a
-          // fragment of the broker's private PDF into Render's logs (and
+          // fragment of the broker's private file into Render's logs (and
           // echo it back via clientErrorMessage). A bad body is 400.
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault extract error:", err.message);
           const status = err.statusCode || 500;
-          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that PDF. Nothing was saved." });
+          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that file. Nothing was saved." });
         }
       });
       return;

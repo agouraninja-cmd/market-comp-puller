@@ -1298,14 +1298,14 @@ test("every user flag entitlements reads is carried by getSessionUser", () => {
   }
 });
 
-test("extractPdfOnce does not trip site-wide search outage on a vendor failure", () => {
+test("extractFileOnce does not trip site-wide search outage on a vendor failure", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  const start = src.indexOf("async function extractPdfOnce");
-  assert.ok(start >= 0, "extractPdfOnce should still exist");
+  const start = src.indexOf("async function extractFileOnce");
+  assert.ok(start >= 0, "extractFileOnce should still exist");
   const end = src.indexOf("async function callAnthropicOnce", start);
-  assert.ok(end > start, "could not bound extractPdfOnce");
+  assert.ok(end > start, "could not bound extractFileOnce");
   const body = src.slice(start, end);
   assert.equal(body.includes("upstreamError"), false,
     "a vendor 5xx on extract must not call upstreamError (that paints /admin as a search outage)");
@@ -1549,4 +1549,30 @@ test("watchlist digest unsubscribe", async (t) => {
     assert.match(html, /Turn these emails back on\?/);
     assert.match(html, /<form method="POST"/);
   });
+});
+
+test("/api/vault/extract sniffs the media type and never takes it from the body", () => {
+  // What we forward to a third-party vendor has to be what it claims to be, so
+  // the type is decided by broker-vault.js's magic-byte check. A mediaType
+  // read off the request would let a renamed file through the check that
+  // exists to stop exactly that.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf('path === "/api/vault/extract"');
+  assert.ok(start >= 0, "the extract route should still exist");
+  const end = src.indexOf('path === "/api/vault/benchmarks"', start);
+  assert.ok(end > start, "could not bound the extract route");
+  const route = src.slice(start, end);
+  assert.match(route, /VAULT\.checkExtractFile\(bytes\)/,
+    "type and size must both go through the one pure check");
+  assert.match(route, /extractFileOnce\(b64, file\.mediaType\)/,
+    "the vendor call must carry the SNIFFED media type");
+  assert.equal(/payload\.mediaType|body\)\.mediaType|\bmediaType\s*[:=]\s*String/.test(route), false,
+    "the media type must never be read from the request body");
+  // A screenshot arrives as data:image/png;base64,… — a prefix stripper
+  // hard-coded to application/pdf would leave that text in the base64 and turn
+  // every image into "that file isn't something we can read".
+  assert.equal(route.includes("data:application\\/pdf"), false,
+    "the data: prefix stripper must not be PDF-only");
 });

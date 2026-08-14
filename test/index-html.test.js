@@ -169,3 +169,16 @@ test("unitDesignatorOf does not read the vocabulary out of ordinary street names
     assert.equal(unitOf(addr), null, `street name misread as a unit designator: ${addr}`);
   }
 });
+
+test("landing address handoff fills #address from sessionStorage and drops the key", () => {
+  // File search, not a browser. The landing cannot reach this script;
+  // this only proves the app side of the handoff is actually wired.
+  const boot = html.match(/pendingLandingAddress\.v1[\s\S]{0,900}/);
+  assert.ok(boot, "index.html must read pendingLandingAddress.v1");
+  assert.match(boot[0], /getElementById\("address"\)/);
+  assert.match(boot[0], /removeItem\(["']pendingLandingAddress\.v1["']\)/);
+  assert.ok(
+    !/compForm\.submit|requestSubmit|#compForm/.test(boot[0]),
+    "filling the box is the whole handoff; do not auto-run a search"
+  );
+});

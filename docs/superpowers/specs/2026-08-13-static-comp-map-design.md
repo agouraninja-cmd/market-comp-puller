@@ -1,7 +1,10 @@
 # Static comp map (the map reaching the PDF and the PNG)
 
 Date: 2026-08-13
-Status: proposed
+Status: SHIPPED 2026-08-14 (PR #71), verified live. Two decisions in it are
+still open and were made by the implementer, not the owner: the printed map is
+always the light street basemap (see "It is always the light street basemap"),
+and the raster builds eagerly (see "When it is built"). Both are one constant.
 
 ## The problem
 

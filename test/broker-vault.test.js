@@ -24,8 +24,9 @@ const {
   validateEdit, EDITABLE_FIELDS, isUuid,
   exportColumns, exportCsv, exportRowsWithCoords,
   guardFormula, csvCell,
-  looksLikePdf, parseExtractJson, classifyExtractRows, uploadPayloadToCsv,
-  MAX_PDF_BYTES, VAULT_FIELD_KEYS, EXTRACT_KEYS,
+  sniffExtractMedia, checkExtractFile, parseExtractJson, classifyExtractRows,
+  uploadPayloadToCsv,
+  MAX_EXTRACT_BYTES, EXTRACT_MEDIA_TYPES, VAULT_FIELD_KEYS, EXTRACT_KEYS,
   extractVendorError, extractWasTruncated,
 } = require("../broker-vault");
 
@@ -1588,24 +1589,72 @@ test("a sale row with an Undisclosed price imports as an unpriced deal", () => {
   assert.equal(r.row.size_sqft, 41000);
 });
 
-// --- PDF extract helpers -------------------------------------------------
+// --- Document extract helpers ---------------------------------------------
 //
-// A PDF has to be read, so a price can come out wrong. These helpers never
-// store anything: they decide whether the bytes are a PDF, turn the model's
-// text into an array, and classify each candidate through normalizeRow so
-// the confirm table can tint a bad row without dropping the values the
-// broker needs to edit.
+// A PDF or a screenshot has to be READ, so a price can come out wrong. These
+// helpers never store anything: they decide whether the bytes are a file we
+// can send to the vendor, turn the model's text into an array, and classify
+// each candidate through normalizeRow so the confirm table can tint a bad row
+// without dropping the values the broker needs to edit.
 
-test("looksLikePdf accepts a %PDF header and refuses anything else", () => {
-  assert.equal(looksLikePdf(Buffer.from("%PDF-1.4\n")), true);
-  assert.equal(looksLikePdf(Buffer.from("%PDF")), true);
-  assert.equal(looksLikePdf(Buffer.from("PK\x03\x04")), false, "xlsx zip magic");
-  assert.equal(looksLikePdf(Buffer.from("")), false);
-  assert.equal(looksLikePdf(null), false);
+const PDF_BYTES = Buffer.from("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n", "binary");
+const PNG_BYTES = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16),
+]);
+const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(16)]);
+const WEBP_BYTES = Buffer.concat([
+  Buffer.from("RIFF"), Buffer.from([0x20, 0, 0, 0]), Buffer.from("WEBPVP8 "), Buffer.alloc(8),
+]);
+const HEIC_BYTES = Buffer.concat([
+  Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.alloc(16),
+]);
+
+test("sniffExtractMedia reads the magic bytes of every accepted file", () => {
+  assert.equal(sniffExtractMedia(PDF_BYTES), "application/pdf");
+  assert.equal(sniffExtractMedia(PNG_BYTES), "image/png");
+  assert.equal(sniffExtractMedia(JPEG_BYTES), "image/jpeg");
+  assert.equal(sniffExtractMedia(WEBP_BYTES), "image/webp");
 });
 
-test("MAX_PDF_BYTES is 4 MiB", () => {
-  assert.equal(MAX_PDF_BYTES, 4 * 1024 * 1024);
+test("sniffExtractMedia refuses a renamed spreadsheet and anything too short", () => {
+  assert.equal(sniffExtractMedia(Buffer.from("PK\x03\x04" + "x".repeat(20))), "",
+    "xlsx zip magic must never reach the vendor as an image");
+  assert.equal(sniffExtractMedia(Buffer.from("%PDF")), "",
+    "four bytes is not a file; a truncated upload is not a PDF");
+  assert.equal(sniffExtractMedia(Buffer.from("")), "");
+  assert.equal(sniffExtractMedia(null), "");
+});
+
+test("sniffExtractMedia names HEIC so the refusal can, rather than calling it unknown", () => {
+  // An iPhone photo is the likeliest unsupported file to arrive here, and
+  // "that file isn't something we can read" would send a broker looking for a
+  // fault in their comp sheet.
+  assert.equal(sniffExtractMedia(HEIC_BYTES), "image/heic");
+  assert.match(checkExtractFile(HEIC_BYTES).error, /HEIC/);
+  assert.match(checkExtractFile(HEIC_BYTES).error, /JPEG|screenshot/);
+  assert.equal(checkExtractFile(HEIC_BYTES).ok, false);
+});
+
+test("checkExtractFile passes a PDF and a screenshot, and reports the sniffed type", () => {
+  assert.deepEqual(checkExtractFile(PDF_BYTES), { ok: true, mediaType: "application/pdf", error: "" });
+  assert.deepEqual(checkExtractFile(PNG_BYTES), { ok: true, mediaType: "image/png", error: "" });
+});
+
+test("checkExtractFile refuses an oversize file and never reports a media type on a refusal", () => {
+  const huge = Buffer.concat([PNG_BYTES, Buffer.alloc(MAX_EXTRACT_BYTES)]);
+  const out = checkExtractFile(huge);
+  assert.equal(out.ok, false);
+  assert.equal(out.mediaType, "");
+  assert.match(out.error, /too large/);
+});
+
+test("EXTRACT_MEDIA_TYPES is the intersection both vendors read, and MAX_EXTRACT_BYTES is 4 MiB", () => {
+  // GIF is Anthropic-only and HEIC is Gemini-only. A file that imports on one
+  // deployment and refuses on another is a bug nobody can reproduce, so the
+  // list stays the intersection.
+  assert.deepEqual(EXTRACT_MEDIA_TYPES,
+    ["application/pdf", "image/png", "image/jpeg", "image/webp"]);
+  assert.equal(MAX_EXTRACT_BYTES, 4 * 1024 * 1024);
 });
 
 test("parseExtractJson takes a fenced array and ignores trailing junk", () => {
@@ -1691,7 +1740,7 @@ test("EXTRACT_KEYS is the vault fields minus lat and lng", () => {
 test("extractVendorError maps a vendor 5xx to 502 and the spec copy, never search-outage copy", () => {
   const err = extractVendorError(500, "internal");
   assert.equal(err.statusCode, 502);
-  assert.equal(err.userMessage, "Could not read that PDF. Nothing was saved.");
+  assert.equal(err.userMessage, "Could not read that file. Nothing was saved.");
   assert.equal(err.userMessage.includes("comp search"), false);
 });
 

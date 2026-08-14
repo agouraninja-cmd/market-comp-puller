@@ -21,6 +21,8 @@ const capabilities = {
   // breakpoint to place, so there is nothing for us to control.
   promptCaching: "implicit",
   pdfExtract: true,
+  // inline_data carries an image on the same call it carries a PDF.
+  imageExtract: true,
 };
 
 function buildRequestBody({ model, prompt, maxComps }) {
@@ -55,11 +57,13 @@ function requestInit({ apiKey }) {
   };
 }
 
-function buildExtractBody({ model, prompt, pdfBase64 }) {
+// One shape for a PDF and for a screenshot: inline_data takes whichever media
+// type the sniffed bytes reported, so there is nothing to branch on here.
+function buildExtractBody({ model, prompt, fileBase64, mediaType }) {
   return {
     contents: [{
       parts: [
-        { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
+        { inline_data: { mime_type: mediaType || "application/pdf", data: fileBase64 } },
         { text: prompt },
       ],
     }],

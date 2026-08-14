@@ -3056,7 +3056,7 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
-const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a table PDF (CoStar, ARGUS, CMA, or similar). Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
+const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a deals table (CoStar, ARGUS, CMA, MLS, or similar). The table may arrive as a PDF, as a screenshot, or as a photograph of a printed sheet. Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
 
 Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
 property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
@@ -3921,9 +3921,16 @@ async function repairCompJson(brokenText, maxTokens) {
   }
 }
 
-async function extractPdfOnce(pdfBase64) {
-  if (!PROVIDER.capabilities.pdfExtract) {
-    const err = new Error("PDF import isn't available on this deployment.");
+// One call for a table PDF and for a screenshot of one. The media type is
+// SNIFFED from the bytes by the route before it gets here (never taken from
+// the filename), so this only has to ask whether the provider reads that kind
+// of file and hand it over.
+async function extractFileOnce(fileBase64, mediaType) {
+  const isPdf = mediaType === "application/pdf";
+  if (!PROVIDER.capabilities[isPdf ? "pdfExtract" : "imageExtract"]) {
+    const err = new Error(isPdf
+      ? "PDF import isn't available on this deployment."
+      : "Image import isn't available on this deployment.");
     err.statusCode = 503;
     throw err;
   }
@@ -3934,7 +3941,7 @@ async function extractPdfOnce(pdfBase64) {
     throw err;
   }
   const init = PROVIDER.extractRequestInit({ apiKey, model: MODEL });
-  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, pdfBase64 });
+  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, fileBase64, mediaType });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000);
   const startedAt = Date.now();
@@ -3947,20 +3954,20 @@ async function extractPdfOnce(pdfBase64) {
     });
     if (!r.ok) {
       const detail = (await r.text().catch(() => "")).slice(0, 200);
-      console.error(`${PROVIDER.logLabel} pdf-extract failed (${r.status}): ${detail}`);
+      console.error(`${PROVIDER.logLabel} ${mediaType} extract failed (${r.status}): ${detail}`);
       throw VAULT.extractVendorError(r.status);
     }
     const parsed = PROVIDER.parseExtractResponse(await r.json());
-    console.log(`${PROVIDER.logLabel} pdf-extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
+    console.log(`${PROVIDER.logLabel} ${mediaType} extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
     if (VAULT.extractWasTruncated(parsed.stopReason)) {
-      const err = new Error("That PDF has more rows than we can read in one pass. Nothing was saved.");
+      const err = new Error("That file has more rows than we can read in one pass. Nothing was saved.");
       err.statusCode = 400;
       throw err;
     }
     return parsed.text || "";
   } catch (err) {
     if (err && err.name === "AbortError") {
-      const e = new Error("Could not read that PDF. Nothing was saved.");
+      const e = new Error("Could not read that file. Nothing was saved.");
       e.statusCode = 504;
       throw e;
     }
@@ -11776,8 +11783,9 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    // Read a broker's own PDF and return classified rows for a confirm table.
-    // Stores NOTHING: the PDF never lands in broker_uploads or broker_comps.
+    // Read a broker's own table PDF or screenshot and return classified rows
+    // for a confirm table.
+    // Stores NOTHING: the file never lands in broker_uploads or broker_comps.
     if (req.method === "POST" && path === "/api/vault/extract") {
       let body = "";
       let tooBig = false;
@@ -11793,25 +11801,35 @@ const server = http.createServer((req, res) => {
           if (rateLimited("vaultex:" + clientIp(req), 8)) {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
-          const { filename, pdf } = JSON.parse(body || "{}");
-          const b64 = String(pdf || "").replace(/^data:application\/pdf;base64,/i, "");
+          const payload = JSON.parse(body || "{}");
+          const { filename } = payload;
+          // `pdf` is the field this route shipped with, kept because it costs
+          // one `||` and a browser holding a cached copy of the old page would
+          // otherwise post a body this route reads as empty.
+          const raw = String((payload.file != null ? payload.file : payload.pdf) || "");
+          // Any data: prefix, not application/pdf's alone — FileReader labels a
+          // screenshot image/png, and a prefix left in place would corrupt the
+          // first bytes and fail the sniff below with a confusing message.
+          const b64 = raw.replace(/^data:[^;,]*;base64,/i, "");
           let bytes;
           try { bytes = Buffer.from(b64, "base64"); }
-          catch (err) { return sendJson(res, 400, { error: "That doesn't look like a PDF." }); }
-          if (!VAULT.looksLikePdf(bytes)) {
-            return sendJson(res, 400, { error: "That doesn't look like a PDF." });
-          }
-          if (bytes.length > VAULT.MAX_PDF_BYTES) {
-            return sendJson(res, 400, { error: "That file is too large to read." });
-          }
-          const text = await extractPdfOnce(b64);
+          catch (err) { bytes = Buffer.alloc(0); }
+          // Type and size in one call, so the refusal copy lives in one place.
+          const file = VAULT.checkExtractFile(bytes);
+          if (!file.ok) return sendJson(res, 400, { error: file.error });
+          // Which KIND of file brokers actually bring is a product question
+          // (the vault's own bottleneck is whether anyone imports at all), and
+          // this event is the only place it can be counted. PII-free: a media
+          // type and a row count, the same shape as before.
+          const kind = file.mediaType === "application/pdf" ? "pdf" : "image";
+          const text = await extractFileOnce(b64, file.mediaType);
           const parsed = VAULT.parseExtractJson(text);
           if (!parsed.ok || parsed.rows.length === 0) {
-            logEvent("vault_extract", { source: "empty:0" });
-            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that PDF." });
+            logEvent("vault_extract", { source: `empty:${kind}:0` });
+            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that file." });
           }
           const rows = VAULT.classifyExtractRows(parsed.rows);
-          logEvent("vault_extract", { source: `ok:${rows.length}` });
+          logEvent("vault_extract", { source: `ok:${kind}:${rows.length}` });
           sendJson(res, 200, {
             filename: String(filename || "").trim().slice(0, 200),
             rows,
@@ -11819,12 +11837,12 @@ const server = http.createServer((req, res) => {
         } catch (err) {
           // Same guard as /api/vault/inspect: V8 quotes the input in a
           // JSON.parse error, so a malformed body would otherwise print a
-          // fragment of the broker's private PDF into Render's logs (and
+          // fragment of the broker's private file into Render's logs (and
           // echo it back via clientErrorMessage). A bad body is 400.
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault extract error:", err.message);
           const status = err.statusCode || 500;
-          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that PDF. Nothing was saved." });
+          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that file. Nothing was saved." });
         }
       });
       return;

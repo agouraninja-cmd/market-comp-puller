@@ -1372,13 +1372,44 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   which would be hundreds of lines of hand-rolled parsing in a repo with no
   dependencies; also accepts `{filename, rows}` from the PDF confirm table,
   converted through `exportCsv` then `parseUpload` — the CSV path is
-  unchanged), `POST /api/vault/extract` (JSON `{filename, pdf}` — base64 —
+  unchanged), `POST /api/vault/extract` (JSON `{filename, file}` — base64 —
   sends the file to the extract vendor with no search tools, writes nothing,
   and returns `{ rows: [{ values, error }] }` for the confirm table),
   `GET /api/vault` (filters by `market` and `type`), and
   `DELETE /api/vault/upload?id=` (undo one import; comps cascade).
   All of these routes go through one `openVault()` helper: 401 not signed in →
   403 not a broker (`canUseVault`) → 503 no database.
+  - **`/api/vault/extract` takes screenshots too** (2026-08-13). The file a
+    broker actually has is often a screenshot of a CoStar table or a photo of
+    a printed comp sheet rather than an exported PDF, and both providers read
+    an image on the same call the PDF uses, so it is the same route, the same
+    prompt, the same confirm table and the same "nothing is stored" promise.
+    Four rules:
+    - **The BYTES decide the media type, never the filename and never the
+      browser's `type`.** `sniffExtractMedia` reads magic bytes and
+      `checkExtractFile` (type + size, one place so the refusal copy cannot
+      drift) is what the route calls; a `mediaType` taken off the request body
+      would defeat the check that exists to stop a renamed `.xlsx` reaching a
+      third-party vendor. A test pins that the route never reads one.
+    - **`EXTRACT_MEDIA_TYPES` is the INTERSECTION of the two providers**
+      (pdf/png/jpeg/webp), not the union: Anthropic reads GIF and Gemini does
+      not, Gemini reads HEIC and Anthropic does not, and a file that imports
+      on one deployment and refuses on another is a bug nobody can reproduce.
+      Adding a type means checking both vendors.
+    - **HEIC is recognized in order to be refused BY NAME.** An iPhone photo
+      is the likeliest unsupported file to arrive here, and a generic "that
+      file isn't something we can read" would send a broker looking for a
+      fault in their comp sheet instead of exporting a JPEG.
+    - **Only the Anthropic provider branches.** A PDF is a `document` block
+      and an image is an `image` block there; Gemini's `inline_data` carries
+      whichever `mime_type` it is handed. `buildExtractBody` takes
+      `{ fileBase64, mediaType }` on both.
+    The body field is `file` (`pdf` is still accepted, so a browser holding a
+    cached copy of the old page still works). One ceiling covers both kinds,
+    `MAX_EXTRACT_BYTES` = 4 MiB, sized against the handler's 8 MB body cap
+    because base64 costs a third more than the bytes it carries. The
+    `vault_extract` analytics event names the kind (`ok:image:5`), which is
+    the only place "do brokers bring PDFs or screenshots?" can be counted.
   - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
@@ -1567,11 +1598,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       on the trust line, and is made again at publish. Do not put the fine
       print back on the invitation face without asking.
     - **There is exactly ONE `<input type=file>`.** Its `accept` includes
-      `.pdf` as well as `.csv`. `#bookPick` and the ordinary "Add comps"
+      `.pdf` and the image types as well as `.csv`. `#bookPick` and the
+      ordinary "Add comps"
       button both call `$("file").click()`. Two inputs would mean two values
       and two change handlers, and an upload started from one would be
-      invisible to the other's result message. Table PDFs land in `#pdfSec`
-      (the confirm table), not the CSV column mapper. A test pins this.
+      invisible to the other's result message. Table PDFs and screenshots
+      land in `#pdfSec`
+      (the confirm table), not the CSV column mapper. A test pins this, and
+      pins the accept list item by item — a missing image type greys the
+      broker's own file out in the dialog with nothing on the page saying
+      why. `isExtractFile()` in the browser is a courtesy check only (it
+      reads the name and the browser's `type`, both caller-supplied); the
+      server's byte sniff is the real one.
     - **The coverage form is ONE relocating node** (`#covForm`). Its home is
       `#pipeEmpty`; `renderPipeline` moves it into `#covBox` once a lead or
       BOV row exists, and walks it home when the pipeline is empty again.

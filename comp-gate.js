@@ -140,6 +140,11 @@ function basisRow(c) {
   // figures, so they carry no more than $/SF does.
   if (c.price_per_unit) row.price_per_unit = c.price_per_unit;
   if (c.price_per_acre) row.price_per_acre = c.price_per_acre;
+  // Vintage weighting in valuation.js needs the year on locked comps too,
+  // or a free report's range would ignore vintage while a Pro one applied
+  // it — the exact desync locked_basis exists to prevent. A year is not
+  // identifying.
+  if (c.year_built) row.year_built = c.year_built;
   return row;
 }
 

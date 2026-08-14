@@ -78,7 +78,11 @@ const MAX_SHORT_TEXT = 60;
 // A ceiling on one import. Not a licensing limit — a guard against a runaway
 // file turning one HTTP request into a hundred thousand inserts.
 const MAX_ROWS_PER_UPLOAD = 5000;
-const MAX_PDF_BYTES = 4 * 1024 * 1024;
+// One ceiling for every file the extract path forwards to the vendor, PDF or
+// image. It is not only a vendor limit: the route reads the file as base64
+// inside a JSON body, and base64 costs a third more than the bytes it carries,
+// so 4 MiB arrives as ~5.6 MB against that handler's 8 MB body cap.
+const MAX_EXTRACT_BYTES = 4 * 1024 * 1024;
 
 // --- CSV ---------------------------------------------------------------------
 
@@ -1336,16 +1340,69 @@ function enforceVerifiedFlags(comps, offered) {
   return out;
 }
 
-// --- PDF extract -----------------------------------------------------------
+// --- Document extract ------------------------------------------------------
 //
-// Table PDFs are read by a model, then classified here, then confirmed in
-// the browser. Nothing in this section writes. looksLikePdf is a magic-byte
-// check so a renamed .xlsx cannot reach the vendor. parseExtractJson only
-// accepts an array — wrapping objects are a guess we refuse.
+// A table PDF or a screenshot of one is read by a model, then classified here,
+// then confirmed in the browser. Nothing in this section writes.
+// sniffExtractMedia is a magic-byte check so a renamed .xlsx cannot reach the
+// vendor. parseExtractJson only accepts an array — wrapping objects are a
+// guess we refuse.
 
-function looksLikePdf(bytes) {
-  if (!bytes || bytes.length < 4) return false;
-  return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+// What the extract path accepts. Images are here because the file a broker
+// actually has is often a screenshot of a CoStar table or a photo of a comp
+// sheet, not an exported PDF, and both providers read an image with the same
+// call the PDF uses.
+//
+// The list is the INTERSECTION of what the two providers accept, not the union
+// of it: Anthropic reads GIF and Gemini does not, Gemini reads HEIC and
+// Anthropic does not, and a file that imports on one deployment and refuses on
+// another is a bug report nobody can reproduce. Adding a type means checking
+// both vendors, not one.
+const EXTRACT_MEDIA_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+
+// The bytes decide, never the filename and never the browser's Content-Type:
+// both are caller-supplied, and the whole point of this check is that what we
+// forward to a third-party vendor is what it claims to be.
+function sniffExtractMedia(bytes) {
+  const b = bytes;
+  if (!b || b.length < 12) return "";
+  const at = (i, ...sig) => sig.every((v, k) => b[i + k] === v);
+  if (at(0, 0x25, 0x50, 0x44, 0x46)) return "application/pdf";                 // %PDF
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
+  if (at(0, 0xff, 0xd8, 0xff)) return "image/jpeg";
+  // RIFF....WEBP — the four size bytes in between are what makes this a
+  // two-part check rather than one prefix.
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+  // Recognized to be REFUSED by name below: an iPhone photo is the most likely
+  // unsupported file to arrive here, and "unsupported file" would send a
+  // broker looking for a fault in their comp sheet.
+  if (at(4, 0x66, 0x74, 0x79, 0x70)) {                                          // ....ftyp
+    const brand = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase();
+    if (brand === "heic" || brand === "heix" || brand === "heif" || brand === "mif1") return "image/heic";
+  }
+  return "";
+}
+
+// One place for every reason the extract route turns a file away, so the copy
+// a broker reads cannot drift between the size check and the type check.
+function checkExtractFile(bytes) {
+  const media = sniffExtractMedia(bytes);
+  if (media === "image/heic") {
+    return {
+      ok: false, mediaType: "",
+      error: "iPhone HEIC photos can't be read yet. Save it as a JPEG, or send a screenshot instead.",
+    };
+  }
+  if (!EXTRACT_MEDIA_TYPES.includes(media)) {
+    return {
+      ok: false, mediaType: "",
+      error: "That file isn't something we can read. Use a PDF, or a PNG, JPEG or WebP screenshot.",
+    };
+  }
+  if (bytes.length > MAX_EXTRACT_BYTES) {
+    return { ok: false, mediaType: "", error: "That file is too large to read. The limit is 4 MB." };
+  }
+  return { ok: true, mediaType: media, error: "" };
 }
 
 // A vendor failure on extract is not a site-wide search outage. Search's
@@ -1356,7 +1413,7 @@ function extractVendorError(status) {
   const n = Number(status) || 0;
   const err = new Error(n === 429
     ? "Too many uploads. Please wait a moment."
-    : "Could not read that PDF. Nothing was saved.");
+    : "Could not read that file. Nothing was saved.");
   err.statusCode = n === 429 ? 429 : 502;
   err.userMessage = err.message;
   return err;
@@ -1368,7 +1425,7 @@ function extractWasTruncated(stopReason) {
 }
 
 function parseExtractJson(rawText) {
-  const empty = { ok: false, rows: [], error: "We couldn't find a deals table in that PDF." };
+  const empty = { ok: false, rows: [], error: "We couldn't find a deals table in that file." };
   let text = String(rawText || "").trim();
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   let starterPos = -1;
@@ -1494,13 +1551,15 @@ module.exports = {
   OPTIONAL_SPEC_COLUMNS,
   PROPERTY_TYPES,
   MAX_ROWS_PER_UPLOAD,
-  MAX_PDF_BYTES,
+  MAX_EXTRACT_BYTES,
+  EXTRACT_MEDIA_TYPES,
   HEADER_ALIASES,
   MAPPABLE_TARGETS,
   REQUIRED_TARGETS,
   VAULT_FIELD_KEYS,
   EXTRACT_KEYS,
-  looksLikePdf,
+  sniffExtractMedia,
+  checkExtractFile,
   parseExtractJson,
   classifyExtractRows,
   uploadPayloadToCsv,

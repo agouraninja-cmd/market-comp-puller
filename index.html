@@ -541,8 +541,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       #reportArea .overflow-hidden { overflow: visible !important; }
       #compsTable { font-size: 10px; }
       #compsTable th, #compsTable td { padding: 4px 6px; white-space: normal !important; }
-      /* Map tiles are lazy-loaded cross-origin images that print blank. */
+      /* Leaflet's own pane never prints: its tiles are lazy-loaded
+         cross-origin images that come out blank. So the card stays hidden by
+         default and is unhidden ONLY once buildStaticMap() has put a finished
+         raster in #mapStatic and set .map-static-ready — an empty card with a
+         caption under it is worse than the missing map this replaces. The
+         :not(.hidden) guard matters because `hidden` is a plain Tailwind
+         display rule and this one is !important: a report with no coordinates
+         hides the card, and a raster left over from the previous report would
+         otherwise print inside it. */
       #mapCard { display: none !important; }
+      #mapCard.map-static-ready:not(.hidden) { display: block !important; }
+      #mapCard.map-static-ready:not(.hidden) #compMap { display: none !important; }
       /* Print always uses the table, never the mobile card list. */
       #cardList { display: none !important; }
       /* ---- Document print styling (Directions C+D, owner-approved
@@ -638,6 +648,59 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        sides means they cannot drift apart. */
     .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
     @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid var(--hair); } .rd-row { border-bottom: 0; } }
+    /* Split Research Desk (owner-approved Mock A, 2026-08-14): one bordered
+       unit, two chambers. Market Explorer is a SIBLING of #compForm, not a
+       child — Enter in that field must not submit a building report. Do not
+       overflow:hidden the desk; the explorer dropdown is absolutely positioned
+       and would clip. */
+    .rd-desk {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(240px, 1fr);
+    }
+    .rd-desk-build {
+      min-width: 0;
+      border-right: 1px solid var(--hair);
+      display: flex;
+      flex-direction: column;
+    }
+    .rd-desk-actions { margin-top: auto; }
+    .rd-desk-market {
+      min-width: 0;
+      background: var(--wash);
+      padding: 11px 18px 18px;
+      border-radius: 0 6px 6px 0;
+    }
+    .rd-chamber-lab {
+      font-size: 10.5px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .rd-desk-market .rd-chamber-note {
+      font-size: 13px;
+      color: var(--ink-2);
+      line-height: 1.45;
+      margin: 8px 0 0;
+    }
+    .rd-desk-market-in {
+      width: 100%;
+      border: 1px solid var(--edge);
+      background: var(--card);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 16px;
+      color: var(--ink);
+      outline: 0;
+      margin-top: 14px;
+    }
+    .rd-desk-market-in::placeholder { color: var(--ink-3); }
+    .rd-desk-market-in:focus { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+    @media (max-width: 639.98px) {
+      .rd-desk { grid-template-columns: 1fr; }
+      .rd-desk-build { border-right: 0; border-bottom: 1px solid var(--hair); }
+      .rd-desk-market { border-radius: 0 0 6px 6px; }
+    }
     /* Card frame — shared by the live map and comps cards. (The sample-report
        exhibit that also used it now lives on /how-it-works, which is
        server-rendered with its own copy of these rules.) */
@@ -1375,7 +1438,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <!-- Hero -->
   <div id="hero" class="no-print bg-[#FBFBF9]">
     <div class="max-w-5xl mx-auto px-4 pt-12 sm:pt-14 pb-4">
-      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] max-w-[22ch] enter enter-1">Find out what a property is worth, with comparables to prove it.</h1>
+      <div class="rd-kicker enter enter-1">Commercial Comp Reports</div>
+      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] max-w-[22ch] mt-2 enter enter-1">Find out what a property is worth, with comparables to prove it.</h1>
       <p class="text-[#4C5665] mt-4 text-[16.5px] max-w-[58ch] enter enter-1">Recent sale and lease comparables for any U.S. commercial property, searched live from public records and listings, every comp cited, delivered in about a minute.</p>
     </div>
   </div>
@@ -1390,21 +1454,59 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          still renders below this card, which turns a shared link into a signup
          funnel rather than a leak. -->
     <div id="searchLock" class="hidden relative z-10 mt-4 no-print rd-exhibit p-6">
-      <h2 class="rd-h text-xl">Create a free account to run a report</h2>
-      <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]">Reports are free and take about a minute. An account keeps
-        your searches, your portfolio and your watchlist in one place.</p>
-      <div class="mt-4 flex flex-wrap items-center gap-4">
-        <button id="lockSignUpBtn" type="button"
-          class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Create a free account</button>
-        <button id="lockSignInBtn" type="button"
-          class="text-sm text-[#5A6473] hover:text-[#1A2433] underline">Already have an account? Log in</button>
+      <div id="lockDefault">
+        <h2 class="rd-h text-xl">Create a free account to run a report</h2>
+        <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]">Reports are free and take about a minute. An account keeps
+          your searches, your portfolio and your watchlist in one place.</p>
+        <div class="mt-4 flex flex-wrap items-center gap-4">
+          <button id="lockSignUpBtn" type="button"
+            class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Create a free account</button>
+          <button id="lockSignInBtn" type="button"
+            class="text-sm text-[#5A6473] hover:text-[#1A2433] underline">Already have an account? Log in</button>
+        </div>
+      </div>
+      <!-- The shared-report variant, swapped in by applySharedLock() when a
+           /r/<id> report is on screen. A stranger holding a shared link is the
+           only person who reaches this app without choosing to, and the generic
+           card above ignored what they were looking at. Worse, the status line
+           under the report told them to "enter an address above" while this
+           card was standing where that field would be.
+           The address they type here rides through signup in
+           pendingSharedAddress (and the same sessionStorage key the landing
+           page uses, so a reload does not eat it). -->
+      <div id="lockShared" class="hidden">
+        <h2 class="rd-h text-xl" id="lockSharedTitle">You're reading a shared CompNinja report</h2>
+        <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]" id="lockSharedSub">Run one on your own building, free, in about a minute.</p>
+        <!-- items-center + an inline min-width rather than items-end /
+             min-w-[260px]: those two utilities are not in the vendored
+             tailwind.css, and a class missing from that build silently does
+             nothing. Not worth a regen for two rules. -->
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <div class="rd-cell grow" style="min-width:260px">
+            <label class="rd-lab" for="lockAddress">Your property address</label>
+            <input id="lockAddress" type="text" placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
+          </div>
+          <button id="lockGoBtn" type="button"
+            class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Get my report</button>
+        </div>
+        <button id="lockSharedSignIn" type="button"
+          class="text-sm text-[#5A6473] hover:text-[#1A2433] underline mt-4">Already have an account? Log in</button>
       </div>
       <p class="text-[12.5px] text-[#8A8577] mt-4">An automated estimate, not an appraisal.</p>
     </div>
 
-    <!-- Search form — one bordered unit -->
+    <!-- Search form — one bordered Research Desk, two chambers (Mock A,
+         owner-approved 2026-08-14). #compForm is the building chamber only;
+         Market Explorer is a sibling so Enter there cannot submit a report.
+         Every field id is unchanged. -->
     <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
-      <form id="compForm" class="rd-form">
+      <div class="rd-form rd-desk">
+      <form id="compForm" class="rd-desk-build">
+        <div class="rd-row">
+          <div class="rd-cell">
+            <div class="rd-chamber-lab">Value a building</div>
+          </div>
+        </div>
         <!-- Direction N (owner-approved 2026-08-09): the address gets the full
              top row alone in the largest text on the form; the everyday
              settings share one calm row of three below. Direction N's separate
@@ -1584,7 +1686,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Submit row; stays in normal flow on phones (no longer docks to the
              viewport bottom - the owner found that motion distracting). On
              desktop the red button sits on the right, per the approved mockup. -->
-        <div class="static px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="rd-desk-actions static px-4 py-3.5 bg-white border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
           <button id="submitBtn" type="submit"
             class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Run a report</span>
@@ -1601,11 +1703,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                for everyone, the pre-Pro behavior PRO_ENABLED promises. -->
           <button id="exploreAddrLink" type="button"
             class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
-            No address? Explore a market
+            No address? Find one
           </button>
         </div>
       </form>
-      <div class="text-[12.5px] text-[#8A8577] mt-3">Reports are free · An automated estimate, not an appraisal</div>
+      <!-- Market Explorer: still self-contained (builds standing market pages,
+           never hands a query to the comp form). Sibling of #compForm on
+           purpose — see the rd-desk comment above. IDs unchanged. -->
+      <aside class="rd-desk-market" aria-label="Or read a market">
+        <div class="rd-chamber-lab">Or read a market</div>
+        <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
+        <div class="relative">
+          <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
+                 class="rd-desk-market-in" />
+          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
+        </div>
+      </aside>
+      </div>
+      <div class="text-[12.5px] text-[#8A8577] mt-3">
+        <div>Up to 12 cited comps · about a minute · every source disclosed</div>
+        <div>An automated estimate, not an appraisal.</div>
+      </div>
       <!-- Shown only once /api/config says this signed-out visitor is out of
            free searches; sign-in/refreshProConfig hides it again. The lead-in
            sentence is written by renderGuestSearchHint, because at a limit of
@@ -1729,6 +1847,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="dk-rule"><span class="rd-lab">Shared with you</span></div>
         <p id="deskSharedWithMeEmpty" class="hidden text-sm text-[#5A6473] mt-2">No one has shared a report with you yet.</p>
         <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
+      </div>
+
+      <!-- Hubs someone has invited this member into. The TENANT side only —
+           a broker's own hubs live on /vault beside the pipeline deck (the
+           owner's answer, 2026-08-13), because creating one is a broker
+           surface gated on canUseVault and this page is seen by every free
+           account. Spec:
+           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+           NOT the connection hub at /brokers.
+
+           Rendered ONLY when there is something in it: a member who has
+           never been invited into a hub should not be shown an empty
+           section for a feature they have no way to start. That is the
+           opposite of the two share lists above, which teach a feature this
+           member can use themselves. -->
+      <div id="deskHubs" class="hidden mt-8">
+        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
+        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
       </div>
 
       <!-- Report branding — the mark THIS member's own reports and exports
@@ -2069,6 +2205,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                scatter does. Built by renderSubjectLastSale; margins only, no
                flex gap (the PNG exporter can't render it). -->
           <p id="ownerLastSale" class="hidden text-xs text-[#5A6473] mt-4"></p>
+          <!-- Current asking / list price, when the model found one on the
+               same listing page it used for the subject's size. Evidence,
+               not a fourth figure in the ledger — same rule as last sale.
+               The 2026-08-13 Austin Rosedale report looked up 2,752 SF from
+               the listing and never mentioned the $1,250,000 ask sitting
+               next to it, so a $1.65M estimate had nothing to be checked
+               against. Prints and captures with the hero. -->
+          <p id="ownerAsking" class="hidden text-xs text-[#5A6473] mt-2"></p>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
@@ -2375,8 +2519,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comp Map</h2>
           </div>
           <div id="compMap" style="height: 340px;"></div>
+          <!-- Print/PNG only: the same pins as a flat raster, stitched onto a
+               canvas by buildStaticMap(). Leaflet's live pane reaches neither
+               export — window.print() is a native path no capture library
+               touches, and html2canvas over lazy-loaded cross-origin tiles is
+               unreliable — so the card used to be dropped from both. Empty
+               until a build lands; the card only unhides in print once it
+               carries .map-static-ready. -->
+          <img id="mapStatic" class="print-only" style="width:100%;height:auto" alt="Map of your property and the comparable properties" />
           <p class="text-xs text-[#68707E] px-6 py-2 border-t border-[#F0EFE9]">
-            Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
+            Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below.<span class="no-print no-capture"> Click a pin for details.</span>
           </p>
           <!-- Its own <p>, not a span inside the one above: a `hidden block`
                pair resolves on stylesheet order, which is the trap that has
@@ -2574,40 +2726,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
     </div>
 
-    <!-- Home info — fills out the landing view; hidden once a report is shown -->
+    <!-- Home info — pointer row under the desk; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
-
-      <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
-           report exhibit, the three-step method, and the FAQ. -->
-      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <p class="text-sm text-[#4C5665]">Free reports, 3–6 cited comps each, every source disclosed.</p>
-        <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works →</a>
+      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-3 gap-y-2">
+        <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works</a>
+        <span class="text-[#9AA2AD]">·</span>
+        <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers</a>
       </div>
-
-      <!-- The For Brokers section moved to its own page, /brokers (built by
-           renderBrokersPageHTML in server.js). This strip is the landing
-           page's door to it (owner's notes, 2026-08-08) — same hairline
-           treatment as the how-it-works pointer above so the two read as a
-           matched pair of signposts, not a new section. -->
-      <div class="reveal border-b rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <p class="text-sm text-[#4C5665]">Are you a broker? Verified comps carry your firm's name on every report that uses them.</p>
-        <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers →</a>
-      </div>
-
-      <!-- Market Explorer — inline in the content column (the full-width band
-           treatment was reverted), but still self-contained: it builds standing
-           market pages and never hands a query to the comp form above. -->
-      <section class="py-12 reveal">
-        <div class="rd-kicker">Market Explorer</div>
-        <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the report.</h2>
-        <p class="text-sm text-[#4C5665] mb-5 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot.</p>
-        <div class="relative max-w-sm mb-5">
-          <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
-                 class="w-full rounded border border-[#D8D4C9] bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
-        </div>
-      </section>
-
     </div>
 
   </div>
@@ -2681,7 +2806,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, compWeight, trendFactor, valueFromComps, subjectSizeFit } = VALUATION;
+          compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -3479,7 +3604,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // meta so pre-existing shares keep rendering their range on the subject row.
       if (s.capRate != null) document.getElementById("capRate").value = s.capRate;
       renderResults(payload.data, meta);
-      showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
+      sharedViewMeta = meta;
+      applySharedLock(meta);
+      // applySearchLock owns the card's visibility AND the status line's
+      // wording, so re-running it is how both catch up with a report that
+      // arrived after the page did.
+      applySearchLock();
     } catch (e) {
       showStatus("That shared report link is invalid or is no longer available.", "error");
     }
@@ -3632,7 +3762,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerTrust", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -3943,6 +4073,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                        kind === "size" ? "targetSizeMax" : null);
   }
 
+  // Asking / list price for the comparison card and askFit. The user's typed
+  // figure wins; otherwise the listing the model read off the same page as
+  // the subject size. That second source is what lights the comparison card
+  // on a residential report the visitor never typed a price into — the card
+  // used to stay dark while the hero quoted a number 30% above the ask.
+  function askingRangeFrom(parsed) {
+    const fromMeta = subjectRangeFromMeta("price");
+    if (fromMeta) return fromMeta;
+    const listed = numericValue(parsed && parsed.subject_asking && parsed.subject_asking.price);
+    if (listed > 0) return { min: listed, max: listed };
+    return null;
+  }
+
   // The owner's own cap rate, as a percent (6.25, not 0.0625). Same
   // meta-then-form precedence as subjectRangeFromMeta, and for the same
   // reason: a reopened saved report has no form input to read. Bounded — a
@@ -3960,7 +4103,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderComparison(parsed) {
     const card = document.getElementById("compareCard");
     const sizeR = subjectRangeFromMeta("size");
-    const priceR = subjectRangeFromMeta("price");
+    const priceR = askingRangeFrom(parsed);
 
     if (!sizeR || !priceR) { card.classList.add("hidden"); return; }
 
@@ -4056,6 +4199,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const f = numericValue((parsed || currentParsed || {}).subject_size_sqft);
     return f > 0 ? f : 0;
   }
+  function subjectYearForMatch(parsed) {
+    return yearOf((parsed || currentParsed || {}).subject_year_built);
+  }
 
   // The report date the weighting measures ages against. Anchored to the
   // report, not the wall clock, so a saved report's numbers do not drift as
@@ -4068,10 +4214,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   function matchQuality(comp, meta, parsed) {
-    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed));
+    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed));
     const tier = MATCH_TIERS.find((t) => w >= t.min) || MATCH_TIERS[MATCH_TIERS.length - 1];
     // Reasons in the same order compWeight multiplies them, so the label can
-    // always be traced back to the three factors that produced it.
+    // always be traced back to the four factors that produced it.
     const reasons = [];
     const age = compAgeYears(comp, asOfOf(meta));
     if (age !== null) {
@@ -4082,6 +4228,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const subjSF = subjectSizeForMatch(parsed), csf = numericValue(comp.size_sqft);
     if (subjSF > 0 && csf > 0) {
       reasons.push(Math.abs(Math.log2(csf / subjSF)) > 1 ? "different size class" : "similar size");
+    }
+    const ySub = subjectYearForMatch(parsed), yComp = yearOf(comp.year_built);
+    if (ySub != null && yComp != null) {
+      reasons.push(Math.abs(yComp - ySub) > 15 ? "different vintage" : "similar vintage");
     }
     const t = SOURCE_TIERS[compTier(comp)];
     if (t) reasons.push(t.label.toLowerCase() + " source");
@@ -4146,6 +4296,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // because SF often is not known for these types.
     const val = valueFromComps(carriers.map((x) => x.comp), {
       subjectSF: 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectYear: subjectYearForMatch(parsed),
       readValue: (c) => numericValue(c[spec.compKey]),
     });
     if (!val) return null;
@@ -4296,6 +4447,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.classList.remove("hidden");
   }
 
+  // Current asking / list price, when the model found one. Same DOM-build
+  // discipline as last sale: two of the values are model-written free text
+  // and one is a URL. Evidence, not a fourth estimate — a list price shown
+  // big in the ledger would be read as our valuation of the subject.
+  function renderSubjectAsking(parsed, meta) {
+    const el = document.getElementById("ownerAsking");
+    if (!el) return;
+    el.textContent = "";
+    el.classList.add("hidden");
+    const ask = parsed && parsed.subject_asking;
+    const price = ask && String(ask.price || "").trim();
+    const paid = numericValue(price);
+    if (!(paid > 0)) return;
+
+    const sizeR = subjectRangeFromMeta("size");
+    const sf = sizeR ? (sizeR.min + sizeR.max) / 2
+      : (parsed ? numericValue(parsed.subject_size_sqft) : 0);
+    let sentence = `This ${assetNoun(meta.type)} is currently listed at ${displayMoney(price)}.`;
+    if (sf > 0) {
+      sentence += ` That is ${formatUsd(paid / sf, { maximumFractionDigits: 0 })}/SF.`;
+    }
+    el.appendChild(document.createTextNode(sentence + " "));
+
+    if (ask.source_url) {
+      const a = document.createElement("a");
+      a.href = ask.source_url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = "underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+      a.textContent = "Listing";
+      el.appendChild(a);
+    }
+    el.appendChild(document.createTextNode(
+      (ask.source_url ? " · " : "") + "The current ask, not a closed sale and not one of the comps below."));
+    el.classList.remove("hidden");
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
@@ -4304,6 +4492,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const noun = assetNoun(meta.type);
     setHeroTitle(meta.type);
     renderSubjectLastSale(parsed, meta);
+    renderSubjectAsking(parsed, meta);
     // Market-level search (a city like "Boise ID", no street number) — there's
     // no building to value, so the whole hero (incl. the BOV button) hides.
     // Any user-entered subject value signals building intent and re-shows it,
@@ -4363,6 +4552,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // by its midpoint, and no size at all means no size penalty.
     const val = valueFromComps(saleComps.map((x) => x.comp), {
       subjectSF: sizeR || 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectYear: subjectYearForMatch(parsed),
     });
     const psfBand = val
       ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
@@ -4370,7 +4560,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     currentPsfBand = psfBand;
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
-    const weighNote = " Recent, similar-size, well-sourced comps count more"
+    const weighNote = " Recent, similar-size, similar-vintage, well-sourced comps count more"
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
           + `(§ in the table shows each indexed figure).`
@@ -4472,6 +4662,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         lab.textContent = e.label + ": ";
         td.appendChild(lab);
         td.appendChild(document.createTextNode(e.text));
+        if (e.href && /^https?:\/\//i.test(e.href)) {
+          td.appendChild(document.createTextNode(" "));
+          const a = document.createElement("a");
+          a.href = e.href;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.className = "underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+          a.textContent = "Source";
+          td.appendChild(a);
+        }
         tr.appendChild(td);
         if (e.value) {
           const num = document.createElement("td");
@@ -4551,6 +4751,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           : `not run: enter your NOI under 'Details for comps' and the ${noun} gets valued on its income too.`,
         muted: true,
       }];
+    };
+
+    // County assessed value — a public-record cross-check, never a headline
+    // and never the cost approach. Built once so every hero branch cannot
+    // drift. Disagreement uses VALUATION.outlierOf (the same 25% nearest-edge
+    // rule as the table chips and the vault gut check). Spec:
+    // docs/superpowers/specs/2026-08-14-tax-assessed-approach-design.md
+    const assessedApproachEntry = (parsed, salesLo, salesHi) => {
+      const ass = parsed && parsed.subject_assessed;
+      if (!ass || !ass.value) return null;
+      const assessedNum = numericValue(ass.value);
+      if (!(assessedNum > 0)) return null;
+      let text = "the county's assessed value"
+        + (ass.year ? ` for tax year ${ass.year}` : "")
+        + ". Counties often lag the market; this is a public-record cross-check, not a third valuation method.";
+      if (Number.isFinite(salesLo) && Number.isFinite(salesHi) && salesLo > 0 && salesHi >= salesLo) {
+        const gap = outlierOf(assessedNum, { low: salesLo, high: salesHi });
+        if (gap) {
+          text += ` ${gap.pct}% ${gap.dir} the range above — the size box or the comps deserve a second look.`;
+        }
+      }
+      const row = {
+        label: "County assessment",
+        value: displayMoney(ass.value),
+        text,
+      };
+      if (/^https?:\/\//i.test(String(ass.source_url || ""))) row.href = ass.source_url;
+      return row;
+    };
+    const withAssessed = (entries, salesLo, salesHi) => {
+      const row = assessedApproachEntry(parsed, salesLo, salesHi);
+      if (row) {
+        const i = entries.findIndex((e) => e.label === "Cost approach");
+        if (i >= 0) entries.splice(i, 0, row);
+        else entries.push(row);
+      }
+      return entries;
     };
 
     // Sales comparison on a per-unit / per-acre basis, when the type trades
@@ -4638,7 +4875,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (altEntry) entries.push(altEntry);
       entries.push(...incomeApproachEntries(rr.low * sizeR.min, rr.high * sizeR.max));
       entries.push(costApproachEntry);
-      renderApproaches(entries);
+      renderApproaches(withAssessed(entries, rr.low * sizeR.min, rr.high * sizeR.max));
     } else if (altRange) {
       // No usable $/SF range, but this asset class doesn't price on square feet
       // anyway. A multifamily owner often doesn't know the building's SF and
@@ -4693,7 +4930,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
       entries.push(...incomeApproachEntries(rr.low * qty, rr.high * qty));
       entries.push(costApproachEntry);
-      renderApproaches(entries);
+      renderApproaches(withAssessed(entries, rr.low * qty, rr.high * qty));
     } else if (noi && capOk) {
       // No usable sale range — lead with the income approach instead.
       const loVal = noi / (capHi / 100);
@@ -4705,7 +4942,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setPpsf("ownerMidPpsf", "income approach midpoint");
       setPpsf("ownerHighPpsf", "at a " + capLo + "% cap rate");
       basisEl.textContent = "Your NOI over the market cap-rate range (income approach)";
-      renderApproaches([
+      renderApproaches(withAssessed([
         {
           label: "Income approach",
           value: `${fmtTotal(loVal)} – ${fmtTotal(hiVal)}`,
@@ -4722,7 +4959,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           muted: true,
         },
         costApproachEntry,
-      ]);
+      ], loVal, hiVal));
     } else if (noi && userCap) {
       // Same shortfall as the branch above — no usable sale range — but the
       // only cap rate we have is the owner's own. A single rate produces a
@@ -4740,7 +4977,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       basisEl.textContent = "Your NOI at your own cap rate (income approach). "
         + "One rate gives one figure rather than a range: this search returned no market cap-rate range, "
         + "and not enough priced sale comps to build one either.";
-      renderApproaches([
+      renderApproaches(withAssessed([
         ...incomeApproachEntries(v, v),
         {
           label: "Sales comparison approach",
@@ -4748,7 +4985,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           muted: true,
         },
         costApproachEntry,
-      ]);
+      ], v, v));
     } else if (ppsfs.length >= 2) {
       // No building size from any source, but priced sale comps exist - lead
       // with the per-square-foot band. A unit-price range is a real valuation
@@ -4778,7 +5015,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }];
       entries.push(...incomeApproachEntries(rr.low, rr.high));
       entries.push(costApproachEntry);
-      renderApproaches(entries);
+      // rr is $/SF here, not a dollar total — no disagreement sentence.
+      renderApproaches(withAssessed(entries, NaN, NaN));
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
@@ -4839,6 +5077,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           widenWrap.classList.remove("hidden");
         }
       }
+      // A report that cannot value the building can still show what the county
+      // says. No dollar range, so no disagreement sentence. Hidden entirely
+      // when assessed is absent — this branch used to show no approaches table.
+      if (assessedApproachEntry(parsed, NaN, NaN)) {
+        renderApproaches(withAssessed([costApproachEntry], NaN, NaN));
+      }
+    }
+
+    // Listing vs. estimate: same 25% rule as outlierOf / subjectSizeFit.
+    // A quiet MLS disclaimer is not enough — the Austin Rosedale report
+    // already carried one and still led with $1.65M against a $1.25M ask.
+    // AskFit never changes the range; it names the gap so the reader can
+    // look at Year Built before trusting the headline.
+    const askR = askingRangeFrom(parsed);
+    const askMid = askR ? (askR.min + askR.max) / 2 : 0;
+    const likely = lastValuation && lastValuation.likely;
+    const askGap = askFit(askMid, likely);
+    if (askGap && askGap.skewed) {
+      const askMoney = formatUsd(askMid, { maximumFractionDigits: 0 });
+      const askPsf = subjSFMid > 0 ? formatUsd(askMid / subjSFMid, { maximumFractionDigits: 0 }) + "/SF" : "";
+      const psfBit = askPsf ? ` (${askPsf})` : "";
+      trustEl.textContent += (trustEl.textContent ? " " : "")
+        + (askGap.dir === "above"
+          ? `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% below this estimate. A gap this large usually means the comps are a different vintage or a pricier pocket than this property, not that the list price is a steal.`
+          : `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% above this estimate. The ask may be ambitious relative to these comps.`);
+      trustEl.classList.remove("hidden");
     }
 
     // Residential is the one type whose closed sales mostly live behind the
@@ -4884,6 +5148,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // this can never disagree with it.
     const val = sizeR ? valueFromComps(valuationComps(), {
       subjectSF: sizeR, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectYear: subjectYearForMatch(parsed),
     }) : null;
     if (val && val.n >= 2) {
       return { value: val.psfMid * ((sizeR.min + sizeR.max) / 2), source: "comp-based likely value" };
@@ -5894,7 +6159,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     // Subject $/SF (single value or band) — same math as renderComparison.
     const sizeR = subjectRangeFromMeta("size");
-    const priceR = subjectRangeFromMeta("price");
+    const priceR = askingRangeFrom(currentParsed);
     let youLo = null, youHi = null, youMid = null, isBand = false;
     if (sizeR && priceR) {
       youLo = priceR.min / sizeR.max;
@@ -7234,6 +7499,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
     const gen = ++mapGeneration;
+    // Retire a raster that no longer matches these pins before anything else
+    // happens — see invalidateStaticMap for the window this closes.
+    invalidateStaticMap();
     const escMap = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
@@ -7717,6 +7985,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // column reads, so fill it in now rather than leaving the table a beat
       // behind the map.
       refreshDistances();
+      // Pins are final, so this is the first moment a printable raster of them
+      // can be built. Deferred to idle because nothing on screen wants it, and
+      // built EAGERLY rather than on demand because Ctrl+P is synchronous and
+      // cannot wait for tiles. Keyed on the pin set, so the theme toggle's
+      // re-render (which cannot change a map that is always light) is a no-op.
+      smapIdle(ensureStaticMap);
       if (!moved) return;
       const refined = [];
       if (subjMarker) refined.push(subjMarker.getLatLng());
@@ -7736,6 +8010,264 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // async network round trip) on every theme toggle.
   function refreshMapTheme() {
     if (currentParsed) renderMap(currentParsed, currentMeta);
+  }
+
+  // ----------------------------------------------------------------------------
+  // Static comp map — the raster that reaches the PDF and the PNG.
+  //
+  // The live Leaflet map reaches neither: window.print() is a native path no
+  // capture library touches, and html2canvas over a pane of lazy-loaded
+  // cross-origin tiles is unreliable enough that both exports simply dropped
+  // the whole card. So the same tiles are stitched onto our own canvas, the
+  // pins are drawn on top, and the data URI goes to both paths as an <img>.
+  //
+  // Nothing here can taint a canvas: every tile loads crossOrigin="anonymous",
+  // and a host answering without CORS headers fails the LOAD rather than
+  // poisoning the bitmap, so toDataURL() cannot throw. That is what makes the
+  // silent fallback honest — a failure leaves the card as hidden as it is now.
+  //
+  // Spec: docs/superpowers/specs/2026-08-13-static-comp-map-design.md
+  // ----------------------------------------------------------------------------
+  const SMAP_W = 1000, SMAP_H = 460;   // logical px; the raster is SMAP_SCALE times this
+  const SMAP_SCALE = 2;
+  const SMAP_PAD = 40;                 // logical px of breathing room around the outermost pins
+  const SMAP_MAX_Z = 16;               // a one-block comp set must not fill the frame with a rooftop
+  const SMAP_BUDGET_MS = 4000;
+  // Always the light street basemap, never the reader's satellite choice: Esri
+  // imagery prints as a dark ink-heavy rectangle that the numbered pins vanish
+  // into, and street geometry with place labels is what makes a comp set's
+  // shape readable on paper. Same rule the PNG export already applies to the
+  // theme (see downloadImage's onclone) — an export is light whatever the
+  // sender is looking at.
+  const SMAP_TILE = (z, x, y) => `https://a.basemaps.cartocdn.com/light_all/${z}/${x}/${y}@2x.png`;
+  const SMAP_ATTRIB = "© OpenStreetMap © CARTO";
+  const smapIdle = (fn) => (window.requestIdleCallback || ((f) => setTimeout(f, 400)))(fn, { timeout: 3000 });
+
+  let staticMapKey = null;    // signature of the pin set the raster on screen was built from
+  let staticMapJob = null;    // { key, p } of an in-flight build, so exports can await it
+
+  // Web Mercator, in global pixels at zoom z — the same projection aerialThumb
+  // uses for the popup photo.
+  function smapProject(lat, lng, z) {
+    const scale = 256 * Math.pow(2, z);
+    const latRad = (lat * Math.PI) / 180;
+    return {
+      x: ((lng + 180) / 360) * scale,
+      y: ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale,
+    };
+  }
+
+  // The pins an export is allowed to show. **exportableComps(), never
+  // includedComps()** — a broker's private vault comp is kept out of every
+  // file this app produces, and a pin is that comp's LOCATION, which is the
+  // same leak in a form nobody would think to check. Numbering stays
+  // report-wide (`_num`), so a private comp leaves exactly the gap it leaves
+  // in the exported table, which renderPrivateNotice() already discloses on
+  // every surface that drops those rows.
+  function staticMapPoints() {
+    const pts = [];
+    if (currentParsed) {
+      const sLat = parseFloat(currentParsed.subject_lat), sLng = parseFloat(currentParsed.subject_lng);
+      if (isFinite(sLat) && isFinite(sLng)) pts.push({ lat: sLat, lng: sLng, subject: true });
+    }
+    (exportableComps() || []).forEach((c) => {
+      const lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+      if (isFinite(lat) && isFinite(lng)) pts.push({ lat, lng, num: c._num });
+    });
+    return pts;
+  }
+
+  // Largest zoom at which every pin fits the frame with padding. A single
+  // point spans nothing and lands at SMAP_MAX_Z.
+  function smapFit(pts) {
+    for (let z = SMAP_MAX_Z; z >= 1; z--) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      pts.forEach((p) => {
+        const q = smapProject(p.lat, p.lng, z);
+        minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x);
+        minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y);
+      });
+      if (maxX - minX <= SMAP_W - SMAP_PAD * 2 && maxY - minY <= SMAP_H - SMAP_PAD * 2) {
+        return { z, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+      }
+    }
+    return null;
+  }
+
+  function smapTile(url, deadline) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; resolve(v); } };
+      // crossOrigin BEFORE src, or the request goes out without CORS mode and
+      // the tile comes back usable-but-tainting.
+      img.crossOrigin = "anonymous";
+      img.onload = () => finish(img);
+      img.onerror = () => finish(null);
+      setTimeout(() => finish(null), Math.max(0, deadline - Date.now()));
+      img.src = url;
+    });
+  }
+
+  // The screen pins redrawn with canvas primitives. Literal colours rather
+  // than pinColors(): the raster is always the light basemap, so it takes the
+  // light pins whatever theme the page itself is in.
+  function smapCompPin(ctx, x, y, num) {
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+    ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = "#1e293b"; ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = "600 11px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(num == null ? "" : String(num), x, y + 0.5);
+    ctx.restore();
+  }
+
+  // Anchored at its point like the screen pin: the coordinate is the tip, not
+  // the centre. The arc sweeps the top of the circle and the two lines close
+  // it down to the tip.
+  function smapSubjectPin(ctx, x, y) {
+    const r = 9, h = 13;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.4)"; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
+    ctx.beginPath();
+    ctx.arc(x, y - h, r, Math.PI * 0.85, Math.PI * 0.15);
+    ctx.lineTo(x, y);
+    ctx.closePath();
+    ctx.fillStyle = "#DC2626"; ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.restore();
+  }
+
+  // Required by both licences, and drawn INTO the raster rather than left to
+  // the caption below the card: once the image is inside a PDF it travels on
+  // its own.
+  function smapAttribution(ctx) {
+    ctx.save();
+    ctx.font = "10px Inter, system-ui, sans-serif";
+    ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+    const w = ctx.measureText(SMAP_ATTRIB).width;
+    ctx.fillStyle = "rgba(255,255,255,.78)";
+    ctx.fillRect(SMAP_W - w - 10, SMAP_H - 15, w + 10, 15);
+    ctx.fillStyle = "#4C5665";
+    ctx.fillText(SMAP_ATTRIB, SMAP_W - 5, SMAP_H - 3);
+    ctx.restore();
+  }
+
+  async function drawStaticMap(pts) {
+    const fit = smapFit(pts);
+    if (!fit) return null;
+    const deadline = Date.now() + SMAP_BUDGET_MS;
+    const ox = fit.cx - SMAP_W / 2, oy = fit.cy - SMAP_H / 2;
+    const span = Math.pow(2, fit.z);   // tiles per axis at this zoom
+    const jobs = [];
+    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + SMAP_H - 1) / 256); ty++) {
+      if (ty < 0 || ty >= span) continue;               // past a pole: no tile exists
+      for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + SMAP_W - 1) / 256); tx++) {
+        const wx = ((tx % span) + span) % span;         // the world wraps east to west
+        jobs.push(smapTile(SMAP_TILE(fit.z, wx, ty), deadline)
+          .then((img) => ({ img, left: tx * 256 - ox, top: ty * 256 - oy })));
+      }
+    }
+    const tiles = await Promise.all(jobs);
+    // Every tile failing means no basemap at all, and pins floating on a blank
+    // rectangle would print as a confident-looking nothing.
+    if (!tiles.some((t) => t.img)) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = SMAP_W * SMAP_SCALE;
+    canvas.height = SMAP_H * SMAP_SCALE;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(SMAP_SCALE, SMAP_SCALE);
+    ctx.fillStyle = "#F2F1EC";   // shows through wherever a single tile failed
+    ctx.fillRect(0, 0, SMAP_W, SMAP_H);
+    // @2x tiles are 512px natural, drawn into a 256 logical box: the extra
+    // detail is what makes this ~330dpi at the printed width.
+    tiles.forEach((t) => { if (t.img) ctx.drawImage(t.img, t.left, t.top, 256, 256); });
+    // Comps first, subject last — the red pin is the one mark that must never
+    // end up underneath another.
+    pts.forEach((p) => {
+      if (p.subject) return;
+      const q = smapProject(p.lat, p.lng, fit.z);
+      smapCompPin(ctx, q.x - ox, q.y - oy, p.num);
+    });
+    pts.forEach((p) => {
+      if (!p.subject) return;
+      const q = smapProject(p.lat, p.lng, fit.z);
+      smapSubjectPin(ctx, q.x - ox, q.y - oy);
+    });
+    smapAttribution(ctx);
+    // WebP, falling back to PNG. Measured on a downtown Boise set at these
+    // dimensions: 2.7 MB as PNG against 348 KB as WebP at 0.92, with no
+    // visible ringing on the street labels at 1:1 — and this data URI sits in
+    // the DOM of every report, gets cloned by html2canvas, and rides into the
+    // print job, so the 7x matters. toDataURL is its own feature test: an
+    // engine that cannot encode WebP silently answers PNG instead of failing,
+    // so the returned MIME is what decides, never a UA string.
+    const webp = canvas.toDataURL("image/webp", 0.92);
+    return webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/png");
+  }
+
+  // What the raster on screen was built from. Coordinates rounded, because a
+  // geocode that lands on the same spot must not read as a different map.
+  function staticMapKeyFor(pts) {
+    return pts.map((p) => (p.subject ? "s" : p.num) + "@" +
+      p.lat.toFixed(5) + "," + p.lng.toFixed(5)).join("|");
+  }
+
+  // Called at the top of every renderMap. If the pins no longer describe the
+  // raster on screen, drop it NOW rather than at the next settle: the seconds
+  // between a new report painting and its geocodes landing are otherwise a
+  // window where Ctrl+P prints the PREVIOUS report's map above the new
+  // report's table, which is worse than printing no map. A theme toggle
+  // re-renders the same pins, matches the key, and costs nothing.
+  function invalidateStaticMap() {
+    const card = document.getElementById("mapCard");
+    const el = document.getElementById("mapStatic");
+    if (!card || !el) return;
+    if (staticMapKeyFor(staticMapPoints()) === staticMapKey) return;
+    staticMapKey = null;
+    card.classList.remove("map-static-ready");
+    el.removeAttribute("src");
+  }
+
+  // The single entry point. Settles when a raster for the CURRENT pin set
+  // exists or has failed. Both export handlers await it, and the post-geocode
+  // settle calls it at idle so a fast Ctrl+P finds one already built —
+  // onbeforeprint is synchronous and cannot wait for tiles.
+  function ensureStaticMap() {
+    const card = document.getElementById("mapCard");
+    const el = document.getElementById("mapStatic");
+    if (!card || !el) return Promise.resolve();
+    const pts = staticMapPoints();
+    const key = staticMapKeyFor(pts);
+    if (!pts.length) {
+      staticMapKey = null; staticMapJob = null;
+      card.classList.remove("map-static-ready");
+      el.removeAttribute("src");
+      return Promise.resolve();
+    }
+    if (key === staticMapKey) return Promise.resolve();               // already correct
+    if (staticMapJob && staticMapJob.key === key) return staticMapJob.p;   // already building
+    // Anything on screen now describes a different set of pins. Drop it before
+    // starting, so a build that fails leaves no map rather than a stale one.
+    staticMapKey = null;
+    card.classList.remove("map-static-ready");
+    el.removeAttribute("src");
+    const p = drawStaticMap(pts).then((url) => {
+      if (!url) return;
+      el.src = url;
+      staticMapKey = key;
+      card.classList.add("map-static-ready");
+    }).catch(() => {}).then(() => {
+      if (staticMapJob && staticMapJob.key === key) staticMapJob = null;
+    });
+    staticMapJob = { key, p };
+    return p;
   }
 
   // ----------------------------------------------------------------------------
@@ -8284,9 +8816,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // automatically on same-origin fetches.
   // ----------------------------------------------------------------------------
   let accountWall = false;          // from /api/config; drives applySearchLock()
+  // The meta of a /r/<id> report on screen, or null. Read by showSharedStatus
+  // and set once by the share loader.
+  let sharedViewMeta = null;
   let currentUser = null;           // { email, name } | null
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
+  // An address typed into the shared-report lock card while signed out. Same
+  // shape as pendingPortfolioSave, cleared by the same cancel path.
+  let pendingSharedAddress = "";
   let pendingSharedReload = false;  // signin_required on /r/<id>: reload this URL once signed in
   let pendingMarketExplore = null;  // {type, city, state} the guest gate refused; resumes after sign-in
   let runPendingMarketExplore = null; // assigned by the Market Explorer IIFE (explore() is private to it)
@@ -8327,6 +8865,48 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const locked = accountWall && !currentUser;
     lock.classList.toggle("hidden", !locked);
     document.getElementById("searchSection").classList.toggle("hidden", locked);
+    showSharedStatus();
+  }
+
+  // The one line a stranger on somebody else's report is given. It used to say
+  // "enter an address above" unconditionally, and for a locked visitor the
+  // thing above is the signup card standing where that field would be — the
+  // instruction named a control that was not on their screen, to the exact
+  // audience the share feature exists to reach.
+  //
+  // Driven from applySearchLock rather than written once at load, because the
+  // report renders before /api/config answers, so "is this visitor locked" is
+  // not knowable at the moment the share is drawn.
+  function showSharedStatus() {
+    if (!sharedViewMeta) return;
+    showStatus(accountWall && !currentUser
+      ? "You're viewing a shared CompNinja report. Create a free account below to run one on your own building."
+      : "You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
+  }
+
+  // Swaps the lock card to its shared-report variant. Presentation only, like
+  // everything else the wall drives, and independent of whether the card is
+  // currently visible: a signed-in reader never sees it, and applySearchLock
+  // stays the only thing deciding that.
+  function applySharedLock(meta) {
+    const shared = document.getElementById("lockShared");
+    const dflt = document.getElementById("lockDefault");
+    if (!shared || !dflt) return;
+    const addr = meta && meta.address ? String(meta.address).trim() : "";
+    // The firm is named ONLY from the share's own branding snapshot — a name
+    // the reader can already see on the letterhead above. It publishes
+    // nothing new: an unbranded share names nobody, which is every share from
+    // a sender who never set up a branding profile.
+    const brand = meta && meta.branding ? normalizeBrandBlock(meta.branding) : null;
+    const firm = brand && brand.firmName ? brand.firmName : "";
+    document.getElementById("lockSharedTitle").textContent = addr
+      ? "You're reading a report on " + addr
+      : "You're reading a shared CompNinja report";
+    document.getElementById("lockSharedSub").textContent =
+      (firm ? firm + " made this with CompNinja. " : "It was made with CompNinja. ") +
+      "Run one on your own building, free, in about a minute.";
+    shared.classList.remove("hidden");
+    dflt.classList.add("hidden");
   }
 
   function refreshAccountUI() {
@@ -8390,6 +8970,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   function closeAcctModal() {
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
+    pendingSharedAddress = "";    // ...and must not prefill an address they walked away from
     pendingCheckoutPlan = null;   // ...and must not open Stripe Checkout later either
     pendingSharedReload = false;  // ...and a cancelled sign-in must not reload the page later
     pendingMarketExplore = null;  // ...and a cancelled gate must not fire a surprise market search later
@@ -8400,6 +8981,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("lockSignUpBtn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to run a report. It's free, no card needed."));
   document.getElementById("lockSignInBtn").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("lockSharedSignIn").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("lockGoBtn").addEventListener("click", () => {
+    const el = document.getElementById("lockAddress");
+    const addr = (el.value || "").trim();
+    if (!addr) { el.focus(); return; }
+    // Carried two ways on purpose. The variable is what the in-page signup
+    // consumes (the wall lifts without a reload, so nothing re-reads storage);
+    // the storage key is the landing page's own handoff, which covers the case
+    // where this page does reload before the account exists.
+    pendingSharedAddress = addr;
+    try { sessionStorage.setItem("pendingLandingAddress.v1", addr); } catch (err) {}
+    openAcctModal("signup", "Create a free account and your address is waiting in the form. Free, no card needed.");
+  });
   document.getElementById("guestHintSignIn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to keep searching. It's free, no card needed."));
   document.getElementById("acctTabIn").addEventListener("click", () => setAcctMode("signin"));
@@ -8509,9 +9103,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const firePendingSave = pendingPortfolioSave;
       const firePendingPlan = pendingCheckoutPlan;
       const firePendingExplore = pendingMarketExplore;
+      const fireSharedAddress = pendingSharedAddress;
       pendingPortfolioSave = false;
       pendingCheckoutPlan = null;
       pendingMarketExplore = null;
+      pendingSharedAddress = "";
       // Only rows that still hold their report can be imported.
       const saved = historyWithReports();
       // A pending checkout wins over the import offer: the next thing that
@@ -8524,6 +9120,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         document.getElementById("acctImport").classList.remove("hidden");
       } else {
         closeAcctModal();
+      }
+      // The address they typed into the shared-report card, now that the wall
+      // has lifted and the real form is on screen. It OVERWRITES what the
+      // shared report prefilled: the share's own address is context they were
+      // given, this is the building they asked about.
+      //
+      // Prefilled and focused, never submitted. A search is billed, and a
+      // signup is not consent to spend; the button they press next is theirs.
+      if (fireSharedAddress) {
+        const addrEl = document.getElementById("address");
+        if (addrEl) {
+          addrEl.value = fireSharedAddress;
+          try { sessionStorage.removeItem("pendingLandingAddress.v1"); } catch (err) {}
+          addrEl.scrollIntoView({ block: "center" });
+          addrEl.focus();
+        }
       }
       if (firePendingSave) savePortfolioCurrent();
       if (firePendingPlan) {
@@ -8619,6 +9231,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           ? "Create a free account to get started. Browsing whole markets is part of Pro; free reports work on any single address."
           : "Create a free account to run a report. It's free, no card needed.");
     }
+    try {
+      var pendingAddr = sessionStorage.getItem("pendingLandingAddress.v1");
+      if (pendingAddr) {
+        sessionStorage.removeItem("pendingLandingAddress.v1");
+        var addrEl = document.getElementById("address");
+        if (addrEl && pendingAddr.trim()) addrEl.value = pendingAddr;
+      }
+    } catch (err) {}
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off
     // different query params (?checkout= vs ?purchase=), so at most one acts.
@@ -8802,6 +9422,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         sub.className = "text-[10.5px] text-[#68707E]";
         sub.textContent = `${item.property_type} · checked ${new Date(item.updated_at).toLocaleDateString()}`;
         tdA.appendChild(sub);
+        // What the MARKET did since this property was last checked, which is
+        // the one number on this page that moves without the owner re-running
+        // anything. The server omits `movement` entirely when the corpus
+        // cannot support a claim, so absence renders nothing.
+        //
+        // Deliberately NOT styled with dk-up/dk-down: those colour the
+        // property's own valuation change in the Change column, and painting a
+        // market statistic the same green would read as this building being
+        // worth more, which is a search nobody has run.
+        if (item.movement && item.movement.line) {
+          const mv = document.createElement("div");
+          // Inline margin rather than mt-0.5: that utility is not in the
+          // vendored tailwind.css, and a class missing from that build styles
+          // nothing at all, silently.
+          mv.className = "text-[10.5px] text-[#68707E]";
+          mv.style.marginTop = "2px";
+          mv.textContent = item.movement.line;
+          mv.title = "Market median $/SF from comps others have searched. Not a new valuation of this property.";
+          tdA.appendChild(mv);
+        }
         tr.appendChild(tdA);
         const tdS = document.createElement("td");
         const spark = sparkline(snaps);
@@ -8862,6 +9502,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderWatchFeed();
     renderBrokerDesk();
     renderShares();
+    renderDeskHubs();
     loadBranding();
   }
 
@@ -9289,6 +9930,40 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         editBtn.addEventListener("click", () => editWrap.classList.toggle("hidden"));
         actions.appendChild(editBtn);
       }
+      // "Start a hub" — the only in-product discovery path the messaging hub
+      // has (the owner's Q5 yes, 2026-08-13). It seeds a hub with this
+      // report's comps and the people already invited to it, so the broker
+      // does not retype either.
+      //
+      // Offered ONLY to a member who can actually create one. The gate is
+      // canUseVault, exactly as the server's own is, so this is not a second
+      // opinion about entitlement — it is the same answer, read from
+      // /api/config, which is where every other billing control on this page
+      // reads it. Without this check the button would appear for every
+      // signed-in member and answer with a 403; the server still refuses
+      // either way, so this decides visibility and nothing else.
+      if (hubCreationAllowed()) {
+        const hubBtn = document.createElement("button");
+        hubBtn.type = "button";
+        hubBtn.className = "text-[#5A6473] hover:text-[#1A2433] underline";
+        hubBtn.textContent = "Start a hub";
+        hubBtn.addEventListener("click", async () => {
+          rowErr.classList.add("hidden");
+          hubBtn.disabled = true;
+          try {
+            const out = await acctApi("POST", "/api/hubs", { fromShare: r.id });
+            showHubInvites(card, out);
+            renderDeskHubs();
+          } catch (ex) {
+            rowErr.textContent = ex.message;
+            rowErr.classList.remove("hidden");
+          } finally {
+            hubBtn.disabled = false;
+          }
+        });
+        actions.appendChild(hubBtn);
+      }
+
       const offBtn = document.createElement("button");
       offBtn.type = "button";
       offBtn.className = "text-[#68707E] hover:text-red-700";
@@ -9362,6 +10037,149 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       row.appendChild(meta);
       wrap.appendChild(row);
     });
+  }
+
+  // ----------------------------------------------------------------------------
+  // Comp hubs on My Desk — the TENANT side only.
+  //
+  // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+  // NOT the connection hub at /brokers.
+  //
+  // A broker's own hubs are on /vault beside the pipeline deck, because
+  // creating one is gated on canUseVault and this page is seen by every free
+  // account. This list is what a tenant sees, and a tenant is the person this
+  // whole feature exists to reach.
+  //
+  // Two rules, both different from the share lists above:
+  //
+  //   1. It renders ONLY when there is something in it. There is no empty
+  //      state, because a member who has never been invited into a hub cannot
+  //      start one from here, so an empty section would advertise a door with
+  //      no handle. The share lists teach a feature this member can use; this
+  //      one reports a fact about someone else's invitation.
+  //   2. EVERY failure is silent. This is an extra list at the bottom of a
+  //      page that already works; a hub outage must not put an error on the
+  //      desk of somebody who came here for their portfolio. Contrast
+  //      renderShares(), which does show one line, because a broker who has
+  //      shared reports and cannot see them needs telling.
+  // ----------------------------------------------------------------------------
+  // May this member create a hub? The same answer the server gives, read from
+  // the same /api/config block every other billing control on this page reads,
+  // so this is not a second opinion about entitlement — the server still
+  // refuses either way, and this decides visibility only.
+  //
+  // `proConfig` IS the pro block (`proConfig = cfg.pro`), not a wrapper around
+  // one, and it is a `let` declared ~3,000 lines below this function, so the
+  // try/catch is the TDZ guard `addressExplorerAllowed()` already carries for
+  // the same reason. It fails CLOSED, unlike that one: withholding a button
+  // costs a click, while flashing one that 403s costs trust.
+  function hubCreationAllowed() {
+    try {
+      return Boolean(proConfig && proConfig.canUseVault);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // The one place a raw invite token is ever visible on this page. It is not
+  // stored (only its sha256 is) and cannot be fetched back, so this says so
+  // rather than rendering a link and trusting someone to notice. Same panel,
+  // same reasoning, as the vault's version — outbound email is off until a
+  // domain is verified in Resend, so copying these out IS the delivery.
+  function showHubInvites(card, out) {
+    const box = document.createElement("div");
+    box.className = "mt-2 border-t border-[#ECEAE3] pt-2";
+    const note = document.createElement("p");
+    note.className = "text-xs text-[#4C5665]";
+    note.textContent = "Your hub is ready. Copy each link and send it to that person yourself: "
+      + "CompNinja does not email them yet, and these links cannot be shown again.";
+    box.appendChild(note);
+
+    const invites = Array.isArray(out.invites) ? out.invites : [];
+    if (!invites.length) {
+      const open = document.createElement("a");
+      open.className = "text-xs text-[#B91C1C] underline mt-1 inline-flex";
+      open.href = "/hub/" + encodeURIComponent(out.id);
+      open.textContent = "Open the hub";
+      box.appendChild(open);
+      card.appendChild(box);
+      return;
+    }
+    invites.forEach((inv) => {
+      const row = document.createElement("div");
+      row.className = "mt-1.5 flex flex-wrap items-center gap-2 text-xs";
+      const who = document.createElement("span");
+      who.className = "text-[#4C5665]";
+      who.textContent = inv.email;
+      row.appendChild(who);
+      const field = document.createElement("input");
+      field.type = "text";
+      field.readOnly = true;
+      field.value = inv.url;
+      field.setAttribute("aria-label", "Invite link for " + inv.email);
+      field.className = "flex-1 min-w-0 rounded-lg border border-[#D8D4C9] px-2 py-1 text-xs";
+      row.appendChild(field);
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium";
+      copy.textContent = "Copy";
+      copy.addEventListener("click", () => {
+        // select() first, and it is the fallback rather than the decoration:
+        // clipboard.writeText needs a secure context and a permission that
+        // can be refused, and a broker who cannot copy the link cannot send
+        // it at all.
+        field.focus(); field.select();
+        const done = () => { copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(field.value).then(done).catch(() => {
+            try { document.execCommand("copy"); done(); } catch (_) {}
+          });
+        } else {
+          try { document.execCommand("copy"); done(); } catch (_) {}
+        }
+      });
+      row.appendChild(copy);
+      box.appendChild(row);
+    });
+    card.appendChild(box);
+  }
+
+  async function renderDeskHubs() {
+    const box = document.getElementById("deskHubs");
+    if (!box) return;
+    box.classList.add("hidden");
+    if (!currentUser) return;
+    let data;
+    try {
+      const res = await fetch("/api/hubs");
+      if (!res.ok) return;            // 401/403/503 all mean "show nothing"
+      data = await res.json();
+    } catch (_) { return; }
+    const rows = (data && Array.isArray(data.theirs)) ? data.theirs : [];
+    if (!rows.length) return;
+
+    const wrap = document.getElementById("deskHubRows");
+    wrap.innerHTML = "";
+    rows.forEach((h) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const link = document.createElement("a");
+      link.href = "/hub/" + encodeURIComponent(h.id);
+      link.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      // textContent, never innerHTML — a hub title is typed by the broker who
+      // created it, so it is user-authored text like an address or an email.
+      link.textContent = h.title || h.subjectAddress || "Comp hub";
+      row.appendChild(link);
+      const bits = [h.propertyType, h.market].filter(Boolean);
+      if (h.closedAt || h.status === "closed") bits.push("closed");
+      else if (h.updatedAt) bits.push("updated " + fmtShareDate(h.updatedAt));
+      const meta = document.createElement("span");
+      meta.className = "text-xs text-[#68707E]";
+      meta.textContent = bits.join(" · ");
+      row.appendChild(meta);
+      wrap.appendChild(row);
+    });
+    box.classList.remove("hidden");
   }
 
   // ----------------------------------------------------------------------------
@@ -9874,8 +10692,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // ----------------------------------------------------------------------------
   // Rotating example addresses — the search field quietly cycles through
-  // realistic placeholders while it sits empty.
+  // realistic placeholders while it sits empty. Tab on an empty field
+  // accepts the current example (without the "e.g.") so a visitor can try
+  // a real building without typing one. Second Tab then moves on, because
+  // the field is no longer empty. Shift+Tab is back-tab and is never
+  // intercepted. A placeholder that is not an example (a field label, a
+  // hint) is never a fill — only the "e.g." prefix names a building.
   // ----------------------------------------------------------------------------
+  function exampleValueFromPlaceholder(placeholder) {
+    const s = String(placeholder || "");
+    const m = /^\s*e\.g\.\s+/i.exec(s);
+    if (!m) return "";
+    return s.slice(m[0].length).trim();
+  }
+
+  function tabFillExample(e, currentValue, placeholder) {
+    if (!e || e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return "";
+    if (String(currentValue || "").trim()) return "";
+    return exampleValueFromPlaceholder(placeholder);
+  }
+
+  function bindTabFillExample(input) {
+    if (!input) return;
+    input.addEventListener("keydown", (e) => {
+      const filled = tabFillExample(e, input.value, input.placeholder);
+      if (!filled) return;
+      e.preventDefault();
+      input.value = filled;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
   const ADDRESS_EXAMPLES = [
     "e.g. 1200 W Industrial Blvd, Dallas, TX",
     "e.g. 4500 Commerce St, Phoenix, AZ",
@@ -9897,6 +10745,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }, 300);
     }, 4000);
   }
+  bindTabFillExample(document.getElementById("address"));
+  bindTabFillExample(document.getElementById("lockAddress"));
 
   // ----------------------------------------------------------------------------
   // Sample report — canned, illustrative data so visitors can see the product
@@ -10012,7 +10862,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
   });
 
-  // Market Explorer: matches covered market pages as you type; an uncovered
+  // Market Explorer: lives in the signed-in desk's right chamber (sibling of
+  // #compForm, never inside it). Matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed
   // search, ~30-60s). Dead-end queries get inline hints in the dropdown — the
   // Explorer is self-contained and never hands off to the comp form. The list
@@ -10720,17 +11571,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
 
-    // The redeem row: signed-in, not already Pro, AND this deployment actually
-    // has a passkey configured. Deliberately NOT gated on billingLive() — a
-    // code is exactly what someone uses on a deployment with no Stripe keys,
-    // the same exception the vault link makes. The testerPasskey check exists
-    // because /api/config's `tester` flag only reports whether THIS user has
-    // already redeemed, not whether a passkey exists at all — without it, a
-    // deployment that never set TESTER_PASSKEY still showed a row that could
-    // only ever fail on submit.
-    const hasPasskey = Boolean(proConfig && proConfig.testerPasskey);
+    // The redeem row: signed-in, this deployment has a passkey configured, AND
+    // there is still something this account could redeem. Deliberately NOT
+    // gated on billingLive() — a code is exactly what someone uses on a
+    // deployment with no Stripe keys, the same exception the vault link makes.
+    // The testerPasskey/vaultPasskey checks exist because /api/config's
+    // `tester` and `canUseVault` flags only report what THIS user already
+    // holds, not whether a door exists at all — without them, a deployment
+    // that never set either passkey still showed a row that could only ever
+    // fail on submit.
+    //
+    // Two doors, so the row survives holding one of them: a broker who
+    // redeemed the vault code is not Pro, and would otherwise be shown a row
+    // whose only remaining use is a tester code nobody gave them — hence the
+    // per-door test rather than the old `pro` alone. Both codes go to the
+    // same input; the server decides which grant a code opens.
+    const canRedeemTester = Boolean(proConfig && proConfig.testerPasskey) && !pro;
+    const canRedeemVault = Boolean(proConfig && proConfig.vaultPasskey)
+      && !Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("passkeyRow")
-      .classList.toggle("hidden", !currentUser || pro || !hasPasskey);
+      .classList.toggle("hidden", !currentUser || !(canRedeemTester || canRedeemVault));
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already
@@ -11025,6 +11885,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // Re-read /api/config so every entitlement-driven surface updates in
       // place — the same seam used after a checkout return and a sign-in.
       await refreshProConfig();
+      // A vault code lands somebody on a page they have never seen and were
+      // not looking for: they opened PRICING and got a workspace. Closing the
+      // modal silently, which is right for a Pro code (the plan card behind it
+      // already says Pro), would leave them with no idea what just happened.
+      // So name it and point at it, and let them close the modal themselves.
+      if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
+        msg.innerHTML = 'Your comp vault is open. <a href="/vault" class="underline font-semibold">Go to the vault</a>.';
+        msg.className = "mt-2 text-sm text-emerald-700";
+        msg.classList.remove("hidden");
+        return;
+      }
       closePricingModal();
     } catch (ex) {
       msg.textContent = ex.message;
@@ -12405,6 +13276,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
       const s = currentMeta.subject || {};
       const capR = currentParsed && currentParsed.market_cap_rate_range;
+      const assessed = currentParsed && currentParsed.subject_assessed;
+      const assessedN = assessed ? numericValue(assessed.value) : NaN;
       const sell = sellTodayEstimate(currentParsed, currentMeta);
       const cc = curationCounts();
       const brand = activeBrand();
@@ -12462,6 +13335,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ...(s.noi > 0 ? [["NOI (yours)", xlsxMoney(s.noi)]] : []),
         ...(s.capRate > 0 ? [["Cap rate (yours)", `${s.capRate}%`]] : []),
         ...(s.sizeMin > 0 ? [["Size (SF)", s.sizeMin === s.sizeMax ? s.sizeMin : `${s.sizeMin}–${s.sizeMax}`]] : []),
+        ...(assessedN > 0 ? [[
+          assessed.year ? `County assessed value (tax year ${assessed.year})` : "County assessed value",
+          xlsxMoney(assessedN),
+        ]] : []),
         [],
         ["Automated estimate, not an appraisal. Verify independently before underwriting."],
       ];
@@ -12556,11 +13433,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     btn.textContent = "Rendering…"; btn.disabled = true;
     let ok = false;
     try {
-      // The Leaflet map is skipped in the capture — cross-origin tiles would
-      // otherwise taint the canvas and break the whole export.
+      // The static raster stands in for the Leaflet pane, which is skipped —
+      // its cross-origin tiles would taint the canvas and break the whole
+      // export. With no raster (a failed build, an offline browser) the whole
+      // card is skipped instead, exactly as it was before the raster existed.
+      await ensureStaticMap();
+      const mapCard = document.getElementById("mapCard");
+      const staticReady = Boolean(mapCard && mapCard.classList.contains("map-static-ready"));
       const canvas = await html2canvas(node, {
         scale: 2, backgroundColor: "#FBFBF9", useCORS: true,
-        ignoreElements: (el) => el.id === "mapCard" || el.id === "copySummaryBtn" || el.id === "bovCtaWrap" || (el.classList && el.classList.contains("no-capture")),
+        ignoreElements: (el) => (staticReady ? el.id === "compMap" : el.id === "mapCard") || el.id === "copySummaryBtn" || el.id === "bovCtaWrap" || (el.classList && el.classList.contains("no-capture")),
         // The entrance animations (#reportArea > *, .fade-in, .row-in) start
         // every card at opacity 0 and rely on the animation's forwards fill
         // to reach 1. Animations never run in html2canvas's cloned document,
@@ -12577,6 +13459,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           const s = doc.createElement("style");
           s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }";
           doc.head.appendChild(s);
+          // .print-only keeps the raster off the screen, and html2canvas
+          // honours the screen stylesheet, so it has to be revealed in the
+          // clone or the capture shows an empty card.
+          if (staticReady) {
+            const staticImg = doc.getElementById("mapStatic");
+            if (staticImg) staticImg.style.display = "block";
+          }
         },
       });
       const a = document.createElement("a");
@@ -12859,7 +13748,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   document.getElementById("csvBtn").addEventListener("click", gatedExport(exportCsv));
   document.getElementById("imgBtn").addEventListener("click", gatedExport(downloadImage));
-  document.getElementById("printBtn").addEventListener("click", gatedExport(() => {
+  document.getElementById("printBtn").addEventListener("click", gatedExport(async () => {
+    // The printed map is a raster built from tiles, so this path waits for it.
+    // A Ctrl+P instead of this button gets whatever the idle build after the
+    // pins settled already finished — onbeforeprint cannot wait for anything.
+    await ensureStaticMap();
     window.print();
     flashExportDone(document.getElementById("printBtn"), "Done");
   }));

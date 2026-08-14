@@ -70,3 +70,9 @@ compninja-ai-costs.csv
 
 # SDD scratch: ledgers, briefs, review packages. Recreated per run.
 .superpowers/
+
+# Report-first outreach output. Drafts are unsent messages about real people's
+# buildings, and outreach-seen.json is the list of who has already been
+# written to — both are working state, not source.
+outreach-drafts.md
+outreach-seen.json

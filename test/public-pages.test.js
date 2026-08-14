@@ -30,6 +30,7 @@ const SESSION = { cookie: "cn_session=not-a-real-token" };
 // keeps the fixture hermetic; the CTA test below also needs it industrial.
 const MARKET_SLUG = Object.keys(require("../market-seed.json")).find((s) => s.startsWith("industrial-"));
 const MARKET_PAGE = "/market/" + MARKET_SLUG;
+const MARKET = require("../market-seed.json")[MARKET_SLUG];
 
 // Every page that renders through marketShell(). /broker/<slug> is omitted: it
 // needs a database to resolve a profile and 404s without one.
@@ -200,6 +201,41 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
       assert.ok(!/auth=signup/.test(href), "a member already has an account: " + href);
     }
   });
+
+  await t.test("the comps table is a research set, not only a teaser", async () => {
+    const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+    assert.match(html, /id="mktComps"/, "the table must be addressable for sort/filter");
+    const comps = MARKET.comps || [];
+    const nSale = comps.filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease")).length;
+    const nLease = comps.length - nSale;
+    if (nSale && nLease) {
+      assert.match(html, /id="mktTxBar"/, "a mixed sale/lease snapshot must offer a type filter");
+    }
+    const pricedLeases = comps.filter((c) =>
+      String(c.transaction || "").toLowerCase().startsWith("lease") &&
+      parseFloat(String(c.price_per_sqft || "").replace(/[^0-9.]/g, "")) > 0);
+    if (pricedLeases.length >= 2) {
+      assert.match(html, /Typical rent/, "two priced leases earn a rent cell without a regeneration");
+    }
+    const hasCap = comps.some((c) => String(c.cap_rate || "").trim());
+    if (!hasCap) {
+      assert.ok(!/data-k="cap_rate"/.test(html), "empty columns stay dropped");
+    }
+    assert.ok(!/id="mktWatch"/.test(html), "Watch is signed-in chrome, not on the cached SEO body");
+    assert.ok(!/id="mktCsv"/.test(html), "CSV is signed-in chrome, not on the cached SEO body");
+    assert.match(html, /Get my free valuation/, "anonymous visitors still get the owner CTA");
+  });
+
+  await t.test("a signed-in visitor gets Watch and CSV instead of the owner CTA", async () => {
+    const html = await (await fetch(srv.base + MARKET_PAGE, { headers: SESSION })).text();
+    assert.match(html, /id="mktWatch"/);
+    assert.match(html, new RegExp(`data-market="${MARKET.city}, ${MARKET.state}"`));
+    assert.match(html, /data-type="Industrial"/);
+    assert.match(html, /id="mktCsv"/);
+    assert.ok(!/Get my free valuation/.test(html), "the owner funnel is for anonymous SEO traffic");
+    assert.match(html, /href="\/\?explore=/, "members skip the signup door on the Address Explorer link");
+    assert.ok(!/javascript:/i.test(html), "no model-supplied script URL may land in the HTML");
+  });
 });
 
 test("a lost visitor gets a page, not a bare string", async (t) => {
@@ -247,15 +283,10 @@ test("a lost visitor gets a page, not a bare string", async (t) => {
   });
 });
 
-test("the landing stats tell the truth in both directions", async (t) => {
+test("the landing names the real search cost without a stat strip", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
-  // "3–6 cited comps" undersold the product (the model is asked for up to 12
-  // and dense markets deliver them), and "~40s" oversold it (the model alone
-  // spends 40–70s writing; a full search runs longer). A first search that
-  // takes double the promised time costs trust at the exact moment the
-  // product is proving itself.
   await t.test("the old numbers are gone from both pages", async () => {
     for (const p of ["/", "/how-it-works"]) {
       const html = await (await fetch(srv.base + p)).text();
@@ -269,4 +300,114 @@ test("the landing stats tell the truth in both directions", async (t) => {
     assert.match(html, /Up to 12/, "the comp ask is 12; say so");
     assert.match(html, /minute/i, "a minute is the honest unit for a live search");
   });
+
+  await t.test("there is no stat strip and no To start hedge", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.ok(!/class="stats"/.test(html), "the four-cell strip is gone");
+    assert.ok(!/To start/.test(html), "Free / To start was a hedge, not a number");
+  });
+});
+
+test("the landing is a product page, not two copies of a methodology exhibit", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  await t.test("exactly one sample exhibit, plus an address field that is not the app form", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    const exhibits = html.match(/class="exhibit\b/g) || [];
+    assert.equal(exhibits.length, 1, "one sample report; the mini + full pair is the bug");
+    assert.match(html, /id="landingAddress"/, "the hero asks for a building");
+    assert.match(html, /class="heroCta"/, "account-wall tests still have to recognise the landing");
+    assert.ok(!/id="compForm"/.test(html), "the real search form lives only in index.html");
+    assert.ok(
+      !/<input[^>]*id="landingAddress"[^>]*\bname\s*=/i.test(html),
+      "a named input would put the street address on GET /?auth=signup"
+    );
+    assert.match(html, /pendingLandingAddress\.v1/, "the form must hand off through sessionStorage");
+    assert.ok(!/Here is exactly how that gets built/.test(html), "that line is how-it-works voice");
+    assert.match(html, /Run a report/, "the button names the product, not the gate");
+  });
+
+  await t.test("brokers is one block, not a second Method 3-up", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    const afterBrokers = html.split(/kicker">Brokers/)[1];
+    assert.ok(afterBrokers, "the Brokers kicker stays");
+    const brokersBlock = afterBrokers.split(/class="cta/)[0];
+    assert.ok(!/class="steps"/.test(brokersBlock), "do not reuse Method's 3-up for brokers");
+    assert.match(html, /kicker">Method[\s\S]*?class="steps"/, "Method still has its steps");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The BOV promise and the broker directory are the same fact, said twice.
+//
+// `brokersCard` renders nothing when nobody covers a market, which is every
+// market today — while the CTA under it promised "a no-cost Broker Opinion of
+// Value from a licensed local broker" on all 38 pages. Those two cannot be
+// allowed to disagree: the card is the evidence for the sentence.
+// ---------------------------------------------------------------------------
+
+test("a market page with no brokers does not promise a Broker Opinion of Value", async (t) => {
+  // No database here, so brokersCoveringMarket() answers with nobody — the
+  // live state of every market page on 2026-08-13.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+  assert.ok(!/Broker Opinion of Value/.test(html),
+    "with no broker covering this market, the page must not promise one");
+  assert.match(html, /with the source cited on every one/,
+    "the fallback should sell the report, which is the thing that exists");
+  // The hand-raise itself is unaffected: the CTA still opens the app.
+  assert.match(html, /<a class="btn" href="[^"]*auth=signup/,
+    "the primary CTA must still be there");
+});
+
+test("the BOV promise is governed by the same list the broker card renders", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const brokerList = Array.isArray(opts.brokers)");
+  assert.ok(start >= 0, "brokerList should still be how the page learns who covers it");
+  const end = src.indexOf("return marketShell({", start);
+  assert.ok(end > start, "could not bound the market page body");
+  const body = src.slice(start, end);
+
+  const promises = [...body.matchAll(/Broker Opinion of Value/g)];
+  assert.equal(promises.length, 1, "there should be exactly one BOV promise in the page body");
+
+  // It has to sit on the true side of a brokerList test. A promise written
+  // outside that conditional is the bug this exists to prevent, and it reads
+  // identically on the page when the list happens to be non-empty.
+  const guarded = /brokerList\.length[\s\S]{0,200}Broker Opinion of Value/.test(body);
+  assert.ok(guarded, "the BOV sentence must be conditional on a broker actually covering the market");
+});
+
+test("the BOV lead band is governed by the same broker list, and never renders on a preview", () => {
+  // The band makes the strongest promise on the page and puts it ABOVE the
+  // data. Two ways that goes wrong, both invisible on a page with no brokers:
+  // it renders where nobody covers the market, or it renders on a thin-data
+  // Explorer preview, which is noindex, expires in 30 minutes, and is the one
+  // page whose own banner tells the reader not to rely on it.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const bovLead = ");
+  assert.ok(start >= 0, "the BOV lead band should still exist");
+  const end = src.indexOf("const body =", start);
+  assert.ok(end > start, "could not bound the band");
+  const band = src.slice(start, end);
+
+  assert.match(band, /brokerList\.length && !opts\.preview/,
+    "the band must require a covering broker AND a real published page");
+  assert.equal(/contact|phone|email/i.test(band), false,
+    "the band names a broker but must never carry contact details (routing is owner-mediated)");
+  assert.match(band, /auth=signup/, "its CTA must open a door the account wall honors");
+});
+
+test("a market page with no brokers renders no lead band at all", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+  assert.ok(!/cta lead/.test(html), "no broker covers this market, so there is nothing to lead with");
 });

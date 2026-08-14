@@ -7,8 +7,9 @@
 //
 // This file is the whole /api/comps parse pipeline
 // (parseCompJson → expandCompKeys → normalizeSourceTypes → normalizeCurrency
-// → normalizeTrendPct → reconcilePricePerSqft), extracted from server.js
-// 2026-08-08. A new pipeline step belongs HERE, not in a new file.
+// → normalizeTrendPct → reconcilePricePerSqft → normalizeSubjectAssessed),
+// extracted from server.js 2026-08-08. A new pipeline step belongs HERE, not
+// in a new file. (normalizeSubjectLastSale still lives in server.js.)
 //
 // Two deliberate injections keep this module require-free:
 // TYPE_COMP_FIELDS stays in server.js — it is the prompt's source of truth
@@ -359,6 +360,89 @@ function scrubUnearnedVerifiedClaims(parsed) {
   return parsed;
 }
 
+// The subject's county assessed (taxable) value — a public-record cross-check
+// for the hero's approaches table, never a headline. Opposite of last-sale:
+// VALUE is required (a year with no number is useless) and YEAR is optional
+// (an assessment with no year is still a public number). Pure: the caller
+// passes `now` so this module never reads the clock. Spec:
+// docs/superpowers/specs/2026-08-14-tax-assessed-approach-design.md
+function assessedYearOf(raw, now) {
+  const s = String(raw == null ? "" : raw).trim();
+  const m = /^(?:tax\s*year\s*)?(\d{4})$/i.exec(s);
+  if (!m) return "";
+  const y = Number(m[1]);
+  if (y < 1990) return "";
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) return "";
+  if (y > now.getUTCFullYear() + 1) return "";
+  return String(y);
+}
+
+function normalizeSubjectAssessed(parsed, now) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_assessed;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    delete parsed.subject_assessed;
+    return parsed;
+  }
+  const str = (v) => String(v == null ? "" : v).trim();
+  const value = str(raw.value).slice(0, 40);
+  if (parseSalePrice(value) == null) {
+    delete parsed.subject_assessed;
+    return parsed;
+  }
+  let url = str(raw.source_url).slice(0, 500);
+  if (!/^https?:\/\//i.test(url)) url = "";
+  parsed.subject_assessed = {
+    value,
+    year: assessedYearOf(raw.year, now),
+    source_url: url,
+  };
+  return parsed;
+}
+
+// The subject's current asking / list price, read off the same listing page
+// the SUBJECT SIZE step already opens. A list price with no parseable dollar
+// figure is dropped (unlike last sale, where a date with no price is still
+// worth showing): without a number this field cannot feed askFit or the
+// comparison card, and an empty "currently listed" line is noise. The URL
+// is kept only when it is http(s). Not harvested: a listing is not a comp.
+function normalizeSubjectAsking(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_asking;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    delete parsed.subject_asking;
+    return parsed;
+  }
+  const str = (v) => String(v == null ? "" : v).trim();
+  const price = str(raw.price).slice(0, 40);
+  const m = String(price).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  const n = m ? parseFloat(m[0]) : NaN;
+  if (!(n > 0)) { delete parsed.subject_asking; return parsed; }
+  let url = str(raw.source_url).slice(0, 500);
+  if (!/^https?:\/\//i.test(url)) url = "";
+  parsed.subject_asking = { price, source_url: url };
+  return parsed;
+}
+
+// The subject's construction year, same lookup as size / asking. Stored as a
+// 4-digit number so valuation.js's yearOf can read it without a second parse
+// convention. Anything that is not exactly a year in 1800-2100 is dropped.
+function normalizeSubjectYearBuilt(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_year_built;
+  if (raw == null || raw === "") { delete parsed.subject_year_built; return parsed; }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const y = Math.round(raw);
+    if (y >= 1800 && y <= 2100) { parsed.subject_year_built = y; return parsed; }
+    delete parsed.subject_year_built;
+    return parsed;
+  }
+  const ym = String(raw).trim().match(/^(18|19|20)\d{2}$/);
+  if (ym) { parsed.subject_year_built = Number(ym[0]); return parsed; }
+  delete parsed.subject_year_built;
+  return parsed;
+}
+
 module.exports = {
   extractFirstJsonObject,
   parseCompJson,
@@ -373,4 +457,7 @@ module.exports = {
   parsePsf,
   reconcilePricePerSqft,
   scrubUnearnedVerifiedClaims,
+  normalizeSubjectAssessed,
+  normalizeSubjectAsking,
+  normalizeSubjectYearBuilt,
 };

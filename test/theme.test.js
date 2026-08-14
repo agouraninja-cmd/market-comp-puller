@@ -507,6 +507,16 @@ test("no raw colour literal remains in index.html's generated markup (the JS hal
     // report exported from a dark screen still reads as a normal client
     // deliverable. Pinned by the "the PNG export is never dark" test below.
     "backgroundcolor:#fbfbf9",
+    // Static comp map (drawStaticMap and its smap* pin helpers): the raster
+    // that reaches the PDF and the PNG is pinned to the LIGHT street basemap
+    // whatever the page theme is — the same rule as the light-only PNG export
+    // directly above, and for the same reason. So its pins carry light-mode
+    // values by construction: dark roundel, red subject teardrop, white
+    // borders, and the tile-gap backdrop and attribution text that sit on the
+    // light tiles. pinColors() is deliberately NOT used here; a themed pin
+    // would be the bug.
+    "ctx.fillstyle:#1e293b", "ctx.strokestyle:#fff",
+    "ctx.fillstyle:#dc2626", "ctx.fillstyle:#4c5665", "ctx.fillstyle:#f2f1ec",
   ]);
 
   const named = offenders.filter((o) => !ALLOWLIST.has(o));

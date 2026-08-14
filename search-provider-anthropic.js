@@ -15,6 +15,8 @@ const capabilities = {
   // cache_control is an explicit breakpoint we place ourselves.
   promptCaching: "explicit",
   pdfExtract: true,
+  // Screenshots and photos of a deals table, through the same extract call.
+  imageExtract: true,
 };
 
 function buildRequestBody({ model, prompt, maxComps, searchUses, stream }) {
@@ -61,14 +63,23 @@ function requestInit({ apiKey }) {
   };
 }
 
-function buildExtractBody({ model, prompt, pdfBase64 }) {
+// A PDF and a screenshot are the same request with a different block type:
+// `document` carries a PDF, `image` carries a PNG/JPEG/WebP. Anything else is
+// refused before it reaches here (broker-vault.js's checkExtractFile), so an
+// unknown media type falling through to `image` cannot happen — and if it ever
+// did, the vendor would reject it rather than us silently mislabelling a PDF.
+function buildExtractBody({ model, prompt, fileBase64, mediaType }) {
+  const media = mediaType || "application/pdf";
+  const source = { type: "base64", media_type: media, data: fileBase64 };
   return {
     model,
     max_tokens: 8000,
     messages: [{
       role: "user",
       content: [
-        { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+        media === "application/pdf"
+          ? { type: "document", source }
+          : { type: "image", source },
         { type: "text", text: prompt },
       ],
     }],

@@ -564,21 +564,21 @@ if(dd)dd.open=false;});</script>
         <p class="fine">Your comps are never read into CompNinja&rsquo;s public
           records, never included in an export or a shared link, and never shown
           to another broker.</p>
-        <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
       </details>
       <div class="row">
         <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
-        <button class="btn ghost" id="bookPick">Choose a spreadsheet or PDF</button>
+        <button class="btn ghost" id="bookPick">Choose a spreadsheet, PDF or screenshot</button>
       </div>
     </div>
 
     <div id="addSec" class="addpanel hide">
       <div class="drop" id="drop">
-        <p class="drop-k">Import a spreadsheet or PDF</p>
-        <button class="btn" id="pick">Choose a spreadsheet or PDF</button>
-        <p>or drop a .csv or .pdf here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
-        <p class="fine">A PDF is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
-        <input type="file" id="file" accept=".csv,.pdf,text/csv,application/pdf" class="hide"/>
+        <p class="drop-k">Import a spreadsheet, PDF or screenshot</p>
+        <button class="btn" id="pick">Choose a spreadsheet, PDF or screenshot</button>
+        <p>or drop a .csv, .pdf or an image here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+        <input type="file" id="file" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp" class="hide"/>
       </div>
       <div id="res"></div>
 
@@ -713,7 +713,7 @@ if(dd)dd.open=false;});</script>
       </table></div>
       <!-- "above" used to point at a section in plain view. The uploader is a
            closed panel now, so this names the control that opens it. -->
-      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet or PDF.</div>
+      <div class="empty hide" id="none">Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet, PDF or screenshot.</div>
       <!-- Imports is provenance for the table it now sits under, not a tenth
            peer section at the foot of the page. Collapsed, because the one
            thing a broker does here (remove an import) is rare and destructive,
@@ -824,6 +824,67 @@ if(dd)dd.open=false;});</script>
       <details class="dbox hide" id="covBox">
         <summary>Markets you watch</summary>
       </details>
+    </section>
+
+    <!-- ------------------------------------------------------------------
+         The hubs deck: work going OUT to a client, where the pipeline deck
+         above is work coming in. Third and last, because a hub only exists
+         once there is a client to send comps to.
+
+         Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+         NOT the connection hub at /brokers.
+
+         The invite links are the delivery mechanism, not a convenience.
+         Outbound email is off (EMAIL_FROM is unset until a domain is
+         verified in Resend), so a link that is not copied out of this panel
+         reaches nobody, and it cannot be recovered later: only the hash of
+         each token is stored. #hubInvites therefore says so out loud rather
+         than rendering a link and trusting the broker to notice it.
+         ------------------------------------------------------------------ -->
+    <div class="deck" id="deckHubs">
+      <span class="dlab">Your hubs</span><span class="dln"></span>
+      <button class="dact" id="hubToggle" aria-expanded="false" aria-controls="hubAddSec">+ New hub</button>
+    </div>
+
+    <section id="hubSec">
+      <p class="sub hide" id="hubIntro" style="margin-top:0">A hub is where you and a client
+        work one requirement: send comps, keep notes on each one, and skip the email thread.
+        Only the people you invite can open it.</p>
+
+      <div id="hubAddSec" class="addpanel hide">
+        <div class="form">
+          <label class="span2">What is this hub for
+            <input id="hubTitle" type="text" placeholder="Warehouse requirement, 20k to 40k SF"/></label>
+          <label class="span2">Property or area
+            <input id="hubAddr" type="text" placeholder="City, ST"/></label>
+          <label>Type <select id="hubType"></select></label>
+          <label class="span2">Invite by email
+            <input id="hubEmails" type="text" placeholder="client@firm.com, colleague@firm.com"/></label>
+          <div class="formact span-all">
+            <button class="btn" id="hubAdd">Create hub</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- OUTSIDE the panel, unlike #addSec's #res, and on purpose: this one
+           is never hidden, so a create that failed cannot write its error into
+           something the broker just closed. -->
+      <div id="hubMsg"></div>
+
+      <!-- Shown once, right after a hub is created, and never fetched back:
+           the raw tokens exist only in this response. -->
+      <div id="hubInvites" class="hide"></div>
+
+      <div id="hubEmpty" class="invite hide">
+        <p>No hubs yet. Create one when you have comps to put in front of a client.</p>
+      </div>
+
+      <div class="tw hide" id="hubTableWrap"><table id="hubTbl">
+        <thead><tr>
+          <th>Hub</th><th>Market</th><th>Type</th>
+          <th class="num">People</th><th>Opened</th><th>Updated</th><th></th>
+        </tr></thead><tbody id="hubRows"></tbody>
+      </table></div>
     </section>
   </div>
 </div></main>
@@ -2058,10 +2119,16 @@ if(dd)dd.open=false;});</script>
       .catch(function(){ failed("The upload did not reach the server. Nothing was saved.",""); });
   }
 
-  function isPdfFile(file){
+  // Anything the extract route reads: a table PDF, or a screenshot or photo of
+  // one. This is a courtesy check only, so a broker learns in the browser
+  // rather than after a 4 MB round trip; the file the vendor actually sees is
+  // decided by the server sniffing its bytes, never by this name or this type.
+  function isExtractFile(file){
     var n=String(file&&file.name||"").toLowerCase();
     var t=String(file&&file.type||"");
-    return t==="application/pdf" || /\\.pdf$/.test(n);
+    return t==="application/pdf" || /\\.pdf$/.test(n) ||
+           t==="image/png" || t==="image/jpeg" || t==="image/webp" ||
+           /\\.(png|jpe?g|webp)$/.test(n);
   }
   function isCsvFile(file){
     var n=String(file&&file.name||"").toLowerCase();
@@ -2071,15 +2138,15 @@ if(dd)dd.open=false;});</script>
 
   function upload(file){
     if(!file)return;
-    if(!isPdfFile(file) && !isCsvFile(file)){
-      $("res").innerHTML='<div class="msg bad">Use a .csv or .pdf.</div>';
+    if(!isExtractFile(file) && !isCsvFile(file)){
+      $("res").innerHTML='<div class="msg bad">Use a .csv, a .pdf, or a screenshot (PNG, JPEG or WebP).</div>';
       return;
     }
     if(file.size>4*1024*1024){
-      $("res").innerHTML='<div class="msg bad">That file is too large to read.</div>';
+      $("res").innerHTML='<div class="msg bad">That file is too large to read. The limit is 4 MB.</div>';
       return;
     }
-    if(isPdfFile(file)){ extractPdf(file); return; }
+    if(isExtractFile(file)){ extractFile(file); return; }
     $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
@@ -2107,7 +2174,7 @@ if(dd)dd.open=false;});</script>
     fr.readAsText(file);
   }
 
-  function extractPdf(file){
+  function extractFile(file){
     setAddOpen(true);
     $("pick").disabled=true;
     $("res").innerHTML='<div class="msg ok">Reading the table in '+esc(file.name)+"&hellip;</div>";
@@ -2118,12 +2185,12 @@ if(dd)dd.open=false;});</script>
       var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
       fetch("/api/vault/extract",{method:"POST",credentials:"same-origin",
         headers:{"content-type":"application/json"},
-        body:JSON.stringify({filename:file.name,pdf:b64})})
+        body:JSON.stringify({filename:file.name,file:b64})})
         .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
         .then(function(o){
           $("pick").disabled=false;
           if(o.s!==200){
-            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that PDF. Nothing was saved.")+"</div>";
+            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that file. Nothing was saved.")+"</div>";
             return;
           }
           $("res").innerHTML="";
@@ -2734,6 +2801,155 @@ if(dd)dd.open=false;});</script>
     fetch("/api/vault/upload?id="+encodeURIComponent(b.getAttribute("data-del")),
       {method:"DELETE",credentials:"same-origin"}).then(load).catch(load);
   });
+
+  // ---- The hubs deck --------------------------------------------------------
+  //
+  // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+  // NOT the connection hub at /brokers.
+  //
+  // Fetched rather than booted, unlike the comps above. The boot payload is
+  // built by vaultReadPayload, which reads the vault and nothing else; adding a
+  // second query to it would make every /vault paint wait on a table most
+  // brokers have no rows in. A hub list arriving a beat late is invisible; a
+  // slower vault is not.
+  var hubs=[];
+  // This page has no page-wide show() helper: everything else toggles .hide
+  // directly or reassigns className. One local, named so it cannot be mistaken
+  // for a shared utility that does not exist.
+  var hubShow=function(el,on){ if(el)el.classList.toggle("hide",!on); };
+  function hubMsg(t,bad){
+    var n=$("hubMsg");
+    n.innerHTML=t?'<div class="msg'+(bad?" bad":"")+'">'+esc(t)+"</div>":"";
+  }
+
+  function renderHubs(){
+    var rows=$("hubRows");
+    hubShow($("hubIntro"),true);
+    if(!hubs.length){
+      hubShow($("hubEmpty"),true);hubShow($("hubTableWrap"),false);rows.innerHTML="";return;
+    }
+    hubShow($("hubEmpty"),false);hubShow($("hubTableWrap"),true);
+    rows.innerHTML=hubs.map(function(h){
+      // A hub nobody has opened yet is the one fact a broker acts on: it means
+      // the link never got sent, or got sent and ignored. Counting participants
+      // who have a first_viewed_at answers it without a second column.
+      var people=(h.participants||[]).length;
+      var seen=(h.participants||[]).filter(function(p){return p.firstViewedAt}).length;
+      return "<tr>"+
+        "<td>"+esc(h.title||h.subjectAddress||"Untitled hub")+
+          (h.status==="closed"?' <span class="chip">Closed</span>':"")+"</td>"+
+        "<td>"+esc(h.market||"")+"</td>"+
+        "<td>"+esc(h.propertyType||"")+"</td>"+
+        '<td class="num">'+seen+" of "+people+"</td>"+
+        "<td>"+esc(dateShort(h.createdAt))+"</td>"+
+        "<td>"+esc(dateShort(h.updatedAt))+"</td>"+
+        '<td><a class="btn ghost" href="/hub/'+encodeURIComponent(h.id)+'">Open</a></td>'+
+      "</tr>";
+    }).join("");
+  }
+
+  // UTC, not local. Every other date on this page is a UTC calendar day (the
+  // pipeline slices its timestamps to ten characters), and these arrive as
+  // midnight-UTC stamps, so a local render puts a hub created on the 11th
+  // under "Aug 10" for every broker west of Greenwich. Caught in a browser:
+  // the seeded 2026-08-11 hub read Aug 10.
+  function dateShort(s){
+    if(!s)return "";
+    var d=new Date(s);
+    return isNaN(d.getTime())?"":d.toLocaleDateString("en-US",
+      {month:"short",day:"numeric",timeZone:"UTC"});
+  }
+
+  function loadHubs(){
+    fetch("/api/hubs",{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        // 401/403 are not errors to report here: the whole page is already
+        // gated, and a member who cannot see hubs sees the deck's empty state
+        // rather than a refusal they can do nothing about.
+        if(o.s!==200){hubs=[];renderHubs();return;}
+        hubs=o.j.mine||[];renderHubs();
+      })
+      .catch(function(){hubs=[];renderHubs();});
+  }
+
+  $("hubType").innerHTML='<option value=""></option>'+
+    PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
+
+  $("hubToggle").addEventListener("click",function(){
+    var open=$("hubAddSec").classList.contains("hide");
+    hubShow($("hubAddSec"),open);
+    $("hubToggle").setAttribute("aria-expanded",open?"true":"false");
+  });
+
+  $("hubAdd").addEventListener("click",function(){
+    var title=$("hubTitle").value.trim();
+    var addr=$("hubAddr").value.trim();
+    if(!title&&!addr)return hubMsg("Give the hub a name or an address first.",true);
+    var emails=$("hubEmails").value.split(/[,;\\s]+/).filter(Boolean);
+    $("hubAdd").disabled=true;
+    fetch("/api/hubs",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({title:title,subjectAddress:addr,
+        propertyType:$("hubType").value,participants:emails})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        $("hubAdd").disabled=false;
+        if(o.s!==201)return hubMsg(o.j.error||"That hub could not be created.",true);
+        $("hubTitle").value="";$("hubAddr").value="";$("hubEmails").value="";
+        hubShow($("hubAddSec"),false);
+        $("hubToggle").setAttribute("aria-expanded","false");
+        hubMsg("");
+        showInvites(o.j);
+        loadHubs();
+      })
+      .catch(function(){$("hubAdd").disabled=false;
+        hubMsg("That didn't reach the server. No hub was created.",true);});
+  });
+
+  // The one place a raw invite token is ever visible. It is not stored and
+  // cannot be shown again, so this says that plainly instead of leaving a
+  // broker to discover it by closing the panel.
+  function showInvites(j){
+    var list=(j.invites||[]);
+    var box=$("hubInvites");
+    var head='<p class="note">Your hub is ready. Copy each link and send it to that '+
+      'person yourself: CompNinja does not email them yet, and these links cannot be '+
+      'shown again.</p>';
+    if(!list.length){
+      box.innerHTML=head+'<p class="note"><a href="/hub/'+encodeURIComponent(j.id)+
+        '">Open the hub</a> and add people to it when you are ready.</p>';
+      hubShow(box,true);return;
+    }
+    box.innerHTML=head+list.map(function(i,n){
+      return '<div class="row" style="align-items:center;gap:var(--s2)">'+
+        "<span>"+esc(i.email)+"</span>"+
+        '<input type="text" readonly value="'+escA(i.url)+'" '+
+          'id="inv'+n+'" style="flex:1;min-width:240px"/>'+
+        '<button class="btn ghost" data-copy="inv'+n+'">Copy</button>'+
+      "</div>";
+    }).join("");
+    hubShow(box,true);
+  }
+
+  $("hubInvites").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-copy]");if(!b)return;
+    var inp=$(b.getAttribute("data-copy"));if(!inp)return;
+    // select() first, and it is the fallback rather than the decoration:
+    // clipboard.writeText needs a secure context and a permission that can be
+    // refused, and a broker who cannot copy the link cannot send it at all.
+    inp.focus();inp.select();
+    var done=function(){b.textContent="Copied";setTimeout(function(){b.textContent="Copy"},1500)};
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(inp.value).then(done).catch(function(){
+        try{document.execCommand("copy");done();}catch(_){}
+      });
+    }else{
+      try{document.execCommand("copy");done();}catch(_){}
+    }
+  });
+
+  loadHubs();
 
   // The server bakes the first answer into the page (window.__VAULT_BOOT__)
   // so the workspace renders in the same paint as the title, with no fetch

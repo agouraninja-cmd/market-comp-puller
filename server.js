@@ -14,9 +14,13 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const dns = require("dns");
+// Request-scoped context for analytics (see "Who an event came from" below).
+// Built-in, so the zero-dependency rule holds.
+const { AsyncLocalStorage, AsyncResource } = require("node:async_hooks");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
-const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot } = require("./market-snapshot");
+const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot,
+  dateKey, safeHttpUrl, isLease, rentFromComps } = require("./market-snapshot");
 // Pro-tier entitlement rules. Pure and dependency-free so `npm test` can
 // exercise the whole decision table without a database — see the Pro section
 // below for the reads that feed it.
@@ -40,10 +44,17 @@ const BLEND = require("./blend-comps");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
+// Who may read, write and add to a messaging hub. Same pure, fails-closed
+// contract as report-access.js: this file owns the reads, that one owns the
+// rules. NOT the connection hub at /brokers — see the spec's naming warning
+// in docs/superpowers/specs/2026-08-13-messaging-hub-design.md.
+const HUB = require("./hub-access.js");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
 const { renderVaultHTML } = require("./vault-page");
+// The /hub/<id> screen. Same shape as vault-page.js: a pure render, no I/O.
+const { renderHubHTML } = require("./hub-page");
 // The 1031 exchange guide's content. A web page, so it is not server code —
 // the vault-page.js precedent; server.js only dresses it in marketShell.
 const G1031 = require("./guide-1031");
@@ -62,6 +73,10 @@ const GUTCHECK = require("./gut-check");
 // customer-facing email's text in this HTML shell; see the note on that
 // function before changing how it is applied.
 const EMAILSHELL = require("./email-shell");
+// The watchlist digest's copy and its "is this worth sending?" rule. Pure and
+// tested, because every judgment in it is about what a person is worth
+// interrupting for — see its header.
+const DIGEST = require("./watchlist-digest");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
@@ -106,6 +121,10 @@ const BACKTEST = require("./backtest");
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
 const BRANDING = require("./branding.js");
 const CITYCHECK = require("./city-check");
+// "The market under this saved property moved since you last looked" — the
+// desk's only figure that changes without the owner re-running anything.
+// Pure and tested; server.js owns the corpus read and passes in dated sales.
+const PFDELTA = require("./portfolio-delta");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -213,6 +232,33 @@ function proEnabledFor(user) {
 // except the broker vault) and what it cannot override (PRO_ENABLED, and a
 // real paid subscription).
 const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
+
+// The vault's own shared passkey — the broker-onboarding door, and the reason
+// it exists is operational rather than technical. `users.vault_beta`
+// (migration 023) was set by hand in the SQL editor, one broker at a time,
+// which puts the owner in the loop for every single onboarding and makes
+// "hand three brokers a vault at a meeting" a note-to-self instead of
+// something that happens in the room. This is that same grant, self-serve.
+//
+// It redeems through the SAME route and the SAME input as TESTER_PASSKEY,
+// because a broker should be handed one code and not also be told which box
+// to type it into; the route decides which grant a code opens by which
+// secret it matches. Both are compared on every redemption, so the two are
+// independent: setting this one does not require setting the other.
+//
+// Deliberately a SEPARATE secret rather than widening TESTER_PASSKEY to
+// include the vault. entitlements.js excludes the vault from the tester
+// grant on purpose — the vault is a private-data workspace with an upload
+// endpoint, so it should not open for everyone who was ever handed a
+// try-Pro code. Two codes keep those two audiences separately revocable: a
+// rotation here does not lock testers out, and vice versa.
+//
+// And it grants the vault ONLY. A redeeming broker gets `broker` /
+// `canUseVault` and not one Pro report feature (see the vault_beta branch in
+// entitlements.js), so this code cannot be passed around as a way to get Pro
+// for free. Unset = it simply never matches, and a deployment with neither
+// passkey set 404s the route exactly as before.
+const VAULT_PASSKEY = (process.env.VAULT_PASSKEY || "").trim();
 
 // Stripe. Keys live only in the environment — never in the repo, never in a
 // response, never in the browser. The price IDs are not secret (they identify
@@ -931,6 +977,17 @@ async function setUserTester(id) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.pro_tester = true; await saveAccountStore(); }
 }
+// Grants the broker vault to one account (the redeemed vault passkey). The
+// same one-row UPDATE that has always been run by hand in the SQL editor.
+// Throws for the same reason setUserTester does.
+async function setUserVaultBeta(id) {
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { vault_beta: true });
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (u) { u.vault_beta = true; await saveAccountStore(); }
+}
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -1001,6 +1058,15 @@ async function getSessionUser(req) {
   if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
   try {
     const user = await findUserById(sess.user_id);
+    // Stamp the analytics context (2026-08-13). Every route that cares who is
+    // calling already goes through here, so attributing events to an account
+    // costs nothing at the call sites and cannot be forgotten by a route
+    // added later. Presentation-free and one-way: this records who the
+    // session ALREADY resolved to, and no decision anywhere reads it back.
+    if (user) {
+      const ctx = REQUEST_CONTEXT.getStore();
+      if (ctx) ctx.userId = user.id;
+    }
     return user ? {
       id: user.id,
       email: user.email,
@@ -1035,7 +1101,14 @@ async function requireUser(req, res) {
 // them together if a third broker area appears. Hoisted to module scope
 // (not a closure inside the request handler) so routes above the vault's old
 // position can call it without a TDZ trap.
-async function requireBroker(req, res) {
+// `area` names the surface in the 403 copy. The comment above said to fold
+// the copies together if a third broker area appeared; the messaging hub is
+// that third area (2026-08-13), so the string is a parameter now rather than
+// a third near-identical function. It DEFAULTS to the lead inbox's own
+// wording, so every existing caller is unchanged, and every value must obey
+// the same rule as the original: name Pro, the one subscription, and never a
+// "broker plan", which has not been buyable since 2026-08-05.
+async function requireBroker(req, res, area) {
   const user = await requireUser(req, res);
   if (!user) return null;
   const ent = await entitlementsFor(req);
@@ -1044,9 +1117,8 @@ async function requireBroker(req, res) {
       // This string REACHES THE SCREEN verbatim — vault-page.js renders
       // `o.j.error` straight into the leads panel, with no 403 branch of its
       // own like the vault gate has. So it is product copy, not developer
-      // text: it must name Pro, the one subscription, and never a "broker
-      // plan", which has not been buyable since 2026-08-05.
-      error: "The lead inbox is part of Pro.",
+      // text.
+      error: `${area || "The lead inbox"} is part of Pro.`,
       code: "broker_required",
     });
     return null;
@@ -1219,6 +1291,140 @@ async function markWatchlistSeen(userId) {
   const s = await accountStore();
   s.watchlist.forEach((x) => { if (x.user_id === userId) x.last_seen_at = now; });
   await saveAccountStore();
+}
+
+// The feed itself, shared by GET /api/watchlist/feed and the digest so the
+// two can never quote different numbers for the same market. Extracted
+// 2026-08-13 when the digest arrived; the body is the route's, unchanged.
+//
+// `cutoffOf(item)` is the only difference between the two callers, and it is
+// the whole argument between them: the page asks what is new since the
+// reader last LOOKED, the digest asks what is new since they were last
+// TOLD. Passing it in keeps that decision at the call site where it can be
+// read, rather than as a flag inside a function that would then have to
+// explain itself twice.
+//
+// `ent` is passed in rather than resolved here because the two callers get it
+// from different places (a request, versus a loop over accounts) and
+// resolving entitlements is the one thing in this app that must have exactly
+// one owner.
+async function buildWatchlistFeed(user, ent, cutoffOf) {
+  const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
+  const items = await listWatchlist(user.id);
+  const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
+  let unseen = 0;
+  const out = [];
+  for (const w of items) {
+    const rows = await corpusRowsForMarket(w.market, w.property_type, 500);
+    const cutoff = String(cutoffOf(w) || "");
+    const fresh = rows.filter((r) => String(r.ts) > cutoff).slice(0, 20);
+    unseen += fresh.length;
+    // Median $/SF: sale rows only, trailing ~6 months — matches the
+    // client-side rule that lease $/SF never mixes into valuation.
+    const salePsf = rows
+      .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
+      .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .map((r) => corpusNum(r.price_per_sqft))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+    const median_psf = salePsf.length
+      ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
+    // Direction: deal-date medians, last 6 months vs the 6 before —
+    // >=3 comps each side or the field is omitted entirely.
+    const datedSales = saleRowsWithDates(rows);
+    const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
+    const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
+    const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
+    const median_trend = curWin.length >= 3 && priWin.length >= 3
+      ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    out.push({
+      id: w.id, market: w.market, property_type: w.property_type,
+      median_psf, new_count: fresh.length,
+      ...(median_trend ? { median_trend } : {}),
+      // new_count above stays the TRUE number of new comps — the visitor
+      // is told what they are missing, they just don't receive it.
+      ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
+      comps: fresh.slice(0, feedRowCap).map((r) => ({
+        ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
+        price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
+        cap_rate: r.cap_rate, source_url: r.source_url,
+      })),
+    });
+  }
+  return { unseen, items: out };
+}
+
+// --- digest state (migration 025) -------------------------------------------
+//
+// DB-only, and the digest route refuses without a database rather than
+// falling back to the file store. That is the vault's rule, for the vault's
+// reason: Render erases the local disk on every deploy, so an "already
+// mailed" marker written there would be lost and every watcher would be re-sent the
+// same comps after each deploy. Losing a convenience is acceptable; mailing
+// people the same thing twice is what teaches them to filter us.
+// A PostgREST `in.(...)` value list: each value quoted and percent-encoded,
+// the separating commas left LITERAL. This is corpusRowsForMarkets' idiom,
+// lifted out so the three call sites cannot drift apart.
+//
+// Encoding the joined string instead — which is what these callers did first —
+// happens to work for the ids they pass today, because %2C decodes back to a
+// comma before PostgREST's own parser sees it, and a uuid contains no comma of
+// its own to be confused with a separator. It stops working the moment a value
+// contains a comma, which in this codebase is not hypothetical: a market key
+// IS "Boise, ID", and that is exactly the trap corpusRowsForMarkets documents.
+// So this is consistency and one less edge to remember, not a bug fix.
+function pgInList(values) {
+  return values.map((v) => `"${encodeURIComponent(String(v))}"`).join(",");
+}
+
+async function allWatchlistItems(limit = 5000) {
+  if (!DB_CONFIGURED) return [];
+  return await sbRequest("GET", `watchlist_items?order=user_id.asc&limit=${Number(limit) || 5000}`) || [];
+}
+// Marks only the rows that were actually IN the mail. A watcher whose market
+// had nothing new keeps its old high-water mark, so the day it does get a
+// comp the digest still reaches back to when they started watching.
+async function markWatchlistDigested(userId, ids) {
+  if (!DB_CONFIGURED || !ids.length) return;
+  const now = new Date().toISOString();
+  await sbRequest("PATCH",
+    `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
+    { last_digest_at: now });
+}
+async function setDigestOptout(userId, optout) {
+  if (!DB_CONFIGURED) throw new Error("Supabase not configured.");
+  await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
+}
+async function findUsersByIds(ids) {
+  if (!DB_CONFIGURED || !ids.length) return [];
+  return await sbRequest("GET",
+    `users?id=in.(${pgInList(ids)})&select=id,email,digest_optout`) || [];
+}
+
+// The unsubscribe link has to work for somebody who is not signed in, months
+// later, from a phone that has never seen this site — so it authenticates
+// itself. The token is an HMAC of the user id, which makes the link
+// unguessable and unforgeable while storing nothing new.
+//
+// It is keyed on SUPABASE_SERVICE_KEY rather than ADMIN_KEY or a new env var,
+// for two reasons worth stating so nobody "tidies" it: the digest refuses to
+// run without a database at all, so that key is guaranteed present wherever a
+// link could have been minted (ADMIN_KEY is optional and a deployment without
+// one would mint links that can never be honored); and the string is
+// domain-separated, so this cannot collide with any other use of the key and
+// no amount of collecting these tokens reveals it. Rotating the service key
+// invalidates outstanding unsubscribe links — acceptable, because rotating it
+// also takes the whole database connection with it.
+function digestMac(userId) {
+  return crypto.createHmac("sha256", SUPABASE_SERVICE_KEY || "unset")
+    .update(`watchlist-digest-unsubscribe:${userId}`).digest("hex").slice(0, 32);
+}
+function digestTokenValid(userId, token) {
+  if (!SUPABASE_SERVICE_KEY || !userId) return false;
+  return secretMatches(String(token || ""), digestMac(userId));
+}
+function unsubscribeUrlFor(userId) {
+  return `${SITE_URL}/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&t=${digestMac(userId)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1425,6 +1631,35 @@ async function recordReportPurchase({ userId, reportId, paymentIntentId }) {
   return true;
 }
 
+// Undoes a paid unlock after a full refund. Returns the rows it removed, so the
+// caller can tell "a buyer lost the report they were refunded for" from "this
+// charge was never a report purchase" — a refunded Pro invoice arrives at the
+// same handler and must not be reported as an unlock being pulled.
+//
+// A DELETE rather than a `revoked_at` column, deliberately. `report_purchases`
+// is read by exactly one function — findReportPurchase, an existence check —
+// so a soft delete would need a new column, a migration, and a filter added to
+// that read, and forgetting the filter leaves the unlock live, which is the
+// bug this exists to fix. The audit trail is Stripe's own refund record, which
+// outlives this table anyway.
+//
+// Matched on the payment intent, the only field a charge and this table share.
+// `stripe_payment_intent_id` is nullable, so a row written without one cannot
+// be matched — the caller reports that as unmatched rather than falling back to
+// a guess by user or amount.
+//
+// THROWS on failure, like recordReportPurchase and for the same reason: the
+// webhook route releases the event so it can be replayed from the dashboard,
+// and a swallowed error here means a refunded customer keeps their report with
+// nothing anywhere saying so.
+async function revokeReportPurchase(paymentIntentId) {
+  if (!DB_CONFIGURED || !paymentIntentId) return [];
+  const rows = await sbRequest("DELETE",
+    `report_purchases?stripe_payment_intent_id=eq.${encodeURIComponent(paymentIntentId)}`,
+    undefined, { prefer: "return=representation" });
+  return Array.isArray(rows) ? rows : [];
+}
+
 // Find the user a Stripe customer belongs to. Checkout stamps our user id into
 // the session metadata, but subscription.* events arrive with only a customer
 // id, so the mapping has to be recoverable from the DB too.
@@ -1536,6 +1771,22 @@ async function handleStripeEvent(evt) {
   if (!obj) return;
 
   switch (evt.type) {
+    // Both events carry a checkout session and are handled identically, which
+    // is the fix for a payment method that settles AFTER the session closes
+    // (bank debits, some wallets, anything Stripe calls delayed). Those sessions
+    // arrive `complete` but `unpaid`, take the payment_status guard below, and
+    // log "no unlock yet" — and until this line existed nothing ever revisited
+    // them. The customer was charged when the payment cleared and stayed locked
+    // out forever, with no error and no retry, because
+    // `checkout.session.async_payment_succeeded` is the ONLY event that ever
+    // follows. Rare on cards, ordinary on the delayed methods.
+    //
+    // Nothing special-cases which of the two arrived: the paid session is the
+    // paid session. The subscription branch is idempotent (it re-reads the
+    // subscription and upserts one row) and the purchase branch is idempotent
+    // on (user_id, report_id), so the pair cannot double-grant even when both
+    // events describe the same money.
+    case "checkout.session.async_payment_succeeded":
     case "checkout.session.completed": {
       // The one event that reliably carries our user id.
       const userId = (obj.metadata && obj.metadata.user_id) || obj.client_reference_id;
@@ -1648,8 +1899,63 @@ async function handleStripeEvent(evt) {
       return;
     }
 
+    case "checkout.session.async_payment_failed": {
+      // The other half of the delayed-payment pair. Nothing to undo — the
+      // session never unlocked anything — so this exists to be visible: without
+      // it a bank debit that bounces leaves no trace on our side at all, and
+      // "the customer says they bought it" has no log to check against. Stripe
+      // owns telling the customer, as it does for a failed renewal.
+      console.log(`Checkout session ${obj.id} failed to settle (${obj.payment_status}) — nothing unlocked.`);
+      return;
+    }
+
+    case "charge.refunded": {
+      // A refund takes back what the money bought. Until this branch existed a
+      // refunded buyer kept their report permanently: the unlock is a row in
+      // report_purchases and nothing ever deleted one.
+      //
+      // Scope is deliberately the single-report unlock ONLY. A refunded Pro
+      // invoice reaches here too and is left alone — subscription access is
+      // governed by the subscription's own lifecycle events, and cancelling it
+      // from a refund would end a paid-up member's access early on nothing more
+      // than a goodwill credit.
+      const { paymentIntentId, full } = STRIPE.refundOf(obj);
+      if (!paymentIntentId) {
+        return console.log(`Refund on charge ${obj.id} carries no payment intent — nothing to match.`);
+      }
+      if (!full) {
+        // A partial refund is a negotiation, not an undo, and either automatic
+        // answer is wrong often enough to be worth a human: revoking takes back
+        // a report the customer still mostly paid for, and doing nothing quietly
+        // gives away whatever was refunded. So: say so, change nothing.
+        console.log(`⚠ Partial refund on charge ${obj.id} — unlock left in place, decide by hand.`);
+        sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a partial refund needs a decision",
+          `Charge ${obj.id} was partially refunded (${obj.amount_refunded} of ${obj.amount}).\n` +
+          `Any report unlock on payment intent ${paymentIntentId} is STILL ACTIVE.\n` +
+          `Revoke it by deleting that row from report_purchases, or leave it.`);
+        return;
+      }
+      const removed = await revokeReportPurchase(paymentIntentId);
+      if (!removed.length) {
+        // Overwhelmingly a refunded subscription invoice, which is not ours to
+        // act on. Also covers a replayed event and a purchase row written
+        // before the payment intent was recorded. Not an error either way.
+        console.log(`Refund on charge ${obj.id} matched no report unlock — nothing revoked.`);
+        return;
+      }
+      for (const row of removed) {
+        console.log(`↩ Report unlock revoked after refund: ${row.report_id} (user ${row.user_id})`);
+      }
+      sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a refunded report unlock was revoked",
+        `Charge ${obj.id} was fully refunded.\n` +
+        `${removed.length} report unlock(s) removed: ` +
+        removed.map((r) => `${r.report_id} (user ${r.user_id})`).join(", ") + `\n` +
+        `The customer keeps their free-tier view of that report.`);
+      return;
+    }
+
     default:
-      return;   // subscribed to six events; anything else is noise
+      return;   // subscribed to the events named in PRO-BILLING-SETUP.md; anything else is noise
   }
 }
 
@@ -2523,6 +2829,199 @@ async function listSharesForViewer(email) {
 }
 
 // ---------------------------------------------------------------------------
+// The messaging hub (migration 024) — the reads and writes behind /api/hub*.
+//
+// NOT the connection hub at /brokers, which is what ROADMAP's "Hub ratings"
+// and "Hub monetization" mean. See the spec's naming warning:
+// docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+//
+// EVERY access decision in this file belongs to hub-access.js. This section
+// owns only the I/O — the hub row, its participants, the session, the cookie
+// — and hands them in. A second opinion anywhere here is how a gate guarding
+// a broker's private deals grows a hole, which is the same rule
+// report-access.js and entitlements.js already carry.
+//
+// DATABASE ONLY, no file fallback, for the reason 013 and 018 both give: an
+// access-control list in a JSON file on an ephemeral disk is not one. Every
+// route 503s when DB_CONFIGURED is false rather than degrading into something
+// that looks like it works.
+// ---------------------------------------------------------------------------
+
+// Same alphabet and width as newShareId: these ids sit in the same kind of
+// URL and are matched by the same route regex shape.
+function newHubId() { return crypto.randomBytes(8).toString("base64url"); }
+
+// 24 bytes, not 8. A share id only names a row; this IS the credential that
+// opens somebody's private comps to a reader with no account, so it gets
+// session-token entropy rather than id entropy.
+function newHubToken() { return crypto.randomBytes(24).toString("base64url"); }
+
+// The raw token exists exactly once, in the invite link the create route
+// returns. Only its hash is stored, the same discipline as a password: a
+// database read must not hand someone the keys to every live hub.
+function hubTokenMatches(presented, storedHash) {
+  const a = Buffer.from(sha256Hex(String(presented || "")), "utf8");
+  const b = Buffer.from(String(storedHash || ""), "utf8");
+  // timingSafeEqual throws on a length mismatch, so the guard is required and
+  // is not itself a leak: both sides are fixed-width sha256 hex here, and an
+  // absent storedHash is the only way to hit it.
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// One cookie per hub, holding the participant's own token. A tenant in two
+// hubs carries two cookies, which is the honest shape: each is a separate
+// grant, revoked separately by stamping removed_at on that one row.
+function hubCookieName(hubId) { return `cn_hub_${hubId}`; }
+
+async function getHubRow(hubId) {
+  const rows = await sbRequest("GET",
+    `hubs?id=eq.${encodeURIComponent(hubId)}` +
+    `&select=id,owner_user_id,title,market,property_type,subject_address,status,created_at,updated_at,closed_at&limit=1`);
+  return (rows && rows[0]) || null;
+}
+
+async function getHubParticipants(hubId) {
+  return (await sbRequest("GET",
+    `hub_participants?hub_id=eq.${encodeURIComponent(hubId)}` +
+    `&select=id,email,role,user_id,token_hash,invited_at,first_viewed_at,last_seen_at,removed_at` +
+    `&order=invited_at.asc&limit=50`)) || [];
+}
+
+/**
+ * Resolve who is asking, so hub-access.js can decide what they may do.
+ *
+ * The SESSION wins when there is one, and the token only authenticates
+ * whoever the session already identified. Resolving by token first would
+ * mean a participant who happens to hold a colleague's forwarded link gets
+ * matched to the colleague's row, and then fails their own write with
+ * not_invited — refusing the person the hub was actually shared with.
+ */
+async function resolveHubCaller(req, hubId) {
+  const user = await getSessionUser(req);
+  const hub = await getHubRow(hubId);
+  if (!hub) return { hub: null, participant: null, tokenValid: false, user, participants: [] };
+
+  const participants = await getHubParticipants(hubId);
+  const presented = parseCookies(req)[hubCookieName(hubId)] || "";
+
+  let participant = null;
+  if (user) {
+    const mine = HUB.normalizeEmail(user.email);
+    participant = participants.find((p) =>
+      (p.user_id && String(p.user_id) === String(user.id)) ||
+      (mine && HUB.normalizeEmail(p.email) === mine)) || null;
+  }
+  if (!participant && presented) {
+    participant = participants.find((p) => hubTokenMatches(presented, p.token_hash)) || null;
+  }
+  // Strictly boolean: hub-access.js refuses anything that is not `true`.
+  const tokenValid = Boolean(participant && presented &&
+    hubTokenMatches(presented, participant.token_hash));
+
+  return { hub, participant, tokenValid, user, participants };
+}
+
+// Fire and forget, exactly like stampShareView: a failed stamp must never
+// cost a tenant their read. last_seen_at is the unread count and nothing more.
+function stampHubView(participantId) {
+  if (!DB_CONFIGURED || !participantId) return;
+  const now = new Date().toISOString();
+  (async () => {
+    const q = `hub_participants?id=eq.${encodeURIComponent(participantId)}`;
+    await sbRequest("PATCH", q, { last_seen_at: now }, { prefer: "return=minimal" });
+    // first_viewed_at only while it is still null, so it keeps meaning "first"
+    // — it is half of the feature's own score (see the spec's "How this
+    // fails": the gap between a first view and a first message).
+    await sbRequest("PATCH", `${q}&first_viewed_at=is.null`, { first_viewed_at: now },
+      { prefer: "return=minimal" });
+  })().catch((err) => console.error("Hub view stamp failed:", err.message));
+}
+
+// A hub is only as fresh as its last post; the broker's list sorts on this.
+function touchHub(hubId) {
+  if (!DB_CONFIGURED || !hubId) return;
+  sbRequest("PATCH", `hubs?id=eq.${encodeURIComponent(hubId)}`,
+    { updated_at: new Date().toISOString() }, { prefer: "return=minimal" })
+    .catch((err) => console.error("Hub touch failed:", err.message));
+}
+
+async function listHubsForOwner(userId) {
+  return (await sbRequest("GET",
+    `hubs?owner_user_id=eq.${encodeURIComponent(userId)}` +
+    `&select=id,title,market,property_type,subject_address,status,created_at,updated_at,closed_at,` +
+    `hub_participants(email,role,first_viewed_at,last_seen_at,removed_at)` +
+    `&order=updated_at.desc&limit=200`)) || [];
+}
+
+// Read by EMAIL, the same shape as listSharesForViewer and for the same
+// reason (018): a tenant invited before they had an account is recognized the
+// moment they sign up with that address, with nothing to reconcile.
+async function listHubsForParticipant(email) {
+  return (await sbRequest("GET",
+    `hub_participants?email=eq.${encodeURIComponent(email)}&removed_at=is.null` +
+    `&select=hub_id,role,invited_at,last_seen_at,hubs(id,title,market,property_type,subject_address,status,updated_at,closed_at)` +
+    `&order=invited_at.desc&limit=200`)) || [];
+}
+
+// Live items only. A removed item stays in the table as a record of what was
+// disclosed (the snapshot rule) but leaves the conversation.
+async function getHubItems(hubId) {
+  return (await sbRequest("GET",
+    `hub_items?hub_id=eq.${encodeURIComponent(hubId)}&removed_at=is.null` +
+    `&select=id,kind,source,source_ref,snapshot,private,status,added_by_email,added_at` +
+    `&order=added_at.asc&limit=500`)) || [];
+}
+
+// The API's shape for an item. An allowlist, like VAULTAPI.toApiComp: the
+// snapshot is a jsonb blob written by us, but a column added to hub_items
+// later must not start reaching tenants because a select said `*`.
+function hubItemForClient(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    source: row.source,
+    snapshot: row.snapshot,
+    private: row.private === true,
+    status: row.status,
+    addedBy: row.added_by_email,
+    addedAt: row.added_at,
+  };
+}
+
+// EVERY refusal string here REACHES THE SCREEN verbatim, so this is product
+// copy and not developer text. No em dashes, plain trades, and it never
+// blames the reader for a decision the broker made.
+//
+// The distinctions are the ones hub-access.js draws, and they matter to the
+// person reading them: "not invited" and "removed" are different events, and
+// a tenant who was deliberately taken out of a hub should not be told their
+// link was never valid.
+function hubRefusalCopy(reason) {
+  switch (reason) {
+    case "not_found":       return "That hub does not exist, or the link is incomplete.";
+    case "signin_required": return "Please sign in to open this hub.";
+    case "not_invited":     return "This hub was not shared with your account.";
+    case "removed":         return "Your access to this hub was turned off by the broker who created it.";
+    case "closed":          return "This hub is closed. You can still read everything in it, but no one can post.";
+    case "ownerless":       return "The account that created this hub is gone, so it is now read only.";
+    case "read_only":       return "You can read this hub but not post in it.";
+    case "owner_only":      return "Only the broker who created this hub can send comps into it.";
+    default:                return "You cannot open this hub.";
+  }
+}
+
+// `since` is the polling cursor. An absent or unparseable value reads the
+// whole thread rather than nothing: a client that loses its cursor must
+// re-render the conversation, never silently show an empty one.
+async function getHubMessages(hubId, since) {
+  let q = `hub_messages?hub_id=eq.${encodeURIComponent(hubId)}&deleted_at=is.null`;
+  const t = since ? Date.parse(since) : NaN;
+  if (Number.isFinite(t)) q += `&created_at=gt.${encodeURIComponent(new Date(t).toISOString())}`;
+  return (await sbRequest("GET",
+    `${q}&select=id,item_id,author_email,body,created_at&order=created_at.asc&limit=500`)) || [];
+}
+
+// ---------------------------------------------------------------------------
 // Dynamic market pages (Market Explorer) — same store idiom as shared reports:
 // Supabase `market_pages` table when configured, JSON file fallback otherwise
 // (file is lost on redeploy — ephemeral-filesystem hosts).
@@ -2853,9 +3352,19 @@ const STATE_NAMES = {
 //                       in Resend; until then these calls silently no-op
 //                       (with a console line so tests can see the skip).
 // ---------------------------------------------------------------------------
+// Where the mail actually goes. Overridable ONLY so the suite can prove that
+// something was sent, to whom, and with what body — the watchlist digest is
+// the one feature whose whole point is an email leaving the building, and
+// until this existed the tests could reach the send call and then had to stop
+// and assume. Unset everywhere except in tests; production never sets it, so
+// the constant below is the live value. It is not a secret and authorizes
+// nothing (RESEND_API_KEY still does), but it does decide where mail is
+// posted, so it belongs in the same trusted place as the key itself.
+const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com/emails").trim();
+
 function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
   if (!RESEND_API_KEY) return;
-  fetch("https://api.resend.com/emails", {
+  fetch(RESEND_API_URL, {
     method: "POST",
     headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
@@ -3026,6 +3535,9 @@ const FIELD_LABELS = {
   zoning: "Zoning",
   price_per_acre: "$/Acre",
   beds_baths: "Beds / Baths",
+  cap_rate: "Cap Rate",
+  tenancy: "Tenancy",
+  year_built: "Year Built",
 };
 
 // ---------------------------------------------------------------------------
@@ -3056,7 +3568,7 @@ const LANE_GUIDANCE = {
   records: `SEARCH ANGLE - START WITH NEWS, PRESS AND PUBLIC RECORDS: a second analyst is working this same property from brokerage listing sites in parallel, and your results will be merged with theirs, so favour sources they are less likely to reach. Begin with transaction coverage and records: local business journals and trade press reporting sales and leases, brokerage and owner press releases, REIT and institutional investor disclosures, and county assessor, recorder, deed or property-tax records and open-data portals. This is a preference, not a restriction: if those sources run dry before you have enough comparable properties, widen to any source you like, including listing sites, rather than coming back short. A real comp from the "wrong" source is far more useful than a missing one.`,
 };
 
-const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a table PDF (CoStar, ARGUS, CMA, or similar). Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
+const EXTRACT_PROMPT = `You extract commercial real estate comparable transactions from a deals table (CoStar, ARGUS, CMA, MLS, or similar). The table may arrive as a PDF, as a screenshot, or as a photograph of a printed sheet. Return ONLY a JSON array of objects. No markdown, no keys wrapping the array.
 
 Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
 property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
@@ -3088,7 +3600,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // pricier pocket a mile away) and the hero range lands far above what
     // the subject's own street trades at (seen live 2026-08-04: a ~$750k
     // house shown a $927k LOW end off 4 such comps).
-    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
+    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
   };
 
   // The subject-size lookup belongs to whichever lane searches assessor data:
@@ -3238,7 +3750,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // The neighbor guard matters: adjacent parcels' sizes surface readily in
     // search results, and a wrong "found" size is worse than an honest "".
     wantsSize
-      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off the property's own last sale date and price for "subject_last_sale" below - the same record usually carries both, so it costs you nothing here and is one of the most valuable things in the report.`
+      ? `SUBJECT SIZE (do this FIRST): before searching for comps, spend your first web search on the TARGET address itself to determine its building size in square feet - county assessor or parcel records, a property-detail page (realtor.com, redfin.com, loopnet.com, crexi.com), or a current or past listing of the property. This is the BUILDING square footage, not the lot or land size. The report's entire value range is computed from this number, so finding it is worth a search that might otherwise go to one more comp. If that search and everything you see later genuinely yield no size for this exact address, use "" - do not guess, and never substitute a neighboring or similar property's size. While you are on those pages, also read off four things that usually sit next to the size and cost you nothing extra: the property's own last sale date and price for "subject_last_sale" below; the county's total assessed or taxable value for "subject_assessed"; the current asking or list price if the property is actively listed, for "subject_asking"; and the year the building was constructed, for "subject_year_built". The assessor record usually carries the last sale and the assessed value; a live listing usually carries the ask and the year built. A live list price is the current market's own ask for THIS property, and a 1994 house must not be priced by 2024 new construction even on the next block.`
       : "",
     typeGuidance[type] || "",
     // Size class moves $/SF (economies of scale) — steer comp selection
@@ -3293,7 +3805,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // that can actually see a sale history. Asked of whichever lane is looking
     // (wantsSize) and of the sole/primary lane regardless; mergeLaneReports
     // carries whichever one answers.
-    ...(wantsSize || !compsOnly ? [`  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`] : []),
+    ...(wantsSize || !compsOnly ? [
+      `  "subject_last_sale": { "date": "", "price": "", "source_url": "" },`,
+      `  "subject_assessed": { "value": "", "year": "", "source_url": "" },`,
+      `  "subject_asking": { "price": "", "source_url": "" },`,
+      `  "subject_year_built": "",`,
+    ] : []),
     `  "comps": [`,
     `    ${compShape}`,
     `  ]`,
@@ -3331,7 +3848,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ...(compsOnly ? [] : [
     `"market_cap_rate_range" = your best estimate of the going-in capitalization rate range for stabilized ${type} properties in this submarket today, as short percent strings like "5.8%". This is a market-level figure, not a valuation of the target property. Use "" for both values if you cannot estimate it.`,
     ...(!isLand ? [`"market_opex_range" = typical total operating expenses for stabilized ${type} properties in this market, as a percent of effective gross income, as short percent strings like "32%". "note" = a few words naming the lease structure the range assumes (e.g. "assumes NNN, owner keeps roof and structure" or "full-service gross"), since expense ratios depend heavily on it. This is a market-level benchmark for the asset class, not a statement about the target property. Use "" for all three if you cannot estimate it.`] : []),
-    `"value_drivers" = 2 to 3 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. Each entry must stay under about 80 characters: the named factor and its direction, then stop - no explanations, no tenant or company name lists. "market_trend" = one SHORT sentence, under about 140 characters, on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use "" if your searches did not show a clear trend - do not guess.`,
+    `"value_drivers" = 2 to 3 short strings, each ONE concrete factor currently pushing values up or down for ${type} properties in this specific area, drawn from what your searches actually found - name the factor specifically (a vacancy shift, new construction, a rate change, scarcity of a size class), never generic real-estate advice. Each entry must stay under about 80 characters: the named factor and its direction, then stop - no explanations, no tenant or company name lists. "market_trend" = one SHORT sentence, under about 140 characters, on which direction ${type} sale prices in this area have moved over the search window; use "" if your searches did not show this - do not guess. "annual_price_trend_pct" = the same trend as ONE signed number: your best estimate of the average annual percent change in ${type} SALE prices in this area over the search window, as a plain number string like "-6.5" or "4" (no percent sign). It must agree in direction with "market_trend". Use sold prices in the subject's own neighborhood over this window, not a metro-wide figure, a different asset class, or a prior cycle; if those sales are down, the number is negative. Use "" if your searches did not show a clear trend - do not guess.`,
     `"search_radius" = a short phrase (a few words) naming the geographic scope you actually used to gather these comps and whether you widened it, e.g. "Immediate submarket, ~3 miles" or "Widened to ~20 miles, limited local activity". Keep it under about 10 words. Use "" if not applicable.`,
     `"transactions_reviewed" = your rough estimate, as a plain number, of how many recent ${type} transactions you came across in this market and window before narrowing to the most comparable ones above. An approximation is expected (e.g. 34) - it conveys how much market activity you weighed. It must be greater than the number of comps you returned. Use "" if you cannot reasonably estimate it; never invent a large number to look thorough.`,
     `"price_discovery" = a brief read on the market's momentum and its openness to price discovery, that is, whether recent activity suggests the market would support a seller pricing above what recent comps strictly prove. "direction" = exactly one of "expanding", "flat", or "contracting" based on recent momentum. "note" = 1 to 2 short sentences, under about 200 characters total, on how open the market looks to pricing above recent comps and why, framed as an automated read of market conditions, never advice and never a promise about any specific price. Use "" for both if you cannot tell.`,
@@ -3348,6 +3865,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // with the size already known there is no subject search to ride along on,
     // and buying one would come out of the comp budget.
     ...(wantsSize || !compsOnly ? [`"subject_last_sale" = the TARGET property's own most recent closed sale, if the sources you are already looking at show one. ${wantsSize ? "The assessor, parcel, and listing pages you open for the subject size above normally carry the sale history, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "date" = the closing month and year like "Aug 2025", "price" = the sale price as one number like "$12,450,000", "source_url" = the page that states it. This is the TARGET's own transaction, never a comp, and it must NOT also appear in "comps". Include it however long ago it closed, even well outside the comp window, and even when only part of it is known (a date with no public price is still worth reporting - leave "price" empty). Leave all three fields "" if the property has no findable sale of its own, and never infer one from a neighboring or similar property.${compsOnly ? "" : ` When you do find one, mention it in "summary" - what the subject itself last traded for is the most important single fact an owner can be told, so it outranks the market-level read for the second sentence.`}`] : []),
+    ...(wantsSize || !compsOnly ? [`"subject_assessed" = the TARGET parcel's total assessed or taxable value, if the sources you are already looking at show one. ${wantsSize ? "The assessor and parcel pages you open for the subject size above normally print this number, so read it off those - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "value" = the county's total assessed (or taxable) value as one number like "$412,000". "year" = the four-digit tax year like "2025", or "" if the year is not shown. "source_url" = the page that states it. This is the whole parcel, never land-only or improvements-only - if the source splits those, leave all three fields "". This is not a comp and must NOT appear in "comps". Do not put it in "summary". Leave all three fields "" if nothing findable, and never infer one from a neighboring or similar property. Never use a listing ask, a Zestimate, or a separate "market value" the assessor printed as an opinion - only the assessed or taxable number the county uses to tax the parcel.`] : []),
+    ...(wantsSize || !compsOnly ? [`"subject_asking" = the TARGET property's current asking or list price if it is actively listed for sale, as one number like "$1,250,000". ${wantsSize ? "The listing page you open for the subject size above carries this next to the square footage, so read it off that page - do not spend an additional search on it." : "Record it only if you come across it while researching the comps - do not spend a search on it."} "source_url" = the listing page that states it. This is the current ASK, not a closed sale and not a comp, and it must NOT also appear in "comps". Leave both fields "" if the property is not listed. "subject_year_built" = the year the TARGET building was constructed, as a 4-digit year like "1994". Same lookup as the size; use "" if you cannot determine it. Do not guess.`] : []),
   ].join("\n");
 }
 
@@ -3363,7 +3882,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
-const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims } = RPARSE;
+const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
+        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -3921,9 +4441,16 @@ async function repairCompJson(brokenText, maxTokens) {
   }
 }
 
-async function extractPdfOnce(pdfBase64) {
-  if (!PROVIDER.capabilities.pdfExtract) {
-    const err = new Error("PDF import isn't available on this deployment.");
+// One call for a table PDF and for a screenshot of one. The media type is
+// SNIFFED from the bytes by the route before it gets here (never taken from
+// the filename), so this only has to ask whether the provider reads that kind
+// of file and hand it over.
+async function extractFileOnce(fileBase64, mediaType) {
+  const isPdf = mediaType === "application/pdf";
+  if (!PROVIDER.capabilities[isPdf ? "pdfExtract" : "imageExtract"]) {
+    const err = new Error(isPdf
+      ? "PDF import isn't available on this deployment."
+      : "Image import isn't available on this deployment.");
     err.statusCode = 503;
     throw err;
   }
@@ -3934,7 +4461,7 @@ async function extractPdfOnce(pdfBase64) {
     throw err;
   }
   const init = PROVIDER.extractRequestInit({ apiKey, model: MODEL });
-  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, pdfBase64 });
+  const body = PROVIDER.buildExtractBody({ model: MODEL, prompt: EXTRACT_PROMPT, fileBase64, mediaType });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000);
   const startedAt = Date.now();
@@ -3947,20 +4474,20 @@ async function extractPdfOnce(pdfBase64) {
     });
     if (!r.ok) {
       const detail = (await r.text().catch(() => "")).slice(0, 200);
-      console.error(`${PROVIDER.logLabel} pdf-extract failed (${r.status}): ${detail}`);
+      console.error(`${PROVIDER.logLabel} ${mediaType} extract failed (${r.status}): ${detail}`);
       throw VAULT.extractVendorError(r.status);
     }
     const parsed = PROVIDER.parseExtractResponse(await r.json());
-    console.log(`${PROVIDER.logLabel} pdf-extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
+    console.log(`${PROVIDER.logLabel} ${mediaType} extract: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${(parsed.usage && parsed.usage.output_tokens) || 0} out / ${(parsed.usage && parsed.usage.input_tokens) || 0} in tokens`);
     if (VAULT.extractWasTruncated(parsed.stopReason)) {
-      const err = new Error("That PDF has more rows than we can read in one pass. Nothing was saved.");
+      const err = new Error("That file has more rows than we can read in one pass. Nothing was saved.");
       err.statusCode = 400;
       throw err;
     }
     return parsed.text || "";
   } catch (err) {
     if (err && err.name === "AbortError") {
-      const e = new Error("Could not read that PDF. Nothing was saved.");
+      const e = new Error("Could not read that file. Nothing was saved.");
       e.statusCode = 504;
       throw e;
     }
@@ -4211,12 +4738,20 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // the final `verified` flags, so it has to run after attachVerifiedAttribution
   // has cleared the unearned ones. Inside that call it would read the model's
   // own claims and conclude the narrative was justified.
-  const finishReport = (raw) =>
-    scrubUnearnedVerifiedClaims(
-      attachVerifiedAttribution(
-        normalizeSubjectLastSale(
-          reconcilePricePerSqft(normalizeTrendPct(normalizeCurrency(normalizeSourceTypes(expandCompKeys(parseCompJson(raw, stats), type)))))),
-        verifiedComps));
+  const finishReport = (raw) => {
+    const parsed = normalizeSubjectAssessed(
+      normalizeSubjectYearBuilt(
+        normalizeSubjectAsking(
+          normalizeSubjectLastSale(
+            reconcilePricePerSqft(
+              normalizeTrendPct(
+                normalizeCurrency(
+                  normalizeSourceTypes(
+                    expandCompKeys(parseCompJson(raw, stats), type)))))))),
+      new Date());
+    return scrubUnearnedVerifiedClaims(
+      attachVerifiedAttribution(parsed, verifiedComps));
+  };
   try {
     return finishReport(text);
   } catch (err) {
@@ -4287,6 +4822,18 @@ function mergeLaneReports(primary, records, maxComps) {
   // pages, which is where a sale history lives.
   if (records.subject_last_sale && records.subject_last_sale.date && !(primary.subject_last_sale || {}).date) {
     primary.subject_last_sale = records.subject_last_sale;
+  }
+  // Assessed value lives on the same assessor pages, so the records lane is
+  // again the likelier finder. Copy only when the primary has none — value is
+  // required after normalizeSubjectAssessed, matching last-sale's date check.
+  if (records.subject_assessed && records.subject_assessed.value && !(primary.subject_assessed || {}).value) {
+    primary.subject_assessed = records.subject_assessed;
+  }
+  if (records.subject_asking && records.subject_asking.price && !(primary.subject_asking || {}).price) {
+    primary.subject_asking = records.subject_asking;
+  }
+  if (records.subject_year_built && !primary.subject_year_built) {
+    primary.subject_year_built = records.subject_year_built;
   }
 
   console.log(`Lane merge: ${a.length} listing-lane + ${fresh.length} records-lane comp(s), ${records.comps.length - fresh.length} duplicate(s) dropped, ${primary.comps.length} kept.`);
@@ -4592,6 +5139,11 @@ function marketPageTitle(p) {
 }
 function marketUrl(slug) { return `${SITE_URL}/market/${slug}`; }
 function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
+function usd2(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return "";
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 // Brand mark, shared by every server-rendered page (market pages, /markets,
 // /broker, /how-it-works, /admin). Declared HERE, above MARKET_BAR: that
@@ -4938,11 +5490,26 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center}
 .cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
+/* The BOV band at the top of a covered market page. Same card, tighter to the
+   h1 above it, since it is answering the heading rather than closing the page. */
+.cta.lead{margin:18px 0 30px}
 .cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
 .cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
 .cta .alt:hover{color:var(--ink)}
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
+button.btn{border:0;cursor:pointer;font-family:inherit}
+.cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--ink-mute);
+  text-decoration:underline;text-decoration-color:var(--edge)}
+.cta button.alt:hover{color:var(--ink)}
+.ledger.aux{margin-top:-14px}
+.ledger.aux .v{font-size:20px}
+.mkt-tx{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.mkt-tx button{font:inherit;font-size:13px;padding:4px 10px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--edge);background:var(--card);color:var(--ink-body)}
+.mkt-tx button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);font-weight:600;background:var(--wash)}
+table.stmt th[data-k]{cursor:pointer;user-select:none}
+table.stmt th[data-k]:hover{color:var(--ink)}
 /* Header-sized variant, for the auth controls in the market bar. Mirrors the
    same rule in HOW_CSS so the two site headers sit at the same height. The nav
    rule below it exists because .hdr nav a would otherwise grey the button out.
@@ -5290,6 +5857,69 @@ function saleRowsWithDates(rows) {
     .map((r) => ({ yearFrac: parseDealDate(r.deal_date), psf: corpusNum(r.price_per_sqft), dealText: String(r.deal_date || "") }))
     .filter((r) => r.yearFrac != null && r.psf > 0);
 }
+// A calendar date onto parseDealDate's scale, so a snapshot timestamp and a
+// corpus deal date can be compared at all. Month granularity, because that is
+// all a deal date carries — a day-precise "since" would imply a precision the
+// other side of the comparison does not have.
+function yearFracOfDate(d) {
+  const t = d instanceof Date ? d : new Date(d);
+  if (!isFinite(t.getTime())) return null;
+  return t.getUTCFullYear() + (t.getUTCMonth() + 0.5) / 12;
+}
+
+// Attaches `movement` to each saved property: what the market under it did
+// since that property was last checked.
+//
+// This is the desk's only figure that moves without the owner re-running
+// anything. Their own valuation history only grows when they come back, which
+// makes it a record of visits rather than a reason to make one; the corpus
+// fills up from everybody's searches, so the market keeps moving in between.
+//
+// Corpus reads are batched by market+type, since a portfolio is usually
+// several buildings in one or two markets and PORTFOLIO_MAX_ITEMS is 20.
+//
+// Fails SAFE and silent: any error leaves the items exactly as they were, with
+// no `movement` key. The desk renders nothing for a property without one, and
+// a portfolio that fails to load is a far worse outcome than a missing line.
+async function withMarketMovement(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return list;
+  try {
+    const nowFrac = yearFracOfDate(new Date());
+    const buckets = new Map();
+    for (const item of list) {
+      const market = marketOf(item.address);
+      const type = String(item.property_type || "");
+      if (!market || !type) continue;
+      buckets.set(market + "|" + type, { market, type });
+    }
+    const sales = new Map();
+    await Promise.all([...buckets.entries()].map(async ([key, b]) => {
+      const rows = await corpusRowsForMarket(b.market, b.type, 500);
+      sales.set(key, saleRowsWithDates(rows));
+    }));
+    return list.map((item) => {
+      const market = marketOf(item.address);
+      const key = market + "|" + String(item.property_type || "");
+      const dated = sales.get(key);
+      if (!dated || !dated.length) return item;
+      // "Last checked" is the newest SNAPSHOT, not updated_at: updated_at moves
+      // when the payload is rewritten, and the question is when this person
+      // last saw a valuation.
+      const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
+      const lastTs = snaps.length ? snaps[snaps.length - 1].ts : item.created_at;
+      const sinceFrac = yearFracOfDate(lastTs);
+      if (sinceFrac == null) return item;
+      const move = PFDELTA.marketMoveSince(dated, { sinceFrac, nowFrac });
+      if (!move) return item;
+      return { ...item, movement: { ...move, line: PFDELTA.moveLine(move, { market, type: item.property_type }) } };
+    });
+  } catch (e) {
+    console.error("Portfolio market movement failed (serving without it):", e.message);
+    return list;
+  }
+}
+
 function medianPsfOf(nums) { // upper-middle, matching the feed's formula
   if (!nums.length) return null;
   const sorted = [...nums].sort((a, b) => a - b);
@@ -5443,6 +6073,124 @@ const MARKET_MAP_JS = `(function(){
       if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
     });
   });
+})();`;
+
+// Sort / Sale-Lease filter / CSV / Watch on the market-page comps table.
+// Inlined like MARKET_MAP_JS so the page stays self-contained (no extra asset,
+// no tailwind). No ${} — this string is interpolated into a <script>.
+const MARKET_RESEARCH_JS = `(function(){
+  var table = document.getElementById("mktComps");
+  if (!table) return;
+  var tbody = table.tBodies[0];
+  if (!tbody) return;
+  var rows = [].slice.call(tbody.rows);
+  var filter = "all";
+  function applyFilter() {
+    var n = 0;
+    rows.forEach(function (tr) {
+      var tx = tr.getAttribute("data-tx") || "sale";
+      var on = filter === "all" || tx === filter;
+      tr.hidden = !on;
+      if (on) n++;
+    });
+    if (table.tFoot) table.tFoot.hidden = filter === "lease";
+    var empty = document.getElementById("mktTxEmpty");
+    if (empty) empty.hidden = n > 0;
+  }
+  var bar = document.getElementById("mktTxBar");
+  if (bar) {
+    bar.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-tx]");
+      if (!b) return;
+      filter = b.getAttribute("data-tx");
+      [].forEach.call(bar.querySelectorAll("button[data-tx]"), function (x) {
+        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      });
+      applyFilter();
+    });
+  }
+  var sortCol = -1, sortDir = 1;
+  if (table.tHead) {
+    table.tHead.addEventListener("click", function (e) {
+      var th = e.target.closest("th[data-k]");
+      if (!th) return;
+      var idx = [].indexOf.call(th.parentNode.children, th);
+      if (idx === sortCol) sortDir = -sortDir;
+      else { sortCol = idx; sortDir = 1; }
+      var numeric = th.getAttribute("data-num") === "1";
+      rows.sort(function (a, b) {
+        var av = a.cells[idx] ? (a.cells[idx].getAttribute("data-s") || "") : "";
+        var bv = b.cells[idx] ? (b.cells[idx].getAttribute("data-s") || "") : "";
+        var an = parseFloat(av), bn = parseFloat(bv);
+        var cmp;
+        if (numeric) {
+          an = isFinite(an) ? an : (sortDir > 0 ? Infinity : -Infinity);
+          bn = isFinite(bn) ? bn : (sortDir > 0 ? Infinity : -Infinity);
+          cmp = an - bn;
+        } else {
+          cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+        }
+        return cmp === 0 ? 0 : (cmp < 0 ? -sortDir : sortDir);
+      });
+      rows.forEach(function (tr) { tbody.appendChild(tr); });
+    });
+  }
+  var csvBtn = document.getElementById("mktCsv");
+  if (csvBtn) {
+    csvBtn.addEventListener("click", function () {
+      function esc(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
+      var ths = [].slice.call(table.tHead.rows[0].cells);
+      var header = ths.map(function (th) { return esc(th.textContent.trim()); }).concat(esc("Source URL")).join(",");
+      var body = rows.filter(function (tr) { return !tr.hidden; }).map(function (tr) {
+        var cells = [].slice.call(tr.cells).map(function (td) { return esc(td.textContent.trim()); });
+        cells.push(esc(tr.getAttribute("data-src") || ""));
+        return cells.join(",");
+      });
+      var slug = csvBtn.getAttribute("data-slug") || "market";
+      var blob = new Blob([header + "\\r\\n" + body.join("\\r\\n")], { type: "text/csv;charset=utf-8;" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "compninja-" + slug + ".csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+  var watch = document.getElementById("mktWatch");
+  if (watch) {
+    var market = watch.getAttribute("data-market") || "";
+    var type = watch.getAttribute("data-type") || "";
+    function setWatching() {
+      watch.disabled = true;
+      watch.textContent = "Watching — see My Desk";
+    }
+    fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (d) {
+      if (!d || !d.items) return;
+      var hit = d.items.some(function (it) {
+        return String(it.market || "").toLowerCase() === market.toLowerCase()
+          && String(it.property_type || "") === type;
+      });
+      if (hit) setWatching();
+    }).catch(function () {});
+    watch.addEventListener("click", function () {
+      watch.disabled = true;
+      fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ market: market, property_type: type })
+      }).then(function (r) {
+        return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+      }).then(function (res) {
+        if (res.ok) { setWatching(); return; }
+        watch.disabled = false;
+        alert((res.j && res.j.error) || "Could not watch this market.");
+      }).catch(function () {
+        watch.disabled = false;
+        alert("Could not watch this market.");
+      });
+    });
+  }
 })();`;
 
 // ---------------------------------------------------------------------------
@@ -5698,6 +6446,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const isPricing = (c) => c.key.startsWith("price_per_");
   const specCols = typeCols.filter((c) => !isPricing(c));
   const priceCols = typeCols.filter(isPricing);
+  // Cap / tenancy / year built: stored since 2026-07-27, rendered 2026-08-14.
+  // Empty-on-every-comp drop is the same rule as the per-type specs, so seeded
+  // pages without those fields do not sprout blank columns.
+  const extraCols = [
+    { key: "cap_rate", label: "Cap Rate" },
+    ...(p.type === "Land" ? [] : [
+      { key: "tenancy", label: "Tenancy" },
+      { key: "year_built", label: "Year Built" },
+    ]),
+  ].filter((col) => marketComps.some((c) => String(c[col.key] || "").trim()));
   const compCols = [
     { key: "address", label: "Address" },
     { key: "date", label: "Date" },
@@ -5707,16 +6465,36 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     { key: "price_or_rate", label: "Price / Rate" },
     { key: "price_per_sqft", label: "$/SF" },
     ...priceCols,
+    ...extraCols,
   ];
+  const numCol = (k) => /^(date|size_sqft|price_or_rate|price_per_|cap_rate|year_built|units|dock_doors|clear_height|lot_acres|floor_plate)/.test(k);
+  const cellSort = (col, c) => {
+    if (col.key === "date") {
+      const k = dateKey(c.date);
+      return isFinite(k) ? String(k) : String(c.date || "").toLowerCase();
+    }
+    if (numCol(col.key)) {
+      const n = parseFloat(String(c[col.key] || "").replace(/[^0-9.\-]/g, ""));
+      return isFinite(n) ? String(n) : "";
+    }
+    return String(c[col.key] || "").toLowerCase();
+  };
   const compRows = marketComps.map((c) => {
     // Same badge tiers the report table uses; anything else stays neutral, so
     // provenance can be under-claimed but never over-claimed.
     const tier = { verified: " v", listing: " li" }[String(c.source_type || "").toLowerCase()] || "";
     const badge = c.source_type
       ? `<span class="badge${tier}">${escHtml(c.source_type.replace("_", " "))}</span>` : "";
-    return "<tr>" + compCols.map((col) => (col.key === "address"
-      ? `<td>${escHtml(c.address)} ${badge}</td>`
-      : `<td>${escHtml(c[col.key] || "")}</td>`)).join("") + "</tr>";
+    const src = safeHttpUrl(c.source_url);
+    const addrInner = src
+      ? `<a href="${escHtml(src)}" target="_blank" rel="noopener noreferrer">${escHtml(c.address)}</a>`
+      : escHtml(c.address);
+    const tx = isLease(c) ? "lease" : "sale";
+    return `<tr data-tx="${tx}"${src ? ` data-src="${escHtml(src)}"` : ""}>` +
+      compCols.map((col) => {
+        const inner = col.key === "address" ? `${addrInner} ${badge}` : escHtml(c[col.key] || "");
+        return `<td data-s="${escHtml(cellSort(col, c))}">${inner}</td>`;
+      }).join("") + "</tr>";
   }).join("");
   // Statement closing row (Direction H): the sales median under a double
   // rule — quoting p.ppsf, the page's OWN headline statistic, so the table's
@@ -5731,11 +6509,63 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     ? `<tfoot><tr><td class="tl" colspan="${psfIdx}">Median of ${p.ppsf.count} recent sales &middot; ${usd0(p.ppsf.median)}/SF</td>` +
       `<td>${usd0(p.ppsf.median)}</td>${restCols > 0 ? `<td colspan="${restCols}"></td>` : ""}</tr></tfoot>`
     : "";
+  const nSale = marketComps.filter((c) => !isLease(c)).length;
+  const nLease = marketComps.filter(isLease).length;
+  const txBar = (nSale && nLease)
+    ? `<div class="mkt-tx" id="mktTxBar" role="group" aria-label="Filter by transaction type">` +
+      `<button type="button" data-tx="all" aria-pressed="true">All (${marketComps.length})</button>` +
+      `<button type="button" data-tx="sale" aria-pressed="false">Sales (${nSale})</button>` +
+      `<button type="button" data-tx="lease" aria-pressed="false">Leases (${nLease})</button></div>`
+    : "";
   const compsTable = compRows
-    ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
-      `<div class="scroll"><table class="stmt"><thead><tr>` +
-      compCols.map((col) => `<th>${escHtml(col.label)}</th>`).join("") +
-      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div></div>`
+    // id="comps" is the target of the BOV band's "read the numbers first"
+    // link. It is on the CARD, not the table, so the heading lands under the
+    // viewport top rather than the first data row.
+    ? `<div class="card" id="comps"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
+      txBar +
+      `<div class="scroll"><table class="stmt" id="mktComps"><thead><tr>` +
+      compCols.map((col) =>
+        `<th data-k="${escHtml(col.key)}"${numCol(col.key) ? " data-num=\"1\"" : ""}>${escHtml(col.label)}</th>`).join("") +
+      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div>` +
+      `<p class="disc" id="mktTxEmpty" hidden>No comps in this filter.</p>` +
+      `<script>${MARKET_RESEARCH_JS}</script></div>`
+    : "";
+
+  // Analyst extras sit on a second ledger row so the headline strip stays
+  // two or three cells (median emphasized). Each cell is omitted rather than
+  // invented. Rent is derived from this page's comps so seeded snapshots
+  // with leases gain it without a regeneration.
+  const auxCells = [];
+  const opex = p.market_opex_range && String(p.market_opex_range.low || "").trim()
+    && String(p.market_opex_range.high || "").trim() ? p.market_opex_range : null;
+  if (opex) {
+    auxCells.push([
+      "OpEx / EGI",
+      `${escHtml(opex.low)}–${escHtml(opex.high)}`,
+      String(opex.note || "").trim() || "typical, % of effective gross income",
+    ]);
+  }
+  const trendN = Number(p.annual_price_trend_pct);
+  if (Number.isFinite(trendN) && trendN !== 0 && Math.abs(trendN) <= 30) {
+    auxCells.push([
+      "Price trend",
+      `${trendN > 0 ? "+" : ""}${trendN}%/yr`,
+      "sale prices over the search window",
+    ]);
+  }
+  const rent = rentFromComps(marketComps);
+  if (rent) {
+    const rentRange = rent.low === rent.high ? usd2(rent.median) : `${usd2(rent.low)}–${usd2(rent.high)}`;
+    auxCells.push([
+      "Typical rent",
+      usd2(rent.median),
+      `${rentRange} · ${rent.count} lease${rent.count === 1 ? "" : "s"} · $/SF/yr`,
+    ]);
+  }
+  const auxLedger = auxCells.length
+    ? `<div class="ledger aux">${auxCells.map(([k, v, n]) =>
+      `<div class="lcell"><span class="k">${escHtml(k)}</span><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`
+    ).join("")}</div>`
     : "";
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
@@ -5852,12 +6682,71 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `</ul></div>`
     : "";
 
+  // The BOV lead band. Same condition as brokersCard and the CTA below, and
+  // the same reason: the offer is only made where somebody can fulfil it.
+  //
+  // Why it sits ABOVE the data rather than under it. An owner asking a broker
+  // to price their building is the only event on a market page that has cash
+  // value to a broker, and it was the second clause of the last sentence on
+  // the page. The comps are the evidence for the offer, so the offer goes
+  // first and the evidence follows. This is a framing test, and it is
+  // reversible by deleting this block: nothing else reads it.
+  //
+  // It names the broker because they opted into being named (broker_profiles
+  // .public, the second of the two consents) and brokersCard already prints
+  // it lower down. It carries no contact details, for the same reason that
+  // card does not: routing here is owner-mediated.
+  //
+  // The link is the ordinary signup door with this market's type prefilled.
+  // There is deliberately no direct BOV form for a logged-out visitor: the
+  // request is made against a report, and the report needs an account.
+  const bovLead = brokerList.length && !opts.preview
+    ? `<div class="cta lead"><h2>Get a broker's opinion of value on your ${escHtml(p.type.toLowerCase())} property, free</h2>` +
+      `<p>${escHtml(brokerList[0].company || brokerList[0].display_name)} covers ${escHtml(p.city)} ` +
+      `${escHtml(p.type.toLowerCase())} and prepares opinions of value for owners here. Ask, and we make the ` +
+      `introduction. Nothing about you reaches them until you say yes, and there is no obligation either way.</p>` +
+      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Ask for an introduction &rarr;</a>` +
+      `<p style="margin:10px 0 0"><a class="alt" href="#comps">Or read the ${escHtml(p.city)} numbers first &darr;</a></p></div>`
+    : "";
+
+  // The loudest CTA on the site's biggest SEO surface. Anonymous visitors
+  // still get the owner valuation door (auth=signup is the one query form
+  // ACCOUNT_WALL never 302s). Signed-in visitors get Watch + CSV instead —
+  // spec 2026-08-14. The Address Explorer deep link stays on both; members
+  // skip the signup query because they already have an account.
+  const exploreHref = (signedIn ? "/?explore=" : "/?auth=signup&explore=")
+    + encodeURIComponent(p.city + ", " + p.state)
+    + "&type=" + encodeURIComponent(p.type);
+  const exploreLink =
+    `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(exploreHref)}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p>`;
+  const cta = signedIn
+    ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
+      `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
+      (compRows
+        ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
+        : "") +
+      exploreLink + `</div>`
+    : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
+      // The BOV half of this promise is made ONLY where a broker actually
+      // covers this market and type. `brokerList` is the same list
+      // `brokersCard` renders, which is empty on every market today, so this
+      // promised a licensed local broker against a directory of nobody.
+      `<p>${brokerList.length
+        ? `Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value ` +
+          `from a licensed local broker who covers ${escHtml(p.city)}.`
+        : `Get a free, instant estimate from recent comps, with the source cited on every one.`}</p>` +
+      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
+      exploreLink + `</div>`;
+
   const body =
     `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
     `<h1>${escHtml(title)}</h1>` +
     `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
+    bovLead +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
+    auxLedger +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     intelCard +
@@ -5865,26 +6754,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     compsTable +
     creditLine +
     brokersCard +
-    `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
-    `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
-    // The loudest CTA on the site's biggest SEO surface, so it carries the
-    // market the visitor is standing in. It used to be a bare href="/", which
-    // under the wall answers an anonymous visitor with the landing page: they
-    // ask to value their building and get another marketing page, then have
-    // to find "Create account" a second time. The `alt` link directly below
-    // already did this properly; the big button was the one ignoring it.
-    // A member skips the signup door (index.html ignores ?auth= when signed
-    // in anyway) and just arrives with the type prefilled.
-    `<a class="btn" href="${escHtml(
-      (signedIn ? "/?" : "/?auth=signup&") + "type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
-    // The Address Explorer deep link (spec 2026-08-03, "Deep link" section).
-    // auth=signup is the one query form ACCOUNT_WALL never 302s, so this same
-    // static href serves everyone: anonymous visitors get the signup modal
-    // (the explorer input arrives prefilled behind it), signed-in Pro members
-    // skip the modal and the panel opens fetching this market's list.
-    `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(
-      "/?auth=signup&explore=" + encodeURIComponent(p.city + ", " + p.state)
-      + "&type=" + encodeURIComponent(p.type))}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p></div>` +
+    cta +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -6048,12 +6918,6 @@ h3{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px}
 section{padding:48px 0}
 .band{background:var(--wash);box-shadow:0 0 0 100vmax var(--wash);clip-path:inset(0 -100vmax)}
 .lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
-/* Stat strip */
-.stats{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.stat{padding:18px}
-.stat:nth-child(1),.stat:nth-child(3){border-right:1px solid var(--line)}
-.stat .n{font-size:22px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
-.stat .l{font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
 /* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
    the ONLY place a visitor sees the product before signing up, so it is built
    as a faithful miniature of the real report rather than a layout of its own:
@@ -6098,20 +6962,6 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .hero2 h1.h{max-width:none}
 .hero2 .lead{max-width:48ch}
 @media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
-/* The hero's copy is the same document at a smaller scale: the answer and a
-   few comps, where the exhibit below carries the whole file. */
-.exmini .cap{padding:9px 14px;font-size:10px}
-.exmini .exbody{padding:16px}
-.exmini .exaddr{font-size:15px}
-.exmini .lcell{padding:9px 11px}
-.exmini .fig{font-size:15px}
-.exmini .lcell.mid .fig{font-size:19px}
-.mrows{margin-top:12px;border-top:1px solid var(--hair);padding-top:8px}
-.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--hair);font-variant-numeric:tabular-nums}
-.mrow:last-of-type{border-bottom:0}
-.mrow .a{color:var(--ink);font-weight:500}
-.mrow .badge{margin-left:6px}
-.mmed{display:flex;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute);font-weight:600;border-top:1px solid var(--ink);border-bottom:3px double var(--ink);padding:6px 0;margin-top:2px}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.p{color:var(--ink-body);background:var(--wash)}
@@ -6148,7 +6998,16 @@ details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
    .btn, so the white has to be restated at that specificity. */
 .hdr nav a.btn,.hdr nav a.btn:hover{color:#fff}
 .btn.sm{padding:7px 14px;font-size:13px}
-.heroCta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:24px}
+.band section{padding:72px 0}
+.landForm{margin-top:0}
+.landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden}
+.landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink);outline:none}
+.landRow input::placeholder{color:var(--ink-3)}
+button.btn{border:0;cursor:pointer;font-family:inherit}
+.landRow .btn{border-radius:0;flex-shrink:0}
+.landFine,.landProof{font-size:13px;color:var(--ink-mute);margin:10px 0 0}
+.landProof{color:var(--ink-2)}
+.heroCta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:24px}
 .heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
 footer{background:var(--slab);color:var(--ink-4);font-size:13px}
@@ -6168,11 +7027,6 @@ footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 @media (min-width:640px){
   .hdr nav{gap:24px}
-  .stats{grid-template-columns:repeat(4,1fr)}
-  .stat{padding:20px}
-  /* Four across: rule between every pair, so the divider the two-column
-     layout only needs after 1 and 3 also lands between 2 and 3. */
-  .stat:nth-child(2),.stat:nth-child(3){border-right:1px solid var(--line)}
   .steps{grid-template-columns:repeat(3,1fr)}
   .step{border-bottom:0;border-right:1px solid var(--hair)}
   .step:last-child{border-right:0}
@@ -6207,13 +7061,13 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 /* Ink rules draw left to right. clip-path, not scaleX: scaling a 1.5px border
    blurs it at fractional widths, and it would squash the label riding on the
    same line instead of wiping it in beside the rule. */
-.anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:inset(0 100% 0 0);transition:clip-path .55s ease-out}
-.anim .exhibit.on .secrule,.anim .exhibit.on .mmed{clip-path:inset(0 0 0 0)}
+.anim .exhibit .secrule{clip-path:inset(0 100% 0 0);transition:clip-path .55s ease-out}
+.anim .exhibit.on .secrule{clip-path:inset(0 0 0 0)}
 /* Comp rows deal in behind the rules. The stagger is per-row CSS rather than
    per-element JS, so it costs nothing at runtime. Their NUMBERS never animate:
    this exhibit's whole pitch is that the arithmetic checks out, so every
    figure in it appears correct and stays correct. */
-.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:0;transform:translateY(6px);transition:opacity .4s ease-out,transform .4s ease-out}
+.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:0;transform:translateY(6px);transition:opacity .4s ease-out,transform .4s ease-out}
 /* The row separators fade WITH their row. A collapsed table's borders are
    painted by the TABLE, not by the row, so a row at opacity 0 still drew its
    own rule: the body sat there as an empty ruled grid while the text arrived,
@@ -6225,7 +7079,7 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
    under it is correct from the first frame. */
 .anim .exhibit tbody td{border-bottom-color:transparent;transition:border-bottom-color .4s ease-out}
 .anim .exhibit tfoot td{border-top-color:transparent;border-bottom-color:transparent;transition:border-top-color .4s ease-out,border-bottom-color .4s ease-out}
-.anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr,.anim .exhibit.on .mrow{opacity:1;transform:none}
+.anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr{opacity:1;transform:none}
 .anim .exhibit.on tbody td{border-bottom-color:var(--hair)}
 .anim .exhibit.on tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink)}
 /* The delays come LAST on purpose. A transition SHORTHAND resets
@@ -6234,32 +7088,31 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
    shorthands after these and the footer silently loses its stagger and
    arrives with the first row. (Caught in the browser: the footer's rule was
    99% opaque 300ms in, when it should not have started.) */
-.anim .exhibit tbody tr:nth-child(1),.anim .exhibit tbody tr:nth-child(1) td,.anim .exhibit .mrow:nth-of-type(1){transition-delay:.40s}
-.anim .exhibit tbody tr:nth-child(2),.anim .exhibit tbody tr:nth-child(2) td,.anim .exhibit .mrow:nth-of-type(2){transition-delay:.47s}
-.anim .exhibit tbody tr:nth-child(3),.anim .exhibit tbody tr:nth-child(3) td,.anim .exhibit .mrow:nth-of-type(3){transition-delay:.54s}
+.anim .exhibit tbody tr:nth-child(1),.anim .exhibit tbody tr:nth-child(1) td{transition-delay:.40s}
+.anim .exhibit tbody tr:nth-child(2),.anim .exhibit tbody tr:nth-child(2) td{transition-delay:.47s}
+.anim .exhibit tbody tr:nth-child(3),.anim .exhibit tbody tr:nth-child(3) td{transition-delay:.54s}
 .anim .exhibit tbody tr:nth-child(4),.anim .exhibit tbody tr:nth-child(4) td{transition-delay:.61s}
 .anim .exhibit tbody tr:nth-child(5),.anim .exhibit tbody tr:nth-child(5) td{transition-delay:.68s}
 .anim .exhibit tfoot tr,.anim .exhibit tfoot td{transition-delay:.75s}
-/* Stat cells and Method steps arrive one after another. */
-.anim .stats .stat,.anim .steps .step{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
-.anim .stats.on .stat,.anim .steps.on .step{opacity:1;transform:none}
-.anim .stats .stat:nth-child(2),.anim .steps .step:nth-child(2){transition-delay:.07s}
-.anim .stats .stat:nth-child(3),.anim .steps .step:nth-child(3){transition-delay:.14s}
-.anim .stats .stat:nth-child(4){transition-delay:.21s}
+/* Method steps arrive one after another. */
+.anim .steps .step{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
+.anim .steps.on .step{opacity:1;transform:none}
+.anim .steps .step:nth-child(2){transition-delay:.07s}
+.anim .steps .step:nth-child(3){transition-delay:.14s}
 /* A counting figure reserves its finished width before the first tick (the
    script measures it and sets min-width), so a number growing from 0 to
    $4,580,000 never reflows the cell it sits in. */
 .cu{display:inline-block}
 /* Motion is decoration. These two contexts get the finished page instead. */
 @media (prefers-reduced-motion:reduce){
-  .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1;transform:none;transition:none}
-  .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none;transition:none}
+  .anim .rv,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
+  .anim .exhibit .secrule{clip-path:none;transition:none}
   .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
   .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
 }
 @media print{
-  .anim .rv,.anim .stats .stat,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr,.anim .exhibit .mrow{opacity:1!important;transform:none!important}
-  .anim .exhibit .secrule,.anim .exhibit .mmed{clip-path:none!important}
+  .anim .rv,.anim .steps .step,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
+  .anim .exhibit .secrule{clip-path:none!important}
   .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
   .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
 }
@@ -6596,10 +7449,14 @@ function renderPrivacyPageHTML(signedIn) {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets two essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
-    `you signed in, and <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
-    `allowance for visitors without an account. For the same purpose the Service stores a one-way hashed ` +
-    `form of your IP address; the address itself is not retained. Neither cookie is used for advertising ` +
+    `<p>The Service sets three essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `you signed in; <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
+    `allowance for visitors without an account; and <code>cn_vid</code>, an httpOnly cookie holding a ` +
+    `random identifier so that our own usage statistics can tell one visit apart from another. That ` +
+    `identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
+    `about you, and it is never combined with data from other sites. For the free-search allowance the ` +
+    `Service also stores a one-way hashed form of your IP address; the address itself is not retained. ` +
+    `None of these cookies is used for advertising ` +
     `or cross-site tracking. Your browser's local storage holds preferences, report history, and map caches; ` +
     `that data remains on your own device.</p>` +
 
@@ -6657,46 +7514,14 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     "How a CompNinja report is built: live searches of public records and listings, " +
     "a source badge on every comp, and a value range for your building.";
 
-  // Both numbers were wrong in opposite directions until 2026-08-08: "3–6"
-  // undersold a product whose search asks for up to 12 comps, and "~40s"
-  // oversold one whose model alone spends 40–70s writing (a corpus-strong
-  // 2-search run still clocked 74s). Promising 40 and delivering 75 costs
-  // trust on the very first search — the one the visitor is timing.
-  const stats = [
-    // "To start", not "Every report": every report IS free to run, but the
-    // strip sits two scrolls above an FAQ describing $129/mo Pro and a $20
-    // report unlock, and "free / every report" reads as denying both. Same
-    // wording the approved Direction E card carried.
-    ["Free", "To start"],
-    ["Up to 12", "Cited comps per report", "12"],
-    ["~1 min", "Search to report"],
-    ["100%", "Sources disclosed", "100"],
-  ].map(([n, l, cu]) => {
-    // The third entry is the numeral that counts up on scroll. Only two of the
-    // four have one, on purpose: "Free" has no number, and counting to 1 looks
-    // like a bug rather than an effect. A cell with no numeral just fades in
-    // with the rest of the row.
-    //
-    // The numeral is named in an ATTRIBUTE and the copy is left as one plain
-    // string; the script splits it out at runtime. Wrapping it in a span here
-    // instead would break "Up to 12" into three nodes, and that phrase is a
-    // promise about the product pinned by test/public-pages.test.js — the
-    // served page has to keep saying it in one piece, to that test and to
-    // anything else reading the HTML.
-    const count = cu ? ` data-count="${cu}"` : "";
-    return `<div class="stat"><div class="n"${count}>${n}</div><div class="l">${l}</div></div>`;
-  }).join("");
-
   // Illustrative sample, clearly captioned as such — the same exhibit that
   // used to sit on the home page. Figures are representative, not a live pull.
-  // ONE illustrative comp set feeds both the hero's compact exhibit and the
-  // full one below, so the two can never quote different numbers at each
-  // other. The figures are also internally honest, which the previous set was
-  // not: SAMPLE_MEDIAN is the real median of these five $/SF values, the
-  // "Likely" value equals that median x the subject size (21,600 SF), and Low
-  // and High are the size x the cheapest and dearest comp. A visitor who
-  // checks the arithmetic finds it holds, and that is the whole pitch of the
-  // page it sits on.
+  // ONE illustrative comp set feeds the hero exhibit. The figures are
+  // internally honest, which the previous set was not: SAMPLE_MEDIAN is the
+  // real median of these five $/SF values, the "Likely" value equals that
+  // median x the subject size (21,600 SF), and Low and High are the size x
+  // the cheapest and dearest comp. A visitor who checks the arithmetic finds
+  // it holds, and that is the whole pitch of the page it sits on.
   const SAMPLE_SIZE_SQFT = "21,600";
   const SAMPLE_MEDIAN = "$219";
   const SAMPLE_COMPS = [
@@ -6714,10 +7539,6 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   const sampleComps = SAMPLE_COMPS.map((c) =>
     `<tr><td>${escHtml(c.addr)}</td><td>${escHtml(c.sold)}</td><td class="n">${escHtml(c.sf)}</td>` +
     `<td class="n">${escHtml(c.psf)}</td><td>${c.badge}</td></tr>`).join("");
-  // The hero shows the answer and the first few comps; the exhibit below
-  // carries the whole file.
-  const sampleMiniRows = SAMPLE_COMPS.slice(0, 3).map((c) =>
-    `<div class="mrow"><span class="a">${escHtml(c.addr)}${c.short}</span><span>${escHtml(c.psf)}</span></div>`).join("");
   // Low / Likely / High, as the report itself renders them: Likely IS the
   // comp median, which is why it carries that label in the sub-line.
   const sampleLedger = [
@@ -6725,15 +7546,12 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     ["Likely", "$4,730,000", `at ${SAMPLE_MEDIAN}/SF`],
     ["High", "$5,140,000", "at $238/SF"],
   ];
-  // The full exhibit names the statistic under "Likely"; the hero's compact
-  // copy leaves it off, because its own median row says it one line below and
-  // the extra words wrap the cell to two lines at that width.
-  // The dollar figure counts up on scroll. Like the stat strip, it names its
-  // numeral in an attribute and leaves the copy alone — the script does the
-  // splitting, so the served page still reads "$4,580,000" as one string.
-  // Derived from the display value rather than carried as a second numeric
-  // field, so the two can never disagree; a figure that stops matching this
-  // shape simply gets no counter rather than a broken one.
+  // The dollar figure counts up on scroll. It names its numeral in an
+  // attribute and leaves the copy alone — the script does the splitting, so
+  // the served page still reads "$4,580,000" as one string. Derived from the
+  // display value rather than carried as a second numeric field, so the two
+  // can never disagree; a figure that stops matching this shape simply gets
+  // no counter rather than a broken one.
   const countAttr = (fig) => {
     const m = /^\$([\d,]+)$/.exec(fig);
     return m ? ` data-count="${m[1]}"` : "";
@@ -6755,24 +7573,7 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   const faqBlock = HOW_FAQ.map(([q, a]) =>
     `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
 
-  // The broker half of the product, on the page brokers actually land on.
-  // Until now this page spoke only to owners: a broker arriving here met one
-  // FAQ row and a link buried in the Explore dropdown, which is a poor showing
-  // for the audience the owner considers the better acquisition lever.
-  //
-  // Three concrete trades, no pitch. Same `.steps` idiom as Method above so it
-  // needs no new CSS, with the numeral slot carrying a short label instead.
-  // Copy rules (they have been enforced before): no em dashes, one idea per
-  // line, name the real thing rather than gesturing at it.
-  const brokerPoints = [
-    ["Private", "Your closed deals stay yours",
-     "Upload your book to a private vault. It is visible only to you, and it never enters CompNinja's public records unless you choose to publish a comp."],
-    ["Credit", "Submitted comps carry your name",
-     "A comp you publish shows a green Verified badge and your firm's name on every report that uses it."],
-    ["Leads", "Owners in your markets",
-     "When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand."],
-  ].map(([n, h, p]) =>
-    `<div class="step"><div class="num">${escHtml(n)}</div><h3>${escHtml(h)}</h3><p>${escHtml(p)}</p></div>`).join("");
+  const landingDest = signedIn ? "/" : "/?auth=signup";
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -6877,60 +7678,46 @@ ${ACCOUNT_NAV_JS}
       <div class="hero2">
         <div>
           <h1 class="h">A report you can hand to someone who will argue with it.</h1>
-          <p class="lead">Every CompNinja report answers the question and then shows its work: a value range for the
-            subject, the comps behind it, and where each comp came from. Here is exactly how that gets built.</p>
+          <p class="lead">Every report answers the question and then shows its work: a value
+            range, the comps behind it, and where each one came from.</p>
           <div class="heroCta">
-            ${signedIn
-              ? `<a class="btn" href="/">Run a report</a>
-            <span class="alt">You're signed in. Reports are free.</span>`
-              : `<a class="btn" href="/?auth=signup">Create a free account</a>
-            <span class="alt">Already have an account? <a href="/?auth=signin">Log in</a></span>`}
+            <form id="landingSearch" class="landForm" action="${signedIn ? "/" : "/?auth=signup"}" method="get">
+              <label class="lab" for="landingAddress">Address</label>
+              <div class="landRow">
+                <input id="landingAddress" type="text" required autocomplete="street-address"
+                  placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX">
+                <button class="btn" type="submit">Run a report</button>
+              </div>
+            </form>
+            <p class="landFine">Free account. Automated estimate, not an appraisal.</p>
+            <p class="landProof">Up to 12 cited comps &middot; about a minute &middot; every source disclosed.</p>
+            ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
         </div>
-        <div class="exhibit exmini" data-rv>
-          <div class="cap"><span>Sample report &middot; Industrial</span><span>Illustrative</span></div>
+        <div class="exhibit" data-rv>
+          <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
           <div class="exbody">
             <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
-            <div class="exmeta plain">${SAMPLE_SIZE_SQFT} SF from public record &middot; 24-month lookback</div>
-            <div class="ledger">${ledgerCells(false)}</div>
-            <div class="mrows">${sampleMiniRows}</div>
-            <div class="mmed"><span>Median of 5 sale comps</span><span>${SAMPLE_MEDIAN}/SF</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
-    <div class="stats" data-rv>${stats}</div>
-  </div>
-
-  <div class="wrap">
-    <section class="rv" data-rv>
-      <div class="kicker">The Report</div>
-      <h2 class="h">One page that answers, then proves.</h2>
-      <p class="sub">A value range for the subject, what's driving prices in the market, and the comp table behind
-        both, with a confidence badge on every source.</p>
-      <div class="exhibit" data-rv>
-        <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
-        <div class="exbody">
-          <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
-          <div class="exmeta"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF (public record)</span><span>24-month lookback</span><span>5 comparables</span></div>
-          <div class="exsec">
-            <div class="secrule"><span class="seclab">What This Building Is Worth</span><span class="secnote">from 5 comparable sales</span></div>
-            <div class="ledger">${ledgerCells(true)}</div>
-          </div>
-          <div class="exsec">
-            <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
-            <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
-            <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
-            <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
-          </div>
-          <div class="exsec">
-            <div class="secrule"><span class="seclab">Comparable Properties</span><span class="secnote">source badged per comp</span></div>
-            <div class="exscroll">
-              <table class="comps">
-                <thead><tr><th>Address</th><th>Sold</th><th class="n">SF</th><th class="n">$/SF</th><th>Source</th></tr></thead>
-                <tbody>${sampleComps}</tbody>
-                <tfoot><tr><td class="tl" colspan="3">Median of 5 sale comps &middot; ${SAMPLE_MEDIAN}/SF</td><td class="n">${SAMPLE_MEDIAN}</td><td></td></tr></tfoot>
-              </table>
+            <div class="exmeta"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF (public record)</span><span>24-month lookback</span><span>5 comparables</span></div>
+            <div class="exsec">
+              <div class="secrule"><span class="seclab">What This Building Is Worth</span><span class="secnote">from 5 comparable sales</span></div>
+              <div class="ledger">${ledgerCells(true)}</div>
+            </div>
+            <div class="exsec">
+              <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
+              <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
+              <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
+              <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
+            </div>
+            <div class="exsec">
+              <div class="secrule"><span class="seclab">Comparable Properties</span><span class="secnote">source badged per comp</span></div>
+              <div class="exscroll">
+                <table class="comps">
+                  <thead><tr><th>Address</th><th>Sold</th><th class="n">SF</th><th class="n">$/SF</th><th>Source</th></tr></thead>
+                  <tbody>${sampleComps}</tbody>
+                  <tfoot><tr><td class="tl" colspan="3">Median of 5 sale comps &middot; ${SAMPLE_MEDIAN}/SF</td><td class="n">${SAMPLE_MEDIAN}</td><td></td></tr></tfoot>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -6966,7 +7753,7 @@ ${ACCOUNT_NAV_JS}
     <section class="rv" data-rv>
       <div class="kicker">Brokers</div>
       <h2 class="h">What brokers get.</h2>
-      <div class="steps" data-rv>${brokerPoints}</div>
+      <p class="sub">A comp you publish shows a <span class="badge v">Verified</span> badge and your firm&#39;s name on every report that uses it. Upload your book to a private vault. It is visible only to you, and it never enters CompNinja&#39;s public records unless you choose to publish a comp. When an owner asks for a broker opinion of value in a market you watch, we make the introduction by hand.</p>
       <p style="margin:18px 0 40px"><a href="/brokers">See the broker side &rarr;</a></p>
     </section>
 
@@ -6976,7 +7763,7 @@ ${ACCOUNT_NAV_JS}
         ? `<p>Reports are free and take about a minute. Run one on your own building.</p>
       <a class="btn" href="/">Run a report &rarr;</a>`
         : `<p>Reports are free and take about a minute. Create an account and run one on your own building.</p>
-      <a class="btn" href="/?auth=signup">Create a free account &rarr;</a>`}
+      <a class="btn" href="/?auth=signup">Run a report &rarr;</a>`}
     </div>
   </div>
 </main>
@@ -7015,6 +7802,20 @@ ${ACCOUNT_NAV_JS}
     </div>
   </div>
 </footer>
+<script>
+(function(){
+  var f=document.getElementById("landingSearch");
+  if(!f)return;
+  f.addEventListener("submit",function(e){
+    e.preventDefault();
+    var el=document.getElementById("landingAddress");
+    var addr=((el&&el.value)||"").trim();
+    if(!addr)return;
+    try{sessionStorage.setItem("pendingLandingAddress.v1",addr);}catch(err){}
+    location.href=${JSON.stringify(landingDest)};
+  });
+})();
+</script>
 <script>
 (function(){
   if(!document.documentElement.classList.contains("anim"))return;
@@ -7125,7 +7926,133 @@ ${ACCOUNT_NAV_JS}
 // extracted 2026-08-08 so `npm test` pins the corpus key. The parse is
 // load-bearing — see market.js's header before touching it.
 
+// --- Who an event came from (2026-08-13) ------------------------------------
+//
+// Every event above records WHAT happened and nothing about WHOSE visit it
+// was, so the log can count signups and count reports and can never say
+// whether one person did both. "Did anybody get from the landing page to a
+// first report?" — the question the first broker cohort will raise, and the
+// one the 2026-08-06 measurement had to answer by hand-assembling rows out of
+// Supabase — is not askable of this table. These two columns make it askable.
+//
+//   visitor_id  an opaque random id in the `cn_vid` cookie. NOT derived from
+//               IP, user agent or anything else about the person: it is a
+//               random number handed to a browser, which is the least this
+//               can be and still join two events together. It says "the same
+//               browser did these things" and cannot say who that is.
+//   user_id     the account id, once there is a session. Already the key
+//               everything else about them is stored under, so it adds no
+//               new fact — it just puts the funnel and the account in the
+//               same join.
+//
+// Deliberately still PII-free in the sense this file's header claims: no
+// email, no name, no street address, no IP. The privacy policy names
+// `cn_vid` alongside `cn_guest`; keep it in step.
+const VISITOR_COOKIE = "cn_vid";
+const VISITOR_COOKIE_MAX_AGE_SEC = 365 * 24 * 60 * 60;
+
+// Ambient request context, rather than a `req` argument threaded through
+// logEvent's ~35 call sites. That choice is about the failure mode, not the
+// typing: an argument every future call site must remember to pass is
+// EXACTLY the shape that has silently broken a dimension here twice already
+// — `vault_beta` missing from getSessionUser's return (the grant was set and
+// the vault still refused, and nothing failed), and `plan`, which three
+// /api/comps call sites pass to logEvent today and which the row has never
+// carried. A forgotten argument produces a plausible row with a blank
+// column, so nothing anywhere goes red and the gap is found months later by
+// noticing a number looks wrong. With the context ambient there is nothing
+// to forget: a call site inside a request is attributed because it is inside
+// a request.
+//
+// AsyncLocalStorage propagates through awaits and timers, so the whole
+// handler tree — including work that finishes after the response — stays
+// attributed. Work genuinely detached from a request (startup, the harvest
+// path's link check) has no store and logs an empty visitor, which is
+// correct: those are not somebody's visit.
+const REQUEST_CONTEXT = new AsyncLocalStorage();
+
+// AsyncLocalStorage does NOT reach a `req.on("data"/"end")` callback, and that
+// is not a detail — it is most of this server. Every route that reads a
+// request body registers those listeners, so without this the funnel would
+// have attributed GETs correctly and recorded every signup, lead, share,
+// vault import and BOV as an anonymous visitor. Measured, not assumed: with a
+// plain `run()` around the handler, a POST's `end` callback sees a null store.
+// `enterWith()` does not fix it either. The reason is that Node emits those
+// events from the connection's async context, which is a SIBLING of the
+// handler's, not a descendant — so the store was never propagated to it.
+// Timers and awaits inside the handler are descendants and do inherit it,
+// which is exactly what makes this fail quietly: the GET routes work.
+//
+// AsyncResource.bind captures the context at registration time, so binding
+// the registration functions makes every listener added afterward run inside
+// this request's context. Only `req` is bound: nothing logs an event from a
+// `res` callback, and the patch is per-request on an object that is discarded
+// when the response ends. Safe here because server.js never removes a
+// listener — a wrapped function cannot be matched by removeListener — so
+// check that before adding a `.off()` anywhere.
+const REQ_LISTENER_METHODS = ["on", "once", "addListener", "prependListener", "prependOnceListener"];
+function bindRequestListeners(req) {
+  for (const m of REQ_LISTENER_METHODS) {
+    const orig = req[m];
+    if (typeof orig !== "function") continue;
+    req[m] = function (ev, fn) {
+      return orig.call(this, ev, typeof fn === "function" ? AsyncResource.bind(fn) : fn);
+    };
+  }
+}
+
+function newVisitorId() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+// Mint only on document navigations. A first page load fires a dozen parallel
+// requests (CSS, /valuation.js, /api/config), and minting on whichever
+// arrives first would race: each sees no cookie, each mints a different id,
+// the browser keeps the last, and that visit's own events end up split across
+// ids that never appear again. A navigation is one request per page load, and
+// it lands before the assets it references, so everything after it carries
+// the same id. Non-document requests read the cookie and never create one.
+function isDocumentRequest(req) {
+  // Chrome/Safari/Firefox all send Sec-Fetch-Dest; the Accept sniff is the
+  // fallback for anything that does not, and for curl (which sends neither,
+  // gets no cookie, and is not a visitor worth counting anyway).
+  const dest = req.headers["sec-fetch-dest"];
+  if (dest) return dest === "document";
+  return String(req.headers.accept || "").includes("text/html");
+}
+
+function setVisitorCookie(res, req, value) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  // Append rather than assign, same rule as setAdminCookie/setGuestCookie: a
+  // document response can carry a session cookie too, and clobbering it would
+  // be a silent sign-out.
+  const prior = res.getHeader("set-cookie");
+  const cookie = `${VISITOR_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${VISITOR_COOKIE_MAX_AGE_SEC}${secure}`;
+  res.setHeader("set-cookie", prior ? [].concat(prior, cookie) : cookie);
+}
+
+// Builds the store for one request. Never throws: analytics must not be able
+// to fail a page load, so a malformed cookie header or an already-sent
+// response degrades to an unattributed event rather than a 500.
+function newRequestContext(req, res) {
+  const ctx = { visitor: "", userId: "" };
+  try {
+    const existing = String(parseCookies(req)[VISITOR_COOKIE] || "");
+    // Shape-checked before it is trusted into a column: this value comes from
+    // a client and is written to the database, so accept only what this
+    // server mints.
+    if (/^[0-9a-f]{32}$/.test(existing)) {
+      ctx.visitor = existing;
+    } else if (isDocumentRequest(req) && !res.headersSent) {
+      ctx.visitor = newVisitorId();
+      setVisitorCookie(res, req, ctx.visitor);
+    }
+  } catch (e) { /* unattributed is fine; a broken page load is not */ }
+  return ctx;
+}
+
 function logEvent(kind, dims) {
+  const ctx = REQUEST_CONTEXT.getStore();
   const row = {
     ts: new Date().toISOString(),
     kind: String(kind),
@@ -7139,6 +8066,22 @@ function logEvent(kind, dims) {
     searches: dims && Number.isFinite(dims.searches) ? dims.searches : null,
     out_tokens: dims && Number.isFinite(dims.out_tokens) ? dims.out_tokens : null,
     rescue: (dims && dims.rescue) || "",
+    // Which tier ran this search (2026-08-13, migration 026). Three
+    // /api/comps call sites have passed `plan: ent.plan` since the Pro tier
+    // shipped and this row never carried it, so the value was built and
+    // thrown away on every search: the code read as though "do free users
+    // search more than Pro ones" was answerable and it never was. That is
+    // the same silently-inert shape as vault_beta missing from
+    // getSessionUser, and the reason logEvent now takes its dimensions from
+    // an ambient context rather than trusting call sites to remember.
+    // "anonymous" / "free" / a paid plan name, per entitlements.js.
+    plan: (dims && dims.plan) || "",
+    // Whose visit this was (2026-08-13, migration 026). Empty string rather
+    // than null for the same reason every other text dimension here is:
+    // aggregateStats treats blank as "unknown" and never has to test two
+    // kinds of missing.
+    visitor_id: (ctx && ctx.visitor) || "",
+    user_id: (ctx && ctx.userId) || "",
   };
   // Analytics must never delay or break a real request.
   storeRow("analytics_events", ANALYTICS_FILE, row).catch((e) =>
@@ -7201,6 +8144,15 @@ function aggregateStats(rows) {
     conversionPct: searches.length ? Math.round((leads.length / searches.length) * 1000) / 10 : 0,
     daily,
     byType: countBy(searches, "prop_type"),
+    // Which tier is doing the searching (2026-08-13, migration 026). The
+    // question this answers is whether the paid tier is used more per head
+    // than the free one, which is the argument for or against every gate in
+    // entitlements.js — and it was unanswerable until now even though three
+    // call sites had been passing `plan` to logEvent since Pro shipped.
+    // Rows predating the column read "(unknown)" via countBy's own blank
+    // handling rather than being dropped, so the total still reconciles with
+    // the Searches tile above.
+    byPlan: countBy(searches, "plan"),
     topMarkets: countBy(searches, "market").slice(0, 12),
     leadsBySource: countBy(leads, "source"),
     // Property-type autofill. `applied` is the only outcome the visitor ever
@@ -7255,6 +8207,79 @@ function aggregateStats(rows) {
         templates: rows.filter((r) => r.kind === "vault_template").length,
         imports: imports.length,
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
+      };
+    })(),
+    // Watchlist digest runs (2026-08-13). The digest is deliberately driven
+    // from outside this process, which buys a schedule somebody chose and
+    // costs the thing every external scheduler eventually does: it stops, and
+    // nothing says so. A cron that silently dies looks exactly like a quiet
+    // few weeks — no error, no bounce, just people not being mailed. So the
+    // card reports when it last ran and what happened, and "never" is a real
+    // answer rather than an empty space.
+    //
+    // Dry runs are counted SEPARATELY, not folded in: a preview is not a
+    // send, and a card that said "last run 2 days ago" off a preview would
+    // report a healthy schedule while nobody had been mailed in a month.
+    digestRuns: (() => {
+      const all = rows.filter((r) => r.kind === "watchlist_digest");
+      const real = all.filter((r) => !String(r.source || "").startsWith("dry:"));
+      // Max by ts rather than the last element: readRows concatenates the
+      // database's ts-ascending page with any rows that fell back to the
+      // local file during an outage, so array order is not time order.
+      const last = (list) => list.reduce((newest, r) =>
+        (!newest || String(r.ts) > String(newest.ts) ? r : newest), null);
+      const lastReal = last(real);
+      const lastAny = last(all);
+      return {
+        runs: real.length,
+        previews: all.length - real.length,
+        lastAt: lastReal ? lastReal.ts : null,
+        // "sent:3" — the outcome rides the source column, since the analytics
+        // schema is fixed and a migration for one integer is not worth it.
+        lastOutcome: lastReal ? String(lastReal.source || "") : "",
+        lastAnyAt: lastAny ? lastAny.ts : null,
+      };
+    })(),
+    // Visitor funnel (2026-08-13, migration 026). The one question every
+    // other block here cannot answer: not how many signups and how many
+    // reports, but how many of the SAME browsers did both. Counted over
+    // distinct visitor_id, so one person reloading five times is one arrival
+    // and one person on two devices is two.
+    //
+    // Three rules worth keeping. The stages are **cumulative sets, not
+    // per-stage counts** — `report` counts arrivals that ran a search, so it
+    // can never exceed `arrived` and the drop between two numbers is a real
+    // drop-off rather than an artifact of counting different populations.
+    // Rows with no visitor_id are **excluded outright rather than bucketed
+    // as one unknown visitor**: every event predating this migration has a
+    // blank id, and lumping them together would invent a single visitor who
+    // did everything the product has ever seen. And `signedUp` counts the
+    // signup EVENT, not the presence of a user_id, so an arrival who signed
+    // in on a later visit is not retroactively counted as converting on this
+    // one.
+    funnel: (() => {
+      const seen = (pred) => {
+        const set = new Set();
+        rows.forEach((r) => {
+          const v = String(r.visitor_id || "");
+          if (v && pred(r)) set.add(v);
+        });
+        return set;
+      };
+      const arrived = seen(() => true);
+      const searched = seen((r) => r.kind === "search");
+      const within = (set) => [...set].filter((v) => arrived.has(v)).length;
+      return {
+        arrived: arrived.size,
+        // Hit the wall: asked for something and were told to sign in first.
+        gated: within(seen((r) => r.kind === "signup_gate")),
+        signedUp: within(seen((r) => r.kind === "signup")),
+        report: within(searched),
+        // Attributed rows only. Below a handful of arrivals every ratio above
+        // is noise, and a dashboard reading "100% converted" off two visits
+        // is worse than no number, so the page has the denominator to say so.
+        attributed: rows.filter((r) => String(r.visitor_id || "")).length,
+        identified: new Set(rows.map((r) => String(r.user_id || "")).filter(Boolean)).size,
       };
     })(),
     // Anthropic call failures since the last restart. Customers only ever see
@@ -7504,6 +8529,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div id="dash" style="display:none"></div>
 <div id="auditPanel"></div>
 <div id="accuracy"></div>
+<div id="digest" style="display:none"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -7619,6 +8645,36 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
+  // migration 026. The card is one line per stage plus its own denominator,
+  // because the honest reading of a tiny sample is the sample size: two
+  // arrivals converting reads "100%" and means nothing, so the count is
+  // always shown next to the percentage and the percentage is withheld
+  // entirely below ten arrivals.
+  var fn=d.funnel;
+  var pctOf=function(n,base){return base?Math.round(n/base*1000)/10:0;};
+  var stage=function(label,n,base,note){
+    return "<tr><td>"+label+"</td><td style='text-align:right'><b>"+n+"</b></td>"+
+      "<td style='text-align:right' class=muted>"+(base>=10?pctOf(n,base)+"%":"&mdash;")+"</td>"+
+      "<td class=muted>"+(note||"")+"</td></tr>";
+  };
+  var funnelCard=(fn===undefined)?"":
+    "<div class=card><h2>Visitor funnel</h2>"+
+    (!fn.arrived
+      ? "<p class=muted>No attributed visits yet &mdash; visitor ids land from the 2026-08-13 deploy onward, "+
+        "and only after migration 026 has been run. Every event before that is counted in the totals above "+
+        "and deliberately excluded here rather than lumped together as one unknown visitor.</p>"
+      : "<table><tr><td>Arrived</td><td style='text-align:right'><b>"+fn.arrived+"</b></td>"+
+        "<td style='text-align:right' class=muted>100%</td><td class=muted>distinct browsers</td></tr>"+
+        stage("Hit the sign-in wall", fn.gated, fn.arrived, "asked for something gated")+
+        stage("Created an account", fn.signedUp, fn.arrived, "signed up on this visit")+
+        stage("Ran a report", fn.report, fn.arrived, "the one that matters")+
+        "</table>"+
+        "<div class=muted style='margin-top:10px'>"+fn.attributed+" of "+d.eventCount+" events carry a visitor id &middot; "+
+        fn.identified+" distinct account(s) seen. Percentages are of arrivals and are withheld below 10 "+
+        "arrivals, where they are noise. One person on two devices counts twice; a browser that "+
+        "clears cookies starts over.</div>")+
+    "</div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
@@ -7665,9 +8721,20 @@ function render(d){
     "<div class=card><h2>Searches per day (last 30 days)</h2><div class=chart>"+bars+"</div><div class=xax>"+xax+"</div>"+
     "<div class=leg><span class=sb></span>Billed<span class=sc></span>Cache hit</div></div>"+
     "<div class=card><h2>Searches by property type</h2><table>"+rows(d.byType)+"</table></div>"+
+    // Searches by tier. undefined = a stale /api/stats from before migration
+    // 026. Deliberately a count of SEARCHES and not of people: one Pro member
+    // running fifty searches is the signal the gates exist to price, and a
+    // per-head figure would need the visitor funnel's denominator, which is a
+    // different card answering a different question.
+    (d.byPlan===undefined?"":
+      "<div class=card><h2>Searches by plan</h2><table>"+rows(d.byPlan)+"</table>"+
+      "<div class=muted style='margin-top:10px'>anonymous = no account &middot; free = signed in, not paying &middot; "+
+      "anything else is the paid plan name. Searches logged before 2026-08-13 carry no plan and show as "+
+      "(unknown); they are counted here so this table still totals to the Searches tile.</div></div>")+
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
+    funnelCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -7797,6 +8864,101 @@ function loadAccuracy(key,force){
     .then(renderAccuracy)
     .catch(function(e){console.error(e);renderAccuracy({error:1});});
 }
+
+// --- The watchlist digest, from the page the owner already has open ---------
+//
+// The route is deliberately manual (see its comment: a timer fires at an hour
+// nobody chose and again after every restart), but "manual" was curl-only,
+// which is a feature nobody runs. This is the trigger.
+//
+// Preview is the primary button and Send is the quiet one, on purpose. This
+// is the only thing the product sends unprompted, so the default gesture
+// should be to READ what would go out. Nothing here renders until a run is
+// asked for — the page must not fire a digest just by being opened.
+// Set once from /api/stats, read by the card's idle state. Module-level
+// rather than an argument because the card re-renders itself after every run
+// and would otherwise lose it — and the idle state is the only place it is
+// shown, so a stale copy after a run costs nothing.
+var DIGEST_RUNS=null;
+function digestBtn(id,label,cls){
+  return "<button id='"+id+"' class='btn"+(cls?" "+cls:"")+"'>"+label+"</button> ";
+}
+function renderDigestCard(state){
+  var el=document.getElementById("digest");
+  var body;
+  if(state&&state.error){
+    body="<p class=muted>"+esc(state.error)+"</p>";
+  }else if(state&&state.summary){
+    var s=state.summary;
+    var line="<p><b>"+esc(s.watchers)+"</b> watcher(s) &middot; "+
+      (state.dry?"<b>"+esc((s.previews||[]).length)+"</b> would be mailed"
+                :"<b>"+esc(s.sent)+"</b> mailed")+
+      " &middot; "+esc(s.nothingNew)+" had nothing new &middot; "+esc(s.optedOut)+" opted out"+
+      (s.failed?" &middot; <b>"+esc(s.failed)+" failed</b>":"")+"</p>";
+    var previews=(s.previews||[]).map(function(p){
+      // Preformatted: the plain text IS the email (email-shell only dresses
+      // it), so this is literally what lands, wrapping and all.
+      return "<div style='margin-top:12px'><div class=muted>"+esc(p.to)+"</div>"+
+        "<div style='font-weight:600'>"+esc(p.subject)+"</div>"+
+        "<pre style='white-space:pre-wrap;background:#F7F6F3;border:1px solid #E4E2DA;border-radius:8px;padding:10px;margin-top:6px;font-size:13px'>"+
+        esc(p.text)+"</pre></div>";
+    }).join("");
+    body=line+previews;
+  }else{
+    // Idle state. The last-run line is the point of this card between runs:
+    // the schedule lives outside this process, so a cron that quietly died
+    // looks exactly like a quiet few weeks unless something says when it last
+    // actually mailed anybody.
+    var r=DIGEST_RUNS||{};
+    var ago=function(ts){
+      if(!ts)return "";
+      var days=Math.floor((Date.now()-Date.parse(ts))/86400000);
+      return days<=0?"today":(days===1?"yesterday":days+" days ago");
+    };
+    var lastLine;
+    if(r.lastAt){
+      // Local date, not the ISO string's leading 10 characters: that is UTC,
+      // and an evening run in Mountain time renders as "today (tomorrow's
+      // date)", which reads as a bug in the dashboard rather than a timezone.
+      lastLine="Last sent <b>"+esc(ago(r.lastAt))+"</b> ("+esc(new Date(r.lastAt).toLocaleDateString())+")"+
+        (r.lastOutcome?" &middot; "+esc(r.lastOutcome.replace("sent:","")+" mailed"):"")+
+        " &middot; "+esc(r.runs)+" run(s) logged";
+    }else if(r.previews){
+      // Deliberately distinguished: previews prove somebody has been here,
+      // and reporting them as a run would say the schedule is healthy while
+      // nobody has ever been mailed.
+      lastLine="<b>Never sent</b> &mdash; "+esc(r.previews)+" preview(s) only";
+    }else{
+      lastLine="<b>Never run.</b>";
+    }
+    body="<p class=muted>Mails each watcher the markets of theirs that have new comps. "+
+      "Preview builds every email and sends none.</p><p>"+lastLine+"</p>";
+  }
+  el.innerHTML="<div class=card><h2>Watchlist digest</h2>"+body+
+    "<p style='margin-top:12px'>"+digestBtn("dgPrev","Preview (sends nothing)")+
+    digestBtn("dgSend","Send now","mute")+"</p></div>";
+  el.style.display="block";
+  var run=function(dry){
+    var key=sessionStorage.getItem(KEYK);
+    if(!dry&&!confirm("Send the digest now? Real email goes to every watcher with new comps, and it cannot be recalled."))return;
+    document.getElementById("dgPrev").disabled=true;
+    document.getElementById("dgSend").disabled=true;
+    fetch("/api/watchlist/digest",{method:"POST",
+      headers:{"content-type":"application/json","x-admin-key":key||""},
+      body:JSON.stringify({dryRun:dry})})
+    .then(function(r){return r.json().then(function(j){
+      // The route's refusals are the useful part of this feature, so show the
+      // reason rather than a status code: "no database" and "no outbound mail
+      // configured" are different problems with different fixes.
+      if(!r.ok)throw new Error(j.error||("Error "+r.status));
+      return j;
+    });})
+    .then(function(j){renderDigestCard({summary:j,dry:dry});})
+    .catch(function(e){renderDigestCard({error:e.message});});
+  };
+  document.getElementById("dgPrev").addEventListener("click",function(){run(true);});
+  document.getElementById("dgSend").addEventListener("click",function(){run(false);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -7811,7 +8973,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard();})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -9815,7 +10977,16 @@ async function checkExploreCity(req, city, state) {
   return verdict;
 }
 
-const server = http.createServer((req, res) => {
+// Every request runs inside its own analytics context, so logEvent can say
+// whose visit an event belongs to without 35 call sites passing `req` (see
+// REQUEST_CONTEXT above for why that is the safer shape, not merely the
+// shorter one). The wrap is the outermost thing that happens to a request:
+// anything inside it, at any await depth, is attributed.
+const server = http.createServer((req, res) =>
+  REQUEST_CONTEXT.run(newRequestContext(req, res), () => {
+  // Must run INSIDE the store, and before any route registers a body
+  // listener — see bindRequestListeners for why a plain run() is not enough.
+  bindRequestListeners(req);
   // --- API endpoint ---
   if (req.method === "POST" && req.url === "/api/comps") {
     let body = "";
@@ -10477,8 +11648,10 @@ const server = http.createServer((req, res) => {
               ``,
               `What happens next:`,
               `1. We review your request.`,
-              `2. We connect you with a licensed local broker who knows your market,`,
-              `   usually within a couple of business days.`,
+              // No timeline, deliberately. Every one of these is fulfilled by
+              // hand today, and a self-imposed deadline that slips is the first
+              // impression a real lead gets. Say what happens, not when.
+              `2. We connect you with a licensed local broker who knows your market.`,
               `3. The broker prepares a no-cost opinion of value. No obligation.`,
               ``,
               `A note on the numbers: everything in the report is an automated estimate`,
@@ -10650,20 +11823,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --- Redeem the tester passkey: comped Pro for a signed-in account --------
+  // --- Redeem a passkey: comped Pro, or the broker vault --------------------
+  //
+  // ONE route and ONE input for two different codes, because the person
+  // typing has been handed a code and should not also have to know which
+  // kind it is. TESTER_PASSKEY comps Pro (never the vault); VAULT_PASSKEY
+  // grants the vault (never Pro). The route decides which by which secret
+  // the code matches, so the two audiences stay separately revocable —
+  // rotating one does not lock the other out.
   //
   // Refusal order mirrors the vault's openVault() and requireBroker(): the
   // feature not existing, then the caller, then the secret.
   //
   // Deliberately NOT ADMIN_KEY. That key also unlocks /admin, /dev and
-  // /contacts, so it can never be the thing handed to testers; this grants
-  // Pro and nothing else, and touches neither the dashboards nor the
-  // header-only `internal` bypass in /api/comps.
+  // /contacts, so it can never be the thing handed to a tester or a broker;
+  // these grants touch neither the dashboards nor the header-only `internal`
+  // bypass in /api/comps.
   if (req.method === "POST" && req.url === "/api/redeem-passkey") {
-    // Unset = the feature does not exist on this deployment. 404 rather than
-    // 403, matching how the ADMIN_KEY-gated routes go dark when unconfigured:
-    // a probe cannot tell a wrong code from a deployment that has no code.
-    if (!TESTER_PASSKEY) {
+    // Neither configured = the feature does not exist on this deployment. 404
+    // rather than 403, matching how the ADMIN_KEY-gated routes go dark when
+    // unconfigured: a probe cannot tell a wrong code from a deployment that
+    // has no code. Either one alone is enough to open the route — the two
+    // passkeys are independent, so a deployment can run only the vault door.
+    if (!TESTER_PASSKEY && !VAULT_PASSKEY) {
       res.writeHead(404, { "content-type": "text/plain" });
       return res.end("Not found");
     }
@@ -10677,25 +11859,54 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
         }
         const user = await getSessionUser(req);
-        // The grant is stored on an account, so there is nothing to store it
-        // on for an anonymous caller. Checked BEFORE the secret compare so a
-        // signed-out prober cannot use this route to test codes at all.
+        // Both grants are stored on an account, so there is nothing to store
+        // them on for an anonymous caller. Checked BEFORE the secret compare
+        // so a signed-out prober cannot use this route to test codes at all.
         if (!user) return sendJson(res, 401, { error: "Sign in first, then redeem your code." });
-        // Idempotent: a second redemption is a no-op, not an error. Also
-        // checked before the compare, so someone who already has access
-        // cannot be told "incorrect code" by a rotated passkey.
-        if (user.pro_tester) return sendJson(res, 200, { ok: true, already: true });
         const passkey = String(JSON.parse(body || "{}").passkey || "").trim();
-        if (!secretMatches(passkey, TESTER_PASSKEY)) {
+
+        // Which doors this code opens. BOTH secrets are compared on every
+        // redemption rather than stopping at the first hit: the answer is a
+        // list, so a deployment that (by mistake) sets the same string for
+        // both grants what the code plainly says it does, instead of
+        // silently preferring whichever comparison happened to run first.
+        const opens = [];
+        if (TESTER_PASSKEY && secretMatches(passkey, TESTER_PASSKEY)) opens.push("tester");
+        if (VAULT_PASSKEY && secretMatches(passkey, VAULT_PASSKEY)) opens.push("vault");
+
+        if (!opens.length) {
+          // Someone who already has everything this deployment can give is
+          // told "already", never "incorrect code" — otherwise a rotated or
+          // mistyped passkey would deny an account that is already inside.
+          // This is the old pre-compare idempotency check, generalized: with
+          // two codes the route cannot know which grant is being claimed
+          // until it compares, so the check moved after the compare and
+          // asks whether anything is left to redeem at all. On a deployment
+          // with only TESTER_PASSKEY set it is exactly the old behavior.
+          const nothingLeft = (!TESTER_PASSKEY || user.pro_tester) && (!VAULT_PASSKEY || user.vault_beta);
+          if (nothingLeft) return sendJson(res, 200, { ok: true, already: true });
           return sendJson(res, 401, { error: "That code isn't right." });
         }
-        await setUserTester(user.id);
-        console.log(`Tester passkey redeemed by ${user.email}`);
-        return sendJson(res, 200, { ok: true });
+
+        // Idempotent: re-redeeming a code you already hold is a no-op, not an
+        // error. Skipping the write also keeps a re-redemption off the
+        // database entirely.
+        const granted = [];
+        if (opens.includes("tester") && !user.pro_tester) {
+          await setUserTester(user.id);
+          granted.push("tester");
+        }
+        if (opens.includes("vault") && !user.vault_beta) {
+          await setUserVaultBeta(user.id);
+          granted.push("vault");
+        }
+        if (!granted.length) return sendJson(res, 200, { ok: true, already: true });
+        console.log(`Passkey redeemed by ${user.email}: ${granted.join(", ")}`);
+        return sendJson(res, 200, { ok: true, granted });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
-        // setUserTester throws on a failed write — never report success for a
-        // grant that did not land.
+        // setUserTester/setUserVaultBeta throw on a failed write — never
+        // report success for a grant that did not land.
         console.error("redeem-passkey error:", err);
         return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
       }
@@ -10716,7 +11927,7 @@ const server = http.createServer((req, res) => {
           if (!item) return sendJson(res, 404, { error: "Not found." });
           return sendJson(res, 200, item);
         }
-        return sendJson(res, 200, { items: await listPortfolio(user.id) });
+        return sendJson(res, 200, { items: await withMarketMovement(await listPortfolio(user.id)) });
       })().catch((err) => { console.error("portfolio GET error:", err); sendJson(res, 500, { error: "Portfolio read failed." }); });
       return;
     }
@@ -10843,50 +12054,182 @@ const server = http.createServer((req, res) => {
       // most of why the feed is useful. Only the itemized rows are gated,
       // the same rule the report itself follows.
       const ent = await getEntitlements(user, undefined, isAdminRequest(req));
-      const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
-      const items = await listWatchlist(user.id);
-      const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
-      let unseen = 0;
-      const out = [];
-      for (const w of items) {
-        const rows = await corpusRowsForMarket(w.market, w.property_type, 500);
-        const fresh = rows.filter((r) => String(r.ts) > String(w.last_seen_at)).slice(0, 20);
-        unseen += fresh.length;
-        // Median $/SF: sale rows only, trailing ~6 months — matches the
-        // client-side rule that lease $/SF never mixes into valuation.
-        const salePsf = rows
-          .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
-          .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
-          .map((r) => corpusNum(r.price_per_sqft))
-          .filter(Boolean)
-          .sort((a, b) => a - b);
-        const median_psf = salePsf.length
-          ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
-        // Direction: deal-date medians, last 6 months vs the 6 before —
-        // >=3 comps each side or the field is omitted entirely.
-        const datedSales = saleRowsWithDates(rows);
-        const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
-        const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
-        const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
-        const median_trend = curWin.length >= 3 && priWin.length >= 3
-          ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
-        out.push({
-          id: w.id, market: w.market, property_type: w.property_type,
-          median_psf, new_count: fresh.length,
-          ...(median_trend ? { median_trend } : {}),
-          // new_count above stays the TRUE number of new comps — the visitor
-          // is told what they are missing, they just don't receive it.
-          ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
-          comps: fresh.slice(0, feedRowCap).map((r) => ({
-            ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
-            price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
-            cap_rate: r.cap_rate, source_url: r.source_url,
-          })),
-        });
-      }
+      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at);
       logEvent("feed_view", {});
       return sendJson(res, 200, { unseen, items: out });
     })().catch((err) => { console.error("feed error:", err); sendJson(res, 500, { error: "Feed read failed." }); });
+    return;
+  }
+
+  // --- The watchlist digest -------------------------------------------------
+  //
+  // The one thing CompNinja sends on its own initiative. Everything else it
+  // mails answers something a person just did.
+  //
+  // ADMIN_KEY-gated and manually triggered rather than run on a timer inside
+  // this process, deliberately. A setInterval would fire at an hour nobody
+  // chose, would fire again after every deploy restart, and would fire twice
+  // the day this runs on two instances — and the failure mode of all three is
+  // mailing real people the same comps again. A route makes the schedule
+  // somebody's explicit decision (a Render cron, a GitHub Action, a scheduled
+  // agent, or a person), and makes "run it and see" possible without waiting.
+  //
+  // Refuses rather than degrading, in this order, because each refusal is a
+  // different thing being wrong:
+  //   401/403  not an admin — this reads every account's email address.
+  //   503      no database — the "already mailed" marker has no file
+  //            fallback (see markWatchlistDigested), and without it every
+  //            watcher is re-sent the same comps after each deploy.
+  //   503      no outbound mail — sendOutboundEmail is a silent no-op when
+  //            EMAIL_FROM/RESEND_API_KEY are unset, so running blind would
+  //            advance every high-water mark and DELETE a digest nobody got.
+  //            This is the only caller for which that no-op is destructive,
+  //            which is why it is checked here and not there.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/watchlist/digest") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!DB_CONFIGURED) {
+          return sendJson(res, 503, { error: "The digest needs a database: without one, nothing records who has already been mailed." });
+        }
+        const opts = JSON.parse(body || "{}");
+        // A dry run builds every email and sends none, and advances no
+        // marker. It is how this gets looked at before it reaches anyone,
+        // and it is the reason the outbound-mail check below is skipped for
+        // it — inspecting the copy must not require a verified domain.
+        const dryRun = opts.dryRun === true;
+        if (!dryRun && !(EMAIL_FROM && RESEND_API_KEY)) {
+          return sendJson(res, 503, {
+            error: "Outbound email is not configured (EMAIL_FROM + RESEND_API_KEY). " +
+              "Refusing rather than marking everyone as mailed. Use { dryRun: true } to see the copy.",
+          });
+        }
+
+        const rows = await allWatchlistItems();
+        const byUser = new Map();
+        rows.forEach((w) => {
+          if (!byUser.has(w.user_id)) byUser.set(w.user_id, []);
+          byUser.get(w.user_id).push(w);
+        });
+        const accounts = await findUsersByIds([...byUser.keys()]);
+
+        const summary = { watchers: byUser.size, sent: 0, nothingNew: 0, optedOut: 0, failed: 0, previews: [] };
+        for (const account of accounts) {
+          if (account.digest_optout) { summary.optedOut += 1; continue; }
+          const items = byUser.get(account.id) || [];
+          try {
+            const ent = await getEntitlements(account, undefined, false);
+            // The send cutoff is the LATER of the two markers. Reaching back
+            // only to last_digest_at would mail comps the reader already saw
+            // in the app; reaching back only to last_seen_at would mail the
+            // same ones forever to somebody who never clicks the bell. The
+            // happy consequence is that an active user quietly stops getting
+            // digests without ever having to unsubscribe.
+            const { items: feed } = await buildWatchlistFeed(account, ent, (w) => {
+              const a = String(w.last_digest_at || w.created_at || "");
+              const b = String(w.last_seen_at || "");
+              return a > b ? a : b;
+            });
+            const mail = DIGEST.buildDigest({
+              items: feed,
+              deskUrl: `${SITE_URL}/desk`,
+              unsubscribeUrl: unsubscribeUrlFor(account.id),
+            });
+            if (!mail) { summary.nothingNew += 1; continue; }
+            if (dryRun) {
+              summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
+              continue;
+            }
+            sendOutboundEmail(account.email, mail.subject, mail.text);
+            // Marked AFTER the send is handed off, and only for the markets
+            // that actually carried news. If this write fails the reader gets
+            // one duplicate next run, which is the right way round: marking
+            // first would lose the digest outright on a failed send, and a
+            // lost digest is invisible where a duplicate is merely annoying.
+            const mailed = feed.filter(DIGEST.hasNews).map((i) => i.id).filter(Boolean);
+            await markWatchlistDigested(account.id, mailed);
+            summary.sent += 1;
+          } catch (err) {
+            // One bad account must never stop the run: the rest of the list
+            // is still owed its mail.
+            console.error(`Digest failed for ${account.id}:`, err.message);
+            summary.failed += 1;
+          }
+        }
+        logEvent("watchlist_digest", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
+        console.log(`📬 Watchlist digest${dryRun ? " (dry run)" : ""}: ${summary.sent} sent, ` +
+          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed`);
+        return sendJson(res, 200, summary);
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("digest error:", err);
+        return sendJson(res, 500, { error: "The digest run failed." });
+      }
+    });
+    return;
+  }
+
+  // Unsubscribe. A GET renders a confirmation with a button; the POST behind
+  // that button is what actually flips the flag.
+  //
+  // The second click is not politeness, it is correctness: corporate mail
+  // scanners and link-preview bots fetch every URL in an email, and a GET
+  // that unsubscribes would silently opt people out of mail they never even
+  // opened. The token makes the link unguessable; nothing makes it
+  // un-prefetchable.
+  if (req.url.split("?")[0] === "/watchlist/unsubscribe" && (req.method === "GET" || req.method === "POST")) {
+    (async () => {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const userId = q.get("u") || "";
+      const resubscribe = q.get("on") === "1";
+      if (!digestTokenValid(userId, q.get("t"))) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: "Link not recognized | CompNinja",
+          description: "This unsubscribe link could not be verified.",
+          noindex: true,
+          body: `<div class="wrap"><h1>This link is not recognized</h1>` +
+            `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
+            `You can turn the emails off from My Desk, or reply to any CompNinja email and we will do it for you.</p></div>`,
+        }));
+      }
+      if (req.method === "POST") {
+        await setDigestOptout(userId, !resubscribe);
+        logEvent("watchlist_digest_optout", { source: resubscribe ? "on" : "off" });
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: (resubscribe ? "Digest turned back on" : "Digest turned off") + " | CompNinja",
+          description: "Watchlist email preference updated.",
+          noindex: true,
+          body: `<div class="wrap"><h1>${resubscribe ? "These emails are back on" : "That&rsquo;s done"}</h1>` +
+            `<p>${resubscribe
+              ? "You will get a digest again when a market you watch has new comps."
+              : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
+            `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+        }));
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+      return res.end(marketShell({
+        title: (resubscribe ? "Turn the digest back on?" : "Turn off watchlist emails?") + " | CompNinja",
+        description: "Confirm your watchlist email preference.",
+        noindex: true,
+        body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
+          `<p>${resubscribe
+            ? "You will get an email when a market you watch has new comps."
+            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on My Desk."}</p>` +
+          `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
+          `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
+          `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
+      }));
+    })().catch((err) => {
+      console.error("unsubscribe error:", err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
+    });
     return;
   }
 
@@ -11776,8 +13119,9 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    // Read a broker's own PDF and return classified rows for a confirm table.
-    // Stores NOTHING: the PDF never lands in broker_uploads or broker_comps.
+    // Read a broker's own table PDF or screenshot and return classified rows
+    // for a confirm table.
+    // Stores NOTHING: the file never lands in broker_uploads or broker_comps.
     if (req.method === "POST" && path === "/api/vault/extract") {
       let body = "";
       let tooBig = false;
@@ -11793,25 +13137,35 @@ const server = http.createServer((req, res) => {
           if (rateLimited("vaultex:" + clientIp(req), 8)) {
             return sendJson(res, 429, { error: "Too many uploads. Please wait a moment." });
           }
-          const { filename, pdf } = JSON.parse(body || "{}");
-          const b64 = String(pdf || "").replace(/^data:application\/pdf;base64,/i, "");
+          const payload = JSON.parse(body || "{}");
+          const { filename } = payload;
+          // `pdf` is the field this route shipped with, kept because it costs
+          // one `||` and a browser holding a cached copy of the old page would
+          // otherwise post a body this route reads as empty.
+          const raw = String((payload.file != null ? payload.file : payload.pdf) || "");
+          // Any data: prefix, not application/pdf's alone — FileReader labels a
+          // screenshot image/png, and a prefix left in place would corrupt the
+          // first bytes and fail the sniff below with a confusing message.
+          const b64 = raw.replace(/^data:[^;,]*;base64,/i, "");
           let bytes;
           try { bytes = Buffer.from(b64, "base64"); }
-          catch (err) { return sendJson(res, 400, { error: "That doesn't look like a PDF." }); }
-          if (!VAULT.looksLikePdf(bytes)) {
-            return sendJson(res, 400, { error: "That doesn't look like a PDF." });
-          }
-          if (bytes.length > VAULT.MAX_PDF_BYTES) {
-            return sendJson(res, 400, { error: "That file is too large to read." });
-          }
-          const text = await extractPdfOnce(b64);
+          catch (err) { bytes = Buffer.alloc(0); }
+          // Type and size in one call, so the refusal copy lives in one place.
+          const file = VAULT.checkExtractFile(bytes);
+          if (!file.ok) return sendJson(res, 400, { error: file.error });
+          // Which KIND of file brokers actually bring is a product question
+          // (the vault's own bottleneck is whether anyone imports at all), and
+          // this event is the only place it can be counted. PII-free: a media
+          // type and a row count, the same shape as before.
+          const kind = file.mediaType === "application/pdf" ? "pdf" : "image";
+          const text = await extractFileOnce(b64, file.mediaType);
           const parsed = VAULT.parseExtractJson(text);
           if (!parsed.ok || parsed.rows.length === 0) {
-            logEvent("vault_extract", { source: "empty:0" });
-            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that PDF." });
+            logEvent("vault_extract", { source: `empty:${kind}:0` });
+            return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that file." });
           }
           const rows = VAULT.classifyExtractRows(parsed.rows);
-          logEvent("vault_extract", { source: `ok:${rows.length}` });
+          logEvent("vault_extract", { source: `ok:${kind}:${rows.length}` });
           sendJson(res, 200, {
             filename: String(filename || "").trim().slice(0, 200),
             rows,
@@ -11819,12 +13173,12 @@ const server = http.createServer((req, res) => {
         } catch (err) {
           // Same guard as /api/vault/inspect: V8 quotes the input in a
           // JSON.parse error, so a malformed body would otherwise print a
-          // fragment of the broker's private PDF into Render's logs (and
+          // fragment of the broker's private file into Render's logs (and
           // echo it back via clientErrorMessage). A bad body is 400.
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault extract error:", err.message);
           const status = err.statusCode || 500;
-          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that PDF. Nothing was saved." });
+          sendJson(res, status, { error: clientErrorMessage(err) || "Could not read that file. Nothing was saved." });
         }
       });
       return;
@@ -13355,6 +14709,13 @@ const server = http.createServer((req, res) => {
           // modal can hide a redeem row that could only ever fail. NOT a secret and
           // not an entitlement: it says a door exists, never what opens it.
           testerPasskey: Boolean(TESTER_PASSKEY),
+          // The vault's own door, reported separately because the two codes
+          // unlock different things and a deployment can run either alone.
+          // The redeem row shows while EITHER is set and this caller still
+          // has something left to redeem, so a broker with the vault but no
+          // Pro is not shown a row whose only remaining use is a code they
+          // were never given.
+          vaultPasskey: Boolean(VAULT_PASSKEY),
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
@@ -13923,6 +15284,565 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ==========================================================================
+  // The messaging hub — /api/hubs and /api/hub/*
+  //
+  // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+  // Schema: migrations/024-messaging-hub.sql   Gate: hub-access.js
+  //
+  // NOT the connection hub at /brokers.
+  //
+  // The shape of every route here: read the row, the participant and the
+  // session, ask hub-access.js, then act. No route makes its own access
+  // decision, and no route trusts anything the browser said about who it is.
+  // ==========================================================================
+  const hubPath = req.url.split("?")[0];
+  // All three shapes, and the bare `/api/hub` is easy to leave out: it is the
+  // READ and the polling endpoint, it is the only one that carries its id in a
+  // query string, and without it here the hub renders a shell that can never
+  // load. test/hub-routes.test.js caught exactly that.
+  if (hubPath === "/api/hubs" || hubPath === "/api/hub" || hubPath.startsWith("/api/hub/")) {
+    // Bodies here are small by nature: a message, a list of emails, a handful
+    // of comp ids. The one exception is item snapshots, which the caller caps
+    // itself. This is a runaway guard, not a product limit.
+    const readHubBody = (max = 2e5) => new Promise((resolve, reject) => {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > max && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", () => {
+        if (tooBig) return reject(new Error("too_big"));
+        try { resolve(JSON.parse(body || "{}")); }
+        // A malformed body is the client's error, and it is never logged: the
+        // same reasoning as /api/vault/inspect, where V8 quotes the input in
+        // its parse error and would print a fragment of private data into
+        // Render's logs.
+        catch (_) { reject(new SyntaxError("bad_json")); }
+      });
+      req.on("error", () => reject(new Error("aborted")));
+    });
+
+    // Resolve the caller and apply one of hub-access.js's three answers. The
+    // refusal's `reason` is carried to the client verbatim, because the UI
+    // genuinely branches on it: signin_required opens the account modal,
+    // not_invited must not (they are already past it), and closed/read_only
+    // explain a page that renders but will not accept a post.
+    const hubGate = async (hubId, decide) => {
+      const ctx = await resolveHubCaller(req, hubId);
+      const d = decide(ctx);
+      if (!d.ok) {
+        const status = d.reason === "not_found" ? 404
+          : d.reason === "signin_required" ? 401
+          : d.reason === "closed" || d.reason === "ownerless" ? 409
+          : 403;
+        sendJson(res, status, { error: hubRefusalCopy(d.reason), code: d.reason });
+        return null;
+      }
+      return { ...ctx, decision: d };
+    };
+
+    // Every hub route is database-only. See the section comment on the store
+    // helpers: an access-control list in a JSON file on an ephemeral disk is
+    // not one, so this refuses rather than degrading.
+    if (!DB_CONFIGURED) {
+      return sendJson(res, 503, { error: "Hubs are unavailable right now. Please try again in a minute." });
+    }
+
+    // --- Create a hub ------------------------------------------------------
+    if (req.method === "POST" && hubPath === "/api/hubs") {
+      (async () => {
+        try {
+          // canUseVault, not ent.pro (owner's answer, 2026-08-13): a hub is a
+          // broker surface and its comps come out of the vault, so it travels
+          // with the vault the way the lead inbox does. requireBroker replies
+          // 401/403/503 itself.
+          const user = await requireBroker(req, res, "Comp hubs");
+          if (!user) return;
+          if (rateLimited("hubnew:" + clientIp(req), 20)) {
+            return sendJson(res, 429, { error: "Too many hubs created. Please wait a few minutes." });
+          }
+          const b = await readHubBody();
+
+          // Capped at 20, the same ceiling as a share's viewer list, and
+          // normalized through hub-access.js's own normalizeEmail so an
+          // invitation and an account agree on what one person is.
+          const emails = [...new Set((Array.isArray(b.participants) ? b.participants : [])
+            .map((e) => HUB.normalizeEmail(e)).filter(Boolean))].slice(0, 20);
+
+          // Seeding from a shared report (the owner's Q5 yes): the only
+          // in-product discovery path a hub has. Scoped by user_id in the
+          // QUERY, never checked after the fact — knowing a share id must not
+          // be enough to read its payload.
+          let seed = null;
+          if (b.fromShare && /^[A-Za-z0-9_-]{6,32}$/.test(String(b.fromShare))) {
+            const rows = await sbRequest("GET",
+              `shared_reports?id=eq.${encodeURIComponent(b.fromShare)}&user_id=eq.${encodeURIComponent(user.id)}` +
+              `&select=id,payload,report_viewers(email)&limit=1`);
+            seed = (rows && rows[0]) || null;
+            if (!seed) return sendJson(res, 404, { error: "That shared report was not found." });
+            for (const v of seed.report_viewers || []) {
+              const e = HUB.normalizeEmail(v && v.email);
+              if (e && !emails.includes(e) && emails.length < 20) emails.push(e);
+            }
+          }
+
+          const meta = (seed && seed.payload && seed.payload.meta) || {};
+          const id = newHubId();
+          await sbRequest("POST", "hubs", [{
+            id,
+            owner_user_id: user.id,
+            title: String(b.title || meta.address || "").slice(0, 200),
+            // marketOf() here and nowhere else, so hubs.market agrees byte for
+            // byte with broker_comps.market — the same rule the vault upload
+            // follows for the same reason.
+            market: marketOf(String(b.subjectAddress || meta.address || "")) || null,
+            property_type: String(b.propertyType || meta.type || "").slice(0, 60) || null,
+            subject_address: String(b.subjectAddress || meta.address || "").slice(0, 300) || null,
+          }], { prefer: "return=minimal" });
+
+          // One token per participant, hashed. The raw token exists only in
+          // the link returned below and is never recoverable after this
+          // response — which is why the response IS the delivery mechanism
+          // while outbound email is off (EMAIL_FROM unset; see the spec's
+          // notification reality).
+          const invites = emails.map((email) => ({ email, token: newHubToken() }));
+          if (invites.length) {
+            await sbRequest("POST", "hub_participants",
+              invites.map((i) => ({
+                hub_id: id, email: i.email, role: "tenant", token_hash: sha256Hex(i.token),
+              })), { prefer: "return=minimal" });
+          }
+
+          // A seeded hub carries the report's comps as items. They are
+          // snapshots the moment they land (the snapshot rule), and they come
+          // from a share payload, whose private comps were already stripped at
+          // share time unless the broker opted in — so nothing here can
+          // disclose more than that share already did.
+          const comps = (seed && seed.payload && seed.payload.data && seed.payload.data.comps) || [];
+          if (Array.isArray(comps) && comps.length) {
+            await sbRequest("POST", "hub_items", comps.slice(0, 100).map((c, i) => ({
+              hub_id: id,
+              kind: "comp",
+              source: "report",
+              source_ref: `${seed.id}:${i}`,
+              snapshot: c,
+              private: false,
+              added_by_email: HUB.normalizeEmail(user.email),
+            })), { prefer: "return=minimal" });
+          }
+
+          logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
+          return sendJson(res, 201, {
+            ok: true,
+            id,
+            url: `${SITE_URL}/hub/${id}`,
+            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub create failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't create that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Both lists in one call, because both surfaces need them on a
+    // page-load path. Same shape decision as GET /api/shares. ---------------
+    if (req.method === "GET" && hubPath === "/api/hubs") {
+      (async () => {
+        try {
+          const user = await requireUser(req, res);
+          if (!user) return;
+          const email = HUB.normalizeEmail(user.email);
+          const [mine, theirs] = await Promise.all([
+            listHubsForOwner(user.id),
+            email ? listHubsForParticipant(email) : Promise.resolve([]),
+          ]);
+          return sendJson(res, 200, {
+            mine: mine.map((h) => ({
+              id: h.id, title: h.title, market: h.market, propertyType: h.property_type,
+              subjectAddress: h.subject_address, status: h.status,
+              createdAt: h.created_at, updatedAt: h.updated_at, closedAt: h.closed_at,
+              participants: (h.hub_participants || [])
+                .filter((p) => !p.removed_at)
+                .map((p) => ({ email: p.email, role: p.role, firstViewedAt: p.first_viewed_at })),
+            })),
+            // A hub the caller OWNS is never also "shared with me", or a
+            // broker who put their own address in their own hub would see it
+            // twice on two different pages.
+            theirs: theirs
+              .filter((r) => r.hubs && String(r.hubs.id) !== "" )
+              .map((r) => ({
+                id: r.hubs.id, title: r.hubs.title, market: r.hubs.market,
+                propertyType: r.hubs.property_type, subjectAddress: r.hubs.subject_address,
+                status: r.hubs.status, updatedAt: r.hubs.updated_at, closedAt: r.hubs.closed_at,
+                role: r.role, lastSeenAt: r.last_seen_at,
+              })),
+          });
+        } catch (err) {
+          console.error("Hub list failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your hubs. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Exchange an invite token for a cookie -----------------------------
+    //
+    // A POST, and the token arrives in the BODY, because the invite link
+    // carries it in the URL FRAGMENT: a fragment is never sent to a server,
+    // so the credential stays out of Render's access logs and out of every
+    // outbound Referer. Same reasoning as POST /api/report-access, and the
+    // same reasoning behind the roadmap's move of /api/geocode off a query
+    // string.
+    if (req.method === "POST" && hubPath === "/api/hub/access") {
+      (async () => {
+        try {
+          if (rateLimited("hubtok:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const hub = await getHubRow(id);
+          if (!hub) return sendJson(res, 404, { error: hubRefusalCopy("not_found"), code: "not_found" });
+
+          const parts = await getHubParticipants(id);
+          const hit = parts.find((p) => hubTokenMatches(String(b.token || ""), p.token_hash));
+          // A removed participant's token is dead, and says so rather than
+          // reading as a bad link — removal is a deliberate act by the broker
+          // and the tenant should be able to tell the difference.
+          if (!hit) return sendJson(res, 403, { error: hubRefusalCopy("not_invited"), code: "not_invited" });
+          if (hit.removed_at) return sendJson(res, 403, { error: hubRefusalCopy("removed"), code: "removed" });
+
+          stampHubView(hit.id);
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "set-cookie": `${hubCookieName(id)}=${String(b.token)}; HttpOnly; Path=/; Max-Age=${60 * 60 * 24 * 180}; SameSite=Lax${SITE_URL.startsWith("https") ? "; Secure" : ""}`,
+          });
+          return res.end(JSON.stringify({ ok: true, id, role: HUB.roleOf(hit), email: hit.email }));
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub access failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't open that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Read a hub (also the polling endpoint) ----------------------------
+    if (req.method === "GET" && hubPath === "/api/hub") {
+      (async () => {
+        try {
+          const qs = new URLSearchParams(req.url.split("?")[1] || "");
+          const id = String(qs.get("id") || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const g = await hubGate(id, (c) => HUB.canReadHub(c));
+          if (!g) return;
+
+          const since = qs.get("since") || "";
+          const [items, messages] = await Promise.all([
+            // A polling read skips the item list: items change rarely and the
+            // snapshots are the largest thing here. A client that needs them
+            // again drops `since`.
+            since ? Promise.resolve(null) : getHubItems(id),
+            getHubMessages(id, since),
+          ]);
+          if (g.participant) stampHubView(g.participant.id);
+
+          return sendJson(res, 200, {
+            hub: {
+              id: g.hub.id, title: g.hub.title, market: g.hub.market,
+              propertyType: g.hub.property_type, subjectAddress: g.hub.subject_address,
+              status: g.hub.status, closedAt: g.hub.closed_at, updatedAt: g.hub.updated_at,
+            },
+            role: g.decision.role,
+            // What the UI needs to decide whether to render a composer, and
+            // it is the SERVER's answer to that question, not the browser's
+            // guess from the role string.
+            canWrite: HUB.canWriteHub(g).ok,
+            canAdd: HUB.canAddItems(g).ok,
+            ...(items ? { items: items.map(hubItemForClient) } : {}),
+            messages: messages.map((m) => ({
+              id: m.id, itemId: m.item_id, author: m.author_email,
+              body: m.body, createdAt: m.created_at,
+            })),
+            // The client's next cursor. Sent by the server so a clock skew in
+            // the browser cannot skip a message or replay the whole thread.
+            cursor: messages.length ? messages[messages.length - 1].created_at : (since || new Date(0).toISOString()),
+          });
+        } catch (err) {
+          console.error("Hub read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Add comps (slice 1: the owner only) -------------------------------
+    if (req.method === "POST" && hubPath === "/api/hub/items") {
+      (async () => {
+        try {
+          const b = await readHubBody();
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const g = await hubGate(id, (c) => HUB.canAddItems(c));
+          if (!g) return;
+
+          const wanted = (Array.isArray(b.items) ? b.items : []).slice(0, 50);
+          if (!wanted.length) return sendJson(res, 400, { error: "No comps were selected." });
+
+          // Vault ids are read back from broker_comps SCOPED BY user_id, and
+          // the snapshot is built from what the database returns — never from
+          // anything the browser sent. A browser that could hand us a comp
+          // body could put any address and any price in front of a tenant
+          // under the broker's name.
+          const vaultIds = wanted.filter((i) => i && i.source === "vault" && i.ref).map((i) => String(i.ref));
+          let vaultRows = [];
+          if (vaultIds.length) {
+            vaultRows = (await sbRequest("GET",
+              `broker_comps?user_id=eq.${encodeURIComponent(g.user.id)}` +
+              `&id=in.(${vaultIds.map((v) => encodeURIComponent(v)).join(",")})&select=*&limit=50`)) || [];
+          }
+
+          const rows = vaultRows.map((r) => ({
+            hub_id: id,
+            kind: "comp",
+            source: "vault",
+            source_ref: String(r.id),
+            // toApiComp is the same allowlist the vault dashboard reads
+            // through, so a hub can never show a column the vault's own API
+            // does not expose.
+            snapshot: VAULTAPI.toApiComp(r),
+            // From the vault, so it carries the badge and the confirm copy.
+            // It does NOT mean the tenant sees less: the owner answered full
+            // detail, per-comp opt-in, and per-comp is what `wanted` already
+            // is — this route never takes "send my whole book".
+            private: true,
+            added_by_email: HUB.normalizeEmail(g.user.email),
+          }));
+          if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your vault." });
+
+          // ignore-duplicates against hub_items_live_source_uidx: sending the
+          // same comp twice is a no-op, not an error. Re-sending one that was
+          // REMOVED does insert, which is how a corrected price travels.
+          const saved = await sbRequest("POST",
+            "hub_items?on_conflict=hub_id,source,source_ref&select=id",
+            rows, { prefer: "resolution=ignore-duplicates,return=representation" });
+          touchHub(id);
+          logEvent("hub_items_added", { market: g.hub.market || "", source: "vault" });
+          return sendJson(res, 201, {
+            ok: true,
+            added: Array.isArray(saved) ? saved.length : rows.length,
+            // Says how many of the requested ids actually landed, the same
+            // honesty rule the vault upload learned: a broker told something
+            // was sent will not go looking for it.
+            requested: wanted.length,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub items add failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't send those comps. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Remove an item. Slice 1 ships removal only; the status pipeline is
+    // slice 2, and the column is already there for it. ----------------------
+    if (req.method === "PATCH" && hubPath === "/api/hub/item") {
+      (async () => {
+        try {
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          if (b.removed !== true) {
+            return sendJson(res, 400, { error: "Comp statuses are not available yet." });
+          }
+          // Removing a comp from the conversation is the owner's call, the
+          // same as adding one.
+          const g = await hubGate(id, (c) => HUB.canAddItems(c));
+          if (!g) return;
+          const itemId = String(b.itemId || "");
+          if (!itemId) return sendJson(res, 400, { error: "Invalid item." });
+          // Scoped by hub_id in the query: an item id alone must never be
+          // enough to touch a row in someone else's hub.
+          const done = await sbRequest("PATCH",
+            `hub_items?id=eq.${encodeURIComponent(itemId)}&hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null`,
+            { removed_at: new Date().toISOString() }, { prefer: "return=representation" });
+          if (!done || !done.length) return sendJson(res, 404, { error: "That comp was not found." });
+          touchHub(id);
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub item update failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't update that comp. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Post a message ----------------------------------------------------
+    if (req.method === "POST" && hubPath === "/api/hub/message") {
+      (async () => {
+        try {
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          // canWriteHub is where the account ask lives: a token got them in to
+          // READ, and this is the first thing that needs a session.
+          const g = await hubGate(id, (c) => HUB.canWriteHub(c));
+          if (!g) return;
+          if (rateLimited("hubmsg:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many messages. Please wait a moment." });
+          }
+          const body = String(b.body == null ? "" : b.body).trim().slice(0, 4000);
+          if (!body) return sendJson(res, 400, { error: "Write something first." });
+
+          // A note on a comp has to be a note on a comp IN THIS HUB. Checked
+          // rather than trusted, or a message could be filed against an item
+          // in a hub the author cannot read.
+          let itemId = null;
+          if (b.itemId) {
+            const owned = await sbRequest("GET",
+              `hub_items?id=eq.${encodeURIComponent(String(b.itemId))}&hub_id=eq.${encodeURIComponent(id)}&select=id&limit=1`);
+            if (!owned || !owned[0]) return sendJson(res, 400, { error: "That comp is not in this hub." });
+            itemId = owned[0].id;
+          }
+
+          const saved = await sbRequest("POST", "hub_messages?select=id,created_at", [{
+            hub_id: id,
+            item_id: itemId,
+            // The AUTHOR is the session, never the participant row and never
+            // anything the browser sent.
+            author_email: HUB.normalizeEmail(g.user.email),
+            author_user_id: g.user.id,
+            body,
+          }], { prefer: "return=representation" });
+          touchHub(id);
+          if (g.participant) stampHubView(g.participant.id);
+          logEvent("hub_message", { market: g.hub.market || "", source: g.decision.role });
+          return sendJson(res, 201, {
+            ok: true,
+            message: {
+              id: saved && saved[0] && saved[0].id,
+              itemId,
+              author: HUB.normalizeEmail(g.user.email),
+              body,
+              createdAt: (saved && saved[0] && saved[0].created_at) || new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub message failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't post that. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Replace the participant list wholesale ----------------------------
+    //
+    // Mirrors PUT /api/shares/viewers: one state to reason about instead of
+    // three. Removal is a STAMP, not a delete, because a removed participant's
+    // messages stay in the thread and their row is what proves who wrote them.
+    if (req.method === "PUT" && hubPath === "/api/hub/participants") {
+      (async () => {
+        try {
+          const b = await readHubBody(5e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          // Only the owner manages the guest list. canAddItems is the
+          // owner-only answer; using it keeps that meaning in one place.
+          const g = await hubGate(id, (c) => HUB.canAddItems(c));
+          if (!g) return;
+
+          const wanted = [...new Set((Array.isArray(b.emails) ? b.emails : [])
+            .map((e) => HUB.normalizeEmail(e)).filter(Boolean))].slice(0, 20);
+          const existing = g.participants;
+          const invites = [];
+
+          for (const email of wanted) {
+            const row = existing.find((p) => HUB.normalizeEmail(p.email) === email);
+            if (!row) {
+              const token = newHubToken();
+              invites.push({ email, token });
+              await sbRequest("POST", "hub_participants", [{
+                hub_id: id, email, role: "tenant", token_hash: sha256Hex(token),
+              }], { prefer: "return=minimal" });
+            } else if (row.removed_at) {
+              // Re-inviting someone previously removed issues a NEW token: the
+              // old link was revoked and must stay revoked, or "removed" would
+              // only mean "removed until I change my mind about someone else".
+              const token = newHubToken();
+              invites.push({ email, token });
+              await sbRequest("PATCH", `hub_participants?id=eq.${encodeURIComponent(row.id)}`,
+                { removed_at: null, token_hash: sha256Hex(token) }, { prefer: "return=minimal" });
+            }
+          }
+          // Everyone not on the new list is stamped removed. Their cookie
+          // stops working on their next read, because hub-access.js checks
+          // removed_at before anything else.
+          for (const p of existing) {
+            if (p.removed_at) continue;
+            if (!wanted.includes(HUB.normalizeEmail(p.email))) {
+              await sbRequest("PATCH", `hub_participants?id=eq.${encodeURIComponent(p.id)}`,
+                { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
+            }
+          }
+          return sendJson(res, 200, {
+            ok: true,
+            participants: wanted,
+            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub participants update failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't update that list. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    // --- Close a hub. One way, like revoking a share, but NOT the same act:
+    // closing stops new posts and leaves every reader their access. ---------
+    if (req.method === "POST" && hubPath === "/api/hub/close") {
+      (async () => {
+        try {
+          const b = await readHubBody(2e4);
+          const id = String(b.id || "");
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const user = await requireUser(req, res);
+          if (!user) return;
+          // Scoped by owner in the query, so an id is never enough.
+          const done = await sbRequest("PATCH",
+            `hubs?id=eq.${encodeURIComponent(id)}&owner_user_id=eq.${encodeURIComponent(user.id)}`,
+            { status: "closed", closed_at: new Date().toISOString() },
+            { prefer: "return=representation" });
+          if (!done || !done.length) return sendJson(res, 404, { error: "That hub was not found." });
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          if (err.message === "too_big") return;
+          console.error("Hub close failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't close that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
+    return sendJson(res, 404, { error: "Not found." });
+  }
+
   // --- Static: serve index.html for "/", "/index.html", a /r/<id> share link,
   // or /desk (the SPA's My Desk view — the client reads the path and shows the
   // desk instead of the home stack). ---
@@ -13980,7 +15900,27 @@ const server = http.createServer((req, res) => {
       if (!shared && auth !== "signup" && auth !== "signin" && submit !== "comp"
           && pricing !== "1") {
         if (staticPath === "/desk") {
-          res.writeHead(302, { location: "/", "cache-control": "no-store" });
+          // To the SIGN-IN door, not the front door (changed 2026-08-13).
+          // Asking for /desk is asking for your own account, and answering
+          // that with the marketing page tells somebody who already has one
+          // to go read about the product. The wall's actual rule — never
+          // render a personal workspace anonymously — is unchanged; only the
+          // destination moves, to a door two lines below that already serves
+          // the app so the account modal can open.
+          //
+          // It became visible with the watchlist digest, whose only call to
+          // action is "see them all in your desk". A reader signed in on that
+          // device is fine, which is most of them at a 90-day session, but a
+          // new phone or cleared cookies dead-ended the email on marketing
+          // copy. Any future mail linking to /desk inherits the fix.
+          //
+          // Still a 302 and still no-store, for the spec's original reason:
+          // what lives here depends on auth state, so a cached permanent
+          // redirect would outlive the visitor getting an account. Query
+          // strings are dropped exactly as before (a signed-out
+          // /desk?checkout=success loses the param either way, and a real
+          // checkout return carries a session cookie and never reaches here).
+          res.writeHead(302, { location: "/?auth=signin", "cache-control": "no-store" });
           return res.end();
         }
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -14395,7 +16335,7 @@ const server = http.createServer((req, res) => {
     const key = new URL(req.url, "http://localhost").searchParams.get("key");
     if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     Promise.all([
-      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"]),
+      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue", "visitor_id", "user_id", "plan"]),
       // Never rejects: readIntroRequests catches its own errors and returns
       // null, so an intro-table outage can't take the whole dashboard down.
       readIntroRequests(),
@@ -14510,6 +16450,37 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // The messaging hub page. NOT the connection hub at /brokers.
+  //
+  // Its own route rather than another index.html path, which is what makes it
+  // exempt from ACCOUNT_WALL: the wall lives inside the static handler for
+  // "/", "/index.html", "/desk" and /r/<id>, and this never reaches it. That
+  // exemption IS the tenant-access decision (read without an account), so
+  // test/routes.test.js pins it rather than leaving it as a side effect of
+  // where the route happens to sit.
+  //
+  // The page ships with NO hub data in it, deliberately: the invite token is
+  // in the URL fragment, which never reaches a server, so at render time we
+  // do not know who is asking. hub-page.js explains the round trip.
+  const hubPageMatch = /^\/hub\/([A-Za-z0-9_-]{6,32})$/.exec(req.url.split("?")[0]);
+  if (req.method === "GET" && hubPageMatch) {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    res.end(renderHubHTML(hubPageMatch[1], {
+      CN_LOGO,
+      THEME_CSS,
+      THEME_BOOT,
+      ACCOUNT_NAV_CSS,
+      ACCOUNT_NAV_JS,
+      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
+      ACCOUNT_NAV_PRICING,
+    }));
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/hq") {
     // Same triple-noindex treatment as /admin (its own meta tag, this header,
     // and the robots.txt Disallow).
@@ -14569,7 +16540,7 @@ const server = http.createServer((req, res) => {
   }
 
   sendNotFound(req, res);
-});
+}));
 
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
@@ -14639,4 +16610,16 @@ server.listen(PORT, () => {
   console.log(TESTER_PASSKEY
     ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
     : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");
+  console.log(VAULT_PASSKEY
+    ? "🔑 Vault passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.vault_beta column (migrations/023-vault-beta.sql)."
+    : "🔑 Vault passkey not set (set VAULT_PASSKEY to hand brokers a vault without a SQL update).");
+  // Same string for both codes is a configuration mistake, not a feature: the
+  // route would then hand every tester the private-data workspace the tester
+  // grant exists to withhold. Loud rather than fatal — refusing to boot over
+  // it would take the site down for a misconfiguration that opens nothing a
+  // rotation cannot close.
+  if (TESTER_PASSKEY && VAULT_PASSKEY && TESTER_PASSKEY === VAULT_PASSKEY) {
+    console.error("⛔ TESTER_PASSKEY and VAULT_PASSKEY are the SAME string, so every tester code " +
+      "also opens the broker vault. Set them to different values.");
+  }
 });

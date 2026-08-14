@@ -71,7 +71,10 @@ test("deadlineTokens falls back to 8000 when the body is missing or has no cap",
 
 test("declares pdfExtract and buildExtractBody has no tools", () => {
   assert.equal(P.capabilities.pdfExtract, true);
-  const body = P.buildExtractBody({ model: "claude-sonnet-4-6", prompt: "EXTRACT", pdfBase64: "AAA" });
+  const body = P.buildExtractBody({
+    model: "claude-sonnet-4-6", prompt: "EXTRACT",
+    fileBase64: "AAA", mediaType: "application/pdf",
+  });
   assert.equal("tools" in body, false);
   const wire = JSON.stringify(body);
   assert.equal(wire.includes("web_search"), false);
@@ -81,6 +84,23 @@ test("declares pdfExtract and buildExtractBody has no tools", () => {
   assert.equal(blocks[0].source.media_type, "application/pdf");
   assert.equal(blocks[0].source.data, "AAA");
   assert.equal(blocks[1].text, "EXTRACT");
+});
+
+test("declares imageExtract and sends a screenshot as an image block, not a document", () => {
+  assert.equal(P.capabilities.imageExtract, true);
+  for (const media of ["image/png", "image/jpeg", "image/webp"]) {
+    const body = P.buildExtractBody({
+      model: "claude-sonnet-4-6", prompt: "EXTRACT",
+      fileBase64: "AAA", mediaType: media,
+    });
+    const blocks = body.messages[0].content;
+    assert.equal(blocks[0].type, "image",
+      `${media} in a document block is a 400 from the vendor, not a read table`);
+    assert.equal(blocks[0].source.media_type, media);
+    assert.equal(blocks[0].source.data, "AAA");
+    assert.equal(blocks[1].text, "EXTRACT");
+    assert.equal("tools" in body, false);
+  }
 });
 
 test("parseExtractResponse keeps text, usage, and stop_reason", () => {

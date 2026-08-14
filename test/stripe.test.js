@@ -13,7 +13,7 @@ const crypto = require("node:crypto");
 
 const {
   formEncode, verifyWebhookSignature, planForPrice, statusForStripe,
-  subscriptionRowFrom, periodEndIso, WEBHOOK_TOLERANCE_MS,
+  subscriptionRowFrom, periodEndIso, refundOf, WEBHOOK_TOLERANCE_MS,
 } = require("../stripe");
 
 const SECRET = "whsec_test_secret";
@@ -265,4 +265,50 @@ test("a grace row still grants Pro, and an expired grace row does not", () => {
   assert.equal(computeEntitlements({ user: { id: "u_1" }, subscription: row, now: NOW, enabled: true }).pro, true);
   const after = NOW + 8 * 24 * 3600 * 1000;
   assert.equal(computeEntitlements({ user: { id: "u_1" }, subscription: row, now: after, enabled: true }).pro, false);
+});
+
+// --- refunds ---------------------------------------------------------------
+//
+// `charge.refunded` fires for partial refunds as well as full ones, and the
+// difference decides whether a customer keeps the report they bought. Until
+// this handler existed no refund revoked anything at all.
+
+test("a fully refunded charge is a full refund", () => {
+  assert.deepEqual(
+    refundOf({ id: "ch_1", payment_intent: "pi_1", refunded: true, amount: 2000, amount_refunded: 2000 }),
+    { paymentIntentId: "pi_1", full: true });
+});
+
+test("amounts alone can establish a full refund when the flag is absent", () => {
+  assert.equal(refundOf({ payment_intent: "pi_1", amount: 2000, amount_refunded: 2000 }).full, true);
+});
+
+test("a partial refund is NOT full — the unlock must survive it", () => {
+  const r = refundOf({ payment_intent: "pi_1", refunded: false, amount: 2000, amount_refunded: 500 });
+  assert.equal(r.full, false);
+  assert.equal(r.paymentIntentId, "pi_1");
+});
+
+test("a charge with nothing refunded is not a full refund of nothing", () => {
+  // amount_refunded >= amount is true at 0 >= 0, which would make every
+  // zero-amount object look fully refunded.
+  assert.equal(refundOf({ payment_intent: "pi_1", amount: 0, amount_refunded: 0 }).full, false);
+  assert.equal(refundOf({ payment_intent: "pi_1", amount: 2000, amount_refunded: 0 }).full, false);
+});
+
+test("an expanded payment intent still yields its id", () => {
+  assert.equal(refundOf({ payment_intent: { id: "pi_9" }, refunded: true }).paymentIntentId, "pi_9");
+});
+
+test("a charge with no payment intent yields null, not a guess", () => {
+  // The payment intent is the only join to report_purchases; without it the
+  // handler must report the refund as unmatched rather than pick a row.
+  assert.equal(refundOf({ id: "ch_1", refunded: true }).paymentIntentId, null);
+  assert.equal(refundOf({ payment_intent: "" }).paymentIntentId, null);
+});
+
+test("garbage in produces a safe answer, not a throw", () => {
+  assert.deepEqual(refundOf(null), { paymentIntentId: null, full: false });
+  assert.deepEqual(refundOf(undefined), { paymentIntentId: null, full: false });
+  assert.equal(refundOf({ amount: "x", amount_refunded: "y" }).full, false);
 });

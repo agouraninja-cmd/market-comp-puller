@@ -191,6 +191,15 @@ test("a nearby sale wins the slot over an otherwise identical far one", () => {
   assert.equal(visible[0].address, "NEAR");
 });
 
+test("Residential ranking down-weights a 5-mile house more than CRE does", () => {
+  const far = comp({ address: "FAR", distance_mi: 5, date: "Jul 2026" });
+  assert.ok(
+    compWeight(far, NOW, 50000, { propertyType: "Residential" }) <
+      compWeight(far, NOW, 50000),
+    "the 4 shown house comps must be the nearby ones, not CRE's 4-mile curve"
+  );
+});
+
 test("selection is stable — re-gating a cached report picks the same comps", () => {
   const comps = Array.from({ length: 9 }, (_, i) => comp({ address: `A${i}` }));
   const a = selectVisible(comps, 4, { asOfMs: NOW, subjectSqft: 50000 });

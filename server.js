@@ -2340,8 +2340,9 @@ const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SE
 // reason to search less. Default ON; `off` restores exact-market matching.
 const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
 
-// Saved deals within 10 miles join the report at serialization. Default ON;
-// `off` restores search-only reports. Harvest still writes either way.
+// Saved deals within 10 miles (CRE) / 1 mile (houses) join the report at
+// serialization. Default ON; `off` restores search-only reports. Harvest
+// still writes either way.
 const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
@@ -3906,7 +3907,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // across the county, and the count rules elsewhere in this prompt do not
     // say that on their own.
     type === "Residential"
-      ? `NEIGHBORHOOD (Residential, overrides RADIUS above): a home's value is set by its own neighborhood, so comps must come from the subject's immediate area — the same subdivision, or within roughly one mile, and on the same side of any boundary a buyer would notice (school attendance area, a highway or river, a distinctly different price tier). Do NOT widen to the wider town, county, or metro to reach a comp count: returning 3 comps from the subject's own streets is BETTER than returning 8 that include homes miles away, and a distant comp drags the estimate toward a neighborhood the subject is not in. Only reach past about a mile when the immediate area genuinely has fewer than 3 sales in the window; when you do, say so in "summary" and say roughly how far you went.`
+      ? `NEIGHBORHOOD (Residential, overrides RADIUS above): a home's value is set by its own neighborhood, so comps must come from the subject's immediate area — the same subdivision, or within roughly one mile, and on the same side of any boundary a buyer would notice (school attendance area, a highway or river, a distinctly different price tier). If the market note names a radius in miles (e.g. "2.5 miles"), that radius IS the neighborhood for this search — do not shrink it to one mile, and do not reach past it to pad the list. A cheaper or pricier pocket inside that circle is still a different product; do not include it just because it sits within the named radius. Do NOT widen to the wider town, county, or metro to reach a comp count: returning 3 comps from the subject's own streets is BETTER than returning 8 that include homes miles away, and a distant comp drags the estimate toward a neighborhood the subject is not in. Only reach past the named radius (or about a mile when none was named) when the immediate area genuinely has fewer than 3 sales in the window; when you do, say so in "summary" and say roughly how far you went.`
       : "",
     ``,
     `TASK: Find 3 to ${maxComps} RECENT ${
@@ -11416,16 +11417,26 @@ const server = http.createServer((req, res) =>
               keyOf: corpusKeyOf,
               subjectAddress: addressOk,
               isAggregateAddress,
+              propertyType: typeOk,
+              marketNote: noteOk,
+              subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
             });
             if (merged && merged.corpus_count) {
-              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${RADIUSBLEND.RADIUS_MILES} mi of ${addressOk}`);
+              const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
+              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
             }
             merged = RADIUSBLEND.attachCompDistances(merged, subject);
           } else {
             merged = RADIUSBLEND.attachCompDistances(merged);
           }
           const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
-          const gated = GATE.gateReport(merged, ent, { asOfMs: Date.now(), subjectSqft });
+          const gated = GATE.gateReport(merged, ent, {
+            asOfMs: Date.now(),
+            subjectSqft,
+            propertyType: typeOk,
+            radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
+            subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
+          });
           if (!gated || typeof gated !== "object") return gated;
           // `ent` was resolved with THIS report's id, so it already knows a single-report
           // unlock makes its exports unlimited — /api/config cannot, because it
@@ -17204,7 +17215,7 @@ server.listen(PORT, () => {
     ? "🔐 Account wall ON — anonymous visitors get the landing page at / (200, not a redirect; /desk redirects home), and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
     : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");
   console.log(CORPUS_RADIUS
-    ? "📍 Corpus radius blend ON — saved deals within 10 miles join the report (set CORPUS_RADIUS=off to disable)."
+    ? "📍 Corpus radius blend ON — saved deals within 10 miles join CRE reports, 1 mile for houses (set CORPUS_RADIUS=off to disable)."
     : "📍 Corpus radius blend off (CORPUS_RADIUS=off) — reports are search-only.");
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`

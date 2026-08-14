@@ -152,10 +152,10 @@
   //                then halving per further 15 years (a 1994 house should not
   //                be priced by 2024 new construction: they are different
   //                products even on the same block)
-  //   distance     free pass within 1 mile, then a 4-mile half-life (a sale
-  //                five miles away is a different pocket; the Austin Rosedale
-  //                failure was vintage AND pocket, and vintage alone left the
-  //                far comps pulling the headline)
+  //   distance     free pass within 1 mile, then a half-life (4 miles for
+  //                CRE, 2 miles for Residential — a sale five miles away is
+  //                a different pocket; the 4-mile CRE half-life still let
+  //                cheaper houses a few miles over pull a $2M home to $1M)
   //   source       verified/public-record full weight, down to half for model
   //                estimates (mirrors the badge tiers)
   // Floored at 0.15 so no comp silently vanishes from a range it visibly sits
@@ -163,7 +163,41 @@
   // callers that have no year (the accuracy backtest, a report whose lookup
   // found none) keep the pre-vintage weights exactly. Missing distance is
   // the same: a comp the map has not placed yet must not be punished.
-  function compWeight(c, asOf, subjSF, subjYear) {
+  // `opts.propertyType` (or a 5th-arg string) switches the distance half-life
+  // for Residential; omitted keeps the CRE 4-mile curve so existing callers
+  // do not move.
+  function distanceHalfLifeMiles(propType) {
+    return propType === "Residential" ? 2 : 4;
+  }
+
+  // "2.5 miles", "within 2.5 mi", "2.5 mile radius". Null when the note does
+  // not name a distance: the type default (1 mile for houses, 1-mile free
+  // pass for CRE) stands. Capped at 50 so a stray "1000 miles" cannot
+  // become the blend radius.
+  function parseRadiusMiles(note) {
+    if (note == null || note === "") return null;
+    const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return n > 0 && n <= 50 ? n : null;
+  }
+
+  // A house more than 1.5× the subject's implied $/SF is a different
+  // pocket, even at 0.3 miles. Same 1.5× bar blend-corpus.js uses on
+  // extras (RESIDENTIAL_PRICE_TIER_RATIO). Past it, the weight floors so
+  // 15 cheaper sales cannot outvote 4 true comps in the IQR. Missing
+  // subject $/SF is neutral — we do not invent a tier.
+  var PRICE_TIER_RATIO = 1.5;
+  function priceTierFactor(compPsf, subjectPsf) {
+    if (!(compPsf > 0) || !(subjectPsf > 0)) return 1;
+    const octaves = Math.abs(Math.log2(compPsf / subjectPsf));
+    if (octaves <= Math.log2(PRICE_TIER_RATIO)) return 1;
+    return 0.15;
+  }
+
+  function compWeight(c, asOf, subjSF, subjYear, opts) {
+    const o = opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
+    const propType = typeof opts === "string" ? opts : o.propertyType;
     let w = 1;
     const age = compAgeYears(c, asOf);
     if (age !== null) w *= Math.pow(0.5, age / 2);
@@ -178,7 +212,10 @@
       if (dy > 15) w *= Math.pow(0.5, (dy - 15) / 15);
     }
     const mi = distanceMiles(c);
-    if (mi !== null && mi > 1) w *= Math.pow(0.5, (mi - 1) / 4);
+    const halfLife = distanceHalfLifeMiles(propType);
+    const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : 1;
+    if (mi !== null && mi > freePass) w *= Math.pow(0.5, (mi - freePass) / halfLife);
+    if (propType === "Residential") w *= priceTierFactor(salePsfOf(c), o.subjectPsf);
     const tier = tierOf(c);
     if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
     return Math.max(0.15, w);
@@ -231,7 +268,11 @@
 
     const rr = robustPpsfRange(items.map((x) => ({
       v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
-      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear),
+      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear, {
+        propertyType: o.propertyType,
+        radiusMiles: o.radiusMiles,
+        subjectPsf: o.subjectPsf,
+      }),
     })));
 
     return {
@@ -337,7 +378,9 @@
 
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
-    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, compWeight, trendFactor,
+    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    parseRadiusMiles, priceTierFactor, PRICE_TIER_RATIO,
+    compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
   };
 });

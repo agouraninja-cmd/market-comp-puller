@@ -3043,7 +3043,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit } = VALUATION;
+          compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
+          parseRadiusMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -3532,9 +3533,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // haversine per comp and no network call at all.
   //
   // The mile figure also feeds valuation.js's distance term (1-mile free pass,
-  // then a 4-mile half-life). Locked comps carry `distance_mi` and never
-  // lat/lng, which is how a free report's range stays in step with Pro once
-  // the server has stamped the number. Unplaced comps stay neutral.
+  // then a 4-mile half-life for CRE / 2-mile for houses). Locked comps carry
+  // `distance_mi` and never lat/lng, which is how a free report's range stays
+  // in step with Pro once the server has stamped the number. Unplaced comps
+  // stay neutral.
   // --------------------------------------------------------------------------
   function milesBetween(a, b) {
     const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
@@ -4460,7 +4462,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     deltaPct.textContent = gap.pct + "% " + (aboveAsk ? "below" : "above") + " this estimate";
     verdict.textContent = aboveAsk
       ? `Currently listed at ${money(ask)} — ${gap.pct}% below this estimate (likely ${money(val.likely)}, range ${money(val.low)}–${money(val.high)}). A gap this large usually means the comps are a different vintage or a pricier pocket than this property, not that the list price is a steal.`
-      : `Currently listed at ${money(ask)} — ${gap.pct}% above this estimate (likely ${money(val.likely)}, range ${money(val.low)}–${money(val.high)}). The ask may be ambitious relative to these comps.`;
+      : `Currently listed at ${money(ask)} — ${gap.pct}% above this estimate (likely ${money(val.likely)}, range ${money(val.low)}–${money(val.high)}). A gap this large usually means the comps are a different vintage or a cheaper pocket than this property, not that the list price is ambitious.`;
     card.classList.remove("hidden");
   }
 
@@ -4588,9 +4590,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function trendPctOf(parsed) {
     return parsed ? parsed.annual_price_trend_pct : null;
   }
+  function weightOpts(meta, parsed) {
+    const ask = askingRangeFrom(parsed);
+    const sf = subjectSizeForMatch(parsed);
+    const askMid = ask ? (ask.min + ask.max) / 2 : 0;
+    const psf = (askMid > 0 && sf > 0) ? askMid / sf : 0;
+    return {
+      propertyType: meta && meta.type,
+      radiusMiles: parseRadiusMiles(meta && meta.note),
+      subjectPsf: (psf >= 1 && psf <= 100000) ? psf : 0,
+    };
+  }
 
   function matchQuality(comp, meta, parsed) {
-    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed));
+    const opts = weightOpts(meta, parsed);
+    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed), opts);
     const tier = MATCH_TIERS.find((t) => w >= t.min) || MATCH_TIERS[MATCH_TIERS.length - 1];
     // Reasons in the same order compWeight multiplies them, so the label can
     // always be traced back to the five factors that produced it.
@@ -4611,7 +4625,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     const mi = numericValue(comp.distance_mi);
     if (mi >= 0 && Number.isFinite(mi)) {
-      reasons.push(mi > 1 ? "farther away" : "nearby");
+      const free = Number(opts.radiusMiles) > 0 ? Number(opts.radiusMiles) : 1;
+      reasons.push(mi > free ? "farther away" : "nearby");
+    }
+    if (opts.propertyType === "Residential" && opts.subjectPsf > 0) {
+      const cpsf = salePsfOf(comp);
+      if (cpsf > 0 && Math.abs(Math.log2(cpsf / opts.subjectPsf)) > Math.log2(1.5)) {
+        reasons.push("different price tier");
+      }
     }
     const t = SOURCE_TIERS[compTier(comp)];
     if (t) reasons.push(t.label.toLowerCase() + " source");
@@ -4694,6 +4715,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const val = valueFromComps(carriers.map((x) => x.comp), {
       subjectSF: 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
       subjectYear: subjectYearForMatch(parsed),
+      ...weightOpts(meta, parsed),
       readValue: (c) => numericValue(c[spec.compKey]),
     });
     if (!val) return null;
@@ -4971,6 +4993,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const val = valueFromComps(saleComps.map((x) => x.comp), {
       subjectSF: sizeR || 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
       subjectYear: subjectYearForMatch(parsed),
+      ...weightOpts(meta, parsed),
     });
     const psfBand = val
       ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
@@ -4978,7 +5001,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     currentPsfBand = psfBand;
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
-    const weighNote = " Recent, similar-size, similar-vintage, well-sourced comps count more"
+    const weighNote = " Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
           + `(adj in the table shows each indexed figure).`
@@ -5520,7 +5543,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       trustEl.textContent += (trustEl.textContent ? " " : "")
         + (askGap.dir === "above"
           ? `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% below this estimate. A gap this large usually means the comps are a different vintage or a pricier pocket than this property, not that the list price is a steal.`
-          : `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% above this estimate. The ask may be ambitious relative to these comps.`);
+          : `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% above this estimate. A gap this large usually means the comps are a different vintage or a cheaper pocket than this property, not that the list price is ambitious.`);
       trustEl.classList.remove("hidden");
     }
 
@@ -5569,6 +5592,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const val = sizeR ? valueFromComps(valuationComps(), {
       subjectSF: sizeR, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
       subjectYear: subjectYearForMatch(parsed),
+      ...weightOpts(meta, parsed),
     }) : null;
     if (val && val.n >= 2) {
       return { value: val.psfMid * ((sizeR.min + sizeR.max) / 2), source: "comp-based likely value" };

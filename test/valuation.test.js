@@ -162,6 +162,79 @@ test("compWeight halves at five miles (4-mile half-life after the 1-mile pass)",
   assert.equal(V.compWeight(comp({ distance_mi: "5.0 mi" }), AS_OF, 10000), 0.5);
 });
 
+test("Residential distance half-life is 2 miles, so a 5-mile house counts half as much as CRE", () => {
+  // CRE: 0.5^((5-1)/4) = 0.5. Residential: 0.5^((5-1)/2) = 0.25.
+  assert.equal(V.distanceHalfLifeMiles("Residential"), 2);
+  assert.equal(V.distanceHalfLifeMiles("Industrial"), 4);
+  assert.equal(V.compWeight(comp({ distance_mi: 5 }), AS_OF, 10000, null, "Residential"), 0.25);
+  assert.equal(V.compWeight(comp({ distance_mi: 3 }), AS_OF, 10000, null, { propertyType: "Residential" }), 0.5);
+});
+
+test("a $2M house is not valued off a majority of cheaper houses a few miles over", () => {
+  // 4 nearby sales at $500/SF (the subject's own streets) plus 15 sales at
+  // $250/SF six miles away — the 19-comp flood from a 10-mile residential
+  // blend. CRE's 4-mile half-life still lets the cheap majority win the
+  // weighted median; the house curve does not.
+  const nearby = Array.from({ length: 4 }, (_, i) =>
+    comp({ address: i + " Near St", price_per_sqft: "500", size_sqft: "4000", distance_mi: 0.3 }));
+  const far = Array.from({ length: 15 }, (_, i) =>
+    comp({ address: i + " Far Rd", price_per_sqft: "250", size_sqft: "4000", distance_mi: 6 }));
+  const house = V.valueFromComps(nearby.concat(far), {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null, propertyType: "Residential",
+  });
+  const cre = V.valueFromComps(nearby.concat(far), {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null,
+  });
+  assert.ok(house.psfMid > 400, "house likely should sit with the nearby $500/SF comps, got " + house.psfMid);
+  assert.ok(cre.psfMid < house.psfMid, "CRE curve should sit closer to the cheap majority");
+  assert.equal(house.n, 19);
+});
+
+test("parseRadiusMiles reads a market note and refuses junk", () => {
+  assert.equal(V.parseRadiusMiles("2.5 miles"), 2.5);
+  assert.equal(V.parseRadiusMiles("within 2.5 mi"), 2.5);
+  assert.equal(V.parseRadiusMiles("2.5 mile radius"), 2.5);
+  assert.equal(V.parseRadiusMiles(""), null);
+  assert.equal(V.parseRadiusMiles("North Dallas submarket"), null);
+  assert.equal(V.parseRadiusMiles("1000 miles"), null);
+});
+
+test("priceTierFactor floors a 2x $/SF miss and leaves a 1.2x peer full weight", () => {
+  assert.equal(V.priceTierFactor(500, 500), 1);
+  assert.equal(V.priceTierFactor(600, 500), 1);
+  assert.equal(V.priceTierFactor(250, 500), 0.15);
+  assert.equal(V.priceTierFactor(250, 0), 1);
+});
+
+test("a $2M house among cheaper sales inside a 2.5-mile market note recovers via price tier", () => {
+  // Owner typed "2.5 miles" as the market note. All 19 comps sit inside that
+  // circle, so distance cannot separate them. 4 true comps at $500/SF and
+  // 15 cheaper houses at $250/SF — without the asking $/SF the IQR sits at
+  // $1M; with it the cheap majority floors and the headline follows the $2M
+  // product.
+  const peers = Array.from({ length: 4 }, (_, i) =>
+    comp({ address: i + " Peer St", price_per_sqft: "500", size_sqft: "4000", distance_mi: 2.3 }));
+  const cheap = Array.from({ length: 15 }, (_, i) =>
+    comp({ address: i + " Cheap Rd", price_per_sqft: "250", size_sqft: "4000", distance_mi: 2.4 }));
+  const mixed = peers.concat(cheap);
+  const withAsk = V.valueFromComps(mixed, {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null,
+    propertyType: "Residential", radiusMiles: 2.5, subjectPsf: 500,
+  });
+  const noAsk = V.valueFromComps(mixed, {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null,
+    propertyType: "Residential", radiusMiles: 2.5,
+  });
+  assert.ok(withAsk.psfMid > 400, "asking $/SF should recover the $2M tier, got " + withAsk.psfMid);
+  assert.ok(noAsk.psfMid < 350, "without an ask, 2.5-mile cheaper comps still win, got " + noAsk.psfMid);
+  assert.equal(V.compWeight(cheap[0], AS_OF, 4000, null, {
+    propertyType: "Residential", radiusMiles: 2.5, subjectPsf: 500,
+  }), 0.15);
+  assert.equal(V.compWeight(peers[0], AS_OF, 4000, null, {
+    propertyType: "Residential", radiusMiles: 2.5, subjectPsf: 500,
+  }), 1);
+});
+
 test("compWeight treats missing distance as neutral, never as a penalty", () => {
   assert.equal(V.compWeight(comp({ distance_mi: "" }), AS_OF, 10000), 1);
   assert.equal(V.compWeight(comp(), AS_OF, 10000), 1);

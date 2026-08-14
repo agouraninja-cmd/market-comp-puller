@@ -7776,15 +7776,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     });
   }
 
+  // Photo eligibility for a pin popup. Four gates, all required — the same
+  // ones svPhoto and the Street View prefetch share, so a pin that cannot
+  // show a picture also cannot bill Google for one.
+  //   1. OSM mapped the building (_bldgLL). Without a footprint the photo
+  //      would center on the street point (a dirt-road picture). Owner's
+  //      rule after a rural McCall report: the actual property or nothing.
+  //   2. Geocoder matched THIS address (_geoOk). A wrong-street geocode
+  //      still lands on a real footprint and photographs someone else's
+  //      building.
+  //   3. Address starts with a street number. Submarket rows geocode to a
+  //      district point and several snap onto the same nearby building.
+  //   4. That number names a whole property, not a unit (Trailer 51, Apt
+  //      3B). Geocoders drop the unit, so no footprint is provably theirs.
+  function popupPhotoLL(marker, address) {
+    const snapped = marker && marker._bldgLL;
+    if (!snapped) return null;
+    if (marker._geoOk !== true) return null;
+    if (!/^\s*\d+\s+\S/.test(String(address || ""))) return null;
+    if (unitDesignatorOf(address)) return null;
+    return snapped;
+  }
+  function streetViewSrc(ll) {
+    return "/api/streetview?lat=" + ll.lat.toFixed(6) + "&lng=" + ll.lng.toFixed(6);
+  }
+
   // Aerial close-up for a pin popup: free Esri World Imagery tiles stitched
   // into a crop centered on the property (a crop smaller than one 256px tile
   // touches at most 4 tiles). No key, no billing. A red dot marks the exact
-  // point; tiles that fail to load simply hide. This is the picture that
-  // paints on hover (tiles prefetched after the building snap). Street View
-  // overlays it when a camera sits within 35 m of the building and can be
-  // aimed at it; a far pano 404s and this roof stays. (First shipped
-  // 2026-07-13 as 427ff44; Street View overlay restored 2026-08-14 behind
-  // the honesty gate.)
+  // point; tiles that fail to load simply hide. Street View is the photo
+  // that paints on hover (prefetched after the building snap). This roof is
+  // the fallback when the proxy 404s a far pano. (First shipped 2026-07-13
+  // as 427ff44; Street View restored 2026-08-14 behind the honesty gate.)
   // Tile math lives in one place so prefetch after the building snap hits
   // the same URLs the popup will request.
   function aerialTileSpec(ll, w, h, z) {
@@ -7819,10 +7842,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // photograph itself, whose colours a site theme has no business
     // changing.
     const p = pinColors();
+    // When a Street View overlay is coming, hide the roof so hover does not
+    // flash bird's-eye then facade. onerror unhides .cn-sv-fallback.
+    const hideAerial = Boolean(overlayHtml);
     return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:${p.aerialBg}">` +
+      `<div class="cn-sv-fallback"${hideAerial ? ' style="display:none"' : ""}>` +
       imgs +
       `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
       `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
+      `</div>` +
       overlayHtml +
       `</div>`;
   }
@@ -7843,6 +7871,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const img = new Image();
         img.src = t.src;
       }
+    }
+  }
+  // Warm Street View for photo-eligible pins so hover paints the facade
+  // from cache instead of the roof. Same URL the popup will request; a
+  // 404 here is a cached miss and the aerial fallback stays. Only pins
+  // that pass popupPhotoLL bill Google — a numberless or unit address
+  // never starts a fetch.
+  function prefetchStreetViewThumbs(markers) {
+    if (!streetviewEnabled) return;
+    for (const m of markers) {
+      const ll = popupPhotoLL(m, m._addr);
+      if (!ll) continue;
+      const img = new Image();
+      img.src = streetViewSrc(ll);
     }
   }
 
@@ -8076,52 +8118,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (n >= 40000) return 17;
       return 18;
     };
-    // Popup photo: aerial of the snapped building paints immediately
-    // (tiles already prefetched). Street View overlays it when the proxy
-    // finds a camera within 35 m and aims it at the building; a 404
-    // leaves the roof. Popup content is a FUNCTION so Leaflet builds it
+    // Popup photo: Street View of the snapped building (prefetched after
+    // the footprint lands). The aerial roof is hidden until the proxy
+    // 404s a far pano. Popup content is a FUNCTION so Leaflet builds it
     // at open time from the marker's CURRENT position — refinePins()
     // moves pins after first paint. Coordinates come from the snapped
     // centroid — numbers, nothing user-authored.
     const svPhoto = (marker, zoom, address) => {
-      // Photo ONLY when OSM maps the building. The footprint is the one
-      // signal that guarantees the picture shows the PROPERTY: with it, the
-      // aerial centers on the structure. Without it, the aerial would
-      // center on the street point (a photo of a dirt road). Owner's rule
-      // after a rural McCall report served that failure: show the actual
-      // property or show nothing. Footprint coverage is strong exactly
-      // where photos work (cities/suburbs) and thin exactly where they
-      // embarrassed us.
-      const snapped = marker._bldgLL;
+      const snapped = popupPhotoLL(marker, address);
       if (!snapped) return "";
-      // ...and only when the geocoder's answer demonstrably matches the
-      // address (geoLabelMatches, set during the re-place pass). A
-      // wrong-street geocode passes every other gate — the pin lands
-      // somewhere real, a footprint exists there — and produces this
-      // feature's worst failure: a confident photo of someone else's
-      // property. Unverified (undefined) is treated the same as failed:
-      // show the actual property or show nothing.
-      if (marker._geoOk !== true) return "";
-      // ...and only when the address names a specific street number. The
-      // model sometimes returns submarket-level rows ("Washington Street
-      // corridor, Downtown Crossing", "Financial District (general
-      // submarket estimate)") — those geocode to a district point, several
-      // of them snap onto the SAME nearby building, and a Boston report
-      // showed one white column three times. A numberless address has no
-      // property to photograph. This is deliberately NOT server-side
-      // isAggregateAddress() (vocabulary-based, shape-lenient): that guard
-      // keeps real-but-numberless comps IN the corpus, where they're valid
-      // data; a photo needs location precision the corpus doesn't.
-      if (!/^\s*\d+\s+\S/.test(String(address || ""))) return "";
-      // ...and only when that street number names a whole property rather than
-      // one unit inside it. "6728 W Fairview Ave Trailer 51" geocodes to the
-      // park's entrance, where 38 footprints share the number: the snap can
-      // pick a trailer, but not THAT trailer, and photographing a stranger's
-      // home is exactly the failure the rule above exists to prevent. Comps
-      // are gated too, deliberately — the model returns unit addresses of its
-      // own ("Trailer 20" was comp 1 on that report) and the same photo would
-      // be just as wrong beside a comp as beside the subject.
-      if (unitDesignatorOf(address)) return "";
       // Size the photo to the map: on a phone the map is ~341px wide and a
       // 260px photo made the whole popup wider than the map — the left edge
       // clipped and no pan can fix a popup that simply doesn't fit. Content
@@ -8130,14 +8135,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const h = Math.round(w * 0.6);
       let overlay = "";
       if (streetviewEnabled) {
-        // Hidden until onload: hover stays on the prefetched aerial. onerror
-        // drops the img so a refused (far) pano never covers the roof.
+        // Visible (opacity 0 until the JPEG lands) so a cached Street View
+        // paints without a bird's-eye flash. onerror unhides the aerial.
         overlay =
-          '<img src="/api/streetview?lat=' + snapped.lat.toFixed(6) + '&lng=' + snapped.lng.toFixed(6) +
+          '<img src="' + streetViewSrc(snapped) +
           '" width="' + w + '" height="' + h + '" alt=""' +
-          ' style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:none"' +
-          ' onload="this.style.display=\'block\';var g=this.nextElementSibling;if(g)g.style.display=\'block\'"' +
-          ' onerror="this.remove()">' +
+          ' style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;opacity:0"' +
+          ' onload="this.style.opacity=\'1\';var g=this.nextElementSibling;if(g)g.style.display=\'block\'"' +
+          ' onerror="var p=this.parentNode;var g=this.nextElementSibling;this.remove();if(g)g.remove();var a=p&&p.querySelector(\'.cn-sv-fallback\');if(a)a.style.display=\'block\'">' +
           '<div style="display:none;position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Google</div>';
       }
       return aerialThumb(snapped, w, h, zoom || 17, overlay);
@@ -8387,6 +8392,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       snapMarkersToBuildings(allMarkers()).then(() => {
         if (gen !== mapGeneration) return;
         prefetchAerialThumbs(allMarkers());
+        prefetchStreetViewThumbs(allMarkers());
       });
       // Pins are final, so this is the one moment we know which comps never got
       // one. A comp whose address will not geocode simply produced no marker

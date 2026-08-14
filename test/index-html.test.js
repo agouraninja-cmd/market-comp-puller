@@ -318,25 +318,39 @@ test("the print button waits for the raster", () => {
 });
 
 // ----------------------------------------------------------------------------
-// Map pin popups — aerial paints immediately; Street View overlays only when
-// a camera is within 35 m of the snapped building and aimed at it. Hover
-// timers stay short; a refused pano leaves the roof.
+// Map pin popups — Street View paints on hover (prefetched after the
+// building snap). The aerial roof stays hidden unless that request 404s.
+// Hover timers stay short.
 // ----------------------------------------------------------------------------
 
-test("map pin popups paint aerial first, then overlay Street View", () => {
+test("map pin popups show Street View, with the aerial as a hidden fallback", () => {
   const fn = html.match(/const svPhoto = \(marker, zoom, address\) => \{[\s\S]*?\n    \};\n    \/\/ Popups must never/);
   assert.ok(fn, "index.html must define svPhoto()");
+  assert.match(fn[0], /popupPhotoLL\(marker, address\)/);
   assert.match(fn[0], /return aerialThumb\(snapped,/);
-  assert.match(fn[0], /\/api\/streetview\?lat=/);
+  assert.match(fn[0], /streetViewSrc\(snapped\)/);
   assert.match(fn[0], /streetviewEnabled/);
-  // Overlay stays hidden until the JPEG lands, so hover is the aerial.
-  assert.match(fn[0], /onload="this\.style\.display=\\'block\\'/);
-  assert.match(fn[0], /onerror="this\.remove\(\)"/);
-  // Honesty gates still wrap the photo: no footprint / unverified geocode /
-  // numberless address / unit designator means no picture at all.
-  assert.match(fn[0], /marker\._bldgLL/);
+  // Facade is the photo: opacity 0 until the JPEG lands, never display:none
+  // (that would paint the roof first). onerror unhides .cn-sv-fallback.
+  assert.match(fn[0], /opacity:0/);
+  assert.match(fn[0], /onload="this\.style\.opacity=\\'1\\'/);
+  assert.match(fn[0], /cn-sv-fallback/);
+  assert.doesNotMatch(fn[0], /display:none.*onload/);
+});
+
+test("popupPhotoLL refuses a pin that cannot honestly show a building", () => {
+  const fn = html.match(/function popupPhotoLL\(marker, address\) \{[\s\S]*?\n  \}\n  function streetViewSrc/);
+  assert.ok(fn, "index.html must define popupPhotoLL()");
+  assert.match(fn[0], /marker && marker\._bldgLL/);
   assert.match(fn[0], /marker\._geoOk !== true/);
   assert.match(fn[0], /unitDesignatorOf\(address\)/);
+});
+
+test("aerialThumb hides the roof while a Street View overlay is coming", () => {
+  const fn = html.match(/function aerialThumb\([\s\S]*?\n  \}\n  \/\/ Warm the Esri tiles/);
+  assert.ok(fn, "index.html must define aerialThumb()");
+  assert.match(fn[0], /cn-sv-fallback/);
+  assert.match(fn[0], /hideAerial \? ' style="display:none"'/);
 });
 
 test("map pin hover opens in 60ms and closes in 80ms", () => {
@@ -355,15 +369,21 @@ test("Leaflet popup fade is disabled so hover close is the timer, not a 200ms fa
 test("aerial popup tiles are prefetched after the building snap", () => {
   assert.match(html, /function prefetchAerialThumbs\(markers\)/);
   assert.match(html, /function aerialTileSpec\(/);
-  const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,280}/);
+  const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,400}/);
   assert.ok(snap, "renderMap must call snapMarkersToBuildings");
   assert.match(snap[0], /prefetchAerialThumbs\(allMarkers\(\)\)/);
 });
 
-test("Street View is not prefetched for every pin — only the hovered overlay bills Google", () => {
-  const prefetch = html.match(/function prefetchAerialThumbs\(markers\) \{[\s\S]*?\n  \}/);
-  assert.ok(prefetch, "index.html must define prefetchAerialThumbs()");
-  assert.doesNotMatch(prefetch[0], /\/api\/streetview/);
+test("Street View is prefetched for photo-eligible pins so hover is the facade", () => {
+  const prefetch = html.match(/function prefetchStreetViewThumbs\(markers\) \{[\s\S]*?\n  \}/);
+  assert.ok(prefetch, "index.html must define prefetchStreetViewThumbs()");
+  assert.match(prefetch[0], /streetviewEnabled/);
+  assert.match(prefetch[0], /popupPhotoLL\(m, m\._addr\)/);
+  assert.match(prefetch[0], /streetViewSrc\(ll\)/);
+  assert.match(html, /function streetViewSrc\(ll\) \{[\s\S]*?\/api\/streetview\?lat=/);
+  const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,400}/);
+  assert.ok(snap, "renderMap must call snapMarkersToBuildings");
+  assert.match(snap[0], /prefetchStreetViewThumbs\(allMarkers\(\)\)/);
 });
 
 test("landing address handoff fills #address from sessionStorage and drops the key", () => {

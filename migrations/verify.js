@@ -58,6 +58,10 @@ const TABLES = [
   ["lead_intro_requests", "015-broker-lead-inbox.sql"],
   ["broker_properties",   "016-broker-comps-star.sql"],
   ["report_viewers",      "018-report-sharing.sql"],
+  ["hubs",                "024-messaging-hub.sql"],
+  ["hub_participants",    "024-messaging-hub.sql"],
+  ["hub_items",           "024-messaging-hub.sql"],
+  ["hub_messages",        "024-messaging-hub.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -123,6 +127,25 @@ const COLUMNS = [
   // here is what turns "the migration was run" from a claim into a fact.
   ["users",             ["pro_tester"],                         "022-tester-passkey.sql"],
   ["users",             ["vault_beta"],                         "023-vault-beta.sql"],
+  // 024's load-bearing columns. token_hash and removed_at are the hub's
+  // entire access story (one hashed token per participant, and the removal
+  // that beats ownership), and hub_items.snapshot is what makes a sent comp a
+  // record of what was disclosed rather than a live join into the vault.
+  // Missing either is not a degraded hub, it is a 400 on every read — which
+  // is the intended loud failure, but only if someone can see it named here.
+  ["hub_participants",  ["token_hash", "removed_at", "role"],    "024-messaging-hub.sql"],
+  ["hub_items",         ["snapshot", "private", "source_ref"],   "024-messaging-hub.sql"],
+  // 026 is the one migration in this list whose absence breaks the WRITE
+  // path rather than a read: logEvent inserts these two columns, and
+  // PostgREST 400s an insert naming a column that does not exist, so every
+  // analytics event diverts to the ephemeral file fallback and the dashboard
+  // silently flattens. Checking it here is cheaper than noticing the graph.
+  ["analytics_events",  ["visitor_id", "user_id", "plan"],      "026-analytics-visitor.sql"],
+  // 025's absence is caught by the digest route's own 503, but only after
+  // somebody triggers it. Checking here says so before the first send rather
+  // than during it.
+  ["watchlist_items",   ["last_digest_at"],                     "025-watchlist-digest.sql"],
+  ["users",             ["digest_optout"],                      "025-watchlist-digest.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

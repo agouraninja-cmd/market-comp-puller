@@ -1175,17 +1175,22 @@ async function consumePasswordReset(token) {
 }
 
 // --- portfolio ---
-const PORTFOLIO_MAX_ITEMS = 100;
 const PORTFOLIO_MAX_SNAPSHOTS = 60;
 async function listPortfolio(userId) {
   if (DB_CONFIGURED) {
     return sbRequest("GET",
       `portfolio_items?user_id=eq.${encodeURIComponent(userId)}` +
-      `&select=id,address,property_type,snapshots,created_at,updated_at&order=updated_at.desc&limit=200`) || [];
+      // Must be ≥ PRO_PORTFOLIO_MAX_ITEMS or the cap count and the upsert
+      // match both go blind past 200.
+      `&select=id,address,property_type,snapshots,created_at,updated_at&order=updated_at.desc&limit=500`) || [];
   }
   return (await accountStore()).portfolio.filter((x) => x.user_id === userId)
     .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
     .map(({ payload, ...rest }) => rest);
+}
+async function findPortfolioMatch(userId, address, property_type) {
+  const items = await listPortfolio(userId);
+  return items.find((x) => x.address === address && x.property_type === property_type) || null;
 }
 async function getPortfolioItem(userId, id) {
   if (DB_CONFIGURED) {
@@ -5876,7 +5881,7 @@ function yearFracOfDate(d) {
 // fills up from everybody's searches, so the market keeps moving in between.
 //
 // Corpus reads are batched by market+type, since a portfolio is usually
-// several buildings in one or two markets and PORTFOLIO_MAX_ITEMS is 20.
+// several buildings in one or two markets and the cap is 500.
 //
 // Fails SAFE and silent: any error leaves the items exactly as they were, with
 // no `movement` key. The desk renders nothing for a property without one, and
@@ -11937,7 +11942,9 @@ const server = http.createServer((req, res) =>
       req.on("data", (c) => { body += c; if (body.length > 3e5) req.destroy(); }); // a report is a few KB; 300KB is plenty
       req.on("end", async () => {
         try {
-          if (rateLimited("pf:" + clientIp(req), 60)) {
+          // Must sit above PRO_PORTFOLIO_MAX_ITEMS or filling the book (and
+          // the Free-cap proof of 100 inserts) 429s before the cap can fire.
+          if (rateLimited("pf:" + clientIp(req), 600)) {
             return sendJson(res, 429, { error: "Too many requests. Please slow down." });
           }
           const user = await requireUser(req, res);
@@ -11957,8 +11964,18 @@ const server = http.createServer((req, res) =>
             logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
             return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
           }
-          if ((await listPortfolio(user.id)).length >= PORTFOLIO_MAX_ITEMS) {
-            return sendJson(res, 400, { error: `Portfolio is full (${PORTFOLIO_MAX_ITEMS} properties).` });
+          const items = await listPortfolio(user.id);
+          const existing = items.find((x) => x.address === address && x.property_type === property_type);
+          if (existing) {
+            const updated = await updatePortfolioItem(user.id, existing.id, { payload, snapshot: snap });
+            if (!updated) return sendJson(res, 404, { error: "Not found." });
+            logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
+            return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
+          }
+          const ent = await getEntitlements(user);
+          const cap = Number(ent.portfolioMaxItems) || ENT.FREE_PORTFOLIO_MAX_ITEMS;
+          if (items.length >= cap) {
+            return sendJson(res, 400, { error: `Portfolio is full (${cap} properties).` });
           }
           const item = await insertPortfolioItem(user.id, { address, property_type, payload, snapshot: snap });
           logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
@@ -14725,6 +14742,11 @@ const server = http.createServer((req, res) =>
           // so editing this response reveals a nav link and nothing behind it.
           broker: ent.broker === true,
           canUseVault: ent.canUseVault === true,
+          // Presentation only, like canUseVault: the POST /api/portfolio
+          // route re-resolves entitlements, so editing this response
+          // relabels the desk and unlocks nothing.
+          portfolioMaxItems: ent.portfolioMaxItems,
+          portfolioValues: ent.portfolioValues === true,
           graceUntil: ent.graceUntil,
         },
       });

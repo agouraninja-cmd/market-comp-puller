@@ -1772,6 +1772,8 @@ test("buildPrompt treats Residential as a home-buyer CMA, not a CRE analyst writ
     "a house prompt must not ask for NNN / credit-tenant occupancy");
   assert.match(body, /do not restate them in notes/,
     "beds and year built already have columns; restating them puffed the first rows");
+  assert.match(body, /If the market note names a radius in miles/,
+    "a typed 2.5-mile market note must override the 1-mile neighborhood default");
 });
 
 test("buildPrompt asks for subject_assessed next to last-sale, not in summary", () => {
@@ -2005,6 +2007,8 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   assert.ok(distAt < paywallAt, "distance must be on the comps (and then locked_basis) before gateReport");
   assert.match(body, /propertyType:\s*typeOk/,
     "house reports must pass the type so the blend uses the 1-mile radius, not CRE's 10");
+  assert.match(body, /marketNote:\s*noteOk/,
+    "a typed 2.5-mile market note must set the blend radius");
   assert.equal(/harvestComps\s*\(\s*typeOk/.test(body), false,
     "harvest must not run inside gate() — extras would re-enter the corpus from a serialization-only merge");
 });

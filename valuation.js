@@ -170,6 +170,31 @@
     return propType === "Residential" ? 2 : 4;
   }
 
+  // "2.5 miles", "within 2.5 mi", "2.5 mile radius". Null when the note does
+  // not name a distance: the type default (1 mile for houses, 1-mile free
+  // pass for CRE) stands. Capped at 50 so a stray "1000 miles" cannot
+  // become the blend radius.
+  function parseRadiusMiles(note) {
+    if (note == null || note === "") return null;
+    const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return n > 0 && n <= 50 ? n : null;
+  }
+
+  // A house more than 1.5× the subject's implied $/SF is a different
+  // pocket, even at 0.3 miles. Same 1.5× bar blend-corpus.js uses on
+  // extras (RESIDENTIAL_PRICE_TIER_RATIO). Past it, the weight floors so
+  // 15 cheaper sales cannot outvote 4 true comps in the IQR. Missing
+  // subject $/SF is neutral — we do not invent a tier.
+  var PRICE_TIER_RATIO = 1.5;
+  function priceTierFactor(compPsf, subjectPsf) {
+    if (!(compPsf > 0) || !(subjectPsf > 0)) return 1;
+    const octaves = Math.abs(Math.log2(compPsf / subjectPsf));
+    if (octaves <= Math.log2(PRICE_TIER_RATIO)) return 1;
+    return 0.15;
+  }
+
   function compWeight(c, asOf, subjSF, subjYear, opts) {
     const o = opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
     const propType = typeof opts === "string" ? opts : o.propertyType;
@@ -188,7 +213,9 @@
     }
     const mi = distanceMiles(c);
     const halfLife = distanceHalfLifeMiles(propType);
-    if (mi !== null && mi > 1) w *= Math.pow(0.5, (mi - 1) / halfLife);
+    const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : 1;
+    if (mi !== null && mi > freePass) w *= Math.pow(0.5, (mi - freePass) / halfLife);
+    if (propType === "Residential") w *= priceTierFactor(salePsfOf(c), o.subjectPsf);
     const tier = tierOf(c);
     if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
     return Math.max(0.15, w);
@@ -243,6 +270,8 @@
       v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
       w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear, {
         propertyType: o.propertyType,
+        radiusMiles: o.radiusMiles,
+        subjectPsf: o.subjectPsf,
       }),
     })));
 
@@ -350,6 +379,7 @@
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    parseRadiusMiles, priceTierFactor, PRICE_TIER_RATIO,
     compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
   };

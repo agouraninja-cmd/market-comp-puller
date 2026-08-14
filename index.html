@@ -3029,7 +3029,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit } = VALUATION;
+          compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
+          parseRadiusMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -4575,12 +4576,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function trendPctOf(parsed) {
     return parsed ? parsed.annual_price_trend_pct : null;
   }
-  function weightOpts(meta) {
-    return { propertyType: meta && meta.type };
+  function weightOpts(meta, parsed) {
+    const ask = askingRangeFrom(parsed);
+    const sf = subjectSizeForMatch(parsed);
+    const askMid = ask ? (ask.min + ask.max) / 2 : 0;
+    const psf = (askMid > 0 && sf > 0) ? askMid / sf : 0;
+    return {
+      propertyType: meta && meta.type,
+      radiusMiles: parseRadiusMiles(meta && meta.note),
+      subjectPsf: (psf >= 1 && psf <= 100000) ? psf : 0,
+    };
   }
 
   function matchQuality(comp, meta, parsed) {
-    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed), weightOpts(meta));
+    const opts = weightOpts(meta, parsed);
+    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed), opts);
     const tier = MATCH_TIERS.find((t) => w >= t.min) || MATCH_TIERS[MATCH_TIERS.length - 1];
     // Reasons in the same order compWeight multiplies them, so the label can
     // always be traced back to the five factors that produced it.
@@ -4601,7 +4611,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     const mi = numericValue(comp.distance_mi);
     if (mi >= 0 && Number.isFinite(mi)) {
-      reasons.push(mi > 1 ? "farther away" : "nearby");
+      const free = Number(opts.radiusMiles) > 0 ? Number(opts.radiusMiles) : 1;
+      reasons.push(mi > free ? "farther away" : "nearby");
+    }
+    if (opts.propertyType === "Residential" && opts.subjectPsf > 0) {
+      const cpsf = salePsfOf(comp);
+      if (cpsf > 0 && Math.abs(Math.log2(cpsf / opts.subjectPsf)) > Math.log2(1.5)) {
+        reasons.push("different price tier");
+      }
     }
     const t = SOURCE_TIERS[compTier(comp)];
     if (t) reasons.push(t.label.toLowerCase() + " source");
@@ -4684,7 +4701,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const val = valueFromComps(carriers.map((x) => x.comp), {
       subjectSF: 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
       subjectYear: subjectYearForMatch(parsed),
-      propertyType: meta && meta.type,
+      ...weightOpts(meta, parsed),
       readValue: (c) => numericValue(c[spec.compKey]),
     });
     if (!val) return null;
@@ -4962,7 +4979,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const val = valueFromComps(saleComps.map((x) => x.comp), {
       subjectSF: sizeR || 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
       subjectYear: subjectYearForMatch(parsed),
-      propertyType: meta && meta.type,
+      ...weightOpts(meta, parsed),
     });
     const psfBand = val
       ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
@@ -4970,7 +4987,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     currentPsfBand = psfBand;
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
-    const weighNote = " Recent, similar-size, similar-vintage, nearby, well-sourced comps count more"
+    const weighNote = " Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
           + `(adj in the table shows each indexed figure).`
@@ -5561,7 +5578,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const val = sizeR ? valueFromComps(valuationComps(), {
       subjectSF: sizeR, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
       subjectYear: subjectYearForMatch(parsed),
-      propertyType: meta && meta.type,
+      ...weightOpts(meta, parsed),
     }) : null;
     if (val && val.n >= 2) {
       return { value: val.psfMid * ((sizeR.min + sizeR.max) / 2), source: "comp-based likely value" };

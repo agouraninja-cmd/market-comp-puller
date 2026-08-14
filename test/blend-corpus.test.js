@@ -247,6 +247,21 @@ test("radiusMilesFor keeps CRE at 10 miles and houses at 1", () => {
   assert.equal(radiusMilesFor(""), RADIUS_MILES);
 });
 
+test("a market note of 2.5 miles is the house blend radius, not the 1-mile default", () => {
+  assert.equal(radiusMilesFor("Residential", "2.5 miles"), 2.5);
+  assert.equal(radiusMilesFor("Residential", "within 2.5 mi"), 2.5);
+  const inner = row({ ll: offsetMiles(BOISE, 2.4), address: "40 Note Rd, Boise, ID" });
+  const out = blendNearbyComps(report(), [inner], {
+    ...OPTS, propertyType: "Residential", marketNote: "2.5 miles",
+  });
+  assert.equal(out.corpus_count, 1);
+  const far = row({ ll: offsetMiles(BOISE, 5), address: "41 Past Rd, Boise, ID" });
+  const past = blendNearbyComps(report(), [far], {
+    ...OPTS, propertyType: "Residential", marketNote: "2.5 miles",
+  });
+  assert.equal("corpus_count" in past, false);
+});
+
 test("a Residential report drops a deal 5 miles out that CRE would keep", () => {
   const five = row({ ll: offsetMiles(BOISE, 5) });
   const house = blendNearbyComps(report(), [five], { ...OPTS, propertyType: "Residential" });

@@ -898,11 +898,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   **before** `gateReport()`, `blendNearbyComps` folds in harvested deals of
   the same property type whose date is inside the lookback, that have
   coordinates, and that sit within **10 miles** of the subject for CRE —
-  **1 mile for Residential** — even across city lines. Houses trade by
+  **1 mile for Residential** unless the market note names a radius in miles
+  (a typed "2.5 miles" is the neighborhood for that search; shrinking it to
+  one mile would fight the instruction the owner just gave). Houses trade by
   neighborhood; the 10-mile CRE circle priced a $2M home off cheaper sales
-  from the next pocket over (19 comps, ~$1M headline). Residential extras
-  that are more than 1.5× the subject's implied $/SF (ask ÷ size) are
-  dropped too, even inside that mile; missing ask is neutral. They join
+  from the next pocket over (19 comps, ~$1M headline). When the 19 comps
+  already sit inside that named circle, distance cannot separate them —
+  Residential extras more than 1.5× the subject's implied $/SF (ask ÷ size)
+  are dropped, and `compWeight` floors the same miss so the IQR cannot be
+  outvoted by the cheaper majority. Missing ask is neutral. They join
   the table and the Low / Likely / High math; a free report turns extras
   into `locked_basis` so the dollar range still matches Pro.
   Harvest Census-geocodes new rows before the insert (fire-and-forget with
@@ -2325,13 +2329,17 @@ private row has not earned. Two rules matter when editing anything down here:
    evidence, not a fourth figure** — `renderSubjectAsking` draws one line
    under the approaches; `askFit` (pure, in `valuation.js`, same 25% rule as
    `outlierOf`) names a gap of more than 25% on the trust line and never
-   changes the range. **Vintage is a `compWeight` factor** — free pass
+   becomes a fourth ledger figure. On houses it IS a `compWeight` factor:
+   more than 1.5× off the asking $/SF floors the weight, so cheaper sales
+   inside a typed 2.5-mile circle cannot set a $2M home to $1M. **Vintage
+   is a `compWeight` factor** — free pass
    within 15 years of `subject_year_built`, then halving per further 15
    years — so a 2024 teardown-rebuild does not price a 1994 resale at full
    weight. **Distance is the fifth** — free pass within 1 mile, then a
-   4-mile half-life for CRE and a **2-mile half-life for Residential** — so
-   a sale across town does not pull like one next door; `distance_mi` rides
-   `locked_basis` (never lat/lng). `year_built` rides `locked_basis` so
+   4-mile half-life for CRE and a **2-mile half-life for Residential**, with
+   the free pass widened to a market-note radius when one was typed (so a
+   "2.5 miles" note does not then punish comps at 2.4 miles). `distance_mi`
+   rides `locked_basis` (never lat/lng). `year_built` rides `locked_basis` so
    free and Pro ranges still match. When the estimate sits well below the
    ask, the trust line names a cheaper pocket (the 19-comp / $1M-vs-$2M
    failure), not an ambitious list price. **User-typed

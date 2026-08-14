@@ -81,6 +81,13 @@ function distanceHalfLifeMiles(propType) {
   return propType === "Residential" ? 2 : 4;
 }
 
+function priceTierFactor(compPsf, subjectPsf) {
+  if (!(compPsf > 0) || !(subjectPsf > 0)) return 1;
+  const octaves = Math.abs(Math.log2(compPsf / subjectPsf));
+  if (octaves <= Math.log2(1.5)) return 1;
+  return 0.15;
+}
+
 function compWeight(c, asOfMs, subjectSqft, opts) {
   const o = opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
   const propType = typeof opts === "string" ? opts : o.propertyType;
@@ -94,7 +101,9 @@ function compWeight(c, asOfMs, subjectSqft, opts) {
   }
   const mi = numericValue(c && c.distance_mi);
   const halfLife = distanceHalfLifeMiles(propType);
-  if (mi >= 0 && Number.isFinite(mi) && mi > 1) w *= Math.pow(0.5, (mi - 1) / halfLife);
+  const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : 1;
+  if (mi >= 0 && Number.isFinite(mi) && mi > freePass) w *= Math.pow(0.5, (mi - freePass) / halfLife);
+  if (propType === "Residential") w *= priceTierFactor(salePsf(c), o.subjectPsf);
   const tier = tierOf(c);
   if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
   return Math.max(0.15, w);
@@ -112,7 +121,7 @@ function compWeight(c, asOfMs, subjectSqft, opts) {
  * valuation already trusts, so "the 4 shown" are the 4 that moved the number
  * most, not the first 4 the model happened to name.
  */
-function selectVisible(comps, limit, { asOfMs = Date.now(), subjectSqft = 0, propertyType } = {}) {
+function selectVisible(comps, limit, { asOfMs = Date.now(), subjectSqft = 0, propertyType, radiusMiles, subjectPsf } = {}) {
   const all = Array.isArray(comps) ? comps.slice() : [];
   if (!Number.isFinite(limit) || limit >= all.length) return { visible: all, locked: [] };
   if (limit <= 0) return { visible: [], locked: all };
@@ -120,7 +129,7 @@ function selectVisible(comps, limit, { asOfMs = Date.now(), subjectSqft = 0, pro
   // Stable: index breaks weight ties so the same report always gates the same
   // way (a cached report re-gated on a later request must not reshuffle).
   const scored = all.map((c, i) => ({
-    c, i, w: compWeight(c, asOfMs, subjectSqft, { propertyType }), lease: isLease(c),
+    c, i, w: compWeight(c, asOfMs, subjectSqft, { propertyType, radiusMiles, subjectPsf }), lease: isLease(c),
   }));
   const byRank = (a, b) => (b.w - a.w) || (a.i - b.i);
   const sales = scored.filter((x) => !x.lease).sort(byRank);
@@ -180,13 +189,15 @@ function basisRow(c) {
  * @param {object} report  a parsed report ({ comps, ... })
  * @param {object} ent     from getEntitlements()
  */
-function gateReport(report, ent, { asOfMs = Date.now(), subjectSqft = 0, propertyType } = {}) {
+function gateReport(report, ent, { asOfMs = Date.now(), subjectSqft = 0, propertyType, radiusMiles, subjectPsf } = {}) {
   if (!report || !Array.isArray(report.comps)) return report;
   const limit = !ent || ent.maxComps === "all" ? Infinity : Number(ent.maxComps);
   if (!Number.isFinite(limit) || limit >= report.comps.length) {
     return { ...report, locked_count: 0 };
   }
-  const { visible, locked } = selectVisible(report.comps, limit, { asOfMs, subjectSqft, propertyType });
+  const { visible, locked } = selectVisible(report.comps, limit, {
+    asOfMs, subjectSqft, propertyType, radiusMiles, subjectPsf,
+  });
   return {
     ...report,
     comps: visible,

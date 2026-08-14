@@ -8,7 +8,8 @@
 // no Census. server.js owns the corpus read and the geocode. That is what lets
 // `npm test` prove "in range" without a network, and what keeps a mile rule
 // from silently becoming "same city" because the module got tired of missing
-// coordinates. Residential is 1 mile; CRE is 10.
+// coordinates. Residential is 1 mile unless the market note names a radius
+// (a "2.5 miles" note is the neighborhood for that search); CRE is 10.
 //
 // ---------------------------------------------------------------------------
 // THE RULE: BLEND AT SERIALIZATION, BEFORE THE PAYWALL, NEVER AT GENERATION
@@ -50,8 +51,22 @@ const RESIDENTIAL_RADIUS_MILES = 1;
 const RESIDENTIAL_PRICE_TIER_RATIO = 1.5;
 const EARTH_MILES = 3959;
 
-function radiusMilesFor(type) {
+function radiusMilesFor(type, note) {
+  const fromNote = parseRadiusMiles(note);
+  if (fromNote != null) return fromNote;
   return type === "Residential" ? RESIDENTIAL_RADIUS_MILES : RADIUS_MILES;
+}
+
+// ⚠ MIRROR valuation.js parseRadiusMiles. The blend radius and the
+// distance free-pass must read the same market note the same way, or a
+// "2.5 miles" search would auto-include a different circle than the one
+// the hero treats as in-market.
+function parseRadiusMiles(note) {
+  if (note == null || note === "") return null;
+  const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n > 0 && n <= 50 ? n : null;
 }
 
 const FIELD_MAP = {
@@ -200,7 +215,7 @@ function blendNearbyComps(report, rows, opts) {
   const subjectKey = normAddr(o.subjectAddress);
   const radius = Number.isFinite(Number(o.radiusMiles))
     ? Number(o.radiusMiles)
-    : radiusMilesFor(o.propertyType);
+    : radiusMilesFor(o.propertyType, o.marketNote);
   const subjectPsf = o.propertyType === "Residential" ? impliedSubjectPsf(report, o) : 0;
 
   const comps = Array.isArray(report.comps) ? report.comps : [];
@@ -268,6 +283,7 @@ module.exports = {
   RESIDENTIAL_RADIUS_MILES,
   RESIDENTIAL_PRICE_TIER_RATIO,
   radiusMilesFor,
+  parseRadiusMiles,
   impliedSubjectPsf,
   samePriceTier,
   salePsfOf,

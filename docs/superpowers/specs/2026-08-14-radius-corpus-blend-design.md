@@ -40,9 +40,11 @@ No I/O, no clock reads (caller passes `now`), no Census. server.js owns the
 read and the geocode.
 
 - `RADIUS_MILES`: `10` (CRE). `RESIDENTIAL_RADIUS_MILES`: `1`.
-  `radiusMilesFor(type)` picks. Houses trade by neighborhood; auto-including
-  the CRE circle priced a $2M home off cheaper sales from the next pocket
-  (amended 2026-08-14, owner report).
+  `radiusMilesFor(type, note)` picks. A market note that names a radius
+  ("2.5 miles") wins over the type default — shrinking a typed 2.5-mile
+  neighborhood to one mile fights the instruction. Houses trade by
+  neighborhood; auto-including the CRE circle priced a $2M home off cheaper
+  sales from the next pocket (amended 2026-08-14, owner report).
 - `milesBetween(a, b)`: haversine, earth radius 3959, matching `index.html`.
 - `parseCoords(row)`: both lat and lng finite, in range, and not the
   `Number(null) === 0` trap. Null / "" / one-sided → `null`. A deal we cannot
@@ -54,11 +56,11 @@ read and the geocode.
     when finite; else this. Missing both → return the same report object.
   - `opts.months`, `opts.now`, `opts.parseDealDate`, `opts.keyOf`,
     `opts.subjectAddress`, `opts.isAggregateAddress`, `opts.propertyType`,
-    `opts.subjectSize` / `opts.subjectPsf`.
+    `opts.marketNote`, `opts.subjectSize` / `opts.subjectPsf`.
   - Keep a row when: priced, not aggregate, parseable date `>=` lookback
     cutoff (same year-fraction math as `retrieveCorpusComps`), coords, `<=`
-    `radiusMilesFor(propertyType)` miles, address is not the subject, key is
-    not already in `report.comps`.
+    `radiusMilesFor(propertyType, marketNote)` miles, address is not the
+    subject, key is not already in `report.comps`.
   - **Residential price tier:** when the subject's implied $/SF is known
     (ask ÷ size), drop an extra more than 1.5× off that figure. Missing ask
     or size is neutral. CRE is not filtered this way.

@@ -1623,7 +1623,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
     should not have to author a CSV); `GET /api/vault/export.csv` downloads
-    the whole book. **`EDITABLE_FIELDS` in `broker-vault.js` is an
+    the whole book. After a spreadsheet import, `/vault` can open that book
+    as a grid (`Open spreadsheet`, or Open on that import): the same PATCH,
+    one field per cell, saved on leaving the cell so Tab/Enter work like a
+    spreadsheet. The compact Edit form stays for a single-row change from
+    the ordinary table. **`EDITABLE_FIELDS` in `broker-vault.js` is an
     allowlist**, not a second validator — `validateEdit(existing, patch)`
     merges the patch over the stored row and reruns it through
     `normalizeRow`, the same function every imported row goes through, so a

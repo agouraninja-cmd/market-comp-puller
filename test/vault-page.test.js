@@ -241,6 +241,7 @@ function stubInput(attrs) {
   const attr = (a) => {
     if (a === "data-i") return attrs.dataI;
     if (a === "data-k") return attrs.dataK;
+    if (a === "data-id") return attrs.dataId;
     return null;
   };
   return {
@@ -261,12 +262,14 @@ function parseInputs(html) {
     const type = (/\btype="([^"]*)"/.exec(attrs) || [])[1] || "text";
     const dataI = (/\bdata-i="([^"]*)"/.exec(attrs) || [])[1] || null;
     const dataK = (/\bdata-k="([^"]*)"/.exec(attrs) || [])[1] || null;
+    const dataId = (/\bdata-id="([^"]*)"/.exec(attrs) || [])[1] || null;
     const valueM = /\bvalue="([^"]*)"/.exec(attrs);
     const checked = /\schecked(?:\s|\/|>|$)/.test(" " + attrs) || /\bchecked="/.test(attrs);
     out.push(stubInput({
       type,
       dataI,
       dataK,
+      dataId,
       value: valueM ? valueM[1] : "",
       checked,
     }));
@@ -369,6 +372,7 @@ async function runPage(comps, benchResult, opts, identity) {
   opts = opts || {};
   const calls = [];
   const bootPayload = boot(comps, identity);
+  if (opts.uploads) bootPayload.j.uploads = opts.uploads;
   const html = renderVaultHTML(bootPayload, CHROME);
   const script = pageScript(html);
   const doc = stubDocument();
@@ -426,7 +430,16 @@ async function runPage(comps, benchResult, opts, identity) {
     if (u.indexOf("/api/broker/bovs") === 0) {
       return opts.bovs ? opts.bovs(init, u) : Promise.resolve(jsonResponse(200, { bovs: [], rollup: null }));
     }
-    if (u.indexOf("/api/vault?") === 0) return Promise.resolve(jsonResponse(200, bootPayload.j));
+    if (u.indexOf("/api/vault?") === 0) {
+      if (opts.reloadComps) {
+        return Promise.resolve(jsonResponse(200, Object.assign({}, bootPayload.j, {
+          comps: opts.reloadComps,
+          uploads: opts.reloadUploads || bootPayload.j.uploads,
+          counts: { returned: opts.reloadComps.length, published: 0 },
+        })));
+      }
+      return Promise.resolve(jsonResponse(200, bootPayload.j));
+    }
     return Promise.reject(new Error("unexpected fetch in test: " + u));
   };
   const fn = new Function("document", "window", "fetch", "GUTCHECK", "FileReader", script);
@@ -1312,6 +1325,135 @@ test("Delete confirms, then sends DELETE and reports an ordinary removal", async
   } finally {
     global.confirm = realConfirm;
   }
+});
+
+// ---------------------------------------------------------------------------
+// Spreadsheet mode: open the imported book in CompNinja and save on blur
+// ---------------------------------------------------------------------------
+
+test("the comps toolbar offers to open a spreadsheet", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /id="sheetToggle"/);
+  assert.match(html, /Open spreadsheet/);
+  assert.match(html, /id="sheetBar"/);
+});
+
+test("each import offers Open, next to Remove", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /data-open-sheet/);
+  assert.match(html, />Open</);
+});
+
+test("Open spreadsheet turns the current view into editable cells", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", price: 1000000 });
+  const { doc } = await runPage([c1]);
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+
+  const html = doc.getElementById("tbody").innerHTML;
+  assert.match(html, /data-id="c1"/);
+  assert.match(html, /data-k="address"/);
+  assert.match(html, /value="100 Main St"/);
+  assert.match(html, /data-k="price"/);
+  assert.equal(doc.getElementById("sheetToggle").textContent, "Done");
+  assert.match(doc.getElementById("sheetBar").textContent, /save when you leave a cell/i);
+  assert.ok(!html.includes("data-edit"),
+    "spreadsheet cells replace the compact Edit link; Delete stays");
+  assert.match(html, /data-del-comp/);
+});
+
+test("Open on an import shows only that file's comps", async () => {
+  const mine = comp({ id: "c1", upload_id: "u1", address: "100 Main St" });
+  const other = comp({ id: "c2", upload_id: "u2", address: "200 Oak Ave" });
+  const { doc } = await runPage([mine, other], null, {
+    uploads: [
+      { id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" },
+      { id: "u2", filename: "other.csv", row_count: 1, created_at: "2026-08-13" },
+    ],
+  });
+  doc.getElementById("ups").fire("click", {
+    target: { closest: (sel) => sel === 'button[data-open-sheet]'
+      ? { getAttribute: () => "u1" } : null },
+  });
+  await tick();
+
+  const html = doc.getElementById("tbody").innerHTML;
+  assert.match(html, /100 Main St/);
+  assert.ok(!html.includes("200 Oak Ave"),
+    "opening one import must not mix in another file's comps");
+  assert.match(doc.getElementById("sheetBar").textContent, /book\.csv/);
+});
+
+test("leaving a spreadsheet cell PATCHes only that field", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", notes: "corner lot" });
+  let sentBody = null;
+  const { doc } = await runPage([c1], null, {
+    comp: (init) => {
+      sentBody = JSON.parse(init.body);
+      return Promise.resolve(jsonResponse(200, { ok: true, unpublished: false, comp: { notes: "updated" } }));
+    },
+  });
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+
+  const inputs = doc.getElementById("tbody").querySelectorAll("input");
+  const notes = inputs.find((el) => el.getAttribute("data-k") === "notes");
+  assert.ok(notes, "the notes cell must be on the spreadsheet");
+  notes.value = "updated";
+  doc.getElementById("tbody").fire("focusout", { target: notes });
+  await tick();
+
+  assert.deepEqual(sentBody, { notes: "updated" },
+    "only the field that actually changed should travel in the PATCH body");
+  assert.equal(doc.getElementById("compMsg").textContent, "Saved.");
+  assert.equal(notes.className, "saved");
+});
+
+test("a failed spreadsheet save keeps the cell and shows the error", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St" });
+  const { doc } = await runPage([c1], null, {
+    comp: () => Promise.resolve(jsonResponse(400, { error: "price is not a number" })),
+  });
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+
+  const inputs = doc.getElementById("tbody").querySelectorAll("input");
+  const price = inputs.find((el) => el.getAttribute("data-k") === "price");
+  price.value = "1.2M";
+  doc.getElementById("tbody").fire("focusout", { target: price });
+  await tick();
+
+  assert.match(doc.getElementById("compMsg").textContent, /price is not a number/);
+  assert.equal(price.className, "err");
+  assert.match(doc.getElementById("tbody").innerHTML, /data-k="price"/,
+    "a failed save must not close the spreadsheet");
+});
+
+test("an import with an upload id opens that book as a spreadsheet", async () => {
+  const landed = comp({ id: "c-new", upload_id: "up-1", address: "8400 W Mission Blvd" });
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1, uploadId: "up-1" })),
+    reloadComps: [landed],
+    reloadUploads: [{ id: "up-1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+  });
+  await chooseFile(doc, CLEAN_CSV);
+  await tick();
+
+  assert.equal(doc.getElementById("sheetToggle").textContent, "Done");
+  assert.match(doc.getElementById("tbody").innerHTML, /8400 W Mission Blvd/);
+  assert.match(doc.getElementById("tbody").innerHTML, /data-k="address"/);
+});
+
+test("Done returns to the compact table", async () => {
+  const { doc } = await runPage([comp({ address: "100 Main St" })]);
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+
+  assert.equal(doc.getElementById("sheetToggle").textContent, "Open spreadsheet");
+  assert.match(doc.getElementById("tbody").innerHTML, /data-edit/);
+  assert.ok(doc.getElementById("sheetBar").classList.contains("hide"));
 });
 
 // ---------------------------------------------------------------------------

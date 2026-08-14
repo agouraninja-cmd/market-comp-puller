@@ -267,8 +267,9 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .lnk.danger:hover{color:var(--red-deep)}
 td.rowact{white-space:nowrap}
 /* The inline edit row: one form spanning every column, not per-cell inputs —
-   a comp carries fields (cap_rate, tenancy, year_built, notes) the table has
-   no column for at all, so a per-cell form could not hold them. Same grid as
+   a compact-table row hides cap_rate/tenancy/year_built/notes, so a per-cell
+   form on THAT view could not hold them. Spreadsheet mode is the other
+   door: it shows those columns as cells and saves on blur. Same grid as
    the add-by-hand and BOV forms, so the three data-entry surfaces read as
    one vocabulary. */
 .editrow td{background:var(--wash);padding:16px 18px}
@@ -277,6 +278,19 @@ td.rowact{white-space:nowrap}
 .editrow .form{max-width:920px}
 .editrow input,.editrow select{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);width:100%;min-height:40px}
+/* Spreadsheet mode: the uploaded book, as a grid. Cells are real inputs so
+   Tab/Enter move the way they do in Excel; a saving/error state rides on
+   the input rather than replacing the row, because rebuilding the table
+   on every blur would steal the next cell's focus. */
+#tbl.sheet td{padding:4px 6px;vertical-align:middle}
+#tbl.sheet th{padding:10px 8px}
+#tbl.sheet input[type=text]{width:100%;min-width:4.5rem;padding:7px 8px;border:1px solid var(--edge);
+  border-radius:var(--r);font-family:inherit;font-size:13px;background:var(--card);color:var(--ink);
+  min-height:36px}
+#tbl.sheet input.saving{opacity:.65}
+#tbl.sheet input.err{border-color:var(--red);background:var(--err-bg)}
+#tbl.sheet input.saved{border-color:var(--ok-rule)}
+#sheetBar{margin:var(--s4) 0 0}
 /* ---- The market rollup: the page's lead view ----------------------------
    A broker with 400 comps learns nothing from 400 rows. This is the index to
    their own book: one card per market + property type, which is the same pair
@@ -678,6 +692,7 @@ if(dd)dd.open=false;});</script>
         <label>Type <select id="fType"><option value="">All</option></select></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
+        <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
         <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
@@ -702,8 +717,9 @@ if(dd)dd.open=false;});</script>
            invisible to a broker who never opened the uploader. Edit and
            Delete get their own target instead. -->
       <p id="compMsg" class="msg hide" aria-live="polite"></p>
+      <p id="sheetBar" class="note hide"></p>
       <div class="tw"><table id="tbl">
-        <thead><tr>
+        <thead id="tblHead"><tr>
           <th data-k="address">Address</th><th data-k="market">Market</th>
           <th data-k="property_type">Type</th><th data-k="transaction">Deal</th>
           <th data-k="deal_date">Date</th><th data-k="price" class="num">Price</th>
@@ -910,6 +926,11 @@ if(dd)dd.open=false;});</script>
   // one at a time: two open forms would double the "only changed fields
   // travel" bookkeeping in saveComp for no real benefit.
   var editingId=null;
+  // Spreadsheet mode: the uploaded book as a grid of inputs. sheetUploadId
+  // narrows to one import (Open on that file); null means the current view.
+  // Kept across load() so a cell save that refetches, or a delete, does not
+  // dump the broker back into the compact table mid-edit.
+  var sheetMode=false,sheetUploadId=null,uploads=[];
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -930,8 +951,8 @@ if(dd)dd.open=false;});</script>
   //   3. Filtering is now instant and costs no round trip.
   function view(){
     var m=$("fMarket").value,t=$("fType").value;
-    if(!m&&!t)return comps;
     return comps.filter(function(c){
+      if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
       return (!m||c.market===m)&&(!t||c.property_type===t);
     });
   }
@@ -1067,6 +1088,7 @@ if(dd)dd.open=false;});</script>
     // Also the pipeline's market suggestions: a broker's next BOV is usually in
     // a market they already hold comps in, and this is where that list arrives.
     allMarkets=o.j.markets||[];
+    uploads=o.j.uploads||[];
     renderIdentity(o.j.identity);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
@@ -1127,6 +1149,61 @@ if(dd)dd.open=false;});</script>
     deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
     tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
 
+  function sheetLabel(k){
+    return EDIT_LABELS[k]||(typeof TARGET_LABELS!=="undefined"&&TARGET_LABELS[k])||k;
+  }
+  // Columns the spreadsheet shows. Core fields always (they are the template);
+  // per-type extras only when at least one row on screen carries them, matching
+  // exportCsv so a book with no clear heights does not grow empty columns.
+  // lat/lng are omitted: GET /api/vault does not stitch property coordinates
+  // today, so those cells would always look blank even when the building is
+  // located. The compact Edit form still reaches them via add-by-hand.
+  function sheetKeys(rows){
+    var extra=[];
+    (typeof PDF_KEYS!=="undefined"?PDF_KEYS:[]).forEach(function(k){
+      if(EDIT_FIELDS.indexOf(k)>=0)return;
+      if(k==="lat"||k==="lng")return;
+      var used=rows.some(function(c){return c[k]!=null&&String(c[k]).trim()!=="";});
+      if(used)extra.push(k);
+    });
+    return EDIT_FIELDS.concat(extra);
+  }
+  function uploadName(id){
+    if(!id)return "";
+    for(var i=0;i<uploads.length;i++){
+      if(String(uploads[i].id)===String(id))return uploads[i].filename||"Untitled import";
+    }
+    return "this import";
+  }
+  function headCell(k,label,num){
+    var on=k===sortK;
+    var arrow=on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"";
+    return '<th data-k="'+k+'"'+(num?' class="num"':"")+">"+esc(label)+arrow+"</th>";
+  }
+  function setSheetChrome(){
+    $("tbl").className=sheetMode?"sheet":"";
+    $("sheetToggle").textContent=sheetMode?"Done":"Open spreadsheet";
+    var bar=$("sheetBar");
+    if(!sheetMode){ bar.className="note hide"; bar.textContent=""; return; }
+    var name=uploadName(sheetUploadId);
+    bar.className="note";
+    bar.textContent=(name?"Editing "+name+" \\u00b7 ":"Spreadsheet \\u00b7 ")+
+      "changes save when you leave a cell. Editing a published comp withdraws it from the public records.";
+  }
+  function openSheet(uploadId){
+    sheetMode=true;
+    sheetUploadId=uploadId||null;
+    editingId=null;
+    if(uploadId){ $("fMarket").value=""; $("fType").value=""; }
+    render();
+    $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+  function closeSheet(){
+    sheetMode=false;
+    sheetUploadId=null;
+    render();
+  }
+
   function editRow(c){
     var fields=EDIT_FIELDS.map(function(f){
       var v=c[f]==null?"":c[f];
@@ -1156,6 +1233,20 @@ if(dd)dd.open=false;});</script>
       : "";
     renderChart(rows);
     renderRepeats(rows);
+    setSheetChrome();
+    if(sheetMode){
+      renderSheet(rows);
+      var sst=psfStats(rows),sps=sst.values,smed=median(sps);
+      renderStrip(rows,sps,smed,sst);
+      $("tblFoot").innerHTML="";
+      return;
+    }
+    $("tblHead").innerHTML="<tr>"+
+      headCell("address","Address")+headCell("market","Market")+
+      headCell("property_type","Type")+headCell("transaction","Deal")+
+      headCell("deal_date","Date")+headCell("price","Price",true)+
+      headCell("size_sqft","Size",true)+headCell("price_per_sqft","$/SF",true)+
+      headCell("published","Public")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
       // A row being edited replaces itself with the form, rather than the
       // form appearing beside it: two representations of the same comp on
@@ -1204,10 +1295,26 @@ if(dd)dd.open=false;});</script>
         : "Median of "+vps.length+" priced sale"+(vps.length===1?"":"s")+
           (rows.length===comps.length?"":" in this view"))+
       '</td><td class="num">'+(vst.mixed?"\\u2014":psf(vmed))+"</td><td></td><td></td></tr>";
-    Array.prototype.forEach.call(document.querySelectorAll("th[data-k]"),function(th){
-      var on=th.getAttribute("data-k")===sortK;
-      th.innerHTML=th.textContent.replace(/[ \\u25b2\\u25bc]+$/,"")+(on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"");
-    });
+  }
+
+  function renderSheet(rows){
+    var keys=sheetKeys(rows);
+    var numK={price:1,size_sqft:1,cap_rate:1,units:1,price_per_unit:1,lot_acres:1,price_per_acre:1};
+    $("tblHead").innerHTML="<tr>"+keys.map(function(k){
+      return headCell(k,sheetLabel(k),!!numK[k]);
+    }).join("")+headCell("published","Public")+'<th></th></tr>';
+    $("tbody").innerHTML=rows.map(function(c){
+      var pub=c.published
+        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
+        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var cells=keys.map(function(k){
+        var v=c[k]==null?"":c[k];
+        return '<td><input type="text" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
+          '" value="'+escA(v)+'"/></td>';
+      }).join("");
+      return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact"><button class="lnk danger" data-del-comp="'+
+        esc(c.id)+'">Delete</button></td></tr>';
+    }).join("");
   }
 
   // ---- The market rollup ---------------------------------------------------
@@ -1656,11 +1763,14 @@ if(dd)dd.open=false;});</script>
 
   function renderUploads(ups){
     $("ups").innerHTML=ups.length?ups.map(function(u){
+      var editing=sheetMode&&sheetUploadId&&String(sheetUploadId)===String(u.id);
       return '<div class="up"><span>'+esc(u.filename||"Untitled import")+
         ' <span class="meta">&middot; '+u.row_count+" comps"+
         (u.skipped_count?", "+u.skipped_count+" skipped":"")+
         " &middot; "+esc(String(u.created_at||"").slice(0,10))+'</span></span>'+
-        '<button data-del="'+esc(u.id)+'">Remove</button></div>';
+        '<span><button class="lnk" type="button" data-open-sheet="'+esc(u.id)+'">'+
+        (editing?"Editing":"Open")+"</button> "+
+        '<button data-del="'+esc(u.id)+'">Remove</button></span></div>';
     }).join(""):'<p class="empty">No imports yet.</p>';
   }
 
@@ -2114,6 +2224,15 @@ if(dd)dd.open=false;});</script>
         // not do.
         if(j.commented)bits.push(j.commented+" note line"+(j.commented===1?"":"s")+" ignored");
         $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errList(j)+"</div>";
+        // Open the imported book as a spreadsheet so the next step is
+        // fixing a cell, not hunting for Edit on each row. uploadId is
+        // already on the upload response; imported:0 means nothing new
+        // landed (a re-upload of an existing book) and those rows still
+        // belong to the earlier import.
+        if(j.uploadId&&j.imported>0){
+          sheetMode=true;
+          sheetUploadId=j.uploadId;
+        }
         load();
       })
       .catch(function(){ failed("The upload did not reach the server. Nothing was saved.",""); });
@@ -2653,6 +2772,9 @@ if(dd)dd.open=false;});</script>
   $("fClear").addEventListener("click",function(){
     $("fMarket").value=""; $("fType").value=""; redraw();
   });
+  $("sheetToggle").addEventListener("click",function(){
+    if(sheetMode)closeSheet(); else openSheet(null);
+  });
   // A rollup card is the filter. Clicking the one already selected clears it,
   // so a card is a toggle and never a trap you can only leave via the dropdowns.
   $("rollup").addEventListener("click",function(e){
@@ -2781,6 +2903,46 @@ if(dd)dd.open=false;});</script>
       : "Saved.");
   }
 
+  // One field of one row, from spreadsheet blur. Same PATCH as Save on the
+  // compact form, same "only the changed field travels" rule. Does NOT
+  // re-render the table: rebuilding the inputs would steal focus from the
+  // cell the broker just Tabbed into.
+  async function saveSheetCell(id, key, el){
+    var before=compById(id); if(!before||!el)return;
+    var v=String(el.value||"").trim();
+    var was=before[key]==null?"":String(before[key]);
+    if(v===was){ el.className=""; return; }
+    var patch={}; patch[key]=v;
+    el.className="saving";
+    var r;
+    try{
+      r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
+        method:"PATCH",credentials:"same-origin",
+        headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
+    }catch(err){
+      el.className="err";
+      return compMsg("That didn't reach the server. Nothing was changed.",true);
+    }
+    var j=await r.json().catch(function(){return{};});
+    if(!r.ok){
+      el.className="err";
+      return compMsg(j.error||"Could not save that change.",true);
+    }
+    var row=compById(id);
+    if(row){
+      row[key]=v;
+      if(j.comp){
+        Object.keys(j.comp).forEach(function(k){ row[k]=j.comp[k]; });
+      }
+    }
+    el.className="saved";
+    if(j.unpublished){
+      compMsg("Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it.");
+    }else{
+      compMsg("Saved.");
+    }
+  }
+
   // A second delegated listener beside the publish one above, rather than a
   // rewrite of it: each early-returns when the click was not its own kind of
   // button, so the two coexist safely on the same element.
@@ -2794,12 +2956,32 @@ if(dd)dd.open=false;});</script>
     var b=e.target.closest("button[data-edit]");
     if(b)return openEditor(b.getAttribute("data-edit"));
   });
+  // focusout bubbles (blur does not). One listener for every sheet cell,
+  // attached once: renderSheet rebuilds the inputs and must not re-bind.
+  $("tbody").addEventListener("focusout",function(e){
+    var el=e.target;
+    if(!sheetMode||!el||!el.getAttribute)return;
+    var k=el.getAttribute("data-k"), id=el.getAttribute("data-id");
+    if(!k||!id)return;
+    saveSheetCell(id,k,el);
+  });
+  $("tbody").addEventListener("keydown",function(e){
+    if(!sheetMode)return;
+    var el=e.target;
+    if(!el||!el.getAttribute||!el.getAttribute("data-k"))return;
+    if(e.key==="Enter"){ e.preventDefault(); el.blur(); }
+  });
 
   $("ups").addEventListener("click",function(e){
+    var open=e.target.closest("button[data-open-sheet]");
+    if(open)return openSheet(open.getAttribute("data-open-sheet"));
     var b=e.target.closest("button[data-del]"); if(!b)return;
     if(!confirm("Remove this import and all the comps that came in with it?"))return;
     fetch("/api/vault/upload?id="+encodeURIComponent(b.getAttribute("data-del")),
-      {method:"DELETE",credentials:"same-origin"}).then(load).catch(load);
+      {method:"DELETE",credentials:"same-origin"}).then(function(){
+        if(sheetUploadId&&String(sheetUploadId)===String(b.getAttribute("data-del")))closeSheet();
+        else load();
+      }).catch(load);
   });
 
   // ---- The hubs deck --------------------------------------------------------

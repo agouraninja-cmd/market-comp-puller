@@ -318,24 +318,33 @@ test("the print button waits for the raster", () => {
 });
 
 // ----------------------------------------------------------------------------
-// Map pin popups — Street View paints on hover (prefetched after the
-// building snap). The aerial roof stays hidden unless that request 404s.
-// Hover timers stay short.
+// Map pin popups — Street View is the photo. The aerial roof is a
+// different tree, swapped in only after a 404. Hover waits until the
+// JPEG has settled so the first paint is already the facade.
 // ----------------------------------------------------------------------------
 
-test("map pin popups show Street View, with the aerial as a hidden fallback", () => {
+test("map pin popups show Street View without stacking the aerial underneath", () => {
   const fn = html.match(/const svPhoto = \(marker, zoom, address\) => \{[\s\S]*?\n    \};\n    \/\/ Popups must never/);
   assert.ok(fn, "index.html must define svPhoto()");
   assert.match(fn[0], /popupPhotoLL\(marker, address\)/);
-  assert.match(fn[0], /return aerialThumb\(snapped,/);
-  assert.match(fn[0], /streetViewSrc\(snapped\)/);
+  assert.match(fn[0], /streetViewThumb\(snapped,/);
+  assert.match(fn[0], /aerialThumb\(snapped,/);
+  assert.match(fn[0], /marker\._svStatus === "fail"/);
   assert.match(fn[0], /streetviewEnabled/);
-  // Facade is the photo: opacity 0 until the JPEG lands, never display:none
-  // (that would paint the roof first). onerror unhides .cn-sv-fallback.
-  assert.match(fn[0], /opacity:0/);
-  assert.match(fn[0], /onload="this\.style\.opacity=\\'1\\'/);
-  assert.match(fn[0], /cn-sv-fallback/);
-  assert.doesNotMatch(fn[0], /display:none.*onload/);
+  // The two photos must not share a tree — that is what flashed bird's-eye.
+  assert.doesNotMatch(fn[0], /overlay/);
+  assert.doesNotMatch(fn[0], /cn-sv-fallback/);
+  assert.doesNotMatch(fn[0], /opacity:0/);
+});
+
+test("streetViewThumb has no Esri tiles, and a 404 swaps in aerialThumb", () => {
+  const fn = html.match(/function streetViewThumb\([\s\S]*?\n  function cnAerialFallback/);
+  assert.ok(fn, "index.html must define streetViewThumb()");
+  assert.match(fn[0], /streetViewSrc\(ll\)/);
+  assert.match(fn[0], /cnAerialFallback\(this\)/);
+  assert.match(fn[0], /&copy; Google/);
+  assert.doesNotMatch(fn[0], /arcgisonline|World_Imagery|&copy; Esri/);
+  assert.match(html, /function cnAerialFallback\(img\) \{[\s\S]*?aerialThumb\(/);
 });
 
 test("popupPhotoLL refuses a pin that cannot honestly show a building", () => {
@@ -346,20 +355,17 @@ test("popupPhotoLL refuses a pin that cannot honestly show a building", () => {
   assert.match(fn[0], /unitDesignatorOf\(address\)/);
 });
 
-test("aerialThumb hides the roof while a Street View overlay is coming", () => {
-  const fn = html.match(/function aerialThumb\([\s\S]*?\n  \}\n  \/\/ Warm the Esri tiles/);
-  assert.ok(fn, "index.html must define aerialThumb()");
-  assert.match(fn[0], /cn-sv-fallback/);
-  assert.match(fn[0], /hideAerial \? ' style="display:none"'/);
-});
-
 test("map pin hover opens in 60ms and closes in 80ms", () => {
   const fn = html.match(/const wireHoverPreview = \(m\) => \{[\s\S]*?\n    \};\n    const addSubjMarker/);
   assert.ok(fn, "index.html must define wireHoverPreview()");
-  assert.match(fn[0], /setTimeout\(\(\) => m\.openPopup\(\), 60\)/);
+  assert.match(fn[0], /setTimeout\([\s\S]*?,\s*60\)/);
+  assert.match(fn[0], /streetViewStatus/);
+  assert.match(fn[0], /m\.openPopup\(\)/);
   assert.match(fn[0], /setTimeout\(\(\) => m\.closePopup\(\), 80\)/);
   assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.openPopup\(\), 120\)/);
   assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.closePopup\(\), 320\)/);
+  // Opening before the JPEG settles is what flashed the roof.
+  assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.openPopup\(\), 60\)/);
 });
 
 test("Leaflet popup fade is disabled so hover close is the timer, not a 200ms fade", () => {
@@ -379,8 +385,9 @@ test("Street View is prefetched for photo-eligible pins so hover is the facade",
   assert.ok(prefetch, "index.html must define prefetchStreetViewThumbs()");
   assert.match(prefetch[0], /streetviewEnabled/);
   assert.match(prefetch[0], /popupPhotoLL\(m, m\._addr\)/);
-  assert.match(prefetch[0], /streetViewSrc\(ll\)/);
+  assert.match(prefetch[0], /streetViewStatus\(ll\)/);
   assert.match(html, /function streetViewSrc\(ll\) \{[\s\S]*?\/api\/streetview\?lat=/);
+  assert.match(html, /function streetViewStatus\(ll\)/);
   const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,400}/);
   assert.ok(snap, "renderMap must call snapMarkersToBuildings");
   assert.match(snap[0], /prefetchStreetViewThumbs\(allMarkers\(\)\)/);
@@ -726,6 +733,15 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(desk[0], /id="marketSearch"/);
   assert.match(desk[0], /id="marketSearchResults"/);
   assert.match(desk[0], /Or read a market/);
+  // The chamber is the narrow 1fr column of a max-w-5xl desk. The old
+  // "Try any market, e.g. industrial Boise ID" ran past the input's
+  // inner width and clipped the state. The note above already says
+  // search any market; the placeholder is only the example, with the
+  // comma the rest of the product uses. appearance:none drops the
+  // searchfield cancel gutter that ate the last letters on top of that.
+  assert.match(desk[0], /placeholder="e\.g\. industrial Boise, ID"/);
+  assert.doesNotMatch(desk[0], /Try any market, e\.g\./);
+  assert.match(html, /\.rd-desk-market-in \{[^}]*appearance:\s*none/);
   assert.equal((desk[0].match(/class="rd-chamber-head"/g) || []).length, 2,
     "both chambers share a rd-chamber-head so the title hairline is one rule");
 

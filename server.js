@@ -7872,7 +7872,7 @@ ${ACCOUNT_NAV_JS}
               </div>
             </form>
             <p class="landFine">Free account. Automated estimate, not an appraisal.</p>
-            <p class="landProof">Up to 12 cited comps &middot; about a minute &middot; every source disclosed.</p>
+            <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
             ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
         </div>
@@ -8003,10 +8003,10 @@ ${ACCOUNT_NAV_JS}
   if(!document.documentElement.classList.contains("anim"))return;
   var targets=[].slice.call(document.querySelectorAll("[data-rv]"));
   // Split each counting numeral into its own span HERE rather than in the
-  // served HTML, so the page as delivered still reads "Up to 12" and
-  // "$4,580,000" as single strings for crawlers, for anything grepping it,
-  // and for a visitor with no JS at all. data-count carries the numeral as it
-  // is displayed, commas and all, which is what makes it findable in the text.
+  // served HTML, so the page as delivered still reads "$4,580,000" as a
+  // single string for crawlers, for anything grepping it, and for a visitor
+  // with no JS at all. data-count carries the numeral as it is displayed,
+  // commas and all, which is what makes it findable in the text.
   var counters=[];
   [].slice.call(document.querySelectorAll("[data-count]")).forEach(function(el){
     var shown=el.getAttribute("data-count"),text=el.textContent,at=text.indexOf(shown);

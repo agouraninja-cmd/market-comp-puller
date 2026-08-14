@@ -352,12 +352,13 @@ test("the landing names the real search cost without a stat strip", async (t) =>
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(!/3&ndash;6/.test(html), p + " must not undersell the comp count");
       assert.ok(!/~40s/.test(html), p + " must not promise a 40-second report");
+      assert.ok(!/Up to 12/.test(html), p + " must not cap the table at 12; nearby deals join it");
     }
   });
 
   await t.test("the replacements match what the product does", async () => {
     const html = await (await fetch(srv.base + "/")).text();
-    assert.match(html, /Up to 12/, "the comp ask is 12; say so");
+    assert.match(html, /Cited comps/, "name the comps without inventing a count");
     assert.match(html, /minute/i, "a minute is the honest unit for a live search");
   });
 

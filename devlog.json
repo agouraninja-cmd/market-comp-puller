@@ -1,4 +1,5 @@
 [
+  {"date": "2026-08-14", "type": "fix", "title": "The proof line no longer says up to 12 comps", "details": "Nearby saved deals join the table, so a city report can carry far more than the search ask. The desk and the landing both dropped the cap. They still say cited comps, about a minute, every source disclosed."},
   {"date": "2026-08-14", "type": "fix", "title": "A house comps table is compact, and tenancy is gone", "details": "Residential reports showed CRE tenancy (often empty, sometimes a long NNN string) as a wide canyon before Year Built, and the first handful of rows sat taller than the rest because notes restated beds and year built and wrapped. The house table no longer carries tenancy. Notes stay on one line. Row padding is the same compact height for every row. The prompt stopped asking for house tenancy and stopped dumping beds and year into notes."},
   {
     "date": "2026-08-14",

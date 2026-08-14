@@ -43,10 +43,16 @@ test("listingDateForHarvest fills Active only for empty listing dates", () => {
 });
 
 test("isOnMarketListing is true only for priced listings with an unparseable date", () => {
-  assert.equal(H.isOnMarketListing({ ...pricedListing, deal_date: "Active" }, parseDealDate), true);
-  assert.equal(H.isOnMarketListing({ ...pricedListing, deal_date: "Mar 2025" }, parseDealDate), false);
-  assert.equal(H.isOnMarketListing({ ...pricedListing, source_type: "estimate", deal_date: "Active" }, parseDealDate), false);
-  assert.equal(H.isOnMarketListing({ ...pricedListing, price_or_rate: "", price_per_sqft: "", deal_date: "Active" }, parseDealDate), false);
+  assert.equal(H.isOnMarketListing({ ...pricedListing, deal_date: "Active" }, parseDealDate, corpusNum), true);
+  assert.equal(H.isOnMarketListing({ ...pricedListing, deal_date: "Mar 2025" }, parseDealDate, corpusNum), false);
+  assert.equal(H.isOnMarketListing({ ...pricedListing, source_type: "estimate", deal_date: "Active" }, parseDealDate, corpusNum), false);
+  assert.equal(H.isOnMarketListing({ ...pricedListing, price_or_rate: "", price_per_sqft: "", deal_date: "Active" }, parseDealDate, corpusNum), false);
+  assert.equal(H.isOnMarketListing({
+    ...pricedListing,
+    price_or_rate: "0",
+    price_per_sqft: "$85/SF",
+    deal_date: "Active",
+  }, parseDealDate, corpusNum), true);
 });
 
 test("splitRetrieved puts dated listings in usable and Active listings in listed", () => {

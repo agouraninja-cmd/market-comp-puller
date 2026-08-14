@@ -34,10 +34,9 @@ function listingDateForHarvest(comp) {
   return d;
 }
 
-function isOnMarketListing(row, parseDealDate) {
+function isOnMarketListing(row, parseDealDate, corpusNum) {
   if (sourceOf(row) !== "listing") return false;
-  const n = Number(String((row && (row.price_or_rate || row.price_per_sqft)) || "").replace(/[^0-9.]/g, ""));
-  if (!(Number.isFinite(n) && n > 0)) return false;
+  if (!(corpusNum(row.price_or_rate) || corpusNum(row.price_per_sqft))) return false;
   return parseDealDate(row.deal_date || row.date) == null;
 }
 
@@ -50,7 +49,7 @@ function splitRetrieved(rows, opts) {
   for (const r of rows || []) {
     const st = sourceOf(r);
     const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
-    if (st === "listing" && priced && parseDealDate(r.deal_date) == null) {
+    if (isOnMarketListing(r, parseDealDate, corpusNum)) {
       listed.push(r);
       continue;
     }

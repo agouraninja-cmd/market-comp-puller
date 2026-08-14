@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-14",
+    "type": "feature",
+    "title": "Market pages work as a research table, not only a teaser",
+    "details": "The Market Explorer still builds the same 8-comp snapshot, but the page no longer throws away what an analyst needs from it. Cap rate, tenancy and year built render when a comp has them; a http(s) source URL turns the address into a citation; Sales and Leases split instead of mixing $/SF with $/SF/yr; the table sorts; signed-in visitors can watch the market or download the visible rows as CSV. Op-ex, the annual price trend, and a typical-rent band sit on a second ledger row, each omitted rather than invented. Anonymous SEO traffic still sees the valuation CTA. Seeded pages without the new fields look as they did, except Ontario (and any other snapshot with two priced leases) now shows a rent cell derived from comps already on the page."
+  },
+  {
     "date": "2026-08-13",
     "type": "feature",
     "title": "The vault takes a screenshot of a comp table, not only a PDF",

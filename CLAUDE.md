@@ -1023,8 +1023,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   NOT depend on the purged `tailwind.css`) built from `market-seed.json` —
   static data committed to the repo, so pages survive redeploys and serve
   instantly with no DB. Each page: median/quartile $/SF, cap-rate range, a
-  market summary + `value_drivers` narrative, a recent-comps table, and a
-  valuation CTA into the app. Regenerate/expand with `node gen-market-seed.js`
+  market summary + `value_drivers` narrative, a recent-comps table (sortable,
+  Sale/Lease filter; address links to `source_url` when the snapshot has a
+  sanitized http(s) URL), and a CTA — owner valuation for anonymous visitors,
+  Watch + CSV for signed-in ones. Op-ex, price trend, and a rent band render
+  on a second ledger row when the snapshot earned them. Regenerate/expand with `node gen-market-seed.js`
   (edit its `TARGETS` list; it runs one cached search per market against a
   locally-running server and keeps only markets with ≥3 priced sale comps, so
   no thin pages). `sitemap.xml` lists `/`, `/markets`, and every market page.

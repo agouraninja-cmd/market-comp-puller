@@ -30,6 +30,7 @@ const SESSION = { cookie: "cn_session=not-a-real-token" };
 // keeps the fixture hermetic; the CTA test below also needs it industrial.
 const MARKET_SLUG = Object.keys(require("../market-seed.json")).find((s) => s.startsWith("industrial-"));
 const MARKET_PAGE = "/market/" + MARKET_SLUG;
+const MARKET = require("../market-seed.json")[MARKET_SLUG];
 
 // Every page that renders through marketShell(). /broker/<slug> is omitted: it
 // needs a database to resolve a profile and 404s without one.
@@ -199,6 +200,41 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
     for (const href of ctas) {
       assert.ok(!/auth=signup/.test(href), "a member already has an account: " + href);
     }
+  });
+
+  await t.test("the comps table is a research set, not only a teaser", async () => {
+    const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+    assert.match(html, /id="mktComps"/, "the table must be addressable for sort/filter");
+    const comps = MARKET.comps || [];
+    const nSale = comps.filter((c) => !String(c.transaction || "").toLowerCase().startsWith("lease")).length;
+    const nLease = comps.length - nSale;
+    if (nSale && nLease) {
+      assert.match(html, /id="mktTxBar"/, "a mixed sale/lease snapshot must offer a type filter");
+    }
+    const pricedLeases = comps.filter((c) =>
+      String(c.transaction || "").toLowerCase().startsWith("lease") &&
+      parseFloat(String(c.price_per_sqft || "").replace(/[^0-9.]/g, "")) > 0);
+    if (pricedLeases.length >= 2) {
+      assert.match(html, /Typical rent/, "two priced leases earn a rent cell without a regeneration");
+    }
+    const hasCap = comps.some((c) => String(c.cap_rate || "").trim());
+    if (!hasCap) {
+      assert.ok(!/data-k="cap_rate"/.test(html), "empty columns stay dropped");
+    }
+    assert.ok(!/id="mktWatch"/.test(html), "Watch is signed-in chrome, not on the cached SEO body");
+    assert.ok(!/id="mktCsv"/.test(html), "CSV is signed-in chrome, not on the cached SEO body");
+    assert.match(html, /Get my free valuation/, "anonymous visitors still get the owner CTA");
+  });
+
+  await t.test("a signed-in visitor gets Watch and CSV instead of the owner CTA", async () => {
+    const html = await (await fetch(srv.base + MARKET_PAGE, { headers: SESSION })).text();
+    assert.match(html, /id="mktWatch"/);
+    assert.match(html, new RegExp(`data-market="${MARKET.city}, ${MARKET.state}"`));
+    assert.match(html, /data-type="Industrial"/);
+    assert.match(html, /id="mktCsv"/);
+    assert.ok(!/Get my free valuation/.test(html), "the owner funnel is for anonymous SEO traffic");
+    assert.match(html, /href="\/\?explore=/, "members skip the signup door on the Address Explorer link");
+    assert.ok(!/javascript:/i.test(html), "no model-supplied script URL may land in the HTML");
   });
 });
 

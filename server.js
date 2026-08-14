@@ -16,7 +16,8 @@ const crypto = require("crypto");
 const dns = require("dns");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
-const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot } = require("./market-snapshot");
+const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot,
+  dateKey, safeHttpUrl, isLease, rentFromComps } = require("./market-snapshot");
 // Pro-tier entitlement rules. Pure and dependency-free so `npm test` can
 // exercise the whole decision table without a database — see the Pro section
 // below for the reads that feed it.
@@ -3026,6 +3027,9 @@ const FIELD_LABELS = {
   zoning: "Zoning",
   price_per_acre: "$/Acre",
   beds_baths: "Beds / Baths",
+  cap_rate: "Cap Rate",
+  tenancy: "Tenancy",
+  year_built: "Year Built",
 };
 
 // ---------------------------------------------------------------------------
@@ -4599,6 +4603,11 @@ function marketPageTitle(p) {
 }
 function marketUrl(slug) { return `${SITE_URL}/market/${slug}`; }
 function usd0(n) { return "$" + Math.round(Number(n) || 0).toLocaleString(); }
+function usd2(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return "";
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 // Brand mark, shared by every server-rendered page (market pages, /markets,
 // /broker, /how-it-works, /admin). Declared HERE, above MARKET_BAR: that
@@ -4950,6 +4959,18 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .cta .alt:hover{color:var(--ink)}
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
+button.btn{border:0;cursor:pointer;font-family:inherit}
+.cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--ink-mute);
+  text-decoration:underline;text-decoration-color:var(--edge)}
+.cta button.alt:hover{color:var(--ink)}
+.ledger.aux{margin-top:-14px}
+.ledger.aux .v{font-size:20px}
+.mkt-tx{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.mkt-tx button{font:inherit;font-size:13px;padding:4px 10px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--edge);background:var(--card);color:var(--ink-body)}
+.mkt-tx button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);font-weight:600;background:var(--wash)}
+table.stmt th[data-k]{cursor:pointer;user-select:none}
+table.stmt th[data-k]:hover{color:var(--ink)}
 /* Header-sized variant, for the auth controls in the market bar. Mirrors the
    same rule in HOW_CSS so the two site headers sit at the same height. The nav
    rule below it exists because .hdr nav a would otherwise grey the button out.
@@ -5452,6 +5473,124 @@ const MARKET_MAP_JS = `(function(){
   });
 })();`;
 
+// Sort / Sale-Lease filter / CSV / Watch on the market-page comps table.
+// Inlined like MARKET_MAP_JS so the page stays self-contained (no extra asset,
+// no tailwind). No ${} — this string is interpolated into a <script>.
+const MARKET_RESEARCH_JS = `(function(){
+  var table = document.getElementById("mktComps");
+  if (!table) return;
+  var tbody = table.tBodies[0];
+  if (!tbody) return;
+  var rows = [].slice.call(tbody.rows);
+  var filter = "all";
+  function applyFilter() {
+    var n = 0;
+    rows.forEach(function (tr) {
+      var tx = tr.getAttribute("data-tx") || "sale";
+      var on = filter === "all" || tx === filter;
+      tr.hidden = !on;
+      if (on) n++;
+    });
+    if (table.tFoot) table.tFoot.hidden = filter === "lease";
+    var empty = document.getElementById("mktTxEmpty");
+    if (empty) empty.hidden = n > 0;
+  }
+  var bar = document.getElementById("mktTxBar");
+  if (bar) {
+    bar.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-tx]");
+      if (!b) return;
+      filter = b.getAttribute("data-tx");
+      [].forEach.call(bar.querySelectorAll("button[data-tx]"), function (x) {
+        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      });
+      applyFilter();
+    });
+  }
+  var sortCol = -1, sortDir = 1;
+  if (table.tHead) {
+    table.tHead.addEventListener("click", function (e) {
+      var th = e.target.closest("th[data-k]");
+      if (!th) return;
+      var idx = [].indexOf.call(th.parentNode.children, th);
+      if (idx === sortCol) sortDir = -sortDir;
+      else { sortCol = idx; sortDir = 1; }
+      var numeric = th.getAttribute("data-num") === "1";
+      rows.sort(function (a, b) {
+        var av = a.cells[idx] ? (a.cells[idx].getAttribute("data-s") || "") : "";
+        var bv = b.cells[idx] ? (b.cells[idx].getAttribute("data-s") || "") : "";
+        var an = parseFloat(av), bn = parseFloat(bv);
+        var cmp;
+        if (numeric) {
+          an = isFinite(an) ? an : (sortDir > 0 ? Infinity : -Infinity);
+          bn = isFinite(bn) ? bn : (sortDir > 0 ? Infinity : -Infinity);
+          cmp = an - bn;
+        } else {
+          cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+        }
+        return cmp === 0 ? 0 : (cmp < 0 ? -sortDir : sortDir);
+      });
+      rows.forEach(function (tr) { tbody.appendChild(tr); });
+    });
+  }
+  var csvBtn = document.getElementById("mktCsv");
+  if (csvBtn) {
+    csvBtn.addEventListener("click", function () {
+      function esc(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
+      var ths = [].slice.call(table.tHead.rows[0].cells);
+      var header = ths.map(function (th) { return esc(th.textContent.trim()); }).concat(esc("Source URL")).join(",");
+      var body = rows.filter(function (tr) { return !tr.hidden; }).map(function (tr) {
+        var cells = [].slice.call(tr.cells).map(function (td) { return esc(td.textContent.trim()); });
+        cells.push(esc(tr.getAttribute("data-src") || ""));
+        return cells.join(",");
+      });
+      var slug = csvBtn.getAttribute("data-slug") || "market";
+      var blob = new Blob([header + "\\r\\n" + body.join("\\r\\n")], { type: "text/csv;charset=utf-8;" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "compninja-" + slug + ".csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+  var watch = document.getElementById("mktWatch");
+  if (watch) {
+    var market = watch.getAttribute("data-market") || "";
+    var type = watch.getAttribute("data-type") || "";
+    function setWatching() {
+      watch.disabled = true;
+      watch.textContent = "Watching — see My Desk";
+    }
+    fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (d) {
+      if (!d || !d.items) return;
+      var hit = d.items.some(function (it) {
+        return String(it.market || "").toLowerCase() === market.toLowerCase()
+          && String(it.property_type || "") === type;
+      });
+      if (hit) setWatching();
+    }).catch(function () {});
+    watch.addEventListener("click", function () {
+      watch.disabled = true;
+      fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ market: market, property_type: type })
+      }).then(function (r) {
+        return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+      }).then(function (res) {
+        if (res.ok) { setWatching(); return; }
+        watch.disabled = false;
+        alert((res.j && res.j.error) || "Could not watch this market.");
+      }).catch(function () {
+        watch.disabled = false;
+        alert("Could not watch this market.");
+      });
+    });
+  }
+})();`;
+
 // ---------------------------------------------------------------------------
 // Brand entity — the one Organization node every server-rendered page points
 // at by @id. CompNinja is online-only, so it is NOT eligible for a Google
@@ -5705,6 +5844,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const isPricing = (c) => c.key.startsWith("price_per_");
   const specCols = typeCols.filter((c) => !isPricing(c));
   const priceCols = typeCols.filter(isPricing);
+  // Cap / tenancy / year built: stored since 2026-07-27, rendered 2026-08-14.
+  // Empty-on-every-comp drop is the same rule as the per-type specs, so seeded
+  // pages without those fields do not sprout blank columns.
+  const extraCols = [
+    { key: "cap_rate", label: "Cap Rate" },
+    ...(p.type === "Land" ? [] : [
+      { key: "tenancy", label: "Tenancy" },
+      { key: "year_built", label: "Year Built" },
+    ]),
+  ].filter((col) => marketComps.some((c) => String(c[col.key] || "").trim()));
   const compCols = [
     { key: "address", label: "Address" },
     { key: "date", label: "Date" },
@@ -5714,16 +5863,36 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     { key: "price_or_rate", label: "Price / Rate" },
     { key: "price_per_sqft", label: "$/SF" },
     ...priceCols,
+    ...extraCols,
   ];
+  const numCol = (k) => /^(date|size_sqft|price_or_rate|price_per_|cap_rate|year_built|units|dock_doors|clear_height|lot_acres|floor_plate)/.test(k);
+  const cellSort = (col, c) => {
+    if (col.key === "date") {
+      const k = dateKey(c.date);
+      return isFinite(k) ? String(k) : String(c.date || "").toLowerCase();
+    }
+    if (numCol(col.key)) {
+      const n = parseFloat(String(c[col.key] || "").replace(/[^0-9.\-]/g, ""));
+      return isFinite(n) ? String(n) : "";
+    }
+    return String(c[col.key] || "").toLowerCase();
+  };
   const compRows = marketComps.map((c) => {
     // Same badge tiers the report table uses; anything else stays neutral, so
     // provenance can be under-claimed but never over-claimed.
     const tier = { verified: " v", listing: " li" }[String(c.source_type || "").toLowerCase()] || "";
     const badge = c.source_type
       ? `<span class="badge${tier}">${escHtml(c.source_type.replace("_", " "))}</span>` : "";
-    return "<tr>" + compCols.map((col) => (col.key === "address"
-      ? `<td>${escHtml(c.address)} ${badge}</td>`
-      : `<td>${escHtml(c[col.key] || "")}</td>`)).join("") + "</tr>";
+    const src = safeHttpUrl(c.source_url);
+    const addrInner = src
+      ? `<a href="${escHtml(src)}" target="_blank" rel="noopener noreferrer">${escHtml(c.address)}</a>`
+      : escHtml(c.address);
+    const tx = isLease(c) ? "lease" : "sale";
+    return `<tr data-tx="${tx}"${src ? ` data-src="${escHtml(src)}"` : ""}>` +
+      compCols.map((col) => {
+        const inner = col.key === "address" ? `${addrInner} ${badge}` : escHtml(c[col.key] || "");
+        return `<td data-s="${escHtml(cellSort(col, c))}">${inner}</td>`;
+      }).join("") + "</tr>";
   }).join("");
   // Statement closing row (Direction H): the sales median under a double
   // rule — quoting p.ppsf, the page's OWN headline statistic, so the table's
@@ -5738,11 +5907,60 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     ? `<tfoot><tr><td class="tl" colspan="${psfIdx}">Median of ${p.ppsf.count} recent sales &middot; ${usd0(p.ppsf.median)}/SF</td>` +
       `<td>${usd0(p.ppsf.median)}</td>${restCols > 0 ? `<td colspan="${restCols}"></td>` : ""}</tr></tfoot>`
     : "";
+  const nSale = marketComps.filter((c) => !isLease(c)).length;
+  const nLease = marketComps.filter(isLease).length;
+  const txBar = (nSale && nLease)
+    ? `<div class="mkt-tx" id="mktTxBar" role="group" aria-label="Filter by transaction type">` +
+      `<button type="button" data-tx="all" aria-pressed="true">All (${marketComps.length})</button>` +
+      `<button type="button" data-tx="sale" aria-pressed="false">Sales (${nSale})</button>` +
+      `<button type="button" data-tx="lease" aria-pressed="false">Leases (${nLease})</button></div>`
+    : "";
   const compsTable = compRows
     ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
-      `<div class="scroll"><table class="stmt"><thead><tr>` +
-      compCols.map((col) => `<th>${escHtml(col.label)}</th>`).join("") +
-      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div></div>`
+      txBar +
+      `<div class="scroll"><table class="stmt" id="mktComps"><thead><tr>` +
+      compCols.map((col) =>
+        `<th data-k="${escHtml(col.key)}"${numCol(col.key) ? " data-num=\"1\"" : ""}>${escHtml(col.label)}</th>`).join("") +
+      `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div>` +
+      `<p class="disc" id="mktTxEmpty" hidden>No comps in this filter.</p>` +
+      `<script>${MARKET_RESEARCH_JS}</script></div>`
+    : "";
+
+  // Analyst extras sit on a second ledger row so the headline strip stays
+  // two or three cells (median emphasized). Each cell is omitted rather than
+  // invented. Rent is derived from this page's comps so seeded snapshots
+  // with leases gain it without a regeneration.
+  const auxCells = [];
+  const opex = p.market_opex_range && String(p.market_opex_range.low || "").trim()
+    && String(p.market_opex_range.high || "").trim() ? p.market_opex_range : null;
+  if (opex) {
+    auxCells.push([
+      "OpEx / EGI",
+      `${escHtml(opex.low)}–${escHtml(opex.high)}`,
+      String(opex.note || "").trim() || "typical, % of effective gross income",
+    ]);
+  }
+  const trendN = Number(p.annual_price_trend_pct);
+  if (Number.isFinite(trendN) && trendN !== 0 && Math.abs(trendN) <= 30) {
+    auxCells.push([
+      "Price trend",
+      `${trendN > 0 ? "+" : ""}${trendN}%/yr`,
+      "sale prices over the search window",
+    ]);
+  }
+  const rent = rentFromComps(marketComps);
+  if (rent) {
+    const rentRange = rent.low === rent.high ? usd2(rent.median) : `${usd2(rent.low)}–${usd2(rent.high)}`;
+    auxCells.push([
+      "Typical rent",
+      usd2(rent.median),
+      `${rentRange} · ${rent.count} lease${rent.count === 1 ? "" : "s"} · $/SF/yr`,
+    ]);
+  }
+  const auxLedger = auxCells.length
+    ? `<div class="ledger aux">${auxCells.map(([k, v, n]) =>
+      `<div class="lcell"><span class="k">${escHtml(k)}</span><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`
+    ).join("")}</div>`
     : "";
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
@@ -5859,12 +6077,36 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `</ul></div>`
     : "";
 
+  // The loudest CTA on the site's biggest SEO surface. Anonymous visitors
+  // still get the owner valuation door (auth=signup is the one query form
+  // ACCOUNT_WALL never 302s). Signed-in visitors get Watch + CSV instead —
+  // spec 2026-08-14. The Address Explorer deep link stays on both; members
+  // skip the signup query because they already have an account.
+  const exploreHref = (signedIn ? "/?explore=" : "/?auth=signup&explore=")
+    + encodeURIComponent(p.city + ", " + p.state)
+    + "&type=" + encodeURIComponent(p.type);
+  const exploreLink =
+    `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(exploreHref)}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p>`;
+  const cta = signedIn
+    ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
+      `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
+      (compRows
+        ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
+        : "") +
+      exploreLink + `</div>`
+    : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
+      `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
+      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
+      exploreLink + `</div>`;
+
   const body =
     `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
     `<h1>${escHtml(title)}</h1>` +
     `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
+    auxLedger +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
     drivers +
     intelCard +
@@ -5872,26 +6114,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     compsTable +
     creditLine +
     brokersCard +
-    `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
-    `<p>Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value from a licensed local broker.</p>` +
-    // The loudest CTA on the site's biggest SEO surface, so it carries the
-    // market the visitor is standing in. It used to be a bare href="/", which
-    // under the wall answers an anonymous visitor with the landing page: they
-    // ask to value their building and get another marketing page, then have
-    // to find "Create account" a second time. The `alt` link directly below
-    // already did this properly; the big button was the one ignoring it.
-    // A member skips the signup door (index.html ignores ?auth= when signed
-    // in anyway) and just arrives with the type prefilled.
-    `<a class="btn" href="${escHtml(
-      (signedIn ? "/?" : "/?auth=signup&") + "type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
-    // The Address Explorer deep link (spec 2026-08-03, "Deep link" section).
-    // auth=signup is the one query form ACCOUNT_WALL never 302s, so this same
-    // static href serves everyone: anonymous visitors get the signup modal
-    // (the explorer input arrives prefilled behind it), signed-in Pro members
-    // skip the modal and the panel opens fetching this market's list.
-    `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(
-      "/?auth=signup&explore=" + encodeURIComponent(p.city + ", " + p.state)
-      + "&type=" + encodeURIComponent(p.type))}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p></div>` +
+    cta +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 

@@ -3682,6 +3682,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } catch (_) { /* if config fails, treat as open */ }
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
+    streetviewEnabled = Boolean(cfg.streetview);
     // Missing `pro` is the Pro-off default. Do not plant portfolioValues
     // here: an old config body with no such key must fall through
     // portfolioValuesOn()'s `!enabled || isPro` branch, not a hardcoded false
@@ -7714,12 +7715,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Aerial close-up for a pin popup: free Esri World Imagery tiles stitched
   // into a crop centered on the property (a crop smaller than one 256px tile
   // touches at most 4 tiles). No key, no billing. A red dot marks the exact
-  // point; tiles that fail to load simply hide. Street View used to be the
-  // popup photo and was the wrong picture ~80% of the time (nearest pano
-  // aimed at a fence, parking lot, or neighbor); the roof with a pin on it
-  // is the CRE picture. (First shipped 2026-07-13 as 427ff44, retired for
-  // the basemap toggle, revived once hover previews made popup photos the
-  // point; Street View dropped 2026-08-14.)
+  // point; tiles that fail to load simply hide. This is the picture that
+  // paints on hover (tiles prefetched after the building snap). Street View
+  // overlays it when a camera sits within 35 m of the building and can be
+  // aimed at it; a far pano 404s and this roof stays. (First shipped
+  // 2026-07-13 as 427ff44; Street View overlay restored 2026-08-14 behind
+  // the honesty gate.)
   // Tile math lives in one place so prefetch after the building snap hits
   // the same URLs the popup will request.
   function aerialTileSpec(ll, w, h, z) {
@@ -7740,7 +7741,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     return tiles;
   }
-  function aerialThumb(ll, w = 260, h = 156, z = 18) {
+  function aerialThumb(ll, w = 260, h = 156, z = 18, overlayHtml = "") {
     const tiles = aerialTileSpec(ll, w, h, z);
     let imgs = "";
     for (const t of tiles) {
@@ -7758,6 +7759,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       imgs +
       `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
       `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
+      overlayHtml +
       `</div>`;
   }
   // Warm the Esri tiles a popup will ask for, after the building snap
@@ -8010,11 +8012,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (n >= 40000) return 17;
       return 18;
     };
-    // Popup photo: the aerial close-up of the snapped building. Popup content
-    // is a FUNCTION so Leaflet builds it at open time from the marker's
-    // CURRENT position — refinePins() moves pins after first paint.
-    // Coordinates come from the snapped centroid — numbers, nothing
-    // user-authored.
+    // Popup photo: aerial of the snapped building paints immediately
+    // (tiles already prefetched). Street View overlays it when the proxy
+    // finds a camera within 35 m and aims it at the building; a 404
+    // leaves the roof. Popup content is a FUNCTION so Leaflet builds it
+    // at open time from the marker's CURRENT position — refinePins()
+    // moves pins after first paint. Coordinates come from the snapped
+    // centroid — numbers, nothing user-authored.
     const svPhoto = (marker, zoom, address) => {
       // Photo ONLY when OSM maps the building. The footprint is the one
       // signal that guarantees the picture shows the PROPERTY: with it, the
@@ -8060,7 +8064,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // builds at open time, so the map's CURRENT width is known here.
       const w = Math.min(260, Math.max(180, (mapInstance ? mapInstance.getSize().x : 400) - 110));
       const h = Math.round(w * 0.6);
-      return aerialThumb(snapped, w, h, zoom || 17);
+      let overlay = "";
+      if (streetviewEnabled) {
+        // Hidden until onload: hover stays on the prefetched aerial. onerror
+        // drops the img so a refused (far) pano never covers the roof.
+        overlay =
+          '<img src="/api/streetview?lat=' + snapped.lat.toFixed(6) + '&lng=' + snapped.lng.toFixed(6) +
+          '" width="' + w + '" height="' + h + '" alt=""' +
+          ' style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:none"' +
+          ' onload="this.style.display=\'block\';var g=this.nextElementSibling;if(g)g.style.display=\'block\'"' +
+          ' onerror="this.remove()">' +
+          '<div style="display:none;position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Google</div>';
+      }
+      return aerialThumb(snapped, w, h, zoom || 17, overlay);
     };
     // Popups must never be wider than the map (a too-wide popup clips and
     // even autoPan can't help). Leaflet's maxWidth governs the text; the
@@ -14022,6 +14038,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // in localStorage, so a returning visitor is never asked twice.
   // ----------------------------------------------------------------------------
   let leadCaptureEnabled = false;   // set from /api/config in initGate()
+  let streetviewEnabled = false;    // set from /api/config in initGate()
   // Pro entitlements as reported by /api/config. PRESENTATION ONLY — every
   // limit described here is enforced server-side, so editing this object in
   // the console unlocks nothing but the visitor's own greyed-out controls.

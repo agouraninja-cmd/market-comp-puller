@@ -1057,6 +1057,99 @@ test("tester passkey", async (t) => {
   });
 });
 
+function reportPayload(address, type) {
+  return {
+    meta: { address, type },
+    data: { comps: [{ address, transaction: "sale", source_type: "listing" }] },
+  };
+}
+
+test("portfolio upsert and cap", async (t) => {
+  const srv = await boot({ PRO_ENABLED: "on", ADMIN_KEY: "k", TESTER_PASSKEY: "tcode" });
+  t.after(() => srv.stop());
+
+  const email = `pf-${Date.now()}@example.com`;
+  const signup = await fetch(srv.base + "/api/account/signup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: "correct-horse-battery" }),
+  });
+  assert.equal(signup.status, 200);
+  const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+
+  const post = (body) => fetch(srv.base + "/api/portfolio", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify(body),
+  });
+
+  await t.test("/api/config carries the two new fields for a Free account", async () => {
+    const cfg = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(cfg.pro.portfolioMaxItems, 100);
+    assert.equal(cfg.pro.portfolioValues, false);
+  });
+
+  await t.test("POST without id inserts once, then updates the same address+type", async () => {
+    const payload = reportPayload("100 Main St, Boise, ID", "Industrial");
+    const a = await post({ payload, snapshot: { likely: 1000000, low: 900000, high: 1100000, median_psf: 80 } });
+    assert.equal(a.status, 200);
+    const first = await a.json();
+    const b = await post({ payload, snapshot: { likely: 1100000, low: 1000000, high: 1200000, median_psf: 88 } });
+    assert.equal(b.status, 200);
+    const second = await b.json();
+    assert.equal(second.id, first.id, "same row, not a second card");
+    assert.equal(second.snapshots.length, 2);
+
+    const list = await (await fetch(srv.base + "/api/portfolio", { headers: { cookie } })).json();
+    assert.equal(list.items.length, 1);
+    assert.equal(list.items[0].address, "100 Main St, Boise, ID");
+  });
+
+  // renderResults and renderMap both call saveHistory; the map's write used
+  // to append a second snapshot with the same likely, so Pro's Change column
+  // read ▲ 0.0% after one search. Payload still updates (corrected coords).
+  await t.test("a second POST with the same likely does not append a snapshot", async () => {
+    const payload = reportPayload("100 Main St, Boise, ID", "Industrial");
+    const r = await post({ payload, snapshot: { likely: 1100000, low: 1000000, high: 1200000, median_psf: 88 } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.snapshots.length, 2, "echo of the last likely must not grow the trail");
+  });
+
+  await t.test("a new address at the Free cap of 100 is refused; updating one of the 100 still works", async () => {
+    // 1 already inserted above; add 99 more to hit 100.
+    for (let i = 1; i <= 99; i++) {
+      const r = await post({ payload: reportPayload(`${i} Oak St, Boise, ID`, "Industrial") });
+      assert.equal(r.status, 200, "insert " + i);
+    }
+    const full = await post({ payload: reportPayload("Overflow Ave, Boise, ID", "Industrial") });
+    assert.equal(full.status, 400);
+    assert.match((await full.json()).error, /Portfolio is full \(100 properties\)\./);
+
+    const update = await post({
+      payload: reportPayload("100 Main St, Boise, ID", "Industrial"),
+      snapshot: { likely: 1200000, low: 1100000, high: 1300000, median_psf: 90 },
+    });
+    assert.equal(update.status, 200, "updating an existing address must not consult the cap");
+  });
+
+  await t.test("Pro (tester) can insert past 100", async () => {
+    const redeem = await fetch(srv.base + "/api/redeem-passkey", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ passkey: "tcode" }),
+    });
+    assert.equal(redeem.status, 200);
+    const cfg = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(cfg.pro.isPro, true);
+    assert.equal(cfg.pro.portfolioMaxItems, 500);
+    assert.equal(cfg.pro.portfolioValues, true);
+
+    const r = await post({ payload: reportPayload("Overflow Ave, Boise, ID", "Industrial") });
+    assert.equal(r.status, 200, "the 101st property is allowed for Pro");
+  });
+});
+
 // --- The vault passkey ------------------------------------------------------
 //
 // The same route and the same input as the tester passkey, a different

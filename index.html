@@ -1083,7 +1083,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                It passes the sell-only-what-ships test that keeps report
                branding off this list: /vault is live, it has a UI, and a
                broker's own comps really do appear in their own reports. -->
-          <p class="pr-sum">Every comp itemized with sources, the 10-year window, unlimited exports, the vault, Address Explorer, your branding.</p>
+          <p class="pr-sum">Every comp itemized with sources, the 10-year window, unlimited exports, the vault, Address Explorer, your branding, a portfolio with estimated values.</p>
           <button type="button" data-plan="pro_monthly"
             class="pricing-buy btn-live mt-3 w-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
             Upgrade to Pro
@@ -1121,6 +1121,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <span>Private comp vault</span>
         <span>Address Explorer</span>
         <span>Report branding</span>
+        <span>Portfolio with estimated values</span>
       </div>
       <p class="text-xs text-[#68707E] mt-2">Cancel any time; access runs to the end of the period you paid for.</p>
 
@@ -1151,6 +1152,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Private vault for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Address Explorer</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Your firm's branding on reports</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
+            <tr><td>Portfolio</td><td class="c">Saved reports, address list</td><td class="c">Saved reports, with estimated values</td></tr>
           </tbody>
           <tfoot>
             <tr><td>Per month, cancel any time</td><td class="c"><span class="fig">$0</span></td><td class="c"><span class="fig">$129</span></td></tr>
@@ -1786,7 +1788,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Portfolio</span>
           <span id="deskCount" class="dk-note"></span>
         </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and press "Save to portfolio" to start tracking a property here.</p>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report — it will show up here.</p>
         <!-- The book line (Direction K): combined value on the warm cell,
              markets cell filled by renderWatchFeed once the feed answers.
              Hidden with 0 properties — a 0-0 scoreboard over an empty desk
@@ -3491,6 +3493,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
     streetviewEnabled = Boolean(cfg.streetview);
+    // Missing `pro` is the Pro-off default. Do not plant portfolioValues
+    // here: an old config body with no such key must fall through
+    // portfolioValuesOn()'s `!enabled || isPro` branch, not a hardcoded false
+    // that would blank today's desk.
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
     accountWall = Boolean(cfg.accountWall);
@@ -3501,6 +3507,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // been initialized by the time this line runs.
     refreshBillingUI();
     applySearchLock();
+    // refreshAccountUI may already have painted My Desk against the boot-time
+    // { enabled: false } default (values on). Re-paint once the real flag is
+    // in, and only while the desk is showing — a home-page load already GETs
+    // /api/portfolio from that first paint and does not need a second.
+    if (typeof renderMyDesk === "function" && currentUser
+        && document.getElementById("deskView")
+        && !document.getElementById("deskView").classList.contains("hidden")) {
+      renderMyDesk();
+    }
 
     if (!cfg.authRequired) return;            // no password configured
 
@@ -8516,6 +8531,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Glide down to the finished report.
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     document.getElementById("results").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    syncPortfolioButton();
   }
 
   // ----------------------------------------------------------------------------
@@ -8602,7 +8618,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setTimeout(() => {
         acctApi("POST", "/api/portfolio", {
           id: refreshId, payload: { meta, data }, snapshot: lastValuation,
-        }).then(() => { if (typeof renderMyDesk === "function") renderMyDesk(); }).catch(() => {});
+        }).then(() => {
+          markPortfolioSaved(meta.address, meta.type);
+          syncPortfolioButton();
+          if (typeof renderMyDesk === "function") renderMyDesk();
+        }).catch(() => {});
+      }, 0);
+    } else if (currentUser) {
+      const payloadMeta = {
+        address: meta.address, type: meta.type, note: meta.note || "",
+        months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null,
+        assumptions: meta.assumptions || null,
+        curation: meta.curation || null,
+      };
+      setTimeout(() => {
+        acctApi("POST", "/api/portfolio", {
+          payload: { meta: payloadMeta, data }, snapshot: lastValuation,
+        }).then(() => {
+          markPortfolioSaved(meta.address, meta.type);
+          syncPortfolioButton();
+          if (typeof renderMyDesk === "function") renderMyDesk();
+        }).catch((ex) => {
+          showStatus(ex.message, "error");
+        });
       }, 0);
     }
     renderHistory();
@@ -8822,6 +8860,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let currentUser = null;           // { email, name } | null
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
+  const portfolioKeys = new Set(); // "address\0type" currently on My Desk
+  function portfolioKey(address, type) { return String(address || "") + "\0" + String(type || ""); }
+  function markPortfolioSaved(address, type) { portfolioKeys.add(portfolioKey(address, type)); }
+  function syncPortfolioButton() {
+    const btn = document.getElementById("portfolioBtn");
+    if (!btn) return;
+    const saved = Boolean(currentUser && currentMeta && portfolioKeys.has(portfolioKey(currentMeta.address, currentMeta.type)));
+    btn.classList.toggle("hidden", saved);
+  }
+  // Presentation only — snapshots still arrive on GET so upgrading reveals
+  // history. Missing/old config falls through to "Pro-off desk shows dollars"
+  // (`!enabled`) or the visitor's isPro, never a blank Free desk by accident.
+  function portfolioValuesOn() {
+    if (!proConfig) return false;
+    if (typeof proConfig.portfolioValues === "boolean") return proConfig.portfolioValues;
+    return !proConfig.enabled || Boolean(proConfig.isPro);
+  }
   // An address typed into the shared-report lock card while signed out. Same
   // shape as pendingPortfolioSave, cleared by the same cancel path.
   let pendingSharedAddress = "";
@@ -8921,8 +8976,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("acctMenuBtn").textContent = label.slice(0, 1).toUpperCase();
       document.getElementById("acctMenuEmail").textContent = currentUser.email;
     }
-    const pb = document.getElementById("portfolioBtn");
-    if (pb) pb.classList.remove("hidden");
+    syncPortfolioButton();
     const xb = document.getElementById("xlsxBtn");
     if (xb) xb.classList.toggle("hidden", !on);
     if (typeof renderMyDesk === "function") renderMyDesk();
@@ -9268,9 +9322,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         payload: { meta, data: currentParsed },
         snapshot: lastValuation,
       });
-      label.textContent = "Saved ✓";
+      label.textContent = "Save to portfolio";
+      markPortfolioSaved(currentMeta.address, currentMeta.type);
+      syncPortfolioButton();
       if (typeof renderMyDesk === "function") renderMyDesk();
-      setTimeout(() => { label.textContent = "Save to portfolio"; }, 2500);
     } catch (ex) {
       label.textContent = "Save to portfolio";
       showStatus(ex.message, "error");
@@ -9348,6 +9403,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("deskHello").textContent = currentUser.name ? `Signed in as ${currentUser.name}` : currentUser.email;
     let items = [];
     try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
+    portfolioKeys.clear();
+    items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
+    syncPortfolioButton();
+    const showValues = portfolioValuesOn();
     document.getElementById("deskCount").textContent = items.length ? `${items.length} propert${items.length === 1 ? "y" : "ies"}` : "";
     document.getElementById("deskEmpty").classList.toggle("hidden", items.length > 0);
     // Direction K (owner-approved 2026-08-09): the portfolio is a book. A
@@ -9388,22 +9447,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
     });
     const ledger = document.getElementById("deskLedger");
-    ledger.classList.toggle("hidden", items.length === 0);
+    ledger.classList.toggle("hidden", items.length === 0 || !showValues);
     const bookPct = prevOfPaired > 0 ? ((curOfPaired - prevOfPaired) / prevOfPaired) * 100 : null;
     const cell = (k, v, n, mid) =>
       `<div class="rd-lcell${mid ? " mid" : ""}"><span class="rd-lab">${k}</span><div class="dk-fig text-[21px]${mid ? "" : ""}">${v}</div><div class="dk-note" style="text-align:left">${n}</div></div>`;
-    ledger.innerHTML =
-      cell("Properties", String(items.length), Object.entries(typeCounts).map(([t, n]) => `${n} ${t}`).join(" · ") || "&nbsp;", false) +
-      cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
-      cell("Since last checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
-        bookPct == null ? "re-run a property to start the trail" : "across properties checked twice", false) +
-      `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">—</div><div class="dk-note" style="text-align:left">&nbsp;</div></div>`;
+    if (showValues) {
+      ledger.innerHTML =
+        cell("Properties", String(items.length), Object.entries(typeCounts).map(([t, n]) => `${n} ${t}`).join(" · ") || "&nbsp;", false) +
+        cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
+        cell("Since last checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
+          bookPct == null ? "re-run a property to start the trail" : "across properties checked twice", false) +
+        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">—</div><div class="dk-note" style="text-align:left">&nbsp;</div></div>`;
+    }
     const grid = document.getElementById("portfolioGrid");
     grid.innerHTML = "";
     if (items.length) {
       const table = document.createElement("table");
       table.className = "dk-stmt";
-      table.innerHTML = `<thead><tr><th>Property</th><th>History</th><th class="num">Likely value</th><th class="num">Change</th><th></th></tr></thead>`;
+      table.innerHTML = showValues
+        ? `<thead><tr><th>Property</th><th>History</th><th class="num">Likely value</th><th class="num">Change</th><th></th></tr></thead>`
+        : `<thead><tr><th>Property</th><th></th></tr></thead>`;
       const tbody = document.createElement("tbody");
       items.forEach((item) => {
         const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
@@ -9431,7 +9494,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         // property's own valuation change in the Change column, and painting a
         // market statistic the same green would read as this building being
         // worth more, which is a search nobody has run.
-        if (item.movement && item.movement.line) {
+        //
+        // Gated on showValues: the line is market median $/SF, a dollar
+        // figure. The GET still carries `movement` so upgrading reveals it.
+        if (showValues && item.movement && item.movement.line) {
           const mv = document.createElement("div");
           // Inline margin rather than mt-0.5: that utility is not in the
           // vendored tailwind.css, and a class missing from that build styles
@@ -9443,26 +9509,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           tdA.appendChild(mv);
         }
         tr.appendChild(tdA);
-        const tdS = document.createElement("td");
-        const spark = sparkline(snaps);
-        if (spark) tdS.appendChild(spark);
-        else { tdS.className = "text-[10.5px] text-[#9AA2AD]"; tdS.textContent = "—"; }
-        tr.appendChild(tdS);
-        const tdV = document.createElement("td");
-        tdV.className = "num dk-fig text-[14.5px]";
-        tdV.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
-        tr.appendChild(tdV);
-        const tdC = document.createElement("td");
-        tdC.className = "num";
-        if (last && prev && last.likely && prev.likely) {
-          const pct = ((last.likely - prev.likely) / prev.likely) * 100;
-          const d = document.createElement("span");
-          d.className = pct >= 0 ? "dk-up" : "dk-down";
-          d.title = `since ${new Date(prev.ts).toLocaleDateString()}`;
-          d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
-          tdC.appendChild(d);
-        } else tdC.textContent = "—";
-        tr.appendChild(tdC);
+        if (showValues) {
+          const tdS = document.createElement("td");
+          const spark = sparkline(snaps);
+          if (spark) tdS.appendChild(spark);
+          else { tdS.className = "text-[10.5px] text-[#9AA2AD]"; tdS.textContent = "—"; }
+          tr.appendChild(tdS);
+          const tdV = document.createElement("td");
+          tdV.className = "num dk-fig text-[14.5px]";
+          tdV.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
+          tr.appendChild(tdV);
+          const tdC = document.createElement("td");
+          tdC.className = "num";
+          if (last && prev && last.likely && prev.likely) {
+            const pct = ((last.likely - prev.likely) / prev.likely) * 100;
+            const d = document.createElement("span");
+            d.className = pct >= 0 ? "dk-up" : "dk-down";
+            d.title = `since ${new Date(prev.ts).toLocaleDateString()}`;
+            d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
+            tdC.appendChild(d);
+          } else tdC.textContent = "—";
+          tr.appendChild(tdC);
+        }
         const tdX = document.createElement("td");
         tdX.className = "num text-[10.5px] whitespace-nowrap";
         const refresh = document.createElement("button");
@@ -9489,7 +9557,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       });
       table.appendChild(tbody);
       // The closing total only earns its double rule with something to sum.
-      if (items.length > 1 && combined) {
+      if (showValues && items.length > 1 && combined) {
         const tfoot = document.createElement("tfoot");
         const pctCell = bookPct == null ? "" :
           `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`;
@@ -11719,6 +11787,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderGuestSearchHint();
     refreshBillingUI();
     applyLookbackGating();
+    // Checkout-return polls this until isPro flips. The desk has to re-paint
+    // or a member who just paid keeps seeing the Free address list.
+    if (typeof renderMyDesk === "function" && currentUser
+        && document.getElementById("deskView")
+        && !document.getElementById("deskView").classList.contains("hidden")) {
+      renderMyDesk();
+    }
   }
 
   function showCheckoutNotice(tone, title, detail) {

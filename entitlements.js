@@ -64,6 +64,8 @@ const ANON_EXPORTS_PER_MONTH = 0;
 // /api/comps already clamps `months` to 1..120; Pro simply gets the whole
 // range rather than an unlimited sentinel, so callers can compare numbers.
 const PRO_MAX_LOOKBACK_MONTHS = 120;
+const FREE_PORTFOLIO_MAX_ITEMS = 100;
+const PRO_PORTFOLIO_MAX_ITEMS = 500;
 
 // A failed payment keeps Pro alive for 7 days before the downgrade, so a
 // dead card on a Friday does not strip a broker's branding mid-pitch.
@@ -258,6 +260,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: true,
       tester: false,
+      portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
       reason: "Pro is comped for the CompNinja team.",
     };
   }
@@ -293,6 +297,10 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: false,
       tester: false,
+      // Same pattern as canExploreAddresses: today's desk already showed likely
+      // value to everyone before Pro, so dark restores that — unlike the vault.
+      portfolioMaxItems: FREE_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
       reason: "Pro tier is switched off (PRO_ENABLED is not 'on').",
     };
   }
@@ -346,6 +354,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: false,
       tester: true,
+      portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
       reason: "Pro is comped for a beta tester.",
     };
   }
@@ -432,6 +442,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
     admin: false,
     tester: false,
+    portfolioMaxItems: pro ? PRO_PORTFOLIO_MAX_ITEMS : FREE_PORTFOLIO_MAX_ITEMS,
+    portfolioValues: pro,
     reason: reasonFor({ state, pro, broker, reportUnlocked, user }),
   };
 }
@@ -487,4 +499,6 @@ module.exports = {
   RENEWAL_SLACK_MS,
   PRO_PLANS,
   PAID_PLANS,
+  FREE_PORTFOLIO_MAX_ITEMS,
+  PRO_PORTFOLIO_MAX_ITEMS,
 };

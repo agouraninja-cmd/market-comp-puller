@@ -703,9 +703,21 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(html, /\.rd-desk-build > \.rd-chamber-head \{[^}]*border-radius:\s*6px 0 0 0/);
   assert.match(html, /\.rd-desk-market > \.rd-chamber-head \{[^}]*border-radius:\s*0 6px 0 0/);
 
+  // Focus/Lookback: one site chevron. The background shorthand wiped the SVG
+  // and appearance:auto put the native widget back on top of it (three or four
+  // arrows in dark mode). background-color keeps the SVG; auto must not return.
+  assert.match(html, /\.rd-in \{[^}]*background-color:\s*transparent/);
+  assert.doesNotMatch(html, /\.rd-in \{[^}]*background:\s*transparent/);
+  assert.doesNotMatch(html, /^\s*select\.rd-in \{[^}]*appearance:\s*auto/m);
+  assert.match(html, /^\s*select\.rd-in \{[^}]*appearance:\s*none/m);
+
   const home = html.slice(html.indexOf('id="homeInfo"'), html.indexOf("Site footer"));
   assert.match(home, /href="\/how-it-works"/);
   assert.match(home, /href="\/brokers"/);
+  // gap-x-3 was never in the vendored tailwind.css, so the middle dot sat
+  // on the F in "For brokers". gap-x-4 is already generated.
+  assert.match(home, /gap-x-4/);
+  assert.doesNotMatch(home, /gap-x-3/);
   assert.ok(!/id="marketSearch"/.test(home), "explorer moved out of homeInfo");
 });
 

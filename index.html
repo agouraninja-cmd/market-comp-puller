@@ -677,8 +677,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* 16px is load-bearing, not a taste choice: iOS Safari auto-zooms on focus
        for any input under 16px and never zooms back out, leaving the page
        zoomed and side-scrolled after tapping the address field — the site's
-       single most-tapped control. Do not "tidy" this back down. */
-    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: var(--ink); background: transparent; }
+       single most-tapped control. Do not "tidy" this back down.
+       background-color, not the background shorthand: the shorthand wipes
+       background-image, which is how the site's select chevron is drawn.
+       Restoring the native arrow on .rd-in used to stack it on that SVG —
+       three or four chevrons on Focus/Lookback in dark mode, where
+       color-scheme:dark adds Chrome's own. */
+    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: var(--ink); background-color: transparent; }
     /* #68707E, same as the swept caption gray: #9AA2AD measured 2.6:1, below
        even the relaxed placeholder bar, and the example addresses rotating in
        the search field are real guidance, not decoration. Still clearly
@@ -696,7 +701,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        largest text in the frame (Direction N). Still above the 16px iOS
        zoom floor documented at .rd-in. */
     .rd-in-lg { font-size: 17px; }
-    select.rd-in { appearance: auto; }
+    /* Must stay none. auto is the stacked-chevron bug; the SVG on `select` is
+       the one arrow. Restated here so a later .rd-in tweak cannot revive auto. */
+    select.rd-in { appearance: none; -webkit-appearance: none; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px var(--red); }
     /* ...but only for the cell's OWN input. The address cell now also carries
@@ -2870,7 +2877,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     <!-- Home info — pointer row under the desk; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
-      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-3 gap-y-2">
+      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-4 gap-y-2">
         <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works</a>
         <span class="text-[#9AA2AD]">·</span>
         <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers</a>

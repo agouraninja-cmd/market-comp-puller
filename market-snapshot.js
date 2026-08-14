@@ -34,19 +34,83 @@ function slugify(type, city, state) {
 }
 
 // Keys a market page never shows, and which would bloat every stored payload.
-// `notes` is the long one; the rest are app-only concerns.
-// Note `cap_rate`, `tenancy` and `year_built` are deliberately NOT dropped:
-// nothing renders them today either, but they are short, per-comp, and the
-// obvious next columns, so storing them makes surfacing them a render-only
-// change rather than another regeneration.
+// `notes` is the long one. `source_url` used to live here too (2026-07-27);
+// it is kept as of 2026-08-14 so an analyst can cite a row, sanitized below.
+// `cap_rate`, `tenancy` and `year_built` are deliberately NOT dropped — they
+// render when any comp carries a value, and stay stored so a seed page that
+// later gains them does not need another regeneration.
 // `verified_by`/`verified_by_slug` go too: attachVerifiedAttribution writes the
 // contributing broker's firm name and profile slug onto comps before a snapshot
 // is distilled, and no market page renders either. Keeping them would persist
 // dead attribution into market-seed.json — a committed file — and fossilise a
 // profile slug that the broker may later un-publish.
 const COMP_DROP_KEYS = new Set([
-  "notes", "source_url", "lat", "lng", "verified", "verified_by", "verified_by_slug",
+  "notes", "lat", "lng", "verified", "verified_by", "verified_by_slug",
 ]);
+
+// http/https only, no embedded credentials. A model-supplied string becomes an
+// href on a public page, so javascript:/data:/bare paths store as "" rather
+// than becoming an active URL. Spec:
+// docs/superpowers/specs/2026-08-14-market-page-analyst-research-design.md
+function safeHttpUrl(s) {
+  const raw = String(s == null ? "" : s).trim();
+  if (!/^https?:\/\//i.test(raw)) return "";
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    if (u.username || u.password) return "";
+    return u.href;
+  } catch (_) {
+    return "";
+  }
+}
+
+function isLease(c) {
+  return String((c && c.transaction) || "").toLowerCase().startsWith("lease");
+}
+
+// Annual $/SF/yr for a lease row. Prefer price_per_sqft (already a number).
+// A price_or_rate like "$1.08/SF/month NNN ($12.96/SF/yr NNN)" would parse as
+// 1.08 monthly if we used num() on the whole string, so a /yr capture is the
+// only fallback, and anything else is refused.
+function leaseRentPsfYr(c) {
+  const fromPsf = num(c && c.price_per_sqft);
+  if (fromPsf > 0) return fromPsf;
+  const raw = String((c && c.price_or_rate) || "");
+  const yr = raw.match(/([\d,.]+)\s*\/\s*sf\s*\/\s*yr/i);
+  if (!yr) return NaN;
+  const n = num(yr[1]);
+  return n > 0 ? n : NaN;
+}
+
+// ≥2 priced leases or null — under-claim, never a one-comp "band".
+function rentFromComps(comps) {
+  const vals = (comps || []).filter(isLease).map(leaseRentPsfYr).filter((v) => v > 0).sort((a, b) => a - b);
+  if (vals.length < 2) return null;
+  return {
+    count: vals.length,
+    median: Math.round(pct(vals, 50) * 100) / 100,
+    low: Math.round(pct(vals, 25) * 100) / 100,
+    high: Math.round(pct(vals, 75) * 100) / 100,
+  };
+}
+
+// Both ends required, matching how the page already treats cap_rate_low/high.
+function opexRangeFrom(data) {
+  const r = data && data.market_opex_range;
+  if (!r || typeof r !== "object") return null;
+  const low = String(r.low || "").trim();
+  const high = String(r.high || "").trim();
+  if (!low || !high) return null;
+  return { low, high, note: String(r.note || "").trim().slice(0, 120) };
+}
+
+// Same bounds as report-parse.js normalizeTrendPct (±30%/yr, refuse 0). Copied
+// rather than imported so this file stays dependency-free for gen-market-seed.
+function trendPctFrom(data) {
+  const v = Number(String((data && data.annual_price_trend_pct) ?? "").replace(/%/g, "").trim());
+  return Number.isFinite(v) && v !== 0 && Math.abs(v) <= 30 ? v : null;
+}
 
 // Deliberately a DENYLIST, not an allowlist. The per-type comp fields live in
 // TYPE_COMP_FIELDS in server.js, and server.js already requires this file — so
@@ -57,6 +121,10 @@ function trimComp(c) {
   const out = {};
   for (const k of Object.keys(c || {})) {
     if (COMP_DROP_KEYS.has(k)) continue;
+    if (k === "source_url") {
+      out[k] = safeHttpUrl(c[k]);
+      continue;
+    }
     out[k] = c[k] == null ? "" : String(c[k]);
   }
   return out;
@@ -102,6 +170,12 @@ function distillMarketSnapshot(t, data) {
     date_range: dateRange,
     comps: comps.slice(0, 8).map(trimComp),
   };
+  const opex = opexRangeFrom(data);
+  if (opex) snapshot.market_opex_range = opex;
+  const trend = trendPctFrom(data);
+  if (trend != null) snapshot.annual_price_trend_pct = trend;
+  const rent = rentFromComps(comps);
+  if (rent) snapshot.rent = rent;
   return { snapshot, pricedSaleCount: ppsfVals.length };
 }
 
@@ -129,4 +203,8 @@ function isBetterSnapshot(candidate, current) {
   return n(candidate) >= n(current);
 }
 
-module.exports = { MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot, isBetterSnapshot };
+module.exports = {
+  MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot, isBetterSnapshot,
+  dateKey, safeHttpUrl, isLease, leaseRentPsfYr, rentFromComps,
+  opexRangeFrom, trendPctFrom,
+};

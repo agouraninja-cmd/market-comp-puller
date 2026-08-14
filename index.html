@@ -1760,6 +1760,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
       </div>
 
+      <!-- Hubs someone has invited this member into. The TENANT side only —
+           a broker's own hubs live on /vault beside the pipeline deck (the
+           owner's answer, 2026-08-13), because creating one is a broker
+           surface gated on canUseVault and this page is seen by every free
+           account. Spec:
+           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+           NOT the connection hub at /brokers.
+
+           Rendered ONLY when there is something in it: a member who has
+           never been invited into a hub should not be shown an empty
+           section for a feature they have no way to start. That is the
+           opposite of the two share lists above, which teach a feature this
+           member can use themselves. -->
+      <div id="deskHubs" class="hidden mt-8">
+        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
+        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
+      </div>
+
       <!-- Report branding — the mark THIS member's own reports and exports
            carry (Task 7/8 apply it; this card only saves it). Saving is open
            to anyone signed in, whether or not they currently hold an
@@ -8984,6 +9002,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderWatchFeed();
     renderBrokerDesk();
     renderShares();
+    renderDeskHubs();
     loadBranding();
   }
 
@@ -9411,6 +9430,40 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         editBtn.addEventListener("click", () => editWrap.classList.toggle("hidden"));
         actions.appendChild(editBtn);
       }
+      // "Start a hub" — the only in-product discovery path the messaging hub
+      // has (the owner's Q5 yes, 2026-08-13). It seeds a hub with this
+      // report's comps and the people already invited to it, so the broker
+      // does not retype either.
+      //
+      // Offered ONLY to a member who can actually create one. The gate is
+      // canUseVault, exactly as the server's own is, so this is not a second
+      // opinion about entitlement — it is the same answer, read from
+      // /api/config, which is where every other billing control on this page
+      // reads it. Without this check the button would appear for every
+      // signed-in member and answer with a 403; the server still refuses
+      // either way, so this decides visibility and nothing else.
+      if (hubCreationAllowed()) {
+        const hubBtn = document.createElement("button");
+        hubBtn.type = "button";
+        hubBtn.className = "text-[#5A6473] hover:text-[#1A2433] underline";
+        hubBtn.textContent = "Start a hub";
+        hubBtn.addEventListener("click", async () => {
+          rowErr.classList.add("hidden");
+          hubBtn.disabled = true;
+          try {
+            const out = await acctApi("POST", "/api/hubs", { fromShare: r.id });
+            showHubInvites(card, out);
+            renderDeskHubs();
+          } catch (ex) {
+            rowErr.textContent = ex.message;
+            rowErr.classList.remove("hidden");
+          } finally {
+            hubBtn.disabled = false;
+          }
+        });
+        actions.appendChild(hubBtn);
+      }
+
       const offBtn = document.createElement("button");
       offBtn.type = "button";
       offBtn.className = "text-[#68707E] hover:text-red-700";
@@ -9484,6 +9537,149 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       row.appendChild(meta);
       wrap.appendChild(row);
     });
+  }
+
+  // ----------------------------------------------------------------------------
+  // Comp hubs on My Desk — the TENANT side only.
+  //
+  // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+  // NOT the connection hub at /brokers.
+  //
+  // A broker's own hubs are on /vault beside the pipeline deck, because
+  // creating one is gated on canUseVault and this page is seen by every free
+  // account. This list is what a tenant sees, and a tenant is the person this
+  // whole feature exists to reach.
+  //
+  // Two rules, both different from the share lists above:
+  //
+  //   1. It renders ONLY when there is something in it. There is no empty
+  //      state, because a member who has never been invited into a hub cannot
+  //      start one from here, so an empty section would advertise a door with
+  //      no handle. The share lists teach a feature this member can use; this
+  //      one reports a fact about someone else's invitation.
+  //   2. EVERY failure is silent. This is an extra list at the bottom of a
+  //      page that already works; a hub outage must not put an error on the
+  //      desk of somebody who came here for their portfolio. Contrast
+  //      renderShares(), which does show one line, because a broker who has
+  //      shared reports and cannot see them needs telling.
+  // ----------------------------------------------------------------------------
+  // May this member create a hub? The same answer the server gives, read from
+  // the same /api/config block every other billing control on this page reads,
+  // so this is not a second opinion about entitlement — the server still
+  // refuses either way, and this decides visibility only.
+  //
+  // `proConfig` IS the pro block (`proConfig = cfg.pro`), not a wrapper around
+  // one, and it is a `let` declared ~3,000 lines below this function, so the
+  // try/catch is the TDZ guard `addressExplorerAllowed()` already carries for
+  // the same reason. It fails CLOSED, unlike that one: withholding a button
+  // costs a click, while flashing one that 403s costs trust.
+  function hubCreationAllowed() {
+    try {
+      return Boolean(proConfig && proConfig.canUseVault);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // The one place a raw invite token is ever visible on this page. It is not
+  // stored (only its sha256 is) and cannot be fetched back, so this says so
+  // rather than rendering a link and trusting someone to notice. Same panel,
+  // same reasoning, as the vault's version — outbound email is off until a
+  // domain is verified in Resend, so copying these out IS the delivery.
+  function showHubInvites(card, out) {
+    const box = document.createElement("div");
+    box.className = "mt-2 border-t border-[#ECEAE3] pt-2";
+    const note = document.createElement("p");
+    note.className = "text-xs text-[#4C5665]";
+    note.textContent = "Your hub is ready. Copy each link and send it to that person yourself: "
+      + "CompNinja does not email them yet, and these links cannot be shown again.";
+    box.appendChild(note);
+
+    const invites = Array.isArray(out.invites) ? out.invites : [];
+    if (!invites.length) {
+      const open = document.createElement("a");
+      open.className = "text-xs text-[#B91C1C] underline mt-1 inline-flex";
+      open.href = "/hub/" + encodeURIComponent(out.id);
+      open.textContent = "Open the hub";
+      box.appendChild(open);
+      card.appendChild(box);
+      return;
+    }
+    invites.forEach((inv) => {
+      const row = document.createElement("div");
+      row.className = "mt-1.5 flex flex-wrap items-center gap-2 text-xs";
+      const who = document.createElement("span");
+      who.className = "text-[#4C5665]";
+      who.textContent = inv.email;
+      row.appendChild(who);
+      const field = document.createElement("input");
+      field.type = "text";
+      field.readOnly = true;
+      field.value = inv.url;
+      field.setAttribute("aria-label", "Invite link for " + inv.email);
+      field.className = "flex-1 min-w-0 rounded-lg border border-[#D8D4C9] px-2 py-1 text-xs";
+      row.appendChild(field);
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium";
+      copy.textContent = "Copy";
+      copy.addEventListener("click", () => {
+        // select() first, and it is the fallback rather than the decoration:
+        // clipboard.writeText needs a secure context and a permission that
+        // can be refused, and a broker who cannot copy the link cannot send
+        // it at all.
+        field.focus(); field.select();
+        const done = () => { copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(field.value).then(done).catch(() => {
+            try { document.execCommand("copy"); done(); } catch (_) {}
+          });
+        } else {
+          try { document.execCommand("copy"); done(); } catch (_) {}
+        }
+      });
+      row.appendChild(copy);
+      box.appendChild(row);
+    });
+    card.appendChild(box);
+  }
+
+  async function renderDeskHubs() {
+    const box = document.getElementById("deskHubs");
+    if (!box) return;
+    box.classList.add("hidden");
+    if (!currentUser) return;
+    let data;
+    try {
+      const res = await fetch("/api/hubs");
+      if (!res.ok) return;            // 401/403/503 all mean "show nothing"
+      data = await res.json();
+    } catch (_) { return; }
+    const rows = (data && Array.isArray(data.theirs)) ? data.theirs : [];
+    if (!rows.length) return;
+
+    const wrap = document.getElementById("deskHubRows");
+    wrap.innerHTML = "";
+    rows.forEach((h) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const link = document.createElement("a");
+      link.href = "/hub/" + encodeURIComponent(h.id);
+      link.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      // textContent, never innerHTML — a hub title is typed by the broker who
+      // created it, so it is user-authored text like an address or an email.
+      link.textContent = h.title || h.subjectAddress || "Comp hub";
+      row.appendChild(link);
+      const bits = [h.propertyType, h.market].filter(Boolean);
+      if (h.closedAt || h.status === "closed") bits.push("closed");
+      else if (h.updatedAt) bits.push("updated " + fmtShareDate(h.updatedAt));
+      const meta = document.createElement("span");
+      meta.className = "text-xs text-[#68707E]";
+      meta.textContent = bits.join(" · ");
+      row.appendChild(meta);
+      wrap.appendChild(row);
+    });
+    box.classList.remove("hidden");
   }
 
   // ----------------------------------------------------------------------------
@@ -10842,17 +11038,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
 
-    // The redeem row: signed-in, not already Pro, AND this deployment actually
-    // has a passkey configured. Deliberately NOT gated on billingLive() — a
-    // code is exactly what someone uses on a deployment with no Stripe keys,
-    // the same exception the vault link makes. The testerPasskey check exists
-    // because /api/config's `tester` flag only reports whether THIS user has
-    // already redeemed, not whether a passkey exists at all — without it, a
-    // deployment that never set TESTER_PASSKEY still showed a row that could
-    // only ever fail on submit.
-    const hasPasskey = Boolean(proConfig && proConfig.testerPasskey);
+    // The redeem row: signed-in, this deployment has a passkey configured, AND
+    // there is still something this account could redeem. Deliberately NOT
+    // gated on billingLive() — a code is exactly what someone uses on a
+    // deployment with no Stripe keys, the same exception the vault link makes.
+    // The testerPasskey/vaultPasskey checks exist because /api/config's
+    // `tester` and `canUseVault` flags only report what THIS user already
+    // holds, not whether a door exists at all — without them, a deployment
+    // that never set either passkey still showed a row that could only ever
+    // fail on submit.
+    //
+    // Two doors, so the row survives holding one of them: a broker who
+    // redeemed the vault code is not Pro, and would otherwise be shown a row
+    // whose only remaining use is a tester code nobody gave them — hence the
+    // per-door test rather than the old `pro` alone. Both codes go to the
+    // same input; the server decides which grant a code opens.
+    const canRedeemTester = Boolean(proConfig && proConfig.testerPasskey) && !pro;
+    const canRedeemVault = Boolean(proConfig && proConfig.vaultPasskey)
+      && !Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("passkeyRow")
-      .classList.toggle("hidden", !currentUser || pro || !hasPasskey);
+      .classList.toggle("hidden", !currentUser || !(canRedeemTester || canRedeemVault));
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already
@@ -11147,6 +11352,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // Re-read /api/config so every entitlement-driven surface updates in
       // place — the same seam used after a checkout return and a sign-in.
       await refreshProConfig();
+      // A vault code lands somebody on a page they have never seen and were
+      // not looking for: they opened PRICING and got a workspace. Closing the
+      // modal silently, which is right for a Pro code (the plan card behind it
+      // already says Pro), would leave them with no idea what just happened.
+      // So name it and point at it, and let them close the modal themselves.
+      if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
+        msg.innerHTML = 'Your comp vault is open. <a href="/vault" class="underline font-semibold">Go to the vault</a>.';
+        msg.className = "mt-2 text-sm text-emerald-700";
+        msg.classList.remove("hidden");
+        return;
+      }
       closePricingModal();
     } catch (ex) {
       msg.textContent = ex.message;

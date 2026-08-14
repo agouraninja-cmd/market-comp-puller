@@ -109,6 +109,7 @@ const BOVSVC = require("./bov-log");
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
 const { parseDealDate } = require("./deal-date");
+const HARVEST = require("./corpus-harvest");
 const { isAggregateAddress } = AUDIT;
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
 // above; server.js owns the network half (checkSourceLinks below).
@@ -3210,17 +3211,17 @@ async function harvestComps(type, searchAddress, payload) {
     const comps = payload && Array.isArray(payload.comps) ? payload.comps : [];
     const rows = [];
     for (const c of comps) {
-      if (!c || !String(c.address || "").trim()) continue;
-      // A comp with no price at all is not data worth keeping.
-      if (!String(c.price_or_rate || "").trim() && !String(c.price_per_sqft || "").trim()) continue;
-      // Backstop for the prompt's individual-property rule: a market median or
-      // research benchmark formatted as a comp would otherwise sit in the
-      // permanent corpus looking like a real transaction.
-      if (isAggregateAddress(c.address)) {
-        console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+      if (!HARVEST.shouldHarvest(c)) {
+        if (c && isAggregateAddress(c.address)) {
+          console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+        }
         continue;
       }
-      const key = corpusKeyOf(c);
+      // Fill empty listing dates before the dedupe key so "" and "Active"
+      // cannot both occupy the store for the same address + price.
+      const date = HARVEST.listingDateForHarvest(c);
+      const keyed = { ...c, date };
+      const key = corpusKeyOf(keyed);
       if (corpusSeen.has(key)) continue;
       corpusSeen.add(key);
       rows.push({
@@ -3230,14 +3231,11 @@ async function harvestComps(type, searchAddress, payload) {
         market: marketOf(c.address),
         address: String(c.address).trim(),
         transaction: String(c.transaction || ""),
-        deal_date: String(c.date || ""),
+        deal_date: date,
         size_sqft: String(c.size_sqft || ""),
         price_or_rate: String(c.price_or_rate || ""),
         price_per_sqft: String(c.price_per_sqft || ""),
         cap_rate: String(c.cap_rate || ""),
-        // Per-type specs (TYPE_COMP_FIELDS). One flat row per comp regardless
-        // of type, so every key is always present — the columns a given type
-        // doesn't use just stay empty.
         ...Object.fromEntries(ALL_TYPE_COMP_FIELDS.map((f) => [f, String(c[f] || "")])),
         tenancy: String(c.tenancy || ""),
         year_built: String(c.year_built || ""),

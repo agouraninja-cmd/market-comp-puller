@@ -106,6 +106,10 @@ test("bare environment", async (t) => {
       "the not-advice box must ship on the live page");
     assert.ok(html.includes(".steps1031"),
       "GUIDE_CSS must ship on the served page (proves the route's head: line survived)");
+    assert.ok(html.includes("id=\"worksheet\""),
+      "the identification worksheet is the page now; the explainer sits below it");
+    assert.ok(html.toLowerCase().includes("not a written identification"),
+      "the page must not read as the list delivered to a QI");
   });
 
   await t.test("sitemap.xml lists the 1031 guide", async () => {

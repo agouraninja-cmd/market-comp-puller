@@ -168,12 +168,20 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
   display: the skip + no-third-party guards in `renderMap()`). This line
   sat in "Now" until 2026-08-08 — it was already done.
 
+- **2026-08-14: /1031-exchange is an identification worksheet.** The
+  education page stays on the same URL, underneath: selling property,
+  closing date → 45/180 calendar dates, three replacement slots, each
+  valued through the existing report handoff. Shareable via the URL
+  fragment so addresses never hit a server log. Not a written
+  identification, not an exchange, dates only — the 2026-08-08
+  compliance pins still hold.
 - **2026-08-08: v4 slice 3, the 1031 exchange guide.** Public education
   page at /1031-exchange: the exchange workflow in order, a client-side
   45/180-day deadline-dates widget (dates only, never taxes), the
   identification rules, common failure modes, and a FAQ with FAQPage
   JSON-LD. One page for both audiences — owners researching a sale find
   it, brokers hand it to clients. Education, never advice, test-pinned.
+  Worksheet layer added 2026-08-14 (see above).
 - **2026-08-08: v4 slice 1, the gut check.** A broker's book, sanity-checked
   against the public market layer on /vault: per-bucket median $/SF and cap
   rates vs corpus quartiles + model market figures (the owner's blended-

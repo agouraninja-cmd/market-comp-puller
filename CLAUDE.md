@@ -1076,18 +1076,25 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   and it likewise does NOT depend on `tailwind.css`. Listed in `sitemap.xml`.
   Do not confuse this with `GET /broker/<slug>`, the per-contributor public
   profile.
-- `GET /1031-exchange` — public 1031-exchange education page (v4 slice 3;
-  spec `docs/superpowers/specs/2026-08-08-1031-guide-design.md`). All
-  content lives in the pure **`guide-1031.js`** (the vault-page.js
-  precedent) — FAQ array feeding both the accordions and the FAQPage
-  JSON-LD, the education-not-advice compliance box, and a client-side
-  45/180-day deadline-dates widget (calendar dates only, never taxes or
-  dollars; nothing is sent to a server). server.js only dresses it in
-  `marketShell` and spreads the module's JSON-LD nodes into the shared
-  `brandGraph()` @graph. Education, never advice — the compliance strings
-  are test-pinned in both directions (must-appear and must-never-appear).
-  Listed in `sitemap.xml`; linked from `MARKET_FOOTER`, `/how-it-works`'s
-  footer, and `/brokers`.
+- `GET /1031-exchange` — public **1031 identification worksheet** (education
+  page underneath; v4 slice 3 as amended 2026-08-14). Spec
+  `docs/superpowers/specs/2026-08-14-1031-identification-worksheet-design.md`
+  (amends `2026-08-08-1031-guide-design.md`). All content lives in the pure
+  **`guide-1031.js`** — worksheet on top (relinquished property, closing date
+  → 45/180 calendar dates, three replacement slots, each with a Value handoff
+  through `pendingLandingAddress.v1`), then the explainer, FAQ array feeding
+  both the accordions and the FAQPage JSON-LD, and the education-not-advice
+  box. The date widget still computes calendar dates only, never taxes or
+  dollars. Sharing rides the URL fragment (`#p=`), so a street address never
+  lands in a server log; reading stays free and unauthenticated.
+  `renderGuide1031Body(signedIn)` picks the Value door (`/` vs
+  `/?auth=signup`). server.js only dresses it in `marketShell` and spreads
+  the module's JSON-LD nodes into the shared `brandGraph()` `@graph`.
+  Education, never advice — the compliance strings are test-pinned in both
+  directions (must-appear and must-never-appear), including that this is not
+  a written identification and not an exchange CompNinja created. Listed in
+  `sitemap.xml`; linked from `MARKET_FOOTER`, `/how-it-works`'s footer, and
+  `/brokers`.
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real

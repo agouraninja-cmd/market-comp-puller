@@ -1067,17 +1067,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
 - `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
-  **"Brokers"**. Holds the contribute-for-credit pitch, the owner-introduction
-  offer, and what the Verified badge means — content that used to be a
-  `#for-brokers` section on the landing page reachable only by a scroll-to
-  button, with no URL of its own. Unlike `/how-it-works` it carries no CSS of
-  its own: it renders through `marketShell()`, so `MARKET_CSS` / `MARKET_BAR` /
-  `MARKET_FOOTER` style it and it likewise does NOT depend on `tailwind.css`.
-  Listed in `sitemap.xml`. Its "Submit a comp" CTA links to **`/#submit-comp`**,
-  a deep link `index.html` handles by opening the existing comp-submission
-  modal and then clearing the hash — deliberately one form, not a second copy
-  of it on this page. Do not confuse this with `GET /broker/<slug>`, the
-  per-contributor public profile.
+  **"Brokers"**. Hero payoff, then two stacked ledgers: Contribute (CREDIT /
+  INTROS / PROFILE, Verified chip shown inline) and Pro (BOOK / PIPELINE /
+  PRIVATE). One Submit door at the bottom (`/?submit=comp` — a query the
+  account wall can see; a `/#submit-comp` hash never reaches the server).
+  Unlike `/how-it-works` it carries no CSS of its own: it renders through
+  `marketShell()`, so `MARKET_CSS` / `MARKET_BAR` / `MARKET_FOOTER` style it
+  and it likewise does NOT depend on `tailwind.css`. Listed in `sitemap.xml`.
+  Do not confuse this with `GET /broker/<slug>`, the per-contributor public
+  profile.
 - `GET /1031-exchange` — public 1031-exchange education page (v4 slice 3;
   spec `docs/superpowers/specs/2026-08-08-1031-guide-design.md`). All
   content lives in the pure **`guide-1031.js`** (the vault-page.js

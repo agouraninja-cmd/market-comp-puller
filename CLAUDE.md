@@ -48,7 +48,10 @@ browser too, via a dual Node/global export), **`backtest.js`** (the
 hold-one-out accuracy scorer built on it, requiring nothing but
 `valuation.js`) and **`branding.js`** (report branding's decision table: what
 mark a render uses, and the rule that a shared report is decided entirely by
-its own snapshot) — plus **`report-access.js`** (the ONLY function that
+its own snapshot) and **`watchlist-digest.js`** (the digest's copy and its
+"is this worth sending?" rule — the only email this product sends on its own
+initiative, so every judgment in it is about what a person is worth
+interrupting for) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
@@ -1115,6 +1118,44 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (harvest skips them), so heavy international use slightly deflates the tile.
   `analytics_events` is queryable directly in
   Supabase when the dashboard is unavailable: `source = 'corpus'` marks a hit.
+  **Whose visit an event was** (2026-08-13; migration
+  `024-analytics-visitor.sql`, **run before deploying — see below**). Events
+  recorded what happened and nothing about whose visit it was, so the table
+  could count signups and count reports and never say whether the same
+  browser did both. `visitor_id` (an opaque random id in the httpOnly
+  `cn_vid` cookie) and `user_id` (once a session resolves) make that a query,
+  and `/admin`'s **Visitor funnel** card reads it: arrived, hit the sign-in
+  wall, created an account, ran a report. The events stay PII-free — the id
+  is a random number handed to a browser, not derived from IP, user agent or
+  anything else about the person, and the privacy policy's cookie section
+  names `cn_vid` alongside `cn_guest`; keep it in step. Five rules:
+  - **The cookie is minted only on document navigations.** A page load fires
+    a dozen parallel requests; minting on whichever arrives first is a race
+    where each mints its own id, the browser keeps the last, and that visit's
+    events scatter across ids that never appear again.
+  - **A cookie value that is not 32 hex characters is replaced, never
+    stored.** It arrives from a client and is written to a column.
+  - **The funnel stages are cumulative sets over distinct visitors**, so a
+    stage can never exceed the one above it and the gap between two lines is
+    a real drop-off rather than two different populations.
+  - **Rows with no `visitor_id` are excluded, not bucketed.** Every event
+    before the migration has a blank id, and lumping them together would
+    invent a single visitor who did everything the product has ever seen.
+  - **`AsyncLocalStorage` does NOT reach a `req.on("end")` callback**, which
+    is where every route with a request body logs from. Measured, not
+    assumed, and `enterWith()` does not fix it either: Node emits those
+    events from the connection's async context, a sibling of the handler's
+    rather than a descendant. A plain `run()` around the handler attributes
+    every GET perfectly and records every signup, lead, share and vault
+    import as anonymous — which is exactly why it needs a test rather than a
+    spot check. `bindRequestListeners()` binds the registration functions so
+    listeners added afterward inherit the context; it relies on server.js
+    never removing a listener (a wrapped function cannot be matched by
+    `removeListener`), so check that before adding a `.off()` anywhere.
+  **This migration must be run BEFORE the code deploys**, unlike most in this
+  folder: `logEvent`'s INSERT names the two columns, PostgREST 400s an insert
+  on an unknown column, so every analytics write would divert to the
+  ephemeral `analytics.jsonl` and the dashboard would quietly flatten.
 - `GET /api/accuracy` — the valuation-accuracy backtest card on `/admin`
   (added 2026-08-06; spec in
   `docs/superpowers/specs/2026-08-06-valuation-backtest-design.md`). Gated
@@ -1156,9 +1197,65 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
-- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` for comped Pro on the
-  signed-in caller's account (401 if not signed in, rate-limited per IP). See
-  `TESTER_PASSKEY` above for what the grant covers.
+- **The watchlist digest** (2026-08-13; migration `025-watchlist-digest.sql`,
+  **run before deploying**). `POST /api/watchlist/digest` mails each watcher
+  the markets of theirs that have new comps. It is **the only thing this
+  product sends on its own initiative** — everything else it mails answers
+  something a person just did — and the whole file is written to that bar:
+  when in doubt, send nothing.
+  Copy and the "is this worth sending?" rule live in the pure, tested
+  **`watchlist-digest.js`**; `buildDigest` returns **null** rather than an
+  empty string when there is no news, so a caller cannot mail a blank digest
+  by forgetting to check. The feed itself is `buildWatchlistFeed()` in
+  server.js, **shared with `GET /api/watchlist/feed`** so the page and the
+  email can never quote different numbers for the same market; the callers
+  differ only in the cutoff they pass.
+  Six rules a future editor will otherwise break:
+  - **It is ADMIN_KEY-gated and manually triggered, never a timer.** A
+    `setInterval` in this process would fire at an hour nobody chose, fire
+    again after every deploy restart, and fire twice the day this runs on two
+    instances — and the failure mode of all three is mailing real people the
+    same comps again. A route makes the schedule an explicit decision (a
+    Render cron, an Action, a person) and makes "run it and look" possible.
+  - **The send cutoff is the LATER of `last_digest_at` and `last_seen_at`.**
+    Two markers, deliberately: the digest reading only its own would mail
+    comps the reader already saw in the app, and reading only `last_seen_at`
+    would mail the same ones forever to somebody who never clicks the bell.
+    The happy consequence is that an active user quietly stops receiving
+    digests without ever unsubscribing.
+  - **It refuses without a database (503) AND without outbound mail (503).**
+    The second one is the subtle one: `sendOutboundEmail` is a silent no-op
+    when `EMAIL_FROM`/`RESEND_API_KEY` are unset, so running blind would
+    advance every high-water mark and DELETE a digest nobody received. This
+    is the only caller for which that no-op is destructive, which is why the
+    check is here and not there. `{ dryRun: true }` builds every email, sends
+    none, marks nothing, and returns the copy — it skips the mail check on
+    purpose, since inspecting copy should not need a verified domain.
+  - **Mark AFTER the send, and only the markets that carried news.** A failed
+    mark costs one duplicate next run; marking first would lose the digest
+    outright on a failed send, and a lost digest is invisible where a
+    duplicate is merely annoying. Markets with nothing new keep their old
+    high-water mark, so the day one does get a comp the digest still reaches
+    back to when the watch started.
+  - **One bad account never stops the run** — the rest of the list is still
+    owed its mail.
+  - **Unsubscribe is a token link, and the GET only CONFIRMS.** `GET
+    /watchlist/unsubscribe?u=&t=` renders a page whose button POSTs; the POST
+    flips `users.digest_optout`. The second click is correctness, not
+    politeness: corporate mail scanners and link-preview bots fetch every URL
+    in an email, and a GET that unsubscribed would opt people out of mail they
+    never opened. The token is an HMAC of the user id keyed on
+    `SUPABASE_SERVICE_KEY` (guaranteed present, since the digest refuses
+    without a database; domain-separated so it cannot collide with any other
+    use of that key), so the link authenticates itself for somebody who is not
+    signed in, months later, on a phone. `&on=1` is the same link in reverse —
+    a one-way off switch with no way back is a support ticket.
+- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` (comped Pro) or
+  `VAULT_PASSKEY` (the broker vault) for the signed-in caller's account, on
+  one route and one input: 401 if not signed in, rate-limited per IP, and the
+  response's `granted` array names which door opened. 404s only when NEITHER
+  passkey is configured. See both env bullets above for what each grant covers
+  and why they are separate secrets.
 - `GET /dev`, `GET /api/devlog`, `GET|PUT /api/dev-ideas` — the **Development
   Hub**: an internal changelog + future-ideas page, gated by the same
   `ADMIN_KEY` (and sessionStorage key) as `/admin`, with the same triple-noindex

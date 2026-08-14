@@ -1439,3 +1439,114 @@ test("analytics visitor attribution", async (t) => {
       "a malformed visitor id must be replaced with a freshly minted one");
   });
 });
+
+// --- The watchlist digest ---------------------------------------------------
+//
+// watchlist-digest.js already proves what the email SAYS. What can only be
+// proved by booting a server is that the route refuses in the right order,
+// and that is most of the value here: this is the only thing the product
+// sends on its own initiative, so every refusal exists to stop it mailing
+// real people something wrong.
+//
+// The one that matters most is the no-database 503. Without it the run would
+// build every digest, hand each to a sendOutboundEmail that silently no-ops
+// when mail is unconfigured, and then advance every high-water mark — mailing
+// nobody while recording everybody as mailed, which DELETES a digest rather
+// than delaying it. There is no database in this environment, so that path is
+// exactly what these tests exercise.
+
+test("watchlist digest", async (t) => {
+  const KEY = "digest-admin-key";
+
+  await t.test("the route does not exist without ADMIN_KEY, and refuses a stranger", async () => {
+    const dark = await boot({});
+    t.after(() => dark.stop());
+    const gone = await fetch(dark.base + "/api/watchlist/digest", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(gone.status, 404, "an unconfigured deployment must not answer this route");
+
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    const anon = await fetch(srv.base + "/api/watchlist/digest", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(anon.status, 401, "this route reads every account's email address");
+  });
+
+  await t.test("it refuses to run without a database rather than marking everyone mailed", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/api/watchlist/digest", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-key": KEY },
+      body: JSON.stringify({}),
+    });
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /database/i);
+  });
+
+  await t.test("even a dry run refuses without a database", async () => {
+    // The dry run skips the outbound-mail check (inspecting copy should not
+    // need a verified domain) but not this one: with no database there is no
+    // watchlist to read, and an empty summary would read as "nobody is
+    // watching anything" rather than "this cannot answer".
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/api/watchlist/digest", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-key": KEY },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    assert.equal(r.status, 503);
+  });
+});
+
+test("watchlist digest unsubscribe", async (t) => {
+  // SUPABASE_SERVICE_KEY without SUPABASE_URL: DB_CONFIGURED stays false (it
+  // needs both), but the token HMAC is keyed on the service key alone, so the
+  // link half is testable with no database.
+  const SERVICE = "service-key-for-token-hmac";
+  const crypto = require("node:crypto");
+  const macFor = (id) => crypto.createHmac("sha256", SERVICE)
+    .update(`watchlist-digest-unsubscribe:${id}`).digest("hex").slice(0, 32);
+  const USER = "11111111-2222-3333-4444-555555555555";
+
+  await t.test("a wrong or missing token is refused", async () => {
+    const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
+    t.after(() => srv.stop());
+    for (const q of [`?u=${USER}`, `?u=${USER}&t=nope`, `?u=&t=${macFor("")}`]) {
+      const r = await fetch(srv.base + "/watchlist/unsubscribe" + q);
+      assert.equal(r.status, 400, "unexpectedly accepted " + q);
+    }
+  });
+
+  await t.test("a valid link CONFIRMS rather than acting, and is noindex", async () => {
+    const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + `/watchlist/unsubscribe?u=${USER}&t=${macFor(USER)}`);
+    assert.equal(r.status, 200);
+    const html = await r.text();
+
+    // The whole point of the second click: corporate mail scanners and
+    // link-preview bots fetch every URL in an email, so a GET that
+    // unsubscribed would opt people out of mail they never opened. If this
+    // ever becomes a one-click GET, this assertion is the one that says so.
+    assert.match(html, /<form method="POST"/,
+      "the GET must only offer a form — a prefetching mail scanner must not be able to unsubscribe anyone");
+    assert.match(html, /Turn off watchlist emails\?/);
+    assert.match(html, /noindex/, "an unsubscribe page must never be indexed");
+    assert.equal(r.headers.get("x-robots-tag"), "noindex");
+  });
+
+  await t.test("the resubscribe direction is reachable from the same link", async () => {
+    // A one-way off switch with no way back is a support ticket.
+    const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + `/watchlist/unsubscribe?u=${USER}&t=${macFor(USER)}&on=1`);
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /Turn these emails back on\?/);
+    assert.match(html, /<form method="POST"/);
+  });
+});

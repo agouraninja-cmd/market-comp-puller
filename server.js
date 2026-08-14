@@ -65,6 +65,10 @@ const GUTCHECK = require("./gut-check");
 // customer-facing email's text in this HTML shell; see the note on that
 // function before changing how it is applied.
 const EMAILSHELL = require("./email-shell");
+// The watchlist digest's copy and its "is this worth sending?" rule. Pure and
+// tested, because every judgment in it is about what a person is worth
+// interrupting for — see its header.
+const DIGEST = require("./watchlist-digest");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
@@ -1269,6 +1273,127 @@ async function markWatchlistSeen(userId) {
   const s = await accountStore();
   s.watchlist.forEach((x) => { if (x.user_id === userId) x.last_seen_at = now; });
   await saveAccountStore();
+}
+
+// The feed itself, shared by GET /api/watchlist/feed and the digest so the
+// two can never quote different numbers for the same market. Extracted
+// 2026-08-13 when the digest arrived; the body is the route's, unchanged.
+//
+// `cutoffOf(item)` is the only difference between the two callers, and it is
+// the whole argument between them: the page asks what is new since the
+// reader last LOOKED, the digest asks what is new since they were last
+// TOLD. Passing it in keeps that decision at the call site where it can be
+// read, rather than as a flag inside a function that would then have to
+// explain itself twice.
+//
+// `ent` is passed in rather than resolved here because the two callers get it
+// from different places (a request, versus a loop over accounts) and
+// resolving entitlements is the one thing in this app that must have exactly
+// one owner.
+async function buildWatchlistFeed(user, ent, cutoffOf) {
+  const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
+  const items = await listWatchlist(user.id);
+  const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
+  let unseen = 0;
+  const out = [];
+  for (const w of items) {
+    const rows = await corpusRowsForMarket(w.market, w.property_type, 500);
+    const cutoff = String(cutoffOf(w) || "");
+    const fresh = rows.filter((r) => String(r.ts) > cutoff).slice(0, 20);
+    unseen += fresh.length;
+    // Median $/SF: sale rows only, trailing ~6 months — matches the
+    // client-side rule that lease $/SF never mixes into valuation.
+    const salePsf = rows
+      .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
+      .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .map((r) => corpusNum(r.price_per_sqft))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+    const median_psf = salePsf.length
+      ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
+    // Direction: deal-date medians, last 6 months vs the 6 before —
+    // >=3 comps each side or the field is omitted entirely.
+    const datedSales = saleRowsWithDates(rows);
+    const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
+    const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
+    const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
+    const median_trend = curWin.length >= 3 && priWin.length >= 3
+      ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    out.push({
+      id: w.id, market: w.market, property_type: w.property_type,
+      median_psf, new_count: fresh.length,
+      ...(median_trend ? { median_trend } : {}),
+      // new_count above stays the TRUE number of new comps — the visitor
+      // is told what they are missing, they just don't receive it.
+      ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
+      comps: fresh.slice(0, feedRowCap).map((r) => ({
+        ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
+        price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
+        cap_rate: r.cap_rate, source_url: r.source_url,
+      })),
+    });
+  }
+  return { unseen, items: out };
+}
+
+// --- digest state (migration 025) -------------------------------------------
+//
+// DB-only, and the digest route refuses without a database rather than
+// falling back to the file store. That is the vault's rule, for the vault's
+// reason: Render erases the local disk on every deploy, so an "already
+// mailed" marker written there would be lost and every watcher would be re-sent the
+// same comps after each deploy. Losing a convenience is acceptable; mailing
+// people the same thing twice is what teaches them to filter us.
+async function allWatchlistItems(limit = 5000) {
+  if (!DB_CONFIGURED) return [];
+  return await sbRequest("GET", `watchlist_items?order=user_id.asc&limit=${Number(limit) || 5000}`) || [];
+}
+// Marks only the rows that were actually IN the mail. A watcher whose market
+// had nothing new keeps its old high-water mark, so the day it does get a
+// comp the digest still reaches back to when they started watching.
+async function markWatchlistDigested(userId, ids) {
+  if (!DB_CONFIGURED || !ids.length) return;
+  const now = new Date().toISOString();
+  const list = ids.map((id) => `"${String(id).replace(/"/g, "")}"`).join(",");
+  await sbRequest("PATCH",
+    `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${encodeURIComponent(list)})`,
+    { last_digest_at: now });
+}
+async function setDigestOptout(userId, optout) {
+  if (!DB_CONFIGURED) throw new Error("Supabase not configured.");
+  await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
+}
+async function findUsersByIds(ids) {
+  if (!DB_CONFIGURED || !ids.length) return [];
+  const list = ids.map((id) => `"${String(id).replace(/"/g, "")}"`).join(",");
+  return await sbRequest("GET",
+    `users?id=in.(${encodeURIComponent(list)})&select=id,email,digest_optout`) || [];
+}
+
+// The unsubscribe link has to work for somebody who is not signed in, months
+// later, from a phone that has never seen this site — so it authenticates
+// itself. The token is an HMAC of the user id, which makes the link
+// unguessable and unforgeable while storing nothing new.
+//
+// It is keyed on SUPABASE_SERVICE_KEY rather than ADMIN_KEY or a new env var,
+// for two reasons worth stating so nobody "tidies" it: the digest refuses to
+// run without a database at all, so that key is guaranteed present wherever a
+// link could have been minted (ADMIN_KEY is optional and a deployment without
+// one would mint links that can never be honored); and the string is
+// domain-separated, so this cannot collide with any other use of the key and
+// no amount of collecting these tokens reveals it. Rotating the service key
+// invalidates outstanding unsubscribe links — acceptable, because rotating it
+// also takes the whole database connection with it.
+function digestMac(userId) {
+  return crypto.createHmac("sha256", SUPABASE_SERVICE_KEY || "unset")
+    .update(`watchlist-digest-unsubscribe:${userId}`).digest("hex").slice(0, 32);
+}
+function digestTokenValid(userId, token) {
+  if (!SUPABASE_SERVICE_KEY || !userId) return false;
+  return secretMatches(String(token || ""), digestMac(userId));
+}
+function unsubscribeUrlFor(userId) {
+  return `${SITE_URL}/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&t=${digestMac(userId)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -11149,50 +11274,182 @@ const server = http.createServer((req, res) =>
       // most of why the feed is useful. Only the itemized rows are gated,
       // the same rule the report itself follows.
       const ent = await getEntitlements(user, undefined, isAdminRequest(req));
-      const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
-      const items = await listWatchlist(user.id);
-      const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
-      let unseen = 0;
-      const out = [];
-      for (const w of items) {
-        const rows = await corpusRowsForMarket(w.market, w.property_type, 500);
-        const fresh = rows.filter((r) => String(r.ts) > String(w.last_seen_at)).slice(0, 20);
-        unseen += fresh.length;
-        // Median $/SF: sale rows only, trailing ~6 months — matches the
-        // client-side rule that lease $/SF never mixes into valuation.
-        const salePsf = rows
-          .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
-          .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
-          .map((r) => corpusNum(r.price_per_sqft))
-          .filter(Boolean)
-          .sort((a, b) => a - b);
-        const median_psf = salePsf.length
-          ? Math.round(salePsf[Math.floor(salePsf.length / 2)] * 100) / 100 : null;
-        // Direction: deal-date medians, last 6 months vs the 6 before —
-        // >=3 comps each side or the field is omitted entirely.
-        const datedSales = saleRowsWithDates(rows);
-        const nowFrac = new Date().getFullYear() + (new Date().getMonth() + 0.5) / 12;
-        const curWin = datedSales.filter((d) => nowFrac - d.yearFrac >= 0 && nowFrac - d.yearFrac <= 0.5).map((d) => d.psf);
-        const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
-        const median_trend = curWin.length >= 3 && priWin.length >= 3
-          ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
-        out.push({
-          id: w.id, market: w.market, property_type: w.property_type,
-          median_psf, new_count: fresh.length,
-          ...(median_trend ? { median_trend } : {}),
-          // new_count above stays the TRUE number of new comps — the visitor
-          // is told what they are missing, they just don't receive it.
-          ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
-          comps: fresh.slice(0, feedRowCap).map((r) => ({
-            ts: r.ts, address: r.address, transaction: r.transaction, deal_date: r.deal_date,
-            price_or_rate: r.price_or_rate, price_per_sqft: r.price_per_sqft,
-            cap_rate: r.cap_rate, source_url: r.source_url,
-          })),
-        });
-      }
+      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at);
       logEvent("feed_view", {});
       return sendJson(res, 200, { unseen, items: out });
     })().catch((err) => { console.error("feed error:", err); sendJson(res, 500, { error: "Feed read failed." }); });
+    return;
+  }
+
+  // --- The watchlist digest -------------------------------------------------
+  //
+  // The one thing CompNinja sends on its own initiative. Everything else it
+  // mails answers something a person just did.
+  //
+  // ADMIN_KEY-gated and manually triggered rather than run on a timer inside
+  // this process, deliberately. A setInterval would fire at an hour nobody
+  // chose, would fire again after every deploy restart, and would fire twice
+  // the day this runs on two instances — and the failure mode of all three is
+  // mailing real people the same comps again. A route makes the schedule
+  // somebody's explicit decision (a Render cron, a GitHub Action, a scheduled
+  // agent, or a person), and makes "run it and see" possible without waiting.
+  //
+  // Refuses rather than degrading, in this order, because each refusal is a
+  // different thing being wrong:
+  //   401/403  not an admin — this reads every account's email address.
+  //   503      no database — the "already mailed" marker has no file
+  //            fallback (see markWatchlistDigested), and without it every
+  //            watcher is re-sent the same comps after each deploy.
+  //   503      no outbound mail — sendOutboundEmail is a silent no-op when
+  //            EMAIL_FROM/RESEND_API_KEY are unset, so running blind would
+  //            advance every high-water mark and DELETE a digest nobody got.
+  //            This is the only caller for which that no-op is destructive,
+  //            which is why it is checked here and not there.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/watchlist/digest") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!DB_CONFIGURED) {
+          return sendJson(res, 503, { error: "The digest needs a database: without one, nothing records who has already been mailed." });
+        }
+        const opts = JSON.parse(body || "{}");
+        // A dry run builds every email and sends none, and advances no
+        // marker. It is how this gets looked at before it reaches anyone,
+        // and it is the reason the outbound-mail check below is skipped for
+        // it — inspecting the copy must not require a verified domain.
+        const dryRun = opts.dryRun === true;
+        if (!dryRun && !(EMAIL_FROM && RESEND_API_KEY)) {
+          return sendJson(res, 503, {
+            error: "Outbound email is not configured (EMAIL_FROM + RESEND_API_KEY). " +
+              "Refusing rather than marking everyone as mailed. Use { dryRun: true } to see the copy.",
+          });
+        }
+
+        const rows = await allWatchlistItems();
+        const byUser = new Map();
+        rows.forEach((w) => {
+          if (!byUser.has(w.user_id)) byUser.set(w.user_id, []);
+          byUser.get(w.user_id).push(w);
+        });
+        const accounts = await findUsersByIds([...byUser.keys()]);
+
+        const summary = { watchers: byUser.size, sent: 0, nothingNew: 0, optedOut: 0, failed: 0, previews: [] };
+        for (const account of accounts) {
+          if (account.digest_optout) { summary.optedOut += 1; continue; }
+          const items = byUser.get(account.id) || [];
+          try {
+            const ent = await getEntitlements(account, undefined, false);
+            // The send cutoff is the LATER of the two markers. Reaching back
+            // only to last_digest_at would mail comps the reader already saw
+            // in the app; reaching back only to last_seen_at would mail the
+            // same ones forever to somebody who never clicks the bell. The
+            // happy consequence is that an active user quietly stops getting
+            // digests without ever having to unsubscribe.
+            const { items: feed } = await buildWatchlistFeed(account, ent, (w) => {
+              const a = String(w.last_digest_at || w.created_at || "");
+              const b = String(w.last_seen_at || "");
+              return a > b ? a : b;
+            });
+            const mail = DIGEST.buildDigest({
+              items: feed,
+              deskUrl: `${SITE_URL}/desk`,
+              unsubscribeUrl: unsubscribeUrlFor(account.id),
+            });
+            if (!mail) { summary.nothingNew += 1; continue; }
+            if (dryRun) {
+              summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
+              continue;
+            }
+            sendOutboundEmail(account.email, mail.subject, mail.text);
+            // Marked AFTER the send is handed off, and only for the markets
+            // that actually carried news. If this write fails the reader gets
+            // one duplicate next run, which is the right way round: marking
+            // first would lose the digest outright on a failed send, and a
+            // lost digest is invisible where a duplicate is merely annoying.
+            const mailed = feed.filter(DIGEST.hasNews).map((i) => i.id).filter(Boolean);
+            await markWatchlistDigested(account.id, mailed);
+            summary.sent += 1;
+          } catch (err) {
+            // One bad account must never stop the run: the rest of the list
+            // is still owed its mail.
+            console.error(`Digest failed for ${account.id}:`, err.message);
+            summary.failed += 1;
+          }
+        }
+        logEvent("watchlist_digest", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
+        console.log(`📬 Watchlist digest${dryRun ? " (dry run)" : ""}: ${summary.sent} sent, ` +
+          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed`);
+        return sendJson(res, 200, summary);
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("digest error:", err);
+        return sendJson(res, 500, { error: "The digest run failed." });
+      }
+    });
+    return;
+  }
+
+  // Unsubscribe. A GET renders a confirmation with a button; the POST behind
+  // that button is what actually flips the flag.
+  //
+  // The second click is not politeness, it is correctness: corporate mail
+  // scanners and link-preview bots fetch every URL in an email, and a GET
+  // that unsubscribes would silently opt people out of mail they never even
+  // opened. The token makes the link unguessable; nothing makes it
+  // un-prefetchable.
+  if (req.url.split("?")[0] === "/watchlist/unsubscribe" && (req.method === "GET" || req.method === "POST")) {
+    (async () => {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const userId = q.get("u") || "";
+      const resubscribe = q.get("on") === "1";
+      if (!digestTokenValid(userId, q.get("t"))) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: "Link not recognized | CompNinja",
+          description: "This unsubscribe link could not be verified.",
+          noindex: true,
+          body: `<div class="wrap"><h1>This link is not recognized</h1>` +
+            `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
+            `You can turn the emails off from My Desk, or reply to any CompNinja email and we will do it for you.</p></div>`,
+        }));
+      }
+      if (req.method === "POST") {
+        await setDigestOptout(userId, !resubscribe);
+        logEvent("watchlist_digest_optout", { source: resubscribe ? "on" : "off" });
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: (resubscribe ? "Digest turned back on" : "Digest turned off") + " | CompNinja",
+          description: "Watchlist email preference updated.",
+          noindex: true,
+          body: `<div class="wrap"><h1>${resubscribe ? "These emails are back on" : "That&rsquo;s done"}</h1>` +
+            `<p>${resubscribe
+              ? "You will get a digest again when a market you watch has new comps."
+              : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
+            `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+        }));
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+      return res.end(marketShell({
+        title: (resubscribe ? "Turn the digest back on?" : "Turn off watchlist emails?") + " | CompNinja",
+        description: "Confirm your watchlist email preference.",
+        noindex: true,
+        body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
+          `<p>${resubscribe
+            ? "You will get an email when a market you watch has new comps."
+            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on My Desk."}</p>` +
+          `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
+          `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
+          `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
+      }));
+    })().catch((err) => {
+      console.error("unsubscribe error:", err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
+    });
     return;
   }
 

@@ -173,7 +173,11 @@ test("unitDesignatorOf does not read the vocabulary out of ordinary street names
 test("landing address handoff fills #address from sessionStorage and drops the key", () => {
   // File search, not a browser. The landing cannot reach this script;
   // this only proves the app side of the handoff is actually wired.
-  const boot = html.match(/pendingLandingAddress\.v1[\s\S]{0,900}/);
+  // Anchored on the READ, not on the first mention of the key. The shared
+  // report card writes the same key on its way into signup, so a plain
+  // first-occurrence match lands on the writer and proves nothing about the
+  // handoff this test exists to pin.
+  const boot = html.match(/getItem\("pendingLandingAddress\.v1"\)[\s\S]{0,900}/);
   assert.ok(boot, "index.html must read pendingLandingAddress.v1");
   assert.match(boot[0], /getElementById\("address"\)/);
   assert.match(boot[0], /removeItem\(["']pendingLandingAddress\.v1["']\)/);
@@ -181,4 +185,110 @@ test("landing address handoff fills #address from sessionStorage and drops the k
     !/compForm\.submit|requestSubmit|#compForm/.test(boot[0]),
     "filling the box is the whole handoff; do not auto-run a search"
   );
+});
+
+// ---------------------------------------------------------------------------
+// The shared-report lock card. A stranger holding a forwarded link is the one
+// visitor who reaches this app without choosing to, and /r/<id> is the only
+// path the account wall lets through — so this card is the whole conversion
+// surface for the only feature that reaches people who have never heard of us.
+// ---------------------------------------------------------------------------
+
+test("the shared-report card ships hidden and is swapped in by applySharedLock", () => {
+  assert.match(html, /id="lockShared" class="hidden"/,
+    "the shared variant must be hidden until a shared report is actually on screen");
+  assert.match(html, /id="lockDefault"/, "the generic card needs its own wrapper to hide");
+  assert.match(html, /function applySharedLock\(meta\)/, "one function owns the swap");
+  // applySearchLock stays the only thing that decides whether the CARD shows.
+  const swap = html.match(/function applySharedLock\(meta\)[\s\S]{0,1400}/)[0];
+  assert.equal(/classList\.toggle\("hidden", !locked\)/.test(swap), false,
+    "applySharedLock must not take over visibility from applySearchLock");
+});
+
+test("the shared status line matches what the reader can actually see", () => {
+  // The bug this replaced: one line told every reader to "enter an address
+  // above", while a locked reader had the signup card standing where that
+  // field would be.
+  const fn = html.match(/function showSharedStatus\(\)[\s\S]{0,700}/);
+  assert.ok(fn, "showSharedStatus should exist");
+  assert.match(fn[0], /accountWall && !currentUser/, "it must branch on the lock state");
+  assert.match(fn[0], /Create a free account below/, "the locked wording points at the card");
+  assert.match(fn[0], /Enter an address above/, "the unlocked wording points at the form");
+  assert.match(html, /applySearchLock[\s\S]{0,400}showSharedStatus\(\)/,
+    "it must be driven by applySearchLock, since the report renders before /api/config answers");
+});
+
+test("an address typed on a shared report survives signup and is never auto-run", () => {
+  const fire = html.match(/if \(fireSharedAddress\)[\s\S]{0,600}/);
+  assert.ok(fire, "the post-signup consumption should exist");
+  assert.match(fire[0], /getElementById\("address"\)/, "it fills the real search box");
+  assert.ok(!/requestSubmit|compForm\.submit|runSearch\(/.test(fire[0]),
+    "a signup is not consent to spend: prefill and focus, never submit");
+  assert.match(html, /pendingSharedAddress = "";\s*\/\/ \.\.\.and must not prefill/,
+    "a cancelled signup must not resurrect the address later, like every other pending flag");
+});
+
+// ----------------------------------------------------------------------------
+// The messaging hub's two client surfaces on My Desk (slice 1, 2026-08-13).
+// Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+// NOT the connection hub at /brokers.
+// ----------------------------------------------------------------------------
+
+test("the desk's hub gate reads proConfig.canUseVault, not proConfig.pro.canUseVault", () => {
+  // proConfig IS the pro block (`proConfig = cfg.pro || …`), not a wrapper
+  // around one. The first draft of this button read proConfig.pro.canUseVault,
+  // which is undefined for everyone, so "Start a hub" would never have
+  // rendered for anybody and nothing would have failed.
+  const fn = html.match(/function hubCreationAllowed\(\)[\s\S]{0,400}?\n  \}/);
+  assert.ok(fn, "index.html must define hubCreationAllowed()");
+  assert.match(fn[0], /proConfig\s*&&\s*proConfig\.canUseVault/);
+  assert.ok(!/proConfig\.pro\b/.test(fn[0]), "proConfig is the pro block already");
+  // It is a `let` declared thousands of lines below, so reading it needs the
+  // same TDZ guard addressExplorerAllowed() carries — and this one must fail
+  // CLOSED, because a button that 403s is worse than a button withheld.
+  assert.match(fn[0], /try\s*\{[\s\S]*catch[\s\S]*return false/);
+});
+
+test("the desk hub list has no empty state, and never shows one", () => {
+  // A member who has never been invited into a hub cannot start one from this
+  // page, so an empty section would advertise a door with no handle. Contrast
+  // the two share lists, which teach a feature this member can use.
+  assert.match(html, /id="deskHubs"/);
+  assert.match(html, /id="deskHubRows"/);
+  assert.ok(!/id="deskHubsEmpty"/.test(html), "the hub list is hidden when empty, not emptied");
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/);
+  assert.ok(fn, "index.html must define renderDeskHubs()");
+  assert.match(fn[0], /if \(!rows\.length\) return;/);
+  // Every failure is silent here: this is an extra list at the bottom of a
+  // page that already works, and a hub outage must not put an error on the
+  // desk of somebody who came for their portfolio.
+  assert.ok(!/deskHubsLoadError|classList\.remove\("hidden"\)[\s\S]{0,40}rr/.test(fn[0]),
+    "renderDeskHubs must fail silently");
+  // theirs, never mine: a broker's own hubs live on /vault.
+  assert.match(fn[0], /data\.theirs/);
+  assert.ok(!/data\.mine/.test(fn[0]), "the desk shows the tenant side only");
+});
+
+test("hub rows render user-authored text through textContent, never innerHTML", () => {
+  // A hub title is typed by the broker who created it, so it is user-authored
+  // text like an address or a viewer email — the rule the rest of this desk
+  // already follows.
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/)[0];
+  assert.match(fn, /link\.textContent = h\.title/);
+  assert.ok(!/innerHTML\s*=\s*[^"']/.test(fn.replace(/innerHTML = "";/g, "")),
+    "no interpolated innerHTML in the hub list");
+});
+
+test("every Tailwind class the hub surfaces use is in the vendored stylesheet", () => {
+  // The vendored tailwind.css is generated, and a class missing from it
+  // silently does not style — CLAUDE.md's standing trap. Three of these
+  // (min-w-[220px], border-[#E7E3D9], inline-block) were missing on the first
+  // pass and were swapped for vendored equivalents rather than regenerated.
+  const css = fs.readFileSync(path.join(__dirname, "..", "tailwind.css"), "utf8");
+  for (const cls of ["min-w-0", "inline-flex", "flex-1", "border-t", "pt-2", "gap-2"]) {
+    assert.ok(css.includes("." + cls), `tailwind.css is missing .${cls}`);
+  }
+  for (const hex of ["ECEAE3", "D8D4C9", "4C5665", "B91C1C", "1A2433", "68707E", "5A6473"]) {
+    assert.ok(css.includes(hex), `tailwind.css is missing the ${hex} colour utilities`);
+  }
 });

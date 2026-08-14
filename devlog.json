@@ -2,6 +2,12 @@
   {
     "date": "2026-08-13",
     "type": "improvement",
+    "title": "Dark mode is charcoal, not near-black",
+    "details": "The page was slate-950 with near-white text (16:1) and read like an IDE invert. Paper lifts to #121826 and body ink dims to #C9D3E0 (11.7:1). Same cool slate, no layout change, light mode untouched. Print and PNG stay light."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "improvement",
     "title": "An empty vault is the real vault, not a numbered onboarding page",
     "details": "Day one used to be two cards, with Your book and Your pipeline hidden until a spreadsheet landed, so the pipeline table shipped yesterday was invisible on an empty account. The empty vault is now the same two decks. The trust line shows zeros. Each empty body is a short invitation: upload closed deals, or watch a market. Add comps and Log a BOV stay closed. The watch-market form sits in the pipeline body until a lead or BOV exists, then collapses under Markets you watch. Watching a market on day one no longer hides waiting leads."
   },

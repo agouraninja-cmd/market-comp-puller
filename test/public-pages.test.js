@@ -130,6 +130,37 @@ test("the broker contribution path is not a dead end", async (t) => {
     assert.match(html, /Working a 1031 exchange\?/);
     assert.match(html, /CompNinja is not a licensed brokerage/);
     assert.match(html, /id="upgradeProLink"/);
+    assert.match(html, /class="bkhero"/, "the claim sits beside a report exhibit");
+    assert.match(html, /class="bkex"/, "the exhibit shows the Verified chip in situ");
+    assert.match(offer, /Illustrative/, "the exhibit must not read as a live pull");
+    assert.equal((html.match(/class="bkpath"/g) || []).length, 1,
+      "how a submission works is one path, not Method");
+    assert.equal((html.match(/class="bkbeat"/g) || []).length, 3,
+      "the path is three beats");
+    const pathChunk = html.split('class="bkpath"')[1].split('class="cta"')[0];
+    assert.ok(!/href="\/\?submit=comp"/.test(pathChunk),
+      "the path is not a second Submit door");
+  });
+
+  await t.test("/brokers FAQ matches its JSON-LD, and does not claim we are a broker", async () => {
+    const html = await (await fetch(srv.base + "/brokers")).text();
+    const visible = (html.match(/<details class="q">/g) || []).length;
+    assert.equal(visible, 5, "five broker questions");
+    const ldBlocks = [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)];
+    const faq = ldBlocks.map((m) => JSON.parse(m[1])).map((doc) => {
+      const graph = doc["@graph"] || (doc["@type"] === "FAQPage" ? [doc] : []);
+      return graph.find((n) => n && n["@type"] === "FAQPage");
+    }).find(Boolean);
+    assert.ok(faq, "FAQPage node must ride the brokers page");
+    assert.equal(faq.mainEntity.length, visible,
+      "accordions and JSON-LD must both render every FAQ entry");
+    const answers = faq.mainEntity.map((q) => q.acceptedAnswer.text).join(" ");
+    assert.ok(!/\bwe are (a )?brokers?\b/i.test(answers),
+      "FAQ must not claim CompNinja is a brokerage");
+    assert.ok(!/\bappraisal\b/i.test(answers),
+      "FAQ must not call a report an appraisal");
+    assert.match(answers, /Submitting is free/,
+      "the first question has to stay the honest price answer");
   });
 
   await t.test("that door serves the app, not the landing page", async () => {

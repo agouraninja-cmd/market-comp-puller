@@ -124,3 +124,54 @@ test("the tally counts decisions, never undecided comps", () => {
   assert.ok(fn, "the page must define renderTally");
   assert.match(fn[0], /i\.status !== "new"/);
 });
+
+// --- per-comp note threads (slice 2) --------------------------------------
+
+test("notes split on item_id and nothing else", () => {
+  // A note filed against a comp belongs under that comp; a note about the
+  // requirement belongs in the stream. One list, filtered at render, is what
+  // lets a POLLED message land in the right place without knowing which view
+  // is open.
+  const js = pageScript(html);
+  assert.match(js, /function msgsFor\(itemId\)\{/);
+  assert.match(js, /itemId \? String\(m\.itemId\) === String\(itemId\) : !m\.itemId/);
+});
+
+test("one post path serves the hub stream and a comp thread", () => {
+  // The only difference is whether an itemId rides along. Two paths would let
+  // the account ask, the error copy or the cursor update drift between them.
+  const js = pageScript(html);
+  assert.match(js, /function postMessage\(field, btn, itemId\)\{/);
+  assert.match(js, /if \(itemId\) payload\.itemId = itemId;/);
+  // The account ask must exist exactly once, in that shared path.
+  assert.equal((js.match(/auth=signup/g) || []).length, 1);
+});
+
+test("an empty note affordance is not offered to someone who cannot post", () => {
+  // "Add note" on a row an observer cannot act on is noise in a table they
+  // are trying to read.
+  assert.match(pageScript(html), /if \(n \|\| canWriteHub\)\{/);
+});
+
+test("only one comp thread is open at a time", () => {
+  // Several open threads push the comps apart until the list stops being
+  // readable as a list, and the list is the page's primary surface.
+  const js = pageScript(html);
+  assert.match(js, /openThread = \(openThread === it\.id\) \? null : it\.id;/);
+  assert.match(js, /if \(openThread === it\.id\) rows\.appendChild\(threadRow/);
+});
+
+test("a comp thread is rendered inside the table, under its own comp", () => {
+  // The placement is the feature: the note and the building it is about have
+  // to be readable together, which is the thing an email thread cannot do.
+  const js = pageScript(html);
+  assert.match(js, /function threadRow\(it, colspan\)\{/);
+  assert.match(js, /td\.colSpan = colspan/);
+  assert.match(js, /tr\.className = "thread"/);
+});
+
+test("a posted note is deduped against the poll that will replay it", () => {
+  // The cursor is the server's, but an optimistic local add is not, so the
+  // next poll can return a message the composer already appended.
+  assert.match(pageScript(html), /allMsgs\.some\(function\(x\)\{ return x\.id && m\.id && x\.id === m\.id; \}\)/);
+});

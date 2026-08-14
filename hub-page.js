@@ -65,6 +65,17 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;
   border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
 .tally{color:var(--ink-2);font-size:13px;margin:0 0 10px}
+/* The per-comp note affordance. Quiet until a comp actually has notes, so a
+   column of "Add note" does not compete with the numbers beside it. */
+.notes{background:none;border:0;padding:0;font:inherit;font-size:12px;cursor:pointer;
+  color:var(--ink-3);text-decoration:underline;white-space:nowrap}
+.notes:hover{color:var(--ink)}
+.notes.has{color:var(--ink-2);font-weight:600;text-decoration:none}
+/* A comp's thread sits in the table, under its own row: the note and the
+   building it is about have to be readable together. */
+tr.thread td{background:var(--wash);padding:12px 10px}
+.threadbox{max-width:640px}
+.threadbox .stream{margin-bottom:10px}
 /* The status control and the read-only chip are sized alike on purpose, so a
    tenant who can act and an observer who cannot see the same table shape. */
 select.st{font:inherit;font-size:12.5px;padding:2px 4px;border:1px solid var(--line);
@@ -143,6 +154,10 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   // The last item list the server sent, kept so a status change can re-render
   // the tally without a round trip for the rows that did not change.
   var lastItems = [];
+  // Which comp's note thread is expanded, or null. ONE at a time on purpose:
+  // the table is the page's primary surface, and several open threads push
+  // the comps apart until the list stops being readable as a list.
+  var openThread = null;
 
   function show(n, on){ el(n).classList.toggle("hide", !on); }
   function fail(text){
@@ -274,27 +289,131 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
         b.textContent = "From the broker's records";
         last.appendChild(b);
       }
+      // The comp's own notes. A count when there are any, an invitation when
+      // there are none and this reader may post, and NOTHING when there are
+      // none and they may not: an empty affordance on a row an observer
+      // cannot act on is just noise in a table they are trying to read.
+      var n = msgsFor(it.id).length;
+      if (n || canWriteHub){
+        var nb = document.createElement("button");
+        nb.type = "button";
+        nb.className = "notes" + (n ? " has" : "");
+        nb.setAttribute("data-notes", it.id);
+        nb.setAttribute("aria-expanded", openThread === it.id ? "true" : "false");
+        nb.textContent = n ? (n + (n === 1 ? " note" : " notes")) : "Add note";
+        nb.addEventListener("click", function(){
+          openThread = (openThread === it.id) ? null : it.id;
+          renderItems(lastItems);
+        });
+        last.appendChild(nb);
+      }
       rows.appendChild(tr);
+
+      // The thread itself, as a row under its comp rather than a panel
+      // somewhere else on the page. That placement IS the feature: the note
+      // and the building it is about have to be readable together, which is
+      // the thing an email thread cannot do.
+      if (openThread === it.id) rows.appendChild(threadRow(it, tr.children.length));
+    });
+  }
+
+  // One expanded comp thread: its notes, and a composer when this reader may
+  // post. Rebuilt on every render rather than kept alive, so a polled message
+  // cannot land in a stale node.
+  function threadRow(it, colspan){
+    var tr = document.createElement("tr");
+    tr.className = "thread";
+    tr.setAttribute("data-thread", it.id);
+    var td = document.createElement("td");
+    td.colSpan = colspan;
+    var wrap = document.createElement("div");
+    wrap.className = "threadbox";
+
+    var msgs = msgsFor(it.id);
+    if (msgs.length){
+      var st = document.createElement("div");
+      st.className = "stream";
+      msgs.forEach(function(m){ st.appendChild(bubble(m)); });
+      wrap.appendChild(st);
+    } else {
+      var none = document.createElement("p");
+      none.className = "who";
+      none.textContent = "No notes on this comp yet.";
+      wrap.appendChild(none);
+    }
+
+    if (canWriteHub){
+      var ta = document.createElement("textarea");
+      ta.maxLength = 4000;
+      ta.setAttribute("aria-label", "Note on " + ((it.snapshot && it.snapshot.address) || "this comp"));
+      ta.placeholder = "Add a note about this comp";
+      wrap.appendChild(ta);
+      var act = document.createElement("div");
+      act.style.marginTop = "8px";
+      var btn = document.createElement("button");
+      btn.className = "btn";
+      btn.textContent = "Post note";
+      btn.addEventListener("click", function(){ postMessage(ta, btn, it.id); });
+      act.appendChild(btn);
+      wrap.appendChild(act);
+    }
+    td.appendChild(wrap);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function renderThreads(){
+    // The counts live in the item table, so the cheapest correct answer is to
+    // repaint it. The table is a handful of rows by nature.
+    if (lastItems.length) renderItems(lastItems);
+  }
+
+  // One bubble, used by both the hub-level stream and a comp's own thread, so
+  // a note reads the same wherever it is attached.
+  function bubble(m){
+    var d = document.createElement("div");
+    d.className = "bub";
+    var who = document.createElement("div");
+    who.className = "who";
+    var when = "";
+    try { when = new Date(m.createdAt).toLocaleString(); } catch(e){}
+    who.textContent = m.author + (when ? " · " + when : "");
+    var t = document.createElement("div");
+    t.className = "txt";
+    t.textContent = m.body;
+    d.appendChild(who); d.appendChild(t);
+    return d;
+  }
+
+  // Every note in the hub, both kinds. The SPLIT is by item_id and nothing
+  // else: a note filed against a comp belongs under that comp, and a note
+  // about the requirement belongs in the stream. Keeping one list and
+  // filtering at render time is what lets a polled message land in the right
+  // place without knowing which view is open.
+  var allMsgs = [];
+
+  function msgsFor(itemId){
+    return allMsgs.filter(function(m){
+      return itemId ? String(m.itemId) === String(itemId) : !m.itemId;
     });
   }
 
   function addMessages(list, replace){
-    var stream = el("stream");
-    if (replace) stream.textContent = "";
+    if (replace) allMsgs = [];
+    // Guard against a poll replaying a message the composer already appended:
+    // the cursor is the server's, but an optimistic local add is not.
     list.forEach(function(m){
-      var d = document.createElement("div");
-      d.className = "bub";
-      var who = document.createElement("div");
-      who.className = "who";
-      var when = "";
-      try { when = new Date(m.createdAt).toLocaleString(); } catch(e){}
-      who.textContent = m.author + (when ? " · " + when : "");
-      var t = document.createElement("div");
-      t.className = "txt";
-      t.textContent = m.body;
-      d.appendChild(who); d.appendChild(t);
-      stream.appendChild(d);
+      if (!allMsgs.some(function(x){ return x.id && m.id && x.id === m.id; })) allMsgs.push(m);
     });
+    renderStream();
+    // Any open comp thread, and every row's note count, must follow.
+    renderThreads();
+  }
+
+  function renderStream(){
+    var stream = el("stream");
+    stream.textContent = "";
+    msgsFor(null).forEach(function(m){ stream.appendChild(bubble(m)); });
     show("nomsg", !stream.children.length);
   }
 
@@ -376,17 +495,22 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   }
   function stopPolling(){ if (poll) { clearInterval(poll); poll = null; } }
 
-  el("send").addEventListener("click", function(){
-    var body = el("body").value.trim();
+  // ONE post path for both kinds of note. The only difference is whether an
+  // itemId rides along, so the account ask, the error copy and the cursor
+  // update cannot drift between the hub stream and a comp's own thread.
+  function postMessage(field, btn, itemId){
+    var body = field.value.trim();
     if (!body) return;
-    el("send").disabled = true;
+    btn.disabled = true;
+    var payload = { id: HUB_ID, body: body };
+    if (itemId) payload.itemId = itemId;
     fetch("/api/hub/message", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: HUB_ID, body: body }),
+      body: JSON.stringify(payload),
     }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
       .then(function(o){
-        el("send").disabled = false;
+        btn.disabled = false;
         if (o.s === 401){
           // The account ask, and the only place it appears. They have already
           // read the comps; this is the first thing that needs an account.
@@ -400,11 +524,19 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
           show("readonly", true);
           return;
         }
-        el("body").value = "";
+        field.value = "";
         addMessages([o.j.message], false);
         if (o.j.message && o.j.message.createdAt) cursor = o.j.message.createdAt;
       })
-      .catch(function(){ el("send").disabled = false; });
+      .catch(function(){
+        btn.disabled = false;
+        el("readonly").textContent = "That note did not reach the server.";
+        show("readonly", true);
+      });
+  }
+
+  el("send").addEventListener("click", function(){
+    postMessage(el("body"), el("send"), null);
   });
 
   var tok = tokenFromHash();

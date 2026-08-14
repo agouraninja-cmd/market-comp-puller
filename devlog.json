@@ -2,6 +2,12 @@
   {
     "date": "2026-08-13",
     "type": "feature",
+    "title": "Brokers and clients trade comps in a hub, not an email thread",
+    "details": "Comps sent to a client used to be attachments: three forwards and a reply-all later, nobody could say which buildings were still live. A hub is one shared page per requirement, where every comp is a row rather than a file, and the notes sit beside them. The broker creates one from the vault or straight from a report they already shared, and gets a link per person to send. The client opens it without an account and is only asked to sign in when they reply, so reading costs them nothing. Comps sent from the vault stay out of public records and earn no Verified badge: sending is private disclosure to named people, and publishing is still a separate choice. Each comp is copied into the hub as it was sent, so correcting a price later shows as a new row instead of quietly rewriting what the client already read. Access is per person and can be turned off one person at a time; closing a hub stops new posts and leaves everyone what is already there."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "feature",
     "title": "The vault takes a screenshot of a comp table, not only a PDF",
     "details": "Brokers were being asked for a spreadsheet or an exported PDF, which is not usually what they have. A CoStar table on screen, a photo of a printed comp sheet, or a cropped screenshot from a colleague all now go through the same door: the file is read by the extract vendor, the deals come back as the same confirm table, and nothing is stored until the rows are imported. PNG, JPEG and WebP are accepted alongside PDF. That list is the intersection of what both search providers read rather than the union, so a file that imports today cannot start refusing after a provider switch. The file type is decided by its bytes, never by its name, so a renamed spreadsheet still cannot reach the vendor. iPhone HEIC photos are refused by name with what to do instead, since a generic unsupported-file line would send a broker looking for a fault in their comp sheet."
   },

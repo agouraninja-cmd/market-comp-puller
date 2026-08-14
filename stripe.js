@@ -186,6 +186,33 @@ function subscriptionRowFrom(sub, priceMap, { userId, nowMs = Date.now(), graceD
   return row;
 }
 
+/**
+ * A Stripe charge object -> what a refund of it means for us.
+ *
+ * `{ paymentIntentId, full }`. The payment intent is the ONLY field a charge
+ * carries that `report_purchases` also stores, so it is the whole join; with
+ * none we cannot tell whose unlock this was and the caller must say so rather
+ * than guess by customer or amount.
+ *
+ * `full` decides whether an unlock is pulled, because Stripe fires
+ * `charge.refunded` for a partial refund too — one $5 goodwill refund on a $20
+ * report would otherwise silently repossess the report. Stripe's own
+ * `refunded` flag is the primary signal; the amounts are the fallback for the
+ * shapes where it is absent, and they only ever say "full" when something was
+ * actually refunded (`amount_refunded > 0`), so a $0/$0 object is not a full
+ * refund of nothing.
+ */
+function refundOf(charge) {
+  if (!charge) return { paymentIntentId: null, full: false };
+  const pi = charge.payment_intent;
+  const paymentIntentId = typeof pi === "string" ? (pi || null) : ((pi && pi.id) || null);
+  const refunded = Number(charge.amount_refunded);
+  const amount = Number(charge.amount);
+  const full = charge.refunded === true
+    || (isFinite(refunded) && refunded > 0 && isFinite(amount) && refunded >= amount);
+  return { paymentIntentId, full };
+}
+
 module.exports = {
   STRIPE_API,
   formEncode,
@@ -196,5 +223,6 @@ module.exports = {
   subscriptionRowFrom,
   periodEndIso,
   priceIdOf,
+  refundOf,
   WEBHOOK_TOLERANCE_MS,
 };

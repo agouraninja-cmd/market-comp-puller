@@ -958,7 +958,7 @@ test("market explorer with the guest gate disabled", async (t) => {
 // run for free with no database.
 
 test("tester passkey", async (t) => {
-  await t.test("the route does not exist when TESTER_PASSKEY is unset", async () => {
+  await t.test("the route does not exist when NEITHER passkey is set", async () => {
     const srv = await boot({});
     t.after(() => srv.stop());
     const r = await fetch(srv.base + "/api/redeem-passkey", {
@@ -974,6 +974,10 @@ test("tester passkey", async (t) => {
     // route's per-IP limiter.
     const cfg = await (await fetch(srv.base + "/api/config")).json();
     assert.equal(cfg.pro.testerPasskey, false);
+    // Both doors, since either one alone is enough to open the route: a 404
+    // here means neither was configured, and the row must stay hidden for
+    // both reasons rather than one.
+    assert.equal(cfg.pro.vaultPasskey, false);
   });
 
   await t.test("configured: refuses anonymous and wrong codes, accepts the right one", async () => {
@@ -1048,6 +1052,130 @@ test("tester passkey", async (t) => {
     // /api/redeem-passkey call — a new case needs its own boot() or a fresh
     // client IP.
     const wrongAfter = await redeem("still-not-the-passkey", cookie);
+    assert.equal(wrongAfter.status, 200);
+    assert.equal((await wrongAfter.json()).already, true);
+  });
+});
+
+// --- The vault passkey ------------------------------------------------------
+//
+// The same route and the same input as the tester passkey, a different
+// secret, and a deliberately different grant: the broker vault and NOT Pro.
+// It replaces the one-row `update users set vault_beta = true` that had to be
+// typed into the SQL editor for every broker onboarded.
+//
+// entitlements.js already proves what users.vault_beta grants. What can only
+// be proved here is that the door is WIRED: that a code reaching this route
+// actually lands on the column, that the column actually reaches
+// /api/config's canUseVault (it did not for the first day of vault_beta's
+// life — the grant was set and the vault still refused, because
+// getSessionUser's narrowed user object never carried the flag), and that
+// the two codes stay separate in both directions.
+//
+// Each case boots its own server, which is also what keeps them inside the
+// route's 5-per-15-minute per-IP limiter: the limiter is in-memory, so a
+// fresh process is a fresh budget.
+
+test("vault passkey", async (t) => {
+  const signUp = async (srv, label) => {
+    const r = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: `${label}-${Date.now()}@example.com`, password: "correct-horse-battery" }),
+    });
+    assert.equal(r.status, 200, "signup should succeed against the file store");
+    const cookie = String(r.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_session="), "expected a session cookie, got " + cookie);
+    return cookie;
+  };
+  const redeemer = (srv) => (passkey, cookie) => fetch(srv.base + "/api/redeem-passkey", {
+    method: "POST",
+    headers: Object.assign({ "content-type": "application/json" }, cookie ? { cookie } : {}),
+    body: JSON.stringify({ passkey }),
+  });
+
+  await t.test("VAULT_PASSKEY alone opens the route, and grants the vault without Pro", async () => {
+    const VAULT = "give-me-the-vault";
+    // Deliberately NO TESTER_PASSKEY: the two are independent, and a
+    // deployment running only the broker door must still answer this route.
+    const srv = await boot({ PRO_ENABLED: "on", VAULT_PASSKEY: VAULT });
+    t.after(() => srv.stop());
+    const redeem = redeemer(srv);
+    const cookie = await signUp(srv, "broker");
+
+    const before = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(before.pro.vaultPasskey, true, "a configured deployment must say the door exists");
+    assert.equal(before.pro.testerPasskey, false, "the tester door is unset here");
+    assert.equal(before.pro.canUseVault, false);
+
+    const ok = await redeem(VAULT, cookie);
+    assert.equal(ok.status, 200);
+    const body = await ok.json();
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.granted, ["vault"], "the response must name which door opened");
+
+    // The whole point of the feature, and the exact seam that was broken for
+    // vault_beta's first day: the column has to reach the entitlements the UI
+    // reads, not merely be written.
+    const after = await (await fetch(srv.base + "/api/config", { headers: { cookie } })).json();
+    assert.equal(after.pro.canUseVault, true);
+    assert.equal(after.pro.broker, true);
+    // And ONLY the vault. A code handed to an outside broker must not be a
+    // way to get Pro's report features for free.
+    assert.equal(after.pro.isPro, false);
+    assert.equal(after.pro.tester, false);
+    assert.equal(after.pro.status, "none");
+
+    // Idempotent, and it says nothing was newly granted.
+    const again = await redeem(VAULT, cookie);
+    assert.equal(again.status, 200);
+    assert.equal((await again.json()).already, true);
+  });
+
+  await t.test("the two codes are separate in both directions", async () => {
+    const TESTER = "try-pro-please";
+    const VAULT = "vault-please";
+    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: VAULT });
+    t.after(() => srv.stop());
+    const redeem = redeemer(srv);
+
+    // A tester code must not open the vault — that exclusion is the reason
+    // this second secret exists at all.
+    const testerCookie = await signUp(srv, "tester-only");
+    assert.equal((await redeem(TESTER, testerCookie)).status, 200);
+    const t1 = await (await fetch(srv.base + "/api/config", { headers: { cookie: testerCookie } })).json();
+    assert.equal(t1.pro.isPro, true);
+    assert.equal(t1.pro.canUseVault, false, "the tester grant must still exclude the vault");
+
+    // ...and a tester still holding no vault grant is told a wrong code is
+    // wrong, rather than "already": there IS something left for them to
+    // redeem on this deployment.
+    const wrong = await redeem("neither-of-them", testerCookie);
+    assert.equal(wrong.status, 401);
+
+    // The reverse: a vault code must not comp Pro.
+    const vaultCookie = await signUp(srv, "vault-only");
+    assert.equal((await redeem(VAULT, vaultCookie)).status, 200);
+    const v1 = await (await fetch(srv.base + "/api/config", { headers: { cookie: vaultCookie } })).json();
+    assert.equal(v1.pro.canUseVault, true);
+    assert.equal(v1.pro.isPro, false, "the vault grant must not comp Pro");
+  });
+
+  await t.test("holding every configured grant answers already, even to a wrong code", async () => {
+    const TESTER = "pro-code";
+    const VAULT = "vault-code";
+    const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: VAULT });
+    t.after(() => srv.stop());
+    const redeem = redeemer(srv);
+    const cookie = await signUp(srv, "both");
+
+    assert.equal((await redeem(TESTER, cookie)).status, 200);
+    assert.equal((await redeem(VAULT, cookie)).status, 200);
+
+    // The generalized form of the tester route's pre-compare idempotency
+    // rule: once an account holds everything this deployment can give, a
+    // rotated or mistyped code must not tell them they are locked out.
+    const wrongAfter = await redeem("not-either-code", cookie);
     assert.equal(wrongAfter.status, 200);
     assert.equal((await wrongAfter.json()).already, true);
   });
@@ -1202,6 +1330,227 @@ test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
   assert.equal(/\blng\b/.test(body), false, "the extract prompt must not request lng");
 });
 
+// --- Analytics visitor attribution ------------------------------------------
+//
+// migration 026's two columns exist so the event log can answer "did the same
+// browser arrive, sign up, and run a report?" — which it could not, because a
+// row said what happened and nothing about whose visit it was.
+//
+// Three things can only be proved by booting a server, and all three are the
+// ways this silently does nothing rather than fails: that a document
+// navigation actually mints the cookie (an API-only visitor never gets one),
+// that the cookie is the httpOnly/SameSite shape claimed, and that the id is
+// STABLE across the requests of one visit rather than re-minted per request —
+// a per-request id would produce a full table of visitors who each did
+// exactly one thing, which reads as traffic rather than as a bug.
+//
+// No database here, so the rows land in the git-ignored analytics.jsonl
+// fallback and /api/stats reads them back through the same aggregator
+// production uses.
+
+test("analytics visitor attribution", async (t) => {
+  const KEY = "vis-admin-key";
+  const cookieNamed = (res, name) => {
+    const all = [].concat(res.headers.getSetCookie ? res.headers.getSetCookie() : (res.headers.get("set-cookie") || ""));
+    return all.find((c) => String(c).startsWith(name + "=")) || "";
+  };
+
+  await t.test("a document navigation mints cn_vid; an API call alone does not", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+
+    // An API-shaped request carries no cookie and must not create one: minting
+    // on whichever of a page's dozen parallel requests arrives first is the
+    // race this rule exists to avoid.
+    const api = await fetch(srv.base + "/api/config");
+    assert.equal(cookieNamed(api, "cn_vid"), "", "an API request must not mint a visitor id");
+
+    // A navigation does.
+    const page = await fetch(srv.base + "/", { headers: { "sec-fetch-dest": "document" } });
+    const set = cookieNamed(page, "cn_vid");
+    assert.match(set, /^cn_vid=[0-9a-f]{32};/, "expected a 32-hex visitor id, got " + set);
+    assert.match(set, /HttpOnly/, "the visitor cookie must be httpOnly — no script needs to read it");
+    assert.match(set, /SameSite=Lax/);
+    assert.match(set, /Max-Age=\d+/);
+
+    // Accept-sniffing is the fallback for clients that send no Sec-Fetch-Dest.
+    const sniffed = await fetch(srv.base + "/", { headers: { accept: "text/html,*/*" } });
+    assert.match(cookieNamed(sniffed, "cn_vid"), /^cn_vid=[0-9a-f]{32};/);
+  });
+
+  await t.test("the id is stable across a visit, and reaches /api/stats as a funnel", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+
+    const page = await fetch(srv.base + "/", { headers: { "sec-fetch-dest": "document" } });
+    const vid = cookieNamed(page, "cn_vid").split(";")[0];
+    assert.ok(vid.startsWith("cn_vid="), "expected a minted visitor cookie");
+
+    // Carrying the cookie back must NOT mint a second id — that is the whole
+    // stability property, and the thing that turns one visit into one row.
+    const again = await fetch(srv.base + "/", {
+      headers: { "sec-fetch-dest": "document", cookie: vid },
+    });
+    assert.equal(cookieNamed(again, "cn_vid"), "", "an existing visitor id must not be re-minted");
+
+    // Do something that logs an event, as this visitor. Deliberately a POST
+    // with a body, which is the case that does NOT work by default: a
+    // request-body route logs from inside `req.on("end", ...)`, and Node
+    // emits that from the connection's async context rather than the
+    // handler's, so a plain AsyncLocalStorage.run() around the handler leaves
+    // the store null there. `bindRequestListeners` is what fixes it. Remove
+    // it and this assertion is the one that goes red — every GET-shaped
+    // event would still be attributed perfectly, which is precisely why this
+    // needs a test rather than a spot check.
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: vid },
+      body: JSON.stringify({ email: `vis-${Date.now()}@example.com`, password: "correct-horse-battery" }),
+    });
+    assert.equal(signup.status, 200);
+
+    // logEvent is fire-and-forget on purpose — analytics must never delay a
+    // real request — so the row lands a tick or two after the response the
+    // visitor already got. Poll rather than sleep a fixed amount.
+    let stats = null;
+    for (let i = 0; i < 40; i++) {
+      stats = await (await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": KEY } })).json();
+      if (stats.funnel && stats.funnel.arrived >= 1) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.ok(stats.funnel, "/api/stats must carry the funnel block");
+    assert.ok(stats.funnel.arrived >= 1, "the signup's visitor should have been counted as an arrival");
+    assert.ok(stats.funnel.signedUp >= 1, "the signup event should be attributed to that visitor");
+    // Cumulative sets: a stage can never exceed the population it is drawn
+    // from, or the drop between two lines is not a drop-off.
+    assert.ok(stats.funnel.signedUp <= stats.funnel.arrived);
+    assert.ok(stats.funnel.report <= stats.funnel.arrived);
+  });
+
+  await t.test("a garbage cookie value is never trusted into the column", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    // The value comes from a client and is written to a database, so anything
+    // that is not the shape this server mints is replaced rather than stored.
+    const res = await fetch(srv.base + "/", {
+      headers: { "sec-fetch-dest": "document", cookie: "cn_vid=" + "x".repeat(200) },
+    });
+    assert.match(cookieNamed(res, "cn_vid"), /^cn_vid=[0-9a-f]{32};/,
+      "a malformed visitor id must be replaced with a freshly minted one");
+  });
+});
+
+// --- The watchlist digest ---------------------------------------------------
+//
+// watchlist-digest.js already proves what the email SAYS. What can only be
+// proved by booting a server is that the route refuses in the right order,
+// and that is most of the value here: this is the only thing the product
+// sends on its own initiative, so every refusal exists to stop it mailing
+// real people something wrong.
+//
+// The one that matters most is the no-database 503. Without it the run would
+// build every digest, hand each to a sendOutboundEmail that silently no-ops
+// when mail is unconfigured, and then advance every high-water mark — mailing
+// nobody while recording everybody as mailed, which DELETES a digest rather
+// than delaying it. There is no database in this environment, so that path is
+// exactly what these tests exercise.
+
+test("watchlist digest", async (t) => {
+  const KEY = "digest-admin-key";
+
+  await t.test("the route does not exist without ADMIN_KEY, and refuses a stranger", async () => {
+    const dark = await boot({});
+    t.after(() => dark.stop());
+    const gone = await fetch(dark.base + "/api/watchlist/digest", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(gone.status, 404, "an unconfigured deployment must not answer this route");
+
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    const anon = await fetch(srv.base + "/api/watchlist/digest", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(anon.status, 401, "this route reads every account's email address");
+  });
+
+  await t.test("it refuses to run without a database rather than marking everyone mailed", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/api/watchlist/digest", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-key": KEY },
+      body: JSON.stringify({}),
+    });
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /database/i);
+  });
+
+  await t.test("even a dry run refuses without a database", async () => {
+    // The dry run skips the outbound-mail check (inspecting copy should not
+    // need a verified domain) but not this one: with no database there is no
+    // watchlist to read, and an empty summary would read as "nobody is
+    // watching anything" rather than "this cannot answer".
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/api/watchlist/digest", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-key": KEY },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    assert.equal(r.status, 503);
+  });
+});
+
+test("watchlist digest unsubscribe", async (t) => {
+  // SUPABASE_SERVICE_KEY without SUPABASE_URL: DB_CONFIGURED stays false (it
+  // needs both), but the token HMAC is keyed on the service key alone, so the
+  // link half is testable with no database.
+  const SERVICE = "service-key-for-token-hmac";
+  const crypto = require("node:crypto");
+  const macFor = (id) => crypto.createHmac("sha256", SERVICE)
+    .update(`watchlist-digest-unsubscribe:${id}`).digest("hex").slice(0, 32);
+  const USER = "11111111-2222-3333-4444-555555555555";
+
+  await t.test("a wrong or missing token is refused", async () => {
+    const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
+    t.after(() => srv.stop());
+    for (const q of [`?u=${USER}`, `?u=${USER}&t=nope`, `?u=&t=${macFor("")}`]) {
+      const r = await fetch(srv.base + "/watchlist/unsubscribe" + q);
+      assert.equal(r.status, 400, "unexpectedly accepted " + q);
+    }
+  });
+
+  await t.test("a valid link CONFIRMS rather than acting, and is noindex", async () => {
+    const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + `/watchlist/unsubscribe?u=${USER}&t=${macFor(USER)}`);
+    assert.equal(r.status, 200);
+    const html = await r.text();
+
+    // The whole point of the second click: corporate mail scanners and
+    // link-preview bots fetch every URL in an email, so a GET that
+    // unsubscribed would opt people out of mail they never opened. If this
+    // ever becomes a one-click GET, this assertion is the one that says so.
+    assert.match(html, /<form method="POST"/,
+      "the GET must only offer a form — a prefetching mail scanner must not be able to unsubscribe anyone");
+    assert.match(html, /Turn off watchlist emails\?/);
+    assert.match(html, /noindex/, "an unsubscribe page must never be indexed");
+    assert.equal(r.headers.get("x-robots-tag"), "noindex");
+  });
+
+  await t.test("the resubscribe direction is reachable from the same link", async () => {
+    // A one-way off switch with no way back is a support ticket.
+    const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + `/watchlist/unsubscribe?u=${USER}&t=${macFor(USER)}&on=1`);
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /Turn these emails back on\?/);
+    assert.match(html, /<form method="POST"/);
+  });
+});
+
 test("/api/vault/extract sniffs the media type and never takes it from the body", () => {
   // What we forward to a third-party vendor has to be what it claims to be, so
   // the type is decided by broker-vault.js's magic-byte check. A mediaType
@@ -1226,4 +1575,161 @@ test("/api/vault/extract sniffs the media type and never takes it from the body"
   // every image into "that file isn't something we can read".
   assert.equal(route.includes("data:application\\/pdf"), false,
     "the data: prefix stripper must not be PDF-only");
+});
+
+// ---------------------------------------------------------------------------
+// The webhook's switch and the Stripe dashboard's event list are one setting
+// in two places, and only one of them is in this repo.
+//
+// A handler for an event the destination does not send is dead code that
+// looks alive: `charge.refunded` and the async-payment pair were WRITTEN
+// against a destination subscribed to six events, so until someone ticks the
+// boxes in Stripe, a refunded buyer still keeps their report and nothing here
+// fails. PRO-BILLING-SETUP.md is the checklist whoever configures that
+// destination reads, so this pins the two lists to each other — the file
+// cannot fall behind the code, and a new case cannot ship without the setup
+// step being written down.
+// ---------------------------------------------------------------------------
+
+test("PRO-BILLING-SETUP.md lists exactly the events handleStripeEvent handles", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const root = path.join(__dirname, "..");
+
+  const src = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const start = src.indexOf("async function handleStripeEvent");
+  assert.ok(start >= 0, "handleStripeEvent should still exist");
+  const end = src.indexOf("async function entitlementsFor", start);
+  assert.ok(end > start, "could not bound handleStripeEvent");
+  const handled = [...src.slice(start, end).matchAll(/case "([a-z_]+\.[a-z_.]+)":/g)].map((m) => m[1]);
+  assert.ok(handled.length >= 6, "expected the switch to handle at least the original six events");
+
+  const doc = fs.readFileSync(path.join(root, "PRO-BILLING-SETUP.md"), "utf8");
+  const block = doc.match(/matching the switch in `handleStripeEvent\(\)`[^`]*```\n([\s\S]*?)```/);
+  assert.ok(block, "PRO-BILLING-SETUP.md should still carry the fenced event list");
+  const documented = block[1].split("\n").map((l) => l.trim()).filter(Boolean);
+
+  assert.deepEqual([...handled].sort(), [...documented].sort(),
+    "the webhook switch and the documented Stripe event list disagree — a handled " +
+    "event missing from the doc never gets enabled in Stripe, and a documented " +
+    "event with no case is noise the destination pays to deliver");
+});
+
+test("a refund revokes only a FULL refund, and only a report unlock", () => {
+  // The two ways this branch goes wrong are both silent: revoking on a partial
+  // refund repossesses a report the customer still mostly paid for, and acting
+  // on a refunded Pro invoice ends a paid-up member's access early.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf('case "charge.refunded"');
+  assert.ok(start >= 0, "the refund branch should still exist");
+  const end = src.indexOf("default:", start);
+  assert.ok(end > start, "could not bound the refund branch");
+  const branch = src.slice(start, end);
+
+  assert.match(branch, /STRIPE\.refundOf\(obj\)/,
+    "the full-vs-partial decision belongs to the pure, tested refundOf");
+  assert.match(branch, /if \(!full\)/,
+    "a partial refund must take its own path rather than falling through to the revoke");
+  assert.match(branch, /revokeReportPurchase\(paymentIntentId\)/,
+    "the revoke must match on the payment intent, the only join to report_purchases");
+  assert.equal(/upsertSubscription|deleteSubscription/.test(branch), false,
+    "a refund must not touch subscription state — that is the subscription events' job");
+});
+
+// --- /admin's digest trigger ------------------------------------------------
+//
+// The digest route is deliberately manual, but "manual" meant curl-only, which
+// is a feature nobody runs. The card on /admin is the trigger.
+//
+// One property matters more than the rest and is the reason this is a test
+// rather than a look: OPENING THE PAGE MUST NOT SEND EMAIL. Every other card
+// on /admin fetches its data on load, so the obvious way to write this one is
+// the wrong way, and the mistake is invisible — the page would look identical
+// and the mail would already be gone.
+
+test("/admin's watchlist digest card", async (t) => {
+  const srv = await boot({ ADMIN_KEY: "admin-card-key" });
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + "/admin")).text();
+
+  await t.test("the card and both buttons are wired", async () => {
+    assert.match(html, /id="digest"/, "the mount point should exist");
+    // The buttons are built by digestBtn(id,label) rather than written as
+    // literal markup, so assert on the construction, not on rendered HTML
+    // this test never executes.
+    assert.match(html, /digestBtn\("dgPrev"/);
+    assert.match(html, /digestBtn\("dgSend"/);
+    assert.match(html, /Preview \(sends nothing\)/,
+      "preview is the primary gesture: the default should be to READ what would go out");
+  });
+
+  await t.test("nothing is posted to the digest route on page load", async () => {
+    // Both call sites live inside the click handler; a fetch anywhere else
+    // would fire on load. Asserted on the source because the failure mode is
+    // an email that has already left by the time anyone could observe it.
+    const calls = html.split('"/api/watchlist/digest"').length - 1;
+    assert.equal(calls, 1, "exactly one fetch call site, inside run()");
+    const loader = html.slice(html.indexOf("function load(key)"), html.indexOf("function load(key)") + 1200);
+    assert.equal(/watchlist\/digest/.test(loader), false,
+      "the page loader must not touch the digest route");
+    assert.match(html, /renderDigestCard\(\)/,
+      "load() should render the card's idle state, which takes no arguments and fetches nothing");
+  });
+
+  await t.test("sending asks first, and says the send cannot be recalled", async () => {
+    assert.match(html, /confirm\("Send the digest now\?[^"]*cannot be recalled/,
+      "the irreversible button must confirm, and say why it is irreversible");
+    // Preview must NOT be behind a confirm — a dialog on the safe action
+    // trains people to click through the one on the unsafe action.
+    const run = html.slice(html.indexOf("var run=function(dry)"), html.indexOf("var run=function(dry)") + 400);
+    assert.match(run, /if\(!dry&&!confirm\(/, "the confirm is gated on it being a real send");
+  });
+});
+
+// Every dimension a logEvent CALL SITE passes must exist in logEvent's row.
+//
+// The sibling of "every user flag entitlements reads is carried by
+// getSessionUser", and written for the same reason after the same thing
+// happened a second time: three /api/comps call sites passed `plan: ent.plan`
+// from the day the Pro tier shipped, logEvent's row never had a `plan` field,
+// and the value was discarded on every search for months. Nothing failed. The
+// code read as though "do free users search more than Pro ones" was
+// answerable, and it was not.
+//
+// A dropped dimension cannot fail loudly by its nature — the row still writes,
+// the column is simply absent — so this reads both sides out of server.js and
+// pairs them. Adding a dimension at a call site now fails the build until
+// logEvent records it.
+test("every dimension passed to logEvent is recorded by it", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  const start = src.indexOf("function logEvent(kind, dims)");
+  assert.ok(start >= 0, "logEvent should still exist");
+  const end = src.indexOf("function aggregateStats", start);
+  assert.ok(end > start, "could not bound logEvent");
+  const row = src.slice(start, end);
+
+  // Keys the row actually writes.
+  const recorded = new Set([...row.matchAll(/^\s{4}([a-z_]+):/gm)].map((m) => m[1]));
+  assert.ok(recorded.has("kind") && recorded.has("market"),
+    "expected to have parsed logEvent's row; got " + JSON.stringify([...recorded]));
+
+  // Keys the call sites pass. Only the single-line object literals are
+  // scanned, which is every call site's shape today; a multi-line one would
+  // be missed, so this is a floor on coverage rather than a proof.
+  const passed = new Set();
+  for (const call of src.matchAll(/logEvent\("[a-z_]+",\s*\{([^}]*)\}/g)) {
+    for (const key of call[1].matchAll(/(?:^|,)\s*([a-z_]+)\s*:/g)) passed.add(key[1]);
+  }
+  assert.ok(passed.size >= 3, "expected to have found call-site dimensions; got " + JSON.stringify([...passed]));
+
+  for (const dim of passed) {
+    assert.ok(recorded.has(dim),
+      `a logEvent call site passes "${dim}", but logEvent's row does not record it — ` +
+      "the value is built and thrown away, and nothing anywhere fails");
+  }
 });

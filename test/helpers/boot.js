@@ -63,6 +63,11 @@ async function boot(env) {
       STRIPE_SECRET_KEY: "",
       PRO_ENABLED: "",
       TESTER_PASSKEY: "",
+      // Same reason as TESTER_PASSKEY above, and load-bearing for the same
+      // assertion: "the route does not exist when no passkey is set" boots
+      // with neither, so a developer's own VAULT_PASSKEY would turn that 404
+      // into a 401 and fail a test about a deployment they are not running.
+      VAULT_PASSKEY: "",
       ...env,
     },
     stdio: "ignore",

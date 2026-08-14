@@ -14,6 +14,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { boot } = require("./helpers/boot");
+const MARKETHERO = require("../market-hero");
 
 // The shared chrome is served to logged-out and logged-in visitors alike, so
 // both states have to be exercised on every page that carries it. Presence is
@@ -471,4 +472,30 @@ test("a market page with no brokers renders no lead band at all", async (t) => {
   t.after(() => srv.stop());
   const html = await (await fetch(srv.base + MARKET_PAGE)).text();
   assert.ok(!/cta lead/.test(html), "no broker covers this market, so there is nothing to lead with");
+});
+
+test("a market page header is a photograph of that city", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+  const hero = MARKETHERO.heroFor(MARKET.city, MARKET.state);
+  assert.ok(hero && hero.kind === "photo", "the seeded fixture city must have a curated photo");
+  assert.match(html, /class="mkt-hero"/);
+  assert.match(html, new RegExp(`src="${hero.src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+  assert.match(html, /class="mkt-hero-img"/);
+  assert.match(html, new RegExp(`<h1>${MARKET.type} Comps in ${MARKET.city}, ${MARKET.state}</h1>`));
+  // Title lives IN the photograph, not again below it.
+  assert.equal((html.match(/<h1>/g) || []).length, 1);
+  assert.match(html, new RegExp(`og:image" content="[^"]*${hero.src}"`));
+
+  const img = await fetch(srv.base + hero.src);
+  assert.equal(img.status, 200);
+  assert.match(img.headers.get("content-type") || "", /image\/jpeg/);
+  const bytes = Buffer.from(await img.arrayBuffer());
+  assert.ok(bytes.length > 20 * 1024, "hero JPEG looks empty");
+  assert.equal(bytes[0], 0xff);
+  assert.equal(bytes[1], 0xd8);
+
+  const sneak = await fetch(srv.base + "/market-heroes/../server.js");
+  assert.equal(sneak.status, 404);
 });

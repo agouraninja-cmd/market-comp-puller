@@ -1,4 +1,5 @@
 [
+  {"date": "2026-08-14", "type": "feature", "title": "Market pages open on an aerial photograph of the city", "details": "Every /market page header is now a drone or skyline photo of that city, with the title over a dark overlay. Photos are Wikimedia Commons files we host ourselves (Ontario, CA is not Ontario, Canada). Explorer markets without a curated shot fall through to an Esri aerial when we have coordinates."},
   {"date": "2026-08-14", "type": "fix", "title": "Map pin photos no longer flash the roof before Street View", "details": "The aerial tiles were still in the popup, just hidden under an opacity-0 Street View image, so the prefetched roof painted for a frame then swapped. Street View is now its own tree with no Esri imgs in it, hover waits until that JPEG has settled, and a 404 is the only thing that swaps in the roof."},
   {
     "date": "2026-08-14",

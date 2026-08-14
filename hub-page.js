@@ -64,6 +64,15 @@ td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line);vertical-align:top
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;
   border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+.tally{color:var(--ink-2);font-size:13px;margin:0 0 10px}
+/* The status control and the read-only chip are sized alike on purpose, so a
+   tenant who can act and an observer who cannot see the same table shape. */
+select.st{font:inherit;font-size:12.5px;padding:2px 4px;border:1px solid var(--line);
+  border-radius:6px;background:var(--card);color:var(--ink)}
+.st-new{color:var(--ink-3)}
+.st-shortlist{color:var(--ink);font-weight:600}
+.st-passed{color:var(--ink-3);text-decoration:line-through}
+tr.passed td:not(:nth-last-child(-n+2)){opacity:.55}
 .stream{display:flex;flex-direction:column;gap:14px;margin-bottom:18px}
 .bub{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)}
 .bub .who{font-size:12px;color:var(--ink-3);margin-bottom:3px}
@@ -91,10 +100,16 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     <div class="card">
       <h2>Comps in this hub</h2>
       <div id="noitems" class="msg hide">No comps have been sent into this hub yet.</div>
+      <!-- The one-line answer to "where are we", above the detail rather than
+           below them. It counts only what somebody actually decided: comps
+           still at "new" are absent, because a count of undecided things is
+           not progress. -->
+      <p class="tally hide" id="tally"></p>
       <div class="tblwrap"><table id="tbl" class="hide">
         <thead><tr>
           <th>Address</th><th>Type</th><th>Deal</th><th>Date</th>
-          <th class="num">Price</th><th class="num">Size</th><th class="num">$/SF</th><th></th>
+          <th class="num">Price</th><th class="num">Size</th><th class="num">$/SF</th>
+          <th>Where it stands</th><th></th>
         </tr></thead><tbody id="rows"></tbody>
       </table></div>
     </div>
@@ -122,6 +137,12 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   var el = function(x){ return document.getElementById(x); };
   var cursor = "";
   var poll = null;
+  // The server's answer to "may this person post", never the browser's guess
+  // from the role string. Held so the item table can ask it while rendering.
+  var canWriteHub = false;
+  // The last item list the server sent, kept so a status change can re-render
+  // the tally without a round trip for the rows that did not change.
+  var lastItems = [];
 
   function show(n, on){ el(n).classList.toggle("hide", !on); }
   function fail(text){
@@ -159,7 +180,10 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     if (d.hub.status === "closed") bits.push("Closed");
     el("sub").textContent = bits.join(" · ");
 
-    if (d.items) renderItems(d.items);
+    // Set BEFORE renderItems, which reads it to decide whether each row gets a
+    // control or a word.
+    canWriteHub = !!d.canWrite;
+    if (d.items) { lastItems = d.items; renderItems(d.items); }
     addMessages(d.messages || [], true);
 
     show("composer", !!d.canWrite);
@@ -173,14 +197,35 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     }
   }
 
+  // The pipeline, in the order it is shown. Must agree with hub-access.js's
+  // ITEM_STATUSES and with migration 024's CHECK; a test pins the three.
+  var STATUSES = ["new", "shortlist", "toured", "passed"];
+  var STATUS_LABEL = { "new": "Not decided", shortlist: "Shortlisted", toured: "Toured", passed: "Passed" };
+
+  // Counts what somebody DECIDED. "new" is deliberately excluded: a tally of
+  // undecided comps is not progress, and putting it here would let a hub where
+  // nothing has happened read as though something had.
+  function renderTally(items){
+    var live = items.filter(function(i){ return i.status && i.status !== "new"; });
+    if (!live.length){ show("tally", false); return; }
+    var counts = {};
+    live.forEach(function(i){ counts[i.status] = (counts[i.status] || 0) + 1; });
+    var parts = STATUSES.filter(function(s){ return s !== "new" && counts[s]; })
+      .map(function(s){ return counts[s] + " " + STATUS_LABEL[s].toLowerCase(); });
+    el("tally").textContent = parts.join(" · ") + " of " + items.length;
+    show("tally", true);
+  }
+
   function renderItems(items){
     var rows = el("rows");
     rows.textContent = "";
-    if (!items.length){ show("noitems", true); show("tbl", false); return; }
+    if (!items.length){ show("noitems", true); show("tbl", false); show("tally", false); return; }
     show("noitems", false); show("tbl", true);
+    renderTally(items);
     items.forEach(function(it){
       var c = it.snapshot || {};
       var tr = document.createElement("tr");
+      if (it.status === "passed") tr.className = "passed";
       function cell(text, cls){
         var td = document.createElement("td");
         if (cls) td.className = cls;
@@ -195,6 +240,33 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       cell(money(c.price), "num");
       cell(num(c.size_sqft), "num");
       cell(c.price_per_sqft ? money(c.price_per_sqft) : "", "num");
+
+      // Where it stands. A control for anyone who may write, a plain word for
+      // anyone who may not, in the same column either way: an observer and a
+      // tenant should read the same table, not two different ones.
+      var stCell = document.createElement("td");
+      var current = it.status || "new";
+      if (canWriteHub){
+        var sel = document.createElement("select");
+        sel.className = "st st-" + current;
+        sel.setAttribute("aria-label", "Where " + (c.address || "this comp") + " stands");
+        STATUSES.forEach(function(s){
+          var o = document.createElement("option");
+          o.value = s;
+          o.textContent = STATUS_LABEL[s];
+          if (s === current) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", function(){ setStatus(it, sel); });
+        stCell.appendChild(sel);
+      } else {
+        var span = document.createElement("span");
+        span.className = "st-" + current;
+        span.textContent = STATUS_LABEL[current] || current;
+        stCell.appendChild(span);
+      }
+      tr.appendChild(stCell);
+
       var last = cell("");
       if (it.private){
         var b = document.createElement("span");
@@ -224,6 +296,50 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       stream.appendChild(d);
     });
     show("nomsg", !stream.children.length);
+  }
+
+  // Moving a comp along the pipeline. The select is disabled for the round
+  // trip and REVERTS on failure rather than keeping the value the server
+  // refused: this column is a record of what the client decided, so a status
+  // showing something the database does not hold is the one lie it must not
+  // tell.
+  function setStatus(item, sel){
+    var previous = item.status || "new";
+    var wanted = sel.value;
+    if (wanted === previous) return;
+    sel.disabled = true;
+    fetch("/api/hub/item", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID, itemId: item.id, status: wanted }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        sel.disabled = false;
+        if (o.s === 401){
+          sel.value = previous;
+          el("readonly").textContent = (o.j && o.j.error) || "Please sign in to change this.";
+          show("readonly", true);
+          return;
+        }
+        if (o.s !== 200 || !o.j.item){
+          sel.value = previous;
+          el("readonly").textContent = (o.j && o.j.error) || "That change could not be saved.";
+          show("readonly", true);
+          return;
+        }
+        show("readonly", !canWriteHub);
+        item.status = o.j.item.status;
+        sel.className = "st st-" + item.status;
+        // Re-render the row's own styling and the tally, without refetching
+        // the whole hub: the server already told us what it stored.
+        renderItems(lastItems);
+      })
+      .catch(function(){
+        sel.disabled = false;
+        sel.value = previous;
+        el("readonly").textContent = "That change did not reach the server.";
+        show("readonly", true);
+      });
   }
 
   function readHub(since){

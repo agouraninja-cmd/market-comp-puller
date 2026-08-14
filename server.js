@@ -15850,23 +15850,57 @@ const server = http.createServer((req, res) =>
           const b = await readHubBody(2e4);
           const id = String(b.id || "");
           if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
-          if (b.removed !== true) {
-            return sendJson(res, 400, { error: "Comp statuses are not available yet." });
-          }
-          // Removing a comp from the conversation is the owner's call, the
-          // same as adding one.
-          const g = await hubGate(id, (c) => HUB.canAddItems(c));
-          if (!g) return;
           const itemId = String(b.itemId || "");
           if (!itemId) return sendJson(res, 400, { error: "Invalid item." });
-          // Scoped by hub_id in the query: an item id alone must never be
-          // enough to touch a row in someone else's hub.
-          const done = await sbRequest("PATCH",
-            `hub_items?id=eq.${encodeURIComponent(itemId)}&hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null`,
-            { removed_at: new Date().toISOString() }, { prefer: "return=representation" });
-          if (!done || !done.length) return sendJson(res, 404, { error: "That comp was not found." });
+
+          // TWO different acts down one route, with two different gates, and
+          // the difference is the point of the feature:
+          //
+          //   removing a comp  = the owner's call, like adding one
+          //   setting a status = ANY participant's, the tenant above all
+          //
+          // A pipeline only the broker can move would say what the broker
+          // hopes rather than what the client decided. hub-access.js owns
+          // both answers; this only picks which question to ask.
+          const removing = b.removed === true;
+          const g = await hubGate(id, (c) => (removing ? HUB.canAddItems(c) : HUB.canSetStatus(c)));
+          if (!g) return;
+
+          // Scoped by hub_id in the QUERY on both branches: an item id alone
+          // must never be enough to touch a row in someone else's hub.
+          const scope = `hub_items?id=eq.${encodeURIComponent(itemId)}` +
+            `&hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null`;
+
+          if (removing) {
+            const done = await sbRequest("PATCH", scope,
+              { removed_at: new Date().toISOString() }, { prefer: "return=representation" });
+            if (!done || !done.length) return sendJson(res, 404, { error: "That comp was not found." });
+            touchHub(id);
+            return sendJson(res, 200, { ok: true, removed: true });
+          }
+
+          // Validated against hub-access.js's vocabulary before the write, so
+          // an unknown value is a sentence rather than a PostgREST 400 from
+          // the CHECK constraint behind it. Both exist on purpose: the
+          // constraint stops a bad row, this stops a bad request.
+          if (!HUB.isItemStatus(b.status)) {
+            return sendJson(res, 400, { error: "That is not a status a comp can have." });
+          }
+          const status = String(b.status).trim().toLowerCase();
+          const saved = await sbRequest("PATCH", scope, {
+            status,
+            // WHO decided, and when. Stamped from the session, never from the
+            // browser: the whole value of a shortlist is that it records the
+            // client's own judgement, so an unattributable status is worth
+            // less than none.
+            status_by: g.user.id,
+            status_at: new Date().toISOString(),
+          }, { prefer: "return=representation" });
+          if (!saved || !saved.length) return sendJson(res, 404, { error: "That comp was not found." });
           touchHub(id);
-          return sendJson(res, 200, { ok: true });
+          if (g.participant) stampHubView(g.participant.id);
+          logEvent("hub_status", { market: g.hub.market || "", source: status });
+          return sendJson(res, 200, { ok: true, item: hubItemForClient(saved[0]) });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           if (err.message === "too_big") return;

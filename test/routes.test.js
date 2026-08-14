@@ -1105,6 +1105,17 @@ test("portfolio upsert and cap", async (t) => {
     assert.equal(list.items[0].address, "100 Main St, Boise, ID");
   });
 
+  // renderResults and renderMap both call saveHistory; the map's write used
+  // to append a second snapshot with the same likely, so Pro's Change column
+  // read ▲ 0.0% after one search. Payload still updates (corrected coords).
+  await t.test("a second POST with the same likely does not append a snapshot", async () => {
+    const payload = reportPayload("100 Main St, Boise, ID", "Industrial");
+    const r = await post({ payload, snapshot: { likely: 1100000, low: 1000000, high: 1200000, median_psf: 88 } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.snapshots.length, 2, "echo of the last likely must not grow the trail");
+  });
+
   await t.test("a new address at the Free cap of 100 is refused; updating one of the 100 still works", async () => {
     // 1 already inserted above; add 99 more to hit 100.
     for (let i = 1; i <= 99; i++) {

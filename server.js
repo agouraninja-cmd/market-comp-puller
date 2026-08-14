@@ -1220,7 +1220,13 @@ async function updatePortfolioItem(userId, id, { payload, snapshot }) {
   const existing = await getPortfolioItem(userId, id);
   if (!existing) return null;
   const snapshots = Array.isArray(existing.snapshots) ? existing.snapshots.slice() : [];
-  if (snapshot) snapshots.push(snapshot);
+  // renderResults and renderMap both call saveHistory; the map's write is the
+  // same likely a beat later. Pushing it made Pro's Change column read 0%
+  // after one search. A later run whose likely actually moved still appends.
+  if (snapshot) {
+    const last = snapshots[snapshots.length - 1];
+    if (!last || last.likely !== snapshot.likely) snapshots.push(snapshot);
+  }
   while (snapshots.length > PORTFOLIO_MAX_SNAPSHOTS) snapshots.shift();
   const patch = { payload, snapshots, updated_at: new Date().toISOString() };
   if (DB_CONFIGURED) {

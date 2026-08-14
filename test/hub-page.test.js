@@ -293,7 +293,30 @@ test("the hub page's nav carries My Desk and Sign in", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  const call = server.match(/renderHubHTML\(hubPageMatch\[1\][\s\S]{0,900}?\}\)\);/);
+  const call = server.match(/renderHubHTML\(hubPageMatch\[1\][\s\S]{0,2500}?\}\)\);/);
   assert.ok(call, "could not find the hub page's render call");
-  assert.match(call[0], /accountNavSlots\(\{ desk: true \}\)/);
+  assert.match(call[0], /accountNavSlots\(\{ desk: true[^}]*\}\)/);
+});
+
+test("a hub sells the client nothing", () => {
+  // The tenant rule from the spec, which the page was breaking: "No comp gate,
+  // no Pro prompt, no export tally. A tenant who hits a paywall inside their
+  // own broker's hub is a lost acquisition and an embarrassed broker." The
+  // page was showing Pricing to everyone and, once signed in as a free
+  // account, an Upgrade to Pro button in the account menu — a pitch aimed at
+  // somebody else's guest, inside the workspace that broker owns.
+  //
+  // Owner's call, 2026-08-14: hubs show nothing about Pro. Every other page
+  // keeps both, which is why this asserts the HUB's own call rather than the
+  // helper's default.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const call = server.match(/renderHubHTML\(hubPageMatch\[1\][\s\S]{0,2500}?\}\)\);/);
+  assert.ok(call, "could not find the hub page's render call");
+  assert.match(call[0], /upsell: false/);
+  assert.match(call[0], /ACCOUNT_NAV_PRICING: ""/);
+  // And the helper must still default to showing both, or every other page
+  // silently loses its pricing link.
+  assert.match(server, /function accountNavSlots\(\{ desk = true, upsell = true \} = \{\}\)/);
 });

@@ -2003,6 +2003,8 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   const distAt = body.indexOf("RADIUSBLEND.attachCompDistances");
   assert.ok(distAt >= 0, "gate() must stamp distance_mi before the paywall");
   assert.ok(distAt < paywallAt, "distance must be on the comps (and then locked_basis) before gateReport");
+  assert.match(body, /propertyType:\s*typeOk/,
+    "house reports must pass the type so the blend uses the 1-mile radius, not CRE's 10");
   assert.equal(/harvestComps\s*\(\s*typeOk/.test(body), false,
     "harvest must not run inside gate() — extras would re-enter the corpus from a serialization-only merge");
 });

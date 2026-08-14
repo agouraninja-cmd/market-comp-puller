@@ -11,6 +11,10 @@ const {
   parseCoords,
   milesBetween,
   RADIUS_MILES,
+  RESIDENTIAL_RADIUS_MILES,
+  radiusMilesFor,
+  impliedSubjectPsf,
+  samePriceTier,
   attachCompDistances,
 } = require("../blend-corpus");
 
@@ -234,4 +238,78 @@ test("attachCompDistances leaves unplaced comps and already-stamped comps alone"
   assert.equal(out, rep);
   assert.equal(out.comps[0].distance_mi, undefined);
   assert.equal(out.comps[1].distance_mi, 3.1);
+});
+
+test("radiusMilesFor keeps CRE at 10 miles and houses at 1", () => {
+  assert.equal(radiusMilesFor("Industrial"), RADIUS_MILES);
+  assert.equal(radiusMilesFor("Office"), RADIUS_MILES);
+  assert.equal(radiusMilesFor("Residential"), RESIDENTIAL_RADIUS_MILES);
+  assert.equal(radiusMilesFor(""), RADIUS_MILES);
+});
+
+test("a Residential report drops a deal 5 miles out that CRE would keep", () => {
+  const five = row({ ll: offsetMiles(BOISE, 5) });
+  const house = blendNearbyComps(report(), [five], { ...OPTS, propertyType: "Residential" });
+  const warehouse = blendNearbyComps(report(), [five], { ...OPTS, propertyType: "Industrial" });
+  assert.equal("corpus_count" in house, false);
+  assert.equal(warehouse.corpus_count, 1);
+});
+
+test("a Residential report keeps a deal inside one mile", () => {
+  const inner = row({ ll: offsetMiles(BOISE, 0.6), address: "12 Next St, Boise, ID" });
+  const out = blendNearbyComps(report(), [inner], { ...OPTS, propertyType: "Residential" });
+  assert.equal(out.corpus_count, 1);
+  assert.ok(out.comps[1].distance_mi < 1);
+});
+
+test("impliedSubjectPsf is ask divided by size, and opts.subjectPsf wins", () => {
+  const rep = report({
+    subject_asking: { price: "$2,000,000" },
+    subject_size_sqft: "4000",
+  });
+  assert.equal(impliedSubjectPsf(rep), 500);
+  assert.equal(impliedSubjectPsf(rep, { subjectPsf: 450 }), 450);
+  assert.equal(impliedSubjectPsf(report()), 0);
+});
+
+test("samePriceTier treats missing data as a match and a 2x miss as a different pocket", () => {
+  assert.equal(samePriceTier(0, 500), true);
+  assert.equal(samePriceTier(500, 0), true);
+  assert.equal(samePriceTier(500, 500), true);
+  assert.equal(samePriceTier(600, 500), true);   // 1.2x, inside 1.5x
+  assert.equal(samePriceTier(250, 500), false);  // 2x, the $2M house vs $1M extras
+});
+
+test("Residential extras 2x off the asking $/SF are dropped even inside a mile", () => {
+  const cheap = row({
+    ll: offsetMiles(BOISE, 0.4),
+    address: "8 Cheaper Ln, Boise, ID",
+    price_or_rate: "1000000",
+    size_sqft: "4000",
+    price_per_sqft: "250",
+  });
+  const peer = row({
+    ll: offsetMiles(BOISE, 0.5),
+    address: "9 Peer St, Boise, ID",
+    price_or_rate: "1900000",
+    size_sqft: "4000",
+    price_per_sqft: "475",
+  });
+  const rep = report({
+    subject_asking: { price: "$2,000,000" },
+    subject_size_sqft: "4000",
+  });
+  const out = blendNearbyComps(rep, [cheap, peer], { ...OPTS, propertyType: "Residential" });
+  assert.equal(out.corpus_count, 1);
+  assert.equal(out.comps[1].address, "9 Peer St, Boise, ID");
+});
+
+test("Residential extras of any price join when there is no ask to compare", () => {
+  const cheap = row({
+    ll: offsetMiles(BOISE, 0.4),
+    address: "8 Cheaper Ln, Boise, ID",
+    price_per_sqft: "250",
+  });
+  const out = blendNearbyComps(report(), [cheap], { ...OPTS, propertyType: "Residential" });
+  assert.equal(out.corpus_count, 1);
 });

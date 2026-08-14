@@ -2338,8 +2338,9 @@ const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SE
 // reason to search less. Default ON; `off` restores exact-market matching.
 const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
 
-// Saved deals within 10 miles join the report at serialization. Default ON;
-// `off` restores search-only reports. Harvest still writes either way.
+// Saved deals within 10 miles (CRE) / 1 mile (houses) join the report at
+// serialization. Default ON; `off` restores search-only reports. Harvest
+// still writes either way.
 const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
@@ -11371,16 +11372,19 @@ const server = http.createServer((req, res) =>
               keyOf: corpusKeyOf,
               subjectAddress: addressOk,
               isAggregateAddress,
+              propertyType: typeOk,
+              subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
             });
             if (merged && merged.corpus_count) {
-              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${RADIUSBLEND.RADIUS_MILES} mi of ${addressOk}`);
+              const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk);
+              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
             }
             merged = RADIUSBLEND.attachCompDistances(merged, subject);
           } else {
             merged = RADIUSBLEND.attachCompDistances(merged);
           }
           const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
-          const gated = GATE.gateReport(merged, ent, { asOfMs: Date.now(), subjectSqft });
+          const gated = GATE.gateReport(merged, ent, { asOfMs: Date.now(), subjectSqft, propertyType: typeOk });
           if (!gated || typeof gated !== "object") return gated;
           // `ent` was resolved with THIS report's id, so it already knows a single-report
           // unlock makes its exports unlimited — /api/config cannot, because it
@@ -17130,7 +17134,7 @@ server.listen(PORT, () => {
     ? "🔐 Account wall ON — anonymous visitors get the landing page at / (200, not a redirect; /desk redirects home), and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
     : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");
   console.log(CORPUS_RADIUS
-    ? "📍 Corpus radius blend ON — saved deals within 10 miles join the report (set CORPUS_RADIUS=off to disable)."
+    ? "📍 Corpus radius blend ON — saved deals within 10 miles join CRE reports, 1 mile for houses (set CORPUS_RADIUS=off to disable)."
     : "📍 Corpus radius blend off (CORPUS_RADIUS=off) — reports are search-only.");
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`

@@ -6,9 +6,9 @@
 //
 // PURE, like blend-comps.js: no I/O, no clock reads (the caller passes `now`),
 // no Census. server.js owns the corpus read and the geocode. That is what lets
-// `npm test` prove "in range" without a network, and what keeps a 10-mile rule
+// `npm test` prove "in range" without a network, and what keeps a mile rule
 // from silently becoming "same city" because the module got tired of missing
-// coordinates.
+// coordinates. Residential is 1 mile; CRE is 10.
 //
 // ---------------------------------------------------------------------------
 // THE RULE: BLEND AT SERIALIZATION, BEFORE THE PAYWALL, NEVER AT GENERATION
@@ -37,7 +37,22 @@
 const { isAggregateAddress } = require("./corpus-audit.js");
 
 const RADIUS_MILES = 10;
+// Houses trade by neighborhood, not metro. The search prompt already asks
+// for comps within about a mile; auto-including every saved deal inside the
+// CRE 10-mile circle undoes that and prices a $2M home off $800k sales from
+// the next pocket over. Industrial / office / retail stay at 10.
+const RESIDENTIAL_RADIUS_MILES = 1;
+// A house more than 1.5× the subject's implied $/SF (from the ask ÷ size)
+// is a different product even when it sits inside that mile — the other
+// side of a highway, a cheaper subdivision. Missing ask or size is
+// neutral: the 1-mile radius still holds. CRE is not filtered this way;
+// warehouse $/SF routinely spans more than 1.5× inside one submarket.
+const RESIDENTIAL_PRICE_TIER_RATIO = 1.5;
 const EARTH_MILES = 3959;
+
+function radiusMilesFor(type) {
+  return type === "Residential" ? RESIDENTIAL_RADIUS_MILES : RADIUS_MILES;
+}
 
 const FIELD_MAP = {
   address: "address",
@@ -100,12 +115,45 @@ function coordsFromReport(report) {
   return parseCoords({ lat: report.subject_lat, lng: report.subject_lng });
 }
 
+function moneyNumber(v) {
+  const x = Number(String(v == null ? "" : v).replace(/[^0-9.]/g, ""));
+  return Number.isFinite(x) && x > 0 ? x : 0;
+}
+
 function priced(row) {
-  const n = (v) => {
-    const x = Number(String(v == null ? "" : v).replace(/[^0-9.]/g, ""));
-    return Number.isFinite(x) && x > 0 ? x : 0;
-  };
-  return n(row && row.price_or_rate) > 0 || n(row && row.price_per_sqft) > 0;
+  return moneyNumber(row && row.price_or_rate) > 0 || moneyNumber(row && row.price_per_sqft) > 0;
+}
+
+function salePsfOf(row) {
+  const psf = moneyNumber(row && row.price_per_sqft);
+  if (psf > 0) return psf;
+  const p = moneyNumber(row && row.price_or_rate);
+  const s = moneyNumber(row && row.size_sqft);
+  if (p > 0 && s > 0) {
+    const d = p / s;
+    if (d >= 1 && d <= 100000) return d;
+  }
+  return 0;
+}
+
+// Ask ÷ living area, when both exist. `opts.subjectPsf` wins so a caller
+// that already did the division (server.js has the typed size) does not
+// re-parse. Missing data returns 0, never a guess.
+function impliedSubjectPsf(report, opts) {
+  const o = opts && typeof opts === "object" ? opts : {};
+  if (Number(o.subjectPsf) > 0) return Number(o.subjectPsf);
+  const ask = moneyNumber(report && report.subject_asking && report.subject_asking.price);
+  const sf = moneyNumber(o.subjectSize) || moneyNumber(report && report.subject_size_sqft);
+  if (ask > 0 && sf > 0) {
+    const d = ask / sf;
+    if (d >= 1 && d <= 100000) return d;
+  }
+  return 0;
+}
+
+function samePriceTier(extraPsf, subjectPsf) {
+  if (!(extraPsf > 0) || !(subjectPsf > 0)) return true;
+  return Math.abs(Math.log2(extraPsf / subjectPsf)) <= Math.log2(RESIDENTIAL_PRICE_TIER_RATIO);
 }
 
 function lookbackCutoffFrac(months, now) {
@@ -150,7 +198,10 @@ function blendNearbyComps(report, rows, opts) {
   const aggregateOf = typeof o.isAggregateAddress === "function" ? o.isAggregateAddress : isAggregateAddress;
   const cutoff = lookbackCutoffFrac(o.months, o.now);
   const subjectKey = normAddr(o.subjectAddress);
-  const radius = Number.isFinite(Number(o.radiusMiles)) ? Number(o.radiusMiles) : RADIUS_MILES;
+  const radius = Number.isFinite(Number(o.radiusMiles))
+    ? Number(o.radiusMiles)
+    : radiusMilesFor(o.propertyType);
+  const subjectPsf = o.propertyType === "Residential" ? impliedSubjectPsf(report, o) : 0;
 
   const comps = Array.isArray(report.comps) ? report.comps : [];
   const seen = new Set(comps.map((c) => keyOf(c)));
@@ -167,6 +218,7 @@ function blendNearbyComps(report, rows, opts) {
     const mi = milesBetween(subject, ll);
     if (!(mi <= radius)) continue;
     if (subjectKey && normAddr(row.address) === subjectKey) continue;
+    if (subjectPsf > 0 && !samePriceTier(salePsfOf(row), subjectPsf)) continue;
     const shaped = toReportComp(row);
     if (!shaped) continue;
     const key = keyOf(shaped);
@@ -213,6 +265,12 @@ module.exports = {
   priced,
   lookbackCutoffFrac,
   RADIUS_MILES,
+  RESIDENTIAL_RADIUS_MILES,
+  RESIDENTIAL_PRICE_TIER_RATIO,
+  radiusMilesFor,
+  impliedSubjectPsf,
+  samePriceTier,
+  salePsfOf,
   FIELD_MAP,
   attachCompDistances,
 };

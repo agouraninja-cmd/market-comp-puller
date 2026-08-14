@@ -427,6 +427,9 @@ test("the hero has a listing line so an ask the size lookup already saw cannot s
   assert.match(html, /function askingRangeFrom\(/);
   assert.match(html, /Currently listed at/);
   assert.match(html, /askFit\(/);
+  assert.match(html, /a cheaper pocket than this property/);
+  assert.equal(/The ask may be ambitious relative to these comps/.test(html), false,
+    "an estimate below the ask is the cheaper-pocket failure, not an ambitious list price");
 });
 
 test("Residential reports compare list price to Low/Likely/High without a typed Refine size", () => {
@@ -445,6 +448,14 @@ test("Residential reports compare list price to Low/Likely/High without a typed 
   assert.ok(gate, "could not bound renderComparison");
   assert.match(gate[0], /currentMeta\.type === "Residential"/);
   assert.match(gate[0], /renderResidentialAskComparison/);
+});
+
+test("the house hero passes Residential into the valuation so far comps count less", () => {
+  const hero = html.match(/function renderOwnerHero[\s\S]*?card\.classList\.remove\("hidden"\)/);
+  assert.ok(hero, "could not bound renderOwnerHero");
+  assert.match(hero[0], /propertyType:\s*meta && meta\.type/,
+    "without the type, a house report would use CRE's 4-mile distance curve");
+  assert.match(html, /function weightOpts\(/);
 });
 
 test("Residential size label is Living area, and the CRE toolkit stays behind Refine", () => {

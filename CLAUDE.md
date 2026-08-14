@@ -897,9 +897,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   **Radius blend (2026-08-14).** At serialization, inside `gate()` and
   **before** `gateReport()`, `blendNearbyComps` folds in harvested deals of
   the same property type whose date is inside the lookback, that have
-  coordinates, and that sit within 10 miles of the subject — even across city
-  lines. They join the table and the Low / Likely / High math; a free report
-  turns extras into `locked_basis` so the dollar range still matches Pro.
+  coordinates, and that sit within **10 miles** of the subject for CRE —
+  **1 mile for Residential** — even across city lines. Houses trade by
+  neighborhood; the 10-mile CRE circle priced a $2M home off cheaper sales
+  from the next pocket over (19 comps, ~$1M headline). Residential extras
+  that are more than 1.5× the subject's implied $/SF (ask ÷ size) are
+  dropped too, even inside that mile; missing ask is neutral. They join
+  the table and the Low / Likely / High math; a free report turns extras
+  into `locked_basis` so the dollar range still matches Pro.
   Harvest Census-geocodes new rows before the insert (fire-and-forget with
   the rest of harvest); unlocated existing rows backfill up to 8 per request
   and join the *next* search. A deal with no point is skipped, not guessed as
@@ -2324,9 +2329,12 @@ private row has not earned. Two rules matter when editing anything down here:
    within 15 years of `subject_year_built`, then halving per further 15
    years — so a 2024 teardown-rebuild does not price a 1994 resale at full
    weight. **Distance is the fifth** — free pass within 1 mile, then a
-   4-mile half-life — so a sale across town does not pull like one next
-   door; `distance_mi` rides `locked_basis` (never lat/lng). `year_built`
-   rides `locked_basis` so free and Pro ranges still match. **User-typed
+   4-mile half-life for CRE and a **2-mile half-life for Residential** — so
+   a sale across town does not pull like one next door; `distance_mi` rides
+   `locked_basis` (never lat/lng). `year_built` rides `locked_basis` so
+   free and Pro ranges still match. When the estimate sits well below the
+   ask, the trust line names a cheaper pocket (the 19-comp / $1M-vs-$2M
+   failure), not an ambitious list price. **User-typed
    asking price wins** (`askingRangeFrom`); the looked-up listing is the
    fallback that lights the comparison card when the visitor never typed one.
 

@@ -162,6 +162,34 @@ test("compWeight halves at five miles (4-mile half-life after the 1-mile pass)",
   assert.equal(V.compWeight(comp({ distance_mi: "5.0 mi" }), AS_OF, 10000), 0.5);
 });
 
+test("Residential distance half-life is 2 miles, so a 5-mile house counts half as much as CRE", () => {
+  // CRE: 0.5^((5-1)/4) = 0.5. Residential: 0.5^((5-1)/2) = 0.25.
+  assert.equal(V.distanceHalfLifeMiles("Residential"), 2);
+  assert.equal(V.distanceHalfLifeMiles("Industrial"), 4);
+  assert.equal(V.compWeight(comp({ distance_mi: 5 }), AS_OF, 10000, null, "Residential"), 0.25);
+  assert.equal(V.compWeight(comp({ distance_mi: 3 }), AS_OF, 10000, null, { propertyType: "Residential" }), 0.5);
+});
+
+test("a $2M house is not valued off a majority of cheaper houses a few miles over", () => {
+  // 4 nearby sales at $500/SF (the subject's own streets) plus 15 sales at
+  // $250/SF six miles away — the 19-comp flood from a 10-mile residential
+  // blend. CRE's 4-mile half-life still lets the cheap majority win the
+  // weighted median; the house curve does not.
+  const nearby = Array.from({ length: 4 }, (_, i) =>
+    comp({ address: i + " Near St", price_per_sqft: "500", size_sqft: "4000", distance_mi: 0.3 }));
+  const far = Array.from({ length: 15 }, (_, i) =>
+    comp({ address: i + " Far Rd", price_per_sqft: "250", size_sqft: "4000", distance_mi: 6 }));
+  const house = V.valueFromComps(nearby.concat(far), {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null, propertyType: "Residential",
+  });
+  const cre = V.valueFromComps(nearby.concat(far), {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null,
+  });
+  assert.ok(house.psfMid > 400, "house likely should sit with the nearby $500/SF comps, got " + house.psfMid);
+  assert.ok(cre.psfMid < house.psfMid, "CRE curve should sit closer to the cheap majority");
+  assert.equal(house.n, 19);
+});
+
 test("compWeight treats missing distance as neutral, never as a penalty", () => {
   assert.equal(V.compWeight(comp({ distance_mi: "" }), AS_OF, 10000), 1);
   assert.equal(V.compWeight(comp(), AS_OF, 10000), 1);

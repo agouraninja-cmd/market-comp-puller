@@ -152,10 +152,10 @@
   //                then halving per further 15 years (a 1994 house should not
   //                be priced by 2024 new construction: they are different
   //                products even on the same block)
-  //   distance     free pass within 1 mile, then a 4-mile half-life (a sale
-  //                five miles away is a different pocket; the Austin Rosedale
-  //                failure was vintage AND pocket, and vintage alone left the
-  //                far comps pulling the headline)
+  //   distance     free pass within 1 mile, then a half-life (4 miles for
+  //                CRE, 2 miles for Residential — a sale five miles away is
+  //                a different pocket; the 4-mile CRE half-life still let
+  //                cheaper houses a few miles over pull a $2M home to $1M)
   //   source       verified/public-record full weight, down to half for model
   //                estimates (mirrors the badge tiers)
   // Floored at 0.15 so no comp silently vanishes from a range it visibly sits
@@ -163,7 +163,16 @@
   // callers that have no year (the accuracy backtest, a report whose lookup
   // found none) keep the pre-vintage weights exactly. Missing distance is
   // the same: a comp the map has not placed yet must not be punished.
-  function compWeight(c, asOf, subjSF, subjYear) {
+  // `opts.propertyType` (or a 5th-arg string) switches the distance half-life
+  // for Residential; omitted keeps the CRE 4-mile curve so existing callers
+  // do not move.
+  function distanceHalfLifeMiles(propType) {
+    return propType === "Residential" ? 2 : 4;
+  }
+
+  function compWeight(c, asOf, subjSF, subjYear, opts) {
+    const o = opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
+    const propType = typeof opts === "string" ? opts : o.propertyType;
     let w = 1;
     const age = compAgeYears(c, asOf);
     if (age !== null) w *= Math.pow(0.5, age / 2);
@@ -178,7 +187,8 @@
       if (dy > 15) w *= Math.pow(0.5, (dy - 15) / 15);
     }
     const mi = distanceMiles(c);
-    if (mi !== null && mi > 1) w *= Math.pow(0.5, (mi - 1) / 4);
+    const halfLife = distanceHalfLifeMiles(propType);
+    if (mi !== null && mi > 1) w *= Math.pow(0.5, (mi - 1) / halfLife);
     const tier = tierOf(c);
     if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
     return Math.max(0.15, w);
@@ -231,7 +241,9 @@
 
     const rr = robustPpsfRange(items.map((x) => ({
       v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
-      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear),
+      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear, {
+        propertyType: o.propertyType,
+      }),
     })));
 
     return {
@@ -337,7 +349,8 @@
 
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
-    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, compWeight, trendFactor,
+    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
   };
 });

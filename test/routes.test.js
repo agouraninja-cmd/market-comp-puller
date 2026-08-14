@@ -1329,3 +1329,113 @@ test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
   assert.equal(/\blat\b/.test(body), false, "the extract prompt must not request lat");
   assert.equal(/\blng\b/.test(body), false, "the extract prompt must not request lng");
 });
+
+// --- Analytics visitor attribution ------------------------------------------
+//
+// migration 024's two columns exist so the event log can answer "did the same
+// browser arrive, sign up, and run a report?" — which it could not, because a
+// row said what happened and nothing about whose visit it was.
+//
+// Three things can only be proved by booting a server, and all three are the
+// ways this silently does nothing rather than fails: that a document
+// navigation actually mints the cookie (an API-only visitor never gets one),
+// that the cookie is the httpOnly/SameSite shape claimed, and that the id is
+// STABLE across the requests of one visit rather than re-minted per request —
+// a per-request id would produce a full table of visitors who each did
+// exactly one thing, which reads as traffic rather than as a bug.
+//
+// No database here, so the rows land in the git-ignored analytics.jsonl
+// fallback and /api/stats reads them back through the same aggregator
+// production uses.
+
+test("analytics visitor attribution", async (t) => {
+  const KEY = "vis-admin-key";
+  const cookieNamed = (res, name) => {
+    const all = [].concat(res.headers.getSetCookie ? res.headers.getSetCookie() : (res.headers.get("set-cookie") || ""));
+    return all.find((c) => String(c).startsWith(name + "=")) || "";
+  };
+
+  await t.test("a document navigation mints cn_vid; an API call alone does not", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+
+    // An API-shaped request carries no cookie and must not create one: minting
+    // on whichever of a page's dozen parallel requests arrives first is the
+    // race this rule exists to avoid.
+    const api = await fetch(srv.base + "/api/config");
+    assert.equal(cookieNamed(api, "cn_vid"), "", "an API request must not mint a visitor id");
+
+    // A navigation does.
+    const page = await fetch(srv.base + "/", { headers: { "sec-fetch-dest": "document" } });
+    const set = cookieNamed(page, "cn_vid");
+    assert.match(set, /^cn_vid=[0-9a-f]{32};/, "expected a 32-hex visitor id, got " + set);
+    assert.match(set, /HttpOnly/, "the visitor cookie must be httpOnly — no script needs to read it");
+    assert.match(set, /SameSite=Lax/);
+    assert.match(set, /Max-Age=\d+/);
+
+    // Accept-sniffing is the fallback for clients that send no Sec-Fetch-Dest.
+    const sniffed = await fetch(srv.base + "/", { headers: { accept: "text/html,*/*" } });
+    assert.match(cookieNamed(sniffed, "cn_vid"), /^cn_vid=[0-9a-f]{32};/);
+  });
+
+  await t.test("the id is stable across a visit, and reaches /api/stats as a funnel", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+
+    const page = await fetch(srv.base + "/", { headers: { "sec-fetch-dest": "document" } });
+    const vid = cookieNamed(page, "cn_vid").split(";")[0];
+    assert.ok(vid.startsWith("cn_vid="), "expected a minted visitor cookie");
+
+    // Carrying the cookie back must NOT mint a second id — that is the whole
+    // stability property, and the thing that turns one visit into one row.
+    const again = await fetch(srv.base + "/", {
+      headers: { "sec-fetch-dest": "document", cookie: vid },
+    });
+    assert.equal(cookieNamed(again, "cn_vid"), "", "an existing visitor id must not be re-minted");
+
+    // Do something that logs an event, as this visitor. Deliberately a POST
+    // with a body, which is the case that does NOT work by default: a
+    // request-body route logs from inside `req.on("end", ...)`, and Node
+    // emits that from the connection's async context rather than the
+    // handler's, so a plain AsyncLocalStorage.run() around the handler leaves
+    // the store null there. `bindRequestListeners` is what fixes it. Remove
+    // it and this assertion is the one that goes red — every GET-shaped
+    // event would still be attributed perfectly, which is precisely why this
+    // needs a test rather than a spot check.
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: vid },
+      body: JSON.stringify({ email: `vis-${Date.now()}@example.com`, password: "correct-horse-battery" }),
+    });
+    assert.equal(signup.status, 200);
+
+    // logEvent is fire-and-forget on purpose — analytics must never delay a
+    // real request — so the row lands a tick or two after the response the
+    // visitor already got. Poll rather than sleep a fixed amount.
+    let stats = null;
+    for (let i = 0; i < 40; i++) {
+      stats = await (await fetch(srv.base + "/api/stats", { headers: { "x-admin-key": KEY } })).json();
+      if (stats.funnel && stats.funnel.arrived >= 1) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.ok(stats.funnel, "/api/stats must carry the funnel block");
+    assert.ok(stats.funnel.arrived >= 1, "the signup's visitor should have been counted as an arrival");
+    assert.ok(stats.funnel.signedUp >= 1, "the signup event should be attributed to that visitor");
+    // Cumulative sets: a stage can never exceed the population it is drawn
+    // from, or the drop between two lines is not a drop-off.
+    assert.ok(stats.funnel.signedUp <= stats.funnel.arrived);
+    assert.ok(stats.funnel.report <= stats.funnel.arrived);
+  });
+
+  await t.test("a garbage cookie value is never trusted into the column", async () => {
+    const srv = await boot({ ADMIN_KEY: KEY });
+    t.after(() => srv.stop());
+    // The value comes from a client and is written to a database, so anything
+    // that is not the shape this server mints is replaced rather than stored.
+    const res = await fetch(srv.base + "/", {
+      headers: { "sec-fetch-dest": "document", cookie: "cn_vid=" + "x".repeat(200) },
+    });
+    assert.match(cookieNamed(res, "cn_vid"), /^cn_vid=[0-9a-f]{32};/,
+      "a malformed visitor id must be replaced with a freshly minted one");
+  });
+});

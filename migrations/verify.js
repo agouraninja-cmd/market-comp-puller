@@ -123,6 +123,12 @@ const COLUMNS = [
   // here is what turns "the migration was run" from a claim into a fact.
   ["users",             ["pro_tester"],                         "022-tester-passkey.sql"],
   ["users",             ["vault_beta"],                         "023-vault-beta.sql"],
+  // 024 is the one migration in this list whose absence breaks the WRITE
+  // path rather than a read: logEvent inserts these two columns, and
+  // PostgREST 400s an insert naming a column that does not exist, so every
+  // analytics event diverts to the ephemeral file fallback and the dashboard
+  // silently flattens. Checking it here is cheaper than noticing the graph.
+  ["analytics_events",  ["visitor_id", "user_id"],              "024-analytics-visitor.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

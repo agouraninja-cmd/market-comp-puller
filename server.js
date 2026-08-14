@@ -14,6 +14,9 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const dns = require("dns");
+// Request-scoped context for analytics (see "Who an event came from" below).
+// Built-in, so the zero-dependency rule holds.
+const { AsyncLocalStorage, AsyncResource } = require("node:async_hooks");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
 const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot } = require("./market-snapshot");
@@ -1039,6 +1042,15 @@ async function getSessionUser(req) {
   if (!sess || new Date(sess.expires_at).getTime() < Date.now()) { sessionCache.delete(th); return null; }
   try {
     const user = await findUserById(sess.user_id);
+    // Stamp the analytics context (2026-08-13). Every route that cares who is
+    // calling already goes through here, so attributing events to an account
+    // costs nothing at the call sites and cannot be forgotten by a route
+    // added later. Presentation-free and one-way: this records who the
+    // session ALREADY resolved to, and no decision anywhere reads it back.
+    if (user) {
+      const ctx = REQUEST_CONTEXT.getStore();
+      if (ctx) ctx.userId = user.id;
+    }
     return user ? {
       id: user.id,
       email: user.email,
@@ -6634,10 +6646,14 @@ function renderPrivacyPageHTML(signedIn) {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets two essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
-    `you signed in, and <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
-    `allowance for visitors without an account. For the same purpose the Service stores a one-way hashed ` +
-    `form of your IP address; the address itself is not retained. Neither cookie is used for advertising ` +
+    `<p>The Service sets three essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `you signed in; <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
+    `allowance for visitors without an account; and <code>cn_vid</code>, an httpOnly cookie holding a ` +
+    `random identifier so that our own usage statistics can tell one visit apart from another. That ` +
+    `identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
+    `about you, and it is never combined with data from other sites. For the free-search allowance the ` +
+    `Service also stores a one-way hashed form of your IP address; the address itself is not retained. ` +
+    `None of these cookies is used for advertising ` +
     `or cross-site tracking. Your browser's local storage holds preferences, report history, and map caches; ` +
     `that data remains on your own device.</p>` +
 
@@ -7163,7 +7179,133 @@ ${ACCOUNT_NAV_JS}
 // extracted 2026-08-08 so `npm test` pins the corpus key. The parse is
 // load-bearing — see market.js's header before touching it.
 
+// --- Who an event came from (2026-08-13) ------------------------------------
+//
+// Every event above records WHAT happened and nothing about WHOSE visit it
+// was, so the log can count signups and count reports and can never say
+// whether one person did both. "Did anybody get from the landing page to a
+// first report?" — the question the first broker cohort will raise, and the
+// one the 2026-08-06 measurement had to answer by hand-assembling rows out of
+// Supabase — is not askable of this table. These two columns make it askable.
+//
+//   visitor_id  an opaque random id in the `cn_vid` cookie. NOT derived from
+//               IP, user agent or anything else about the person: it is a
+//               random number handed to a browser, which is the least this
+//               can be and still join two events together. It says "the same
+//               browser did these things" and cannot say who that is.
+//   user_id     the account id, once there is a session. Already the key
+//               everything else about them is stored under, so it adds no
+//               new fact — it just puts the funnel and the account in the
+//               same join.
+//
+// Deliberately still PII-free in the sense this file's header claims: no
+// email, no name, no street address, no IP. The privacy policy names
+// `cn_vid` alongside `cn_guest`; keep it in step.
+const VISITOR_COOKIE = "cn_vid";
+const VISITOR_COOKIE_MAX_AGE_SEC = 365 * 24 * 60 * 60;
+
+// Ambient request context, rather than a `req` argument threaded through
+// logEvent's ~35 call sites. That choice is about the failure mode, not the
+// typing: an argument every future call site must remember to pass is
+// EXACTLY the shape that has silently broken a dimension here twice already
+// — `vault_beta` missing from getSessionUser's return (the grant was set and
+// the vault still refused, and nothing failed), and `plan`, which three
+// /api/comps call sites pass to logEvent today and which the row has never
+// carried. A forgotten argument produces a plausible row with a blank
+// column, so nothing anywhere goes red and the gap is found months later by
+// noticing a number looks wrong. With the context ambient there is nothing
+// to forget: a call site inside a request is attributed because it is inside
+// a request.
+//
+// AsyncLocalStorage propagates through awaits and timers, so the whole
+// handler tree — including work that finishes after the response — stays
+// attributed. Work genuinely detached from a request (startup, the harvest
+// path's link check) has no store and logs an empty visitor, which is
+// correct: those are not somebody's visit.
+const REQUEST_CONTEXT = new AsyncLocalStorage();
+
+// AsyncLocalStorage does NOT reach a `req.on("data"/"end")` callback, and that
+// is not a detail — it is most of this server. Every route that reads a
+// request body registers those listeners, so without this the funnel would
+// have attributed GETs correctly and recorded every signup, lead, share,
+// vault import and BOV as an anonymous visitor. Measured, not assumed: with a
+// plain `run()` around the handler, a POST's `end` callback sees a null store.
+// `enterWith()` does not fix it either. The reason is that Node emits those
+// events from the connection's async context, which is a SIBLING of the
+// handler's, not a descendant — so the store was never propagated to it.
+// Timers and awaits inside the handler are descendants and do inherit it,
+// which is exactly what makes this fail quietly: the GET routes work.
+//
+// AsyncResource.bind captures the context at registration time, so binding
+// the registration functions makes every listener added afterward run inside
+// this request's context. Only `req` is bound: nothing logs an event from a
+// `res` callback, and the patch is per-request on an object that is discarded
+// when the response ends. Safe here because server.js never removes a
+// listener — a wrapped function cannot be matched by removeListener — so
+// check that before adding a `.off()` anywhere.
+const REQ_LISTENER_METHODS = ["on", "once", "addListener", "prependListener", "prependOnceListener"];
+function bindRequestListeners(req) {
+  for (const m of REQ_LISTENER_METHODS) {
+    const orig = req[m];
+    if (typeof orig !== "function") continue;
+    req[m] = function (ev, fn) {
+      return orig.call(this, ev, typeof fn === "function" ? AsyncResource.bind(fn) : fn);
+    };
+  }
+}
+
+function newVisitorId() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+// Mint only on document navigations. A first page load fires a dozen parallel
+// requests (CSS, /valuation.js, /api/config), and minting on whichever
+// arrives first would race: each sees no cookie, each mints a different id,
+// the browser keeps the last, and that visit's own events end up split across
+// ids that never appear again. A navigation is one request per page load, and
+// it lands before the assets it references, so everything after it carries
+// the same id. Non-document requests read the cookie and never create one.
+function isDocumentRequest(req) {
+  // Chrome/Safari/Firefox all send Sec-Fetch-Dest; the Accept sniff is the
+  // fallback for anything that does not, and for curl (which sends neither,
+  // gets no cookie, and is not a visitor worth counting anyway).
+  const dest = req.headers["sec-fetch-dest"];
+  if (dest) return dest === "document";
+  return String(req.headers.accept || "").includes("text/html");
+}
+
+function setVisitorCookie(res, req, value) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  // Append rather than assign, same rule as setAdminCookie/setGuestCookie: a
+  // document response can carry a session cookie too, and clobbering it would
+  // be a silent sign-out.
+  const prior = res.getHeader("set-cookie");
+  const cookie = `${VISITOR_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${VISITOR_COOKIE_MAX_AGE_SEC}${secure}`;
+  res.setHeader("set-cookie", prior ? [].concat(prior, cookie) : cookie);
+}
+
+// Builds the store for one request. Never throws: analytics must not be able
+// to fail a page load, so a malformed cookie header or an already-sent
+// response degrades to an unattributed event rather than a 500.
+function newRequestContext(req, res) {
+  const ctx = { visitor: "", userId: "" };
+  try {
+    const existing = String(parseCookies(req)[VISITOR_COOKIE] || "");
+    // Shape-checked before it is trusted into a column: this value comes from
+    // a client and is written to the database, so accept only what this
+    // server mints.
+    if (/^[0-9a-f]{32}$/.test(existing)) {
+      ctx.visitor = existing;
+    } else if (isDocumentRequest(req) && !res.headersSent) {
+      ctx.visitor = newVisitorId();
+      setVisitorCookie(res, req, ctx.visitor);
+    }
+  } catch (e) { /* unattributed is fine; a broken page load is not */ }
+  return ctx;
+}
+
 function logEvent(kind, dims) {
+  const ctx = REQUEST_CONTEXT.getStore();
   const row = {
     ts: new Date().toISOString(),
     kind: String(kind),
@@ -7177,6 +7319,12 @@ function logEvent(kind, dims) {
     searches: dims && Number.isFinite(dims.searches) ? dims.searches : null,
     out_tokens: dims && Number.isFinite(dims.out_tokens) ? dims.out_tokens : null,
     rescue: (dims && dims.rescue) || "",
+    // Whose visit this was (2026-08-13, migration 024). Empty string rather
+    // than null for the same reason every other text dimension here is:
+    // aggregateStats treats blank as "unknown" and never has to test two
+    // kinds of missing.
+    visitor_id: (ctx && ctx.visitor) || "",
+    user_id: (ctx && ctx.userId) || "",
   };
   // Analytics must never delay or break a real request.
   storeRow("analytics_events", ANALYTICS_FILE, row).catch((e) =>
@@ -7293,6 +7441,48 @@ function aggregateStats(rows) {
         templates: rows.filter((r) => r.kind === "vault_template").length,
         imports: imports.length,
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
+      };
+    })(),
+    // Visitor funnel (2026-08-13, migration 024). The one question every
+    // other block here cannot answer: not how many signups and how many
+    // reports, but how many of the SAME browsers did both. Counted over
+    // distinct visitor_id, so one person reloading five times is one arrival
+    // and one person on two devices is two.
+    //
+    // Three rules worth keeping. The stages are **cumulative sets, not
+    // per-stage counts** — `report` counts arrivals that ran a search, so it
+    // can never exceed `arrived` and the drop between two numbers is a real
+    // drop-off rather than an artifact of counting different populations.
+    // Rows with no visitor_id are **excluded outright rather than bucketed
+    // as one unknown visitor**: every event predating this migration has a
+    // blank id, and lumping them together would invent a single visitor who
+    // did everything the product has ever seen. And `signedUp` counts the
+    // signup EVENT, not the presence of a user_id, so an arrival who signed
+    // in on a later visit is not retroactively counted as converting on this
+    // one.
+    funnel: (() => {
+      const seen = (pred) => {
+        const set = new Set();
+        rows.forEach((r) => {
+          const v = String(r.visitor_id || "");
+          if (v && pred(r)) set.add(v);
+        });
+        return set;
+      };
+      const arrived = seen(() => true);
+      const searched = seen((r) => r.kind === "search");
+      const within = (set) => [...set].filter((v) => arrived.has(v)).length;
+      return {
+        arrived: arrived.size,
+        // Hit the wall: asked for something and were told to sign in first.
+        gated: within(seen((r) => r.kind === "signup_gate")),
+        signedUp: within(seen((r) => r.kind === "signup")),
+        report: within(searched),
+        // Attributed rows only. Below a handful of arrivals every ratio above
+        // is noise, and a dashboard reading "100% converted" off two visits
+        // is worse than no number, so the page has the denominator to say so.
+        attributed: rows.filter((r) => String(r.visitor_id || "")).length,
+        identified: new Set(rows.map((r) => String(r.user_id || "")).filter(Boolean)).size,
       };
     })(),
     // Anthropic call failures since the last restart. Customers only ever see
@@ -7657,6 +7847,36 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
+  // migration 024. The card is one line per stage plus its own denominator,
+  // because the honest reading of a tiny sample is the sample size: two
+  // arrivals converting reads "100%" and means nothing, so the count is
+  // always shown next to the percentage and the percentage is withheld
+  // entirely below ten arrivals.
+  var fn=d.funnel;
+  var pctOf=function(n,base){return base?Math.round(n/base*1000)/10:0;};
+  var stage=function(label,n,base,note){
+    return "<tr><td>"+label+"</td><td style='text-align:right'><b>"+n+"</b></td>"+
+      "<td style='text-align:right' class=muted>"+(base>=10?pctOf(n,base)+"%":"&mdash;")+"</td>"+
+      "<td class=muted>"+(note||"")+"</td></tr>";
+  };
+  var funnelCard=(fn===undefined)?"":
+    "<div class=card><h2>Visitor funnel</h2>"+
+    (!fn.arrived
+      ? "<p class=muted>No attributed visits yet &mdash; visitor ids land from the 2026-08-13 deploy onward, "+
+        "and only after migration 024 has been run. Every event before that is counted in the totals above "+
+        "and deliberately excluded here rather than lumped together as one unknown visitor.</p>"
+      : "<table><tr><td>Arrived</td><td style='text-align:right'><b>"+fn.arrived+"</b></td>"+
+        "<td style='text-align:right' class=muted>100%</td><td class=muted>distinct browsers</td></tr>"+
+        stage("Hit the sign-in wall", fn.gated, fn.arrived, "asked for something gated")+
+        stage("Created an account", fn.signedUp, fn.arrived, "signed up on this visit")+
+        stage("Ran a report", fn.report, fn.arrived, "the one that matters")+
+        "</table>"+
+        "<div class=muted style='margin-top:10px'>"+fn.attributed+" of "+d.eventCount+" events carry a visitor id &middot; "+
+        fn.identified+" distinct account(s) seen. Percentages are of arrivals and are withheld below 10 "+
+        "arrivals, where they are noise. One person on two devices counts twice; a browser that "+
+        "clears cookies starts over.</div>")+
+    "</div>";
   document.getElementById("dash").innerHTML=
     upAlarm+
     alarm+
@@ -7706,6 +7926,7 @@ function render(d){
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
+    funnelCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -9853,7 +10074,16 @@ async function checkExploreCity(req, city, state) {
   return verdict;
 }
 
-const server = http.createServer((req, res) => {
+// Every request runs inside its own analytics context, so logEvent can say
+// whose visit an event belongs to without 35 call sites passing `req` (see
+// REQUEST_CONTEXT above for why that is the safer shape, not merely the
+// shorter one). The wrap is the outermost thing that happens to a request:
+// anything inside it, at any await depth, is attributed.
+const server = http.createServer((req, res) =>
+  REQUEST_CONTEXT.run(newRequestContext(req, res), () => {
+  // Must run INSIDE the store, and before any route registers a body
+  // listener — see bindRequestListeners for why a plain run() is not enough.
+  bindRequestListeners(req);
   // --- API endpoint ---
   if (req.method === "POST" && req.url === "/api/comps") {
     let body = "";
@@ -14478,7 +14708,7 @@ const server = http.createServer((req, res) => {
     const key = new URL(req.url, "http://localhost").searchParams.get("key");
     if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     Promise.all([
-      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue"]),
+      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue", "visitor_id", "user_id"]),
       // Never rejects: readIntroRequests catches its own errors and returns
       // null, so an intro-table outage can't take the whole dashboard down.
       readIntroRequests(),
@@ -14652,7 +14882,7 @@ const server = http.createServer((req, res) => {
   }
 
   sendNotFound(req, res);
-});
+}));
 
 server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);

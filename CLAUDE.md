@@ -48,16 +48,34 @@ browser too, via a dual Node/global export), **`backtest.js`** (the
 hold-one-out accuracy scorer built on it, requiring nothing but
 `valuation.js`) and **`branding.js`** (report branding's decision table: what
 mark a render uses, and the rule that a shared report is decided entirely by
-its own snapshot) — plus **`report-access.js`** (the ONLY function that
+its own snapshot) and **`watchlist-digest.js`** (the digest's copy and its
+"is this worth sending?" rule — the only email this product sends on its own
+initiative, so every judgment in it is about what a person is worth
+interrupting for) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
 twice, so trust `npm test`'s own summary over the number written here.
-Nothing needs a database, only the routes file starts a server and it calls
-nothing external, and the whole run finishes in about a second, so there is
+Nothing needs a real database or a real mail provider, only the route-level
+files start a server, nothing calls anything external, and the whole run
+finishes in a couple of seconds, so there is
 no excuse for not running it after touching any of those rules.
+**`test/helpers/fake-supabase.js`** is how the second half of that stays true
+(2026-08-13): a stand-in PostgREST + Resend that lets a suite exercise the
+paths which exist ONLY with a database. Most of this app degrades to a local
+JSON file when Supabase is unconfigured, which is what makes the rest of the
+suite free — but the features that deliberately have NO file fallback (the
+vault, permissioned shares, the watchlist digest) are exactly the ones where a
+mistake costs a broker their book or mails a stranger twice, and before this
+they could only be tested up to "it refuses without a database".
+`test/watchlist-digest-run.test.js` is the first user. Two rules: the fake
+implements only the query shapes server.js actually sends and **400s on
+anything else rather than matching everything** (a fake that matches
+everything reports a user-scoped read as working while it returns another
+account's rows); and it is a stand-in, not a Postgres, so a new query shape
+means teaching it that shape deliberately, never loosening its parser.
 Nothing beyond those modules and that route wiring is tested; do not assume a
 green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
 every push: `node --check` on
@@ -164,8 +182,9 @@ dependency. `.env` is git-ignored — never commit it.
   Rules live in `entitlements.js`, so `npm test` covers them; four of them
   matter. It grants everything Pro **except the broker vault** — the vault is a
   private-data workspace with an upload endpoint, and a passkey shared with a
-  wider group is a bigger surface than "try Pro's reports". (The narrow door
-  for handing a specific broker the vault is `users.vault_beta` — see below.) It **cannot switch
+  wider group is a bigger surface than "try Pro's reports". (The door for
+  handing a broker the vault is `VAULT_PASSKEY` / `users.vault_beta` — see
+  the next bullet.) It **cannot switch
   a dark deployment on** (`PRO_ENABLED` still wins, same as the admin branch).
   Its `status` is `"tester"`, never `"active"`, so the UI never offers a
   billing portal to an account with no Stripe customer. And unlike the admin
@@ -174,12 +193,49 @@ dependency. `.env` is git-ignored — never commit it.
   status and their billing portal, and comped access resumes if that
   subscription lapses. A tester is also NOT the `internal` bypass in
   `/api/comps`, which stays header-only.
+- `VAULT_PASSKEY` — optional shared passkey that grants the **broker vault**
+  (and only the vault) to a signed-in account. It exists because
+  `users.vault_beta` was set by hand in the Supabase SQL editor, one broker at
+  a time, which put the owner in the loop for every onboarding — "hand three
+  brokers a vault at a meeting" was a note-to-self rather than something that
+  happened in the room. Redeeming sets the same `users.vault_beta` column
+  (migration 023), so everything already true of that grant stays true:
+  entitlements gives `broker`/`canUseVault` and **not one Pro report feature**,
+  it cannot switch a dark deployment on (`PRO_ENABLED` still wins), it does not
+  ride the subscription lapse rules, and revoking is the one-row `update users
+  set vault_beta = false where email = …`.
+  **It is a SECOND secret, not a widening of `TESTER_PASSKEY`**, and the two
+  are independent — either can be set alone. The tester grant excludes the
+  vault deliberately (see the bullet above), so folding the vault into that
+  code would open a private-data workspace with an upload endpoint to everyone
+  ever handed a try-Pro code. Two codes also keep the two audiences separately
+  revocable: rotating one does not lock the other out. Setting them to the
+  same string is a configuration mistake and the startup banner says so
+  loudly (it is not fatal — a rotation closes it).
+  **Both codes redeem through the same `POST /api/redeem-passkey` and the same
+  input**, because someone handed a code should not also have to know which
+  kind it is; the route compares against both secrets and its `granted` array
+  names which door opened. The route 404s only when NEITHER is set. One
+  behavior deliberately changed to make room for the second code: the
+  idempotency check used to run BEFORE the secret compare, so an existing
+  tester typing a rotated code was told "already" rather than "incorrect". It
+  now runs after (the route cannot know which grant is claimed until it
+  compares) and asks whether the account holds *everything this deployment can
+  give* — identical behavior on a tester-only deployment, and pinned by tests
+  in both shapes.
 - `RESEND_API_KEY` — optional. When set, every stored lead AND every broker
   comp submission fires an email notification via Resend's REST API (plain
   fetch, free tier is plenty). Fire-and-forget: a failing provider is logged
   but never breaks the request. Caveat: without a verified domain Resend only
   delivers to the address that owns the Resend account, so the account must be
   registered with the notify address itself.
+- `RESEND_API_URL` — **test-only**, defaults to Resend's real endpoint and is
+  never set in production. It exists because the watchlist digest is the one
+  feature whose entire point is an email leaving the building, and without it
+  the suite could reach the send call and then had to stop and assume. With
+  it, `test/watchlist-digest-run.test.js` asserts who was mailed and what the
+  body said. Not a secret and authorizes nothing (`RESEND_API_KEY` still
+  does), but it decides where mail is posted, so treat it as trusted config.
 - `LEAD_NOTIFY_EMAIL` — where those notifications go; defaults to
   agouraninja@gmail.com.
 - `EMAIL_FROM` — optional, e.g. `CompNinja <reports@yourdomain.com>`. The single
@@ -202,7 +258,17 @@ dependency. `.env` is git-ignored — never commit it.
   canonical `/`, served no-store because what lives at `/` depends on auth
   state) — NOT the 302 to `/how-it-works` the wall shipped with, which left
   the site's strongest URL a redirect Google never followed (Search Console
-  confirmed the target was never crawled). `/desk` still 302s, now to `/`.
+  confirmed the target was never crawled). `/desk` still 302s, and since
+  2026-08-13 it goes to **`/?auth=signin`** rather than `/`: asking for the
+  desk is asking for your own account, and the marketing page answers that by
+  telling somebody who already has one to go read about the product. The
+  wall's actual rule — a personal workspace never renders anonymously — is
+  unchanged, and so are the 302 and the `no-store`; only the destination
+  moved, onto a door the wall already exempts. It surfaced when the watchlist
+  digest started linking to `/desk` from email, and any future mail that links
+  there inherits it. Query strings are still dropped
+  (`/desk?checkout=success` lost them under the old target too, and a real
+  checkout return carries a session cookie and never reaches this branch).
   Signed-in visitors get the app; `index.html` swaps the search form
   for a signup card (`applySearchLock()`, driven by `/api/config`'s
   `accountWall`). It decides on cookie **presence**, never `getSessionUser()`,
@@ -536,18 +602,29 @@ user row rather than in a cookie. Admin wins outright and skips the billing
 reads; a tester deliberately yields to a real subscription.
 
 There is also one comped-VAULT door, **`users.vault_beta`** (migration 023,
-2026-08-11) — the broker-onboarding grant, set per account by hand
-(`update users set vault_beta = true where email = …`), no env var and no
-shared secret. It exists because neither existing door could ever be handed
-to a real broker: the tester passkey deliberately excludes the vault, and
-`ADMIN_KEY` also unlocks the dashboards. Rules in `entitlements.js`, covered
-by `npm test`, and deliberately narrow: it grants the broker surfaces only
-(vault, lead inbox, blended comps — `broker`/`canUseVault`), never Pro's
-report features; it cannot switch a dark deployment on (`PRO_ENABLED` still
-wins); and unlike everything else vault-shaped it does NOT ride the
-subscription lapse rules — the grant was never billing, so only the one-row
-UPDATE revokes it, and a beta broker whose trial subscription lapses keeps
-their book.
+2026-08-11) — the broker-onboarding grant. It exists because neither existing
+door could ever be handed to a real broker: the tester passkey deliberately
+excludes the vault, and `ADMIN_KEY` also unlocks the dashboards. Rules in
+`entitlements.js`, covered by `npm test`, and deliberately narrow: it grants
+the broker surfaces only (vault, lead inbox, blended comps —
+`broker`/`canUseVault`), never Pro's report features; it cannot switch a dark
+deployment on (`PRO_ENABLED` still wins); and unlike everything else
+vault-shaped it does NOT ride the subscription lapse rules — the grant was
+never billing, so only the one-row UPDATE revokes it, and a beta broker whose
+trial subscription lapses keeps their book.
+
+**Two ways to set it**, and the column is the same either way:
+
+1. by hand, `update users set vault_beta = true where email = …` — still the
+   right tool for one specific account, and the only tool for revoking; and
+2. **`VAULT_PASSKEY`** (2026-08-13), a shared code the broker redeems
+   themselves at `POST /api/redeem-passkey`. This is the one to reach for
+   when access is being handed out in person: the SQL path made every
+   onboarding wait on the owner opening the SQL editor later, which is the
+   wrong shape for the channel the product actually grows through. See the
+   `VAULT_PASSKEY` bullet under Configuration for why it is a separate secret
+   from `TESTER_PASSKEY` and what changed about the redeem route's
+   idempotency ordering to fit two codes on one input.
 
 `MODEL` is set in `server.js`, overridable by a `MODEL` environment variable (unset in production, so the constant is the live value). If the API returns a
 404 for the model, list available models via `GET https://api.anthropic.com/v1/models`
@@ -1075,6 +1152,44 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (harvest skips them), so heavy international use slightly deflates the tile.
   `analytics_events` is queryable directly in
   Supabase when the dashboard is unavailable: `source = 'corpus'` marks a hit.
+  **Whose visit an event was** (2026-08-13; migration
+  `026-analytics-visitor.sql`, **run before deploying — see below**). Events
+  recorded what happened and nothing about whose visit it was, so the table
+  could count signups and count reports and never say whether the same
+  browser did both. `visitor_id` (an opaque random id in the httpOnly
+  `cn_vid` cookie) and `user_id` (once a session resolves) make that a query,
+  and `/admin`'s **Visitor funnel** card reads it: arrived, hit the sign-in
+  wall, created an account, ran a report. The events stay PII-free — the id
+  is a random number handed to a browser, not derived from IP, user agent or
+  anything else about the person, and the privacy policy's cookie section
+  names `cn_vid` alongside `cn_guest`; keep it in step. Five rules:
+  - **The cookie is minted only on document navigations.** A page load fires
+    a dozen parallel requests; minting on whichever arrives first is a race
+    where each mints its own id, the browser keeps the last, and that visit's
+    events scatter across ids that never appear again.
+  - **A cookie value that is not 32 hex characters is replaced, never
+    stored.** It arrives from a client and is written to a column.
+  - **The funnel stages are cumulative sets over distinct visitors**, so a
+    stage can never exceed the one above it and the gap between two lines is
+    a real drop-off rather than two different populations.
+  - **Rows with no `visitor_id` are excluded, not bucketed.** Every event
+    before the migration has a blank id, and lumping them together would
+    invent a single visitor who did everything the product has ever seen.
+  - **`AsyncLocalStorage` does NOT reach a `req.on("end")` callback**, which
+    is where every route with a request body logs from. Measured, not
+    assumed, and `enterWith()` does not fix it either: Node emits those
+    events from the connection's async context, a sibling of the handler's
+    rather than a descendant. A plain `run()` around the handler attributes
+    every GET perfectly and records every signup, lead, share and vault
+    import as anonymous — which is exactly why it needs a test rather than a
+    spot check. `bindRequestListeners()` binds the registration functions so
+    listeners added afterward inherit the context; it relies on server.js
+    never removing a listener (a wrapped function cannot be matched by
+    `removeListener`), so check that before adding a `.off()` anywhere.
+  **This migration must be run BEFORE the code deploys**, unlike most in this
+  folder: `logEvent`'s INSERT names the two columns, PostgREST 400s an insert
+  on an unknown column, so every analytics write would divert to the
+  ephemeral `analytics.jsonl` and the dashboard would quietly flatten.
 - `GET /api/accuracy` — the valuation-accuracy backtest card on `/admin`
   (added 2026-08-06; spec in
   `docs/superpowers/specs/2026-08-06-valuation-backtest-design.md`). Gated
@@ -1116,9 +1231,79 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
-- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` for comped Pro on the
-  signed-in caller's account (401 if not signed in, rate-limited per IP). See
-  `TESTER_PASSKEY` above for what the grant covers.
+- **The watchlist digest** (2026-08-13; migration `025-watchlist-digest.sql`,
+  **run before deploying**). `POST /api/watchlist/digest` mails each watcher
+  the markets of theirs that have new comps. It is **the only thing this
+  product sends on its own initiative** — everything else it mails answers
+  something a person just did — and the whole file is written to that bar:
+  when in doubt, send nothing.
+  Copy and the "is this worth sending?" rule live in the pure, tested
+  **`watchlist-digest.js`**; `buildDigest` returns **null** rather than an
+  empty string when there is no news, so a caller cannot mail a blank digest
+  by forgetting to check. The feed itself is `buildWatchlistFeed()` in
+  server.js, **shared with `GET /api/watchlist/feed`** so the page and the
+  email can never quote different numbers for the same market; the callers
+  differ only in the cutoff they pass.
+  Six rules a future editor will otherwise break:
+  - **It is ADMIN_KEY-gated and manually triggered, never a timer.** A
+    `setInterval` in this process would fire at an hour nobody chose, fire
+    again after every deploy restart, and fire twice the day this runs on two
+    instances — and the failure mode of all three is mailing real people the
+    same comps again. A route makes the schedule an explicit decision (a
+    Render cron, an Action, a person) and makes "run it and look" possible.
+    **The trigger is the "Watchlist digest" card on `/admin`** — Preview
+    (builds every email, sends none, marks nothing) and Send now (confirms
+    first, and says the send cannot be recalled). "Manual" meant curl-only
+    before that card existed, which is a feature nobody runs. One property is
+    load-bearing and tested: **opening `/admin` must not send email.** Every
+    other card there fetches on load, so the obvious way to write this one is
+    the wrong way and the mistake is invisible — the page looks identical and
+    the mail has already gone. `renderDigestCard()` takes no arguments and
+    fetches nothing; the only call to the route lives inside the click
+    handler. On a cadence, drive the same route from outside:
+    `curl -fsS -X POST https://compninja.co/api/watchlist/digest -H
+    "x-admin-key: $ADMIN_KEY" -H 'content-type: application/json' -d '{}'`.
+    Nothing bad happens if that fires twice — the high-water marks make the
+    second run a no-op — which is what makes an external scheduler safe here.
+  - **The send cutoff is the LATER of `last_digest_at` and `last_seen_at`.**
+    Two markers, deliberately: the digest reading only its own would mail
+    comps the reader already saw in the app, and reading only `last_seen_at`
+    would mail the same ones forever to somebody who never clicks the bell.
+    The happy consequence is that an active user quietly stops receiving
+    digests without ever unsubscribing.
+  - **It refuses without a database (503) AND without outbound mail (503).**
+    The second one is the subtle one: `sendOutboundEmail` is a silent no-op
+    when `EMAIL_FROM`/`RESEND_API_KEY` are unset, so running blind would
+    advance every high-water mark and DELETE a digest nobody received. This
+    is the only caller for which that no-op is destructive, which is why the
+    check is here and not there. `{ dryRun: true }` builds every email, sends
+    none, marks nothing, and returns the copy — it skips the mail check on
+    purpose, since inspecting copy should not need a verified domain.
+  - **Mark AFTER the send, and only the markets that carried news.** A failed
+    mark costs one duplicate next run; marking first would lose the digest
+    outright on a failed send, and a lost digest is invisible where a
+    duplicate is merely annoying. Markets with nothing new keep their old
+    high-water mark, so the day one does get a comp the digest still reaches
+    back to when the watch started.
+  - **One bad account never stops the run** — the rest of the list is still
+    owed its mail.
+  - **Unsubscribe is a token link, and the GET only CONFIRMS.** `GET
+    /watchlist/unsubscribe?u=&t=` renders a page whose button POSTs; the POST
+    flips `users.digest_optout`. The second click is correctness, not
+    politeness: corporate mail scanners and link-preview bots fetch every URL
+    in an email, and a GET that unsubscribed would opt people out of mail they
+    never opened. The token is an HMAC of the user id keyed on
+    `SUPABASE_SERVICE_KEY` (guaranteed present, since the digest refuses
+    without a database; domain-separated so it cannot collide with any other
+    use of that key), so the link authenticates itself for somebody who is not
+    signed in, months later, on a phone. `&on=1` is the same link in reverse —
+    a one-way off switch with no way back is a support ticket.
+- `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` (comped Pro) or
+  `VAULT_PASSKEY` (the broker vault) for the signed-in caller's account, on
+  one route and one input: 401 if not signed in, rate-limited per IP, and the
+  response's `granted` array names which door opened. 404s only when NEITHER
+  passkey is configured. See both env bullets above for what each grant covers
+  and why they are separate secrets.
 - `GET /dev`, `GET /api/devlog`, `GET|PUT /api/dev-ideas` — the **Development
   Hub**: an internal changelog + future-ideas page, gated by the same
   `ADMIN_KEY` (and sessionStorage key) as `/admin`, with the same triple-noindex

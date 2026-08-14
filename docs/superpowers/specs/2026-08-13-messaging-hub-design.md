@@ -2,8 +2,13 @@
 
 **Date:** 2026-08-13
 **Status:** DESIGN APPROVED by the owner 2026-08-13 (all five shaping
-questions answered, §1). Slice 1 in progress: migration 024 and
-`hub-access.js` written; the routes and pages are not.
+questions answered, §1). **Slice 1 is written and green on `npm test`, and
+is NOT live.** Two things stand between it and working:
+**migration 024 has not been run** (so every hub route answers 503 in
+production, which is the intended loud failure), and nothing is pushed.
+No devlog entry has been written yet either, deliberately: the standing rule
+is one entry per SHIP, and `/dev` is a changelog readers take as live.
+Add it with the deploy.
 **Builds on:** `migrations/018-report-sharing.sql` + `report-access.js` (v3
 client sharing, shipped), `migrations/013-broker-vault.sql` + `016` (the
 vault star schema, shipped), `migrations/015-broker-lead-inbox.sql` (broker
@@ -328,12 +333,40 @@ appraisal.
 
 ## 11. Slices
 
-**Slice 1.** Migration 024. `hub-access.js` + tests. Hubs, participants with
-hashed per-participant tokens, comp items snapshotted from the vault and from
-a report, hub-level messages, `/hub/<id>` with the wall exemption, polling,
-copy-link invites, the broker list on `/vault` beside the pipeline deck, the
-tenant list on `/desk`, and the "start a hub" button on an existing shared
-report. Deliberately excluded: statuses, per-comp messages, any email.
+**Slice 1 — written 2026-08-13, not deployed.** Migration 024.
+`hub-access.js` + tests. Hubs, participants with hashed per-participant
+tokens, comp items snapshotted from the vault and from a report, hub-level
+messages, `/hub/<id>` with the wall exemption, polling, copy-link invites,
+the broker list on `/vault` beside the pipeline deck, the tenant list on
+`/desk`, and the "start a hub" button on an existing shared report.
+Deliberately excluded: statuses, per-comp messages, any email.
+
+Four bugs it shipped with and no longer has, all found by RUNNING it, none
+by reading it. They are listed because each is a trap the next person here
+can fall into the same way:
+
+- **`GET /api/hub` sat outside the route dispatcher.** It is the read and
+  polling endpoint and the only one carrying its id in a query string, so
+  `startsWith("/api/hub/")` missed it and the page would have rendered a
+  shell that could never load.
+- **`ACCOUNT_NAV_JS` is a complete `<script>` element**, not raw JS.
+  Interpolated inside the hub page's own script it closed the tag early and
+  printed the whole script on screen as text, with a 200 and valid HTML.
+- **`proConfig` IS the pro block**, not a wrapper. The desk's gate read
+  `proConfig.pro.canUseVault`, which is undefined for everyone, so "Start a
+  hub" would never have appeared and nothing would have failed.
+- **Three Tailwind classes were missing from the vendored `tailwind.css`**
+  (`min-w-[220px]`, `border-[#E7E3D9]`, `inline-block`), which silently do
+  not style. Swapped for vendored equivalents, so slice 1 needs no regen.
+
+Verification was done against stubbed endpoints, because the vault has no
+file fallback and the hub routes are database-only: there is no way to see
+either workspace locally without production credentials. What that leaves
+UNVERIFIED, and what the first real run must check, is everything only a
+database can answer — the token hash round trip through
+`POST /api/hub/access`, the participant resolution order in
+`resolveHubCaller`, the seeded-from-a-share path, and whether
+`hub_items_live_source_uidx` really lets a removed comp be re-sent.
 
 **Slice 2.** The status pipeline (new / shortlist / toured / passed) with
 per-comp message threads and unread counts. Tenant-added comps (Q4). Verified

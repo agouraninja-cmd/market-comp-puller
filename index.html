@@ -900,9 +900,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-badge.bv { color: var(--bv-text); background: var(--bv-bg); }
     tr.comp-excluded td > div, .card-excluded > :not(.cur-head), .card-excluded .cur-head > :not(.cur-ctrl) { opacity:.45; }
     /* Live comps table header — the landing exhibit's editorial th at the live
-       table's own geometry (padding/alignment stay in the JS-built classes).
+       table's own geometry. Padding is the compact rule below (ID beats the
+       JS-built py-3); alignment stays on the button classes.
        No background here so the sortable hover rule can win. */
     #compsTable thead th { color: var(--ink-3); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid var(--ink); }
+    /* One compact row height for the whole comps table. py-3 on the JS-built
+       cells left the first handful of rows (longer notes, two-line addresses)
+       looking roomy and everything after looking tight; ID beats the utility
+       classes so every row matches. */
+    #compsTable td,
+    #compsTable thead th button { padding: 6px 12px; }
+    #compsTable td.comp-notes { max-width: 12rem; }
+    #compsTable td.comp-notes > div {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     /* Statement table (Direction B, owner-approved 2026-08-08): the header
        closes under a strong ink rule (above) and the table ends in a median
        row sealed with a double rule — the audited-statement mark for "this
@@ -2891,6 +2904,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // Every building type (i.e. everything except Land) carries tenancy +
   // year-built columns after Cap Rate — tenant quality moves pricing.
+  // Residential drops tenancy: a house is not a NNN credit-tenant story, and
+  // the empty-or-sparse column was a wide gap before Year Built.
   const BUILDING_COLUMNS = [
     { key: "tenancy",    label: "Tenancy",    numeric: false },
     { key: "year_built", label: "Year Built", numeric: true  },
@@ -2900,7 +2915,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const cols = BASE_COLUMNS.slice();
     if (type !== "Land") {
       const capIdx = cols.findIndex((c) => c.key === "cap_rate");
-      cols.splice(capIdx + 1, 0, ...BUILDING_COLUMNS);
+      const building = type === "Residential"
+        ? BUILDING_COLUMNS.filter((c) => c.key === "year_built")
+        : BUILDING_COLUMNS;
+      cols.splice(capIdx + 1, 0, ...building);
     }
     // Splice each type's columns in behind their anchor. Grouped by anchor so
     // fields sharing one keep their declared order (inserting them one at a
@@ -12831,7 +12849,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       COLUMNS.forEach((col) => {
         const td = document.createElement("td");
         td.className = "px-4 py-3 align-top " +
-          (col.key === "notes" ? "text-[#5A6473] min-w-[200px]" : "whitespace-nowrap") +
+          (col.key === "notes" ? "comp-notes text-[#5A6473]" : "whitespace-nowrap") +
           (col.numeric ? " text-right" : "");
         // Cell content lives in an inner div: table rows/cells can't be CSS-
         // transformed, so the sort FLIP animation slides these divs instead.
@@ -12889,6 +12907,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             : "How much this comp counts toward the valuation.";
         } else {
           cell.textContent = (val === undefined || val === null || val === "") ? "-" : val;
+          if (col.key === "notes" && val) cell.title = String(val);
           if (col.isDate) {
             const b = outsideWindowBadge(val);
             if (b) cell.appendChild(b);

@@ -1694,6 +1694,10 @@ test("buildPrompt treats Residential as a home-buyer CMA, not a CRE analyst writ
   assert.ok(laneLine, "LANE_GUIDANCE interpolation should still exist");
   assert.match(laneLine, /Residential/,
     "Residential must skip LANE_GUIDANCE, not merely fall through when lane is solo");
+  assert.match(body, /Leave "tenancy" empty/,
+    "a house prompt must not ask for NNN / credit-tenant occupancy");
+  assert.match(body, /do not restate them in notes/,
+    "beds and year built already have columns; restating them puffed the first rows");
 });
 
 test("buildPrompt asks for subject_assessed next to last-sale, not in summary", () => {

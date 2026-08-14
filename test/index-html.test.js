@@ -406,6 +406,33 @@ test("a house report's CTA says talk to a local agent and still stores source bo
   assert.match(html, /renderSubjectYearBuilt\(parsed, meta\)/);
 });
 
+test("Residential comps table drops tenancy and keeps year built", () => {
+  const start = html.indexOf("  const BASE_COLUMNS = [");
+  const fn = html.indexOf("  function columnsForType(type) {", start);
+  const end = html.indexOf("\n  }", fn);
+  assert.ok(start >= 0 && fn > start && end > fn, "could not bound columnsForType");
+  const src = html.slice(start, end + 4);
+  const ctx = vm.createContext({});
+  new vm.Script(src + "\n;this.columnsForType = columnsForType;", { filename: "index.html" }).runInContext(ctx);
+  const house = ctx.columnsForType("Residential").map((c) => c.key);
+  assert.equal(house.includes("tenancy"), false,
+    "tenancy is a CRE occupancy column; on a house report it was a wide gap before Year Built");
+  assert.ok(house.includes("year_built"));
+  assert.ok(house.includes("beds_baths"));
+  const warehouse = ctx.columnsForType("Industrial").map((c) => c.key);
+  assert.ok(warehouse.includes("tenancy"));
+  assert.ok(warehouse.includes("year_built"));
+  const land = ctx.columnsForType("Land").map((c) => c.key);
+  assert.equal(land.includes("tenancy"), false);
+  assert.equal(land.includes("year_built"), false);
+});
+
+test("comps table rows are compact throughout, and notes stay on one line", () => {
+  assert.match(html, /#compsTable td,\s*#compsTable thead th button \{ padding: 6px 12px; \}/);
+  assert.match(html, /td\.comp-notes/);
+  assert.match(html, /col\.key === "notes" \? "comp-notes/);
+});
+
 test("a glued street number still counts as a house, so the value hero shows", () => {
   // 1210N17th st (Boise North End) is a real address people type without a
   // space after the number. The hero used /^\s*\d+\s/, which hid

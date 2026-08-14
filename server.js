@@ -4945,6 +4945,9 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center}
 .cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
+/* The BOV band at the top of a covered market page. Same card, tighter to the
+   h1 above it, since it is answering the heading rather than closing the page. */
+.cta.lead{margin:18px 0 30px}
 .cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
 .cta .alt{display:inline-block;margin-top:14px;font-size:13.5px;color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
 .cta .alt:hover{color:var(--ink)}
@@ -5739,7 +5742,10 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `<td>${usd0(p.ppsf.median)}</td>${restCols > 0 ? `<td colspan="${restCols}"></td>` : ""}</tr></tfoot>`
     : "";
   const compsTable = compRows
-    ? `<div class="card"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
+    // id="comps" is the target of the BOV band's "read the numbers first"
+    // link. It is on the CARD, not the table, so the heading lands under the
+    // viewport top rather than the first data row.
+    ? `<div class="card" id="comps"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
       `<div class="scroll"><table class="stmt"><thead><tr>` +
       compCols.map((col) => `<th>${escHtml(col.label)}</th>`).join("") +
       `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div></div>`
@@ -5859,10 +5865,38 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `</ul></div>`
     : "";
 
+  // The BOV lead band. Same condition as brokersCard and the CTA below, and
+  // the same reason: the offer is only made where somebody can fulfil it.
+  //
+  // Why it sits ABOVE the data rather than under it. An owner asking a broker
+  // to price their building is the only event on a market page that has cash
+  // value to a broker, and it was the second clause of the last sentence on
+  // the page. The comps are the evidence for the offer, so the offer goes
+  // first and the evidence follows. This is a framing test, and it is
+  // reversible by deleting this block: nothing else reads it.
+  //
+  // It names the broker because they opted into being named (broker_profiles
+  // .public, the second of the two consents) and brokersCard already prints
+  // it lower down. It carries no contact details, for the same reason that
+  // card does not: routing here is owner-mediated.
+  //
+  // The link is the ordinary signup door with this market's type prefilled.
+  // There is deliberately no direct BOV form for a logged-out visitor: the
+  // request is made against a report, and the report needs an account.
+  const bovLead = brokerList.length && !opts.preview
+    ? `<div class="cta lead"><h2>Get a broker's opinion of value on your ${escHtml(p.type.toLowerCase())} property, free</h2>` +
+      `<p>${escHtml(brokerList[0].company || brokerList[0].display_name)} covers ${escHtml(p.city)} ` +
+      `${escHtml(p.type.toLowerCase())} and prepares opinions of value for owners here. Ask, and we make the ` +
+      `introduction. Nothing about you reaches them until you say yes, and there is no obligation either way.</p>` +
+      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Ask for an introduction &rarr;</a>` +
+      `<p style="margin:10px 0 0"><a class="alt" href="#comps">Or read the ${escHtml(p.city)} numbers first &darr;</a></p></div>`
+    : "";
+
   const body =
     `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
     `<h1>${escHtml(title)}</h1>` +
     `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
+    bovLead +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
     (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +

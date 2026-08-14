@@ -346,3 +346,32 @@ test("the BOV promise is governed by the same list the broker card renders", () 
   const guarded = /brokerList\.length[\s\S]{0,200}Broker Opinion of Value/.test(body);
   assert.ok(guarded, "the BOV sentence must be conditional on a broker actually covering the market");
 });
+
+test("the BOV lead band is governed by the same broker list, and never renders on a preview", () => {
+  // The band makes the strongest promise on the page and puts it ABOVE the
+  // data. Two ways that goes wrong, both invisible on a page with no brokers:
+  // it renders where nobody covers the market, or it renders on a thin-data
+  // Explorer preview, which is noindex, expires in 30 minutes, and is the one
+  // page whose own banner tells the reader not to rely on it.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const bovLead = ");
+  assert.ok(start >= 0, "the BOV lead band should still exist");
+  const end = src.indexOf("const body =", start);
+  assert.ok(end > start, "could not bound the band");
+  const band = src.slice(start, end);
+
+  assert.match(band, /brokerList\.length && !opts\.preview/,
+    "the band must require a covering broker AND a real published page");
+  assert.equal(/contact|phone|email/i.test(band), false,
+    "the band names a broker but must never carry contact details (routing is owner-mediated)");
+  assert.match(band, /auth=signup/, "its CTA must open a door the account wall honors");
+});
+
+test("a market page with no brokers renders no lead band at all", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+  assert.ok(!/cta lead/.test(html), "no broker covers this market, so there is nothing to lead with");
+});

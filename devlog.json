@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-13",
+    "type": "improvement",
+    "title": "A covered market page leads with the broker, not with the comps",
+    "details": "An owner asking a broker to price their building is the only event on a market page that has cash value to a broker, and it was the second clause of the last sentence on the page. Where a broker actually covers the market, that offer now sits directly under the heading, above the tiles and the comps: the broker firm named, the consent rule stated (nothing about you reaches them until you say yes), one button into the app, and a link down to the numbers for anyone who wants the evidence first. The comps did not move; they became the proof under the offer rather than the whole pitch. It renders on exactly the same condition as the broker card and the closing call to action, so an uncovered market shows none of it, and it never renders on a thin-data Explorer preview, which is noindex, expires in half an hour, and carries its own warning not to rely on it. A framing test, reversible by deleting the block."
+  },
+  {
+    "date": "2026-08-13",
     "type": "fix",
     "title": "The market pages stop promising a broker nobody has",
     "details": "The loudest call to action on the site biggest public surface offered a no-cost Broker Opinion of Value from a licensed local broker, on all 38 market pages, while the broker card directly above it rendered nothing at all because no broker has opted into any market yet. The promise was fulfillable only by going and finding someone by hand, which is not what the sentence said. It now reads the same list that card reads: a market with a covering broker keeps the full promise and names the city, and every other market sells the report instead, with the source cited on every comp. That costs no extra query, since the page already had the list in hand, and it corrects itself in both directions as brokers opt in or leave. A test pins the two to each other so the sentence cannot drift back outside the condition. The BOV follow-up email also dropped its two-business-day estimate: every one of these is answered by hand today, and a self-imposed deadline that slips is the first impression a real lead gets."

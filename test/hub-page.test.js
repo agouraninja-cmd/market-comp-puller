@@ -216,3 +216,36 @@ test("the account ask lives in exactly one function, reached by every write", ()
   assert.ok((js.match(/askForAccount\(/g) || []).length >= 4,
     "every 401 path must route through it");
 });
+
+// --- staying in step (2026-08-14) ----------------------------------------
+
+test("a poll repaints the comps only when something visibly differs", () => {
+  // Rebuilding the table on every poll would close an open note thread four
+  // times a minute. Compared on the fields a poll can actually change.
+  const js = pageScript(html);
+  assert.match(js, /function applyItems\(items\)\{/);
+  assert.match(js, /if \(sameItems\(items, lastItems\)\) return;/);
+  assert.match(js, /a\[i\]\.status !== b\[i\]\.status/);
+});
+
+test("a half-typed note survives a repaint", () => {
+  // Once a poll repaints on somebody ELSE's activity, losing the draft stops
+  // being a rare self-inflicted annoyance and becomes a thing other people do
+  // to you.
+  const js = pageScript(html);
+  assert.match(js, /var threadDraft = \{\}/);
+  assert.match(js, /ta\.value = threadDraft\[it\.id\] \|\| ""/);
+  assert.match(js, /threadDraft\[it\.id\] = ta\.value/);
+  // ...and a posted note stops being a draft, or the repaint would put it back.
+  assert.match(js, /if \(itemId\) delete threadDraft\[itemId\]/);
+});
+
+test("polling goes dormant when nobody is there, and wakes on any sign of one", () => {
+  // A hub left open on a second monitor would otherwise ask for the whole
+  // comp list four times a minute forever.
+  const js = pageScript(html);
+  assert.match(js, /Date\.now\(\) - lastActive > IDLE_MS/);
+  assert.match(js, /\["keydown", "pointerdown", "focus"\]/);
+  // Waking must catch up in the same moment, or the wake is visible as a lag.
+  assert.match(js, /if \(wasIdle\) tick\(\)/);
+});

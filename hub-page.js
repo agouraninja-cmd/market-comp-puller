@@ -195,6 +195,16 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   // the table is the page's primary surface, and several open threads push
   // the comps apart until the list stops being readable as a list.
   var openThread = null;
+  // Half-typed notes, kept by comp id across repaints.
+  //
+  // The table is rebuilt whenever anything changes — a status, a new comp, an
+  // arriving note bumping a count — and rebuilding an open thread destroys the
+  // textarea inside it. That was survivable while only the person typing could
+  // trigger a repaint; once a poll repaints on somebody ELSE's activity, a
+  // tenant writing a careful note about clear height loses it because the
+  // broker shortlisted something in another tab. Drafts are held here and put
+  // back after every render.
+  var threadDraft = {};
 
   function show(n, on){ el(n).classList.toggle("hide", !on); }
   function fail(text){
@@ -396,6 +406,10 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       ta.maxLength = 4000;
       ta.setAttribute("aria-label", "Note on " + ((it.snapshot && it.snapshot.address) || "this comp"));
       ta.placeholder = "Add a note about this comp";
+      // Put back whatever they had typed before the last repaint, and record
+      // every keystroke so the next one does not lose it either.
+      ta.value = threadDraft[it.id] || "";
+      ta.addEventListener("input", function(){ threadDraft[it.id] = ta.value; });
       wrap.appendChild(ta);
       var act = document.createElement("div");
       act.style.marginTop = "8px";
@@ -530,16 +544,63 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   // stream would hold a connection open all day to deliver four events.
   function tick(){
     if (document.hidden) return;
+    if (Date.now() - lastActive > IDLE_MS) return;
     readHub(cursor).then(function(o){
       if (o.s !== 200) return;
       if (o.j.cursor) cursor = o.j.cursor;
+      // Comps first, so a note arriving in the same tick renders against the
+      // list it belongs to rather than the previous one.
+      if (o.j.items) applyItems(o.j.items);
       if (o.j.messages && o.j.messages.length) addMessages(o.j.messages, false);
     }).catch(function(){});
+  }
+
+  // The server's item list is the truth, but a repaint is not free to a person
+  // MID-EDIT: rebuilding the table closes an open note thread and throws away
+  // whatever they were typing in it. So this repaints only when something
+  // actually differs, compared on the fields that are visible.
+  function applyItems(items){
+    if (sameItems(items, lastItems)) return;
+    lastItems = items;
+    renderItems(items);
+  }
+
+  function sameItems(a, b){
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++){
+      // id and status are what a poll can change; addedAt catches a comp that
+      // was removed and re-sent, which reuses neither.
+      if (a[i].id !== b[i].id || a[i].status !== b[i].status || a[i].addedAt !== b[i].addedAt) return false;
+    }
+    return true;
+  }
+  // A hub left open on a second monitor all day would otherwise ask the
+  // server for the whole comp list four times a minute forever. After ten
+  // quiet minutes the timer keeps running but does nothing, and the first
+  // sign of a person — a key, a click, coming back to the tab — both wakes it
+  // and catches up in the same moment, so waking is invisible.
+  //
+  // Going dormant rather than clearing the interval is deliberate: one timer
+  // that no-ops has no restart path to get wrong, and this page has already
+  // shipped one claim about its own polling that the code did not honour.
+  var IDLE_MS = 10 * 60 * 1000;
+  var lastActive = Date.now();
+  function markActive(){
+    var wasIdle = (Date.now() - lastActive) > IDLE_MS;
+    lastActive = Date.now();
+    if (wasIdle) tick();
   }
   function startPolling(){
     stopPolling();
     poll = setInterval(tick, 15000);
-    document.addEventListener("visibilitychange", function(){ if (!document.hidden) tick(); });
+    // A hidden tab is skipped entirely rather than polled more slowly: there
+    // is nobody to show it to, and returning to the tab catches up at once.
+    document.addEventListener("visibilitychange", function(){
+      if (!document.hidden) { lastActive = Date.now(); tick(); }
+    });
+    ["keydown", "pointerdown", "focus"].forEach(function(ev){
+      document.addEventListener(ev, markActive, true);
+    });
   }
   function stopPolling(){ if (poll) { clearInterval(poll); poll = null; } }
 
@@ -577,6 +638,9 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
           return;
         }
         field.value = "";
+        // A posted note is no longer a draft. Without this the repaint that
+        // follows would put the text straight back into the box under it.
+        if (itemId) delete threadDraft[itemId];
         addMessages([o.j.message], false);
         if (o.j.message && o.j.message.createdAt) cursor = o.j.message.createdAt;
       })

@@ -15749,10 +15749,23 @@ const server = http.createServer((req, res) =>
 
           const since = qs.get("since") || "";
           const [items, messages] = await Promise.all([
-            // A polling read skips the item list: items change rarely and the
-            // snapshots are the largest thing here. A client that needs them
-            // again drops `since`.
-            since ? Promise.resolve(null) : getHubItems(id),
+            // ALWAYS the items, including on a poll.
+            //
+            // This skipped them when `since` was set, on the reasoning that
+            // "items change rarely and the snapshots are the largest thing
+            // here". That was true in slice 1, where only the owner could
+            // change an item, by sending a comp. Slice 2 made it false: every
+            // status change IS an item change, and a status is the one thing
+            // in a hub that two people move at once. The consequence was that
+            // a tenant shortlisting a building was invisible on the broker's
+            // open page until they reloaded, which is the opposite of what a
+            // shared workspace is for.
+            //
+            // The saving was never large enough to buy that. A hub holds a
+            // handful of comps rather than a book, so this is a few KB every
+            // 15 seconds on a page somebody is actively looking at, against a
+            // whole class of "why is it not updating" that no comment can fix.
+            getHubItems(id),
             getHubMessages(id, since),
           ]);
           if (g.participant) stampHubView(g.participant.id);
@@ -15769,7 +15782,10 @@ const server = http.createServer((req, res) =>
             // guess from the role string.
             canWrite: HUB.canWriteHub(g).ok,
             canAdd: HUB.canAddItems(g).ok,
-            ...(items ? { items: items.map(hubItemForClient) } : {}),
+            // Unconditional, now that a poll carries them too. It was a
+            // conditional spread while `since` could suppress the list;
+            // leaving that in would be a branch that can no longer be false.
+            items: items.map(hubItemForClient),
             messages: messages.map((m) => ({
               id: m.id, itemId: m.item_id, author: m.author_email,
               body: m.body, createdAt: m.created_at,

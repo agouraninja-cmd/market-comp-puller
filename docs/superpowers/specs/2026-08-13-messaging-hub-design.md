@@ -237,12 +237,38 @@ outbound `Referer`.
 
 ### Polling, not SSE
 
-`GET /api/hub?since=` is polled every 15s while the tab is visible, 60s when
-hidden, and stops after 10 minutes with no interaction (a keystroke or a
-focus restarts it). `openSse` exists and works, but a hub is a minutes-apart
-conversation, and an SSE stream holds a Render connection open per open tab
-for the entire workday to deliver four events. Revisit only if a real hub
-shows sustained sub-minute traffic.
+`GET /api/hub?since=` is polled every 15s while the tab is visible. A hidden
+tab is skipped ENTIRELY rather than polled more slowly — there is nobody to
+show it to, and returning to the tab catches up in the same moment. After ten
+minutes with no sign of a person the timer keeps running and does nothing;
+a key, a click or a refocus both wakes it and catches up, so waking is
+invisible.
+
+`openSse` exists and works, but a hub is a minutes-apart conversation, and an
+SSE stream holds a Render connection open per open tab for the entire workday
+to deliver four events. Revisit only if a real hub shows sustained sub-minute
+traffic.
+
+**The poll carries the comps, not just the messages** (corrected 2026-08-14).
+It originally skipped the item list when `since` was set, reasoning that
+"items change rarely". True in slice 1, where only the owner could change an
+item; false the moment statuses shipped, because every status change is an
+item change and a status is the one thing two people move at once. Until it
+was fixed, a tenant shortlisting a building was invisible on the broker's
+open page until they reloaded, which is the opposite of what a shared
+workspace is for. The saving was a few KB on a page somebody is actively
+looking at.
+
+Two consequences of polling that only appear once it repaints often, both
+handled: the page repaints the comp table only when something visibly
+DIFFERS, and a half-typed note is held by comp id across repaints — otherwise
+a tenant writing carefully about clear height loses it because the broker
+shortlisted something in another tab.
+
+**This section has been wrong once already.** It described 60s-when-hidden
+and a 10-minute idle stop, and the code implemented neither; the idle stop is
+now real and the hidden-tab behaviour is described as built. If the polling
+changes again, change this paragraph in the same commit.
 
 ### `/hub/<id>` must be exempt from `ACCOUNT_WALL`
 

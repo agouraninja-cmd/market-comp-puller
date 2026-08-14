@@ -263,3 +263,37 @@ test("a reader who cannot post is given something to click", () => {
   // sign-in there would promise something signing in cannot deliver.
   assert.match(js, /if \(d\.hub\.closedAt\)\s*\{[\s\S]*?\}\s*else\s*\{[\s\S]*?auth=signin/);
 });
+
+// --- the page's own chrome and colours (2026-08-14) ------------------------
+
+test("every CSS variable the hub page uses is one the theme actually defines", () => {
+  // The bug this pins: the page styled itself with `var(--bg)`, which does not
+  // exist — the page colour is `--paper`. An undefined var with no fallback
+  // makes the declaration invalid, so `.btn`'s `color: var(--bg)` fell back to
+  // the inherited ink, which is the same value as the button's own background.
+  // The primary action read as a blank rectangle: the label was present,
+  // correct, and the same colour as what it sat on. `--bad` was undefined too
+  // and only survived because it had a fallback.
+  const THEME = require("../theme.js");
+  const defined = new Set((THEME.rootCss().match(/--[a-z0-9-]+(?=\s*:)/g) || []));
+  const used = new Set((html.match(/var\(\s*(--[a-z0-9-]+)/g) || [])
+    .map((s) => s.replace(/var\(\s*/, "")));
+  const missing = [...used].filter((v) => !defined.has(v));
+  assert.deepEqual(missing, [], `hub-page.js uses undefined theme variables: ${missing.join(", ")}`);
+});
+
+test("the hub page's nav carries My Desk and Sign in", () => {
+  // accountNavSlots({ desk: false }) strips BOTH, and exists for
+  // /how-it-works, which renders its own My Desk link. The hub page renders
+  // neither, so passing that flag left a client with no way back into the app
+  // and no way to sign in. Both were reported on a real hub, from one flag.
+  //
+  // Asserted on what server.js actually passes, because the page cannot see
+  // the flag — it only receives the rendered slots.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const call = server.match(/renderHubHTML\(hubPageMatch\[1\][\s\S]{0,900}?\}\)\);/);
+  assert.ok(call, "could not find the hub page's render call");
+  assert.match(call[0], /accountNavSlots\(\{ desk: true \}\)/);
+});

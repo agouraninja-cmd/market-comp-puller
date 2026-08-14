@@ -16869,7 +16869,16 @@ const server = http.createServer((req, res) =>
       THEME_BOOT,
       ACCOUNT_NAV_CSS,
       ACCOUNT_NAV_JS,
-      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
+      // desk: TRUE, and this was wrong for a day. The flag strips TWO links —
+      // `My Desk` and `Sign in` — and exists for /how-it-works, which renders
+      // its own My Desk link and would otherwise show two. The hub page
+      // renders neither, so copying that call left a hub with no way back into
+      // the app and no way to sign in.
+      //
+      // Both symptoms were reported by a real client on a real hub: they read
+      // the comps, left, and could not find the hub again; and the page told
+      // them to sign in with nothing to click. One flag caused both.
+      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: true }),
       ACCOUNT_NAV_PRICING,
     }));
     return;

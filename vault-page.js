@@ -129,7 +129,7 @@ h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--t1);line-
 .trust{margin:var(--s7) 0 0}
 .ledger{border:1px solid var(--edge);border-top:2px solid var(--ink);border-radius:var(--r);
   background:var(--card);display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;
-  box-shadow:var(--shadow)}
+  box-shadow:var(--shadow),var(--lift)}
 .lcell{padding:18px 20px;border-left:1px solid var(--hair)}
 .lcell:first-child{border-left:0}
 /* #F7FBF8 is the redesign's published-cell green wash; folded to --ok-bg
@@ -154,7 +154,7 @@ h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--t1);line-
 #creditLine{margin-top:var(--s3)}
 #creditLine strong{color:var(--ink);font-weight:600}
 #idForm{margin-top:var(--s4);padding:18px 20px;border:1px solid var(--edge);border-radius:var(--r);
-  background:var(--card);box-shadow:var(--shadow)}
+  background:var(--card);box-shadow:var(--shadow),var(--lift)}
 section{margin-top:var(--s8)}
 section+section{border-top:1px solid var(--line);padding-top:var(--s7)}
 h2{font-family:var(--serif);font-weight:500;font-size:var(--t2);margin:0 0 6px;letter-spacing:-.01em}
@@ -218,7 +218,7 @@ tfoot td{padding:12px 14px;border-top:1px solid var(--ink);
   border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card)}
 tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
 .tw{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
-  margin-top:var(--s4);box-shadow:var(--shadow)}
+  margin-top:var(--s4);box-shadow:var(--shadow),var(--lift)}
 .msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r);font-size:var(--t5);border:1px solid}
 .msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
@@ -288,9 +288,9 @@ td.rowact{white-space:nowrap}
 .card{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);padding:16px 18px;
   text-align:left;font-family:inherit;font-size:var(--t5);color:var(--ink);cursor:pointer;
   display:flex;flex-direction:column;gap:2px;transition:border-color .15s,background .15s,box-shadow .15s;
-  box-shadow:var(--shadow)}
+  box-shadow:var(--shadow),var(--lift)}
 .card:hover{border-color:var(--ink-4);background:var(--card)}
-.card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red),var(--shadow)}
+.card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red),var(--shadow),var(--lift)}
 .card .mk{font-weight:600;font-size:15px;line-height:1.3;color:var(--ink)}
 .card .ty{color:var(--ink-3);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
 .card .big{font-family:var(--serif);font-size:22px;font-weight:500;margin-top:8px;letter-spacing:-.02em;
@@ -333,7 +333,7 @@ td.rowact{white-space:nowrap}
    divergence — above/below is "worth a look", not an error. */
 .gc{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   padding:16px 18px;font-size:var(--t5);display:flex;
-  flex-direction:column;gap:4px;box-shadow:var(--shadow)}
+  flex-direction:column;gap:4px;box-shadow:var(--shadow),var(--lift)}
 .gc .mk{font-weight:600;font-size:15px}
 .gc .ty{color:var(--ink-3);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
 .gcv{display:inline-block;border:1px solid var(--edge);border-radius:999px;
@@ -388,7 +388,7 @@ a.btn.ghost:hover{color:var(--ink)}
    after a hidden section", which is what the two adjacency patches this
    replaced were for. */
 .addpanel,.mappanel{margin-top:var(--s5);padding:20px;border:1px solid var(--edge);border-radius:var(--r);
-  background:var(--card);box-shadow:var(--shadow)}
+  background:var(--card);box-shadow:var(--shadow),var(--lift)}
 .mappanel h2{margin-bottom:var(--s3)}
 #mapTable td:first-child{font-weight:500;color:var(--ink)}
 #mapTable select{width:100%;min-width:160px}
@@ -410,7 +410,7 @@ a.btn.ghost:hover{color:var(--ink)}
    mandatory reading. */
 .strip{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;margin-top:var(--s4);
-  box-shadow:var(--shadow)}
+  box-shadow:var(--shadow),var(--lift)}
 /* The pipeline's strip is five stages wide. Declared after .strip so it wins
    the column count, and BEFORE .strip.hide so hiding still beats it. */
 .strip.s5{grid-template-columns:repeat(5,1fr)}
@@ -445,7 +445,7 @@ a.btn.ghost:hover{color:var(--ink)}
   font-weight:600;color:var(--ink-2);background:var(--wash);border:1px solid var(--edge);
   border-radius:3px;padding:3px 7px;white-space:nowrap}
 .dbox{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
-  padding:12px 18px;margin-top:var(--s4);box-shadow:var(--shadow)}
+  padding:12px 18px;margin-top:var(--s4);box-shadow:var(--shadow),var(--lift)}
 .dbox>summary{cursor:pointer;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-3);font-weight:600;user-select:none;list-style-position:inside}
 .dbox>summary:hover{color:var(--ink)}

@@ -4,7 +4,7 @@
 // changed light value is a regression in the theme that already ships.
 const test = require("node:test");
 const assert = require("node:assert");
-const { THEME_TOKENS, rootCss } = require("../theme.js");
+const { THEME_TOKENS, DARK_LIFT: DARK_LIFT_SHADOW, rootCss } = require("../theme.js");
 
 // The vocabulary that already exists in five shipped pages. If any light
 // value here drifts, those pages restyle silently.
@@ -62,6 +62,15 @@ test("surfaces already dark in light mode lift rather than stay put", () => {
   // --slab is #1A2433 on light paper. If its dark value equalled --paper it
   // would dissolve into the page and the emphasis would vanish.
   assert.notEqual(THEME_TOKENS["slab"].dark, THEME_TOKENS["paper"].dark);
+});
+
+test("dark mode lifts cards instead of retuning the floor", () => {
+  const css = rootCss();
+  assert.ok(css.includes("--lift:none"), "light --lift must be none so light cards do not gain a shadow");
+  assert.ok(css.includes(`--lift:${DARK_LIFT_SHADOW}`), "dark --lift missing or drifted");
+  assert.ok(css.includes("color-scheme:dark"), "native controls stay light without color-scheme");
+  assert.ok(DARK_LIFT_SHADOW.includes("inset"), "the inset highlight is the card/paper separator");
+  assert.equal(THEME_TOKENS.paper.dark, "#121826", "elevation must not move the lifted-slate floor");
 });
 
 test("rootCss emits both blocks with every token", () => {
@@ -141,9 +150,10 @@ test("no in-scope stylesheet references an undefined variable", () => {
     for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
       // vault-page.js and the market CSS also carry non-colour scales
       // (--t1..--t6 type, --s1..--s9 spacing, --r radius, --serif, and the
-      // vault redesign's --shadow). Those are page-local and not the theme's
+      // vault redesign's --shadow, and --lift which is elevation not a
+      // colour). Those are page-local / non-colour and not the theme table's
       // business.
-      if (/^--(t\d|s\d|r|serif|shadow)$/.test(m[1])) continue;
+      if (/^--(t\d|s\d|r|serif|shadow|lift)$/.test(m[1])) continue;
       assert.ok(defined.has(m[1]), `${where} uses undefined ${m[1]}`);
     }
   }
@@ -261,6 +271,15 @@ test("index.html declares the same token values theme.js does", () => {
     assert.ok(INDEX_STYLE.includes(`--${name}:${v.light}`), `index.html light --${name} missing or wrong`);
     assert.ok(INDEX_STYLE.includes(`--${name}:${v.dark}`), `index.html dark --${name} missing or wrong`);
   }
+});
+
+test("index.html mirrors the card-lift custom property and applies it to report cards", () => {
+  assert.ok(INDEX_STYLE.includes("--lift:none"), "index.html light --lift missing");
+  assert.ok(INDEX_STYLE.includes(`--lift:${DARK_LIFT_SHADOW}`), "index.html dark --lift disagrees with theme.js");
+  assert.ok(INDEX_STYLE.includes("color-scheme:dark"), "index.html dark block missing color-scheme");
+  assert.ok(INDEX_STYLE.includes(".rd-bcard") && INDEX_STYLE.includes("box-shadow: var(--lift)"),
+    "report cards (.rd-bcard) must take --lift");
+  assert.ok(INDEX_STYLE.includes(".print-shadow-none"), "print/PNG still strip shadows");
 });
 
 test("index.html's dark token block is screen-only too, mirroring rootCss's shape exactly", () => {

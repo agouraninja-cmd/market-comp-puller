@@ -81,7 +81,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       --red:#B91C1C;--red-deep:#991B1B;--red-fill:#B91C1C;--red-fill-hover:#991B1B;
       --green:#15803D;--ok-text:#06603A;--ok-bg:#E7F5EE;--ok-rule:#BFE5D2;
       --warn-text:#8A6D1A;--warn-bg:#FBF3DC;--warn-rule:#EDDFB0;
-      --err-text:#7F1D1D;--err-bg:#FCF1EF;--err-rule:#F0C7C7}
+      --err-text:#7F1D1D;--err-bg:#FCF1EF;--err-rule:#F0C7C7;
+      --lift:none}
     @media screen{
     [data-theme="dark"]{--paper:#121826;--card:#1A2433;--wash:#243044;--wash-2:#334155;--slab:#243044;
       --edge:#3D4B5F;--line:#2A3648;--hair:#1E2938;
@@ -90,7 +91,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
       --green:#34D399;--ok-text:#6EE7B7;--ok-bg:#0C2B21;--ok-rule:#155E43;
       --warn-text:#FCD34D;--warn-bg:#2A2410;--warn-rule:#5B4A16;
-      --err-text:#F87171;--err-bg:#2A1517;--err-rule:#C27070}
+      --err-text:#F87171;--err-bg:#2A1517;--err-rule:#C27070;
+      color-scheme:dark;
+      --lift:0 1px 0 rgba(201,211,224,.08) inset,0 10px 28px -10px rgba(0,0,0,.55)}
     }
 
     /* ---- Dark mode bridge ----------------------------------------------
@@ -242,6 +245,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .leaflet-bar a:hover { background: var(--wash) }
       [data-theme="dark"] .leaflet-popup-content-wrapper,
       [data-theme="dark"] .leaflet-popup-tip { background: var(--card); color: var(--ink) }
+
+      /* Literal chips with no matching token stay cream in light; in dark
+         they must not sit as light-mode pills on charcoal. Public-record
+         (.p) maps onto the wash/ink pair. Estimate (.e) and vault (.bv)
+         keep their sienna/purple identity and are left literal — folding
+         them into --warn-* would erase the distinction the comments at
+         those declarations exist to protect. Scatter ticks use --ink-3. */
+      [data-theme="dark"] .rd-badge.p { color: var(--ink-body); background: var(--wash) }
+      [data-theme="dark"] .rd-scat-tick { background: var(--ink-3) }
 
       /* Member logos are uploaded as data URIs and are almost always drawn
          for white paper, so a black-on-transparent mark disappears on a
@@ -604,7 +616,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-wordmark { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: var(--ink); }
     .rd-wordmark b { color: var(--red); font-weight: 600; }
     /* Form-as-unit: bordered cells, micro labels, borderless inputs */
-    .rd-form { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; }
+    .rd-form { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; box-shadow: var(--lift); }
     .rd-cell { padding: 11px 16px; border-right: 1px solid var(--hair); }
     .rd-cell:last-child { border-right: 0; }
     .rd-row { border-bottom: 1px solid var(--hair); }
@@ -704,7 +716,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* Card frame — shared by the live map and comps cards. (The sample-report
        exhibit that also used it now lives on /how-it-works, which is
        server-rendered with its own copy of these rules.) */
-    .rd-exhibit { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; overflow: hidden; }
+    .rd-exhibit { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; overflow: hidden; box-shadow: var(--lift); }
     /* Own line-height so the chip box stays compact even inside a roomier
        parent line (the badge legend uses leading-6 to keep wrapped rows apart). */
     .rd-badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1.5px 7px; white-space: nowrap; line-height: 1.4; }
@@ -726,7 +738,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        band shows a bright light stripe across an otherwise dark page. */
     .rd-band { background: var(--wash); box-shadow: 0 0 0 100vmax var(--wash); clip-path: inset(0 -100vmax); }
     /* Broker cards */
-    .rd-bcard { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; padding: 24px; }
+    .rd-bcard { border: 1px solid var(--edge); background: var(--card); border-radius: 6px; padding: 24px; box-shadow: var(--lift); }
 
     /* ------------- Research Desk report tokens (live report restyle) ------------- */
     /* Neutral value tile: paper alt tone + hairline — replaces the slate-50 bubbles. */
@@ -740,7 +752,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        LIKELY label. Flex without gap on purpose: #ownerHero IS captured by the
        PNG exporter, which can't render flex gap; the hairlines carry the
        separation instead. */
-    .rd-ledger { display: flex; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; }
+    .rd-ledger { display: flex; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; box-shadow: var(--lift); }
+    /* Nested ledgers already sit on a lifted card; a second drop would
+       stack. --lift is none in light, so this only matters in dark. */
+    .rd-bcard .rd-ledger, .rd-form .rd-ledger { box-shadow: none; }
     .rd-ledger .rd-lcell { flex: 1 1 0; min-width: 0; padding: 14px 18px; border-right: 1px solid var(--hair); background: var(--card); }
     .rd-ledger .rd-lcell:last-child { border-right: 0; }
     .rd-ledger .rd-lcell.mid { background: var(--wash); }

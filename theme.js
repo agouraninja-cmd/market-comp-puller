@@ -94,10 +94,19 @@ const THEME_TOKENS = {
 // consuming rules, fixes every current and future var()-driven rule at the
 // source with one change, and :root must stay unscoped or print loses all
 // colour (nothing would define the light values a print run needs).
+// Dark-only card elevation. Not a colour token (the hex test on
+// THEME_TOKENS would reject a box-shadow), and --lift is `none` on :root
+// so applying `box-shadow: var(--lift)` in light mode is a no-op — light
+// stays byte-identical. The inset highlight is what actually separates a
+// card from charcoal paper; the drop is a whisper so a stack of report
+// cards does not look like a lightbox.
+const DARK_LIFT =
+  "0 1px 0 rgba(201,211,224,.08) inset,0 10px 28px -10px rgba(0,0,0,.55)";
+
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")}}@media screen{[data-theme="dark"]{${decl("dark")}}}`;
+  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}`;
 }
 
-module.exports = { THEME_TOKENS, rootCss };
+module.exports = { THEME_TOKENS, DARK_LIFT, rootCss };

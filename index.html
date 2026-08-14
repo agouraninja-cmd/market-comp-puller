@@ -3439,6 +3439,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
     streetviewEnabled = Boolean(cfg.streetview);
+    // Missing `pro` is the Pro-off default. Do not plant portfolioValues
+    // here: an old config body with no such key must fall through
+    // portfolioValuesOn()'s `!enabled || isPro` branch, not a hardcoded false
+    // that would blank today's desk.
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
     accountWall = Boolean(cfg.accountWall);
@@ -3449,6 +3453,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // been initialized by the time this line runs.
     refreshBillingUI();
     applySearchLock();
+    // refreshAccountUI may already have painted My Desk against the boot-time
+    // { enabled: false } default (values on). Re-paint once the real flag is
+    // in, and only while the desk is showing — a home-page load already GETs
+    // /api/portfolio from that first paint and does not need a second.
+    if (typeof renderMyDesk === "function" && currentUser
+        && document.getElementById("deskView")
+        && !document.getElementById("deskView").classList.contains("hidden")) {
+      renderMyDesk();
+    }
 
     if (!cfg.authRequired) return;            // no password configured
 
@@ -8802,6 +8815,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const saved = Boolean(currentUser && currentMeta && portfolioKeys.has(portfolioKey(currentMeta.address, currentMeta.type)));
     btn.classList.toggle("hidden", saved);
   }
+  // Presentation only — snapshots still arrive on GET so upgrading reveals
+  // history. Missing/old config falls through to "Pro-off desk shows dollars"
+  // (`!enabled`) or the visitor's isPro, never a blank Free desk by accident.
+  function portfolioValuesOn() {
+    if (!proConfig) return false;
+    if (typeof proConfig.portfolioValues === "boolean") return proConfig.portfolioValues;
+    return !proConfig.enabled || Boolean(proConfig.isPro);
+  }
   // An address typed into the shared-report lock card while signed out. Same
   // shape as pendingPortfolioSave, cleared by the same cancel path.
   let pendingSharedAddress = "";
@@ -9331,6 +9352,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     portfolioKeys.clear();
     items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
     syncPortfolioButton();
+    const showValues = portfolioValuesOn();
     document.getElementById("deskCount").textContent = items.length ? `${items.length} propert${items.length === 1 ? "y" : "ies"}` : "";
     document.getElementById("deskEmpty").classList.toggle("hidden", items.length > 0);
     // Direction K (owner-approved 2026-08-09): the portfolio is a book. A
@@ -9371,22 +9393,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
     });
     const ledger = document.getElementById("deskLedger");
-    ledger.classList.toggle("hidden", items.length === 0);
+    ledger.classList.toggle("hidden", items.length === 0 || !showValues);
     const bookPct = prevOfPaired > 0 ? ((curOfPaired - prevOfPaired) / prevOfPaired) * 100 : null;
     const cell = (k, v, n, mid) =>
       `<div class="rd-lcell${mid ? " mid" : ""}"><span class="rd-lab">${k}</span><div class="dk-fig text-[21px]${mid ? "" : ""}">${v}</div><div class="dk-note" style="text-align:left">${n}</div></div>`;
-    ledger.innerHTML =
-      cell("Properties", String(items.length), Object.entries(typeCounts).map(([t, n]) => `${n} ${t}`).join(" · ") || "&nbsp;", false) +
-      cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
-      cell("Since last checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
-        bookPct == null ? "re-run a property to start the trail" : "across properties checked twice", false) +
-      `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">—</div><div class="dk-note" style="text-align:left">&nbsp;</div></div>`;
+    if (showValues) {
+      ledger.innerHTML =
+        cell("Properties", String(items.length), Object.entries(typeCounts).map(([t, n]) => `${n} ${t}`).join(" · ") || "&nbsp;", false) +
+        cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
+        cell("Since last checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
+          bookPct == null ? "re-run a property to start the trail" : "across properties checked twice", false) +
+        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">—</div><div class="dk-note" style="text-align:left">&nbsp;</div></div>`;
+    }
     const grid = document.getElementById("portfolioGrid");
     grid.innerHTML = "";
     if (items.length) {
       const table = document.createElement("table");
       table.className = "dk-stmt";
-      table.innerHTML = `<thead><tr><th>Property</th><th>History</th><th class="num">Likely value</th><th class="num">Change</th><th></th></tr></thead>`;
+      table.innerHTML = showValues
+        ? `<thead><tr><th>Property</th><th>History</th><th class="num">Likely value</th><th class="num">Change</th><th></th></tr></thead>`
+        : `<thead><tr><th>Property</th><th></th></tr></thead>`;
       const tbody = document.createElement("tbody");
       items.forEach((item) => {
         const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
@@ -9426,26 +9452,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           tdA.appendChild(mv);
         }
         tr.appendChild(tdA);
-        const tdS = document.createElement("td");
-        const spark = sparkline(snaps);
-        if (spark) tdS.appendChild(spark);
-        else { tdS.className = "text-[10.5px] text-[#9AA2AD]"; tdS.textContent = "—"; }
-        tr.appendChild(tdS);
-        const tdV = document.createElement("td");
-        tdV.className = "num dk-fig text-[14.5px]";
-        tdV.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
-        tr.appendChild(tdV);
-        const tdC = document.createElement("td");
-        tdC.className = "num";
-        if (last && prev && last.likely && prev.likely) {
-          const pct = ((last.likely - prev.likely) / prev.likely) * 100;
-          const d = document.createElement("span");
-          d.className = pct >= 0 ? "dk-up" : "dk-down";
-          d.title = `since ${new Date(prev.ts).toLocaleDateString()}`;
-          d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
-          tdC.appendChild(d);
-        } else tdC.textContent = "—";
-        tr.appendChild(tdC);
+        if (showValues) {
+          const tdS = document.createElement("td");
+          const spark = sparkline(snaps);
+          if (spark) tdS.appendChild(spark);
+          else { tdS.className = "text-[10.5px] text-[#9AA2AD]"; tdS.textContent = "—"; }
+          tr.appendChild(tdS);
+          const tdV = document.createElement("td");
+          tdV.className = "num dk-fig text-[14.5px]";
+          tdV.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
+          tr.appendChild(tdV);
+          const tdC = document.createElement("td");
+          tdC.className = "num";
+          if (last && prev && last.likely && prev.likely) {
+            const pct = ((last.likely - prev.likely) / prev.likely) * 100;
+            const d = document.createElement("span");
+            d.className = pct >= 0 ? "dk-up" : "dk-down";
+            d.title = `since ${new Date(prev.ts).toLocaleDateString()}`;
+            d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
+            tdC.appendChild(d);
+          } else tdC.textContent = "—";
+          tr.appendChild(tdC);
+        }
         const tdX = document.createElement("td");
         tdX.className = "num text-[10.5px] whitespace-nowrap";
         const refresh = document.createElement("button");
@@ -9472,7 +9500,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       });
       table.appendChild(tbody);
       // The closing total only earns its double rule with something to sum.
-      if (items.length > 1 && combined) {
+      if (showValues && items.length > 1 && combined) {
         const tfoot = document.createElement("tfoot");
         const pctCell = bookPct == null ? "" :
           `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`;
@@ -11669,6 +11697,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderGuestSearchHint();
     refreshBillingUI();
     applyLookbackGating();
+    // Checkout-return polls this until isPro flips. The desk has to re-paint
+    // or a member who just paid keeps seeing the Free address list.
+    if (typeof renderMyDesk === "function" && currentUser
+        && document.getElementById("deskView")
+        && !document.getElementById("deskView").classList.contains("hidden")) {
+      renderMyDesk();
+    }
   }
 
   function showCheckoutNotice(tone, title, detail) {

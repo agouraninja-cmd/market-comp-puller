@@ -257,14 +257,17 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;
   padding:0 2px;font-family:inherit}
 .chip button:hover{color:var(--red)}
-/* Row actions: plain text links, not buttons. The row already carries one
-   button (Publish); giving Edit/Delete the same weight would put three
-   competing calls to action on one line. */
+/* Row actions: Edit stays a text link. Delete is a trash icon — quiet ink
+   that goes red on hover, the same pattern as removing an import. A red
+   "Delete" word next to Publish was a second shout on the row. */
 .lnk{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;
   color:var(--ink-3);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .lnk:hover{color:var(--ink)}
-.lnk.danger{color:var(--red)}
-.lnk.danger:hover{color:var(--red-deep)}
+.lnk.trash{text-decoration:none;padding:8px;margin:-8px 0 -8px 2px;
+  display:inline-flex;align-items:center;justify-content:center;line-height:0;
+  color:var(--ink-3)}
+.lnk.trash:hover,.lnk.trash:focus{color:var(--red)}
+.lnk.trash svg{display:block}
 td.rowact{white-space:nowrap}
 /* The inline edit row: one form spanning every column, not per-cell inputs —
    a compact-table row hides cap_rate/tenancy/year_built/notes, so a per-cell
@@ -1204,6 +1207,13 @@ if(dd)dd.open=false;});</script>
     render();
   }
 
+  // Quiet trash, not a red "Delete" word. Same control in the compact table
+  // and the spreadsheet. The confirm still names the action.
+  function trashBtn(id){
+    return '<button type="button" class="lnk trash" data-del-comp="'+esc(id)+
+      '" aria-label="Delete this comp" title="Delete"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg></button>';
+  }
+
   function editRow(c){
     var fields=EDIT_FIELDS.map(function(f){
       var v=c[f]==null?"":c[f];
@@ -1264,7 +1274,7 @@ if(dd)dd.open=false;});</script>
             (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
         : "";
       var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
-        '">Edit</button> <button class="lnk danger" data-del-comp="'+esc(c.id)+'">Delete</button></td>';
+        '">Edit</button> '+trashBtn(c.id)+"</td>";
       return '<tr><td class="addr">'+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
         '</td><td><span class="tag">'+esc(c.transaction)+"</span></td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
@@ -1312,8 +1322,7 @@ if(dd)dd.open=false;});</script>
         return '<td><input type="text" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
           '" value="'+escA(v)+'"/></td>';
       }).join("");
-      return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact"><button class="lnk danger" data-del-comp="'+
-        esc(c.id)+'">Delete</button></td></tr>';
+      return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
   }
 

@@ -1,7 +1,11 @@
 # Static comp map (the map reaching the PDF and the PNG)
 
 Date: 2026-08-13
-Status: proposed
+Status: SHIPPED 2026-08-14 (PR #71), verified live. Owner reviewed the three
+open calls the same day: **eager build CONFIRMED**, **page-2 placement
+CONFIRMED**, and the **light street basemap TABLED** — keep what ships, revisit
+when there is a reason to. Tabled is not settled; see the section below for what
+would reopen it.
 
 ## The problem
 
@@ -60,7 +64,15 @@ The static map ignores both and always renders Carto Positron, light.
 
 This is the decision most worth arguing with, because it means the printed
 map does not match the screen for anyone on the default view. It is one
-constant if you want it reversed.
+constant (`SMAP_TILE`) if you want it reversed.
+
+**TABLED by the owner 2026-08-14**, not settled: keep the light basemap for
+now and revisit when there is evidence rather than an argument. What would
+reopen it is somebody actually sending a report and minding — a broker saying
+the PDF looks nothing like what they were looking at, or a client asking to
+see the roofs. Neither can happen yet, because nobody outside has sent one.
+Until then this is a question about a deliverable no real customer has
+produced, which is the wrong kind of question to spend a decision on.
 
 Tiles are requested at `@2x`, so the raster is ~330 dpi at the printed width.
 

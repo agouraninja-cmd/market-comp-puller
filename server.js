@@ -3724,7 +3724,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // pricier pocket a mile away) and the hero range lands far above what
     // the subject's own street trades at (seen live 2026-08-04: a ~$750k
     // house shown a $927k LOW end off 4 such comps).
-    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size, vintage, AND bedroom count: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A 2-bed is a different product from a 4-bed even at the same square footage and on the same street, so prefer comps within one bedroom of the subject; if SUBJECT DETAILS include beds/baths, treat that as ground truth. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, a different bed count, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
+    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size, vintage, AND bedroom count: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A 2-bed is a different product from a 4-bed even at the same square footage and on the same street, so prefer comps within one bedroom of the subject; if SUBJECT DETAILS include beds/baths, treat that as ground truth. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, a different bed count, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Beds/baths and year built have their own columns — do not restate them in notes. Lot size belongs in notes only when a source shows it. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate. Leave tenancy empty.",
   };
 
   // The subject-size lookup belongs to whichever lane searches assessor data:
@@ -3903,7 +3903,9 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     typeSpec
       ? `For EACH comp, also report ${["one", "two", "three"][typeSpec.fields.length - 1]} ${type.toLowerCase()} specific${typeSpec.fields.length > 1 ? "s" : ""}: ${typeSpec.instruction}. Search listing pages, brokerage flyers, and property records for these. If one genuinely can't be found, use an empty string "" — do not guess.`
       : "",
-    !isLand
+    type === "Residential"
+      ? `For EACH comp, also report "year_built" = the year the home was constructed as a 4-digit year (e.g. "1998"). If it genuinely can't be found, use "". Do not guess. Leave "tenancy" empty — it is a commercial occupancy field, not a house field.`
+      : !isLand
       ? `For EACH comp, also report "tenancy" = who occupies the building and the lease structure, naming the tenant when it is a single-tenant property (e.g. "Single-tenant NNN - Starbucks", "Multi-tenant, 85% occupied", "Owner-user", "Vacant"). Tenant quality moves pricing, so name national or credit tenants specifically when a source shows one. Also report "year_built" = the year the building was constructed as a 4-digit year (e.g. "1998"). If either genuinely can't be found, use an empty string "" — do not guess.`
       : "",
     verifiedBlock,
@@ -6864,7 +6866,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   // The link is the ordinary signup door with this market's type prefilled.
   // There is deliberately no direct BOV form for a logged-out visitor: the
   // request is made against a report, and the report needs an account.
-  const bovLead = brokerList.length && !opts.preview
+  //
+  // ANONYMOUS ONLY, and that is the third condition rather than an oversight.
+  // This band speaks to a property owner arriving from a search engine, and
+  // the CTA below already splits on the same line: a member gets "Use this
+  // market in your work" (watch it, take the comps), because somebody who
+  // signed in is here to work rather than to be pitched an introduction.
+  // Without this the two would stack — a member on a covered market would be
+  // sold a free opinion of value at the top of the page and offered a CSV at
+  // the bottom of it.
+  const bovLead = !signedIn && brokerList.length && !opts.preview
     ? `<div class="cta lead"><h2>Get a broker's opinion of value on your ${escHtml(p.type.toLowerCase())} property, free</h2>` +
       `<p>${escHtml(brokerList[0].company || brokerList[0].display_name)} covers ${escHtml(p.city)} ` +
       `${escHtml(p.type.toLowerCase())} and prepares opinions of value for owners here. Ask, and we make the ` +
@@ -15918,12 +15929,49 @@ const server = http.createServer((req, res) =>
           }));
           if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your vault." });
 
-          // ignore-duplicates against hub_items_live_source_uidx: sending the
-          // same comp twice is a no-op, not an error. Re-sending one that was
-          // REMOVED does insert, which is how a corrected price travels.
-          const saved = await sbRequest("POST",
-            "hub_items?on_conflict=hub_id,source,source_ref&select=id",
-            rows, { prefer: "resolution=ignore-duplicates,return=representation" });
+          // Duplicates are filtered HERE rather than by ON CONFLICT, and the
+          // reason is a bug this route shipped with: it asked PostgREST for
+          // `on_conflict=hub_id,source,source_ref`, but
+          // `hub_items_live_source_uidx` is a PARTIAL index (`where removed_at
+          // is null and source_ref is not null`). PostgREST's on_conflict can
+          // only name COLUMNS, so it cannot supply the index predicate, and
+          // Postgres refuses to infer a partial index without one:
+          //
+          //   42P10 — there is no unique or exclusion constraint matching the
+          //           ON CONFLICT specification
+          //
+          // So EVERY vault send failed, 100% of the time, with the route's
+          // generic 503. It was invisible to `npm test` because the route
+          // tests run against a bare server with no database, where this path
+          // 503s by design long before it reaches SQL. Found by sending a real
+          // comp into a real hub.
+          //
+          // The index stays partial: being able to re-send a comp that was
+          // REMOVED is the snapshot rule's correction path and is worth more
+          // than the convenience of ON CONFLICT.
+          const live = await sbRequest("GET",
+            `hub_items?hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null&source=eq.vault` +
+            `&select=source_ref`);
+          const already = new Set((live || []).map((r) => String(r.source_ref)));
+          const fresh = rows.filter((r) => !already.has(String(r.source_ref)));
+          if (!fresh.length) {
+            // Sending the same comp twice stays a no-op rather than an error,
+            // which is what the ON CONFLICT was there to buy.
+            return sendJson(res, 200, { ok: true, added: 0, requested: wanted.length });
+          }
+          let saved;
+          try {
+            saved = await sbRequest("POST", "hub_items?select=id", fresh,
+              { prefer: "return=representation" });
+          } catch (err) {
+            // The read-then-write above has a race window a second sender can
+            // land in. The index is what actually enforces it, so a duplicate
+            // here is the correct outcome, not a failure to report.
+            if (/\b409\b|23505/.test(String(err.message))) {
+              return sendJson(res, 200, { ok: true, added: 0, requested: wanted.length });
+            }
+            throw err;
+          }
           touchHub(id);
           logEvent("hub_items_added", { market: g.hub.market || "", source: "vault" });
           return sendJson(res, 201, {

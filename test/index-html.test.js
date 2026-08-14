@@ -406,6 +406,52 @@ test("a house report's CTA says talk to a local agent and still stores source bo
   assert.match(html, /renderSubjectYearBuilt\(parsed, meta\)/);
 });
 
+test("Residential comps table drops tenancy and keeps year built", () => {
+  const start = html.indexOf("  const BASE_COLUMNS = [");
+  const fn = html.indexOf("  function columnsForType(type) {", start);
+  const end = html.indexOf("\n  }", fn);
+  assert.ok(start >= 0 && fn > start && end > fn, "could not bound columnsForType");
+  const src = html.slice(start, end + 4);
+  const ctx = vm.createContext({});
+  new vm.Script(src + "\n;this.columnsForType = columnsForType;", { filename: "index.html" }).runInContext(ctx);
+  const house = ctx.columnsForType("Residential").map((c) => c.key);
+  assert.equal(house.includes("tenancy"), false,
+    "tenancy is a CRE occupancy column; on a house report it was a wide gap before Year Built");
+  assert.ok(house.includes("year_built"));
+  assert.ok(house.includes("beds_baths"));
+  const warehouse = ctx.columnsForType("Industrial").map((c) => c.key);
+  assert.ok(warehouse.includes("tenancy"));
+  assert.ok(warehouse.includes("year_built"));
+  const land = ctx.columnsForType("Land").map((c) => c.key);
+  assert.equal(land.includes("tenancy"), false);
+  assert.equal(land.includes("year_built"), false);
+});
+
+test("comps table rows are compact throughout, and notes stay on one line", () => {
+  assert.match(html, /#compsTable td,\s*#compsTable thead th button \{ padding: 6px 12px; \}/);
+  assert.match(html, /td\.comp-notes/);
+  assert.match(html, /col\.key === "notes" \? "comp-notes/);
+});
+
+test("a glued street number still counts as a house, so the value hero shows", () => {
+  // 1210N17th st (Boise North End) is a real address people type without a
+  // space after the number. The hero used /^\s*\d+\s/, which hid
+  // Low/Likely/High and treated it as a city-only search.
+  const src = html.match(/function houseNumberOf\(address\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find houseNumberOf — was it renamed or moved?");
+  const ctx = vm.createContext({});
+  new vm.Script(src[0] + "\n;this.fn = houseNumberOf;", { filename: "index.html" }).runInContext(ctx);
+  assert.equal(ctx.fn("1210N17th st"), "1210");
+  assert.equal(ctx.fn("1210 N 17th St, Boise, ID"), "1210");
+  assert.equal(ctx.fn("Boise ID"), null);
+  assert.equal(ctx.fn("One Wilshire Blvd"), null);
+  const hero = html.match(/function renderOwnerHero\(parsed, meta\) \{[\s\S]{0,1200}/);
+  assert.ok(hero, "could not bound renderOwnerHero");
+  assert.match(hero[0], /houseNumberOf\(meta\.address\)/);
+  assert.equal(/hasStreetNumber = \/\^\\s\*\\d\+\\s\//.test(hero[0]), false,
+    "the hero must not still require a space after the house number");
+});
+
 // ---------------------------------------------------------------------------
 // The shared-report lock card. A stranger holding a forwarded link is the one
 // visitor who reaches this app without choosing to, and /r/<id> is the only

@@ -458,8 +458,8 @@ test("the BOV lead band is governed by the same broker list, and never renders o
   assert.ok(end > start, "could not bound the band");
   const band = src.slice(start, end);
 
-  assert.match(band, /brokerList\.length && !opts\.preview/,
-    "the band must require a covering broker AND a real published page");
+  assert.match(band, /!signedIn && brokerList\.length && !opts\.preview/,
+    "the band must require an anonymous visitor, a covering broker, AND a real published page");
   assert.equal(/contact|phone|email/i.test(band), false,
     "the band names a broker but must never carry contact details (routing is owner-mediated)");
   assert.match(band, /auth=signup/, "its CTA must open a door the account wall honors");

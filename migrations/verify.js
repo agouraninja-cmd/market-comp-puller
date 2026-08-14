@@ -62,6 +62,7 @@ const TABLES = [
   ["hub_participants",    "024-messaging-hub.sql"],
   ["hub_items",           "024-messaging-hub.sql"],
   ["hub_messages",        "024-messaging-hub.sql"],
+  ["user_avatars",        "027-account-avatar.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -146,6 +147,13 @@ const COLUMNS = [
   // than during it.
   ["watchlist_items",   ["last_digest_at"],                     "025-watchlist-digest.sql"],
   ["users",             ["digest_optout"],                      "025-watchlist-digest.sql"],
+  // 027 keeps the photo bytes off `users` so getSessionUser's SELECT * never
+  // pulls them. A missing table makes PUT fail (loud); a missing avatar_rev
+  // reads as undefined → "" and every visitor is simply without a photo
+  // (quiet). Checking both here is what turns "the migration was run" from
+  // a report into a fact — same standing as 025/026 until a machine holding
+  // the service key actually runs this.
+  ["users",             ["avatar_rev"],                         "027-account-avatar.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

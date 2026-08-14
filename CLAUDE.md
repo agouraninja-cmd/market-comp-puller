@@ -49,7 +49,8 @@ browser too, via a dual Node/global export), **`backtest.js`** (the
 hold-one-out accuracy scorer built on it, requiring nothing but
 `valuation.js`) and **`branding.js`** (report branding's decision table: what
 mark a render uses, and the rule that a shared report is decided entirely by
-its own snapshot) and **`watchlist-digest.js`** (the digest's copy and its
+its own snapshot) and **`account-avatar.js`** (what may be stored as a
+profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-digest.js`** (the digest's copy and its
 "is this worth sending?" rule — the only email this product sends on its own
 initiative, so every judgment in it is about what a person is worth
 interrupting for) — plus **`report-access.js`** (the ONLY function that
@@ -1250,6 +1251,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+  **Profile photo** (2026-08-14; migration `027-account-avatar.sql`). A
+  signed-in account can upload a picture that replaces the initial in the
+  account circle (app header, every server-rendered page, My Desk). Rules
+  in the pure, tested **`account-avatar.js`**: data URI only (png/jpeg/webp),
+  bytes sniffed so a PDF labeled as a PNG is refused, 80KB save cap. The
+  bytes live in `user_avatars`, not on `users`, so the session lookup that
+  runs on every authenticated request never pulls them; `users.avatar_rev`
+  is a short content hash that `/api/account/me` carries so the circle
+  knows to fetch `GET /api/account/avatar`. File fallback stores both on
+  the user object in `account-store.json`. PUT/DELETE `/api/account/avatar`;
+  empty body is how Remove works. Not Pro-gated.
 - **The watchlist digest** (2026-08-13; migration `025-watchlist-digest.sql`,
   **run before deploying**). `POST /api/watchlist/digest` mails each watcher
   the markets of theirs that have new comps. It is **the only thing this

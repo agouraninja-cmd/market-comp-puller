@@ -1042,7 +1042,14 @@ async function requireUser(req, res) {
 // them together if a third broker area appears. Hoisted to module scope
 // (not a closure inside the request handler) so routes above the vault's old
 // position can call it without a TDZ trap.
-async function requireBroker(req, res) {
+// `area` names the surface in the 403 copy. The comment above said to fold
+// the copies together if a third broker area appeared; the messaging hub is
+// that third area (2026-08-13), so the string is a parameter now rather than
+// a third near-identical function. It DEFAULTS to the lead inbox's own
+// wording, so every existing caller is unchanged, and every value must obey
+// the same rule as the original: name Pro, the one subscription, and never a
+// "broker plan", which has not been buyable since 2026-08-05.
+async function requireBroker(req, res, area) {
   const user = await requireUser(req, res);
   if (!user) return null;
   const ent = await entitlementsFor(req);
@@ -1051,9 +1058,8 @@ async function requireBroker(req, res) {
       // This string REACHES THE SCREEN verbatim — vault-page.js renders
       // `o.j.error` straight into the leads panel, with no 403 branch of its
       // own like the vault gate has. So it is product copy, not developer
-      // text: it must name Pro, the one subscription, and never a "broker
-      // plan", which has not been buyable since 2026-08-05.
-      error: "The lead inbox is part of Pro.",
+      // text.
+      error: `${area || "The lead inbox"} is part of Pro.`,
       code: "broker_required",
     });
     return null;
@@ -14142,7 +14148,7 @@ const server = http.createServer((req, res) => {
           // broker surface and its comps come out of the vault, so it travels
           // with the vault the way the lead inbox does. requireBroker replies
           // 401/403/503 itself.
-          const user = await requireBroker(req, res);
+          const user = await requireBroker(req, res, "Comp hubs");
           if (!user) return;
           if (rateLimited("hubnew:" + clientIp(req), 20)) {
             return sendJson(res, 429, { error: "Too many hubs created. Please wait a few minutes." });

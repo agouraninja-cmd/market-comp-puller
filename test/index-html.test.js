@@ -182,3 +182,68 @@ test("landing address handoff fills #address from sessionStorage and drops the k
     "filling the box is the whole handoff; do not auto-run a search"
   );
 });
+
+// ----------------------------------------------------------------------------
+// The messaging hub's two client surfaces on My Desk (slice 1, 2026-08-13).
+// Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+// NOT the connection hub at /brokers.
+// ----------------------------------------------------------------------------
+
+test("the desk's hub gate reads proConfig.canUseVault, not proConfig.pro.canUseVault", () => {
+  // proConfig IS the pro block (`proConfig = cfg.pro || …`), not a wrapper
+  // around one. The first draft of this button read proConfig.pro.canUseVault,
+  // which is undefined for everyone, so "Start a hub" would never have
+  // rendered for anybody and nothing would have failed.
+  const fn = html.match(/function hubCreationAllowed\(\)[\s\S]{0,400}?\n  \}/);
+  assert.ok(fn, "index.html must define hubCreationAllowed()");
+  assert.match(fn[0], /proConfig\s*&&\s*proConfig\.canUseVault/);
+  assert.ok(!/proConfig\.pro\b/.test(fn[0]), "proConfig is the pro block already");
+  // It is a `let` declared thousands of lines below, so reading it needs the
+  // same TDZ guard addressExplorerAllowed() carries — and this one must fail
+  // CLOSED, because a button that 403s is worse than a button withheld.
+  assert.match(fn[0], /try\s*\{[\s\S]*catch[\s\S]*return false/);
+});
+
+test("the desk hub list has no empty state, and never shows one", () => {
+  // A member who has never been invited into a hub cannot start one from this
+  // page, so an empty section would advertise a door with no handle. Contrast
+  // the two share lists, which teach a feature this member can use.
+  assert.match(html, /id="deskHubs"/);
+  assert.match(html, /id="deskHubRows"/);
+  assert.ok(!/id="deskHubsEmpty"/.test(html), "the hub list is hidden when empty, not emptied");
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/);
+  assert.ok(fn, "index.html must define renderDeskHubs()");
+  assert.match(fn[0], /if \(!rows\.length\) return;/);
+  // Every failure is silent here: this is an extra list at the bottom of a
+  // page that already works, and a hub outage must not put an error on the
+  // desk of somebody who came for their portfolio.
+  assert.ok(!/deskHubsLoadError|classList\.remove\("hidden"\)[\s\S]{0,40}rr/.test(fn[0]),
+    "renderDeskHubs must fail silently");
+  // theirs, never mine: a broker's own hubs live on /vault.
+  assert.match(fn[0], /data\.theirs/);
+  assert.ok(!/data\.mine/.test(fn[0]), "the desk shows the tenant side only");
+});
+
+test("hub rows render user-authored text through textContent, never innerHTML", () => {
+  // A hub title is typed by the broker who created it, so it is user-authored
+  // text like an address or a viewer email — the rule the rest of this desk
+  // already follows.
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/)[0];
+  assert.match(fn, /link\.textContent = h\.title/);
+  assert.ok(!/innerHTML\s*=\s*[^"']/.test(fn.replace(/innerHTML = "";/g, "")),
+    "no interpolated innerHTML in the hub list");
+});
+
+test("every Tailwind class the hub surfaces use is in the vendored stylesheet", () => {
+  // The vendored tailwind.css is generated, and a class missing from it
+  // silently does not style — CLAUDE.md's standing trap. Three of these
+  // (min-w-[220px], border-[#E7E3D9], inline-block) were missing on the first
+  // pass and were swapped for vendored equivalents rather than regenerated.
+  const css = fs.readFileSync(path.join(__dirname, "..", "tailwind.css"), "utf8");
+  for (const cls of ["min-w-0", "inline-flex", "flex-1", "border-t", "pt-2", "gap-2"]) {
+    assert.ok(css.includes("." + cls), `tailwind.css is missing .${cls}`);
+  }
+  for (const hex of ["ECEAE3", "D8D4C9", "4C5665", "B91C1C", "1A2433", "68707E", "5A6473"]) {
+    assert.ok(css.includes(hex), `tailwind.css is missing the ${hex} colour utilities`);
+  }
+});

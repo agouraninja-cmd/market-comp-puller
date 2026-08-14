@@ -353,3 +353,68 @@ test("one broken account does not stop the run", async (t) => {
     assert.deepEqual(sent.map((m) => m.to[0]), ["fine@example.com"]);
   });
 });
+
+test("unsubscribing actually stops the mail", async (t) => {
+  // routes.test.js proves the link authenticates and that the GET only offers
+  // a form. What it cannot reach is the other end of the loop: that the POST
+  // writes the flag, and that the flag then stops a real run. An unsubscribe
+  // that renders "that's done" and mails the person again next week is worse
+  // than no unsubscribe at all, because they have already been told it worked.
+  const crypto = require("node:crypto");
+  const SERVICE = "service-key";
+  const macFor = (id) => crypto.createHmac("sha256", SERVICE)
+    .update(`watchlist-digest-unsubscribe:${id}`).digest("hex").slice(0, 32);
+
+  const tables = () => ({
+    users: [{ id: "u1", email: "leaving@example.com", digest_optout: false }],
+    watchlist_items: [
+      { id: "w1", user_id: "u1", market: MARKET, property_type: "Industrial",
+        created_at: ISO(now - 30 * DAY), last_seen_at: ISO(now - 30 * DAY), last_digest_at: null },
+    ],
+    comp_corpus: [corpusRow()],
+  });
+
+  await t.test("the POST writes the flag and the next run skips them", async () => {
+    const { db, srv, stop } = await bootWithDb(tables());
+    t.after(stop);
+
+    const off = await fetch(srv.base + `/watchlist/unsubscribe?u=u1&t=${macFor("u1")}`, { method: "POST" });
+    assert.equal(off.status, 200);
+    assert.match(await off.text(), /That&rsquo;s done|That's done/);
+    assert.equal(db.tables.users[0].digest_optout, true, "the POST must actually write the flag");
+
+    const summary = await (await runDigest(srv)).json();
+    assert.equal(summary.optedOut, 1);
+    assert.equal(summary.sent, 0);
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(db.sent.length, 0, "an unsubscribed account must not be mailed");
+  });
+
+  await t.test("the same link turns them back on, and the backlog is still waiting", async () => {
+    // The markers were never advanced while they were opted out, so coming
+    // back gets what they missed rather than a silent gap.
+    const { db, srv, stop } = await bootWithDb(tables());
+    t.after(stop);
+
+    await fetch(srv.base + `/watchlist/unsubscribe?u=u1&t=${macFor("u1")}`, { method: "POST" });
+    assert.equal(db.tables.users[0].digest_optout, true);
+
+    const on = await fetch(srv.base + `/watchlist/unsubscribe?u=u1&t=${macFor("u1")}&on=1`, { method: "POST" });
+    assert.equal(on.status, 200);
+    assert.equal(db.tables.users[0].digest_optout, false);
+
+    assert.equal((await (await runDigest(srv)).json()).sent, 1);
+    const [mail] = await settle(db, 1);
+    assert.deepEqual(mail.to, ["leaving@example.com"]);
+    assert.match(mail.text, /100 Test Way/, "the comps they missed are still owed to them");
+  });
+
+  await t.test("a forged token writes nothing", async () => {
+    const { db, srv, stop } = await bootWithDb(tables());
+    t.after(stop);
+    const r = await fetch(srv.base + "/watchlist/unsubscribe?u=u1&t=deadbeef", { method: "POST" });
+    assert.equal(r.status, 400);
+    assert.equal(db.tables.users[0].digest_optout, false,
+      "a refused token must not have reached the write");
+  });
+});

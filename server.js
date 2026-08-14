@@ -54,6 +54,9 @@ const SHAREACCESS = require("./report-access.js");
 // rules. NOT the connection hub at /brokers — see the spec's naming warning
 // in docs/superpowers/specs/2026-08-13-messaging-hub-design.md.
 const HUB = require("./hub-access.js");
+// A comp a participant typed in, validated with the vault importer's own
+// parsers so "1.2M" means the same thing in both places.
+const HUBCOMP = require("./hub-comp.js");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
@@ -15790,6 +15793,50 @@ const server = http.createServer((req, res) =>
           const b = await readHubBody();
           const id = String(b.id || "");
           if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+
+          // A comp the CLIENT found themselves, typed into the hub. Any
+          // participant may add one (slice 2, Q4) — that is the difference
+          // between a delivery channel and a shared workspace, and a tenant
+          // who finds a building and has nowhere to put it goes back to
+          // email, which is the failure this feature exists to prevent.
+          //
+          // Deliberately a different gate AND a different shape from the
+          // vault send below: that one is the owner's, reads rows back from
+          // broker_comps, and carries private: true. This one is nobody's
+          // book of record and claims no provenance at all.
+          if (b.comp) {
+            const g = await hubGate(id, (c) => HUB.canWriteHub(c));
+            if (!g) return;
+            if (rateLimited("hubcomp:" + clientIp(req), 60)) {
+              return sendJson(res, 429, { error: "Too many comps added. Please wait a moment." });
+            }
+            const { comp, errors } = HUBCOMP.normalizeManualComp(b.comp);
+            // Every problem at once, not just the first: a form that reveals
+            // its objections one at a time is the vault importer's own
+            // complaint, and this is a shorter form with a less patient user.
+            if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+
+            const saved = await sbRequest("POST", "hub_items?select=*", [{
+              hub_id: id,
+              kind: "comp",
+              source: "manual",
+              // No source_ref: this comp exists nowhere else, which is the
+              // honest answer and also what keeps it out of the live-source
+              // unique index (partial on source_ref not null), so a client may
+              // add two buildings that happen to share an address.
+              source_ref: null,
+              snapshot: comp,
+              // NOT private. `private` means "out of the broker's vault" and
+              // drives the badge that says so; a client's own find is neither
+              // private data nor the broker's.
+              private: false,
+              added_by_email: HUB.normalizeEmail(g.user.email),
+            }], { prefer: "return=representation" });
+            touchHub(id);
+            logEvent("hub_comp_added", { market: g.hub.market || "", source: g.decision.role });
+            return sendJson(res, 201, { ok: true, added: 1, item: hubItemForClient(saved[0]) });
+          }
+
           const g = await hubGate(id, (c) => HUB.canAddItems(c));
           if (!g) return;
 
@@ -15874,7 +15921,11 @@ const server = http.createServer((req, res) =>
           // hopes rather than what the client decided. hub-access.js owns
           // both answers; this only picks which question to ask.
           const removing = b.removed === true;
-          const g = await hubGate(id, (c) => (removing ? HUB.canAddItems(c) : HUB.canSetStatus(c)));
+          // Removal needs the ROW before it can decide, because a client may
+          // take back a comp they added themselves (see below), so the gate
+          // here is only "are you in this hub at all"; the real decision is a
+          // few lines down. Status keeps its own gate, which needs no row.
+          const g = await hubGate(id, (c) => (removing ? HUB.canWriteHub(c) : HUB.canSetStatus(c)));
           if (!g) return;
 
           // Scoped by hub_id in the QUERY on both branches: an item id alone
@@ -15883,6 +15934,24 @@ const server = http.createServer((req, res) =>
             `&hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null`;
 
           if (removing) {
+            const rows = await sbRequest("GET",
+              `${scope}&select=id,source,added_by_email&limit=1`);
+            const row = rows && rows[0];
+            if (!row) return sendJson(res, 404, { error: "That comp was not found." });
+            // The owner may remove anything in their hub. Anyone else may
+            // remove ONLY a comp they added themselves, and only the kind a
+            // participant can add — a client must be able to take back their
+            // own find without being able to delete the broker's evidence.
+            const mine = HUB.normalizeEmail(g.user.email);
+            const isOwner = g.decision.reason === "owner";
+            const isTheirs = row.source === "manual" &&
+              HUB.normalizeEmail(row.added_by_email) === mine && !!mine;
+            if (!isOwner && !isTheirs) {
+              return sendJson(res, 403, {
+                error: "Only the broker who created this hub can remove that comp.",
+                code: "owner_only",
+              });
+            }
             const done = await sbRequest("PATCH", scope,
               { removed_at: new Date().toISOString() }, { prefer: "return=representation" });
             if (!done || !done.length) return sendJson(res, 404, { error: "That comp was not found." });

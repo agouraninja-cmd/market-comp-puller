@@ -175,3 +175,44 @@ test("a posted note is deduped against the poll that will replay it", () => {
   // next poll can return a message the composer already appended.
   assert.match(pageScript(html), /allMsgs\.some\(function\(x\)\{ return x\.id && m\.id && x\.id === m\.id; \}\)/);
 });
+
+// --- comps a participant added themselves (slice 2, Q4) -------------------
+
+test("the add-a-comp form is behind the same gate as the note composer", () => {
+  // Adding a building you found and saying something about one are the same
+  // class of act. A hub that lets you talk but not point at a building is
+  // half a workspace.
+  const js = pageScript(html);
+  assert.match(js, /show\("addWrap", !!d\.canWrite\)/);
+});
+
+test("a participant's own comp is marked as theirs and never wears the vault badge", () => {
+  // Two different claims. The vault badge says a broker's records vouch for
+  // this; "Added by" says only who put the building on the page, because
+  // nobody has vouched for the numbers.
+  const js = pageScript(html);
+  assert.match(js, /it\.source === "manual"/);
+  assert.match(js, /"Added by " \+ \(it\.addedBy/);
+  assert.match(js, /mb\.className = "badge mine"/);
+  // The two branches must be exclusive, or a row could carry both.
+  assert.match(js, /if \(it\.private\)\{[\s\S]*?\} else if \(it\.source === "manual"\)\{/);
+});
+
+test("a typed comp posts as { comp }, never as a vault send", () => {
+  // The vault branch of POST /api/hub/items reads rows back from broker_comps
+  // and is owner-only; this one is any participant's and carries a body. A
+  // page that posted the wrong shape would silently hit the wrong gate.
+  const js = pageScript(html);
+  assert.match(js, /JSON\.stringify\(\{ id: HUB_ID, comp: payload \}\)/);
+});
+
+test("the account ask lives in exactly one function, reached by every write", () => {
+  // Reading a hub needs no account; this is the moment that changes, so where
+  // it sends someone must not differ by which button they pressed.
+  const js = pageScript(html);
+  assert.match(js, /function askForAccount\(message, into\)\{/);
+  assert.equal((js.match(/auth=signup/g) || []).length, 1);
+  // A note, a comp thread, a typed comp, and a status change.
+  assert.ok((js.match(/askForAccount\(/g) || []).length >= 4,
+    "every 401 path must route through it");
+});

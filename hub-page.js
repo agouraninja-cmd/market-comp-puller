@@ -74,6 +74,17 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* A comp's thread sits in the table, under its own row: the note and the
    building it is about have to be readable together. */
 tr.thread td{background:var(--wash);padding:12px 10px}
+.link{background:none;border:0;padding:0;font:inherit;font-size:13px;cursor:pointer;
+  color:var(--ink-2);text-decoration:underline}
+.link:hover{color:var(--ink)}
+.addbox{border:1px solid var(--line);border-radius:8px;padding:14px;margin-top:10px;background:var(--card)}
+.addbox label{display:block;font-size:12.5px;color:var(--ink-2);margin-top:8px}
+.addbox input,.addbox select{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
+  border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
+/* A client's own find is marked as theirs and never wears the vault badge:
+   the two are different claims and must not look alike. */
+.mine{border-color:var(--ink-3);color:var(--ink-2)}
 .threadbox{max-width:640px}
 .threadbox .stream{margin-bottom:10px}
 /* The status control and the read-only chip are sized alike on purpose, so a
@@ -116,6 +127,32 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
            still at "new" are absent, because a count of undecided things is
            not progress. -->
       <p class="tally hide" id="tally"></p>
+      <!-- Adding a building the CLIENT found. Behind a toggle, and below the
+           table, because it is the rarer act and the list is what people come
+           here to read. Shown only to someone who may post. -->
+      <div id="addWrap" class="hide">
+        <button class="link" id="addToggle" aria-expanded="false" aria-controls="addBox">Add a comp you found</button>
+        <div id="addBox" class="hide addbox">
+          <p class="who">Anything you add is marked as yours. It stays in this hub and never
+            enters CompNinja's public records.</p>
+          <label>Address or building name
+            <input id="mAddr" type="text" maxlength="300" placeholder="30833 Agoura Rd"/></label>
+          <div class="mgrid">
+            <label>Type <select id="mType"></select></label>
+            <label>Sale or lease <select id="mTx">
+              <option value="">Not sure</option><option value="sale">Sale</option><option value="lease">Lease</option>
+            </select></label>
+            <label>Date <input id="mDate" type="text" placeholder="2026-05-14"/></label>
+            <label>Price <input id="mPrice" type="text" placeholder="2850000"/></label>
+            <label>Size (SF) <input id="mSize" type="text" placeholder="24500"/></label>
+            <label>Link <input id="mUrl" type="text" placeholder="https://"/></label>
+          </div>
+          <label>Note <input id="mNotes" type="text" maxlength="500" placeholder="optional"/></label>
+          <div style="margin-top:10px"><button class="btn" id="mAdd">Add to this hub</button></div>
+          <div id="mMsg"></div>
+        </div>
+      </div>
+
       <div class="tblwrap"><table id="tbl" class="hide">
         <thead><tr>
           <th>Address</th><th>Type</th><th>Deal</th><th>Date</th>
@@ -202,6 +239,10 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     addMessages(d.messages || [], true);
 
     show("composer", !!d.canWrite);
+    // The same gate as the note composer, deliberately: adding a building you
+    // found and saying something about one are the same class of act, and a
+    // hub that lets you talk but not point at a building is half a workspace.
+    show("addWrap", !!d.canWrite);
     if (!d.canWrite) {
       el("readonly").textContent = d.hub.closedAt
         ? "This hub is closed. You can still read everything in it, but no one can post."
@@ -288,6 +329,14 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
         b.className = "badge";
         b.textContent = "From the broker's records";
         last.appendChild(b);
+      } else if (it.source === "manual"){
+        // A different claim from the vault badge, and it must not look like
+        // one. This says who put the building here; it asserts nothing about
+        // the numbers, because nobody has vouched for them.
+        var mb = document.createElement("span");
+        mb.className = "badge mine";
+        mb.textContent = "Added by " + (it.addedBy || "a client");
+        last.appendChild(mb);
       }
       // The comp's own notes. A count when there are any, an invitation when
       // there are none and this reader may post, and NOTHING when there are
@@ -436,8 +485,7 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
         sel.disabled = false;
         if (o.s === 401){
           sel.value = previous;
-          el("readonly").textContent = (o.j && o.j.error) || "Please sign in to change this.";
-          show("readonly", true);
+          askForAccount((o.j && o.j.error) || "Please sign in to change this.");
           return;
         }
         if (o.s !== 200 || !o.j.item){
@@ -495,9 +543,20 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   }
   function stopPolling(){ if (poll) { clearInterval(poll); poll = null; } }
 
+  // THE ACCOUNT ASK, in one place, reached by every write a participant can
+  // make: a note on the hub, a note on a comp, a comp they found, a status.
+  // Reading this hub needed no account and that is the whole tenant-access
+  // decision; this is the moment it changes, so where it sends them and what
+  // it says must not differ by which button they happened to press.
+  function askForAccount(message, into){
+    var say = message || "Please sign in to post.";
+    if (into) { into(say); } else { el("readonly").textContent = say; show("readonly", true); }
+    location.href = "/?auth=signup";
+  }
+
   // ONE post path for both kinds of note. The only difference is whether an
-  // itemId rides along, so the account ask, the error copy and the cursor
-  // update cannot drift between the hub stream and a comp's own thread.
+  // itemId rides along, so the error copy and the cursor update cannot drift
+  // between the hub stream and a comp's own thread.
   function postMessage(field, btn, itemId){
     var body = field.value.trim();
     if (!body) return;
@@ -511,14 +570,7 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
       .then(function(o){
         btn.disabled = false;
-        if (o.s === 401){
-          // The account ask, and the only place it appears. They have already
-          // read the comps; this is the first thing that needs an account.
-          el("readonly").textContent = (o.j && o.j.error) || "Please sign in to post.";
-          show("readonly", true);
-          location.href = "/?auth=signup";
-          return;
-        }
+        if (o.s === 401){ askForAccount(o.j && o.j.error); return; }
         if (o.s !== 201){
           el("readonly").textContent = (o.j && o.j.error) || "That note could not be posted.";
           show("readonly", true);
@@ -537,6 +589,66 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
 
   el("send").addEventListener("click", function(){
     postMessage(el("body"), el("send"), null);
+  });
+
+  // Adding a building the client found. The server validates with the vault
+  // importer's own parsers, so the copy it sends back is written for whoever
+  // typed the value ("write 1200000, not 1.2M") — shown verbatim rather than
+  // replaced with something vaguer.
+  el("mType").innerHTML = '<option value=""></option>' +
+    ["Industrial","Office","Retail","Multifamily","Land","Residential"]
+      .map(function(t){ return "<option>" + t + "</option>"; }).join("");
+
+  el("addToggle").addEventListener("click", function(){
+    var open = el("addBox").classList.contains("hide");
+    show("addBox", open);
+    el("addToggle").setAttribute("aria-expanded", open ? "true" : "false");
+  });
+
+  function manualMsg(text, bad){
+    var n = el("mMsg");
+    n.textContent = text || "";
+    n.className = text ? ("msg" + (bad ? " bad" : "")) : "";
+    n.style.marginTop = text ? "10px" : "0";
+  }
+
+  el("mAdd").addEventListener("click", function(){
+    var payload = {
+      address: el("mAddr").value,
+      property_type: el("mType").value,
+      transaction: el("mTx").value,
+      deal_date: el("mDate").value,
+      price: el("mPrice").value,
+      size_sqft: el("mSize").value,
+      source_url: el("mUrl").value,
+      notes: el("mNotes").value,
+    };
+    if (!String(payload.address).trim()) return manualMsg("Give the building an address or a name.", true);
+    el("mAdd").disabled = true;
+    manualMsg("");
+    fetch("/api/hub/items", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID, comp: payload }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        el("mAdd").disabled = false;
+        if (o.s === 401){
+          askForAccount((o.j && o.j.error) || "Please sign in to add a comp.",
+            function(m){ manualMsg(m, true); });
+          return;
+        }
+        if (o.s !== 201 || !o.j.item) return manualMsg((o.j && o.j.error) || "That comp could not be added.", true);
+        ["mAddr","mDate","mPrice","mSize","mUrl","mNotes"].forEach(function(f){ el(f).value = ""; });
+        el("mType").value = ""; el("mTx").value = "";
+        manualMsg("Added.");
+        lastItems = lastItems.concat([o.j.item]);
+        renderItems(lastItems);
+      })
+      .catch(function(){
+        el("mAdd").disabled = false;
+        manualMsg("That did not reach the server. Nothing was added.", true);
+      });
   });
 
   var tok = tokenFromHash();

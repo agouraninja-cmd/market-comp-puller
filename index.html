@@ -87,7 +87,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     @media screen{
     [data-theme="dark"]{--paper:#121826;--card:#1A2433;--wash:#243044;--wash-2:#334155;--slab:#243044;
       --edge:#3D4B5F;--line:#2A3648;--hair:#1E2938;
-      --ink:#C9D3E0;--ink-body:#A8B4C4;--ink-2:#9AABC0;--ink-mute:#8A97A8;--ink-3:#7D8B9C;
+      --ink:#D5DDE8;--ink-body:#B6C1CF;--ink-2:#A8B6C6;--ink-mute:#96A3B4;--ink-3:#8B98A8;
       --ink-faint:#7C8899;--ink-4:#475569;
       --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
       --green:#34D399;--ok-text:#6EE7B7;--ok-bg:#0C2B21;--ok-rule:#155E43;
@@ -95,7 +95,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       --err-text:#F87171;--err-bg:#2A1517;--err-rule:#C27070;
       --est-text:#FDBA74;--est-bg:#2A1C12;--bv-text:#C4B5FD;--bv-bg:#1C1730;
       color-scheme:dark;
-      --lift:0 1px 0 rgba(201,211,224,.08) inset,0 10px 28px -10px rgba(0,0,0,.55)}
+      --lift:0 1px 0 rgba(213,221,232,.14) inset,0 10px 28px -10px rgba(0,0,0,.55)}
     }
 
     /* ---- Dark mode bridge ----------------------------------------------
@@ -169,8 +169,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          under WCAG AA. --ink-faint was tried next (fix round 1) and was
          ALSO wrong, at 4.07:1: that number was checked against --paper,
          not against the --slab background this text actually sits on (fix
-         round 2). --ink-3's dark value (#94A3B8) measures 5.71:1 against
-         --slab, clearing AA (4.5:1 for this size/weight) with margin. */
+         round 2). --ink-3's dark value (#8B98A8) measures 4.52:1 against
+         --slab, clearing AA (4.5:1 for this size/weight) with a hair of margin. */
       [data-theme="dark"] .text-\[\#B8C0CC\] { color: var(--ink-3) }
       [data-theme="dark"] .text-\[\#D5DAE2\] { color: var(--ink-3) }
       [data-theme="dark"] .hover\:text-\[\#1A2433\]:hover { color: var(--ink) }
@@ -224,7 +224,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          coverage by an accident of two unrelated regexes agreeing on the
          same bare substring). Targets --ink-3, not --ink-4: --ink-4 dark
          (#475569) measured 1.93:1 as a focus indicator against --slab,
-         where --ink-3 dark (#94A3B8) measures ~5.7:1. */
+         where --ink-3 dark (#8B98A8) measures 4.52:1. */
       [data-theme="dark"] .focus-visible\:outline-\[\#B8C0CC\]:focus-visible { outline-color: var(--ink-3) }
       [data-theme="dark"] .decoration-\[\#D8D4C9\] { text-decoration-color: var(--edge) }
       [data-theme="dark"] .decoration-\[\#46536A\] { text-decoration-color: var(--ink-body) }
@@ -267,13 +267,56 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .brand-logo {
         background: #fff; padding: 4px 6px; border-radius: 3px;
       }
+
+      /* Dark chrome that is not a colour token. Mirrors theme.js DARK_CHROME
+         (index.html is static and never templates that file). Autofill is
+         the one that actually looks broken: Chrome paints a cream sheet
+         over the field, which on charcoal reads as a light-mode leftover. */
+      [data-theme="dark"] {
+        scrollbar-color: var(--wash-2) var(--paper);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      [data-theme="dark"] input,
+      [data-theme="dark"] textarea,
+      [data-theme="dark"] select { caret-color: var(--ink) }
+      [data-theme="dark"] input:-webkit-autofill,
+      [data-theme="dark"] textarea:-webkit-autofill,
+      [data-theme="dark"] select:-webkit-autofill {
+        -webkit-text-fill-color: var(--ink);
+        caret-color: var(--ink);
+        box-shadow: 0 0 0 1000px var(--card) inset;
+        transition: background-color 9999s ease-out;
+      }
+      /* Tailwind's shadow-* utilities are tuned for cream paper; on charcoal
+         they vanish. --lift already exists for report cards; menus and
+         modals reuse it so they sit above the page the same way. */
+      [data-theme="dark"] .shadow-sm { box-shadow: 0 1px 0 rgba(213,221,232,.08) inset, 0 4px 12px -4px rgba(0,0,0,.45) }
+      [data-theme="dark"] .shadow-lg { box-shadow: var(--lift) }
+      [data-theme="dark"] .shadow-xl { box-shadow: 0 1px 0 rgba(213,221,232,.10) inset, 0 24px 48px -12px rgba(0,0,0,.7) }
+      [data-theme="dark"] .card-hover:hover { box-shadow: 0 12px 28px -12px rgb(0 0 0 / .55) }
+      [data-theme="dark"] .btn-live:hover { box-shadow: 0 4px 14px -4px rgb(0 0 0 / .55) }
+      /* Native select chevron and the Refine disclosure: both are SVG data
+         URIs, so they cannot read a custom property. Dark stroke is --ink-3. */
+      [data-theme="dark"] select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B98A8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      }
+      [data-theme="dark"] #compForm details summary::after {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B98A8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      }
+      /* Theme toggle: moon in light, sun in dark. Default (no data-theme)
+         hides the sun, so light mode is unchanged. */
+      [data-theme="dark"] .theme-moon { display: none }
+      [data-theme="dark"] .theme-sun { display: block }
     }
+
+    .theme-sun { display: none }
 
     /* ------------------------------------------------------------------------
        Design tokens — the whole site draws from these; don't invent new values.
        Dark surfaces (cool slate, lifted 2026-08-13): #121826 paper · #1A2433
          cards · #243044 lifted (table header, already-dark slabs; hover =
-         #334155).
+         #334155). Ink lifted a hair 2026-08-14 so labels clear AA on --slab.
        Accents: brand red = actions + the subject property · slate-900 ink =
          selected state (segmented controls) · emerald = verified/positive ·
          amber = caution · plain red + left rule = errors. No blues.
@@ -650,7 +693,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-in-lg { font-size: 17px; }
     select.rd-in { appearance: auto; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
-    .rd-cell:focus-within { box-shadow: inset 0 0 0 2px #B91C1C; }
+    .rd-cell:focus-within { box-shadow: inset 0 0 0 2px var(--red); }
     /* ...but only for the cell's OWN input. The address cell now also carries
        the type status line and its picker buttons, and :focus-within fires for
        those too, so clicking "change" lit the address field's ring while the
@@ -1420,8 +1463,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              market / brokers / how-it-works headers in server.js. -->
         <button id="themeToggleApp" type="button" class="hover:text-[#1A2433] leading-none"
           aria-label="Switch colour theme" title="Switch colour theme">
-          <svg viewBox="0 0 20 20" class="w-4 h-4" aria-hidden="true"><path fill="currentColor"
+          <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
             d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
+          <svg class="theme-sun w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
+            d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
         </button>
         <div id="exploreMenuWrap" class="relative">
           <button id="exploreMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"

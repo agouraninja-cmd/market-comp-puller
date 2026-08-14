@@ -806,6 +806,52 @@ test("the address field and the shared-report lock field both wire Tab-to-fill",
   assert.match(fn[0], /dispatchEvent\(new Event\("change"/);
   assert.match(html, /bindTabFillExample\(document\.getElementById\("address"\)\)/);
   assert.match(html, /bindTabFillExample\(document\.getElementById\("lockAddress"\)\)/);
+  // Tab-fill of a rotating example must also set that building's type, or
+  // the hidden select stays Industrial and the visitor cannot tell.
+  assert.match(fn[0], /exampleTypeForPlaceholder/);
+  assert.match(fn[0], /input\.id === "address"/);
+  assert.match(fn[0], /typeResolution = "explicit"/);
+});
+
+test("every rotating address example names a real property type", () => {
+  const m = html.match(/const ADDRESS_EXAMPLES = \[([\s\S]*?)\];/);
+  assert.ok(m, "ADDRESS_EXAMPLES must still be a list");
+  const types = [...m[1].matchAll(/type:\s*"([^"]+)"/g)].map((x) => x[1]);
+  assert.ok(types.length >= 5, "each example needs a type; found " + types.length);
+  const allowed = new Set(["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"]);
+  for (const t of types) assert.ok(allowed.has(t), t + " is not a property type");
+  assert.ok(new Set(types).size >= 2, "examples must not all be the same class");
+});
+
+test("exampleTypeForPlaceholder maps a rotating placeholder to its type", () => {
+  const fromPh = html.match(/function exampleValueFromPlaceholder\(placeholder\) \{[\s\S]*?\n  \}/);
+  const typeFor = html.match(/function exampleTypeForPlaceholder\(placeholder, examples\) \{[\s\S]*?\n  \}/);
+  assert.ok(fromPh && typeFor, "could not find example helpers in index.html");
+  const ctx = vm.createContext({});
+  new vm.Script(typeFor[0] + "\n;this.typeFor = exampleTypeForPlaceholder;",
+    { filename: "index.html" }).runInContext(ctx);
+  const examples = [
+    { ph: "e.g. 1200 W Industrial Blvd, Dallas, TX", type: "Industrial" },
+    { ph: "e.g. 2300 Peachtree Rd NE, Atlanta, GA", type: "Office" },
+  ];
+  assert.equal(ctx.typeFor("e.g. 2300 Peachtree Rd NE, Atlanta, GA", examples), "Office");
+  assert.equal(ctx.typeFor("E.G. 1200 W Industrial Blvd, Dallas, TX", examples), "Industrial");
+  assert.equal(ctx.typeFor("Property address", examples), "");
+});
+
+test("Address Explorer chips show a type and Find addresses does not send the form's", () => {
+  const start = html.indexOf("async function findAddresses");
+  const end = html.indexOf("link.addEventListener(\"click\"", start);
+  assert.ok(start >= 0 && end > start, "findAddresses / explore link click moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /URLSearchParams/);
+  assert.match(fn, /typeof opts\.type === "string"/);
+  assert.match(fn, /if \(typeFilter\) qs\.set\("type", typeFilter\)/);
+  assert.doesNotMatch(fn, /propertyType"\)\.value/);
+  assert.match(html, /typeTag\.textContent = a\.type/);
+  assert.match(html, /addrExplore\.v3/);
+  assert.match(html, /findAddresses\(deepType \? \{ type: deepType \} : undefined\)/);
+  assert.match(html, /btn\.addEventListener\("click", \(\) => findAddresses\(\)\)/);
 });
 
 test("once pins settle, the hero re-runs so distance weighting actually moves the range", () => {

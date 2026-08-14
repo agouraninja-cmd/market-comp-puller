@@ -117,6 +117,7 @@ const BOVSVC = require("./bov-log");
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
 const { isAggregateAddress } = AUDIT;
+const EXPLOREADDR = require("./explore-addresses");
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
 // above; server.js owns the network half (checkSourceLinks below).
 const LINKCHECK = require("./link-check");
@@ -14511,25 +14512,32 @@ const server = http.createServer((req, res) =>
 
   // --- Address Explorer: corpus-backed address suggestions (see
   // docs/superpowers/specs/2026-08-03-address-explorer-design.md). Returns up
-  // to 8 real, street-numbered addresses for a market+type so a visitor with
-  // no address in hand can still reach a report. Addresses ONLY — no prices,
-  // dates, or transactions; it reads as "buildings you could value", not comp
-  // data. That once made it safe to serve to everyone, but the feature is now
-  // Pro-only (`canExploreAddresses`), so the gate below is what decides — not
-  // the harmlessness of the payload.
-  // The list is deliberately DETERMINISTIC (newest deal first, then alphabetical)
-  // so every visitor sees the same addresses and their clicks concentrate
-  // onto the same search-cache entries: first click bills, repeats are free.
-  // Zero Anthropic cost here; the browser tops up thin markets from OSM
-  // Overpass on its own. Failure-safe: errors answer 200 with an empty list.
+  // to 8 real, street-numbered addresses for a market so a visitor with no
+  // address in hand can still reach a report. Each row carries its property
+  // type: the form no longer has to pick Industrial (or anything) first, and
+  // Tabbing through the chips can see which class each building is. Addresses
+  // ONLY — no prices, dates, or transactions; it reads as "buildings you
+  // could value", not comp data. That once made it safe to serve to everyone,
+  // but the feature is now Pro-only (`canExploreAddresses`), so the gate
+  // below is what decides — not the harmlessness of the payload.
+  // `type` is optional. Present, the list stays that class (the market-page
+  // deep link). Absent, classes interleave so one dense book cannot hide the
+  // rest. The list is DETERMINISTIC either way (newest deal, then
+  // alphabetical, then round-robin) so clicks concentrate onto the same
+  // search-cache entries. Zero Anthropic cost here; the browser tops up thin
+  // markets from OSM Overpass on its own. Failure-safe: errors answer 200
+  // with an empty list.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/explore-addresses") {
     const params = new URL(req.url, "http://localhost").searchParams;
     const cityRaw = (params.get("city") || "").trim().replace(/\s+/g, " ").slice(0, 40);
     const stateOk = (params.get("state") || "").trim().toUpperCase();
-    const typeIn = String(params.get("type") || "");
-    const typeOk = Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
-    if (!typeOk || !US_STATES.has(stateOk) || !/^[a-zA-Z][a-zA-Z .'\-]{1,39}$/.test(cityRaw)) {
+    const typeIn = String(params.get("type") || "").trim();
+    const typeOk = typeIn && Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
+    if (typeIn && !typeOk) {
       return sendJson(res, 400, { error: "city, a two-letter state, and a valid property type are required." });
+    }
+    if (!US_STATES.has(stateOk) || !/^[a-zA-Z][a-zA-Z .'\-]{1,39}$/.test(cityRaw)) {
+      return sendJson(res, 400, { error: "city and a two-letter state are required." });
     }
     if (rateLimited("exploreaddr:" + clientIp(req), 30)) {
       return sendJson(res, 429, { error: "Too many requests." });
@@ -14551,41 +14559,45 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 403, { error: "The Address Explorer is a Pro feature.", upgrade: true });
       }
       try {
-        const rows = await corpusRowsForMarket(market, typeOk, 200);
-        const seen = new Set();
-        const picked = [];
-        for (const r of rows) {
-          const a = String(r.address || "").trim();
-          // Same street-number rule as map pins / street view: a leading
-          // number that isn't a quantity, and never an aggregate row —
-          // a submarket blurb is not an address someone can value.
-          if (!/^\d+\s+(?!(sf|sq|sqft|acres?|units?)\b)/i.test(a) || isAggregateAddress(a)) continue;
-          // Portfolio rows name several buildings at once ("3351 E Philadelphia
-          // St & 4450 E Lowell St") — not one address a visitor can value.
-          if (/&|\band\b/i.test(a.split(",")[0])) continue;
-          // Dedupe on the street line alone (the market is fixed), with
-          // common suffixes normalized so "875 W State St" and "875 W State
-          // Street" collapse into one entry.
-          const key = a.split(",")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
-            .replace(/\b(street|avenue|boulevard|drive|road|lane|court|place|parkway|highway)\b/g,
-              (w) => ({ street: "st", avenue: "ave", boulevard: "blvd", drive: "dr", road: "rd", lane: "ln", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy" }[w]));
-          if (seen.has(key)) continue;
-          seen.add(key);
-          picked.push({ address: a.includes(",") ? a : `${a}, ${market}`, dealDate: parseDealDate(r.deal_date) || 0 });
-        }
-        picked.sort((x, y) => (y.dealDate - x.dealDate) || x.address.localeCompare(y.address));
-        const addresses = picked.slice(0, 8).map((p) => ({ address: p.address, source: "corpus" }));
+        const types = typeOk ? [typeOk] : Object.keys(TYPE_COMP_FIELDS);
+        const rowSets = await Promise.all(types.map(async (t) => {
+          const rows = await corpusRowsForMarket(market, t, 200);
+          return (rows || []).map((r) => ({ ...r, property_type: r.property_type || t }));
+        }));
+        const picked = EXPLOREADDR.pickExploreAddresses(rowSets.flat(), {
+          type: typeOk,
+          market,
+          isAggregateAddress,
+          parseDealDate,
+        });
+        const addresses = picked.map((p) => ({ address: p.address, type: p.type, source: "corpus" }));
         // The "instant report" badge: flag addresses a recent cached report
         // already exists for, so the panel can say which clicks are free and
         // immediate. Presence-based and failure-safe (see cachedAddressKeys);
         // the browser's OSM top-up rows never carry the flag — they were
-        // discovered client-side and no probe has seen them.
+        // discovered client-side and no probe has seen them. Probed per
+        // address+type: a mixed list would otherwise badge an office with an
+        // industrial cache hit.
         if (addresses.length) {
-          const cachedSet = await cachedAddressKeys(addresses.map((a) => a.address), typeOk);
+          const byType = new Map();
           for (const a of addresses) {
-            if (cachedSet.has(cacheAddressKey(a.address))) a.cached = true;
+            if (!byType.has(a.type)) byType.set(a.type, []);
+            byType.get(a.type).push(a.address);
           }
-          logEvent("explore_addresses", { prop_type: typeOk, market, cached: cachedSet.size > 0, source: String(addresses.length) });
+          const cachedPairs = new Set();
+          for (const [t, addrs] of byType) {
+            const cachedSet = await cachedAddressKeys(addrs, t);
+            for (const k of cachedSet) cachedPairs.add(k + "|" + t);
+          }
+          for (const a of addresses) {
+            if (cachedPairs.has(cacheAddressKey(a.address) + "|" + a.type)) a.cached = true;
+          }
+          logEvent("explore_addresses", {
+            prop_type: typeOk || "mixed",
+            market,
+            cached: cachedPairs.size > 0,
+            source: String(addresses.length),
+          });
         }
         return sendJson(res, 200, { market, addresses });
       } catch (e) {

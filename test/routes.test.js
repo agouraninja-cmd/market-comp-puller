@@ -77,6 +77,29 @@ test("bare environment", async (t) => {
     }
   });
 
+  // Address Explorer: type is optional so Find addresses can return a mixed
+  // list, each chip labelled. A typed request still works (market-page deep
+  // link). An unrecognized type is still a 400 — never silently mixed.
+  await t.test("explore-addresses accepts a city without a property type", async () => {
+    const r = await fetch(srv.base + "/api/explore-addresses?city=Boise&state=ID");
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(Array.isArray(j.addresses), "mixed list is an addresses array");
+  });
+
+  await t.test("explore-addresses still accepts a typed request", async () => {
+    const r = await fetch(srv.base + "/api/explore-addresses?city=Boise&state=ID&type=Industrial");
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(Array.isArray(j.addresses));
+    assert.ok(j.addresses.every((a) => !a.type || a.type === "Industrial"));
+  });
+
+  await t.test("explore-addresses refuses a bogus property type", async () => {
+    const r = await fetch(srv.base + "/api/explore-addresses?city=Boise&state=ID&type=Spaceship");
+    assert.equal(r.status, 400);
+  });
+
   // /vault's inline script calls into the global GUTCHECK the moment the
   // benchmarks arrive; a stale or missing /gut-check.js must degrade (the
   // page guards with typeof), but the file being UNREACHABLE would silently

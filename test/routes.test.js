@@ -1576,3 +1576,53 @@ test("/api/vault/extract sniffs the media type and never takes it from the body"
   assert.equal(route.includes("data:application\\/pdf"), false,
     "the data: prefix stripper must not be PDF-only");
 });
+
+// --- /admin's digest trigger ------------------------------------------------
+//
+// The digest route is deliberately manual, but "manual" meant curl-only, which
+// is a feature nobody runs. The card on /admin is the trigger.
+//
+// One property matters more than the rest and is the reason this is a test
+// rather than a look: OPENING THE PAGE MUST NOT SEND EMAIL. Every other card
+// on /admin fetches its data on load, so the obvious way to write this one is
+// the wrong way, and the mistake is invisible — the page would look identical
+// and the mail would already be gone.
+
+test("/admin's watchlist digest card", async (t) => {
+  const srv = await boot({ ADMIN_KEY: "admin-card-key" });
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + "/admin")).text();
+
+  await t.test("the card and both buttons are wired", async () => {
+    assert.match(html, /id="digest"/, "the mount point should exist");
+    // The buttons are built by digestBtn(id,label) rather than written as
+    // literal markup, so assert on the construction, not on rendered HTML
+    // this test never executes.
+    assert.match(html, /digestBtn\("dgPrev"/);
+    assert.match(html, /digestBtn\("dgSend"/);
+    assert.match(html, /Preview \(sends nothing\)/,
+      "preview is the primary gesture: the default should be to READ what would go out");
+  });
+
+  await t.test("nothing is posted to the digest route on page load", async () => {
+    // Both call sites live inside the click handler; a fetch anywhere else
+    // would fire on load. Asserted on the source because the failure mode is
+    // an email that has already left by the time anyone could observe it.
+    const calls = html.split('"/api/watchlist/digest"').length - 1;
+    assert.equal(calls, 1, "exactly one fetch call site, inside run()");
+    const loader = html.slice(html.indexOf("function load(key)"), html.indexOf("function load(key)") + 1200);
+    assert.equal(/watchlist\/digest/.test(loader), false,
+      "the page loader must not touch the digest route");
+    assert.match(html, /renderDigestCard\(\)/,
+      "load() should render the card's idle state, which takes no arguments and fetches nothing");
+  });
+
+  await t.test("sending asks first, and says the send cannot be recalled", async () => {
+    assert.match(html, /confirm\("Send the digest now\?[^"]*cannot be recalled/,
+      "the irreversible button must confirm, and say why it is irreversible");
+    // Preview must NOT be behind a confirm — a dialog on the safe action
+    // trains people to click through the one on the unsafe action.
+    const run = html.slice(html.indexOf("var run=function(dry)"), html.indexOf("var run=function(dry)") + 400);
+    assert.match(run, /if\(!dry&&!confirm\(/, "the confirm is gated on it being a real send");
+  });
+});

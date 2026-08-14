@@ -1241,6 +1241,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     instances — and the failure mode of all three is mailing real people the
     same comps again. A route makes the schedule an explicit decision (a
     Render cron, an Action, a person) and makes "run it and look" possible.
+    **The trigger is the "Watchlist digest" card on `/admin`** — Preview
+    (builds every email, sends none, marks nothing) and Send now (confirms
+    first, and says the send cannot be recalled). "Manual" meant curl-only
+    before that card existed, which is a feature nobody runs. One property is
+    load-bearing and tested: **opening `/admin` must not send email.** Every
+    other card there fetches on load, so the obvious way to write this one is
+    the wrong way and the mistake is invisible — the page looks identical and
+    the mail has already gone. `renderDigestCard()` takes no arguments and
+    fetches nothing; the only call to the route lives inside the click
+    handler. On a cadence, drive the same route from outside:
+    `curl -fsS -X POST https://compninja.co/api/watchlist/digest -H
+    "x-admin-key: $ADMIN_KEY" -H 'content-type: application/json' -d '{}'`.
+    Nothing bad happens if that fires twice — the high-water marks make the
+    second run a no-op — which is what makes an external scheduler safe here.
   - **The send cutoff is the LATER of `last_digest_at` and `last_seen_at`.**
     Two markers, deliberately: the digest reading only its own would mail
     comps the reader already saw in the app, and reading only `last_seen_at`

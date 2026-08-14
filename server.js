@@ -7814,6 +7814,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div id="dash" style="display:none"></div>
 <div id="auditPanel"></div>
 <div id="accuracy"></div>
+<div id="digest" style="display:none"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -8138,6 +8139,70 @@ function loadAccuracy(key,force){
     .then(renderAccuracy)
     .catch(function(e){console.error(e);renderAccuracy({error:1});});
 }
+
+// --- The watchlist digest, from the page the owner already has open ---------
+//
+// The route is deliberately manual (see its comment: a timer fires at an hour
+// nobody chose and again after every restart), but "manual" was curl-only,
+// which is a feature nobody runs. This is the trigger.
+//
+// Preview is the primary button and Send is the quiet one, on purpose. This
+// is the only thing the product sends unprompted, so the default gesture
+// should be to READ what would go out. Nothing here renders until a run is
+// asked for — the page must not fire a digest just by being opened.
+function digestBtn(id,label,cls){
+  return "<button id='"+id+"' class='btn"+(cls?" "+cls:"")+"'>"+label+"</button> ";
+}
+function renderDigestCard(state){
+  var el=document.getElementById("digest");
+  var body;
+  if(state&&state.error){
+    body="<p class=muted>"+esc(state.error)+"</p>";
+  }else if(state&&state.summary){
+    var s=state.summary;
+    var line="<p><b>"+esc(s.watchers)+"</b> watcher(s) &middot; "+
+      (state.dry?"<b>"+esc((s.previews||[]).length)+"</b> would be mailed"
+                :"<b>"+esc(s.sent)+"</b> mailed")+
+      " &middot; "+esc(s.nothingNew)+" had nothing new &middot; "+esc(s.optedOut)+" opted out"+
+      (s.failed?" &middot; <b>"+esc(s.failed)+" failed</b>":"")+"</p>";
+    var previews=(s.previews||[]).map(function(p){
+      // Preformatted: the plain text IS the email (email-shell only dresses
+      // it), so this is literally what lands, wrapping and all.
+      return "<div style='margin-top:12px'><div class=muted>"+esc(p.to)+"</div>"+
+        "<div style='font-weight:600'>"+esc(p.subject)+"</div>"+
+        "<pre style='white-space:pre-wrap;background:#F7F6F3;border:1px solid #E4E2DA;border-radius:8px;padding:10px;margin-top:6px;font-size:13px'>"+
+        esc(p.text)+"</pre></div>";
+    }).join("");
+    body=line+previews;
+  }else{
+    body="<p class=muted>Mails each watcher the markets of theirs that have new comps. "+
+      "Preview builds every email and sends none.</p>";
+  }
+  el.innerHTML="<div class=card><h2>Watchlist digest</h2>"+body+
+    "<p style='margin-top:12px'>"+digestBtn("dgPrev","Preview (sends nothing)")+
+    digestBtn("dgSend","Send now","mute")+"</p></div>";
+  el.style.display="block";
+  var run=function(dry){
+    var key=sessionStorage.getItem(KEYK);
+    if(!dry&&!confirm("Send the digest now? Real email goes to every watcher with new comps, and it cannot be recalled."))return;
+    document.getElementById("dgPrev").disabled=true;
+    document.getElementById("dgSend").disabled=true;
+    fetch("/api/watchlist/digest",{method:"POST",
+      headers:{"content-type":"application/json","x-admin-key":key||""},
+      body:JSON.stringify({dryRun:dry})})
+    .then(function(r){return r.json().then(function(j){
+      // The route's refusals are the useful part of this feature, so show the
+      // reason rather than a status code: "no database" and "no outbound mail
+      // configured" are different problems with different fixes.
+      if(!r.ok)throw new Error(j.error||("Error "+r.status));
+      return j;
+    });})
+    .then(function(j){renderDigestCard({summary:j,dry:dry});})
+    .catch(function(e){renderDigestCard({error:e.message});});
+  };
+  document.getElementById("dgPrev").addEventListener("click",function(){run(true);});
+  document.getElementById("dgSend").addEventListener("click",function(){run(false);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -8152,7 +8217,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key);})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); renderDigestCard();})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }

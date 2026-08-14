@@ -5417,6 +5417,12 @@ const ACCOUNT_NAV_CSS = `
 .hdr nav #themeToggle{display:inline-flex;align-items:center;padding:0;border:0;background:none;
   color:var(--ink-3);cursor:pointer;line-height:0}
 .hdr nav #themeToggle:hover{color:var(--ink)}
+.theme-sun{display:none}
+@media screen{
+  [data-theme="dark"] .theme-moon{display:none}
+  [data-theme="dark"] .theme-sun{display:block}
+  [data-theme="dark"] .hdr nav .dd{box-shadow:var(--lift)}
+}
 `;
 
 // The nav slots. `desk: false` for /how-it-works, which already renders its own
@@ -5427,8 +5433,10 @@ function accountNavSlots({ desk = true } = {}) {
   // would double it. Not hidden like the account slots: it needs no
   // knowledge of the visitor, so it is correct on the very first frame.
   return `<button id="themeToggle" type="button" aria-label="Switch colour theme" title="Switch colour theme">` +
-    `<svg viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
-    `d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg></button>` +
+    `<svg class="theme-moon" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
+    `d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>` +
+    `<svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
+    `d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg></button>` +
     (desk
     ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`

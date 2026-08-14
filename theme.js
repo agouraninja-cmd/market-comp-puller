@@ -16,6 +16,12 @@
 // (spec 2026-08-13-dark-mode-lifted-slate): paper #121826, card #1A2433,
 // wash/slab #243044, hover #334155. Same cool personality, charcoal not
 // black. No new brand colours.
+//
+// Ink was lifted a hair on 2026-08-14: the charcoal floor plus the original
+// dimmed ramp made labels and body copy read as one grey fog. Paper/card/
+// wash do not move. --ink-3 on --card goes 4.50:1 → 5.32:1, and on --slab
+// (table heads, already-dark chips) 3.82:1 → 4.52:1, which is the AA floor
+// that workhorse muted text actually sits on.
 const THEME_TOKENS = {
   // --- surfaces ---------------------------------------------------------
   paper:            { light: "#FBFBF9", dark: "#121826" }, // page
@@ -38,11 +44,11 @@ const THEME_TOKENS = {
   hair:             { light: "#F0EFE9", dark: "#1E2938" }, // hairline/divider
 
   // --- ink --------------------------------------------------------------
-  ink:              { light: "#1A2433", dark: "#C9D3E0" },
-  "ink-body":       { light: "#374253", dark: "#A8B4C4" },
-  "ink-2":          { light: "#4C5665", dark: "#9AABC0" },
-  "ink-mute":       { light: "#5A6473", dark: "#8A97A8" },
-  "ink-3":          { light: "#68707E", dark: "#7D8B9C" }, // the workhorse
+  ink:              { light: "#1A2433", dark: "#D5DDE8" },
+  "ink-body":       { light: "#374253", dark: "#B6C1CF" },
+  "ink-2":          { light: "#4C5665", dark: "#A8B6C6" },
+  "ink-mute":       { light: "#5A6473", dark: "#96A3B4" },
+  "ink-3":          { light: "#68707E", dark: "#8B98A8" }, // the workhorse
   "ink-faint":      { light: "#9AA2AD", dark: "#7C8899" },
   "ink-4":          { light: "#C7CBD2", dark: "#475569" }, // outlines, disabled
 
@@ -112,12 +118,24 @@ const THEME_TOKENS = {
 // card from charcoal paper; the drop is a whisper so a stack of report
 // cards does not look like a lightbox.
 const DARK_LIFT =
-  "0 1px 0 rgba(201,211,224,.08) inset,0 10px 28px -10px rgba(0,0,0,.55)";
+  "0 1px 0 rgba(213,221,232,.14) inset,0 10px 28px -10px rgba(0,0,0,.55)";
+
+// Dark-only chrome that is not a colour token: native autofill, the caret,
+// scrollbar thumb, and font smoothing. Light mode must not gain any of
+// these -- they are a second @media screen block after the dark token
+// block, so print stays light. Interpolated via rootCss() into every
+// server-rendered in-scope page; index.html hand-copies the same rules
+// (it is static and never templates this file).
+const DARK_CHROME =
+  "@media screen{[data-theme=\"dark\"]{scrollbar-color:var(--wash-2) var(--paper);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}" +
+  "[data-theme=\"dark\"] input,[data-theme=\"dark\"] textarea,[data-theme=\"dark\"] select{caret-color:var(--ink)}" +
+  "[data-theme=\"dark\"] input:-webkit-autofill,[data-theme=\"dark\"] textarea:-webkit-autofill,[data-theme=\"dark\"] select:-webkit-autofill{" +
+  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);box-shadow:0 0 0 1000px var(--card) inset;transition:background-color 9999s ease-out}}";
 
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}`;
+  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}`;
 }
 
-module.exports = { THEME_TOKENS, DARK_LIFT, rootCss };
+module.exports = { THEME_TOKENS, DARK_LIFT, DARK_CHROME, rootCss };

@@ -114,6 +114,12 @@ test("per-unit and per-acre figures ride along for Multifamily and Land", () => 
   assert.equal(basisRow(comp({ price_per_acre: "$400,000" })).price_per_acre, "$400,000");
 });
 
+test("year_built rides along so vintage weighting still applies to locked comps", () => {
+  assert.equal(basisRow(comp({ year_built: "1994" })).year_built, "1994");
+  assert.equal("year_built" in basisRow(comp()), false,
+    "absent year_built stays off the allow-list, matching price_per_unit");
+});
+
 test("a broker-verified locked comp keeps its tier but not its identity", () => {
   const row = basisRow(comp({ verified: true, address: "1 Broker Rd" }));
   assert.equal(row.verified, true, "provenance drives its weight in the range");

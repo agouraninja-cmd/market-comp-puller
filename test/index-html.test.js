@@ -350,6 +350,16 @@ test("hero draws county assessment as a cross-check, never a headline", () => {
     "assessed value must never be written into Low/Likely/High");
 });
 
+test("the hero has a listing line so an ask the size lookup already saw cannot stay invisible", () => {
+  // The 2026-08-13 Austin Rosedale report looked up 2,752 SF from the listing
+  // and never mentioned the $1,250,000 ask sitting next to it.
+  assert.match(html, /id="ownerAsking"/);
+  assert.match(html, /function renderSubjectAsking\(/);
+  assert.match(html, /function askingRangeFrom\(/);
+  assert.match(html, /Currently listed at/);
+  assert.match(html, /askFit\(/);
+});
+
 // ---------------------------------------------------------------------------
 // The shared-report lock card. A stranger holding a forwarded link is the one
 // visitor who reaches this app without choosing to, and /r/<id> is the only

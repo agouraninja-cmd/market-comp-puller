@@ -120,6 +120,37 @@ test("compWeight treats missing data as neutral, never as a penalty", () => {
   assert.equal(V.compWeight(comp({ date: "", size_sqft: "", source_type: "" }), AS_OF, 10000), 1);
 });
 
+test("yearOf accepts a 4-digit year and refuses everything else", () => {
+  assert.equal(V.yearOf(1994), 1994);
+  assert.equal(V.yearOf("1994"), 1994);
+  assert.equal(V.yearOf(" 2019 "), 2019);
+  assert.equal(V.yearOf(""), null);
+  assert.equal(V.yearOf(null), null);
+  assert.equal(V.yearOf("c. 1994"), null);
+  assert.equal(V.yearOf("built 1994"), null);
+  assert.equal(V.yearOf(2752), null);       // a size that leaked into the year field
+  assert.equal(V.yearOf("1250000"), null);  // a price that leaked into the year field
+});
+
+test("compWeight downweights a 30-year vintage mismatch", () => {
+  // 1994 subject vs 2024 new construction: 30 years, 15 past the free pass,
+  // so one halving. The Austin Rosedale failure mode: a 1994 resale priced
+  // by teardown-rebuild sales on the next block.
+  assert.equal(V.compWeight(comp({ year_built: "2024" }), AS_OF, 10000, 1994), 0.5);
+});
+
+test("compWeight gives a free pass within 15 years of vintage", () => {
+  assert.equal(V.compWeight(comp({ year_built: "2009" }), AS_OF, 10000, 1994), 1);
+  assert.equal(V.compWeight(comp({ year_built: "1994" }), AS_OF, 10000, 1994), 1);
+  assert.equal(V.compWeight(comp({ year_built: "1979" }), AS_OF, 10000, 1994), 1);
+});
+
+test("compWeight treats missing year as neutral, never as a penalty", () => {
+  assert.equal(V.compWeight(comp({ year_built: "" }), AS_OF, 10000, 1994), 1);
+  assert.equal(V.compWeight(comp({ year_built: "2024" }), AS_OF, 10000, 0), 1);
+  assert.equal(V.compWeight(comp({ year_built: "2024" }), AS_OF, 10000), 1);
+});
+
 test("trendFactor compounds the market trend over the comp's age", () => {
   const f = V.trendFactor(comp({ date: "2024-07-01" }), AS_OF, 10);
   assert.ok(Math.abs(f - 1.21) < 0.005, "expected ~1.21, got " + f);
@@ -329,6 +360,48 @@ test("subjectSizeFit ignores leases and unsized comps, and returns null with not
   assert.equal(V.subjectSizeFit(0, [comp()]), null);
   assert.equal(V.subjectSizeFit(10000, [comp({ size_sqft: "" })]), null);
   assert.equal(V.subjectSizeFit(10000, []), null);
+});
+
+// --- askFit -----------------------------------------------------------------
+//
+// The rule that would have caught the 2026-08-13 Austin Rosedale report: a
+// 1994 house listed at $1,250,000 ($454/SF, neighborhood median) valued at
+// $1,650,000 because the comps were the expensive tail. Size was right; the
+// listing never entered the report.
+
+test("askFit flags the Austin listing-vs-comps gap", () => {
+  const fit = V.askFit(1250000, 1650000);
+  assert.equal(fit.skewed, true);
+  assert.equal(fit.dir, "above");
+  assert.equal(fit.pct, 32);
+  assert.equal(fit.ask, 1250000);
+  assert.equal(fit.mid, 1650000);
+});
+
+test("askFit stays quiet at or inside 25%", () => {
+  // Same 25% product rule as outlierOf: exactly 25% is not skewed.
+  const inside = V.askFit(1250000, 1500000);   // 20%
+  assert.equal(inside.skewed, false);
+  assert.equal(inside.dir, "above");
+  const edge = V.askFit(1000000, 1250000);     // exactly 25%
+  assert.equal(edge.skewed, false);
+  const agree = V.askFit(1250000, 1250000);
+  assert.equal(agree.skewed, false);
+  assert.equal(agree.dir, "even");
+});
+
+test("askFit flags a listing well ABOVE the comps too", () => {
+  const fit = V.askFit(2000000, 1250000);      // comps 37.5% below the ask
+  assert.equal(fit.skewed, true);
+  assert.equal(fit.dir, "below");
+  assert.equal(fit.pct, 38);
+});
+
+test("askFit returns null without both figures", () => {
+  assert.equal(V.askFit(0, 1650000), null);
+  assert.equal(V.askFit(1250000, 0), null);
+  assert.equal(V.askFit(null, 1650000), null);
+  assert.equal(V.askFit(1250000, NaN), null);
 });
 
 test("a blended vault comp has a tier, at full weight", () => {

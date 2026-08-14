@@ -83,6 +83,12 @@
     "details": "The first report had no public-record number about this exact address to read against the sales range, so a wrong size box could mint a headline like the $795,000 Boise trailer with nothing on the page to contradict it. The county's total assessed value now rides the same subject-size lookup that already opens assessor pages — no extra search — and lands as a County assessment row in the approaches table, never as Low/Likely/High and never as the cost approach. When it sits more than 25% outside a dollar headline, the same outlier rule as the table chips says the size box or the comps deserve a second look. Whole parcel or nothing. Not harvested. Not in the summary."
   },
   {
+    "date": "2026-08-14",
+    "type": "fix",
+    "title": "A listed house is no longer valued without the list price the size lookup already saw",
+    "details": "A 1994 Rosedale house listed on Zillow at $1,250,000 ($454/SF, at the neighborhood median) came back as $1,650,000. Size was right — 2,752 SF from the listing. The comps were the expensive tail ($486–$653/SF) and a +5.5%/yr trend was applied in a market whose sold prices were falling. The $1.25M ask was sitting on the same page the size was read from and never entered the report. Three changes. The size lookup now also reads the current asking price and the year built, shown as evidence under the approaches the same way last sale is, never as a fourth headline figure. VALUATION.askFit flags a gap of more than 25% between that ask and the estimate on the trust line, so a $400k miss cannot hide behind the generic residential MLS disclaimer. And vintage is a fourth compWeight factor — free pass within 15 years, then halving per further 15 — so a 2024 teardown-rebuild does not price a 1994 resale at full weight. year_built rides locked_basis so a free report's range still matches Pro."
+  },
+  {
     "date": "2026-08-13",
     "type": "feature",
     "title": "The vault takes a screenshot of a comp table, not only a PDF",

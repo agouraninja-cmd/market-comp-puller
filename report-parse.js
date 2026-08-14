@@ -400,6 +400,49 @@ function normalizeSubjectAssessed(parsed, now) {
   return parsed;
 }
 
+// The subject's current asking / list price, read off the same listing page
+// the SUBJECT SIZE step already opens. A list price with no parseable dollar
+// figure is dropped (unlike last sale, where a date with no price is still
+// worth showing): without a number this field cannot feed askFit or the
+// comparison card, and an empty "currently listed" line is noise. The URL
+// is kept only when it is http(s). Not harvested: a listing is not a comp.
+function normalizeSubjectAsking(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_asking;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    delete parsed.subject_asking;
+    return parsed;
+  }
+  const str = (v) => String(v == null ? "" : v).trim();
+  const price = str(raw.price).slice(0, 40);
+  const m = String(price).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  const n = m ? parseFloat(m[0]) : NaN;
+  if (!(n > 0)) { delete parsed.subject_asking; return parsed; }
+  let url = str(raw.source_url).slice(0, 500);
+  if (!/^https?:\/\//i.test(url)) url = "";
+  parsed.subject_asking = { price, source_url: url };
+  return parsed;
+}
+
+// The subject's construction year, same lookup as size / asking. Stored as a
+// 4-digit number so valuation.js's yearOf can read it without a second parse
+// convention. Anything that is not exactly a year in 1800-2100 is dropped.
+function normalizeSubjectYearBuilt(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const raw = parsed.subject_year_built;
+  if (raw == null || raw === "") { delete parsed.subject_year_built; return parsed; }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const y = Math.round(raw);
+    if (y >= 1800 && y <= 2100) { parsed.subject_year_built = y; return parsed; }
+    delete parsed.subject_year_built;
+    return parsed;
+  }
+  const ym = String(raw).trim().match(/^(18|19|20)\d{2}$/);
+  if (ym) { parsed.subject_year_built = Number(ym[0]); return parsed; }
+  delete parsed.subject_year_built;
+  return parsed;
+}
+
 module.exports = {
   extractFirstJsonObject,
   parseCompJson,
@@ -415,4 +458,6 @@ module.exports = {
   reconcilePricePerSqft,
   scrubUnearnedVerifiedClaims,
   normalizeSubjectAssessed,
+  normalizeSubjectAsking,
+  normalizeSubjectYearBuilt,
 };

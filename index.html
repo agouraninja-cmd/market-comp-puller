@@ -2126,6 +2126,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                scatter does. Built by renderSubjectLastSale; margins only, no
                flex gap (the PNG exporter can't render it). -->
           <p id="ownerLastSale" class="hidden text-xs text-[#5A6473] mt-4"></p>
+          <!-- Current asking / list price, when the model found one on the
+               same listing page it used for the subject's size. Evidence,
+               not a fourth figure in the ledger — same rule as last sale.
+               The 2026-08-13 Austin Rosedale report looked up 2,752 SF from
+               the listing and never mentioned the $1,250,000 ask sitting
+               next to it, so a $1.65M estimate had nothing to be checked
+               against. Prints and captures with the hero. -->
+          <p id="ownerAsking" class="hidden text-xs text-[#5A6473] mt-2"></p>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
@@ -2746,7 +2754,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // /admin runs the same math this page does. Aliased into the original names
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
-          compAgeYears, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf } = VALUATION;
+          compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -3702,7 +3710,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerTrust", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -4013,6 +4021,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                        kind === "size" ? "targetSizeMax" : null);
   }
 
+  // Asking / list price for the comparison card and askFit. The user's typed
+  // figure wins; otherwise the listing the model read off the same page as
+  // the subject size. That second source is what lights the comparison card
+  // on a residential report the visitor never typed a price into — the card
+  // used to stay dark while the hero quoted a number 30% above the ask.
+  function askingRangeFrom(parsed) {
+    const fromMeta = subjectRangeFromMeta("price");
+    if (fromMeta) return fromMeta;
+    const listed = numericValue(parsed && parsed.subject_asking && parsed.subject_asking.price);
+    if (listed > 0) return { min: listed, max: listed };
+    return null;
+  }
+
   // The owner's own cap rate, as a percent (6.25, not 0.0625). Same
   // meta-then-form precedence as subjectRangeFromMeta, and for the same
   // reason: a reopened saved report has no form input to read. Bounded — a
@@ -4030,7 +4051,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderComparison(parsed) {
     const card = document.getElementById("compareCard");
     const sizeR = subjectRangeFromMeta("size");
-    const priceR = subjectRangeFromMeta("price");
+    const priceR = askingRangeFrom(parsed);
 
     if (!sizeR || !priceR) { card.classList.add("hidden"); return; }
 
@@ -4126,6 +4147,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const f = numericValue((parsed || currentParsed || {}).subject_size_sqft);
     return f > 0 ? f : 0;
   }
+  function subjectYearForMatch(parsed) {
+    return yearOf((parsed || currentParsed || {}).subject_year_built);
+  }
 
   // The report date the weighting measures ages against. Anchored to the
   // report, not the wall clock, so a saved report's numbers do not drift as
@@ -4138,10 +4162,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   function matchQuality(comp, meta, parsed) {
-    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed));
+    const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed));
     const tier = MATCH_TIERS.find((t) => w >= t.min) || MATCH_TIERS[MATCH_TIERS.length - 1];
     // Reasons in the same order compWeight multiplies them, so the label can
-    // always be traced back to the three factors that produced it.
+    // always be traced back to the four factors that produced it.
     const reasons = [];
     const age = compAgeYears(comp, asOfOf(meta));
     if (age !== null) {
@@ -4152,6 +4176,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const subjSF = subjectSizeForMatch(parsed), csf = numericValue(comp.size_sqft);
     if (subjSF > 0 && csf > 0) {
       reasons.push(Math.abs(Math.log2(csf / subjSF)) > 1 ? "different size class" : "similar size");
+    }
+    const ySub = subjectYearForMatch(parsed), yComp = yearOf(comp.year_built);
+    if (ySub != null && yComp != null) {
+      reasons.push(Math.abs(yComp - ySub) > 15 ? "different vintage" : "similar vintage");
     }
     const t = SOURCE_TIERS[compTier(comp)];
     if (t) reasons.push(t.label.toLowerCase() + " source");
@@ -4216,6 +4244,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // because SF often is not known for these types.
     const val = valueFromComps(carriers.map((x) => x.comp), {
       subjectSF: 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectYear: subjectYearForMatch(parsed),
       readValue: (c) => numericValue(c[spec.compKey]),
     });
     if (!val) return null;
@@ -4366,6 +4395,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.classList.remove("hidden");
   }
 
+  // Current asking / list price, when the model found one. Same DOM-build
+  // discipline as last sale: two of the values are model-written free text
+  // and one is a URL. Evidence, not a fourth estimate — a list price shown
+  // big in the ledger would be read as our valuation of the subject.
+  function renderSubjectAsking(parsed, meta) {
+    const el = document.getElementById("ownerAsking");
+    if (!el) return;
+    el.textContent = "";
+    el.classList.add("hidden");
+    const ask = parsed && parsed.subject_asking;
+    const price = ask && String(ask.price || "").trim();
+    const paid = numericValue(price);
+    if (!(paid > 0)) return;
+
+    const sizeR = subjectRangeFromMeta("size");
+    const sf = sizeR ? (sizeR.min + sizeR.max) / 2
+      : (parsed ? numericValue(parsed.subject_size_sqft) : 0);
+    let sentence = `This ${assetNoun(meta.type)} is currently listed at ${displayMoney(price)}.`;
+    if (sf > 0) {
+      sentence += ` That is ${formatUsd(paid / sf, { maximumFractionDigits: 0 })}/SF.`;
+    }
+    el.appendChild(document.createTextNode(sentence + " "));
+
+    if (ask.source_url) {
+      const a = document.createElement("a");
+      a.href = ask.source_url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = "underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+      a.textContent = "Listing";
+      el.appendChild(a);
+    }
+    el.appendChild(document.createTextNode(
+      (ask.source_url ? " · " : "") + "The current ask, not a closed sale and not one of the comps below."));
+    el.classList.remove("hidden");
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
@@ -4374,6 +4440,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const noun = assetNoun(meta.type);
     setHeroTitle(meta.type);
     renderSubjectLastSale(parsed, meta);
+    renderSubjectAsking(parsed, meta);
     // Market-level search (a city like "Boise ID", no street number) — there's
     // no building to value, so the whole hero (incl. the BOV button) hides.
     // Any user-entered subject value signals building intent and re-shows it,
@@ -4433,6 +4500,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // by its midpoint, and no size at all means no size penalty.
     const val = valueFromComps(saleComps.map((x) => x.comp), {
       subjectSF: sizeR || 0, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectYear: subjectYearForMatch(parsed),
     });
     const psfBand = val
       ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
@@ -4440,7 +4508,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     currentPsfBand = psfBand;
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
-    const weighNote = " Recent, similar-size, well-sourced comps count more"
+    const weighNote = " Recent, similar-size, similar-vintage, well-sourced comps count more"
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
           + `(§ in the table shows each indexed figure).`
@@ -4965,6 +5033,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
     }
 
+    // Listing vs. estimate: same 25% rule as outlierOf / subjectSizeFit.
+    // A quiet MLS disclaimer is not enough — the Austin Rosedale report
+    // already carried one and still led with $1.65M against a $1.25M ask.
+    // AskFit never changes the range; it names the gap so the reader can
+    // look at Year Built before trusting the headline.
+    const askR = askingRangeFrom(parsed);
+    const askMid = askR ? (askR.min + askR.max) / 2 : 0;
+    const likely = lastValuation && lastValuation.likely;
+    const askGap = askFit(askMid, likely);
+    if (askGap && askGap.skewed) {
+      const askMoney = formatUsd(askMid, { maximumFractionDigits: 0 });
+      const askPsf = subjSFMid > 0 ? formatUsd(askMid / subjSFMid, { maximumFractionDigits: 0 }) + "/SF" : "";
+      const psfBit = askPsf ? ` (${askPsf})` : "";
+      trustEl.textContent += (trustEl.textContent ? " " : "")
+        + (askGap.dir === "above"
+          ? `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% below this estimate. A gap this large usually means the comps are a different vintage or a pricier pocket than this property, not that the list price is a steal.`
+          : `Currently listed at ${askMoney}${psfBit} — ${askGap.pct}% above this estimate. The ask may be ambitious relative to these comps.`);
+      trustEl.classList.remove("hidden");
+    }
+
     // Residential is the one type whose closed sales mostly live behind the
     // MLS, where web search can't reliably reach — the comp pool is thinner
     // and skews toward listing-worthy (pricier) sales. Say so on EVERY
@@ -5008,6 +5096,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // this can never disagree with it.
     const val = sizeR ? valueFromComps(valuationComps(), {
       subjectSF: sizeR, asOf: asOfOf(meta), trendPct: trendPctOf(parsed),
+      subjectYear: subjectYearForMatch(parsed),
     }) : null;
     if (val && val.n >= 2) {
       return { value: val.psfMid * ((sizeR.min + sizeR.max) / 2), source: "comp-based likely value" };
@@ -6018,7 +6107,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     // Subject $/SF (single value or band) — same math as renderComparison.
     const sizeR = subjectRangeFromMeta("size");
-    const priceR = subjectRangeFromMeta("price");
+    const priceR = askingRangeFrom(currentParsed);
     let youLo = null, youHi = null, youMid = null, isBand = false;
     if (sizeR && priceR) {
       youLo = priceR.min / sizeR.max;

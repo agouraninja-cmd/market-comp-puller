@@ -39,9 +39,20 @@ const CITY_COORDS = {
   "tampa, fl": { lat: 27.9506, lng: -82.4572 },
 };
 
-// Commons file titles (unprefixed) are the audit trail; `file` is what we
-// serve. Adding a city means downloading the 1920px thumb, cropping to
-// 1600×720, and dropping the JPEG next to the others.
+// Display size: full-bleed ~340px tall. A 1920 CSS-px desktop at 2× DPR
+// needs ~3840 device pixels of width; 1600px upscaled into that slot is
+// why the first ship looked soft. Adding a city means downloading the
+// 3840px thumb, cropping to HERO_WIDTH×HERO_HEIGHT, writing the 1920w
+// sibling, and dropping both JPEGs next to the others. Some Commons
+// originals are smaller than 3840 (Ontario, CA) — those stay relatively
+// soft; do not invent pixels from a different city.
+const HERO_WIDTH = 3840;
+const HERO_HEIGHT = 800;
+const HERO_SRCSET_WIDTH = 1920;
+const HERO_SRCSET_HEIGHT = 400;
+
+// Commons file titles (unprefixed) are the audit trail; `file` is the
+// 3840w JPEG we serve. The 1920w sibling is `srcsetName(file)`.
 const HEROES = {
   "atlanta, ga": {
     file: "atlanta-ga.jpg",
@@ -204,7 +215,16 @@ function commonsFileUrl(commons) {
   return "https://commons.wikimedia.org/wiki/File:" + encodeURIComponent(commons).replace(/%20/g, "_");
 }
 
-function esriAerialUrl(lat, lng, w = 1600, h = 720) {
+function srcsetName(file) {
+  return String(file || "").replace(/\.jpg$/, "-" + HERO_SRCSET_WIDTH + ".jpg");
+}
+
+function photoSrcset(file) {
+  return "/market-heroes/" + srcsetName(file) + " " + HERO_SRCSET_WIDTH + "w, "
+    + "/market-heroes/" + file + " " + HERO_WIDTH + "w";
+}
+
+function esriAerialUrl(lat, lng, w = HERO_WIDTH, h = HERO_HEIGHT) {
   const latRad = Number(lat) * Math.PI / 180;
   const widthM = 9000;
   const heightM = widthM * (h / w);
@@ -228,6 +248,7 @@ function heroFor(city, state) {
   if (curated) {
     return {
       src: "/market-heroes/" + curated.file,
+      srcset: photoSrcset(curated.file),
       alt: curated.alt,
       credit: curated.credit,
       license: curated.license,
@@ -237,8 +258,11 @@ function heroFor(city, state) {
   }
   const ll = CITY_COORDS[key];
   if (ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lng)) {
+    const src = esriAerialUrl(ll.lat, ll.lng);
+    const src1x = esriAerialUrl(ll.lat, ll.lng, HERO_SRCSET_WIDTH, HERO_SRCSET_HEIGHT);
     return {
-      src: esriAerialUrl(ll.lat, ll.lng),
+      src,
+      srcset: src1x + " " + HERO_SRCSET_WIDTH + "w, " + src + " " + HERO_WIDTH + "w",
       alt: `Aerial view of ${String(city || "").trim()}, ${String(state || "").trim()}`.trim(),
       credit: "Esri, Maxar",
       license: "",
@@ -257,8 +281,14 @@ module.exports = {
   HEROES,
   CITY_COORDS,
   FILE_RE,
+  HERO_WIDTH,
+  HERO_HEIGHT,
+  HERO_SRCSET_WIDTH,
+  HERO_SRCSET_HEIGHT,
   cityKey,
   heroFor,
+  srcsetName,
+  photoSrcset,
   esriAerialUrl,
   commonsFileUrl,
   isHeroFilename,

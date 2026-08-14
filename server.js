@@ -6599,7 +6599,7 @@ function marketHeroBanner(p, title) {
   return {
     banner:
       `<div class="mkt-hero">` +
-        `<img class="mkt-hero-img" src="${escHtml(hero.src)}" alt="${escHtml(hero.alt)}" width="1600" height="720" decoding="async" fetchpriority="high"/>` +
+        `<img class="mkt-hero-img" src="${escHtml(hero.src)}"${hero.srcset ? ` srcset="${escHtml(hero.srcset)}" sizes="100vw"` : ""} alt="${escHtml(hero.alt)}" width="${MARKETHERO.HERO_WIDTH}" height="${MARKETHERO.HERO_HEIGHT}" decoding="async" fetchpriority="high"/>` +
         `<div class="mkt-hero-inner">${crumb}${heading}${blurb}</div>` +
         `<p class="mkt-hero-credit">${credit}</p>` +
       `</div>`,

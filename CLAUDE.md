@@ -1125,9 +1125,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   static data committed to the repo, so pages survive redeploys and serve
   instantly with no DB. Each page opens with an aerial photograph of the
   city (curated Wikimedia Commons files in `market-heroes/`, keyed by city
-  in the pure, tested `market-hero.js` — Explorer markets without a photo
-  fall through to an Esri aerial when we have coordinates, and to no photo
-  rather than the wrong city's skyline). Then: median/quartile $/SF, a cap-rate range, a
+  in the pure, tested `market-hero.js` — 3840×800 plus a 1920w `srcset`
+  sibling so a full-bleed retina header is not upscaled; Explorer markets
+  without a photo fall through to an Esri aerial when we have coordinates,
+  and to no photo rather than the wrong city's skyline). Then: median/quartile $/SF, a cap-rate range, a
   market summary + `value_drivers` narrative, a recent-comps table (sortable,
   Sale/Lease filter; address links to `source_url` when the snapshot has a
   sanitized http(s) URL), and a CTA — owner valuation for anonymous visitors,

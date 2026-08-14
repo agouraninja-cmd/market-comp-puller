@@ -9,7 +9,7 @@
   {
     "date": "2026-08-14",
     "type": "fix",
-    "title": "Focus and Lookback show one chevron, and How it works no longer sits on For brokers",
+    "title": "Focus and Lookback show one chevron in dark mode",
     "details": "The desk selects restored the native arrow after a background shorthand wiped the site chevron, so dark mode stacked three or four arrows on Focus and Lookback. They now keep the one SVG. The pointer row under the desk used a gap class that was never in the vendored CSS, so the middle dot overlapped For brokers."
   },
   {

@@ -715,7 +715,7 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
 
   // Focus/Lookback: one site chevron. The background shorthand wiped the SVG
   // and appearance:auto put the native widget back on top of it (three or four
-  // arrows in dark mode). background-color keeps the SVG; auto must not return.
+  // arrows in dark mode, where color-scheme:dark adds Chrome's own).
   assert.match(html, /\.rd-in \{[^}]*background-color:\s*transparent/);
   assert.doesNotMatch(html, /\.rd-in \{[^}]*background:\s*transparent/);
   assert.doesNotMatch(html, /^\s*select\.rd-in \{[^}]*appearance:\s*auto/m);

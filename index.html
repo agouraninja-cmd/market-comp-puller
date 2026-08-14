@@ -678,11 +678,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        for any input under 16px and never zooms back out, leaving the page
        zoomed and side-scrolled after tapping the address field — the site's
        single most-tapped control. Do not "tidy" this back down.
-       background-color, not the background shorthand: the shorthand wipes
-       background-image, which is how the site's select chevron is drawn.
-       Restoring the native arrow on .rd-in used to stack it on that SVG —
-       three or four chevrons on Focus/Lookback in dark mode, where
-       color-scheme:dark adds Chrome's own. */
+       background-color, never the background shorthand: that shorthand
+       clears background-image, which is how `select` draws the site chevron.
+       Combined with appearance:auto and color-scheme:dark, Focus and Lookback
+       stacked three or four arrows in dark mode. */
     .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: var(--ink); background-color: transparent; }
     /* Chrome paints a light-blue sheet on an autofilled field, including
        when you paste a street address it recognises. background-color cannot
@@ -723,8 +722,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        largest text in the frame (Direction N). Still above the 16px iOS
        zoom floor documented at .rd-in. */
     .rd-in-lg { font-size: 17px; }
-    /* Must stay none. auto is the stacked-chevron bug; the SVG on `select` is
-       the one arrow. Restated here so a later .rd-in tweak cannot revive auto. */
+    /* Must stay none. auto restored the native widget on top of the SVG, and
+       color-scheme:dark added Chrome's own — that is the stacked-chevron
+       dark-mode bug. Restated here so a later .rd-in tweak cannot revive auto. */
     select.rd-in { appearance: none; -webkit-appearance: none; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px var(--red); }

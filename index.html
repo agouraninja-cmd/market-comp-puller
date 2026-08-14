@@ -407,15 +407,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     /* Loading card: the ninja jogs along the progress bar's leading edge while
        the search runs, and the stage headline cross-fades between steps. */
+    .loading-track { padding-top: 26px; } /* room for the 24px runner above the 8px bar */
     .loading-ninja {
       position: absolute;
-      bottom: 7px;                      /* feet on the bar's top edge */
+      bottom: 8px;                      /* feet on the bar's top edge (bar is h-2) */
       left: 0%;
-      width: 18px; height: 18px;
-      transform: translateX(-50%);
+      width: 24px; height: 24px;
+      transform: translateX(-85%);      /* body leads the fill; does not straddle it */
       transition: left .35s ease-out;   /* same cadence as the bar fill */
     }
-    .loading-ninja svg { display: block; width: 100%; height: 100%; animation: ninjaJog .38s ease-in-out infinite alternate; }
+    .loading-ninja svg { display: block; width: 100%; height: 100%; animation: ninjaBob .28s ease-in-out infinite alternate; }
     .loading-ninja .ninja-body { fill: #334155; }
     /* @media screen wrapper: same reasoning as .skeleton::after above --
        #loadingCard (the ninja's only container) carries no-print, so this
@@ -423,7 +424,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        describes and gets the same fix. */
     @media screen { [data-theme="dark"] .loading-ninja .ninja-body { fill: var(--ink-3); } }
     .loading-ninja .ninja-band { fill: #DC2626; }
-    @keyframes ninjaJog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
+    .loading-ninja .ninja-run-a { animation: ninjaStrideA .28s linear infinite; }
+    .loading-ninja .ninja-run-b { opacity: 0; animation: ninjaStrideB .28s linear infinite; }
+    @keyframes ninjaBob { from { transform: translateY(0); } to { transform: translateY(-1px); } }
+    @keyframes ninjaStrideA { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
+    @keyframes ninjaStrideB { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
+    .loading-ninja.done svg,
+    .loading-ninja.done .ninja-run-a,
+    .loading-ninja.done .ninja-run-b { animation: none; }
+    .loading-ninja.done .ninja-run-a { opacity: 1; }
+    .loading-ninja.done .ninja-run-b { opacity: 0; }
+    /* !important beats the later * reduced-motion duration clamp, so the
+       two frames do not land on whichever keyframe a 0.01ms cycle ended on. */
+    @media (prefers-reduced-motion: reduce) {
+      .loading-ninja svg,
+      .loading-ninja .ninja-run-a,
+      .loading-ninja .ninja-run-b { animation: none !important; }
+      .loading-ninja .ninja-run-a { opacity: 1; }
+      .loading-ninja .ninja-run-b { opacity: 0; }
+    }
     #loadingHeadline { transition: opacity .22s ease; }
 
     /* Trust badges pop in once, just after their row lands. Both this and the
@@ -2160,13 +2179,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              search query, the result count) while the headline stays calm.
              Model-written text goes in here via textContent, never innerHTML. -->
         <p id="loadingDetail" class="text-sm text-[#9AA2AD] mt-1 max-w-xs truncate" style="white-space:nowrap">This usually takes 20-60 seconds.</p>
-        <div class="w-full max-w-xs mt-5 relative">
-          <!-- The brand ninja jogs along the bar's leading edge while the search runs. -->
+        <div class="loading-track w-full max-w-xs mt-5 relative">
+          <!-- Side-on runner: shared torso/scarf, two-frame legs. The scarf
+               sits above the bar so the brand red stays visible. -->
           <div id="loadingNinja" class="loading-ninja" aria-hidden="true">
             <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-              <path class="ninja-band" d="M19.5 6 Q13 3 8 5 Q13 7.5 19 8.5 Z"/>
-              <circle class="ninja-body" cx="22.5" cy="8" r="4"/>
-              <path class="ninja-body" d="M20 12 Q26 13 27.5 17.5 L26 19 Q24.5 16.5 21.5 15.5 Q22 19 19.5 21 Q23 23 23.5 27 L25.5 29.5 Q26 30.5 24.5 30.5 L21.5 30.5 Q21 27 19 24.5 Q15 26 11.5 25 L7 29.5 Q6 30.5 5.5 29.5 Q7.5 25 9.5 22.5 Q12 19.5 15 14.5 Q16.5 12 20 12 Z"/>
+              <path class="ninja-band" d="M15 6.2 C8.5 3.2 4 5.2 2.8 9.8 C8 7.2 13.2 8.4 16.6 9.6 Q15.6 7.2 15 6.2 Z"/>
+              <circle class="ninja-body" cx="20" cy="9" r="4.4"/>
+              <path class="ninja-band" d="M16.1 8 Q20 6.7 23.9 8.3 Q20 9.8 16.1 8 Z"/>
+              <path class="ninja-body" d="M16.8 13.2 Q21.6 13.8 22.8 19.4 L20.2 20.8 Q17.8 18 16 20.2 Q15.6 16.2 16.8 13.2 Z"/>
+              <g class="ninja-run-a">
+                <path class="ninja-body" d="M18.2 14.8 L10.2 21.6 Q9.2 22.4 10.2 23 L17.6 16.8 Q18.8 15.6 18.2 14.8 Z"/>
+                <path class="ninja-body" d="M21.4 14.2 L28.6 11.8 Q29.8 11.4 30 12.6 L23 16 Q21.2 15.6 21.4 14.2 Z"/>
+                <path class="ninja-body" d="M17.2 20.4 L7.4 30.4 Q6.6 31.6 8 32 L17.8 22.2 Q18.4 20.8 17.2 20.4 Z"/>
+                <path class="ninja-body" d="M19.4 20.2 L23.2 24.6 L25.4 30.8 Q26.2 32 24.6 32 L22 25.4 L18.4 21.4 Q18.2 19.8 19.4 20.2 Z"/>
+              </g>
+              <g class="ninja-run-b">
+                <path class="ninja-body" d="M18.4 15 L26.8 20.4 Q27.8 21.2 26.8 22 L18.8 17 Q17.4 15.6 18.4 15 Z"/>
+                <path class="ninja-body" d="M20.8 14 L13.2 11.2 Q12 10.8 12 12 L19.4 15.6 Q21.4 15.6 20.8 14 Z"/>
+                <path class="ninja-body" d="M17.6 20.2 L14.2 25.4 L12.6 31 Q11.8 32 13.4 32 L15.4 25.8 L18.6 21.2 Q19 19.8 17.6 20.2 Z"/>
+                <path class="ninja-body" d="M19.2 20.2 L27.6 29.6 Q28.6 31 27.2 32 L18.6 22.2 Q17.8 20.4 19.2 20.2 Z"/>
+              </g>
             </svg>
           </div>
           <div class="h-2 rounded-full bg-[#F0EFE9] overflow-hidden">
@@ -4136,6 +4169,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     headline.textContent = loadingSteps(address, type)[0].text;
     setLoadingDetail("This usually takes 20-60 seconds.");
     resetAssembly();
+    document.getElementById("loadingNinja").classList.remove("done");
     document.getElementById("loadingCard").classList.remove("hidden");
     setLoadingProgress(0);
     requestAnimationFrame(() => setLoadingProgress(8));
@@ -4231,6 +4265,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     headline.style.opacity = "1";      // in case a cross-fade was mid-flight
     headline.textContent = "Report ready!";
     setLoadingDetail("");
+    document.getElementById("loadingNinja").classList.add("done");
     setLoadingProgress(100);
     return new Promise((resolve) => setTimeout(resolve, 550));
   }
@@ -4241,6 +4276,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     loadingTarget = 8;
     setLoadingDetail("");
     resetAssembly();
+    document.getElementById("loadingNinja").classList.remove("done");
     document.getElementById("loadingCard").classList.add("hidden");
   }
 

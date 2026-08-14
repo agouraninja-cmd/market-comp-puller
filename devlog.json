@@ -16,6 +16,12 @@
   },
   {
     "date": "2026-08-14",
+    "type": "improvement",
+    "title": "The loading ninja actually jogs",
+    "details": "The 20-60s wait showed an 18px blob hopping 2.5px on the red bar. It is now a side-on silhouette with a two-frame stride and a 1px bob, planted on the track ahead of the fill so the red scarf stays visible. The cycle freezes when the report is ready, and for reduced-motion."
+  },
+  {
+    "date": "2026-08-14",
     "type": "fix",
     "title": "The search desk's corners follow the card again",
     "details": "Straightening the title hairline put a square white header on the market chamber. The desk cannot overflow:hidden (that clips the explorer dropdown), so the square fill poked past the 6px card at the top-right. The heads now carry the radius themselves; stacked on a phone, both top corners sit on the building head and the market head stays square."

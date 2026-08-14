@@ -853,3 +853,34 @@ test("My Desk and the account circle have a place to put a profile photo", () =>
   assert.match(html, /function readAvatarFile\(/);
   assert.match(html, /\/api\/account\/avatar/);
 });
+
+test("the loading ninja is a two-frame runner that freezes for reduced motion and on done", () => {
+  // The 20-60s wait used to show an 18px blob hopping 2.5px on the bar.
+  // The replacement has to keep reading as a ninja (body + red band classes,
+  // still the only mascot on the site) and must not keep jogging after
+  // "Report ready!" or under prefers-reduced-motion.
+  assert.match(html, /id="loadingNinja"/);
+  assert.match(html, /class="ninja-run-a"/);
+  assert.match(html, /class="ninja-run-b"/);
+  assert.match(html, /class="ninja-body"/);
+  assert.match(html, /class="ninja-band"/);
+
+  const cssStart = html.indexOf("/* Loading card:");
+  const cssEnd = html.indexOf("#loadingHeadline");
+  assert.ok(cssStart !== -1 && cssEnd > cssStart, "loading-ninja CSS block moved");
+  const css = html.slice(cssStart, cssEnd);
+  assert.match(css, /translateX\(-85%\)/);
+  assert.match(css, /translateY\(-1px\)/);
+  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(css, /animation:\s*none\s*!important/);
+  assert.match(css, /\.loading-ninja\.done/);
+  assert.ok(!/ninjaJog/.test(css), "old ninjaJog bounce must not remain");
+  assert.ok(!/translateY\(-2\.5px\)/.test(css), "old 2.5px hop must not remain");
+
+  const show = html.match(/function showLoadingCard\([\s\S]*?\n  \}/)[0];
+  const complete = html.match(/function completeLoadingCard\(\) \{[\s\S]*?\n  \}/)[0];
+  const hide = html.match(/function hideLoadingCard\(\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(complete, /classList\.add\("done"\)/);
+  assert.match(show, /classList\.remove\("done"\)/);
+  assert.match(hide, /classList\.remove\("done"\)/);
+});

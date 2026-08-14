@@ -128,6 +128,10 @@ const BACKTEST = require("./backtest");
 // disclaimer) that can be applied to a report they hold an entitlement for.
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
 const BRANDING = require("./branding.js");
+// Account profile photo — the picture in the account circle. Pure and tested;
+// server.js owns the route (GET|PUT|DELETE /api/account/avatar) and the
+// avatar_rev field on GET /api/account/me.
+const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
 // "The market under this saved property moved since you last looked" — the
 // desk's only figure that changes without the owner re-running anything.
@@ -996,6 +1000,52 @@ async function setUserVaultBeta(id) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.vault_beta = true; await saveAccountStore(); }
 }
+// The public account payload — email, name, and whether a photo exists.
+// Never password_hash, never the photo bytes. Login, signup, /me and the
+// avatar write all answer through this so a new field cannot appear on one
+// door and vanish on another.
+function publicAccount(user) {
+  return {
+    email: user.email,
+    name: user.name || "",
+    avatarRev: String(user.avatarRev || user.avatar_rev || ""),
+  };
+}
+
+async function findUserAvatar(userId) {
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("GET",
+      `user_avatars?user_id=eq.${encodeURIComponent(userId)}&select=data_uri&limit=1`);
+    return rows && rows[0] ? rows[0] : null;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === userId);
+  return u && u.avatar_url ? { data_uri: u.avatar_url } : null;
+}
+
+async function setUserAvatar(id, { dataUri, rev }) {
+  if (DB_CONFIGURED) {
+    if (dataUri) {
+      // Blob first, then the rev: a circle that 404s is better than /me
+      // advertising a photo GET cannot serve.
+      await sbRequest("POST", "user_avatars?on_conflict=user_id",
+        [{ user_id: id, data_uri: dataUri, updated_at: new Date().toISOString() }],
+        { prefer: "resolution=merge-duplicates,return=minimal" });
+      await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { avatar_rev: rev });
+    } else {
+      await sbRequest("DELETE",
+        `user_avatars?user_id=eq.${encodeURIComponent(id)}`, undefined,
+        { prefer: "return=minimal" });
+      await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { avatar_rev: "" });
+    }
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (!u) return;
+  if (dataUri) { u.avatar_url = dataUri; u.avatar_rev = rev; }
+  else { delete u.avatar_url; u.avatar_rev = ""; }
+  await saveAccountStore();
+}
+
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -1092,6 +1142,10 @@ async function getSessionUser(req) {
       // no vault and nothing anywhere failed. Caught only by granting it to a
       // real account and looking. test/routes.test.js now pins the pairing.
       vault_beta: Boolean(user.vault_beta),
+      // Short content hash of the profile photo (migration 027). Empty means
+      // no photo. The bytes themselves live in user_avatars so this lookup
+      // never pulls them; presence here is what paints the account circle.
+      avatarRev: String(user.avatar_rev || ""),
     } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
@@ -5404,7 +5458,9 @@ const ACCOUNT_NAV_CSS = `
 .hdr nav [hidden]{display:none!important}
 .hdr nav .acct summary{display:flex;align-items:center}
 .hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:var(--slab);color:#fff;
-  font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block}
+  font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block;
+  background-size:cover;background-position:center;background-repeat:no-repeat;overflow:hidden}
+.hdr nav .acct .ini.photo{color:transparent;background-color:transparent}
 .hdr nav .dd .em{padding:6px 12px 7px;font-size:12px;color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:176px}
 /* Menu rows that act rather than navigate. Restates .dd a's box so the two
@@ -5480,7 +5536,10 @@ const ACCOUNT_NAV_JS =
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
   `if(!me)return;` +
   `var lab=String(me.name||me.email||"").trim();` +
-  `var ini=$("navAcctInitial");if(ini)ini.textContent=lab.slice(0,1).toUpperCase();` +
+  `var ini=$("navAcctInitial");if(ini){` +
+  `if(me.avatarRev){ini.className="ini photo";ini.style.backgroundImage="url(/api/account/avatar?v="+encodeURIComponent(me.avatarRev)+")";ini.textContent="";}` +
+  `else{ini.className="ini";ini.style.backgroundImage="";ini.textContent=lab.slice(0,1).toUpperCase();}` +
+  `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
   `show($("navUpgrade"),live&&!isPro);` +
@@ -7470,7 +7529,7 @@ function renderBrokersPageHTML(signedIn) {
 // contact (no street address; the SOS registry publishes it for anyone who
 // truly needs it).
 // ---------------------------------------------------------------------------
-const LEGAL_UPDATED = "August 3, 2026";
+const LEGAL_UPDATED = "August 14, 2026";
 
 function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
@@ -7567,8 +7626,8 @@ function renderPrivacyPageHTML(signedIn) {
     `<ul>` +
     `<li><strong>Search inputs.</strong> The property address, property type, lookback window, and any ` +
     `building attributes you enter, such as size, unit count, or clear height.</li>` +
-    `<li><strong>Account information.</strong> Your email address and a password. Passwords are stored ` +
-    `only as salted scrypt hashes and are never stored in plain text.</li>` +
+    `<li><strong>Account information.</strong> Your email address, a password, and an optional profile ` +
+    `photo you upload. Passwords are stored only as salted scrypt hashes and are never stored in plain text.</li>` +
     `<li><strong>Lead and broker-opinion requests.</strong> Your name, email address, phone number, ` +
     `company, and the property your request concerns.</li>` +
     `<li><strong>Saved work.</strong> Portfolio items and watchlist entries associated with your ` +
@@ -11927,7 +11986,7 @@ const server = http.createServer((req, res) =>
           setSessionCookie(res, req, token, Math.floor(SESSION_TTL_MS / 1000));
           logEvent("signup", {});
           console.log(`Account created: ${emailOk}`);
-          return sendJson(res, 200, { email: user.email, name: user.name || "" });
+          return sendJson(res, 200, publicAccount(user));
         }
         // login — identical 401 for unknown email and wrong password.
         const ok = await verifyPassword(password, existing ? existing.password_hash : DUMMY_HASH);
@@ -11935,7 +11994,7 @@ const server = http.createServer((req, res) =>
         const token = await createSession(existing.id);
         setSessionCookie(res, req, token, Math.floor(SESSION_TTL_MS / 1000));
         logEvent("login", {});
-        return sendJson(res, 200, { email: existing.email, name: existing.name || "" });
+        return sendJson(res, 200, publicAccount(existing));
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error(`Error handling ${req.url}:`, err);
@@ -11961,12 +12020,88 @@ const server = http.createServer((req, res) =>
   if (req.method === "GET" && req.url === "/api/account/me") {
     getSessionUser(req).then((user) => {
       if (!user) return sendJson(res, 401, { error: "Not signed in." });
-      return sendJson(res, 200, { email: user.email, name: user.name });
+      return sendJson(res, 200, publicAccount(user));
     }).catch((err) => {
       console.error("me error:", err);
       sendJson(res, 500, { error: "Account lookup failed." });
     });
     return;
+  }
+
+  // Profile photo. Bytes live in user_avatars (file fallback: on the user
+  // object). /me only ever carries avatarRev, never the data URI, so the
+  // header hydration on every market page stays small.
+  if (req.url.split("?")[0] === "/api/account/avatar") {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        let row;
+        try { row = await findUserAvatar(user.id); }
+        catch (err) {
+          console.error("Avatar read failed:", err.message);
+          return sendJson(res, 404, { error: "No photo." });
+        }
+        const decoded = row && row.data_uri ? AVATAR.decodeAvatar(row.data_uri) : null;
+        if (!decoded) return sendJson(res, 404, { error: "No photo." });
+        const rev = user.avatarRev || AVATAR.avatarRev(row.data_uri);
+        res.writeHead(200, {
+          "content-type": decoded.mime,
+          "content-length": decoded.bytes.length,
+          "cache-control": "private, max-age=86400",
+          "etag": `"${rev}"`,
+          "x-content-type-options": "nosniff",
+        });
+        return res.end(decoded.bytes);
+      })().catch((err) => {
+        console.error("Avatar GET failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your photo. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (req.method === "PUT") {
+      let body = "";
+      req.setEncoding("utf8");
+      // 80KB image is ~110KB as base64 inside JSON.
+      req.on("data", (c) => { body += c; if (body.length > 1.5e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (rateLimited("avatar:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
+          const user = await getSessionUser(req);
+          if (!user) return sendJson(res, 401, { error: "Please sign in." });
+          const parsed = JSON.parse(body || "{}");
+          const checked = AVATAR.validateAvatar(parsed);
+          if (checked.error) return sendJson(res, 400, { error: checked.error });
+          if (checked.clear) {
+            await setUserAvatar(user.id, { dataUri: "", rev: "" });
+            return sendJson(res, 200, publicAccount({ ...user, avatarRev: "" }));
+          }
+          await setUserAvatar(user.id, { dataUri: checked.dataUri, rev: checked.rev });
+          return sendJson(res, 200, publicAccount({ ...user, avatarRev: checked.rev }));
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Avatar save failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save your photo. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        await setUserAvatar(user.id, { dataUri: "", rev: "" });
+        return sendJson(res, 200, publicAccount({ ...user, avatarRev: "" }));
+      })().catch((err) => {
+        console.error("Avatar delete failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't remove your photo. Please try again in a minute." });
+      });
+      return;
+    }
   }
 
   if (req.method === "DELETE" && req.url === "/api/account") {

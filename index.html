@@ -1491,9 +1491,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
-            class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center"></button>
+            class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
+            style="position:relative">
+            <img id="acctMenuPhoto" alt="" class="hidden"
+              style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
+            <span id="acctMenuInitial"></span>
+          </button>
           <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-[#E4E2DA] rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-[#9AA2AD] truncate"></div>
+            <button id="menuAvatarBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Change photo</button>
             <!-- The vault's only entrance. Shown from /api/config's
                  canUseVault, so it appears for any Pro member (and for comped
                  admins) and for nobody else. There is no separate broker
@@ -1821,7 +1827,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     <section id="deskView" class="hidden mt-8 no-print">
       <div class="flex items-center justify-between border-b rd-hairline pb-2">
         <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">My Desk</h2>
-        <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
+        <div class="flex items-center gap-3">
+          <button type="button" id="deskAvatarBtn" aria-label="Change profile photo"
+            class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
+            style="position:relative">
+            <img id="deskAvatarPhoto" alt="" class="hidden"
+              style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
+            <span id="deskAvatarInitial"></span>
+          </button>
+          <div class="text-right">
+            <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
+            <div class="flex items-center justify-end gap-3">
+              <button type="button" id="deskAvatarChange"
+                class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">Add a photo</button>
+              <button type="button" id="deskAvatarRemove"
+                class="hidden text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">Remove</button>
+            </div>
+            <p id="deskAvatarMsg" class="hidden text-xs text-red-700"></p>
+          </div>
+          <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
+        </div>
       </div>
       <p class="text-sm text-[#5A6473] mt-3">Your recent searches and tracked properties.</p>
 
@@ -9071,7 +9096,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // The meta of a /r/<id> report on screen, or null. Read by showSharedStatus
   // and set once by the share loader.
   let sharedViewMeta = null;
-  let currentUser = null;           // { email, name } | null
+  let currentUser = null;           // { email, name, avatarRev } | null
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
   const portfolioKeys = new Set(); // "address\0type" currently on My Desk
@@ -9178,6 +9203,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     dflt.classList.add("hidden");
   }
 
+  function paintAvatarCircle(photoEl, initialEl, user) {
+    if (!photoEl || !initialEl) return;
+    const rev = user && user.avatarRev;
+    const label = user ? String(user.name || user.email || "").trim() : "";
+    initialEl.textContent = label ? label.slice(0, 1).toUpperCase() : "";
+    if (rev) {
+      photoEl.onload = () => { photoEl.classList.remove("hidden"); initialEl.classList.add("hidden"); };
+      photoEl.onerror = () => { photoEl.removeAttribute("src"); photoEl.classList.add("hidden"); initialEl.classList.remove("hidden"); };
+      photoEl.src = "/api/account/avatar?v=" + encodeURIComponent(rev);
+    } else {
+      photoEl.removeAttribute("src");
+      photoEl.classList.add("hidden");
+      initialEl.classList.remove("hidden");
+    }
+  }
+
+  function applyAvatarUI(user) {
+    paintAvatarCircle(
+      document.getElementById("acctMenuPhoto"),
+      document.getElementById("acctMenuInitial"),
+      user);
+    paintAvatarCircle(
+      document.getElementById("deskAvatarPhoto"),
+      document.getElementById("deskAvatarInitial"),
+      user);
+    const has = Boolean(user && user.avatarRev);
+    const change = document.getElementById("deskAvatarChange");
+    const remove = document.getElementById("deskAvatarRemove");
+    if (change) change.textContent = has ? "Change photo" : "Add a photo";
+    if (remove) remove.classList.toggle("hidden", !has);
+  }
+
   function refreshAccountUI() {
     applySearchLock();
     const on = Boolean(currentUser);
@@ -9186,9 +9243,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Sign-in/out while on /desk swaps the prompt card and desk content live.
     document.getElementById("deskSignIn").classList.toggle("hidden", on);
     if (on) {
-      const label = (currentUser.name || currentUser.email).trim();
-      document.getElementById("acctMenuBtn").textContent = label.slice(0, 1).toUpperCase();
       document.getElementById("acctMenuEmail").textContent = currentUser.email;
+      applyAvatarUI(currentUser);
+    } else {
+      applyAvatarUI(null);
     }
     syncPortfolioButton();
     const xb = document.getElementById("xlsxBtn");
@@ -9270,6 +9328,107 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
   document.getElementById("acctMenuBtn").addEventListener("click", () =>
     document.getElementById("acctMenu").classList.toggle("hidden"));
+  document.getElementById("menuAvatarBtn").addEventListener("click", () => {
+    document.getElementById("acctMenu").classList.add("hidden");
+    if (location.pathname === "/desk") {
+      document.getElementById("deskAvatarFile").click();
+    } else {
+      location.href = "/desk#avatar";
+    }
+  });
+
+  // Square-crop and shrink in the browser. The server refuses above 80KB;
+  // 256px JPEG at 0.85 is typically well under that for a face photo.
+  const AVATAR_PX = 256;
+  const AVATAR_TARGET = 60000;
+
+  function readAvatarFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error("No file chosen."));
+      if (!/^image\/(png|jpeg)$/.test(file.type)) {
+        return reject(new Error("Please choose a PNG or JPEG image."));
+      }
+      if (file.size > 5e6) return reject(new Error("That image is very large. Please choose one under 5MB."));
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error("Could not read that file."));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("That file is not an image we can read."));
+        img.onload = () => {
+          const side = Math.min(img.width || 1, img.height || 1);
+          const sx = Math.max(0, Math.round((img.width - side) / 2));
+          const sy = Math.max(0, Math.round((img.height - side) / 2));
+          const outSide = Math.min(AVATAR_PX, side);
+          const c = document.createElement("canvas");
+          c.width = outSide;
+          c.height = outSide;
+          const ctx = c.getContext("2d");
+          // JPEG has no alpha: fill white first so a transparent PNG does
+          // not encode its empty pixels as black.
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, outSide, outSide);
+          ctx.drawImage(img, sx, sy, side, side, 0, 0, outSide, outSide);
+          let q = 0.85;
+          let out = c.toDataURL("image/jpeg", q);
+          while (out.length > AVATAR_TARGET && q > 0.5) {
+            q -= 0.1;
+            out = c.toDataURL("image/jpeg", q);
+          }
+          if (out.length > AVATAR_TARGET) {
+            return reject(new Error("That photo is still too large after shrinking. Please choose a smaller image."));
+          }
+          resolve(out);
+        };
+        img.src = String(fr.result || "");
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function showAvatarMsg(text, isError) {
+    const el = document.getElementById("deskAvatarMsg");
+    if (!el) return;
+    if (!text) { el.classList.add("hidden"); el.textContent = ""; return; }
+    el.textContent = text;
+    el.classList.toggle("text-red-700", Boolean(isError));
+    el.classList.toggle("text-[#5A6473]", !isError);
+    el.classList.remove("hidden");
+  }
+
+  async function saveAvatar(dataUri) {
+    showAvatarMsg("");
+    const next = await acctApi("PUT", "/api/account/avatar", { avatar: dataUri });
+    currentUser = Object.assign(currentUser || {}, next);
+    applyAvatarUI(currentUser);
+  }
+
+  document.getElementById("deskAvatarBtn").addEventListener("click", () => {
+    document.getElementById("deskAvatarFile").click();
+  });
+  document.getElementById("deskAvatarChange").addEventListener("click", () => {
+    document.getElementById("deskAvatarFile").click();
+  });
+  document.getElementById("deskAvatarFile").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const dataUri = await readAvatarFile(file);
+      await saveAvatar(dataUri);
+    } catch (ex) {
+      showAvatarMsg(ex.message, true);
+    }
+  });
+  document.getElementById("deskAvatarRemove").addEventListener("click", async () => {
+    try {
+      const next = await acctApi("DELETE", "/api/account/avatar");
+      currentUser = Object.assign(currentUser || {}, next);
+      applyAvatarUI(currentUser);
+      showAvatarMsg("");
+    } catch (ex) {
+      showAvatarMsg(ex.message, true);
+    }
+  });
   // The theme toggle. Two states: it flips and remembers. The OS
   // preference is only the INITIAL default (see the boot script in
   // <head>); once someone clicks, their explicit choice wins forever.
@@ -9615,6 +9774,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!currentUser) { desk.classList.add("hidden"); return; }
     desk.classList.remove("hidden");
     document.getElementById("deskHello").textContent = currentUser.name ? `Signed in as ${currentUser.name}` : currentUser.email;
+    applyAvatarUI(currentUser);
+    if (location.hash === "#avatar") {
+      const el = document.getElementById("deskAvatarBtn");
+      if (el) el.scrollIntoView({ block: "center" });
+    }
     let items = [];
     try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
     portfolioKeys.clear();

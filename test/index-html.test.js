@@ -709,3 +709,14 @@ test("once pins settle, the hero re-runs so distance weighting actually moves th
   assert.match(html, /farther away/);
   assert.match(html, /nearby/);
 });
+
+test("My Desk and the account circle have a place to put a profile photo", () => {
+  assert.match(html, /id="acctMenuPhoto"/);
+  assert.match(html, /id="acctMenuInitial"/);
+  assert.match(html, /id="deskAvatarFile"/);
+  assert.match(html, /id="deskAvatarChange"/);
+  assert.match(html, /id="menuAvatarBtn"/);
+  assert.match(html, /function applyAvatarUI\(/);
+  assert.match(html, /function readAvatarFile\(/);
+  assert.match(html, /\/api\/account\/avatar/);
+});

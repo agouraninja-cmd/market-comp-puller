@@ -178,6 +178,7 @@ test("bare environment", async (t) => {
       assert.match(html, /id="navSignOut"/, p + " is missing the account menu");
       // The hydration script is what fills any of it in; markup alone is inert.
       assert.match(html, /\/api\/account\/me/, p + " never asks who the visitor is");
+      assert.match(html, /avatarRev/, p + " must paint a profile photo when /me says one exists");
       // Load-bearing: .hdr nav .dd a sets display:block, which out-specifies
       // the [hidden] attribute's UA rule. Without this line every page paints
       // signed-out and signed-in chrome at the same time.
@@ -505,6 +506,79 @@ test("bare environment", async (t) => {
       assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
       assert.notEqual(r.status, 404, `${method} ${p} should exist and refuse, not be absent`);
     }
+  });
+
+  await t.test("every profile-photo route refuses an anonymous caller", async () => {
+    const routes = [
+      ["GET", "/api/account/avatar", null],
+      ["PUT", "/api/account/avatar", { avatar: "" }],
+      ["DELETE", "/api/account/avatar", null],
+    ];
+    for (const [method, p, body] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      assert.notEqual(r.status, 404, `${method} ${p} should exist and refuse, not be absent`);
+    }
+  });
+
+  await t.test("a signed-in account can set, serve, and remove a profile photo", async () => {
+    const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const PNG = "data:image/png;base64," + PNG_B64;
+    const email = `avatar-${Date.now()}@example.com`;
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "correct-horse-battery", name: "Ava" }),
+    });
+    assert.equal(signup.status, 200);
+    const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_session="), "expected a session cookie");
+    const signed = { cookie };
+
+    const me0 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me0.avatarRev, "");
+    assert.equal(JSON.stringify(me0).includes("data:image"), false,
+      "/me must never carry the photo bytes");
+
+    const missing = await fetch(srv.base + "/api/account/avatar", { headers: signed });
+    assert.equal(missing.status, 404, "no photo yet must 404, not 200");
+
+    const badUrl = await fetch(srv.base + "/api/account/avatar", {
+      method: "PUT", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ avatar: "https://example.com/me.png" }),
+    });
+    assert.equal(badUrl.status, 400, "a URL must be refused");
+
+    const saved = await fetch(srv.base + "/api/account/avatar", {
+      method: "PUT", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ avatar: PNG }),
+    });
+    assert.equal(saved.status, 200, "a real PNG must save against the file store");
+    const savedBody = await saved.json();
+    assert.ok(savedBody.avatarRev, "save must return a rev");
+    assert.equal(JSON.stringify(savedBody).includes("data:image"), false,
+      "the save response must not echo the bytes");
+
+    const me1 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me1.avatarRev, savedBody.avatarRev);
+    assert.equal(JSON.stringify(me1).includes("data:image"), false);
+
+    const img = await fetch(srv.base + "/api/account/avatar?v=" + me1.avatarRev, { headers: signed });
+    assert.equal(img.status, 200);
+    assert.match(img.headers.get("content-type") || "", /image\/png/);
+    const bytes = Buffer.from(await img.arrayBuffer());
+    assert.deepEqual(bytes, Buffer.from(PNG_B64, "base64"));
+
+    const cleared = await fetch(srv.base + "/api/account/avatar", {
+      method: "DELETE", headers: signed,
+    });
+    assert.equal(cleared.status, 200);
+    assert.equal((await cleared.json()).avatarRev, "");
+    const gone = await fetch(srv.base + "/api/account/avatar", { headers: signed });
+    assert.equal(gone.status, 404);
   });
 
   await t.test("a share from an anonymous visitor cannot carry a brand it supplied", async () => {

@@ -1344,6 +1344,21 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
 // mailed" marker written there would be lost and every watcher would be re-sent the
 // same comps after each deploy. Losing a convenience is acceptable; mailing
 // people the same thing twice is what teaches them to filter us.
+// A PostgREST `in.(...)` value list: each value quoted and percent-encoded,
+// the separating commas left LITERAL. This is corpusRowsForMarkets' idiom,
+// lifted out so the three call sites cannot drift apart.
+//
+// Encoding the joined string instead — which is what these callers did first —
+// happens to work for the ids they pass today, because %2C decodes back to a
+// comma before PostgREST's own parser sees it, and a uuid contains no comma of
+// its own to be confused with a separator. It stops working the moment a value
+// contains a comma, which in this codebase is not hypothetical: a market key
+// IS "Boise, ID", and that is exactly the trap corpusRowsForMarkets documents.
+// So this is consistency and one less edge to remember, not a bug fix.
+function pgInList(values) {
+  return values.map((v) => `"${encodeURIComponent(String(v))}"`).join(",");
+}
+
 async function allWatchlistItems(limit = 5000) {
   if (!DB_CONFIGURED) return [];
   return await sbRequest("GET", `watchlist_items?order=user_id.asc&limit=${Number(limit) || 5000}`) || [];
@@ -1354,9 +1369,8 @@ async function allWatchlistItems(limit = 5000) {
 async function markWatchlistDigested(userId, ids) {
   if (!DB_CONFIGURED || !ids.length) return;
   const now = new Date().toISOString();
-  const list = ids.map((id) => `"${String(id).replace(/"/g, "")}"`).join(",");
   await sbRequest("PATCH",
-    `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${encodeURIComponent(list)})`,
+    `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
     { last_digest_at: now });
 }
 async function setDigestOptout(userId, optout) {
@@ -1365,9 +1379,8 @@ async function setDigestOptout(userId, optout) {
 }
 async function findUsersByIds(ids) {
   if (!DB_CONFIGURED || !ids.length) return [];
-  const list = ids.map((id) => `"${String(id).replace(/"/g, "")}"`).join(",");
   return await sbRequest("GET",
-    `users?id=in.(${encodeURIComponent(list)})&select=id,email,digest_optout`) || [];
+    `users?id=in.(${pgInList(ids)})&select=id,email,digest_optout`) || [];
 }
 
 // The unsubscribe link has to work for somebody who is not signed in, months
@@ -3028,9 +3041,19 @@ const STATE_NAMES = {
 //                       in Resend; until then these calls silently no-op
 //                       (with a console line so tests can see the skip).
 // ---------------------------------------------------------------------------
+// Where the mail actually goes. Overridable ONLY so the suite can prove that
+// something was sent, to whom, and with what body — the watchlist digest is
+// the one feature whose whole point is an email leaving the building, and
+// until this existed the tests could reach the send call and then had to stop
+// and assume. Unset everywhere except in tests; production never sets it, so
+// the constant below is the live value. It is not a secret and authorizes
+// nothing (RESEND_API_KEY still does), but it does decide where mail is
+// posted, so it belongs in the same trusted place as the key itself.
+const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com/emails").trim();
+
 function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
   if (!RESEND_API_KEY) return;
-  fetch("https://api.resend.com/emails", {
+  fetch(RESEND_API_URL, {
     method: "POST",
     headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({

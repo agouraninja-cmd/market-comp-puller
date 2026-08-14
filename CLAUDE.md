@@ -58,9 +58,24 @@ server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
 twice, so trust `npm test`'s own summary over the number written here.
-Nothing needs a database, only the routes file starts a server and it calls
-nothing external, and the whole run finishes in about a second, so there is
+Nothing needs a real database or a real mail provider, only the route-level
+files start a server, nothing calls anything external, and the whole run
+finishes in a couple of seconds, so there is
 no excuse for not running it after touching any of those rules.
+**`test/helpers/fake-supabase.js`** is how the second half of that stays true
+(2026-08-13): a stand-in PostgREST + Resend that lets a suite exercise the
+paths which exist ONLY with a database. Most of this app degrades to a local
+JSON file when Supabase is unconfigured, which is what makes the rest of the
+suite free — but the features that deliberately have NO file fallback (the
+vault, permissioned shares, the watchlist digest) are exactly the ones where a
+mistake costs a broker their book or mails a stranger twice, and before this
+they could only be tested up to "it refuses without a database".
+`test/watchlist-digest-run.test.js` is the first user. Two rules: the fake
+implements only the query shapes server.js actually sends and **400s on
+anything else rather than matching everything** (a fake that matches
+everything reports a user-scoped read as working while it returns another
+account's rows); and it is a stand-in, not a Postgres, so a new query shape
+means teaching it that shape deliberately, never loosening its parser.
 Nothing beyond those modules and that route wiring is tested; do not assume a
 green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
 every push: `node --check` on
@@ -214,6 +229,13 @@ dependency. `.env` is git-ignored — never commit it.
   but never breaks the request. Caveat: without a verified domain Resend only
   delivers to the address that owns the Resend account, so the account must be
   registered with the notify address itself.
+- `RESEND_API_URL` — **test-only**, defaults to Resend's real endpoint and is
+  never set in production. It exists because the watchlist digest is the one
+  feature whose entire point is an email leaving the building, and without it
+  the suite could reach the send call and then had to stop and assume. With
+  it, `test/watchlist-digest-run.test.js` asserts who was mailed and what the
+  body said. Not a secret and authorizes nothing (`RESEND_API_KEY` still
+  does), but it decides where mail is posted, so treat it as trusted config.
 - `LEAD_NOTIFY_EMAIL` — where those notifications go; defaults to
   agouraninja@gmail.com.
 - `EMAIL_FROM` — optional, e.g. `CompNinja <reports@yourdomain.com>`. The single

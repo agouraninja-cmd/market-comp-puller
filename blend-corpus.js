@@ -172,11 +172,36 @@ function blendNearbyComps(report, rows, opts) {
     const key = keyOf(shaped);
     if (seen.has(key)) continue;
     seen.add(key);
+    shaped.distance_mi = Math.round(mi * 10) / 10;
     extras.push(shaped);
   }
 
   if (!extras.length) return report;
   return { ...report, comps: [...comps, ...extras], corpus_count: extras.length };
+}
+
+// Write `distance_mi` onto comps that already have coordinates, without
+// mutating the caller's array (the cache object must stay clean). Comps that
+// already carry a distance, or that have no point, are left alone. Missing
+// data stays missing: that is what keeps an unplaced search comp's weight
+// identical to yesterday's until the map locates it.
+function attachCompDistances(report, subject) {
+  if (!report || typeof report !== "object" || Array.isArray(report)) return report;
+  const subj = coordsFromReport(report) || parseCoords(subject) || null;
+  if (!subj) return report;
+  const comps = Array.isArray(report.comps) ? report.comps : [];
+  let changed = false;
+  const next = comps.map((c) => {
+    if (!c || typeof c !== "object") return c;
+    if (c.distance_mi != null && c.distance_mi !== "") return c;
+    const ll = parseCoords(c);
+    if (!ll) return c;
+    const mi = milesBetween(subj, ll);
+    if (!(mi >= 0) || !Number.isFinite(mi)) return c;
+    changed = true;
+    return { ...c, distance_mi: Math.round(mi * 10) / 10 };
+  });
+  return changed ? { ...report, comps: next } : report;
 }
 
 module.exports = {
@@ -189,4 +214,5 @@ module.exports = {
   lookbackCutoffFrac,
   RADIUS_MILES,
   FIELD_MAP,
+  attachCompDistances,
 };

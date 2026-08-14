@@ -11,6 +11,7 @@ const {
   parseCoords,
   milesBetween,
   RADIUS_MILES,
+  attachCompDistances,
 } = require("../blend-corpus");
 
 const BOISE = { lat: 43.615, lng: -116.2023 };
@@ -99,6 +100,8 @@ test("an in-range dated sale is appended as an ordinary report comp", () => {
   assert.equal(added.deal_date, undefined);
   assert.equal(added.from_corpus, true);
   assert.equal(added.source_type, "public_record");
+  assert.equal(typeof added.distance_mi, "number");
+  assert.ok(added.distance_mi > 4 && added.distance_mi < 6);
 });
 
 test("empty extras return the same object, with no corpus_count key", () => {
@@ -206,4 +209,29 @@ test("toReportComp never carries corpus plumbing columns", () => {
   assert.equal(c.market, undefined);
   assert.equal(c.ts, undefined);
   assert.equal(c.from_corpus, true);
+});
+
+test("attachCompDistances stamps miles onto comps that already have a point", () => {
+  const near = offsetMiles(BOISE, 2);
+  const rep = report({
+    comps: [{ address: "9 Old Cache Rd, Boise, ID", lat: String(near.lat), lng: String(near.lng) }],
+  });
+  const out = attachCompDistances(rep);
+  assert.notEqual(out, rep, "must not mutate the cached report object");
+  assert.equal(rep.comps[0].distance_mi, undefined);
+  assert.equal(typeof out.comps[0].distance_mi, "number");
+  assert.ok(out.comps[0].distance_mi > 1 && out.comps[0].distance_mi < 3);
+});
+
+test("attachCompDistances leaves unplaced comps and already-stamped comps alone", () => {
+  const rep = report({
+    comps: [
+      { address: "no pin", date: "Feb 2026" },
+      { address: "already", distance_mi: 3.1, lat: String(BOISE.lat), lng: String(BOISE.lng) },
+    ],
+  });
+  const out = attachCompDistances(rep);
+  assert.equal(out, rep);
+  assert.equal(out.comps[0].distance_mi, undefined);
+  assert.equal(out.comps[1].distance_mi, 3.1);
 });

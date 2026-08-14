@@ -3254,12 +3254,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // eyeball. Every pin is already geocoded in the browser, so this costs one
   // haversine per comp and no network call at all.
   //
-  // DISPLAY ONLY, deliberately: compWeight is mirrored in comp-gate.js so a
-  // free report's range matches a Pro one, and the server has no comp
-  // coordinates to mirror with (the model stopped returning per-comp lat/lng
-  // on 2026-07-31). A distance term in the weight would silently desync the
-  // two copies. Distance-weighting is a separate decision, not a side effect
-  // of showing the number.
+  // The mile figure also feeds valuation.js's distance term (1-mile free pass,
+  // then a 4-mile half-life). Locked comps carry `distance_mi` and never
+  // lat/lng, which is how a free report's range stays in step with Pro once
+  // the server has stamped the number. Unplaced comps stay neutral.
   // --------------------------------------------------------------------------
   function milesBetween(a, b) {
     const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
@@ -3326,6 +3324,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderTableHead();
     renderTableBody(false);   // no entrance cascade — the rows are already on screen
     renderDistanceNote();
+    // Pins settling is the first moment most search comps have a distance, so
+    // the Low / Likely / High that painted without one has to be redone. Match
+    // labels ride renderTableBody above.
+    renderOwnerHero(currentParsed, currentMeta);
+    renderAnalysisCluster(currentParsed, currentMeta, false);
+    renderMarketChart();
   }
   // Named for its original life as a plain USD formatter; now the single
   // formatting choke point for every client-computed money figure. All call
@@ -4232,7 +4236,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const w = compWeight(comp, asOfOf(meta), subjectSizeForMatch(parsed), subjectYearForMatch(parsed));
     const tier = MATCH_TIERS.find((t) => w >= t.min) || MATCH_TIERS[MATCH_TIERS.length - 1];
     // Reasons in the same order compWeight multiplies them, so the label can
-    // always be traced back to the four factors that produced it.
+    // always be traced back to the five factors that produced it.
     const reasons = [];
     const age = compAgeYears(comp, asOfOf(meta));
     if (age !== null) {
@@ -4247,6 +4251,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const ySub = subjectYearForMatch(parsed), yComp = yearOf(comp.year_built);
     if (ySub != null && yComp != null) {
       reasons.push(Math.abs(yComp - ySub) > 15 ? "different vintage" : "similar vintage");
+    }
+    const mi = numericValue(comp.distance_mi);
+    if (mi >= 0 && Number.isFinite(mi)) {
+      reasons.push(mi > 1 ? "farther away" : "nearby");
     }
     const t = SOURCE_TIERS[compTier(comp)];
     if (t) reasons.push(t.label.toLowerCase() + " source");

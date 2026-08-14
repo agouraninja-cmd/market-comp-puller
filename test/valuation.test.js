@@ -151,6 +151,28 @@ test("compWeight treats missing year as neutral, never as a penalty", () => {
   assert.equal(V.compWeight(comp({ year_built: "2024" }), AS_OF, 10000), 1);
 });
 
+test("compWeight gives a free pass within a mile of the subject", () => {
+  assert.equal(V.compWeight(comp({ distance_mi: 0.4 }), AS_OF, 10000), 1);
+  assert.equal(V.compWeight(comp({ distance_mi: 1 }), AS_OF, 10000), 1);
+  assert.equal(V.compWeight(comp({ distance_mi: "< 0.1 mi" }), AS_OF, 10000), 1);
+});
+
+test("compWeight halves at five miles (4-mile half-life after the 1-mile pass)", () => {
+  assert.equal(V.compWeight(comp({ distance_mi: 5 }), AS_OF, 10000), 0.5);
+  assert.equal(V.compWeight(comp({ distance_mi: "5.0 mi" }), AS_OF, 10000), 0.5);
+});
+
+test("compWeight treats missing distance as neutral, never as a penalty", () => {
+  assert.equal(V.compWeight(comp({ distance_mi: "" }), AS_OF, 10000), 1);
+  assert.equal(V.compWeight(comp(), AS_OF, 10000), 1);
+});
+
+test("distanceMiles reads the column the table already shows", () => {
+  assert.equal(V.distanceMiles(comp({ distance_mi: 2.3 })), 2.3);
+  assert.equal(V.distanceMiles(comp({ distance_mi: "2.3 mi" })), 2.3);
+  assert.equal(V.distanceMiles(comp()), null);
+});
+
 test("trendFactor compounds the market trend over the comp's age", () => {
   const f = V.trendFactor(comp({ date: "2024-07-01" }), AS_OF, 10);
   assert.ok(Math.abs(f - 1.21) < 0.005, "expected ~1.21, got " + f);

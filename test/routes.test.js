@@ -1896,6 +1896,9 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   assert.ok(vaultAt >= 0, "gate() must call blendPrivateComps");
   assert.ok(radiusAt < paywallAt, "saved public deals must enter BEFORE the paywall so extras become locked_basis");
   assert.ok(paywallAt < vaultAt, "vault blend must stay AFTER the paywall");
+  const distAt = body.indexOf("RADIUSBLEND.attachCompDistances");
+  assert.ok(distAt >= 0, "gate() must stamp distance_mi before the paywall");
+  assert.ok(distAt < paywallAt, "distance must be on the comps (and then locked_basis) before gateReport");
   assert.equal(/harvestComps\s*\(\s*typeOk/.test(body), false,
     "harvest must not run inside gate() — extras would re-enter the corpus from a serialization-only merge");
 });

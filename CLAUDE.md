@@ -2304,13 +2304,15 @@ private row has not earned. Two rules matter when editing anything down here:
    evidence, not a fourth figure** — `renderSubjectAsking` draws one line
    under the approaches; `askFit` (pure, in `valuation.js`, same 25% rule as
    `outlierOf`) names a gap of more than 25% on the trust line and never
-   changes the range. **Vintage is a fourth `compWeight` factor** — free pass
+   changes the range. **Vintage is a `compWeight` factor** — free pass
    within 15 years of `subject_year_built`, then halving per further 15
    years — so a 2024 teardown-rebuild does not price a 1994 resale at full
-   weight. `year_built` rides `locked_basis` so free and Pro ranges still
-   match. **User-typed asking price wins** (`askingRangeFrom`); the looked-up
-   listing is the fallback that lights the comparison card when the visitor
-   never typed one.
+   weight. **Distance is the fifth** — free pass within 1 mile, then a
+   4-mile half-life — so a sale across town does not pull like one next
+   door; `distance_mi` rides `locked_basis` (never lat/lng). `year_built`
+   rides `locked_basis` so free and Pro ranges still match. **User-typed
+   asking price wins** (`askingRangeFrom`); the looked-up listing is the
+   fallback that lights the comparison card when the visitor never typed one.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

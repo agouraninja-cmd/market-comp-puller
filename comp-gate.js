@@ -70,8 +70,10 @@ function compAgeYears(c, asOfMs) {
   return yrs > 0 ? Math.min(yrs, 5) : 0;
 }
 
-// Recency x size fit x provenance, floored at 0.15. See the mirror warning
-// above before editing.
+// Recency x size fit x distance x provenance, floored at 0.15. See the mirror
+// warning above before editing. Vintage lives only in valuation.js (the gate
+// does not have the subject's year). Distance uses `distance_mi` when present
+// so a locked row can still pull by pocket without carrying coordinates.
 function compWeight(c, asOfMs, subjectSqft) {
   let w = 1;
   const age = compAgeYears(c, asOfMs);
@@ -81,6 +83,8 @@ function compWeight(c, asOfMs, subjectSqft) {
     const octaves = Math.abs(Math.log2(compSF / subjectSqft));
     if (octaves > 1) w *= Math.pow(0.5, octaves - 1);
   }
+  const mi = numericValue(c && c.distance_mi);
+  if (mi >= 0 && Number.isFinite(mi) && mi > 1) w *= Math.pow(0.5, (mi - 1) / 4);
   const tier = tierOf(c);
   if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
   return Math.max(0.15, w);
@@ -145,6 +149,11 @@ function basisRow(c) {
   // it — the exact desync locked_basis exists to prevent. A year is not
   // identifying.
   if (c.year_built) row.year_built = c.year_built;
+  // Distance, not coordinates: a mile figure cannot be reverse-geocoded to a
+  // building, and without it a locked far-away sale would pull the free
+  // range the same as a next-door one while a Pro report down-weighted it.
+  const mi = numericValue(c.distance_mi);
+  if (mi >= 0 && Number.isFinite(mi)) row.distance_mi = Math.round(mi * 10) / 10;
   return row;
 }
 

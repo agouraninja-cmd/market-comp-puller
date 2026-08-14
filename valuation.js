@@ -134,7 +134,16 @@
     return m ? Number(m[0]) : null;
   }
 
-  // Four quiet factors, multiplied:
+  // Miles from the subject, or null. Reads the numeric `distance_mi` the
+  // report already shows in the Distance column ("2.3 mi", 2.3, "< 0.1 mi").
+  // Coordinates themselves never enter the weight: locked_basis is allowed
+  // to carry a distance and must never carry a lat/lng.
+  function distanceMiles(c) {
+    const v = numericValue(c && c.distance_mi);
+    return v >= 0 && Number.isFinite(v) ? v : null;
+  }
+
+  // Five quiet factors, multiplied:
   //   recency      2-year half-life on the comp's age at the report date
   //   size match   free pass within 0.5x-2x of the subject, halving per
   //                further doubling (a 5k SF building should not be priced by
@@ -143,12 +152,17 @@
   //                then halving per further 15 years (a 1994 house should not
   //                be priced by 2024 new construction: they are different
   //                products even on the same block)
+  //   distance     free pass within 1 mile, then a 4-mile half-life (a sale
+  //                five miles away is a different pocket; the Austin Rosedale
+  //                failure was vintage AND pocket, and vintage alone left the
+  //                far comps pulling the headline)
   //   source       verified/public-record full weight, down to half for model
   //                estimates (mirrors the badge tiers)
   // Floored at 0.15 so no comp silently vanishes from a range it visibly sits
   // in. Missing data is neutral, never a penalty. `subjYear` is optional so
   // callers that have no year (the accuracy backtest, a report whose lookup
-  // found none) keep the pre-vintage weights exactly.
+  // found none) keep the pre-vintage weights exactly. Missing distance is
+  // the same: a comp the map has not placed yet must not be punished.
   function compWeight(c, asOf, subjSF, subjYear) {
     let w = 1;
     const age = compAgeYears(c, asOf);
@@ -163,6 +177,8 @@
       const dy = Math.abs(yComp - ySub);
       if (dy > 15) w *= Math.pow(0.5, (dy - 15) / 15);
     }
+    const mi = distanceMiles(c);
+    if (mi !== null && mi > 1) w *= Math.pow(0.5, (mi - 1) / 4);
     const tier = tierOf(c);
     if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
     return Math.max(0.15, w);
@@ -321,7 +337,7 @@
 
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
-    TIER_WEIGHT, tierOf, compAgeYears, yearOf, compWeight, trendFactor,
+    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
   };
 });

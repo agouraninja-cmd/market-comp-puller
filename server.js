@@ -11266,6 +11266,9 @@ const server = http.createServer((req, res) =>
             if (merged && merged.corpus_count) {
               console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${RADIUSBLEND.RADIUS_MILES} mi of ${addressOk}`);
             }
+            merged = RADIUSBLEND.attachCompDistances(merged, subject);
+          } else {
+            merged = RADIUSBLEND.attachCompDistances(merged);
           }
           const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
           const gated = GATE.gateReport(merged, ent, { asOfMs: Date.now(), subjectSqft });

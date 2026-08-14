@@ -608,3 +608,11 @@ test("the address field and the shared-report lock field both wire Tab-to-fill",
   assert.match(html, /bindTabFillExample\(document\.getElementById\("address"\)\)/);
   assert.match(html, /bindTabFillExample\(document\.getElementById\("lockAddress"\)\)/);
 });
+
+test("once pins settle, the hero re-runs so distance weighting actually moves the range", () => {
+  const fn = html.match(/function refreshDistances\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "index.html must define refreshDistances()");
+  assert.match(fn[0], /renderOwnerHero\(currentParsed, currentMeta\)/);
+  assert.match(html, /farther away/);
+  assert.match(html, /nearby/);
+});

@@ -133,6 +133,7 @@ const BRANDING = require("./branding.js");
 // avatar_rev field on GET /api/account/me.
 const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
+const SVAIM = require("./streetview-aim");
 // "The market under this saved property moved since you last looked" — the
 // desk's only figure that changes without the owner re-running anything.
 // Pure and tested; server.js owns the corpus read and passes in dated sales.
@@ -369,12 +370,13 @@ function allMarketPages() {
 // and indistinguishable from simply typing the wrong key.
 const ADMIN_KEY = (process.env.ADMIN_KEY || "").trim();
 
-// Optional Google Maps key powering the Street View photos in map pin
+// Optional Google Maps key powering the Street View overlay in map pin
 // popups (served through GET /api/streetview so the key never reaches the
-// browser). Unset = the route 404s and popups are text-only, as before.
+// browser). Unset = the route 404s and popups stay on the aerial close-up.
 const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
-// lat,lng -> boolean "imagery exists" from the free metadata endpoint, so
-// repeat popup opens never re-ask Google. In-memory, capped, process-lifetime.
+// loc -> false | { heading, panoId, plat, plng }. The honesty gate
+// (streetview-aim.js) runs on the metadata response, so a far pano is a
+// cached miss, not a billed image of the neighbor. In-memory, capped.
 const STREETVIEW_META_CACHE = new Map();
 
 // Optional email ping on every new lead / broker comp submission, sent via
@@ -14342,25 +14344,20 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // --- Street View photo proxy. Powers the click-to-load building photo in
-  // map pin popups (docs/superpowers/specs/2026-07-28-streetview-photos-
-  // design.md). Key stays server-side; the FREE metadata endpoint is asked
-  // first (cached) so a spot with no imagery never bills an image request.
-  // Dark when GOOGLE_MAPS_API_KEY is unset. Every failure path is a bare
-  // 404 — the popup <img>'s onerror removes it and the popup stays text-only. ---
+  // --- Street View photo proxy. Aerial is already in the popup; this
+  // overlays a street-level shot ONLY when a camera sits within
+  // SVAIM.MAX_PANO_M of the snapped building and we can aim it at that
+  // building. A far pano (fence, neighbor, warehouse street) 404s and the
+  // aerial stays. Coords only — address aiming photographed the road on
+  // unmapped parcels. Dark when GOOGLE_MAPS_API_KEY is unset. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/streetview") {
     const params = new URL(req.url, "http://localhost").searchParams;
-    // Prefer an address: Google geocodes it rooftop-accurate and aims the
-    // camera at the building's front — noticeably better for houses, whose
-    // OSM footprints are often missing so the coordinate path could only aim
-    // at the street centerline. Coordinates remain the fallback.
-    const address = String(params.get("address") || "").trim().slice(0, 200);
     // Number(null) is 0, so missing params must not masquerade as 0,0.
     const lat = params.get("lat") === null ? NaN : Number(params.get("lat"));
     const lng = params.get("lng") === null ? NaN : Number(params.get("lng"));
     const hasCoords = isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
-    if (!address && !hasCoords) {
-      return sendJson(res, 400, { error: "address or lat and lng are required." });
+    if (!hasCoords) {
+      return sendJson(res, 400, { error: "lat and lng are required." });
     }
     if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
     // A report has <= ~9 pins; 60/window is generous for a human reader.
@@ -14369,35 +14366,44 @@ const server = http.createServer((req, res) =>
     }
     (async () => {
       try {
-        const loc = address ? encodeURIComponent(address) : lat.toFixed(5) + "," + lng.toFixed(5);
-        let hasImagery = STREETVIEW_META_CACHE.get(loc);
-        if (hasImagery === undefined) {
+        const loc = lat.toFixed(5) + "," + lng.toFixed(5);
+        let aim = STREETVIEW_META_CACHE.get(loc);
+        if (aim === undefined) {
           const mr = await fetch(
             "https://maps.googleapis.com/maps/api/streetview/metadata?location=" + loc +
-              "&source=outdoor&key=" + GOOGLE_MAPS_API_KEY,
+              "&source=outdoor&radius=" + SVAIM.MAX_PANO_M +
+              "&key=" + GOOGLE_MAPS_API_KEY,
             { signal: AbortSignal.timeout(6000) }
           );
           const mj = await mr.json();
-          hasImagery = Boolean(mj && mj.status === "OK");
+          const panoLL = mj && mj.status === "OK" && mj.location
+            ? { lat: Number(mj.location.lat), lng: Number(mj.location.lng) }
+            : null;
+          const aimed = SVAIM.aimAt({ lat, lng }, panoLL);
+          aim = aimed
+            ? {
+                heading: aimed.heading,
+                panoId: String(mj.pano_id || ""),
+                plat: panoLL.lat,
+                plng: panoLL.lng,
+              }
+            : false;
           if (STREETVIEW_META_CACHE.size >= 500) {
             STREETVIEW_META_CACHE.delete(STREETVIEW_META_CACHE.keys().next().value);
           }
-          STREETVIEW_META_CACHE.set(loc, hasImagery);
+          STREETVIEW_META_CACHE.set(loc, aim);
         }
-        if (!hasImagery) { res.writeHead(404); return res.end(); }
-        // No `heading` param: Google then aims the camera at the given point
-        // from the nearest pano — the "look at the building" behavior.
-        // fov=100 + a slight upward pitch: in dense downtowns the pano sits
-        // right against tall buildings, and the old fov=80 straight-on shot
-        // came back as a slice of wall or one storefront window (Boston
-        // Financial District report). The wider, slightly raised frame
-        // shows a recognizable building there while barely changing the
-        // suburban/industrial shots taken from across a parking lot.
-        const ir = await fetch(
-          "https://maps.googleapis.com/maps/api/streetview?size=600x360&location=" + loc +
-            "&source=outdoor&fov=100&pitch=6&key=" + GOOGLE_MAPS_API_KEY,
-          { signal: AbortSignal.timeout(8000) }
-        );
+        if (!aim) { res.writeHead(404); return res.end(); }
+        let imgUrl = "https://maps.googleapis.com/maps/api/streetview?size=600x360"
+          + "&source=outdoor&fov=80&pitch=6"
+          + "&heading=" + Number(aim.heading).toFixed(1)
+          + "&key=" + GOOGLE_MAPS_API_KEY;
+        if (aim.panoId) {
+          imgUrl += "&pano=" + encodeURIComponent(aim.panoId);
+        } else {
+          imgUrl += "&location=" + Number(aim.plat).toFixed(5) + "," + Number(aim.plng).toFixed(5);
+        }
+        const ir = await fetch(imgUrl, { signal: AbortSignal.timeout(8000) });
         if (!ir.ok) { res.writeHead(404); return res.end(); }
         const buf = Buffer.from(await ir.arrayBuffer());
         res.writeHead(200, {

@@ -1,4 +1,5 @@
 [
+  {"date": "2026-08-14", "type": "improvement", "title": "Map pin photos show the building from the street when the camera is actually there", "details": "Aerial still paints on hover so the popup stays snappy. Street View overlays it only when a camera sits within 35 m of the snapped building and is aimed at it. A fence, a neighbor, or the street in front of a warehouse 404s and the roof stays. The Google round-trip is billed only for the pin you hover, not for the whole map."},
   {
     "date": "2026-08-14",
     "type": "fix",

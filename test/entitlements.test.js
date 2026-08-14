@@ -25,6 +25,8 @@ const {
   ANON_EXPORTS_PER_MONTH,
   PRO_MAX_LOOKBACK_MONTHS,
   RENEWAL_SLACK_MS,
+  FREE_PORTFOLIO_MAX_ITEMS,
+  PRO_PORTFOLIO_MAX_ITEMS,
 } = require("../entitlements");
 
 // Fixed clock so nothing here depends on when it runs.
@@ -90,7 +92,7 @@ test("every Pro-granting branch answers every Pro question", () => {
   for (const key of Object.keys(pro)) {
     assert.ok(key in admin, `admin entitlements are missing "${key}"`);
   }
-  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses"]) {
+  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses", "portfolioMaxItems", "portfolioValues"]) {
     assert.deepEqual(admin[key], pro[key], `admin should match Pro on "${key}"`);
   }
 });
@@ -241,6 +243,52 @@ test("free account: FREE_MAX_COMPS comps and three exports a month", () => {
   assert.equal(e.plan, "free");
   assert.equal(e.maxComps, FREE_MAX_COMPS);
   assert.equal(e.exportsRemaining, FREE_EXPORTS_PER_MONTH);
+});
+
+test("Free signed-in: 100 properties, no dollar figures on the desk", () => {
+  const e = ent({ user: USER });
+  assert.equal(e.portfolioMaxItems, FREE_PORTFOLIO_MAX_ITEMS);
+  assert.equal(e.portfolioMaxItems, 100);
+  assert.equal(e.portfolioValues, false);
+});
+
+test("anonymous: same cap as Free, no desk dollars (they cannot POST anyway)", () => {
+  const e = ent({ user: null });
+  assert.equal(e.portfolioMaxItems, 100);
+  assert.equal(e.portfolioValues, false);
+});
+
+test("Pro, admin, and tester get 500 and the book of values", () => {
+  const cases = [
+    ent({ user: USER, subscription: activeSub() }),
+    ent({ user: USER, admin: true }),
+    ent({ user: USER, tester: true }),
+  ];
+  for (const e of cases) {
+    assert.equal(e.pro, true, e.plan);
+    assert.equal(e.portfolioMaxItems, PRO_PORTFOLIO_MAX_ITEMS);
+    assert.equal(e.portfolioMaxItems, 500);
+    assert.equal(e.portfolioValues, true, e.plan);
+  }
+});
+
+test("a $20 unlock does not raise the portfolio cap or show desk dollars", () => {
+  const e = ent({
+    user: USER,
+    reportId: "r_1",
+    purchase: { report_id: "r_1" },
+  });
+  assert.equal(e.reportUnlocked, true);
+  assert.equal(e.portfolioMaxItems, 100);
+  assert.equal(e.portfolioValues, false);
+});
+
+test("a dark deployment keeps the pre-Pro desk (values on) and the old cap of 100", () => {
+  for (const user of [null, USER]) {
+    const e = computeEntitlements({ user, now: NOW, enabled: false });
+    assert.equal(e.portfolioMaxItems, 100);
+    assert.equal(e.portfolioValues, true, "today's desk already shows likely value to everyone");
+  }
 });
 
 test("export tally counts down and floors at zero", () => {

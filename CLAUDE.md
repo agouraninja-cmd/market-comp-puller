@@ -51,7 +51,9 @@ mark a render uses, and the rule that a shared report is decided entirely by
 its own snapshot) and **`watchlist-digest.js`** (the digest's copy and its
 "is this worth sending?" rule — the only email this product sends on its own
 initiative, so every judgment in it is about what a person is worth
-interrupting for) — plus **`report-access.js`** (the ONLY function that
+interrupting for), **`deal-date.js`** (the deal-date parser, including the
+Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
+the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
@@ -886,7 +888,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (billed AND cached) has its comps harvested by `harvestComps()` into the
   Supabase `comp_corpus` table (file fallback `comp-corpus.jsonl`, git-ignored),
   deduped by a normalized address|date|price key (unique constraint +
-  ignore-duplicates upsert; in-memory seen-set for the file path). Fire-and-
+  ignore-duplicates upsert; in-memory seen-set for the file path). Harvest
+  keeps only `public_record` and `listing`; `estimate` and `news` stay in the
+  report that found them and are not stored; an empty listing date is stored
+  as `"Active"`. Fire-and-
   forget — a corpus failure never affects the request. This is the permanent
   raw-data layer that broker verification and future retrieval features build
   on; the DDL lives in `migrations/001-comp-corpus.sql` (+ `004` for the
@@ -973,6 +978,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   sharing one submarket, never a whole statistical area, and a test pins every
   entry against `marketOf` because an exact-match key that never matches is
   invisible.
+  **On-market listings (2026-08-13).** Unparseable listing dates (`Active`,
+  `Listed Mar 2025`) come back as `listed` extra candidates with their own
+  prompt block; they do not count toward `coverage` or shrink the budget;
+  dated listing comps still do. Rollback is `CORPUS_LISTED=off`. The harvest
+  filter has no flag.
 - `GET /how-it-works` — the account-wall front door, reached from the header
   nav (the old "Methodology" item) and the footer. Under the wall, `/` *is*
   this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +

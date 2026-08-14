@@ -626,14 +626,32 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(form[0], /id="exploreAddrLink"/);
   assert.match(form[0], /id="sampleBtn"/);
   assert.match(form[0], /Value a building/);
+  assert.match(form[0], /rd-chamber-head/);
+  // Hidden type select is a form sibling of the address row, not a child of
+  // it. Inside the row it stopped .rd-cell:last-child matching and doubled
+  // the chamber divider on that one row.
+  const addrToSelect = form[0].slice(
+    form[0].indexOf('for="address"'),
+    form[0].indexOf('<select id="propertyType"')
+  );
+  assert.match(
+    addrToSelect,
+    /<\/div>\s*<\/div>\s*(?:<!--[\s\S]*?-->\s*)?$/,
+    "propertyType must sit after the address rd-row has closed"
+  );
 
   const desk = html.match(/class="rd-form rd-desk"[\s\S]*?id="guestSearchHint"/);
   assert.ok(desk, "desk wraps the form and explorer");
   assert.match(desk[0], /id="marketSearch"/);
   assert.match(desk[0], /id="marketSearchResults"/);
   assert.match(desk[0], /Or read a market/);
+  assert.equal((desk[0].match(/class="rd-chamber-head"/g) || []).length, 2,
+    "both chambers share a rd-chamber-head so the title hairline is one rule");
 
   assert.match(html, /\.rd-desk \{/);
+  assert.match(html, /\.rd-chamber-head \{/);
+  assert.match(html, /\.rd-chamber-head \{[^}]*padding:\s*11px 16px/);
+  assert.match(html, /\.rd-chamber-lab \{[^}]*line-height:\s*1\.5/);
   assert.ok(
     !/\.rd-desk \{[^}]*overflow:\s*hidden/.test(html),
     "overflow:hidden on .rd-desk would clip the explorer dropdown"

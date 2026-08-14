@@ -724,24 +724,37 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       flex-direction: column;
     }
     .rd-desk-actions { margin-top: auto; }
+    /* Shared chamber titles. Padding-block and line-height must stay identical
+       on both sides so the hairline under "Value a building" and "Or read a
+       market" is one straight rule across the split, not two ledges. The head
+       is card-white even inside the wash chamber, or --hair would vanish on
+       --wash (they are 5 hex steps apart). */
+    .rd-chamber-head {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--hair);
+      background: var(--card);
+    }
     .rd-desk-market {
       min-width: 0;
       background: var(--wash);
-      padding: 11px 18px 18px;
+      padding: 0;
       border-radius: 0 6px 6px 0;
     }
+    .rd-desk-market > .rd-chamber-head { padding-left: 18px; padding-right: 18px; }
+    .rd-desk-market-body { padding: 12px 18px 18px; }
     .rd-chamber-lab {
       font-size: 10.5px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--ink);
       font-weight: 600;
+      line-height: 1.5;
     }
     .rd-desk-market .rd-chamber-note {
       font-size: 13px;
       color: var(--ink-2);
       line-height: 1.45;
-      margin: 8px 0 0;
+      margin: 0;
     }
     .rd-desk-market-in {
       width: 100%;
@@ -1586,10 +1599,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
       <div class="rd-form rd-desk">
       <form id="compForm" class="rd-desk-build">
-        <div class="rd-row">
-          <div class="rd-cell">
-            <div class="rd-chamber-lab">Value a building</div>
-          </div>
+        <div class="rd-chamber-head">
+          <div class="rd-chamber-lab">Value a building</div>
         </div>
         <!-- Direction N (owner-approved 2026-08-09): the address gets the full
              top row alone in the largest text on the form; the everyday
@@ -1623,20 +1634,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <div id="typeAutoNote" class="mt-1"></div>
             </div>
           </div>
-          <!-- Still the single source of truth for the current type (and for the
-               list of types every picker builds itself from), just no longer a
-               control the visitor operates. Hidden rather than removed so every
-               read/write path, the watch-type option copy, and the remembered-
-               type validation all keep working unchanged. -->
-          <select id="propertyType" class="hidden" tabindex="-1" aria-hidden="true">
-            <option>Industrial</option>
-            <option>Office</option>
-            <option>Retail</option>
-            <option>Multifamily</option>
-            <option>Land</option>
-            <option>Residential</option>
-          </select>
         </div>
+        <!-- Still the single source of truth for the current type (and for the
+             list of types every picker builds itself from), just no longer a
+             control the visitor operates. Hidden rather than removed so every
+             read/write path, the watch-type option copy, and the remembered-
+             type validation all keep working unchanged.
+             Must NOT sit inside the address .rd-row: a sibling there keeps
+             .rd-cell from matching :last-child, so that row painted a second
+             right border on top of .rd-desk-build's divider and the line
+             between the two chambers jogged on the address row only. -->
+        <select id="propertyType" class="hidden" tabindex="-1" aria-hidden="true">
+          <option>Industrial</option>
+          <option>Office</option>
+          <option>Retail</option>
+          <option>Multifamily</option>
+          <option>Land</option>
+          <option>Residential</option>
+        </select>
         <!-- Address Explorer — hands a visitor with no address a stable list of
              real ones (see docs/superpowers/specs/2026-08-03-address-explorer-
              design.md). Corpus first via /api/explore-addresses, browser-side
@@ -1795,12 +1810,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            never hands a query to the comp form). Sibling of #compForm on
            purpose — see the rd-desk comment above. IDs unchanged. -->
       <aside class="rd-desk-market" aria-label="Or read a market">
-        <div class="rd-chamber-lab">Or read a market</div>
-        <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
-        <div class="relative">
-          <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
-                 class="rd-desk-market-in" />
-          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
+        <div class="rd-chamber-head">
+          <div class="rd-chamber-lab">Or read a market</div>
+        </div>
+        <div class="rd-desk-market-body">
+          <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
+          <div class="relative">
+            <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
+                   class="rd-desk-market-in" />
+            <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
+          </div>
         </div>
       </aside>
       </div>

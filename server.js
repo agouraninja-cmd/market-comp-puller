@@ -133,6 +133,7 @@ const BRANDING = require("./branding.js");
 // avatar_rev field on GET /api/account/me.
 const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
+const MARKETHERO = require("./market-hero");
 const SVAIM = require("./streetview-aim");
 // "The market under this saved property moved since you last looked" — the
 // desk's only figure that changes without the owner re-running anything.
@@ -5773,6 +5774,25 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mfilter input::placeholder{color:var(--ink-3)}
 .mfilter input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
 .mcount{color:var(--ink-mute);font-size:13px;margin-top:10px;min-height:1.2em}
+/* Market page city hero. The photograph does not theme (same rule as Street
+   View and aerial thumbs): it is a picture of a place. Overlay and caption
+   stay literal dark/white so the title reads on any photo, in either theme. */
+body.has-hero main.wrap{padding-top:20px}
+.mkt-hero{position:relative;height:340px;overflow:hidden;background:var(--slab);color:#fff}
+.mkt-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%}
+.mkt-hero::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(10,14,22,.82) 0%,rgba(10,14,22,.35) 48%,rgba(10,14,22,.18) 100%)}
+.mkt-hero-inner{position:relative;z-index:1;max-width:1024px;margin:0 auto;padding:0 16px 28px;
+  height:100%;display:flex;flex-direction:column;justify-content:flex-end;box-sizing:border-box}
+.mkt-hero h1{color:#fff;margin:8px 0 6px;text-shadow:0 1px 18px rgba(0,0,0,.45)}
+.mkt-hero .sub{color:rgba(255,255,255,.86);margin:0}
+.mkt-hero .sub a{color:rgba(255,255,255,.86);text-decoration-color:rgba(255,255,255,.35)}
+.mkt-hero .sub a:hover{color:#fff}
+.mkt-hero-credit{position:absolute;right:12px;bottom:8px;z-index:2;margin:0;font-size:10px;
+  line-height:1.3;color:rgba(255,255,255,.7);max-width:60%}
+.mkt-hero-credit a{color:rgba(255,255,255,.7)}
+.mkt-hero-credit a:hover{color:#fff}
+@media(max-width:700px){.mkt-hero{height:240px}.mkt-hero h1{font-size:24px}.mkt-hero-inner{padding-bottom:22px}}
 .disc{color:var(--ink-3);font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
@@ -6492,7 +6512,8 @@ function brandGraph() {
   ];
 }
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage }) {
+  const shareImage = ogImage || `${SITE_URL}/og-image.png`;
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
@@ -6504,7 +6525,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<meta property="og:title" content="${escHtml(title)}"/>\n` +
     `<meta property="og:description" content="${escHtml(description)}"/>\n` +
     `<meta property="og:url" content="${canonical}"/>\n` +
-    `<meta property="og:image" content="${SITE_URL}/og-image.png"/>\n` +
+    `<meta property="og:image" content="${escHtml(shareImage)}"/>\n` +
     `<meta name="twitter:card" content="summary_large_image"/>\n` +
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
@@ -6514,7 +6535,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     (head || "") +
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
-    `</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn)}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -6562,6 +6583,28 @@ function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
     ...(headers || {}),
   });
   res.end(render(signedIn));
+}
+
+function marketHeroBanner(p, title) {
+  const hero = MARKETHERO.heroFor(p.city, p.state);
+  const crumb = `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>`;
+  const heading = `<h1>${escHtml(title)}</h1>`;
+  const blurb = `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>`;
+  if (!hero) return { banner: "", intro: crumb + heading + blurb, ogImage: null };
+  const creditInner = escHtml(hero.credit) + (hero.license ? " · " + escHtml(hero.license) : "");
+  const credit = hero.commonsUrl
+    ? `<a href="${escHtml(hero.commonsUrl)}" target="_blank" rel="noopener noreferrer">${creditInner}</a>`
+    : creditInner;
+  return {
+    banner:
+      `<div class="mkt-hero">` +
+        `<img class="mkt-hero-img" src="${escHtml(hero.src)}" alt="${escHtml(hero.alt)}" width="1600" height="720" decoding="async" fetchpriority="high"/>` +
+        `<div class="mkt-hero-inner">${crumb}${heading}${blurb}</div>` +
+        `<p class="mkt-hero-credit">${credit}</p>` +
+      `</div>`,
+    intro: "",
+    ogImage: hero.kind === "photo" ? SITE_URL + hero.src : null,
+  };
 }
 
 function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
@@ -6983,10 +7026,9 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
       exploreLink + `</div>`;
 
+  const cityHero = marketHeroBanner(p, title);
   const body =
-    `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
-    `<h1>${escHtml(title)}</h1>` +
-    `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
+    cityHero.intro +
     bovLead +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
@@ -7009,6 +7051,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     noindex: Boolean(opts.preview),
     head: mapHead,
     signedIn,
+    hero: cityHero.banner,
+    ogImage: cityHero.ogImage,
   });
 }
 
@@ -16540,6 +16584,24 @@ const server = http.createServer((req, res) =>
         return res.end("Not found");
       }
       res.writeHead(200, { "content-type": type, "cache-control": `public, max-age=${maxAge}` });
+      res.end(data);
+    });
+    return;
+  }
+  // City hero JPEGs for /market/<slug>. Basename + the filename regex is the
+  // whole allowlist — this must never become a generic directory read.
+  if (req.method === "GET" && staticPath.startsWith("/market-heroes/")) {
+    const name = path.basename(staticPath);
+    if (!MARKETHERO.isHeroFilename(name)) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    fs.readFile(path.join(__dirname, "market-heroes", name), (err, data) => {
+      if (err) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        return res.end("Not found");
+      }
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "public, max-age=86400" });
       res.end(data);
     });
     return;

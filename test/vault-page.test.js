@@ -1152,6 +1152,25 @@ test("each comp row offers an edit and a delete", () => {
   assert.ok(html.includes("data-del-comp"), "rows need a delete control");
 });
 
+test("the delete control is a trash icon, not a red Delete word", async () => {
+  const { doc } = await runPage([comp({})]);
+  const html = doc.getElementById("tbody").innerHTML;
+  assert.match(html, /class="lnk trash"/);
+  assert.match(html, /aria-label="Delete this comp"/);
+  assert.match(html, /<svg /);
+  assert.ok(!/>Delete<\/button>/.test(html),
+    "the visible control is the icon, not a labelled Delete button");
+  assert.ok(!html.includes("lnk danger"),
+    "the red Delete word is gone; trash goes red only on hover");
+
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+  const sheet = doc.getElementById("tbody").innerHTML;
+  assert.match(sheet, /class="lnk trash"/);
+  assert.ok(!/>Delete<\/button>/.test(sheet),
+    "spreadsheet rows use the same trash control");
+});
+
 test("deleting a comp is confirmed before it is sent", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.match(html, /Delete this comp/,
@@ -1358,8 +1377,9 @@ test("Open spreadsheet turns the current view into editable cells", async () => 
   assert.equal(doc.getElementById("sheetToggle").textContent, "Done");
   assert.match(doc.getElementById("sheetBar").textContent, /save when you leave a cell/i);
   assert.ok(!html.includes("data-edit"),
-    "spreadsheet cells replace the compact Edit link; Delete stays");
+    "spreadsheet cells replace the compact Edit link; the trash stays");
   assert.match(html, /data-del-comp/);
+  assert.match(html, /class="lnk trash"/);
 });
 
 test("Open on an import shows only that file's comps", async () => {

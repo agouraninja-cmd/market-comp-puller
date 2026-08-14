@@ -7481,10 +7481,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return b;
   }
 
-  // The one-line answer to "what type is this?" under the address field. The
-  // door is offered in BOTH states: unresolved reads as an invitation ("pick
-  // it now"), resolved as a correction ("change"). customNodes is the escape
-  // hatch for callers that want to say something else in the same slot.
+  // The one-line answer to "what type is this?" under the address field.
+  // Unresolved stays blank: the type is chosen from the address (OSM,
+  // memory, a Find-addresses chip, a Tab-filled example) or asked in the
+  // confirm dialog. A standing invitation to pick the type on the empty form
+  // was the thing that made Find addresses look like you still had to choose
+  // Industrial first. customNodes is the escape hatch for callers that
+  // want to say something else in the same slot.
   function renderTypeStatus(customNodes) {
     const el = document.getElementById("typeStatusLine");
     if (!el) return;
@@ -7498,20 +7501,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (picker) picker.classList.add("hidden");
     el.textContent = "";
     if (customNodes) { customNodes.forEach((n) => el.appendChild(n)); return; }
+    if (typeResolution === null) return;
     const label = document.createElement("span");
     // Each resolved state says where the type came from in its own words. A
     // remembered type must not borrow the detected wording: it claims a map
     // lookup that never ran, and the honest version is also the more
     // reassuring one.
     const v = propertyTypeSel.value;
-    if (typeResolution === null) label.textContent = "Property type: chosen when you run the report.";
-    else if (typeResolution === "detected") label.textContent = "Property type: " + v + " (detected).";
+    if (typeResolution === "detected") label.textContent = "Property type: " + v + " (detected).";
     else if (typeResolution === "remembered") label.textContent = "Property type: " + v + ", from your last run of this address.";
     else label.textContent = "Property type: " + v + ".";
     el.appendChild(label);
-    const door = makeTypeChangeButton();
-    if (typeResolution === null) door.textContent = "pick it now";
-    el.appendChild(door);
+    el.appendChild(makeTypeChangeButton());
   }
 
   // Per-address type memory: re-runs never re-ask. Bounded like fpSize.v2.

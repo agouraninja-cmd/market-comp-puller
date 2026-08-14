@@ -882,6 +882,19 @@ test("Address Explorer chips show a type and Find addresses does not send the fo
   assert.match(html, /btn\.addEventListener\("click", \(\) => findAddresses\(\)\)/);
 });
 
+test("the form does not ask you to pick a property type before you have an address", () => {
+  const start = html.indexOf("function renderTypeStatus");
+  const end = html.indexOf("function addrTypeStore");
+  assert.ok(start >= 0 && end > start, "renderTypeStatus / addrTypeStore moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /if \(typeResolution === null\) return;/);
+  assert.doesNotMatch(fn, /chosen when you run the report/);
+  assert.doesNotMatch(fn, /pick it now/);
+  assert.match(fn, /makeTypeChangeButton\(\)/);
+  // The confirm dialog is still the place an unresolved type is asked.
+  assert.match(html, /if \(typeResolution === null\) \{\s*showConfirmTypeButtons\(null\);/);
+});
+
 test("once pins settle, the hero re-runs so distance weighting actually moves the range", () => {
   const fn = html.match(/function refreshDistances\(\) \{[\s\S]*?\n  \}/);
   assert.ok(fn, "index.html must define refreshDistances()");

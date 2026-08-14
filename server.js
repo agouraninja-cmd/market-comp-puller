@@ -3004,7 +3004,9 @@ async function listHubsForOwner(userId) {
 async function listHubsForParticipant(email) {
   return (await sbRequest("GET",
     `hub_participants?email=eq.${encodeURIComponent(email)}&removed_at=is.null` +
-    `&select=hub_id,role,invited_at,last_seen_at,hubs(id,title,market,property_type,subject_address,status,updated_at,closed_at)` +
+    // owner_user_id is selected only so the caller can drop hubs they own —
+    // see the dedupe in GET /api/hubs. It is never sent to the client.
+    `&select=hub_id,role,invited_at,last_seen_at,hubs(id,owner_user_id,title,market,property_type,subject_address,status,updated_at,closed_at)` +
     `&order=invited_at.desc&limit=200`)) || [];
 }
 
@@ -15662,8 +15664,17 @@ const server = http.createServer((req, res) =>
             // A hub the caller OWNS is never also "shared with me", or a
             // broker who put their own address in their own hub would see it
             // twice on two different pages.
+            //
+            // This comment shipped on 2026-08-13 describing a check that was
+            // not actually written — the filter only tested that the hub row
+            // existed. Harmless so far (nothing adds an owner to their own
+            // participant list), and it would have become visible the moment
+            // anything did, which is exactly the kind of latent disagreement
+            // between a comment and its code that is worth closing while it is
+            // still free.
             theirs: theirs
-              .filter((r) => r.hubs && String(r.hubs.id) !== "" )
+              .filter((r) => r.hubs && String(r.hubs.id) !== "" &&
+                !(r.hubs.owner_user_id && String(r.hubs.owner_user_id) === String(user.id)))
               .map((r) => ({
                 id: r.hubs.id, title: r.hubs.title, market: r.hubs.market,
                 propertyType: r.hubs.property_type, subjectAddress: r.hubs.subject_address,

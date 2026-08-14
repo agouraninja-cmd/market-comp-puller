@@ -394,13 +394,22 @@ browser JavaScript, so a stray `${` ships a dead page silently.
 
 **Still open in slice 2:**
 
-- **Unread counts.** Blocked on a model decision, not on effort:
-  `last_seen_at` lives on `hub_participants`, and a hub's OWNER has no
-  participant row, so there is nothing to compare their last read against.
-  Either the owner becomes a participant on create (free, but then the
-  "N of M opened" count on `/vault` includes the broker themselves and stops
-  meaning what it says), or `hubs` gains an `owner_seen_at` (a migration, and
-  the next free number is 027 — 025 and 026 are taken). Do not guess this one.
+- **Unread counts: DROPPED for now** (owner's decision, 2026-08-14). The
+  problem was real — `last_seen_at` lives on `hub_participants` and a hub's
+  OWNER has no participant row, so there was nothing to compare their last
+  read against — and both fixes cost something: making the owner a
+  participant breaks what `/vault`'s "N of M opened" count means, and an
+  `owner_seen_at` column is a migration (027) for a convenience. Both lists
+  already show when a hub was last updated, which answers "has anything
+  happened" without either cost. Revisit once a real hub is running and the
+  date can be judged sufficient or not, rather than guessed at with zero
+  hubs in existence.
+
+  It did leave one thing worth having: chasing it found that `GET /api/hubs`
+  carried a comment claiming it dropped hubs the caller owns from the
+  "shared with me" side, and no such check existed. Fixed, since a comment
+  that disagrees with its code is cheapest to close while it is still
+  harmless.
 - **Tenant-added comps** (Q4), which needs an untrusted-comp path with no
   vault row to validate against.
 - **Anything email**, still gated on a verified Resend domain.

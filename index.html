@@ -1707,7 +1707,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Portfolio</span>
           <span id="deskCount" class="dk-note"></span>
         </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and press "Save to portfolio" to start tracking a property here.</p>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report — it will show up here.</p>
         <!-- The book line (Direction K): combined value on the warm cell,
              markets cell filled by renderWatchFeed once the feed answers.
              Hidden with 0 properties — a 0-0 scoreboard over an empty desk
@@ -8464,6 +8464,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Glide down to the finished report.
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     document.getElementById("results").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    syncPortfolioButton();
   }
 
   // ----------------------------------------------------------------------------
@@ -8550,7 +8551,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setTimeout(() => {
         acctApi("POST", "/api/portfolio", {
           id: refreshId, payload: { meta, data }, snapshot: lastValuation,
-        }).then(() => { if (typeof renderMyDesk === "function") renderMyDesk(); }).catch(() => {});
+        }).then(() => {
+          markPortfolioSaved(meta.address, meta.type);
+          syncPortfolioButton();
+          if (typeof renderMyDesk === "function") renderMyDesk();
+        }).catch(() => {});
+      }, 0);
+    } else if (currentUser) {
+      const payloadMeta = {
+        address: meta.address, type: meta.type, note: meta.note || "",
+        months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null,
+        assumptions: meta.assumptions || null,
+        curation: meta.curation || null,
+      };
+      setTimeout(() => {
+        acctApi("POST", "/api/portfolio", {
+          payload: { meta: payloadMeta, data }, snapshot: lastValuation,
+        }).then(() => {
+          markPortfolioSaved(meta.address, meta.type);
+          syncPortfolioButton();
+          if (typeof renderMyDesk === "function") renderMyDesk();
+        }).catch((ex) => {
+          showStatus(ex.message, "error");
+        });
       }, 0);
     }
     renderHistory();
@@ -8770,6 +8793,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let currentUser = null;           // { email, name } | null
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
+  const portfolioKeys = new Set(); // "address\0type" currently on My Desk
+  function portfolioKey(address, type) { return String(address || "") + "\0" + String(type || ""); }
+  function markPortfolioSaved(address, type) { portfolioKeys.add(portfolioKey(address, type)); }
+  function syncPortfolioButton() {
+    const btn = document.getElementById("portfolioBtn");
+    if (!btn) return;
+    const saved = Boolean(currentUser && currentMeta && portfolioKeys.has(portfolioKey(currentMeta.address, currentMeta.type)));
+    btn.classList.toggle("hidden", saved);
+  }
   // An address typed into the shared-report lock card while signed out. Same
   // shape as pendingPortfolioSave, cleared by the same cancel path.
   let pendingSharedAddress = "";
@@ -8869,8 +8901,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("acctMenuBtn").textContent = label.slice(0, 1).toUpperCase();
       document.getElementById("acctMenuEmail").textContent = currentUser.email;
     }
-    const pb = document.getElementById("portfolioBtn");
-    if (pb) pb.classList.remove("hidden");
+    syncPortfolioButton();
     const xb = document.getElementById("xlsxBtn");
     if (xb) xb.classList.toggle("hidden", !on);
     if (typeof renderMyDesk === "function") renderMyDesk();
@@ -9216,9 +9247,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         payload: { meta, data: currentParsed },
         snapshot: lastValuation,
       });
-      label.textContent = "Saved ✓";
+      label.textContent = "Save to portfolio";
+      markPortfolioSaved(currentMeta.address, currentMeta.type);
+      syncPortfolioButton();
       if (typeof renderMyDesk === "function") renderMyDesk();
-      setTimeout(() => { label.textContent = "Save to portfolio"; }, 2500);
     } catch (ex) {
       label.textContent = "Save to portfolio";
       showStatus(ex.message, "error");
@@ -9296,6 +9328,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("deskHello").textContent = currentUser.name ? `Signed in as ${currentUser.name}` : currentUser.email;
     let items = [];
     try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
+    portfolioKeys.clear();
+    items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
+    syncPortfolioButton();
     document.getElementById("deskCount").textContent = items.length ? `${items.length} propert${items.length === 1 ? "y" : "ies"}` : "";
     document.getElementById("deskEmpty").classList.toggle("hidden", items.length > 0);
     // Direction K (owner-approved 2026-08-09): the portfolio is a book. A

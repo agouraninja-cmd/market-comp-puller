@@ -465,3 +465,21 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
     assert.ok(css.includes(hex), `tailwind.css is missing the ${hex} colour utilities`);
   }
 });
+
+test("empty desk copy no longer tells them to press Save", () => {
+  assert.match(html, /id="deskEmpty"[^>]*>Run a report — it will show up here\./);
+  assert.doesNotMatch(html, /press "Save to portfolio"/);
+});
+
+test("auto-save lives inside saveHistory, behind the same three guards", () => {
+  const start = html.indexOf("function saveHistory(");
+  const end = html.indexOf("function dropLegacyHistoryKeys");
+  assert.ok(start >= 0 && end > start, "saveHistory / dropLegacyHistoryKeys moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /pendingPortfolioRefresh/);
+  assert.match(fn, /else if \(currentUser\)/);
+  assert.match(fn, /acctApi\("POST", "\/api\/portfolio"/);
+
+  const guarded = html.match(/if \(!\w+\.sample && !\w+\.fromHistory && !\w+\.shared\)[\s\S]{0,80}saveHistory/g) || [];
+  assert.ok(guarded.length >= 2, "every renderResults saveHistory call must keep the sample/fromHistory/shared guard");
+});

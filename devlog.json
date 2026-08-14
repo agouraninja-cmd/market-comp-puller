@@ -2,6 +2,12 @@
   {
     "date": "2026-08-14",
     "type": "fix",
+    "title": "Sending vault comps into a hub works",
+    "details": "Every attempt to send a comp from the vault into a hub failed with a generic error. The insert asked Postgres to ignore duplicates against an index that only covers live rows, and Postgres will not match a partial index that way, so the whole send was refused. Duplicates are now filtered before the insert instead: sending the same comp twice is still a no-op, and a comp that was removed can still be re-sent, which is how a corrected price reaches a client. Found by sending a real comp into a real hub."
+  },
+  {
+    "date": "2026-08-14",
+    "type": "fix",
     "title": "The broker introduction band no longer pitches a signed-in member",
     "details": "The band that offers a free opinion of value on a covered market page was written before the call to action below it split into signed-in and anonymous variants, so the two would have stacked: a member on a market with a covering broker would be sold an introduction at the top of the page and offered a CSV of the same comps at the bottom. The band speaks to a property owner arriving from a search engine, so it is anonymous-only now, which is the same line the call to action already draws. It renders on no market today, since no broker has opted into being listed, so nobody saw either version."
   },

@@ -173,7 +173,11 @@ test("unitDesignatorOf does not read the vocabulary out of ordinary street names
 test("landing address handoff fills #address from sessionStorage and drops the key", () => {
   // File search, not a browser. The landing cannot reach this script;
   // this only proves the app side of the handoff is actually wired.
-  const boot = html.match(/pendingLandingAddress\.v1[\s\S]{0,900}/);
+  // Anchored on the READ, not on the first mention of the key. The shared
+  // report card writes the same key on its way into signup, so a plain
+  // first-occurrence match lands on the writer and proves nothing about the
+  // handoff this test exists to pin.
+  const boot = html.match(/getItem\("pendingLandingAddress\.v1"\)[\s\S]{0,900}/);
   assert.ok(boot, "index.html must read pendingLandingAddress.v1");
   assert.match(boot[0], /getElementById\("address"\)/);
   assert.match(boot[0], /removeItem\(["']pendingLandingAddress\.v1["']\)/);
@@ -181,6 +185,47 @@ test("landing address handoff fills #address from sessionStorage and drops the k
     !/compForm\.submit|requestSubmit|#compForm/.test(boot[0]),
     "filling the box is the whole handoff; do not auto-run a search"
   );
+});
+
+// ---------------------------------------------------------------------------
+// The shared-report lock card. A stranger holding a forwarded link is the one
+// visitor who reaches this app without choosing to, and /r/<id> is the only
+// path the account wall lets through — so this card is the whole conversion
+// surface for the only feature that reaches people who have never heard of us.
+// ---------------------------------------------------------------------------
+
+test("the shared-report card ships hidden and is swapped in by applySharedLock", () => {
+  assert.match(html, /id="lockShared" class="hidden"/,
+    "the shared variant must be hidden until a shared report is actually on screen");
+  assert.match(html, /id="lockDefault"/, "the generic card needs its own wrapper to hide");
+  assert.match(html, /function applySharedLock\(meta\)/, "one function owns the swap");
+  // applySearchLock stays the only thing that decides whether the CARD shows.
+  const swap = html.match(/function applySharedLock\(meta\)[\s\S]{0,1400}/)[0];
+  assert.equal(/classList\.toggle\("hidden", !locked\)/.test(swap), false,
+    "applySharedLock must not take over visibility from applySearchLock");
+});
+
+test("the shared status line matches what the reader can actually see", () => {
+  // The bug this replaced: one line told every reader to "enter an address
+  // above", while a locked reader had the signup card standing where that
+  // field would be.
+  const fn = html.match(/function showSharedStatus\(\)[\s\S]{0,700}/);
+  assert.ok(fn, "showSharedStatus should exist");
+  assert.match(fn[0], /accountWall && !currentUser/, "it must branch on the lock state");
+  assert.match(fn[0], /Create a free account below/, "the locked wording points at the card");
+  assert.match(fn[0], /Enter an address above/, "the unlocked wording points at the form");
+  assert.match(html, /applySearchLock[\s\S]{0,400}showSharedStatus\(\)/,
+    "it must be driven by applySearchLock, since the report renders before /api/config answers");
+});
+
+test("an address typed on a shared report survives signup and is never auto-run", () => {
+  const fire = html.match(/if \(fireSharedAddress\)[\s\S]{0,600}/);
+  assert.ok(fire, "the post-signup consumption should exist");
+  assert.match(fire[0], /getElementById\("address"\)/, "it fills the real search box");
+  assert.ok(!/requestSubmit|compForm\.submit|runSearch\(/.test(fire[0]),
+    "a signup is not consent to spend: prefill and focus, never submit");
+  assert.match(html, /pendingSharedAddress = "";\s*\/\/ \.\.\.and must not prefill/,
+    "a cancelled signup must not resurrect the address later, like every other pending flag");
 });
 
 // ----------------------------------------------------------------------------

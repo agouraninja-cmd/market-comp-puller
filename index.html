@@ -1390,14 +1390,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          still renders below this card, which turns a shared link into a signup
          funnel rather than a leak. -->
     <div id="searchLock" class="hidden relative z-10 mt-4 no-print rd-exhibit p-6">
-      <h2 class="rd-h text-xl">Create a free account to run a report</h2>
-      <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]">Reports are free and take about a minute. An account keeps
-        your searches, your portfolio and your watchlist in one place.</p>
-      <div class="mt-4 flex flex-wrap items-center gap-4">
-        <button id="lockSignUpBtn" type="button"
-          class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Create a free account</button>
-        <button id="lockSignInBtn" type="button"
-          class="text-sm text-[#5A6473] hover:text-[#1A2433] underline">Already have an account? Log in</button>
+      <div id="lockDefault">
+        <h2 class="rd-h text-xl">Create a free account to run a report</h2>
+        <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]">Reports are free and take about a minute. An account keeps
+          your searches, your portfolio and your watchlist in one place.</p>
+        <div class="mt-4 flex flex-wrap items-center gap-4">
+          <button id="lockSignUpBtn" type="button"
+            class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Create a free account</button>
+          <button id="lockSignInBtn" type="button"
+            class="text-sm text-[#5A6473] hover:text-[#1A2433] underline">Already have an account? Log in</button>
+        </div>
+      </div>
+      <!-- The shared-report variant, swapped in by applySharedLock() when a
+           /r/<id> report is on screen. A stranger holding a shared link is the
+           only person who reaches this app without choosing to, and the generic
+           card above ignored what they were looking at. Worse, the status line
+           under the report told them to "enter an address above" while this
+           card was standing where that field would be.
+           The address they type here rides through signup in
+           pendingSharedAddress (and the same sessionStorage key the landing
+           page uses, so a reload does not eat it). -->
+      <div id="lockShared" class="hidden">
+        <h2 class="rd-h text-xl" id="lockSharedTitle">You're reading a shared CompNinja report</h2>
+        <p class="text-sm text-[#4C5665] mt-2 max-w-[52ch]" id="lockSharedSub">Run one on your own building, free, in about a minute.</p>
+        <!-- items-center + an inline min-width rather than items-end /
+             min-w-[260px]: those two utilities are not in the vendored
+             tailwind.css, and a class missing from that build silently does
+             nothing. Not worth a regen for two rules. -->
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <div class="rd-cell grow" style="min-width:260px">
+            <label class="rd-lab" for="lockAddress">Your property address</label>
+            <input id="lockAddress" type="text" placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in" />
+          </div>
+          <button id="lockGoBtn" type="button"
+            class="btn-live bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded">Get my report</button>
+        </div>
+        <button id="lockSharedSignIn" type="button"
+          class="text-sm text-[#5A6473] hover:text-[#1A2433] underline mt-4">Already have an account? Log in</button>
       </div>
       <p class="text-[12.5px] text-[#8A8577] mt-4">An automated estimate, not an appraisal.</p>
     </div>
@@ -3497,7 +3526,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // meta so pre-existing shares keep rendering their range on the subject row.
       if (s.capRate != null) document.getElementById("capRate").value = s.capRate;
       renderResults(payload.data, meta);
-      showStatus("You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
+      sharedViewMeta = meta;
+      applySharedLock(meta);
+      // applySearchLock owns the card's visibility AND the status line's
+      // wording, so re-running it is how both catch up with a report that
+      // arrived after the page did.
+      applySearchLock();
     } catch (e) {
       showStatus("That shared report link is invalid or is no longer available.", "error");
     }
@@ -8302,9 +8336,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // automatically on same-origin fetches.
   // ----------------------------------------------------------------------------
   let accountWall = false;          // from /api/config; drives applySearchLock()
+  // The meta of a /r/<id> report on screen, or null. Read by showSharedStatus
+  // and set once by the share loader.
+  let sharedViewMeta = null;
   let currentUser = null;           // { email, name } | null
   let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
+  // An address typed into the shared-report lock card while signed out. Same
+  // shape as pendingPortfolioSave, cleared by the same cancel path.
+  let pendingSharedAddress = "";
   let pendingSharedReload = false;  // signin_required on /r/<id>: reload this URL once signed in
   let pendingMarketExplore = null;  // {type, city, state} the guest gate refused; resumes after sign-in
   let runPendingMarketExplore = null; // assigned by the Market Explorer IIFE (explore() is private to it)
@@ -8345,6 +8385,48 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const locked = accountWall && !currentUser;
     lock.classList.toggle("hidden", !locked);
     document.getElementById("searchSection").classList.toggle("hidden", locked);
+    showSharedStatus();
+  }
+
+  // The one line a stranger on somebody else's report is given. It used to say
+  // "enter an address above" unconditionally, and for a locked visitor the
+  // thing above is the signup card standing where that field would be — the
+  // instruction named a control that was not on their screen, to the exact
+  // audience the share feature exists to reach.
+  //
+  // Driven from applySearchLock rather than written once at load, because the
+  // report renders before /api/config answers, so "is this visitor locked" is
+  // not knowable at the moment the share is drawn.
+  function showSharedStatus() {
+    if (!sharedViewMeta) return;
+    showStatus(accountWall && !currentUser
+      ? "You're viewing a shared CompNinja report. Create a free account below to run one on your own building."
+      : "You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
+  }
+
+  // Swaps the lock card to its shared-report variant. Presentation only, like
+  // everything else the wall drives, and independent of whether the card is
+  // currently visible: a signed-in reader never sees it, and applySearchLock
+  // stays the only thing deciding that.
+  function applySharedLock(meta) {
+    const shared = document.getElementById("lockShared");
+    const dflt = document.getElementById("lockDefault");
+    if (!shared || !dflt) return;
+    const addr = meta && meta.address ? String(meta.address).trim() : "";
+    // The firm is named ONLY from the share's own branding snapshot — a name
+    // the reader can already see on the letterhead above. It publishes
+    // nothing new: an unbranded share names nobody, which is every share from
+    // a sender who never set up a branding profile.
+    const brand = meta && meta.branding ? normalizeBrandBlock(meta.branding) : null;
+    const firm = brand && brand.firmName ? brand.firmName : "";
+    document.getElementById("lockSharedTitle").textContent = addr
+      ? "You're reading a report on " + addr
+      : "You're reading a shared CompNinja report";
+    document.getElementById("lockSharedSub").textContent =
+      (firm ? firm + " made this with CompNinja. " : "It was made with CompNinja. ") +
+      "Run one on your own building, free, in about a minute.";
+    shared.classList.remove("hidden");
+    dflt.classList.add("hidden");
   }
 
   function refreshAccountUI() {
@@ -8408,6 +8490,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   function closeAcctModal() {
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
+    pendingSharedAddress = "";    // ...and must not prefill an address they walked away from
     pendingCheckoutPlan = null;   // ...and must not open Stripe Checkout later either
     pendingSharedReload = false;  // ...and a cancelled sign-in must not reload the page later
     pendingMarketExplore = null;  // ...and a cancelled gate must not fire a surprise market search later
@@ -8418,6 +8501,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("lockSignUpBtn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to run a report. It's free, no card needed."));
   document.getElementById("lockSignInBtn").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("lockSharedSignIn").addEventListener("click", () => openAcctModal("signin"));
+  document.getElementById("lockGoBtn").addEventListener("click", () => {
+    const el = document.getElementById("lockAddress");
+    const addr = (el.value || "").trim();
+    if (!addr) { el.focus(); return; }
+    // Carried two ways on purpose. The variable is what the in-page signup
+    // consumes (the wall lifts without a reload, so nothing re-reads storage);
+    // the storage key is the landing page's own handoff, which covers the case
+    // where this page does reload before the account exists.
+    pendingSharedAddress = addr;
+    try { sessionStorage.setItem("pendingLandingAddress.v1", addr); } catch (err) {}
+    openAcctModal("signup", "Create a free account and your address is waiting in the form. Free, no card needed.");
+  });
   document.getElementById("guestHintSignIn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to keep searching. It's free, no card needed."));
   document.getElementById("acctTabIn").addEventListener("click", () => setAcctMode("signin"));
@@ -8527,9 +8623,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const firePendingSave = pendingPortfolioSave;
       const firePendingPlan = pendingCheckoutPlan;
       const firePendingExplore = pendingMarketExplore;
+      const fireSharedAddress = pendingSharedAddress;
       pendingPortfolioSave = false;
       pendingCheckoutPlan = null;
       pendingMarketExplore = null;
+      pendingSharedAddress = "";
       // Only rows that still hold their report can be imported.
       const saved = historyWithReports();
       // A pending checkout wins over the import offer: the next thing that
@@ -8542,6 +8640,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         document.getElementById("acctImport").classList.remove("hidden");
       } else {
         closeAcctModal();
+      }
+      // The address they typed into the shared-report card, now that the wall
+      // has lifted and the real form is on screen. It OVERWRITES what the
+      // shared report prefilled: the share's own address is context they were
+      // given, this is the building they asked about.
+      //
+      // Prefilled and focused, never submitted. A search is billed, and a
+      // signup is not consent to spend; the button they press next is theirs.
+      if (fireSharedAddress) {
+        const addrEl = document.getElementById("address");
+        if (addrEl) {
+          addrEl.value = fireSharedAddress;
+          try { sessionStorage.removeItem("pendingLandingAddress.v1"); } catch (err) {}
+          addrEl.scrollIntoView({ block: "center" });
+          addrEl.focus();
+        }
       }
       if (firePendingSave) savePortfolioCurrent();
       if (firePendingPlan) {

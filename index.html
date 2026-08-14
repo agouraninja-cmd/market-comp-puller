@@ -8942,6 +8942,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         sub.className = "text-[10.5px] text-[#68707E]";
         sub.textContent = `${item.property_type} · checked ${new Date(item.updated_at).toLocaleDateString()}`;
         tdA.appendChild(sub);
+        // What the MARKET did since this property was last checked, which is
+        // the one number on this page that moves without the owner re-running
+        // anything. The server omits `movement` entirely when the corpus
+        // cannot support a claim, so absence renders nothing.
+        //
+        // Deliberately NOT styled with dk-up/dk-down: those colour the
+        // property's own valuation change in the Change column, and painting a
+        // market statistic the same green would read as this building being
+        // worth more, which is a search nobody has run.
+        if (item.movement && item.movement.line) {
+          const mv = document.createElement("div");
+          // Inline margin rather than mt-0.5: that utility is not in the
+          // vendored tailwind.css, and a class missing from that build styles
+          // nothing at all, silently.
+          mv.className = "text-[10.5px] text-[#68707E]";
+          mv.style.marginTop = "2px";
+          mv.textContent = item.movement.line;
+          mv.title = "Market median $/SF from comps others have searched. Not a new valuation of this property.";
+          tdA.appendChild(mv);
+        }
         tr.appendChild(tdA);
         const tdS = document.createElement("td");
         const spark = sparkline(snaps);

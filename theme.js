@@ -12,14 +12,15 @@
 // --ink-mute, --ink-faint) rather than extending the --ink-N ramp, because
 // --ink-2 is already #4C5665 and renumbering it would restyle five pages.
 //
-// Dark values come from the slate ramp index.html's own token comment
-// already documents (slate-950 #020617 bookends, slate-900 #0F172A ink,
-// slate-800 #1E293B lifted, slate-700 #334155 hover). No new brand colours.
+// Dark values are the 2026-08-10 slate ramp lifted one step off near-black
+// (spec 2026-08-13-dark-mode-lifted-slate): paper #121826, card #1A2433,
+// wash/slab #243044, hover #334155. Same cool personality, charcoal not
+// black. No new brand colours.
 const THEME_TOKENS = {
   // --- surfaces ---------------------------------------------------------
-  paper:            { light: "#FBFBF9", dark: "#020617" }, // page
-  card:             { light: "#ffffff", dark: "#0F172A" }, // card, above paper
-  wash:             { light: "#F5F4EF", dark: "#1E293B" }, // lifted panel
+  paper:            { light: "#FBFBF9", dark: "#121826" }, // page
+  card:             { light: "#ffffff", dark: "#1A2433" }, // card, above paper
+  wash:             { light: "#F5F4EF", dark: "#243044" }, // lifted panel
   // Same light value as --wash on purpose: in light mode a hover above a
   // washed surface DARKENS, in dark mode it must LIGHTEN. One token cannot
   // express both directions, so this one changes nothing today.
@@ -27,19 +28,19 @@ const THEME_TOKENS = {
   // Surfaces that are ALREADY dark in light mode (bg-[#1A2433], bg-slate-900,
   // the footer). Left equal to --paper they would dissolve into the page and
   // the emphasis they carry would vanish. They lift instead.
-  slab:             { light: "#1A2433", dark: "#1E293B" },
+  slab:             { light: "#1A2433", dark: "#243044" },
 
   // --- rules ------------------------------------------------------------
-  edge:             { light: "#D8D4C9", dark: "#334155" }, // primary border
-  line:             { light: "#E4E2DA", dark: "#273244" },
-  hair:             { light: "#F0EFE9", dark: "#1E293B" }, // hairline/divider
+  edge:             { light: "#D8D4C9", dark: "#3D4B5F" }, // primary border
+  line:             { light: "#E4E2DA", dark: "#2A3648" },
+  hair:             { light: "#F0EFE9", dark: "#1E2938" }, // hairline/divider
 
   // --- ink --------------------------------------------------------------
-  ink:              { light: "#1A2433", dark: "#E2E8F0" },
-  "ink-body":       { light: "#374253", dark: "#CBD5E1" },
-  "ink-2":          { light: "#4C5665", dark: "#C2CCDA" },
-  "ink-mute":       { light: "#5A6473", dark: "#AEBACB" },
-  "ink-3":          { light: "#68707E", dark: "#94A3B8" }, // the workhorse
+  ink:              { light: "#1A2433", dark: "#C9D3E0" },
+  "ink-body":       { light: "#374253", dark: "#A8B4C4" },
+  "ink-2":          { light: "#4C5665", dark: "#9AABC0" },
+  "ink-mute":       { light: "#5A6473", dark: "#8A97A8" },
+  "ink-3":          { light: "#68707E", dark: "#7D8B9C" }, // the workhorse
   "ink-faint":      { light: "#9AA2AD", dark: "#7C8899" },
   "ink-4":          { light: "#C7CBD2", dark: "#475569" }, // outlines, disabled
 

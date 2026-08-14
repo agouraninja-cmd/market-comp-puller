@@ -7840,10 +7840,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Aerial close-up for a pin popup: free Esri World Imagery tiles stitched
   // into a crop centered on the property (a crop smaller than one 256px tile
   // touches at most 4 tiles). No key, no billing. A red dot marks the exact
-  // point; tiles that fail to load simply hide. Street View is the photo
-  // that paints on hover (prefetched after the building snap). This roof is
-  // the fallback when the proxy 404s a far pano. (First shipped 2026-07-13
-  // as 427ff44; Street View restored 2026-08-14 behind the honesty gate.)
+  // point; tiles that fail to load simply hide. This is the FALLBACK photo
+  // when Street View 404s a far pano — it is not stacked under a loading
+  // facade. (First shipped 2026-07-13 as 427ff44.)
   // Tile math lives in one place so prefetch after the building snap hits
   // the same URLs the popup will request.
   function aerialTileSpec(ll, w, h, z) {
@@ -7864,7 +7863,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     return tiles;
   }
-  function aerialThumb(ll, w = 260, h = 156, z = 18, overlayHtml = "") {
+  function aerialThumb(ll, w = 260, h = 156, z = 18) {
     const tiles = aerialTileSpec(ll, w, h, z);
     let imgs = "";
     for (const t of tiles) {
@@ -7878,17 +7877,35 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // photograph itself, whose colours a site theme has no business
     // changing.
     const p = pinColors();
-    // When a Street View overlay is coming, hide the roof so hover does not
-    // flash bird's-eye then facade. onerror unhides .cn-sv-fallback.
-    const hideAerial = Boolean(overlayHtml);
     return `<div style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:${p.aerialBg}">` +
-      `<div class="cn-sv-fallback"${hideAerial ? ' style="display:none"' : ""}>` +
       imgs +
       `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
       `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
-      `</div>` +
-      overlayHtml +
       `</div>`;
+  }
+  // Street View only — no Esri tiles in this tree. Hiding the roof under
+  // opacity:0 still let the prefetched aerial paint for a frame; keeping
+  // those imgs out of the popup is what stops the flash. A 404 swaps this
+  // node for aerialThumb via cnAerialFallback.
+  function streetViewThumb(ll, w, h, z) {
+    const p = pinColors();
+    const zoom = z || 17;
+    return `<div class="cn-sv-box" data-lat="${ll.lat}" data-lng="${ll.lng}" data-w="${w}" data-h="${h}" data-z="${zoom}" style="position:relative;width:${w}px;height:${h}px;overflow:hidden;border-radius:4px;margin-bottom:6px;background:${p.aerialBg}">` +
+      `<img src="${streetViewSrc(ll)}" width="${w}" height="${h}" alt=""` +
+      ` style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover"` +
+      ` onerror="cnAerialFallback(this)">` +
+      `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Google</div>` +
+      `</div>`;
+  }
+  function cnAerialFallback(img) {
+    const box = img && img.parentNode;
+    if (!box || !box.getAttribute) return;
+    const ll = { lat: Number(box.getAttribute("data-lat")), lng: Number(box.getAttribute("data-lng")) };
+    const w = Number(box.getAttribute("data-w"));
+    const h = Number(box.getAttribute("data-h"));
+    const z = Number(box.getAttribute("data-z")) || 17;
+    if (!isFinite(ll.lat) || !isFinite(ll.lng) || !isFinite(w)) return;
+    box.outerHTML = aerialThumb(ll, w, h, z);
   }
   // Warm the Esri tiles a popup will ask for, after the building snap
   // lands. The overview map tops out at zoom 14, so these z17–18 tiles are
@@ -7909,18 +7926,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
     }
   }
-  // Warm Street View for photo-eligible pins so hover paints the facade
-  // from cache instead of the roof. Same URL the popup will request; a
-  // 404 here is a cached miss and the aerial fallback stays. Only pins
-  // that pass popupPhotoLL bill Google — a numberless or unit address
-  // never starts a fetch.
+  // One in-flight Image per URL so prefetch and hover share the same
+  // settle. "ok" / "fail" — never a guess. Hover waits on this before
+  // opening so the first paint is already the facade (or the roof).
+  const svStatusCache = new Map();
+  function streetViewStatus(ll) {
+    const src = streetViewSrc(ll);
+    let p = svStatusCache.get(src);
+    if (p) return p;
+    p = new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve("ok");
+      img.onerror = () => resolve("fail");
+      img.src = src;
+    });
+    svStatusCache.set(src, p);
+    return p;
+  }
+  // Warm Street View for photo-eligible pins so hover is a cache hit.
+  // Same URL the popup will request; a 404 here is a cached miss and
+  // the aerial fallback stays. Only pins that pass popupPhotoLL bill
+  // Google — a numberless or unit address never starts a fetch.
   function prefetchStreetViewThumbs(markers) {
     if (!streetviewEnabled) return;
     for (const m of markers) {
       const ll = popupPhotoLL(m, m._addr);
-      if (!ll) continue;
-      const img = new Image();
-      img.src = streetViewSrc(ll);
+      if (ll) streetViewStatus(ll);
     }
   }
 
@@ -8154,12 +8185,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (n >= 40000) return 17;
       return 18;
     };
-    // Popup photo: Street View of the snapped building (prefetched after
-    // the footprint lands). The aerial roof is hidden until the proxy
-    // 404s a far pano. Popup content is a FUNCTION so Leaflet builds it
-    // at open time from the marker's CURRENT position — refinePins()
-    // moves pins after first paint. Coordinates come from the snapped
-    // centroid — numbers, nothing user-authored.
+    // Popup photo: Street View of the snapped building, or the aerial
+    // roof if that request already 404'd. The two are never in the same
+    // tree — stacking them (even with the roof hidden) is what flashed
+    // bird's-eye then facade. Popup content is a FUNCTION so Leaflet
+    // builds it at open time from the marker's CURRENT position —
+    // refinePins() moves pins after first paint. Coordinates come from
+    // the snapped centroid — numbers, nothing user-authored.
     const svPhoto = (marker, zoom, address) => {
       const snapped = popupPhotoLL(marker, address);
       if (!snapped) return "";
@@ -8169,19 +8201,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // builds at open time, so the map's CURRENT width is known here.
       const w = Math.min(260, Math.max(180, (mapInstance ? mapInstance.getSize().x : 400) - 110));
       const h = Math.round(w * 0.6);
-      let overlay = "";
-      if (streetviewEnabled) {
-        // Visible (opacity 0 until the JPEG lands) so a cached Street View
-        // paints without a bird's-eye flash. onerror unhides the aerial.
-        overlay =
-          '<img src="' + streetViewSrc(snapped) +
-          '" width="' + w + '" height="' + h + '" alt=""' +
-          ' style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;opacity:0"' +
-          ' onload="this.style.opacity=\'1\';var g=this.nextElementSibling;if(g)g.style.display=\'block\'"' +
-          ' onerror="var p=this.parentNode;var g=this.nextElementSibling;this.remove();if(g)g.remove();var a=p&&p.querySelector(\'.cn-sv-fallback\');if(a)a.style.display=\'block\'">' +
-          '<div style="display:none;position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Google</div>';
+      const z = zoom || 17;
+      if (!streetviewEnabled || marker._svStatus === "fail") {
+        return aerialThumb(snapped, w, h, z);
       }
-      return aerialThumb(snapped, w, h, zoom || 17, overlay);
+      return streetViewThumb(snapped, w, h, z);
     };
     // Popups must never be wider than the map (a too-wide popup clips and
     // even autoPan can't help). Leaflet's maxWidth governs the text; the
@@ -8217,9 +8241,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       m.on("mouseover", () => {
         clearTimeout(closeT);
         clearTimeout(openT);
-        openT = setTimeout(() => m.openPopup(), 60);
+        m._svOpenSeq = (m._svOpenSeq || 0) + 1;
+        const seq = m._svOpenSeq;
+        openT = setTimeout(() => {
+          const ll = popupPhotoLL(m, m._addr);
+          if (!streetviewEnabled || !ll) {
+            m.openPopup();
+            return;
+          }
+          // Wait until the JPEG is here (prefetch usually already settled)
+          // so the popup's first paint is the facade, not a loading roof.
+          const raced = Promise.race([
+            streetViewStatus(ll),
+            new Promise((r) => setTimeout(() => r("pending"), 800)),
+          ]);
+          raced.then((status) => {
+            if (m._svOpenSeq !== seq) return;
+            if (status === "ok" || status === "fail") m._svStatus = status;
+            m.openPopup();
+          });
+        }, 60);
       });
       m.on("mouseout", () => {
+        m._svOpenSeq = (m._svOpenSeq || 0) + 1;
         clearTimeout(openT);
         scheduleClose();
       });
@@ -8249,15 +8293,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       };
       m.on("click", () => {
         pinned = true;
-        m.openPopup();
-        const el = m.getPopup() && m.getPopup().getElement();
-        if (el && mapInstance) {
-          // The glide guarantees room above the pin, so undo any hover-time
-          // clamp first — its margin would throw off the centering math.
-          unclampPopup(el);
-          const pt = mapInstance.latLngToContainerPoint(m.getLatLng());
-          const target = mapInstance.containerPointToLatLng([pt.x, pt.y - el.offsetHeight / 2]);
-          mapInstance.panTo(target, { animate: true, duration: 0.45, easeLinearity: 0.25 });
+        m._svOpenSeq = (m._svOpenSeq || 0) + 1;
+        const finish = () => {
+          m.openPopup();
+          const el = m.getPopup() && m.getPopup().getElement();
+          if (el && mapInstance) {
+            // The glide guarantees room above the pin, so undo any hover-time
+            // clamp first — its margin would throw off the centering math.
+            unclampPopup(el);
+            const pt = mapInstance.latLngToContainerPoint(m.getLatLng());
+            const target = mapInstance.containerPointToLatLng([pt.x, pt.y - el.offsetHeight / 2]);
+            mapInstance.panTo(target, { animate: true, duration: 0.45, easeLinearity: 0.25 });
+          }
+        };
+        const ll = popupPhotoLL(m, m._addr);
+        if (streetviewEnabled && ll && m._svStatus !== "ok" && m._svStatus !== "fail") {
+          streetViewStatus(ll).then((status) => {
+            m._svStatus = status;
+            finish();
+          });
+        } else {
+          finish();
         }
       });
       m.on("popupclose", (e) => {

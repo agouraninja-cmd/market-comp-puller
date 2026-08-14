@@ -41,10 +41,10 @@ ${THEME_BOOT}
 ${THEME_CSS}
 ${ACCOUNT_NAV_CSS}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
+body{margin:0;background:var(--paper);color:var(--ink);
   font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 a{color:inherit;text-decoration:none}
-.hdr{position:sticky;top:0;z-index:1000;background:var(--bg);border-bottom:1px solid var(--line);
+.hdr{position:sticky;top:0;z-index:1000;background:var(--paper);border-bottom:1px solid var(--line);
   padding:12px 20px;display:flex;align-items:center;gap:18px}
 .hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px;margin-left:auto}
 .hdr nav a{color:var(--ink-2)}.hdr nav a:hover{color:var(--ink)}
@@ -54,7 +54,7 @@ h1{font-size:22px;margin:0 0 4px;line-height:1.2}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:20px}
 .msg{padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--wash);
   color:var(--ink-body);font-size:14px}
-.msg.bad{border-color:var(--bad,#b4433a)}
+.msg.bad{border-color:var(--err-rule)}
 /* The one thing an unsigned reader can act on. Underlined rather than a
    button: it sits inside a sentence, and a button would read as the primary
    act of a page whose primary act is reading the comps. */
@@ -105,7 +105,7 @@ tr.passed td:not(:nth-last-child(-n+2)){opacity:.55}
 .bub .txt{white-space:pre-wrap;word-break:break-word}
 textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);border-radius:8px;
   background:var(--card);color:var(--ink);font:inherit;resize:vertical}
-.btn{display:inline-block;border:1px solid var(--ink);background:var(--ink);color:var(--bg);
+.btn{display:inline-block;border:1px solid var(--ink);background:var(--ink);color:var(--paper);
   border-radius:8px;padding:8px 14px;font-size:13.5px;cursor:pointer;font-weight:600}
 .btn[disabled]{opacity:.5;cursor:default}
 .foot{color:var(--ink-3);font-size:12px;margin-top:30px;line-height:1.5}

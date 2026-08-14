@@ -1577,6 +1577,67 @@ test("/api/vault/extract sniffs the media type and never takes it from the body"
     "the data: prefix stripper must not be PDF-only");
 });
 
+// ---------------------------------------------------------------------------
+// The webhook's switch and the Stripe dashboard's event list are one setting
+// in two places, and only one of them is in this repo.
+//
+// A handler for an event the destination does not send is dead code that
+// looks alive: `charge.refunded` and the async-payment pair were WRITTEN
+// against a destination subscribed to six events, so until someone ticks the
+// boxes in Stripe, a refunded buyer still keeps their report and nothing here
+// fails. PRO-BILLING-SETUP.md is the checklist whoever configures that
+// destination reads, so this pins the two lists to each other — the file
+// cannot fall behind the code, and a new case cannot ship without the setup
+// step being written down.
+// ---------------------------------------------------------------------------
+
+test("PRO-BILLING-SETUP.md lists exactly the events handleStripeEvent handles", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const root = path.join(__dirname, "..");
+
+  const src = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const start = src.indexOf("async function handleStripeEvent");
+  assert.ok(start >= 0, "handleStripeEvent should still exist");
+  const end = src.indexOf("async function entitlementsFor", start);
+  assert.ok(end > start, "could not bound handleStripeEvent");
+  const handled = [...src.slice(start, end).matchAll(/case "([a-z_]+\.[a-z_.]+)":/g)].map((m) => m[1]);
+  assert.ok(handled.length >= 6, "expected the switch to handle at least the original six events");
+
+  const doc = fs.readFileSync(path.join(root, "PRO-BILLING-SETUP.md"), "utf8");
+  const block = doc.match(/matching the switch in `handleStripeEvent\(\)`[^`]*```\n([\s\S]*?)```/);
+  assert.ok(block, "PRO-BILLING-SETUP.md should still carry the fenced event list");
+  const documented = block[1].split("\n").map((l) => l.trim()).filter(Boolean);
+
+  assert.deepEqual([...handled].sort(), [...documented].sort(),
+    "the webhook switch and the documented Stripe event list disagree — a handled " +
+    "event missing from the doc never gets enabled in Stripe, and a documented " +
+    "event with no case is noise the destination pays to deliver");
+});
+
+test("a refund revokes only a FULL refund, and only a report unlock", () => {
+  // The two ways this branch goes wrong are both silent: revoking on a partial
+  // refund repossesses a report the customer still mostly paid for, and acting
+  // on a refunded Pro invoice ends a paid-up member's access early.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf('case "charge.refunded"');
+  assert.ok(start >= 0, "the refund branch should still exist");
+  const end = src.indexOf("default:", start);
+  assert.ok(end > start, "could not bound the refund branch");
+  const branch = src.slice(start, end);
+
+  assert.match(branch, /STRIPE\.refundOf\(obj\)/,
+    "the full-vs-partial decision belongs to the pure, tested refundOf");
+  assert.match(branch, /if \(!full\)/,
+    "a partial refund must take its own path rather than falling through to the revoke");
+  assert.match(branch, /revokeReportPurchase\(paymentIntentId\)/,
+    "the revoke must match on the payment intent, the only join to report_purchases");
+  assert.equal(/upsertSubscription|deleteSubscription/.test(branch), false,
+    "a refund must not touch subscription state — that is the subscription events' job");
+});
+
 // --- /admin's digest trigger ------------------------------------------------
 //
 // The digest route is deliberately manual, but "manual" meant curl-only, which

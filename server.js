@@ -135,6 +135,8 @@ const BRANDING = require("./branding.js");
 const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
 const MARKETHERO = require("./market-hero");
+const HEROQUALITY = require("./market-hero-quality");
+const HEROREVIEW = require("./market-hero-review");
 const SVAIM = require("./streetview-aim");
 // "The market under this saved property moved since you last looked" — the
 // desk's only figure that changes without the owner re-running anything.
@@ -6608,6 +6610,66 @@ function marketHeroBanner(p, title) {
   };
 }
 
+function readJpegHead(file) {
+  try {
+    const st = fs.statSync(file);
+    const fd = fs.openSync(file, "r");
+    try {
+      const n = Math.min(st.size, 65536);
+      const buf = Buffer.alloc(n);
+      fs.readSync(fd, buf, 0, n, 0);
+      return { bytes: st.size, dims: HEROQUALITY.jpegDimensions(buf) };
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return { bytes: 0, dims: null };
+  }
+}
+
+function sampleMarketPathForHero(key) {
+  const merged = allMarketPages();
+  for (const [slug, p] of Object.entries(merged)) {
+    if (MARKETHERO.cityKey(p.city, p.state) === key) return "/market/" + slug;
+  }
+  return null;
+}
+
+function inspectMarketHeroes() {
+  const dir = path.join(__dirname, "market-heroes");
+  const rows = [];
+  for (const [key, row] of Object.entries(MARKETHERO.HEROES)) {
+    const main = readJpegHead(path.join(dir, row.file));
+    const sib = readJpegHead(path.join(dir, MARKETHERO.srcsetName(row.file)));
+    const g = HEROQUALITY.gradeHero({
+      width: main.dims && main.dims.width,
+      height: main.dims && main.dims.height,
+      bytes: main.bytes,
+      siblingWidth: sib.dims && sib.dims.width,
+      siblingHeight: sib.dims && sib.dims.height,
+      siblingBytes: sib.bytes,
+    });
+    rows.push({
+      key,
+      label: HEROQUALITY.displayCity(key),
+      src: "/market-heroes/" + row.file,
+      alt: row.alt,
+      credit: row.credit,
+      license: row.license,
+      commonsUrl: MARKETHERO.commonsFileUrl(row.commons),
+      samplePath: sampleMarketPathForHero(key),
+      ok: g.ok,
+      grade: g.grade,
+      reasons: g.reasons,
+      bpp: g.bpp,
+      width: g.width,
+      height: g.height,
+      bytes: g.bytes,
+    });
+  }
+  return { rows, look: rows.filter((r) => !r.ok).length, total: rows.length };
+}
+
 function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const title = marketTitle(p);
   const canonical = marketUrl(slug);
@@ -8815,6 +8877,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
       <a href="/hq">HQ</a>
+      <a href="/admin/heroes">Heroes</a>
       <a href="/dev">Dev hub</a>
       <a href="/contacts">Contacts</a>
       <a href="/">Run a report</a>
@@ -10587,7 +10650,10 @@ async function hqSnapshot() {
     // Render's logs — this page is what actually gets looked at.
     audience: PRO_ENABLED && PRO_AUDIENCE.length ? PRO_AUDIENCE.length : 0,
   };
-  return { analytics, submissions, dev, contacts, revenue, alerts };
+  let heroes = null;
+  try { heroes = inspectMarketHeroes(); }
+  catch (err) { console.error("hero inspect failed:", err && err.message); }
+  return { analytics, submissions, dev, contacts, revenue, alerts, heroes };
 }
 
 // Self-contained HQ page: same public-shell + key-gate pattern and Research
@@ -11034,6 +11100,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
       <a href="/admin">Analytics</a>
+      <a href="/admin/heroes">Heroes</a>
       <a href="/dev">Dev hub</a>
       <a href="/contacts">Contacts</a>
       <a href="/">Run a report</a>
@@ -11222,6 +11289,10 @@ function renderAlerts(d){
   var html=out.map(function(t){return '<div class="alert">'+t+'</div>';}).join("");
   if(s&&s.db===true&&s.pending){
     html+='<div class="attn">'+plural(s.pending,"broker comp is","broker comps are")+' awaiting review. <a href="/admin">Review on Analytics</a></div>';
+  }
+  var h=d&&d.heroes;
+  if(h&&h.look){
+    html+='<div class="attn">'+plural(h.look,"market photo needs","market photos need")+' a look. <a href="/admin/heroes">Review photos</a></div>';
   }
   el("alerts").innerHTML=html;
 }
@@ -17016,6 +17087,23 @@ const server = http.createServer((req, res) =>
       "x-robots-tag": "noindex, nofollow",
     });
     return res.end(renderAdminHTML());
+  }
+  if (req.method === "GET" && req.url.split("?")[0] === "/admin/heroes") {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(HEROREVIEW.renderHeroReviewHTML({ CN_LOGO }));
+  }
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/heroes") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    try { return sendJson(res, 200, inspectMarketHeroes()); }
+    catch (err) {
+      console.error("hero inspect failed:", err && err.message);
+      return sendJson(res, 500, { error: "Could not inspect market photos." });
+    }
   }
 
   // --- HQ: the internal homepage. One aggregate of the three tools' headline

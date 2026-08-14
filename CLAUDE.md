@@ -57,7 +57,9 @@ interrupting for) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`market-hero.js`** (which city's
 photograph heads a market page, and the rule that a missing city gets no
-picture rather than someone else's skyline) and **`test/routes.test.js`**, which boots a real
+picture rather than someone else's skyline) and **`market-hero-quality.js`**
+(whether a stored hero JPEG is the right size and dense enough to not be an
+upscale) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
@@ -564,7 +566,7 @@ column. So "is this an admin?" is answered by **possession of that key**, which
 2. the **`cn_admin` cookie** — how a browser carries it. The dashboards keep the
    key in `sessionStorage`, which is scoped to **one tab**; `POST
    /api/admin-access` trades the key for this cookie, and all four dashboards
-   (`/hq`, `/admin`, `/dev`, `/contacts`) call it (`grantAdminAccess()`) the
+   (`/hq`, `/admin`, `/dev`, `/contacts`) plus `/admin/heroes` call it (`grantAdminAccess()`) the
    moment their own key check passes. Since 2026-08-04 **every dashboard
    endpoint accepts the cookie** (via `isAdminRequest`) as an alternative to
    the header, so a new tab within the 30-day cookie window opens unlocked
@@ -1126,7 +1128,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   instantly with no DB. Each page opens with an aerial photograph of the
   city (curated Wikimedia Commons files in `market-heroes/`, keyed by city
   in the pure, tested `market-hero.js` — 3840×800 plus a 1920w `srcset`
-  sibling so a full-bleed retina header is not upscaled; Explorer markets
+  sibling so a full-bleed retina header is not upscaled; `/admin/heroes`
+  is the visual QA, with a file-size/dimension grade in the tested
+  `market-hero-quality.js`. Explorer markets
   without a photo fall through to an Esri aerial when we have coordinates,
   and to no photo rather than the wrong city's skyline). Then: median/quartile $/SF, a cap-rate range, a
   market summary + `value_drivers` narrative, a recent-comps table (sortable,

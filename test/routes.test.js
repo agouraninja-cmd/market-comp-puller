@@ -627,7 +627,7 @@ test("bare environment", async (t) => {
   // deployment.
 
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
-    for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
+    for (const p of ["/api/stats", "/api/leads", "/api/accuracy", "/api/admin/heroes"]) {
       const r = await fetch(srv.base + p);
       assert.equal(r.status, 404, p + " should be disabled, not merely unauthorized");
     }
@@ -793,6 +793,33 @@ test("admin gating", async (t) => {
     const body = await r.json();
     assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
+  });
+
+  await t.test("market-hero review is gated like the other admin APIs", async () => {
+    const denied = await fetch(srv.base + "/api/admin/heroes");
+    assert.equal(denied.status, 401);
+    const r = await fetch(srv.base + "/api/admin/heroes", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.ok(Array.isArray(body.rows) && body.rows.length >= 20, "every curated city should be listed");
+    assert.equal(body.total, body.rows.length);
+    const ontario = body.rows.find((row) => row.key === "ontario, ca");
+    assert.ok(ontario, "Ontario, CA must be on the list");
+    assert.equal(ontario.ok, false, "Ontario's small original should still need a look");
+    const dallas = body.rows.find((row) => row.key === "dallas, tx");
+    assert.ok(dallas && dallas.ok, "Dallas should pass the file checks");
+    assert.match(dallas.src, /dallas-tx\.jpg/);
+    assert.match(dallas.samplePath || "", /\/market\//);
+  });
+
+  await t.test("the hero review page is noindex and does not embed the grades", async () => {
+    const r = await fetch(srv.base + "/admin/heroes");
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get("x-robots-tag") || "", /noindex/);
+    assert.equal(r.headers.get("cache-control"), "no-store");
+    const html = await r.text();
+    assert.match(html, /Market heroes/);
+    assert.doesNotMatch(html, /ontario, ca/, "grades belong behind the API, not in the HTML");
   });
 
   // The confirm dialog's type picker logs outcome "dialog_pick". The route's

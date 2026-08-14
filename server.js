@@ -7401,6 +7401,16 @@ function logEvent(kind, dims) {
     searches: dims && Number.isFinite(dims.searches) ? dims.searches : null,
     out_tokens: dims && Number.isFinite(dims.out_tokens) ? dims.out_tokens : null,
     rescue: (dims && dims.rescue) || "",
+    // Which tier ran this search (2026-08-13, migration 026). Three
+    // /api/comps call sites have passed `plan: ent.plan` since the Pro tier
+    // shipped and this row never carried it, so the value was built and
+    // thrown away on every search: the code read as though "do free users
+    // search more than Pro ones" was answerable and it never was. That is
+    // the same silently-inert shape as vault_beta missing from
+    // getSessionUser, and the reason logEvent now takes its dimensions from
+    // an ambient context rather than trusting call sites to remember.
+    // "anonymous" / "free" / a paid plan name, per entitlements.js.
+    plan: (dims && dims.plan) || "",
     // Whose visit this was (2026-08-13, migration 026). Empty string rather
     // than null for the same reason every other text dimension here is:
     // aggregateStats treats blank as "unknown" and never has to test two
@@ -7469,6 +7479,15 @@ function aggregateStats(rows) {
     conversionPct: searches.length ? Math.round((leads.length / searches.length) * 1000) / 10 : 0,
     daily,
     byType: countBy(searches, "prop_type"),
+    // Which tier is doing the searching (2026-08-13, migration 026). The
+    // question this answers is whether the paid tier is used more per head
+    // than the free one, which is the argument for or against every gate in
+    // entitlements.js — and it was unanswerable until now even though three
+    // call sites had been passing `plan` to logEvent since Pro shipped.
+    // Rows predating the column read "(unknown)" via countBy's own blank
+    // handling rather than being dropped, so the total still reconciles with
+    // the Searches tile above.
+    byPlan: countBy(searches, "plan"),
     topMarkets: countBy(searches, "market").slice(0, 12),
     leadsBySource: countBy(leads, "source"),
     // Property-type autofill. `applied` is the only outcome the visitor ever
@@ -8006,6 +8025,16 @@ function render(d){
     "<div class=card><h2>Searches per day (last 30 days)</h2><div class=chart>"+bars+"</div><div class=xax>"+xax+"</div>"+
     "<div class=leg><span class=sb></span>Billed<span class=sc></span>Cache hit</div></div>"+
     "<div class=card><h2>Searches by property type</h2><table>"+rows(d.byType)+"</table></div>"+
+    // Searches by tier. undefined = a stale /api/stats from before migration
+    // 026. Deliberately a count of SEARCHES and not of people: one Pro member
+    // running fifty searches is the signal the gates exist to price, and a
+    // per-head figure would need the visitor funnel's denominator, which is a
+    // different card answering a different question.
+    (d.byPlan===undefined?"":
+      "<div class=card><h2>Searches by plan</h2><table>"+rows(d.byPlan)+"</table>"+
+      "<div class=muted style='margin-top:10px'>anonymous = no account &middot; free = signed in, not paying &middot; "+
+      "anything else is the paid plan name. Searches logged before 2026-08-13 carry no plan and show as "+
+      "(unknown); they are counted here so this table still totals to the Searches tile.</div></div>")+
     "<div class=card><h2>Top markets searched</h2><table>"+rows(d.topMarkets)+"</table></div>"+
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
@@ -14583,7 +14612,27 @@ const server = http.createServer((req, res) =>
       if (!shared && auth !== "signup" && auth !== "signin" && submit !== "comp"
           && pricing !== "1") {
         if (staticPath === "/desk") {
-          res.writeHead(302, { location: "/", "cache-control": "no-store" });
+          // To the SIGN-IN door, not the front door (changed 2026-08-13).
+          // Asking for /desk is asking for your own account, and answering
+          // that with the marketing page tells somebody who already has one
+          // to go read about the product. The wall's actual rule — never
+          // render a personal workspace anonymously — is unchanged; only the
+          // destination moves, to a door two lines below that already serves
+          // the app so the account modal can open.
+          //
+          // It became visible with the watchlist digest, whose only call to
+          // action is "see them all in your desk". A reader signed in on that
+          // device is fine, which is most of them at a 90-day session, but a
+          // new phone or cleared cookies dead-ended the email on marketing
+          // copy. Any future mail linking to /desk inherits the fix.
+          //
+          // Still a 302 and still no-store, for the spec's original reason:
+          // what lives here depends on auth state, so a cached permanent
+          // redirect would outlive the visitor getting an account. Query
+          // strings are dropped exactly as before (a signed-out
+          // /desk?checkout=success loses the param either way, and a real
+          // checkout return carries a session cookie and never reaches here).
+          res.writeHead(302, { location: "/?auth=signin", "cache-control": "no-store" });
           return res.end();
         }
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -14998,7 +15047,7 @@ const server = http.createServer((req, res) =>
     const key = new URL(req.url, "http://localhost").searchParams.get("key");
     if (!isAdminRequest(req) && !secretMatches(key, ADMIN_KEY)) return sendJson(res, 401, { error: "Unauthorized." });
     Promise.all([
-      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue", "visitor_id", "user_id"]),
+      readRows("analytics_events", ANALYTICS_FILE, ["ts", "kind", "prop_type", "market", "source", "cached", "duration_ms", "searches", "out_tokens", "rescue", "visitor_id", "user_id", "plan"]),
       // Never rejects: readIntroRequests catches its own errors and returns
       // null, so an intro-table outage can't take the whole dashboard down.
       readIntroRequests(),

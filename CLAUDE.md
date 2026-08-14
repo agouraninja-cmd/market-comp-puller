@@ -258,7 +258,17 @@ dependency. `.env` is git-ignored — never commit it.
   canonical `/`, served no-store because what lives at `/` depends on auth
   state) — NOT the 302 to `/how-it-works` the wall shipped with, which left
   the site's strongest URL a redirect Google never followed (Search Console
-  confirmed the target was never crawled). `/desk` still 302s, now to `/`.
+  confirmed the target was never crawled). `/desk` still 302s, and since
+  2026-08-13 it goes to **`/?auth=signin`** rather than `/`: asking for the
+  desk is asking for your own account, and the marketing page answers that by
+  telling somebody who already has one to go read about the product. The
+  wall's actual rule — a personal workspace never renders anonymously — is
+  unchanged, and so are the 302 and the `no-store`; only the destination
+  moved, onto a door the wall already exempts. It surfaced when the watchlist
+  digest started linking to `/desk` from email, and any future mail that links
+  there inherits it. Query strings are still dropped
+  (`/desk?checkout=success` lost them under the old target too, and a real
+  checkout return carries a session cookie and never reaches this branch).
   Signed-in visitors get the app; `index.html` swaps the search form
   for a signup card (`applySearchLock()`, driven by `/api/config`'s
   `accountWall`). It decides on cookie **presence**, never `getSessionUser()`,

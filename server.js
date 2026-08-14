@@ -5485,7 +5485,14 @@ const ACCOUNT_NAV_CSS = `
 
 // The nav slots. `desk: false` for /how-it-works, which already renders its own
 // My Desk / Log in server-side and would otherwise show two of each.
-function accountNavSlots({ desk = true } = {}) {
+function accountNavSlots({ desk = true, upsell = true } = {}) {
+  // `upsell` exists for ONE surface: a hub. A client reading their broker's
+  // hub is that broker's guest, and the spec's tenant rule is that the hub
+  // carries no Pro prompt of any kind — "a tenant who hits a paywall inside
+  // their own broker's hub is a lost acquisition and an embarrassed broker".
+  // The Pricing link is dropped there by passing ACCOUNT_NAV_PRICING: "";
+  // this drops the Upgrade button, which lives inside the account menu and so
+  // cannot be removed from outside. Every other page keeps both by default.
   // The theme toggle. Rendered here and nowhere else -- the pages that use
   // this helper each render exactly one nav, so a second copy anywhere
   // would double it. Not hidden like the account slots: it needs no
@@ -5504,7 +5511,7 @@ function accountNavSlots({ desk = true } = {}) {
     `<div class="dd">` +
     `<div class="em" id="navAcctEmail"></div>` +
     `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
-    `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` +
+    (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
     `</div></details>`;
@@ -17013,8 +17020,10 @@ const server = http.createServer((req, res) =>
       // Both symptoms were reported by a real client on a real hub: they read
       // the comps, left, and could not find the hub again; and the page told
       // them to sign in with nothing to click. One flag caused both.
-      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: true }),
-      ACCOUNT_NAV_PRICING,
+      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: true, upsell: false }),
+      // Deliberately EMPTY, not ACCOUNT_NAV_PRICING. See the upsell note on
+      // accountNavSlots: a hub sells the client nothing.
+      ACCOUNT_NAV_PRICING: "",
     }));
     return;
   }

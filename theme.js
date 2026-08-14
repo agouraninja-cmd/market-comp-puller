@@ -132,10 +132,24 @@ const DARK_CHROME =
   "[data-theme=\"dark\"] input:-webkit-autofill,[data-theme=\"dark\"] textarea:-webkit-autofill,[data-theme=\"dark\"] select:-webkit-autofill{" +
   "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);box-shadow:0 0 0 1000px var(--card) inset;transition:background-color 9999s ease-out}}";
 
+// Chrome paints a light-blue sheet on autofill, including when someone
+// pastes a street address it recognises. background-color cannot override
+// it (UA !important); an inset shadow the size of the field can. var(--card)
+// is white in light and charcoal in dark, so the field stays the colour it
+// already is. Intentionally NOT inside DARK_CHROME: that block is dark-only,
+// and the blue sheet is a light-mode bug. :hover/:focus are the states
+// Chrome restyles after the paste.
+const AUTOFILL_COVER =
+  "input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus," +
+  "textarea:-webkit-autofill,textarea:-webkit-autofill:hover,textarea:-webkit-autofill:focus," +
+  "select:-webkit-autofill,select:-webkit-autofill:hover,select:-webkit-autofill:focus{" +
+  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);" +
+  "box-shadow:0 0 0 1000px var(--card) inset;transition:background-color 9999s ease-out}";
+
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}`;
+  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}${AUTOFILL_COVER}`;
 }
 
-module.exports = { THEME_TOKENS, DARK_LIFT, DARK_CHROME, rootCss };
+module.exports = { THEME_TOKENS, DARK_LIFT, DARK_CHROME, AUTOFILL_COVER, rootCss };

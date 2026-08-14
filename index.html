@@ -696,8 +696,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* 16px is load-bearing, not a taste choice: iOS Safari auto-zooms on focus
        for any input under 16px and never zooms back out, leaving the page
        zoomed and side-scrolled after tapping the address field — the site's
-       single most-tapped control. Do not "tidy" this back down. */
-    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: var(--ink); background: transparent; }
+       single most-tapped control. Do not "tidy" this back down.
+       background-color, never the background shorthand: that shorthand
+       clears background-image, which is how `select` draws the site chevron.
+       Combined with appearance:auto and color-scheme:dark, Focus and Lookback
+       stacked three or four arrows in dark mode. */
+    .rd-in { width: 100%; border: 0; outline: 0; padding: 0; font-size: 16px; color: var(--ink); background-color: transparent; }
+    /* Chrome paints a light-blue sheet on an autofilled field, including
+       when you paste a street address it recognises. background-color cannot
+       override it (UA !important); an inset shadow the size of the field
+       can, and var(--card) is white in light / charcoal in dark so the desk
+       stays the colour it already is. :hover/:focus are the states Chrome
+       restyles after the paste. Mirrors theme.js AUTOFILL_COVER — index.html
+       is static and never templates that file. Must not be dark-only: that
+       left light mode with the blue sheet. */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    textarea:-webkit-autofill,
+    textarea:-webkit-autofill:hover,
+    textarea:-webkit-autofill:focus,
+    select:-webkit-autofill,
+    select:-webkit-autofill:hover,
+    select:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--ink);
+      caret-color: var(--ink);
+      box-shadow: 0 0 0 1000px var(--card) inset;
+      transition: background-color 9999s ease-out;
+    }
     /* #68707E, same as the swept caption gray: #9AA2AD measured 2.6:1, below
        even the relaxed placeholder bar, and the example addresses rotating in
        the search field are real guidance, not decoration. Still clearly
@@ -715,7 +741,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        largest text in the frame (Direction N). Still above the 16px iOS
        zoom floor documented at .rd-in. */
     .rd-in-lg { font-size: 17px; }
-    select.rd-in { appearance: auto; }
+    /* Must stay none. auto restored the native widget on top of the SVG, and
+       color-scheme:dark added Chrome's own — that is the stacked-chevron
+       dark-mode bug. Restated here so a later .rd-in tweak cannot revive auto. */
+    select.rd-in { appearance: none; -webkit-appearance: none; }
     /* Keyboard focus: the whole cell rings when its bare input has focus (WCAG 2.4.7). */
     .rd-cell:focus-within { box-shadow: inset 0 0 0 2px var(--red); }
     /* ...but only for the cell's OWN input. The address cell now also carries
@@ -975,6 +1004,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
     .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
     .rd-chip.o { background: var(--card); border-color: var(--edge); color: var(--ink-mute); }
+    /* Comp table/card marks. Replaced † ‡ § — those glyphs read as gray
+       glitches next to Size and $/SF, and § next to a dollar figure looks
+       like a second $. Words stay font-safe; the title tooltip still
+       carries the full explanation. */
+    .comp-mark {
+      display: inline;
+      margin-left: 0.28em;
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      vertical-align: super;
+      line-height: 1;
+      cursor: help;
+    }
     /* Badge tiers the live report needs beyond the landing set: news (weakest,
        nearly typographic) + estimate (caution sienna, distinct from .li gold). */
     .rd-badge.n { color: var(--ink-mute); background: var(--wash); }
@@ -2798,6 +2843,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                in exports so the badges are explained wherever the report travels.
                Built by renderBadgeLegend(). -->
           <p id="badgeLegend" class="hidden text-xs leading-6 text-[#68707E] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
+          <!-- Word marks on Size / $/SF (calc, size, adj). Built by
+               renderCompMarksLegend(); hidden until a visible row wears one. -->
+          <p id="compMarksLegend" class="hidden text-xs leading-6 text-[#68707E] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
           <!-- Vault-comp disclosure. Deliberately NOT no-print/no-capture, unlike
                almost everything else down here: the private rows themselves ARE
                stripped from the print and the PNG, and this line is the only
@@ -2903,7 +2951,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     <!-- Home info — pointer row under the desk; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
-      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-3 gap-y-2">
+      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-4 gap-y-2">
         <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works</a>
         <span class="text-[#9AA2AD]">·</span>
         <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers</a>
@@ -3283,21 +3331,45 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let currentParsed = null;   // last rendered report, for client-side recomputes
   let sortState = { key: null, dir: 1 };
 
-  // ["Industrial", "submarket note", "Last 24 months", "Sales & Leases"]
+  // ["Residential", "8 comps", "Last 24 months", "Sales & Leases"]
   function metaParts(meta) {
     const parts = [meta.type];
+    // Same count the table, map, and #compCount use — never a priced-sale
+    // subset. A bare digit here (Atlanta residential, 2026-08-14) read as
+    // an unlabeled, wrong comp total next to the type chip.
+    const n = currentComps.length;
+    if (n > 0) parts.push(n === 1 ? "1 comp" : n + " comps");
     if (meta.subject && meta.subject.sizeMin) {
       parts.push(meta.subject.sizeMax && meta.subject.sizeMax !== meta.subject.sizeMin
         ? `${meta.subject.sizeMin.toLocaleString()}-${meta.subject.sizeMax.toLocaleString()} SF`
         : `${meta.subject.sizeMin.toLocaleString()} SF`);
     }
-    if (meta.note) parts.push(meta.note);
+    if (meta.note) {
+      const note = String(meta.note).trim();
+      if (note) {
+        parts.push(/^\d+(\.\d+)?$/.test(note) ? "Note: " + note : note);
+      }
+    }
     if (meta.months) parts.push(meta.months === 1 ? "Last 1 month" : `Last ${meta.months} months`);
     if (meta.txFocus) {
       parts.push(meta.txFocus === "sales" ? "Sales only"
                : meta.txFocus === "leases" ? "Leases only" : "Sales & Leases");
     }
     return parts;
+  }
+  function renderReportMeta(meta) {
+    const metaBox = document.getElementById("reportMeta");
+    if (!metaBox || !meta) return;
+    const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    metaBox.innerHTML = "";
+    metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
+      const chip = document.createElement("span");
+      chip.className = "rd-chip mr-1.5 mt-1.5";
+      chip.textContent = part;
+      metaBox.appendChild(chip);
+    });
+    const printDate = document.getElementById("printDate");
+    if (printDate) printDate.textContent = "Generated " + dateStr;
   }
   function metaLine(meta) { return metaParts(meta).join(" · "); }
 
@@ -3425,7 +3497,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // True when this sale comp's building is a wholly different size class than
   // the subject (more than 2x off in either direction). Such comps stay in
   // the table and the range - compWeight just halves them per further
-  // doubling - and the size cell wears a ‡ so the down-weighting is visible.
+  // doubling - and the size cell wears a "size" mark so the down-weighting
+  // is visible.
   function offSizeClass(comp) {
     if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return false;
     const r = subjectRangeFromMeta("size");
@@ -3686,6 +3759,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } catch (_) { /* if config fails, treat as open */ }
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
+    streetviewEnabled = Boolean(cfg.streetview);
     // Missing `pro` is the Pro-off default. Do not plant portfolioValues
     // here: an old config body with no such key must fall through
     // portfolioValuesOn()'s `!enabled || isPro` branch, not a hardcoded false
@@ -4464,9 +4538,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // --------------------------------------------------------------------------
   // The comp ranking, made visible. compWeight already decides which comps a
   // free visitor sees and how much each one moves the range, but the only part
-  // of it ever on screen was the size ‡ — so "why does that comp carry so much
-  // of the number?" had no answer in the report. Labels rather than the raw
-  // weight: it is a relative ranking, and printing "0.63" would invite
+  // of it ever on screen was the size mark — so "why does that comp carry so
+  // much of the number?" had no answer in the report. Labels rather than the
+  // raw weight: it is a relative ranking, and printing "0.63" would invite
   // arithmetic it cannot support.
   //
   // Thresholds: a fresh, similar-size, well-sourced comp lands at 1.0 and a
@@ -4534,7 +4608,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // comp's RAW reported $/SF so the audit trail never moves, but the valuation
   // uses the indexed figure — which means the number on screen and the number
   // in the math can differ with nothing saying so. Where they do, the cell
-  // wears a § carrying both figures. Sales only: leases are never indexed.
+  // wears an "adj" mark carrying both figures. Sales only: leases are never
+  // indexed.
   function indexedPsfNote(comp, meta, parsed) {
     if (String(comp.transaction || "").toLowerCase().startsWith("lease")) return "";
     const raw = salePsfOf(comp);
@@ -4547,6 +4622,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const psf = (v) => formatUsd(v, { maximumFractionDigits: 0 }) + "/SF";
     return `Counts as ${psf(raw * f)} in the valuation: indexed from ${psf(raw)} to the report date `
       + `at the market's ${pct > 0 ? "+" : ""}${pct}%/yr trend.`;
+  }
+
+  // Word mark on a Size or $/SF cell. † ‡ § read as gray glitches (and §
+  // next to a dollar figure looks like a second $). The kind is the visible
+  // label; the title is the tooltip.
+  function appendCompMark(host, kind, title) {
+    if (!host || !kind) return;
+    const mark = document.createElement("span");
+    mark.className = "comp-mark";
+    mark.textContent = kind;
+    if (title) mark.title = title;
+    host.appendChild(mark);
+  }
+
+  function sizeClassMarkTitle() {
+    return "Different size class than your " + assetNoun(currentMeta && currentMeta.type) + ", counts less in the valuation";
   }
 
   // Value hero — the headline of every report. Sales-comparison range from the
@@ -4876,7 +4967,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const weighNote = " Recent, similar-size, similar-vintage, well-sourced comps count more"
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
-          + `(§ in the table shows each indexed figure).`
+          + `(adj in the table shows each indexed figure).`
         : ".");
     // Honest-uncertainty notes. Name the comps of a wholly different size
     // class (down-weighted, never hidden), and say plainly when only 2-3
@@ -4907,7 +4998,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         + `${Math.round(sizeFit.nearest).toLocaleString()} SF — so this range is extrapolated `
         + `${sizeFit.factor}x beyond the comps. Check ${sizeFieldLabel} above before relying on it.`
       : offSizeN > 0
-      ? ` ${offSizeN} comp${offSizeN === 1 ? " is" : "s are"} a different size class and count${offSizeN === 1 ? "s" : ""} less (‡ in the table).`
+      ? ` ${offSizeN} comp${offSizeN === 1 ? " is" : "s are"} a different size class and count${offSizeN === 1 ? "s" : ""} less (size in the table).`
       : "";
     const smallNNote = (n) => n < 4
       ? ` Only ${n} sale comps back this range, so it shows the full observed spread - treat it as a rough guide.`
@@ -5143,9 +5234,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         : sizeSource ? "estimated from public data" : null;
       // "middle range" signals the outlier trim; plain "$/SF from" when N is too
       // small to trim.
-      const compsPhrase = rr.trimmed
+      const compsPhrase = (rr.trimmed
         ? `the middle range of ${ppsfs.length} sale comps`
-        : `$/SF from ${ppsfs.length} sale comps`;
+        : `$/SF from ${ppsfs.length} sale comps`)
+        + (currentComps.length > ppsfs.length ? ` (${currentComps.length} in the table)` : "");
       basisEl.textContent = srcPhrase
         ? `${sizeLabel} (${srcPhrase}; edit ${sizeFieldLabel} above if wrong) × ${compsPhrase}`
         : `${sizeLabel} × ${compsPhrase}`;
@@ -5667,6 +5759,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderTableBody(false);
     renderDistanceNote();
     updateCompCount();
+    renderReportMeta(currentMeta);
     updateCurationNote();
     renderCorpusOffer();
     renderMap(currentParsed, currentMeta);
@@ -6556,7 +6649,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     svg += `</svg>`;
 
     document.getElementById("chartBasis").textContent =
-      `${pts.length} sale comps` + (youLo !== null ? " · your property shown" : "");
+      `${pts.length} sale comps` + (currentComps.length > pts.length ? ` of ${currentComps.length}` : "")
+      + (youLo !== null ? " · your property shown" : "");
     document.getElementById("chartWrap").innerHTML = svg;
     card.classList.remove("hidden");
     armWhenVisible(card, "in-view");
@@ -7721,12 +7815,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Aerial close-up for a pin popup: free Esri World Imagery tiles stitched
   // into a crop centered on the property (a crop smaller than one 256px tile
   // touches at most 4 tiles). No key, no billing. A red dot marks the exact
-  // point; tiles that fail to load simply hide. Street View used to be the
-  // popup photo and was the wrong picture ~80% of the time (nearest pano
-  // aimed at a fence, parking lot, or neighbor); the roof with a pin on it
-  // is the CRE picture. (First shipped 2026-07-13 as 427ff44, retired for
-  // the basemap toggle, revived once hover previews made popup photos the
-  // point; Street View dropped 2026-08-14.)
+  // point; tiles that fail to load simply hide. This is the picture that
+  // paints on hover (tiles prefetched after the building snap). Street View
+  // overlays it when a camera sits within 35 m of the building and can be
+  // aimed at it; a far pano 404s and this roof stays. (First shipped
+  // 2026-07-13 as 427ff44; Street View overlay restored 2026-08-14 behind
+  // the honesty gate.)
   // Tile math lives in one place so prefetch after the building snap hits
   // the same URLs the popup will request.
   function aerialTileSpec(ll, w, h, z) {
@@ -7747,7 +7841,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     return tiles;
   }
-  function aerialThumb(ll, w = 260, h = 156, z = 18) {
+  function aerialThumb(ll, w = 260, h = 156, z = 18, overlayHtml = "") {
     const tiles = aerialTileSpec(ll, w, h, z);
     let imgs = "";
     for (const t of tiles) {
@@ -7765,6 +7859,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       imgs +
       `<div style="position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#DC2626;border:2px solid #fff;box-shadow:0 1px 3px rgb(0 0 0/.5)"></div>` +
       `<div style="position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Esri</div>` +
+      overlayHtml +
       `</div>`;
   }
   // Warm the Esri tiles a popup will ask for, after the building snap
@@ -8017,11 +8112,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (n >= 40000) return 17;
       return 18;
     };
-    // Popup photo: the aerial close-up of the snapped building. Popup content
-    // is a FUNCTION so Leaflet builds it at open time from the marker's
-    // CURRENT position — refinePins() moves pins after first paint.
-    // Coordinates come from the snapped centroid — numbers, nothing
-    // user-authored.
+    // Popup photo: aerial of the snapped building paints immediately
+    // (tiles already prefetched). Street View overlays it when the proxy
+    // finds a camera within 35 m and aims it at the building; a 404
+    // leaves the roof. Popup content is a FUNCTION so Leaflet builds it
+    // at open time from the marker's CURRENT position — refinePins()
+    // moves pins after first paint. Coordinates come from the snapped
+    // centroid — numbers, nothing user-authored.
     const svPhoto = (marker, zoom, address) => {
       // Photo ONLY when OSM maps the building. The footprint is the one
       // signal that guarantees the picture shows the PROPERTY: with it, the
@@ -8067,7 +8164,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // builds at open time, so the map's CURRENT width is known here.
       const w = Math.min(260, Math.max(180, (mapInstance ? mapInstance.getSize().x : 400) - 110));
       const h = Math.round(w * 0.6);
-      return aerialThumb(snapped, w, h, zoom || 17);
+      let overlay = "";
+      if (streetviewEnabled) {
+        // Hidden until onload: hover stays on the prefetched aerial. onerror
+        // drops the img so a refused (far) pano never covers the roof.
+        overlay =
+          '<img src="/api/streetview?lat=' + snapped.lat.toFixed(6) + '&lng=' + snapped.lng.toFixed(6) +
+          '" width="' + w + '" height="' + h + '" alt=""' +
+          ' style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:none"' +
+          ' onload="this.style.display=\'block\';var g=this.nextElementSibling;if(g)g.style.display=\'block\'"' +
+          ' onerror="this.remove()">' +
+          '<div style="display:none;position:absolute;right:0;bottom:0;font-size:9px;line-height:1;color:#fff;background:rgb(0 0 0/.45);padding:2px 4px;border-radius:3px 0 0 0">&copy; Google</div>';
+      }
+      return aerialThumb(snapped, w, h, zoom || 17, overlay);
     };
     // Popups must never be wider than the map (a too-wide popup clips and
     // even autoPan can't help). Leaflet's maxWidth governs the text; the
@@ -8767,18 +8876,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     // Report header (reopened reports keep their original generation date)
     document.getElementById("reportAddress").textContent = meta.address;
-    const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
     // Each meta part renders as a small chip — scans better than one dot-joined
-    // line, especially in the PNG export and on phones.
-    const metaBox = document.getElementById("reportMeta");
-    metaBox.innerHTML = "";
-    metaParts(meta).concat(`Generated ${dateStr}`).forEach((part) => {
-      const chip = document.createElement("span");
-      chip.className = "rd-chip mr-1.5 mt-1.5";
-      chip.textContent = part;
-      metaBox.appendChild(chip);
-    });
-    document.getElementById("printDate").textContent = "Generated " + dateStr;
+    // line, especially in the PNG export and on phones. Count is the table's
+    // own total, so the chip next to the type cannot disagree with the map.
+    renderReportMeta(meta);
 
     // Co-branded letterhead/lockup/footer — depends only on currentMeta and
     // currentParsed, both just set above.
@@ -12700,6 +12801,42 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     });
   }
 
+  // Word marks present on Size / $/SF in the visible comps. Same "only
+  // explain what is on screen" rule as the source-confidence legend above.
+  function renderCompMarksLegend() {
+    const el = document.getElementById("compMarksLegend");
+    if (!el) return;
+    const comps = visibleComps();
+    const noun = assetNoun(currentMeta && currentMeta.type);
+    const present = [];
+    if (comps.some((c) => c.psf_reconciled && c.price_per_sqft)) {
+      present.push(["calc", "price per square foot recomputed from sale price ÷ size"]);
+    }
+    if (comps.some((c) => offSizeClass(c))) {
+      present.push(["size", "different size class than your " + noun + ", counts less"]);
+    }
+    if (comps.some((c) => indexedPsfNote(c, currentMeta, currentParsed))) {
+      present.push(["adj", "time-adjusted figure the valuation uses"]);
+    }
+    el.innerHTML = "";
+    el.classList.toggle("hidden", present.length === 0);
+    if (!present.length) return;
+    const lead = document.createElement("span");
+    lead.className = "mr-3 font-medium text-[#374253]";
+    lead.textContent = "Table marks:";
+    el.appendChild(lead);
+    present.forEach(([label, meaning]) => {
+      const mark = document.createElement("span");
+      mark.className = "comp-mark";
+      mark.textContent = label;
+      const text = document.createElement("span");
+      text.className = "mr-3";
+      text.textContent = " = " + meaning + ".";
+      el.appendChild(mark);
+      el.appendChild(text);
+    });
+  }
+
   // One honest line about the vault rows, and the only place the two halves of
   // this feature are reconciled for the reader: the comps count toward the
   // valuation but not toward any file.
@@ -13111,6 +13248,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderTableBody(animateIn = true) {
     renderCards(animateIn);
     renderBadgeLegend();
+    renderCompMarksLegend();
     renderPrivateNotice();
     renderSubjectRow();
     const body = document.getElementById("tableBody");
@@ -13212,31 +13350,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // disclose the substitution without shouting about it.
           if (col.key === "price_per_sqft" && comp.psf_reconciled && val) {
             td.title = "Recomputed from sale price ÷ building size";
-            const sup = document.createElement("sup");
-            sup.textContent = "†";
-            sup.className = "text-[#68707E]";
-            cell.appendChild(sup);
+            appendCompMark(cell, "calc", td.title);
           }
           // Different size class than the subject — down-weighted in the
           // valuation, disclosed here (the trust line names the count).
           if (col.key === "size_sqft" && val && offSizeClass(comp)) {
-            td.title = "Different size class than your building, counts less in the valuation";
-            const sup = document.createElement("sup");
-            sup.textContent = "‡";
-            sup.className = "text-[#68707E]";
-            cell.appendChild(sup);
+            td.title = sizeClassMarkTitle();
+            appendCompMark(cell, "size", td.title);
           }
-          // Time-adjusted: the raw figure stays on screen, the § carries the
-          // one the valuation actually used. Appends to any † already set, so
-          // a recomputed AND indexed cell explains both.
+          // Time-adjusted: the raw figure stays on screen, the adj mark
+          // carries the one the valuation actually used. Appends to any
+          // calc already set, so a recomputed AND indexed cell explains both.
           if (col.key === "price_per_sqft" && val) {
             const note = indexedPsfNote(comp, currentMeta, currentParsed);
             if (note) {
               td.title = td.title ? td.title + " · " + note : note;
-              const sup = document.createElement("sup");
-              sup.textContent = "§";
-              sup.className = "text-[#68707E]";
-              cell.appendChild(sup);
+              appendCompMark(cell, "adj", note);
             }
           }
         }
@@ -13482,28 +13611,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // Same recomputed-$/SF disclosure as the desktop table.
           if (col.key === "price_per_sqft" && comp.psf_reconciled && !empty) {
             dd.title = "Recomputed from sale price ÷ building size";
-            const sup = document.createElement("sup");
-            sup.textContent = "†";
-            sup.className = "text-[#68707E]";
-            dd.appendChild(sup);
+            appendCompMark(dd, "calc", dd.title);
           }
           // Same size-class disclosure as the desktop table.
           if (col.key === "size_sqft" && !empty && offSizeClass(comp)) {
-            dd.title = "Different size class than your building, counts less in the valuation";
-            const sup = document.createElement("sup");
-            sup.textContent = "‡";
-            sup.className = "text-[#68707E]";
-            dd.appendChild(sup);
+            dd.title = sizeClassMarkTitle();
+            appendCompMark(dd, "size", dd.title);
           }
           // Same time-adjustment disclosure as the desktop table.
           if (col.key === "price_per_sqft" && !empty) {
             const note = indexedPsfNote(comp, currentMeta, currentParsed);
             if (note) {
               dd.title = dd.title ? dd.title + " · " + note : note;
-              const sup = document.createElement("sup");
-              sup.textContent = "§";
-              sup.className = "text-[#68707E]";
-              dd.appendChild(sup);
+              appendCompMark(dd, "adj", note);
             }
           }
         }
@@ -14029,6 +14149,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // in localStorage, so a returning visitor is never asked twice.
   // ----------------------------------------------------------------------------
   let leadCaptureEnabled = false;   // set from /api/config in initGate()
+  let streetviewEnabled = false;    // set from /api/config in initGate()
   // Pro entitlements as reported by /api/config. PRESENTATION ONLY — every
   // limit described here is enforced server-side, so editing this object in
   // the console unlocks nothing but the visitor's own greyed-out controls.

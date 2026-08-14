@@ -318,21 +318,25 @@ test("the print button waits for the raster", () => {
 });
 
 // ----------------------------------------------------------------------------
-// Map pin popups — aerial close-up, snappy hover. Street View was both the
-// wrong picture (nearest pano of a fence/neighbor) and the slow one (proxy
-// round-trip after the popup opened).
+// Map pin popups — aerial paints immediately; Street View overlays only when
+// a camera is within 35 m of the snapped building and aimed at it. Hover
+// timers stay short; a refused pano leaves the roof.
 // ----------------------------------------------------------------------------
 
-test("map pin popup photos are aerial Esri tiles, never Street View", () => {
+test("map pin popups paint aerial first, then overlay Street View", () => {
   const fn = html.match(/const svPhoto = \(marker, zoom, address\) => \{[\s\S]*?\n    \};\n    \/\/ Popups must never/);
   assert.ok(fn, "index.html must define svPhoto()");
   assert.match(fn[0], /return aerialThumb\(snapped,/);
-  assert.doesNotMatch(fn[0], /\/api\/streetview/);
-  assert.doesNotMatch(fn[0], /streetviewEnabled/);
-  // The rest of the app page must not start a Street View fetch either —
-  // the proxy stays on the server, unused by hover/click.
-  const scripts = extractScriptBlocks(html).filter(isRealJsBlock).map((b) => b.body).join("\n");
-  assert.doesNotMatch(scripts, /\/api\/streetview/);
+  assert.match(fn[0], /\/api\/streetview\?lat=/);
+  assert.match(fn[0], /streetviewEnabled/);
+  // Overlay stays hidden until the JPEG lands, so hover is the aerial.
+  assert.match(fn[0], /onload="this\.style\.display=\\'block\\'/);
+  assert.match(fn[0], /onerror="this\.remove\(\)"/);
+  // Honesty gates still wrap the photo: no footprint / unverified geocode /
+  // numberless address / unit designator means no picture at all.
+  assert.match(fn[0], /marker\._bldgLL/);
+  assert.match(fn[0], /marker\._geoOk !== true/);
+  assert.match(fn[0], /unitDesignatorOf\(address\)/);
 });
 
 test("map pin hover opens in 60ms and closes in 80ms", () => {
@@ -354,6 +358,12 @@ test("aerial popup tiles are prefetched after the building snap", () => {
   const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,280}/);
   assert.ok(snap, "renderMap must call snapMarkersToBuildings");
   assert.match(snap[0], /prefetchAerialThumbs\(allMarkers\(\)\)/);
+});
+
+test("Street View is not prefetched for every pin — only the hovered overlay bills Google", () => {
+  const prefetch = html.match(/function prefetchAerialThumbs\(markers\) \{[\s\S]*?\n  \}/);
+  assert.ok(prefetch, "index.html must define prefetchAerialThumbs()");
+  assert.doesNotMatch(prefetch[0], /\/api\/streetview/);
 });
 
 test("landing address handoff fills #address from sessionStorage and drops the key", () => {
@@ -703,9 +713,21 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(html, /\.rd-desk-build > \.rd-chamber-head \{[^}]*border-radius:\s*6px 0 0 0/);
   assert.match(html, /\.rd-desk-market > \.rd-chamber-head \{[^}]*border-radius:\s*0 6px 0 0/);
 
+  // Focus/Lookback: one site chevron. The background shorthand wiped the SVG
+  // and appearance:auto put the native widget back on top of it (three or four
+  // arrows in dark mode, where color-scheme:dark adds Chrome's own).
+  assert.match(html, /\.rd-in \{[^}]*background-color:\s*transparent/);
+  assert.doesNotMatch(html, /\.rd-in \{[^}]*background:\s*transparent/);
+  assert.doesNotMatch(html, /^\s*select\.rd-in \{[^}]*appearance:\s*auto/m);
+  assert.match(html, /^\s*select\.rd-in \{[^}]*appearance:\s*none/m);
+
   const home = html.slice(html.indexOf('id="homeInfo"'), html.indexOf("Site footer"));
   assert.match(home, /href="\/how-it-works"/);
   assert.match(home, /href="\/brokers"/);
+  // gap-x-3 was never in the vendored tailwind.css, so the middle dot sat
+  // on the F in "For brokers". gap-x-4 is already generated.
+  assert.match(home, /gap-x-4/);
+  assert.doesNotMatch(home, /gap-x-3/);
   assert.ok(!/id="marketSearch"/.test(home), "explorer moved out of homeInfo");
 });
 
@@ -772,6 +794,33 @@ test("once pins settle, the hero re-runs so distance weighting actually moves th
   assert.match(fn[0], /renderOwnerHero\(currentParsed, currentMeta\)/);
   assert.match(html, /farther away/);
   assert.match(html, /nearby/);
+});
+
+test("comp table marks are words, not gray footnote glyphs", () => {
+  assert.match(html, /\.comp-mark \{/);
+  assert.match(html, /function appendCompMark\(/);
+  assert.match(html, /id="compMarksLegend"/);
+  assert.match(html, /appendCompMark\(cell, "calc"/);
+  assert.match(html, /appendCompMark\(cell, "size"/);
+  assert.match(html, /appendCompMark\(cell, "adj"/);
+  assert.match(html, /appendCompMark\(dd, "calc"/);
+  assert.match(html, /appendCompMark\(dd, "size"/);
+  assert.match(html, /appendCompMark\(dd, "adj"/);
+  assert.doesNotMatch(html, /sup\.textContent = "[†‡§]"/);
+  assert.match(html, /adj in the table shows each indexed figure/);
+  assert.match(html, /less \(size in the table\)/);
+});
+
+test("the type chip is followed by the table's own comp count, never a bare digit", () => {
+  const start = html.indexOf("function metaParts(meta)");
+  const end = html.indexOf("function selectedLookbackMonths");
+  assert.ok(start >= 0 && end > start, "metaParts / selectedLookbackMonths moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /currentComps\.length/);
+  assert.match(fn, /n \+ " comps"/);
+  assert.match(fn, /"Note: " \+ note/);
+  assert.match(html, /function renderReportMeta\(/);
+  assert.match(html, /renderReportMeta\(currentMeta\)/);
 });
 
 test("My Desk and the account circle have a place to put a profile photo", () => {

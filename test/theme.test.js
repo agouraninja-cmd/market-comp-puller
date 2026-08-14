@@ -4,7 +4,7 @@
 // changed light value is a regression in the theme that already ships.
 const test = require("node:test");
 const assert = require("node:assert");
-const { THEME_TOKENS, DARK_LIFT: DARK_LIFT_SHADOW, DARK_CHROME, rootCss } = require("../theme.js");
+const { THEME_TOKENS, DARK_LIFT: DARK_LIFT_SHADOW, DARK_CHROME, AUTOFILL_COVER, rootCss } = require("../theme.js");
 
 // The vocabulary that already exists in five shipped pages. If any light
 // value here drifts, those pages restyle silently.
@@ -111,6 +111,23 @@ test("rootCss carries the dark chrome (autofill, caret, scrollbar) so server pag
   assert.ok(DARK_CHROME.startsWith("@media screen{"), "chrome must be screen-only so print stays light");
   assert.equal(DARK_CHROME.includes("`"), false);
   assert.equal(DARK_CHROME.includes("${"), false);
+});
+
+test("Chrome's address-paste autofill sheet is covered on the card colour in light too", () => {
+  // Chrome paints a light-blue sheet when it recognises a pasted street
+  // address. DARK_CHROME already covers charcoal; without an UNSCOPED rule
+  // the desk address field goes blue on a white card. var(--card) is #fff
+  // in light. :focus is the state after paste; DARK_CHROME's selector has
+  // no :focus, so this string uniquely identifies the light-mode cover.
+  const css = rootCss();
+  assert.ok(css.includes(AUTOFILL_COVER), "AUTOFILL_COVER missing from rootCss()");
+  assert.ok(AUTOFILL_COVER.includes("input:-webkit-autofill:focus"), "paste restyles on :focus");
+  assert.ok(AUTOFILL_COVER.includes("box-shadow:0 0 0 1000px var(--card) inset"),
+    "must cover with --card (white in light), not a hardcoded cream");
+  assert.ok(!AUTOFILL_COVER.includes("[data-theme"),
+    "a dark-only selector leaves the blue sheet on the white desk");
+  assert.equal(AUTOFILL_COVER.includes("`"), false);
+  assert.equal(AUTOFILL_COVER.includes("${"), false);
 });
 
 test("rootCss's dark block is screen-only, so a print run never resolves dark values", () => {
@@ -334,6 +351,24 @@ test("index.html hand-copies the dark chrome that rootCss interpolates into serv
   assert.ok(INDEX_STYLE.includes("caret-color: var(--ink)"), "index.html missing caret-color");
   assert.ok(INDEX_STYLE.includes(".rd-cell:focus-within { box-shadow: inset 0 0 0 2px var(--red); }"),
     "form focus ring must use --red so it lightens in dark instead of staying #B91C1C");
+});
+
+test("index.html covers Chrome's address-paste autofill sheet in light mode", () => {
+  // index.html is static, so AUTOFILL_COVER cannot reach it. :focus is the
+  // discriminator: the dark chrome copies input:-webkit-autofill without it.
+  // Comments are blanked so a note that names the dark selector cannot
+  // satisfy (or break) the unscoped check.
+  const css = INDEX_STYLE.replace(/\/\*[\s\S]*?\*\//g, " ");
+  assert.match(
+    css,
+    /input:-webkit-autofill:focus[^}]*box-shadow:\s*0 0 0 1000px var\(--card\) inset/,
+    "light-mode paste cover missing; the field would go blue"
+  );
+  assert.doesNotMatch(
+    css,
+    /\[data-theme="dark"\][^{]*input:-webkit-autofill:focus/,
+    "the :focus cover must not live only under dark, or light mode stays blue"
+  );
 });
 
 test("index.html's dark token block is screen-only too, mirroring rootCss's shape exactly", () => {

@@ -106,6 +106,10 @@ const BACKTEST = require("./backtest");
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
 const BRANDING = require("./branding.js");
 const CITYCHECK = require("./city-check");
+// "The market under this saved property moved since you last looked" — the
+// desk's only figure that changes without the owner re-running anything.
+// Pure and tested; server.js owns the corpus read and passes in dated sales.
+const PFDELTA = require("./portfolio-delta");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -5297,6 +5301,69 @@ function saleRowsWithDates(rows) {
     .map((r) => ({ yearFrac: parseDealDate(r.deal_date), psf: corpusNum(r.price_per_sqft), dealText: String(r.deal_date || "") }))
     .filter((r) => r.yearFrac != null && r.psf > 0);
 }
+// A calendar date onto parseDealDate's scale, so a snapshot timestamp and a
+// corpus deal date can be compared at all. Month granularity, because that is
+// all a deal date carries — a day-precise "since" would imply a precision the
+// other side of the comparison does not have.
+function yearFracOfDate(d) {
+  const t = d instanceof Date ? d : new Date(d);
+  if (!isFinite(t.getTime())) return null;
+  return t.getUTCFullYear() + (t.getUTCMonth() + 0.5) / 12;
+}
+
+// Attaches `movement` to each saved property: what the market under it did
+// since that property was last checked.
+//
+// This is the desk's only figure that moves without the owner re-running
+// anything. Their own valuation history only grows when they come back, which
+// makes it a record of visits rather than a reason to make one; the corpus
+// fills up from everybody's searches, so the market keeps moving in between.
+//
+// Corpus reads are batched by market+type, since a portfolio is usually
+// several buildings in one or two markets and PORTFOLIO_MAX_ITEMS is 20.
+//
+// Fails SAFE and silent: any error leaves the items exactly as they were, with
+// no `movement` key. The desk renders nothing for a property without one, and
+// a portfolio that fails to load is a far worse outcome than a missing line.
+async function withMarketMovement(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return list;
+  try {
+    const nowFrac = yearFracOfDate(new Date());
+    const buckets = new Map();
+    for (const item of list) {
+      const market = marketOf(item.address);
+      const type = String(item.property_type || "");
+      if (!market || !type) continue;
+      buckets.set(market + "|" + type, { market, type });
+    }
+    const sales = new Map();
+    await Promise.all([...buckets.entries()].map(async ([key, b]) => {
+      const rows = await corpusRowsForMarket(b.market, b.type, 500);
+      sales.set(key, saleRowsWithDates(rows));
+    }));
+    return list.map((item) => {
+      const market = marketOf(item.address);
+      const key = market + "|" + String(item.property_type || "");
+      const dated = sales.get(key);
+      if (!dated || !dated.length) return item;
+      // "Last checked" is the newest SNAPSHOT, not updated_at: updated_at moves
+      // when the payload is rewritten, and the question is when this person
+      // last saw a valuation.
+      const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
+      const lastTs = snaps.length ? snaps[snaps.length - 1].ts : item.created_at;
+      const sinceFrac = yearFracOfDate(lastTs);
+      if (sinceFrac == null) return item;
+      const move = PFDELTA.marketMoveSince(dated, { sinceFrac, nowFrac });
+      if (!move) return item;
+      return { ...item, movement: { ...move, line: PFDELTA.moveLine(move, { market, type: item.property_type }) } };
+    });
+  } catch (e) {
+    console.error("Portfolio market movement failed (serving without it):", e.message);
+    return list;
+  }
+}
+
 function medianPsfOf(nums) { // upper-middle, matching the feed's formula
   if (!nums.length) return null;
   const sorted = [...nums].sort((a, b) => a - b);
@@ -10650,7 +10717,7 @@ const server = http.createServer((req, res) => {
           if (!item) return sendJson(res, 404, { error: "Not found." });
           return sendJson(res, 200, item);
         }
-        return sendJson(res, 200, { items: await listPortfolio(user.id) });
+        return sendJson(res, 200, { items: await withMarketMovement(await listPortfolio(user.id)) });
       })().catch((err) => { console.error("portfolio GET error:", err); sendJson(res, 500, { error: "Portfolio read failed." }); });
       return;
     }

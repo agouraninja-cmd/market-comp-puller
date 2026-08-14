@@ -1227,3 +1227,23 @@ test("/api/vault/extract sniffs the media type and never takes it from the body"
   assert.equal(route.includes("data:application\\/pdf"), false,
     "the data: prefix stripper must not be PDF-only");
 });
+
+test("portfolio market movement fails safe and reads the snapshot, not updated_at", () => {
+  // The desk's portfolio is the page a member opens to see their own work. A
+  // corpus read that throws must cost them a line, never the list.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("async function withMarketMovement");
+  assert.ok(start >= 0, "withMarketMovement should still exist");
+  const end = src.indexOf("function medianPsfOf", start);
+  assert.ok(end > start, "could not bound withMarketMovement");
+  const body = src.slice(start, end);
+
+  assert.match(body, /catch \(e\)[\s\S]{0,200}return list;/,
+    "any failure must serve the portfolio unchanged rather than 500");
+  assert.match(body, /snaps\[snaps\.length - 1\]\.ts/,
+    "'last checked' is the newest snapshot; updated_at moves when the payload is rewritten");
+  assert.match(body, /PFDELTA\.marketMoveSince/,
+    "the decision belongs to the pure, tested module");
+});

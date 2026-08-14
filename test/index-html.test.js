@@ -465,3 +465,41 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
     assert.ok(css.includes(hex), `tailwind.css is missing the ${hex} colour utilities`);
   }
 });
+
+test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () => {
+  // Owner signed off on composition A (2026-08-14). This is the signed-in
+  // app, not renderHowItWorksHTML. A future edit that puts #marketSearch
+  // back inside #compForm would make Enter on a market submit a report.
+  assert.match(html, /<div class="rd-kicker enter enter-1">Commercial Comp Reports<\/div>/);
+  assert.match(html, /Find out what a property is worth, with comparables to prove it/);
+  assert.ok(!html.includes("3–6 cited"), "stale 3–6 cited comps copy must not return");
+  assert.ok(!html.includes("3-6 cited"));
+  assert.match(html, /Up to 12 cited comps · about a minute · every source disclosed/);
+  assert.match(html, /No address\? Find one/);
+  assert.ok(!html.includes("No address? Explore a market"));
+
+  const form = html.match(/<form id="compForm"[^>]*>[\s\S]*?<\/form>/);
+  assert.ok(form, "compForm is present");
+  assert.ok(!/id="marketSearch"/.test(form[0]), "Market Explorer must not live inside #compForm");
+  assert.match(form[0], /id="address"/);
+  assert.match(form[0], /id="exploreAddrLink"/);
+  assert.match(form[0], /id="sampleBtn"/);
+  assert.match(form[0], /Value a building/);
+
+  const desk = html.match(/class="rd-form rd-desk"[\s\S]*?id="guestSearchHint"/);
+  assert.ok(desk, "desk wraps the form and explorer");
+  assert.match(desk[0], /id="marketSearch"/);
+  assert.match(desk[0], /id="marketSearchResults"/);
+  assert.match(desk[0], /Or read a market/);
+
+  assert.match(html, /\.rd-desk \{/);
+  assert.ok(
+    !/\.rd-desk \{[^}]*overflow:\s*hidden/.test(html),
+    "overflow:hidden on .rd-desk would clip the explorer dropdown"
+  );
+
+  const home = html.slice(html.indexOf('id="homeInfo"'), html.indexOf("Site footer"));
+  assert.match(home, /href="\/how-it-works"/);
+  assert.match(home, /href="\/brokers"/);
+  assert.ok(!/id="marketSearch"/.test(home), "explorer moved out of homeInfo");
+});

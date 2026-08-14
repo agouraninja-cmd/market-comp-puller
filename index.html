@@ -648,6 +648,59 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        sides means they cannot drift apart. */
     .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
     @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid var(--hair); } .rd-row { border-bottom: 0; } }
+    /* Split Research Desk (owner-approved Mock A, 2026-08-14): one bordered
+       unit, two chambers. Market Explorer is a SIBLING of #compForm, not a
+       child — Enter in that field must not submit a building report. Do not
+       overflow:hidden the desk; the explorer dropdown is absolutely positioned
+       and would clip. */
+    .rd-desk {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(240px, 1fr);
+    }
+    .rd-desk-build {
+      min-width: 0;
+      border-right: 1px solid var(--hair);
+      display: flex;
+      flex-direction: column;
+    }
+    .rd-desk-actions { margin-top: auto; }
+    .rd-desk-market {
+      min-width: 0;
+      background: var(--wash);
+      padding: 11px 18px 18px;
+      border-radius: 0 6px 6px 0;
+    }
+    .rd-chamber-lab {
+      font-size: 10.5px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .rd-desk-market .rd-chamber-note {
+      font-size: 13px;
+      color: var(--ink-2);
+      line-height: 1.45;
+      margin: 8px 0 0;
+    }
+    .rd-desk-market-in {
+      width: 100%;
+      border: 1px solid var(--edge);
+      background: var(--card);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 16px;
+      color: var(--ink);
+      outline: 0;
+      margin-top: 14px;
+    }
+    .rd-desk-market-in::placeholder { color: var(--ink-3); }
+    .rd-desk-market-in:focus { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+    @media (max-width: 639.98px) {
+      .rd-desk { grid-template-columns: 1fr; }
+      .rd-desk-build { border-right: 0; border-bottom: 1px solid var(--hair); }
+      .rd-desk-market { border-radius: 0 0 6px 6px; }
+    }
     /* Card frame — shared by the live map and comps cards. (The sample-report
        exhibit that also used it now lives on /how-it-works, which is
        server-rendered with its own copy of these rules.) */
@@ -1385,7 +1438,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <!-- Hero -->
   <div id="hero" class="no-print bg-[#FBFBF9]">
     <div class="max-w-5xl mx-auto px-4 pt-12 sm:pt-14 pb-4">
-      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] max-w-[22ch] enter enter-1">Find out what a property is worth, with comparables to prove it.</h1>
+      <div class="rd-kicker enter enter-1">Commercial Comp Reports</div>
+      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] max-w-[22ch] mt-2 enter enter-1">Find out what a property is worth, with comparables to prove it.</h1>
       <p class="text-[#4C5665] mt-4 text-[16.5px] max-w-[58ch] enter enter-1">Recent sale and lease comparables for any U.S. commercial property, searched live from public records and listings, every comp cited, delivered in about a minute.</p>
     </div>
   </div>
@@ -1441,9 +1495,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <p class="text-[12.5px] text-[#8A8577] mt-4">An automated estimate, not an appraisal.</p>
     </div>
 
-    <!-- Search form — one bordered unit -->
+    <!-- Search form — one bordered Research Desk, two chambers (Mock A,
+         owner-approved 2026-08-14). #compForm is the building chamber only;
+         Market Explorer is a sibling so Enter there cannot submit a report.
+         Every field id is unchanged. -->
     <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
-      <form id="compForm" class="rd-form">
+      <div class="rd-form rd-desk">
+      <form id="compForm" class="rd-desk-build">
+        <div class="rd-row">
+          <div class="rd-cell">
+            <div class="rd-chamber-lab">Value a building</div>
+          </div>
+        </div>
         <!-- Direction N (owner-approved 2026-08-09): the address gets the full
              top row alone in the largest text on the form; the everyday
              settings share one calm row of three below. Direction N's separate
@@ -1623,7 +1686,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Submit row; stays in normal flow on phones (no longer docks to the
              viewport bottom - the owner found that motion distracting). On
              desktop the red button sits on the right, per the approved mockup. -->
-        <div class="static px-4 py-3.5 bg-white rounded-b-md border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="rd-desk-actions static px-4 py-3.5 bg-white border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
           <button id="submitBtn" type="submit"
             class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
             <span id="btnLabel">Run a report</span>
@@ -1640,11 +1703,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                for everyone, the pre-Pro behavior PRO_ENABLED promises. -->
           <button id="exploreAddrLink" type="button"
             class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
-            No address? Explore a market
+            No address? Find one
           </button>
         </div>
       </form>
-      <div class="text-[12.5px] text-[#8A8577] mt-3">Reports are free · An automated estimate, not an appraisal</div>
+      <!-- Market Explorer: still self-contained (builds standing market pages,
+           never hands a query to the comp form). Sibling of #compForm on
+           purpose — see the rd-desk comment above. IDs unchanged. -->
+      <aside class="rd-desk-market" aria-label="Or read a market">
+        <div class="rd-chamber-lab">Or read a market</div>
+        <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
+        <div class="relative">
+          <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
+                 class="rd-desk-market-in" />
+          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
+        </div>
+      </aside>
+      </div>
+      <div class="text-[12.5px] text-[#8A8577] mt-3">
+        <div>Up to 12 cited comps · about a minute · every source disclosed</div>
+        <div>An automated estimate, not an appraisal.</div>
+      </div>
       <!-- Shown only once /api/config says this signed-out visitor is out of
            free searches; sign-in/refreshProConfig hides it again. The lead-in
            sentence is written by renderGuestSearchHint, because at a limit of
@@ -2647,40 +2726,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
     </div>
 
-    <!-- Home info — fills out the landing view; hidden once a report is shown -->
+    <!-- Home info — pointer row under the desk; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
-
-      <!-- Pointer to /how-it-works, which now holds the stat strip, the sample
-           report exhibit, the three-step method, and the FAQ. -->
-      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <p class="text-sm text-[#4C5665]">Free reports, 3–6 cited comps each, every source disclosed.</p>
-        <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works →</a>
+      <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-3 gap-y-2">
+        <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works</a>
+        <span class="text-[#9AA2AD]">·</span>
+        <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers</a>
       </div>
-
-      <!-- The For Brokers section moved to its own page, /brokers (built by
-           renderBrokersPageHTML in server.js). This strip is the landing
-           page's door to it (owner's notes, 2026-08-08) — same hairline
-           treatment as the how-it-works pointer above so the two read as a
-           matched pair of signposts, not a new section. -->
-      <div class="reveal border-b rd-hairline py-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <p class="text-sm text-[#4C5665]">Are you a broker? Verified comps carry your firm's name on every report that uses them.</p>
-        <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers →</a>
-      </div>
-
-      <!-- Market Explorer — inline in the content column (the full-width band
-           treatment was reverted), but still self-contained: it builds standing
-           market pages and never hands a query to the comp form above. -->
-      <section class="py-12 reveal">
-        <div class="rd-kicker">Market Explorer</div>
-        <h2 class="rd-h text-[27px] mt-2 mb-2">Explore any market. We'll build the report.</h2>
-        <p class="text-sm text-[#4C5665] mb-5 max-w-[58ch]">Search any market; we'll pull recent sales and build its page on the spot.</p>
-        <div class="relative max-w-sm mb-5">
-          <input id="marketSearch" type="search" placeholder="Try any market, e.g. industrial Boise ID" autocomplete="off"
-                 class="w-full rounded border border-[#D8D4C9] bg-white px-3 py-2 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-          <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
-        </div>
-      </section>
-
     </div>
 
   </div>
@@ -10778,7 +10830,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
   });
 
-  // Market Explorer: matches covered market pages as you type; an uncovered
+  // Market Explorer: lives in the signed-in desk's right chamber (sibling of
+  // #compForm, never inside it). Matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed
   // search, ~30-60s). Dead-end queries get inline hints in the dropdown — the
   // Explorer is self-contained and never hands off to the comp form. The list

@@ -6856,7 +6856,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   // The link is the ordinary signup door with this market's type prefilled.
   // There is deliberately no direct BOV form for a logged-out visitor: the
   // request is made against a report, and the report needs an account.
-  const bovLead = brokerList.length && !opts.preview
+  //
+  // ANONYMOUS ONLY, and that is the third condition rather than an oversight.
+  // This band speaks to a property owner arriving from a search engine, and
+  // the CTA below already splits on the same line: a member gets "Use this
+  // market in your work" (watch it, take the comps), because somebody who
+  // signed in is here to work rather than to be pitched an introduction.
+  // Without this the two would stack — a member on a covered market would be
+  // sold a free opinion of value at the top of the page and offered a CSV at
+  // the bottom of it.
+  const bovLead = !signedIn && brokerList.length && !opts.preview
     ? `<div class="cta lead"><h2>Get a broker's opinion of value on your ${escHtml(p.type.toLowerCase())} property, free</h2>` +
       `<p>${escHtml(brokerList[0].company || brokerList[0].display_name)} covers ${escHtml(p.city)} ` +
       `${escHtml(p.type.toLowerCase())} and prepares opinions of value for owners here. Ask, and we make the ` +

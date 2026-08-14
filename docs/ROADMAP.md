@@ -140,6 +140,34 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-13/14: five changes aimed at the acquisition constraint, plus two
+  money-path holes.** None of these were on this roadmap, which is the point:
+  the list above is engineering the product needs, and every item here answers
+  "nobody arrives, and the few who do are told things we cannot back up."
+  - **A refund takes the report back** (#61). `charge.refunded` and the
+    async-payment pair had no handlers, so a refunded buyer kept their unlock
+    forever and a payment settling after checkout charged the card and never
+    unlocked anything. **Owner action outstanding: the three events are not
+    ticked on the Stripe destination, so the code is inert until they are.**
+  - **The market pages stop promising a broker nobody has** (#62). All 38
+    offered "a no-cost Broker Opinion of Value from a licensed local broker"
+    while the broker card above rendered nothing. The promise now reads the
+    same list that card reads; uncovered markets sell the report instead.
+  - **A covered market leads with the broker** (#62). Where somebody does
+    cover the market, the introduction offer sits above the tiles rather than
+    in the last sentence. Anonymous visitors only, since the CTA below already
+    splits and a member is here to work.
+  - **A forwarded report asks the reader for their own building** (#63).
+    `/r/<id>` is the only page the wall lets a stranger through to, and it
+    greeted them with a generic signup card plus a line telling them to "enter
+    an address above" while that card stood where the field would be.
+  - **Report-first outreach** (#68). `node outreach.js` runs real reports on
+    real buildings in one market, publishes share links and drafts a message
+    per building. It sends nothing and bills nothing without `--confirm`.
+    `--warm-only` is the bounded cache pre-warm. **Never run live yet.**
+  - **A saved property says what its market did while its owner was away**
+    (#70). The desk's only figure that moves without the owner re-running
+    anything, drawn from comps other people's searches already harvested.
 - **2026-08-09: market pages agree with themselves.** The `<title>`s said
   "Comps in" and the `<h1>`s said "Property Values in" on all 38 pages, so
   each one gave Google a mixed signal about its own subject. `marketTitle()`

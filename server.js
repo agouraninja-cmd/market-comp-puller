@@ -5560,7 +5560,7 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .ledger{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin:22px 0;box-shadow:var(--lift)}
 .lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash)}
+.lcell.mid{background:var(--wash-2)}
 .lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .lcell.mid .k{color:var(--red)}
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
@@ -7079,7 +7079,7 @@ section{padding:48px 0}
 .ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash)}
+.lcell.mid{background:var(--wash-2)}
 .lcell.mid .lab{color:var(--red)}
 .fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}

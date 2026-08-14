@@ -51,6 +51,17 @@ test("every token declares both a light and a dark value", () => {
   }
 });
 
+test("estimate and vault badge tokens keep their hues, and do not borrow warn or ok", () => {
+  assert.equal(THEME_TOKENS["est-text"].light, "#9A3412");
+  assert.equal(THEME_TOKENS["est-bg"].light, "#F8E9DC");
+  assert.equal(THEME_TOKENS["bv-text"].light, "#4C3A8C");
+  assert.equal(THEME_TOKENS["bv-bg"].light, "#EDE9F8");
+  assert.notEqual(THEME_TOKENS["est-text"].dark, THEME_TOKENS["warn-text"].dark);
+  assert.notEqual(THEME_TOKENS["est-bg"].dark, THEME_TOKENS["warn-bg"].dark);
+  assert.notEqual(THEME_TOKENS["bv-text"].dark, THEME_TOKENS["ok-text"].dark);
+  assert.notEqual(THEME_TOKENS["bv-bg"].dark, THEME_TOKENS["ok-bg"].dark);
+});
+
 test("the text/fill split exists, because a filled button must stay saturated", () => {
   // --red lightens for contrast as TEXT on a dark page; --red-fill stays
   // saturated because white text sits on top of it.
@@ -393,10 +404,6 @@ test("no raw hex colour remains in index.html's style block outside :root/dark d
     "box-shadow:#b91c1c",  // .rd-cell:focus-within's focus ring -- box-shadow is exempt, same as .card-hover / tileSpot
     "fill:#334155",        // .loading-ninja .ninja-body's light-only base value, fully replaced by an explicit dark-mode rule right below it
     "fill:#dc2626",        // .loading-ninja .ninja-band -- this IS --red-fill's dark value, so tokenizing it would change the light theme
-    "color:#9a3412",       // .rd-badge.e (estimate) -- deliberately sienna, distinct from .li's amber; no matching token
-    "background:#f8e9dc",  // .rd-badge.e's background, same reasoning
-    "color:#4c3a8c",       // .rd-badge.bv (broker vault) -- deliberately purple, not green; no matching token
-    "background:#ede9f8",  // .rd-badge.bv's background, same reasoning
     "color:#46536a",        // .rd-badge.p's text -- kept literal alongside its background (see the fix-round-2 note at the declaration: a half conversion measured 1.28:1)
     "background:#eaeef4",  // .rd-badge.p's background -- pale blue-gray, no matching token
     "background:#fca5a5",  // .spread-fill's gradient start -- this is --red-deep's dark value, so tokenizing it would change the light theme
@@ -753,6 +760,8 @@ test("a dark basemap never ships without the pin recolour", () => {
   const pins = INDEX.includes("pinInk") || INDEX.includes("--pin-ink");
   assert.equal(dark, pins,
     "dark_all tiles and the pin recolour must ship together, not one without the other");
+  assert.ok(INDEX.includes(".leaflet-tile-pane"),
+    "dark_all stays the provider; charcoal lift is a tile-pane filter, not a new basemap");
 });
 
 test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {

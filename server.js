@@ -2144,58 +2144,45 @@ async function accuracyReport(force) {
 // exact-address search cache misses, so it never touches the cache key.
 // ---------------------------------------------------------------------------
 async function retrieveCorpusComps(market, type, months, maxComps) {
+  const empty = { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0, listed: [], listedCount: 0 };
   try {
     const sibs = CORPUS_METRO ? siblingMarkets(market) : [];
     const rows = await corpusRowsForMarket(market, type, 300);
-    // A second, separate read so the shared single-market helper keeps its
-    // exact contract for its four other callers.
     const nearbyRows = sibs.length ? await corpusRowsForMarkets(sibs, type, 300) : [];
-    if (!rows.length && !nearbyRows.length) return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    if (!rows.length && !nearbyRows.length) return empty;
 
-    // Window filter in year-fraction space (parseDealDate returns e.g. 2024.5).
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
     const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
 
+    const split = HARVEST.splitRetrieved(rows, { parseDealDate, cutoffFrac, corpusNum });
+    const usable = split.usable;
+    const listedAll = CORPUS_LISTED ? split.listed : [];
+
     const isUsable = (r) => {
-      // Only feed higher-confidence provenance; a rough guess ("estimate") or a
-      // news mention shouldn't seed a report.
       const st = String(r.source_type || "").toLowerCase();
       if (st === "estimate" || st === "news") return false;
       const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
       const d = parseDealDate(r.deal_date);
       return Boolean(priced) && d != null && d >= cutoffFrac;
     };
-    const usable = rows.filter(isUsable);
-    // Nearby rows clear the identical bar: provenance better than estimate or
-    // news, a parseable price, and a deal date inside the requested window.
     const nearbyUsable = nearbyRows.filter(isUsable);
 
-    // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
-    // freshest we hold for this market. Stale coverage → fall back to the web.
-    // 75 days (was 45 until 2026-07-31): the 2026-07-30 speed work flagged
-    // this gate as the top untested cost lever, and the exposure is narrow —
-    // the only deals a corpus-assisted search can miss are ones that surfaced
-    // during the staleness gap, the 2-3 fresh searches are aimed at exactly
-    // that gap, and `usable` below is window-filtered, so a market whose
-    // comps have aged out of the requested lookback stops qualifying no
-    // matter what this constant says. Judge it by the /admin corpus hit rate
-    // and spot-checks of corpus-tagged reports; it is one constant to revert.
     const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
     const fresh = Boolean(newest && (now - newest) < 75 * 24 * 3600 * 1000);
 
     return {
       comps: usable.slice(0, maxComps * 2),
-      // coverage stays EXACT-market only: corpusIsStrong and the search budget
-      // read it, and nearby rows must never buy a smaller budget.
       coverage: usable.length,
       fresh,
       nearby: nearbyUsable.slice(0, maxComps),
       nearbyCount: nearbyUsable.length,
+      listed: listedAll.slice(0, maxComps),
+      listedCount: listedAll.length,
     };
   } catch (e) {
     console.error("Corpus retrieval failed (falling back to full search):", e.message);
-    return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    return empty;
   }
 }
 
@@ -2239,6 +2226,11 @@ const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SE
 // immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a
 // reason to search less. Default ON; `off` restores exact-market matching.
 const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
+
+// On-market listing rows (unparseable deal_date) offered as extra candidates.
+// Default ON; `off` hides the prompt block and returns listed: []. The harvest
+// filter (no estimate/news) has no flag.
+const CORPUS_LISTED = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_LISTED || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
@@ -11200,6 +11192,9 @@ const server = http.createServer((req, res) =>
           // total, so report both rather than let the count overstate what
           // the model was actually offered.
           console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
+        }
+        if (corpus.listedCount) {
+          console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
         }
 
         // Everything above this line answers in plain JSON — the password gate,

@@ -55,7 +55,9 @@ profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-diges
 initiative, so every judgment in it is about what a person is worth
 interrupting for) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
-treated as invited, never public) and **`test/routes.test.js`**, which boots a real
+treated as invited, never public) and **`market-hero.js`** (which city's
+photograph heads a market page, and the rule that a missing city gets no
+picture rather than someone else's skyline) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
@@ -1112,7 +1114,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do
   NOT depend on the purged `tailwind.css`) built from `market-seed.json` —
   static data committed to the repo, so pages survive redeploys and serve
-  instantly with no DB. Each page: median/quartile $/SF, cap-rate range, a
+  instantly with no DB. Each page opens with an aerial photograph of the
+  city (curated Wikimedia Commons files in `market-heroes/`, keyed by city
+  in the pure, tested `market-hero.js` — Explorer markets without a photo
+  fall through to an Esri aerial when we have coordinates, and to no photo
+  rather than the wrong city's skyline). Then: median/quartile $/SF, a cap-rate range, a
   market summary + `value_drivers` narrative, a recent-comps table (sortable,
   Sale/Lease filter; address links to `source_url` when the snapshot has a
   sanitized http(s) URL), and a CTA — owner valuation for anonymous visitors,

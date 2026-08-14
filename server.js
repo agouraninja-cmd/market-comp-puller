@@ -3572,7 +3572,7 @@ Rules:
 - address must be a specific property with a street number, not a district or "general submarket estimate".
 - Do not include a verified flag or a source_url.`;
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -3686,6 +3686,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Use these only when the target's own city is thin on genuinely comparable transactions, and only for ones a buyer would actually weigh against the target. Report each address exactly as given so the report shows the city the comp is really in; never restate it as the target's city. Set "verified": false on these, and keep the source_url. Prefer a comp in the target's own city over one of these whenever both are comparable.`,
   ].join("\n") : "";
 
+  const listedBlock = (corpusListed && corpusListed.length) ? [
+    ``,
+    `ON-MARKET LISTINGS: our prior research surfaced these asking-price listings in this market that are currently on the market, not closed sales. They are already sourced.`,
+    ...corpusListed.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
+    `Include one only when it is genuinely comparable to the target. These are asking prices, not closed transactions: copy source_url, set source_type to "listing", keep the date string as given (Active or Listed Mon YYYY), and the notes caveat that the price is asking rather than a closed sale must fire. Do not treat an asking price as a closed sale. Set "verified": false on these unless they also appear in the verified list above.`,
+  ].join("\n") : "";
+
   return [
     `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
     ``,
@@ -3763,6 +3771,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     verifiedBlock,
     corpusBlock,
     nearbyBlock,
+    listedBlock,
     ``,
     LANE_GUIDANCE[lane] || "",
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
@@ -3808,7 +3817,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `}`,
     ``,
     `COMPACT COMP KEYS: in "comps", write every field under its SHORT key exactly as the template shows: ${compKeyLegend}. The rules in this prompt refer to these fields by their FULL names - apply each rule to its short key. Also, in "comps", OMIT any field you have no value for instead of writing an empty string (top-level fields outside "comps" keep "" when unknown, exactly as stated elsewhere).`,
-    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = for a closed sale or a signed lease, the closing or signing month-year like "Mar 2025"; for an active listing, "Active" when the page has no post date, or "Listed Mar 2025" when it does. Never write a bare "Mar 2025" for an active listing. "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     // "notes" was the single largest field in the output — measured at 18-28%
     // of a report, up to 316 characters per comp — and the report is slow
     // because of how long it takes to WRITE, not to search (see the streaming
@@ -4499,7 +4508,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
                         subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
-                        subjectDetails, lane),
+                        corpus && corpus.listed, subjectDetails, lane),
     maxComps,
     searchUses,
     stream: useStream,

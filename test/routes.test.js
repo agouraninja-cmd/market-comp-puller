@@ -1596,6 +1596,23 @@ test("buildPrompt asks for subject_assessed next to last-sale, not in summary", 
     "assessed must not earn last-sale's protected summary slot");
 });
 
+test("buildPrompt splits close dates from on-market listing dates", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  assert.ok(start >= 0, "buildPrompt should still exist");
+  const end = src.indexOf("async function callAnthropicOnce", start);
+  assert.ok(end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+  assert.match(body, /ON-MARKET LISTINGS/,
+    "on-market listing rows need their own prompt block, like NEARBY COMPS");
+  assert.match(body, /Listed Mar 2025/,
+    "active listings must be told to write Listed Mon YYYY, not a bare close month");
+  assert.equal(body.includes("lease/listing was signed or posted"), false,
+    "the old combined date sentence treats a list date as a close");
+});
+
 test("finishReport and mergeLaneReports wire subject_assessed", () => {
   const fs = require("node:fs");
   const path = require("node:path");

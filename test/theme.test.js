@@ -928,7 +928,7 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
     // <meta name="theme-color"> paired with prefers-color-scheme, so the
     // browser chrome tracks the OS rather than data-theme. Same pair as
     // --paper's light/dark values; not a page colour.
-    "content:#fbfbf9", "content:#020617",
+    "content:#fbfbf9", "content:#121826",
   ]);
 
   const named = offenders.filter((o) => !ALLOWLIST.has(o));

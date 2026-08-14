@@ -48,7 +48,7 @@ function renderVaultHTML(boot, chrome) {
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
 <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
-<meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)"/>
+<meta name="theme-color" content="#121826" media="(prefers-color-scheme: dark)"/>
 <link rel="icon" href="/favicon.ico" sizes="48x48"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>

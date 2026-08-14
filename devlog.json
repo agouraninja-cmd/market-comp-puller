@@ -2,6 +2,12 @@
   {
     "date": "2026-08-13",
     "type": "feature",
+    "title": "The comp map now reaches the PDF and the PNG",
+    "details": "The map was the one exhibit that never left the browser: it was dropped from Print / PDF and skipped by the image export, so every report a broker sent a client had the comp table and no map. Both exports now carry a flat version of the same map, built from the same pins and numbered to match the table. It is always the light street basemap rather than satellite, because satellite prints as a dark rectangle the pin numbers disappear into, and the exports are already pinned light for the same reason. Private vault comps are left off it, exactly as they are left out of the table and the CSV. If the map cannot be built (no connection, tiles blocked) the exports drop it and succeed as before, rather than printing an empty box."
+  },
+  {
+    "date": "2026-08-13",
+    "type": "feature",
     "title": "The vault takes a screenshot of a comp table, not only a PDF",
     "details": "Brokers were being asked for a spreadsheet or an exported PDF, which is not usually what they have. A CoStar table on screen, a photo of a printed comp sheet, or a cropped screenshot from a colleague all now go through the same door: the file is read by the extract vendor, the deals come back as the same confirm table, and nothing is stored until the rows are imported. PNG, JPEG and WebP are accepted alongside PDF. That list is the intersection of what both search providers read rather than the union, so a file that imports today cannot start refusing after a provider switch. The file type is decided by its bytes, never by its name, so a renamed spreadsheet still cannot reach the vendor. iPhone HEIC photos are refused by name with what to do instead, since a generic unsupported-file line would send a broker looking for a fault in their comp sheet."
   },

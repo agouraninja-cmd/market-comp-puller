@@ -170,6 +170,153 @@ test("unitDesignatorOf does not read the vocabulary out of ordinary street names
   }
 });
 
+// ----------------------------------------------------------------------------
+// Static comp map — the raster that carries the map into the PDF and the PNG.
+// Spec: docs/superpowers/specs/2026-08-13-static-comp-map-design.md
+// ----------------------------------------------------------------------------
+
+// Same technique as loadUnitDesignatorOf above: the projection and the
+// zoom-fit are pure math sitting inside a DOM-dependent block, and they are
+// the half of this feature that fails silently. A wrong fit does not throw —
+// it prints a map with pins off the edge, or one rooftop filling the frame.
+function loadSmapFit() {
+  const src = html.match(/const SMAP_W = [\s\S]*?function smapFit\(pts\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find smapFit in index.html — was it renamed or moved?");
+  const ctx = vm.createContext({ window: {}, setTimeout });
+  new vm.Script(src[0] + "\n;this.fit = smapFit; this.project = smapProject;" +
+    "\n;this.W = SMAP_W; this.H = SMAP_H; this.PAD = SMAP_PAD; this.MAXZ = SMAP_MAX_Z;",
+    { filename: "index.html" }).runInContext(ctx);
+  return ctx;
+}
+
+// Where each pin lands inside the frame, given a fit — the same arithmetic
+// drawStaticMap does (project at the chosen zoom, offset by the crop origin).
+function placePins(s, pts, fit) {
+  const ox = fit.cx - s.W / 2, oy = fit.cy - s.H / 2;
+  return pts.map((p) => {
+    const q = s.project(p.lat, p.lng, fit.z);
+    return { x: q.x - ox, y: q.y - oy };
+  });
+}
+
+test("the static map's zoom fit keeps every pin inside the frame", () => {
+  const s = loadSmapFit();
+  const sets = [
+    // A tight downtown set, a few blocks apart.
+    [{ lat: 43.6150, lng: -116.2023 }, { lat: 43.6178, lng: -116.1994 }, { lat: 43.6121, lng: -116.2065 }],
+    // A metro-wide set: Boise out to Meridian and Nampa.
+    [{ lat: 43.6150, lng: -116.2023 }, { lat: 43.6121, lng: -116.3915 }, { lat: 43.5407, lng: -116.5635 }],
+    // A rural wide-radius report, most of a state apart.
+    [{ lat: 43.6150, lng: -116.2023 }, { lat: 47.6588, lng: -117.4260 }],
+    // Coast to coast: the zoom has to keep falling until it fits.
+    [{ lat: 40.7128, lng: -74.0060 }, { lat: 34.0522, lng: -118.2437 }],
+  ];
+  for (const pts of sets) {
+    const fit = s.fit(pts);
+    assert.ok(fit, `no zoom fit found for ${JSON.stringify(pts)}`);
+    assert.ok(fit.z >= 1 && fit.z <= s.MAXZ, `zoom ${fit.z} out of range`);
+    for (const at of placePins(s, pts, fit)) {
+      assert.ok(at.x >= s.PAD - 1 && at.x <= s.W - s.PAD + 1,
+        `pin at x=${at.x} escapes the padded frame (width ${s.W})`);
+      assert.ok(at.y >= s.PAD - 1 && at.y <= s.H - s.PAD + 1,
+        `pin at y=${at.y} escapes the padded frame (height ${s.H})`);
+    }
+  }
+});
+
+test("the static map picks the tightest zoom that still fits, and caps it", () => {
+  const s = loadSmapFit();
+  // A single pin spans nothing, so nothing forces a zoom out. It must stop at
+  // the cap rather than running to maximum: one comp on its own should print
+  // as a property in its neighbourhood, not as a rooftop filling the page.
+  assert.equal(s.fit([{ lat: 43.6150, lng: -116.2023 }]).z, s.MAXZ);
+  // And a wider set must genuinely zoom out rather than clipping.
+  const near = s.fit([{ lat: 43.6150, lng: -116.2023 }, { lat: 43.6178, lng: -116.1994 }]).z;
+  const far = s.fit([{ lat: 43.6150, lng: -116.2023 }, { lat: 43.5407, lng: -116.5635 }]).z;
+  assert.ok(far < near, `a wider comp set must zoom out (near ${near}, far ${far})`);
+});
+
+test("the static map is built from exportableComps, never includedComps", () => {
+  // THE rule of this feature. A broker's private vault comp is kept out of
+  // every file the app produces, and a pin is that comp's location — the same
+  // leak in a form nobody would think to check, because the table above it
+  // would correctly be missing the row.
+  const fn = html.match(/function staticMapPoints\(\)[\s\S]{0,900}?\n  \}/);
+  assert.ok(fn, "index.html must define staticMapPoints()");
+  assert.match(fn[0], /exportableComps\(\)/);
+  assert.ok(!/includedComps\(\)/.test(fn[0]),
+    "staticMapPoints must not read includedComps() — that is how a private comp reaches an export");
+});
+
+test("static map tiles are requested in CORS mode, before the src is set", () => {
+  // The whole no-taint argument rests on this: a host answering without CORS
+  // headers must fail the LOAD rather than return a bitmap that poisons the
+  // canvas and makes toDataURL throw. Setting crossOrigin after src is the
+  // classic way to lose that, and it fails silently on hosts that do send the
+  // headers — which is all of them, until one does not.
+  const fn = html.match(/function smapTile\(url, deadline\)[\s\S]{0,800}?\n  \}/);
+  assert.ok(fn, "index.html must define smapTile()");
+  const co = fn[0].indexOf("crossOrigin");
+  const src = fn[0].indexOf("img.src");
+  assert.ok(co !== -1 && src !== -1, "smapTile must set both crossOrigin and src");
+  assert.ok(co < src, "crossOrigin must be set BEFORE src or the tile loads tainted");
+});
+
+test("print unhides the map card only for a ready, unhidden raster", () => {
+  // Three ways this goes wrong and prints something worse than the missing map
+  // it replaces: unhiding the card with no raster (an empty box under a
+  // caption), leaving Leaflet's own pane visible next to the raster, and
+  // printing last report's raster inside a card the current report hid for
+  // having no coordinates.
+  assert.match(html, /#mapCard \{ display: none !important; \}/);
+  assert.match(html, /#mapCard\.map-static-ready:not\(\.hidden\) \{ display: block !important; \}/);
+  assert.match(html, /#mapCard\.map-static-ready:not\(\.hidden\) #compMap \{ display: none !important; \}/);
+  // The raster itself is print-only, so it can never show up on screen.
+  assert.match(html, /<img id="mapStatic" class="print-only"/);
+});
+
+test("the PNG export swaps the Leaflet pane for the raster, and falls back to dropping the card", () => {
+  const fn = html.match(/async function downloadImage\(\)[\s\S]{0,5000}?\n  \}/);
+  assert.ok(fn, "index.html must define downloadImage()");
+  // Awaited, not raced: the raster has to exist before html2canvas walks the
+  // DOM looking for it.
+  assert.match(fn[0], /await ensureStaticMap\(\)/);
+  assert.match(fn[0], /staticReady \? el\.id === "compMap" : el\.id === "mapCard"/);
+  // .print-only is display:none on screen and html2canvas honours the screen
+  // stylesheet, so the clone has to reveal it or the capture shows an empty card.
+  assert.match(fn[0], /getElementById\("mapStatic"\)[\s\S]{0,120}display = "block"/);
+});
+
+test("renderMap retires a raster that no longer matches its pins", () => {
+  // The seconds between a new report painting and its geocodes settling are a
+  // window where the previous report's raster is still marked ready. Ctrl+P in
+  // that window would print the old map above the new table — worse than
+  // printing none, because it looks right. Invalidation therefore happens at
+  // the TOP of renderMap, not at the settle that builds the replacement.
+  // Just the head of the function: the call has to be up here, not buried in
+  // the settle block at the bottom.
+  const fn = html.match(/function renderMap\(parsed, meta, isRetry\) \{[\s\S]{0,500}/);
+  assert.ok(fn, "index.html must define renderMap()");
+  assert.match(fn[0], /invalidateStaticMap\(\)/);
+
+  const inv = html.match(/function invalidateStaticMap\(\)[\s\S]{0,700}?\n  \}/);
+  assert.ok(inv, "index.html must define invalidateStaticMap()");
+  // Keyed, not unconditional: a theme toggle re-renders the same pins, and
+  // dropping the raster there would refetch every tile for no change (the
+  // raster is always light, so the theme cannot alter it).
+  assert.match(inv[0], /staticMapKeyFor\(staticMapPoints\(\)\) === staticMapKey/);
+  assert.match(inv[0], /classList\.remove\("map-static-ready"\)/);
+});
+
+test("the print button waits for the raster", () => {
+  const handler = html.match(/getElementById\("printBtn"\)\.addEventListener[\s\S]{0,600}?\}\)\);/);
+  assert.ok(handler, "index.html must wire the print button");
+  const wait = handler[0].indexOf("await ensureStaticMap()");
+  const print = handler[0].indexOf("window.print()");
+  assert.ok(wait !== -1, "the print button must await the raster");
+  assert.ok(wait < print, "the raster must be awaited BEFORE the print dialog opens");
+});
+
 test("landing address handoff fills #address from sessionStorage and drops the key", () => {
   // File search, not a browser. The landing cannot reach this script;
   // this only proves the app side of the handoff is actually wired.

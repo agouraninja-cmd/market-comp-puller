@@ -541,8 +541,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       #reportArea .overflow-hidden { overflow: visible !important; }
       #compsTable { font-size: 10px; }
       #compsTable th, #compsTable td { padding: 4px 6px; white-space: normal !important; }
-      /* Map tiles are lazy-loaded cross-origin images that print blank. */
+      /* Leaflet's own pane never prints: its tiles are lazy-loaded
+         cross-origin images that come out blank. So the card stays hidden by
+         default and is unhidden ONLY once buildStaticMap() has put a finished
+         raster in #mapStatic and set .map-static-ready — an empty card with a
+         caption under it is worse than the missing map this replaces. The
+         :not(.hidden) guard matters because `hidden` is a plain Tailwind
+         display rule and this one is !important: a report with no coordinates
+         hides the card, and a raster left over from the previous report would
+         otherwise print inside it. */
       #mapCard { display: none !important; }
+      #mapCard.map-static-ready:not(.hidden) { display: block !important; }
+      #mapCard.map-static-ready:not(.hidden) #compMap { display: none !important; }
       /* Print always uses the table, never the mobile card list. */
       #cardList { display: none !important; }
       /* ---- Document print styling (Directions C+D, owner-approved
@@ -2375,8 +2385,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Comp Map</h2>
           </div>
           <div id="compMap" style="height: 340px;"></div>
+          <!-- Print/PNG only: the same pins as a flat raster, stitched onto a
+               canvas by buildStaticMap(). Leaflet's live pane reaches neither
+               export — window.print() is a native path no capture library
+               touches, and html2canvas over lazy-loaded cross-origin tiles is
+               unreliable — so the card used to be dropped from both. Empty
+               until a build lands; the card only unhides in print once it
+               carries .map-static-ready. -->
+          <img id="mapStatic" class="print-only" style="width:100%;height:auto" alt="Map of your property and the comparable properties" />
           <p class="text-xs text-[#68707E] px-6 py-2 border-t border-[#F0EFE9]">
-            Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below. Click a pin for details.
+            Pins are matched to each address; a pin may be approximate when an address can't be matched exactly. <span class="font-medium text-brand-700">Red pin</span> = your property; numbered dots match the comps table below.<span class="no-print no-capture"> Click a pin for details.</span>
           </p>
           <!-- Its own <p>, not a span inside the one above: a `hidden block`
                pair resolves on stylesheet order, which is the trap that has
@@ -7234,6 +7252,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderMap(parsed, meta, isRetry) {
     const card = document.getElementById("mapCard");
     const gen = ++mapGeneration;
+    // Retire a raster that no longer matches these pins before anything else
+    // happens — see invalidateStaticMap for the window this closes.
+    invalidateStaticMap();
     const escMap = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
@@ -7717,6 +7738,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // column reads, so fill it in now rather than leaving the table a beat
       // behind the map.
       refreshDistances();
+      // Pins are final, so this is the first moment a printable raster of them
+      // can be built. Deferred to idle because nothing on screen wants it, and
+      // built EAGERLY rather than on demand because Ctrl+P is synchronous and
+      // cannot wait for tiles. Keyed on the pin set, so the theme toggle's
+      // re-render (which cannot change a map that is always light) is a no-op.
+      smapIdle(ensureStaticMap);
       if (!moved) return;
       const refined = [];
       if (subjMarker) refined.push(subjMarker.getLatLng());
@@ -7736,6 +7763,264 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // async network round trip) on every theme toggle.
   function refreshMapTheme() {
     if (currentParsed) renderMap(currentParsed, currentMeta);
+  }
+
+  // ----------------------------------------------------------------------------
+  // Static comp map — the raster that reaches the PDF and the PNG.
+  //
+  // The live Leaflet map reaches neither: window.print() is a native path no
+  // capture library touches, and html2canvas over a pane of lazy-loaded
+  // cross-origin tiles is unreliable enough that both exports simply dropped
+  // the whole card. So the same tiles are stitched onto our own canvas, the
+  // pins are drawn on top, and the data URI goes to both paths as an <img>.
+  //
+  // Nothing here can taint a canvas: every tile loads crossOrigin="anonymous",
+  // and a host answering without CORS headers fails the LOAD rather than
+  // poisoning the bitmap, so toDataURL() cannot throw. That is what makes the
+  // silent fallback honest — a failure leaves the card as hidden as it is now.
+  //
+  // Spec: docs/superpowers/specs/2026-08-13-static-comp-map-design.md
+  // ----------------------------------------------------------------------------
+  const SMAP_W = 1000, SMAP_H = 460;   // logical px; the raster is SMAP_SCALE times this
+  const SMAP_SCALE = 2;
+  const SMAP_PAD = 40;                 // logical px of breathing room around the outermost pins
+  const SMAP_MAX_Z = 16;               // a one-block comp set must not fill the frame with a rooftop
+  const SMAP_BUDGET_MS = 4000;
+  // Always the light street basemap, never the reader's satellite choice: Esri
+  // imagery prints as a dark ink-heavy rectangle that the numbered pins vanish
+  // into, and street geometry with place labels is what makes a comp set's
+  // shape readable on paper. Same rule the PNG export already applies to the
+  // theme (see downloadImage's onclone) — an export is light whatever the
+  // sender is looking at.
+  const SMAP_TILE = (z, x, y) => `https://a.basemaps.cartocdn.com/light_all/${z}/${x}/${y}@2x.png`;
+  const SMAP_ATTRIB = "© OpenStreetMap © CARTO";
+  const smapIdle = (fn) => (window.requestIdleCallback || ((f) => setTimeout(f, 400)))(fn, { timeout: 3000 });
+
+  let staticMapKey = null;    // signature of the pin set the raster on screen was built from
+  let staticMapJob = null;    // { key, p } of an in-flight build, so exports can await it
+
+  // Web Mercator, in global pixels at zoom z — the same projection aerialThumb
+  // uses for the popup photo.
+  function smapProject(lat, lng, z) {
+    const scale = 256 * Math.pow(2, z);
+    const latRad = (lat * Math.PI) / 180;
+    return {
+      x: ((lng + 180) / 360) * scale,
+      y: ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale,
+    };
+  }
+
+  // The pins an export is allowed to show. **exportableComps(), never
+  // includedComps()** — a broker's private vault comp is kept out of every
+  // file this app produces, and a pin is that comp's LOCATION, which is the
+  // same leak in a form nobody would think to check. Numbering stays
+  // report-wide (`_num`), so a private comp leaves exactly the gap it leaves
+  // in the exported table, which renderPrivateNotice() already discloses on
+  // every surface that drops those rows.
+  function staticMapPoints() {
+    const pts = [];
+    if (currentParsed) {
+      const sLat = parseFloat(currentParsed.subject_lat), sLng = parseFloat(currentParsed.subject_lng);
+      if (isFinite(sLat) && isFinite(sLng)) pts.push({ lat: sLat, lng: sLng, subject: true });
+    }
+    (exportableComps() || []).forEach((c) => {
+      const lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+      if (isFinite(lat) && isFinite(lng)) pts.push({ lat, lng, num: c._num });
+    });
+    return pts;
+  }
+
+  // Largest zoom at which every pin fits the frame with padding. A single
+  // point spans nothing and lands at SMAP_MAX_Z.
+  function smapFit(pts) {
+    for (let z = SMAP_MAX_Z; z >= 1; z--) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      pts.forEach((p) => {
+        const q = smapProject(p.lat, p.lng, z);
+        minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x);
+        minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y);
+      });
+      if (maxX - minX <= SMAP_W - SMAP_PAD * 2 && maxY - minY <= SMAP_H - SMAP_PAD * 2) {
+        return { z, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+      }
+    }
+    return null;
+  }
+
+  function smapTile(url, deadline) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; resolve(v); } };
+      // crossOrigin BEFORE src, or the request goes out without CORS mode and
+      // the tile comes back usable-but-tainting.
+      img.crossOrigin = "anonymous";
+      img.onload = () => finish(img);
+      img.onerror = () => finish(null);
+      setTimeout(() => finish(null), Math.max(0, deadline - Date.now()));
+      img.src = url;
+    });
+  }
+
+  // The screen pins redrawn with canvas primitives. Literal colours rather
+  // than pinColors(): the raster is always the light basemap, so it takes the
+  // light pins whatever theme the page itself is in.
+  function smapCompPin(ctx, x, y, num) {
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+    ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = "#1e293b"; ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = "600 11px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(num == null ? "" : String(num), x, y + 0.5);
+    ctx.restore();
+  }
+
+  // Anchored at its point like the screen pin: the coordinate is the tip, not
+  // the centre. The arc sweeps the top of the circle and the two lines close
+  // it down to the tip.
+  function smapSubjectPin(ctx, x, y) {
+    const r = 9, h = 13;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.4)"; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
+    ctx.beginPath();
+    ctx.arc(x, y - h, r, Math.PI * 0.85, Math.PI * 0.15);
+    ctx.lineTo(x, y);
+    ctx.closePath();
+    ctx.fillStyle = "#DC2626"; ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.restore();
+  }
+
+  // Required by both licences, and drawn INTO the raster rather than left to
+  // the caption below the card: once the image is inside a PDF it travels on
+  // its own.
+  function smapAttribution(ctx) {
+    ctx.save();
+    ctx.font = "10px Inter, system-ui, sans-serif";
+    ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+    const w = ctx.measureText(SMAP_ATTRIB).width;
+    ctx.fillStyle = "rgba(255,255,255,.78)";
+    ctx.fillRect(SMAP_W - w - 10, SMAP_H - 15, w + 10, 15);
+    ctx.fillStyle = "#4C5665";
+    ctx.fillText(SMAP_ATTRIB, SMAP_W - 5, SMAP_H - 3);
+    ctx.restore();
+  }
+
+  async function drawStaticMap(pts) {
+    const fit = smapFit(pts);
+    if (!fit) return null;
+    const deadline = Date.now() + SMAP_BUDGET_MS;
+    const ox = fit.cx - SMAP_W / 2, oy = fit.cy - SMAP_H / 2;
+    const span = Math.pow(2, fit.z);   // tiles per axis at this zoom
+    const jobs = [];
+    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + SMAP_H - 1) / 256); ty++) {
+      if (ty < 0 || ty >= span) continue;               // past a pole: no tile exists
+      for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + SMAP_W - 1) / 256); tx++) {
+        const wx = ((tx % span) + span) % span;         // the world wraps east to west
+        jobs.push(smapTile(SMAP_TILE(fit.z, wx, ty), deadline)
+          .then((img) => ({ img, left: tx * 256 - ox, top: ty * 256 - oy })));
+      }
+    }
+    const tiles = await Promise.all(jobs);
+    // Every tile failing means no basemap at all, and pins floating on a blank
+    // rectangle would print as a confident-looking nothing.
+    if (!tiles.some((t) => t.img)) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = SMAP_W * SMAP_SCALE;
+    canvas.height = SMAP_H * SMAP_SCALE;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(SMAP_SCALE, SMAP_SCALE);
+    ctx.fillStyle = "#F2F1EC";   // shows through wherever a single tile failed
+    ctx.fillRect(0, 0, SMAP_W, SMAP_H);
+    // @2x tiles are 512px natural, drawn into a 256 logical box: the extra
+    // detail is what makes this ~330dpi at the printed width.
+    tiles.forEach((t) => { if (t.img) ctx.drawImage(t.img, t.left, t.top, 256, 256); });
+    // Comps first, subject last — the red pin is the one mark that must never
+    // end up underneath another.
+    pts.forEach((p) => {
+      if (p.subject) return;
+      const q = smapProject(p.lat, p.lng, fit.z);
+      smapCompPin(ctx, q.x - ox, q.y - oy, p.num);
+    });
+    pts.forEach((p) => {
+      if (!p.subject) return;
+      const q = smapProject(p.lat, p.lng, fit.z);
+      smapSubjectPin(ctx, q.x - ox, q.y - oy);
+    });
+    smapAttribution(ctx);
+    // WebP, falling back to PNG. Measured on a downtown Boise set at these
+    // dimensions: 2.7 MB as PNG against 348 KB as WebP at 0.92, with no
+    // visible ringing on the street labels at 1:1 — and this data URI sits in
+    // the DOM of every report, gets cloned by html2canvas, and rides into the
+    // print job, so the 7x matters. toDataURL is its own feature test: an
+    // engine that cannot encode WebP silently answers PNG instead of failing,
+    // so the returned MIME is what decides, never a UA string.
+    const webp = canvas.toDataURL("image/webp", 0.92);
+    return webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/png");
+  }
+
+  // What the raster on screen was built from. Coordinates rounded, because a
+  // geocode that lands on the same spot must not read as a different map.
+  function staticMapKeyFor(pts) {
+    return pts.map((p) => (p.subject ? "s" : p.num) + "@" +
+      p.lat.toFixed(5) + "," + p.lng.toFixed(5)).join("|");
+  }
+
+  // Called at the top of every renderMap. If the pins no longer describe the
+  // raster on screen, drop it NOW rather than at the next settle: the seconds
+  // between a new report painting and its geocodes landing are otherwise a
+  // window where Ctrl+P prints the PREVIOUS report's map above the new
+  // report's table, which is worse than printing no map. A theme toggle
+  // re-renders the same pins, matches the key, and costs nothing.
+  function invalidateStaticMap() {
+    const card = document.getElementById("mapCard");
+    const el = document.getElementById("mapStatic");
+    if (!card || !el) return;
+    if (staticMapKeyFor(staticMapPoints()) === staticMapKey) return;
+    staticMapKey = null;
+    card.classList.remove("map-static-ready");
+    el.removeAttribute("src");
+  }
+
+  // The single entry point. Settles when a raster for the CURRENT pin set
+  // exists or has failed. Both export handlers await it, and the post-geocode
+  // settle calls it at idle so a fast Ctrl+P finds one already built —
+  // onbeforeprint is synchronous and cannot wait for tiles.
+  function ensureStaticMap() {
+    const card = document.getElementById("mapCard");
+    const el = document.getElementById("mapStatic");
+    if (!card || !el) return Promise.resolve();
+    const pts = staticMapPoints();
+    const key = staticMapKeyFor(pts);
+    if (!pts.length) {
+      staticMapKey = null; staticMapJob = null;
+      card.classList.remove("map-static-ready");
+      el.removeAttribute("src");
+      return Promise.resolve();
+    }
+    if (key === staticMapKey) return Promise.resolve();               // already correct
+    if (staticMapJob && staticMapJob.key === key) return staticMapJob.p;   // already building
+    // Anything on screen now describes a different set of pins. Drop it before
+    // starting, so a build that fails leaves no map rather than a stale one.
+    staticMapKey = null;
+    card.classList.remove("map-static-ready");
+    el.removeAttribute("src");
+    const p = drawStaticMap(pts).then((url) => {
+      if (!url) return;
+      el.src = url;
+      staticMapKey = key;
+      card.classList.add("map-static-ready");
+    }).catch(() => {}).then(() => {
+      if (staticMapJob && staticMapJob.key === key) staticMapJob = null;
+    });
+    staticMapJob = { key, p };
+    return p;
   }
 
   // ----------------------------------------------------------------------------
@@ -12564,11 +12849,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     btn.textContent = "Rendering…"; btn.disabled = true;
     let ok = false;
     try {
-      // The Leaflet map is skipped in the capture — cross-origin tiles would
-      // otherwise taint the canvas and break the whole export.
+      // The static raster stands in for the Leaflet pane, which is skipped —
+      // its cross-origin tiles would taint the canvas and break the whole
+      // export. With no raster (a failed build, an offline browser) the whole
+      // card is skipped instead, exactly as it was before the raster existed.
+      await ensureStaticMap();
+      const mapCard = document.getElementById("mapCard");
+      const staticReady = Boolean(mapCard && mapCard.classList.contains("map-static-ready"));
       const canvas = await html2canvas(node, {
         scale: 2, backgroundColor: "#FBFBF9", useCORS: true,
-        ignoreElements: (el) => el.id === "mapCard" || el.id === "copySummaryBtn" || el.id === "bovCtaWrap" || (el.classList && el.classList.contains("no-capture")),
+        ignoreElements: (el) => (staticReady ? el.id === "compMap" : el.id === "mapCard") || el.id === "copySummaryBtn" || el.id === "bovCtaWrap" || (el.classList && el.classList.contains("no-capture")),
         // The entrance animations (#reportArea > *, .fade-in, .row-in) start
         // every card at opacity 0 and rely on the animation's forwards fill
         // to reach 1. Animations never run in html2canvas's cloned document,
@@ -12585,6 +12875,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           const s = doc.createElement("style");
           s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }";
           doc.head.appendChild(s);
+          // .print-only keeps the raster off the screen, and html2canvas
+          // honours the screen stylesheet, so it has to be revealed in the
+          // clone or the capture shows an empty card.
+          if (staticReady) {
+            const staticImg = doc.getElementById("mapStatic");
+            if (staticImg) staticImg.style.display = "block";
+          }
         },
       });
       const a = document.createElement("a");
@@ -12867,7 +13164,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   document.getElementById("csvBtn").addEventListener("click", gatedExport(exportCsv));
   document.getElementById("imgBtn").addEventListener("click", gatedExport(downloadImage));
-  document.getElementById("printBtn").addEventListener("click", gatedExport(() => {
+  document.getElementById("printBtn").addEventListener("click", gatedExport(async () => {
+    // The printed map is a raster built from tiles, so this path waits for it.
+    // A Ctrl+P instead of this button gets whatever the idle build after the
+    // pins settled already finished — onbeforeprint cannot wait for anything.
+    await ensureStaticMap();
     window.print();
     flashExportDone(document.getElementById("printBtn"), "Done");
   }));

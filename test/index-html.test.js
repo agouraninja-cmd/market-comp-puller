@@ -615,6 +615,19 @@ test("auto-save lives inside saveHistory, behind the same three guards", () => {
   assert.ok(guarded.length >= 2, "every renderResults saveHistory call must keep the sample/fromHistory/shared guard");
 });
 
+test("the desk's portfolio delete is a trash icon, not a Remove word", () => {
+  const start = html.indexOf("async function renderMyDesk");
+  const end = html.indexOf("// /desk — My Desk lives on its own URL");
+  assert.ok(start >= 0 && end > start);
+  const fn = html.slice(start, end);
+  assert.match(fn, /className = "dk-trash"/);
+  assert.match(fn, /aria-label", "Remove from portfolio"/);
+  assert.match(fn, /<svg /);
+  assert.match(fn, /Remove \$\{item\.address\} from your portfolio/);
+  assert.doesNotMatch(fn, /del\.textContent = "Remove"/);
+  assert.match(html, /\.dk-trash:hover, \.dk-trash:focus \{ color: var\(--red\)/);
+});
+
 test("the desk branches on portfolioValues, not a raw isPro", () => {
   const start = html.indexOf("async function renderMyDesk");
   const end = html.indexOf("// /desk — My Desk lives on its own URL");

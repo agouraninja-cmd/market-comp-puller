@@ -1,4 +1,5 @@
 [
+  {"date": "2026-08-14", "type": "improvement", "title": "My Desk row delete is a trash icon", "details": "The portfolio table's Remove word sat next to Refresh as a second underlined action. Same quiet trash as the vault: ink until hover, then red. The confirm still names the property."},
   {"date": "2026-08-14", "type": "fix", "title": "Map pin photos are the roof, and hover is snappy", "details": "Hovering a comp pin waited 120ms, faded the popup in, then fetched Street View through our proxy — often a fence, parking lot, or the building next door, half a second late. Moving off waited another 320ms plus Leaflet's fade. Popups now show the aerial close-up of the snapped building (Esri tiles, prefetched after the footprint lands). Open is 60ms, close is 80ms, no fade."},
   {
     "date": "2026-08-14",

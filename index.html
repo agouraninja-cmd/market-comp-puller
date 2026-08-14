@@ -932,6 +932,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
     .dk-up { color: var(--ok-text); font-size: 11px; font-weight: 500; }
     .dk-down { color: var(--red); font-size: 11px; font-weight: 500; }
+    /* Quiet trash, not a "Remove" word — same control as the vault's row
+       delete. Ink until hover, then red. The confirm still names the action. */
+    .dk-trash { background: none; border: 0; padding: 8px; margin: -8px 0 -8px 2px;
+      display: inline-flex; align-items: center; justify-content: center; line-height: 0;
+      color: var(--ink-3); cursor: pointer; vertical-align: middle; }
+    .dk-trash:hover, .dk-trash:focus { color: var(--red); }
+    .dk-trash svg { display: block; }
     .dk-mkt { padding: 14px 0; border-bottom: 1px solid var(--hair); }
     .dk-mkt:last-child { border-bottom: 0; }
     .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: var(--ink); }
@@ -9961,10 +9968,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(item.id)).catch(() => null);
           if (full) refreshPortfolioItem(full);
         });
+        // Quiet trash, not a "Remove" word. Same control as the vault's row
+        // delete. The confirm still names the action.
         const del = document.createElement("button");
         del.type = "button";
-        del.className = "text-[#68707E] hover:text-red-700 underline";
-        del.textContent = "Remove";
+        del.className = "dk-trash";
+        del.setAttribute("aria-label", "Remove from portfolio");
+        del.title = "Remove";
+        del.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg>';
         del.addEventListener("click", async () => {
           if (!confirm(`Remove ${item.address} from your portfolio?`)) return;
           try { await acctApi("DELETE", "/api/portfolio?id=" + encodeURIComponent(item.id)); } catch (_) {}

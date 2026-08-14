@@ -153,6 +153,30 @@ test("the cost answer matches what the product actually sells", async (t) => {
     }
   });
 
+  await t.test("the brokers trades are a ledger, not a paragraph or a Method clone", async () => {
+    // Homepage-look collapsed this to one .sub paragraph, which still named
+    // the three trades but read as Method's leftover. The trades are not a
+    // sequence: they are a statement, drawn as hairline rows like the report
+    // ledger, with the Verified chip shown on Credit rather than described.
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      const chunk = html.split('kicker">Brokers')[1];
+      assert.ok(chunk, p + " must still have a Brokers kicker");
+      const brokers = chunk.split("See it on your own building")[0];
+      assert.equal((brokers.match(/class="bkrow"/g) || []).length, 3,
+        p + " should show three trades as rows");
+      assert.match(brokers, /class="bklag">Private</, p + " should label the privacy trade");
+      assert.match(brokers, /class="bklag">Credit</, p + " should label the credit trade");
+      assert.match(brokers, /class="bklag">Leads</, p + " should label the leads trade");
+      assert.match(brokers, /Verified &middot; via Your Firm/,
+        p + " should show the credit chip, not only describe it");
+      assert.ok(!/class="steps"/.test(brokers),
+        p + " must not reuse Method's three-up");
+    }
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.match(html, /class="steps"/, "Method still uses .steps");
+  });
+
   await t.test("it still leads with the free tier, because that is true", async () => {
     const html = await (await fetch(srv.base + "/how-it-works")).text();
     assert.match(html, /free/i, "reports genuinely are free with an account; that is the offer");

@@ -22,6 +22,26 @@ test("the pre-existing token vocabulary keeps its exact light values", () => {
   }
 });
 
+// The 2026-08-13 lift. Light values stay on EXISTING above; these are the
+// dark floor the owner picked (charcoal, not near-black). A silent revert
+// to slate-950 would still satisfy "has a dark hex" and the index.html
+// mirror (if both copies moved together), so this table is the lock.
+const DARK_LIFT = {
+  paper: "#121826", card: "#1A2433", wash: "#243044",
+  "wash-2": "#334155", slab: "#243044",
+  edge: "#3D4B5F", line: "#2A3648", hair: "#1E2938",
+  ink: "#C9D3E0", "ink-body": "#A8B4C4", "ink-2": "#9AABC0",
+  "ink-mute": "#8A97A8", "ink-3": "#7D8B9C",
+  "ink-faint": "#7C8899", "ink-4": "#475569",
+};
+
+test("dark tokens match the lifted-slate table", () => {
+  for (const [name, dark] of Object.entries(DARK_LIFT)) {
+    assert.ok(THEME_TOKENS[name], `missing token --${name}`);
+    assert.equal(THEME_TOKENS[name].dark, dark, `--${name} dark value moved`);
+  }
+});
+
 test("every token declares both a light and a dark value", () => {
   for (const [name, v] of Object.entries(THEME_TOKENS)) {
     assert.equal(typeof v.light, "string", `--${name} has no light value`);
@@ -254,7 +274,7 @@ test("index.html's dark token block is screen-only too, mirroring rootCss's shap
   // across multiple lines for readability, unlike rootCss()'s single line.
   assert.match(
     INDEX_STYLE,
-    /:root\{--paper:#FBFBF9[^]*?\}\s*@media screen\{\s*\[data-theme="dark"\]\{--paper:#020617/,
+    /:root\{--paper:#FBFBF9[^]*?\}\s*@media screen\{\s*\[data-theme="dark"\]\{--paper:#121826/,
     ":root must be unscoped and the dark token block must sit inside @media screen"
   );
 });
@@ -918,7 +938,7 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
     // <meta name="theme-color"> paired with prefers-color-scheme, so the
     // browser chrome tracks the OS rather than data-theme. Same pair as
     // --paper's light/dark values; not a page colour.
-    "content:#fbfbf9", "content:#020617",
+    "content:#fbfbf9", "content:#121826",
   ]);
 
   const named = offenders.filter((o) => !ALLOWLIST.has(o));

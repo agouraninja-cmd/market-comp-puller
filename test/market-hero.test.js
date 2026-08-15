@@ -41,6 +41,21 @@ test("Ontario, CA is not Ontario, Canada", () => {
   assert.equal(on, null);
 });
 
+test("a failed Ontario file falls through to Esri of Ontario, CA, not Canada", () => {
+  const live = heroFor("Ontario", "CA", { skipKeys: ["ontario, ca"] });
+  const ll = CITY_COORDS["ontario, ca"];
+  assert.equal(live.kind, "satellite");
+  assert.equal(live.src, esriAerialUrl(ll.lat, ll.lng));
+  assert.equal(live.credit, "Esri, Maxar");
+  assert.equal(heroFor("Ontario", "ON", { skipKeys: ["ontario, ca"] }), null);
+});
+
+test("every curated city has coordinates so a failed file can fall through to Esri", () => {
+  for (const key of Object.keys(HEROES)) {
+    assert.ok(CITY_COORDS[key], key + " has a photo but no Esri point");
+  }
+});
+
 test("an explorer city with coordinates still gets an aerial", () => {
   const h = heroFor("Boise", "ID");
   assert.equal(h.kind, "satellite");

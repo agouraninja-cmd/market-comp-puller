@@ -6589,7 +6589,8 @@ function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
 }
 
 function marketHeroBanner(p, title) {
-  const hero = MARKETHERO.heroFor(p.city, p.state);
+  const skipKeys = HEROQUALITY.skipKeysFromRows(cachedHeroInspect().rows);
+  const hero = MARKETHERO.heroFor(p.city, p.state, { skipKeys });
   const crumb = `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>`;
   const heading = `<h1>${escHtml(title)}</h1>`;
   const blurb = `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>`;
@@ -6665,9 +6666,22 @@ function inspectMarketHeroes() {
       width: g.width,
       height: g.height,
       bytes: g.bytes,
+      liveKind: !g.ok ? "satellite" : "photo",
     });
   }
   return { rows, look: rows.filter((r) => !r.ok).length, total: rows.length };
+}
+
+let HERO_INSPECT_MEM;
+function cachedHeroInspect() {
+  if (!HERO_INSPECT_MEM) {
+    try { HERO_INSPECT_MEM = inspectMarketHeroes(); }
+    catch (err) {
+      console.error("hero inspect failed:", err && err.message);
+      HERO_INSPECT_MEM = { rows: [], look: 0, total: 0 };
+    }
+  }
+  return HERO_INSPECT_MEM;
 }
 
 function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
@@ -10650,9 +10664,7 @@ async function hqSnapshot() {
     // Render's logs — this page is what actually gets looked at.
     audience: PRO_ENABLED && PRO_AUDIENCE.length ? PRO_AUDIENCE.length : 0,
   };
-  let heroes = null;
-  try { heroes = inspectMarketHeroes(); }
-  catch (err) { console.error("hero inspect failed:", err && err.message); }
+  let heroes = cachedHeroInspect();
   return { analytics, submissions, dev, contacts, revenue, alerts, heroes };
 }
 

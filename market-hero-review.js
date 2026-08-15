@@ -103,7 +103,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div class="wrap">
 <div class="kicker">Internal</div>
 <h1 class="h">Market heroes</h1>
-<p class="sub">Each photograph as it appears on the market-page header. The badge catches a wrong size or a file too small to be sharp. A green-looking OK does not mean it is a good picture of that city &mdash; look at the crop.</p>
+<p class="sub">Each photograph as stored. The badge catches a wrong size or a file too small to be sharp; those live headers automatically switch to a satellite aerial of the same city. A technical OK still does not mean it is a good picture &mdash; look at the crop.</p>
 <div id="gate" class="gate"><span class="lab">Enter admin key</span>
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">Review photos</button><div id="err" class="err"></div></div>
@@ -139,6 +139,7 @@ function render(d){
   el("list").innerHTML=ordered.map(function(r){
     var badge=r.ok?'<span class="badge">OK</span>':'<span class="badge look">Needs a look</span>';
     var why=(r.reasons||[]).length?'<p class="reasons">'+r.reasons.map(esc).join(" · ")+"</p>":"";
+    if(!r.ok) why+='<p class="reasons">Live pages show a satellite aerial of this city instead.</p>';
     var links=[];
     if(r.samplePath)links.push('<a href="'+esc(r.samplePath)+'" target="_blank" rel="noopener">Live page</a>');
     if(r.commonsUrl)links.push('<a href="'+esc(r.commonsUrl)+'" target="_blank" rel="noopener">Commons original</a>');

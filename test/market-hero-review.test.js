@@ -17,6 +17,7 @@ test("the hero review page emits a script the browser can parse", () => {
 test("the page says a technical OK is not a good photograph", () => {
   const html = renderHeroReviewHTML({ CN_LOGO: "<svg></svg>" });
   assert.match(html, /does not mean it is a good picture/);
+  assert.match(html, /satellite aerial/);
   assert.match(html, /Header crop/);
   assert.match(html, /Whole photo/);
   assert.match(html, /\/api\/admin\/heroes/);

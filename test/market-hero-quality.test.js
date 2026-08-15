@@ -85,6 +85,16 @@ test("a missing 1920w sibling is its own flag", () => {
   assert.equal(g.grade, "sibling");
 });
 
+test("skipKeysFromRows is the live-header skip list", () => {
+  const { skipKeysFromRows } = require("../market-hero-quality");
+  assert.deepEqual(skipKeysFromRows([
+    { key: "dallas, tx", ok: true },
+    { key: "ontario, ca", ok: false },
+    { ok: false },
+  ]), ["ontario, ca"]);
+  assert.deepEqual(skipKeysFromRows(null), []);
+});
+
 test("Ontario is the city the softness rule exists to catch", () => {
   const dir = path.join(__dirname, "..", "market-heroes");
   const row = HEROES["ontario, ca"];

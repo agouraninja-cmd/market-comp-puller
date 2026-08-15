@@ -806,6 +806,7 @@ test("admin gating", async (t) => {
     const ontario = body.rows.find((row) => row.key === "ontario, ca");
     assert.ok(ontario, "Ontario, CA must be on the list");
     assert.equal(ontario.ok, false, "Ontario's small original should still need a look");
+    assert.equal(ontario.liveKind, "satellite");
     const dallas = body.rows.find((row) => row.key === "dallas, tx");
     assert.ok(dallas && dallas.ok, "Dallas should pass the file checks");
     assert.match(dallas.src, /dallas-tx\.jpg/);

@@ -45,7 +45,8 @@ const CITY_COORDS = {
 // 3840px thumb, cropping to HERO_WIDTH×HERO_HEIGHT, writing the 1920w
 // sibling, and dropping both JPEGs next to the others. Some Commons
 // originals are smaller than 3840 (Ontario, CA) — those stay relatively
-// soft; do not invent pixels from a different city.
+// soft; do not invent pixels from a different city. The live header skips
+// a file that fails the quality grade and uses Esri of this city's coords.
 const HERO_WIDTH = 3840;
 const HERO_HEIGHT = 800;
 const HERO_SRCSET_WIDTH = 1920;
@@ -242,10 +243,34 @@ function esriAerialUrl(lat, lng, w = HERO_WIDTH, h = HERO_HEIGHT) {
     + `?bbox=${bbox}&bboxSR=4326&imageSR=3857&size=${w},${h}&format=jpg&f=image`;
 }
 
-function heroFor(city, state) {
+function skippedKey(skipKeys, key) {
+  if (!skipKeys) return false;
+  if (typeof skipKeys.has === "function") return skipKeys.has(key);
+  if (Array.isArray(skipKeys)) return skipKeys.indexOf(key) !== -1;
+  return false;
+}
+
+function satelliteHero(city, state, ll) {
+  const src = esriAerialUrl(ll.lat, ll.lng);
+  const src1x = esriAerialUrl(ll.lat, ll.lng, HERO_SRCSET_WIDTH, HERO_SRCSET_HEIGHT);
+  return {
+    src,
+    srcset: src1x + " " + HERO_SRCSET_WIDTH + "w, " + src + " " + HERO_WIDTH + "w",
+    alt: `Aerial view of ${String(city || "").trim()}, ${String(state || "").trim()}`.trim(),
+    credit: "Esri, Maxar",
+    license: "",
+    commonsUrl: "",
+    kind: "satellite",
+  };
+}
+
+function heroFor(city, state, opts) {
   const key = cityKey(city, state);
   const curated = HEROES[key];
-  if (curated) {
+  // skipKeys is the quality grade: a curated file that is the wrong size or
+  // too small to be sharp must not head the live page. Fall through to Esri
+  // of THIS city's coordinates — Ontario, CA is still not Ontario, Canada.
+  if (curated && !skippedKey(opts && opts.skipKeys, key)) {
     return {
       src: "/market-heroes/" + curated.file,
       srcset: photoSrcset(curated.file),
@@ -258,17 +283,7 @@ function heroFor(city, state) {
   }
   const ll = CITY_COORDS[key];
   if (ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lng)) {
-    const src = esriAerialUrl(ll.lat, ll.lng);
-    const src1x = esriAerialUrl(ll.lat, ll.lng, HERO_SRCSET_WIDTH, HERO_SRCSET_HEIGHT);
-    return {
-      src,
-      srcset: src1x + " " + HERO_SRCSET_WIDTH + "w, " + src + " " + HERO_WIDTH + "w",
-      alt: `Aerial view of ${String(city || "").trim()}, ${String(state || "").trim()}`.trim(),
-      credit: "Esri, Maxar",
-      license: "",
-      commonsUrl: "",
-      kind: "satellite",
-    };
+    return satelliteHero(city, state, ll);
   }
   return null;
 }

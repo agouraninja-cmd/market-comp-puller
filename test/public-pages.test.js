@@ -474,25 +474,32 @@ test("a market page with no brokers renders no lead band at all", async (t) => {
   assert.ok(!/cta lead/.test(html), "no broker covers this market, so there is nothing to lead with");
 });
 
-test("a market page header is a photograph of that city", async (t) => {
+test("a market page header is a photograph of that city, or a satellite aerial if the file failed QA", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
   const html = await (await fetch(srv.base + MARKET_PAGE)).text();
-  const hero = MARKETHERO.heroFor(MARKET.city, MARKET.state);
-  assert.ok(hero && hero.kind === "photo", "the seeded fixture city must have a curated photo");
+  assert.equal(MARKETHERO.cityKey(MARKET.city, MARKET.state), "ontario, ca",
+    "this fixture is Ontario, CA — the city whose Commons file is too small");
+  const live = MARKETHERO.heroFor(MARKET.city, MARKET.state, { skipKeys: ["ontario, ca"] });
+  assert.ok(live, "the seeded fixture city must still have a header picture");
   assert.match(html, /class="mkt-hero"/);
-  assert.match(html, new RegExp(`src="${hero.src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+  assert.match(html, /class="mkt-hero-img"/);
   assert.match(html, /srcset="/);
   assert.match(html, /sizes="100vw"/);
   assert.match(html, new RegExp(`width="${MARKETHERO.HERO_WIDTH}"`));
   assert.match(html, new RegExp(`height="${MARKETHERO.HERO_HEIGHT}"`));
-  assert.match(html, /class="mkt-hero-img"/);
   assert.match(html, new RegExp(`<h1>${MARKET.type} Comps in ${MARKET.city}, ${MARKET.state}</h1>`));
-  // Title lives IN the photograph, not again below it.
   assert.equal((html.match(/<h1>/g) || []).length, 1);
-  assert.match(html, new RegExp(`og:image" content="[^"]*${hero.src}"`));
 
-  const img = await fetch(srv.base + hero.src);
+  // The committed industrial fixture is Ontario, CA: its Commons file is too
+  // small, so the live header must be Esri of Ontario, CA — not the blurry JPEG.
+  assert.equal(live.kind, "satellite");
+  assert.match(html, /World_Imagery/);
+  assert.match(html, /Esri, Maxar/);
+  assert.doesNotMatch(html, /\/market-heroes\/ontario-ca\.jpg/);
+  assert.match(html, /og:image" content="[^"]*og-image\.png"/);
+
+  const img = await fetch(srv.base + "/market-heroes/dallas-tx.jpg");
   assert.equal(img.status, 200);
   assert.match(img.headers.get("content-type") || "", /image\/jpeg/);
   const bytes = Buffer.from(await img.arrayBuffer());
@@ -500,8 +507,7 @@ test("a market page header is a photograph of that city", async (t) => {
   assert.equal(bytes[0], 0xff);
   assert.equal(bytes[1], 0xd8);
 
-  const srcset1x = "/market-heroes/" + MARKETHERO.srcsetName(hero.src.replace(/^\/market-heroes\//, ""));
-  const img1x = await fetch(srv.base + srcset1x);
+  const img1x = await fetch(srv.base + "/market-heroes/dallas-tx-1920.jpg");
   assert.equal(img1x.status, 200, "1920w sibling must be served");
   const bytes1x = Buffer.from(await img1x.arrayBuffer());
   assert.ok(bytes1x.length > 10 * 1024, "1920w JPEG looks empty");

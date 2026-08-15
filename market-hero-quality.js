@@ -3,8 +3,9 @@
 // A person still has to look at the photograph (right city, not just clouds).
 // This module only flags what a file can prove: missing, the wrong size, or
 // so few bytes for 3840×800 that the original was almost certainly smaller
-// than the slot and got upscaled (Ontario, CA on the first ship). Pure, no
-// I/O, so npm test can pin the grades without the JPEGs on disk.
+// than the slot and got upscaled (Ontario, CA on the first ship). The live
+// header then skips that file and uses Esri World Imagery of the same city.
+// Pure, no I/O, so npm test can pin the grades without the JPEGs on disk.
 
 "use strict";
 
@@ -119,9 +120,18 @@ function gradeHero(input) {
   };
 }
 
+function skipKeysFromRows(rows) {
+  const keys = [];
+  for (const r of rows || []) {
+    if (r && r.ok === false && r.key) keys.push(r.key);
+  }
+  return keys;
+}
+
 module.exports = {
   SOFT_BYTES_PER_PIXEL,
   jpegDimensions,
   displayCity,
   gradeHero,
+  skipKeysFromRows,
 };

@@ -98,6 +98,16 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .vrow .fig{color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .vrow.sent{opacity:.55}
 .vrow.sent .addr::after{content:" · already in this hub";color:var(--ink-3);font-size:11.5px}
+.mt10{margin-top:10px}
+#peopleEmails{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
+  border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
+.prow{display:flex;align-items:baseline;gap:10px;padding:6px 0;font-size:13.5px;
+  border-bottom:1px solid var(--line)}
+.prow:last-child{border-bottom:0}
+.prow .who2{flex:1;min-width:0}
+.prow .state{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.link.danger{color:var(--red)}
+.link.danger:hover{color:var(--red-fill)}
 /* A client's own find is marked as theirs and never wears the vault badge:
    the two are different claims and must not look alike. */
 .mine{border-color:var(--ink-3);color:var(--ink-2)}
@@ -207,6 +217,26 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       <div id="readonly" class="msg hide"></div>
     </div>
 
+    <!-- Who is in this hub, and the two acts only its owner has: inviting
+         somebody else, and closing it. Both routes shipped with no caller at
+         all, so until now a broker could create a hub and never add a second
+         person to it. Owner only — the other addresses in a hub are that
+         broker's client relationships. -->
+    <div class="card hide" id="peopleCard">
+      <h2>People</h2>
+      <div id="peopleList"></div>
+      <div id="peopleAdd" class="mt10">
+        <label class="who" for="peopleEmails">Invite someone else</label>
+        <input id="peopleEmails" type="text" placeholder="client@firm.com, colleague@firm.com"/>
+        <div class="mt10"><button class="btn" id="peopleSave">Send invites</button></div>
+        <div id="peopleMsg"></div>
+        <div id="peopleInvites" class="hide"></div>
+      </div>
+      <div class="mt10" id="closeWrap">
+        <button class="link danger" id="hubClose">Close this hub</button>
+      </div>
+    </div>
+
     <p class="foot">
       Every valuation on CompNinja is an automated estimate, not an appraisal.
       Comps in this hub were sent by the broker who created it.
@@ -291,6 +321,10 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     // A client can add a building they found; only the broker sends out of the
     // book of record.
     show("vaultWrap", !!d.canAdd);
+    // The People card carries the two owner-only acts. The people list is only sent
+    // to the owner, so its presence IS the permission — no second guess.
+    show("peopleCard", !!d.people);
+    if (d.people) renderPeople(d.people, d.hub);
     if (!d.canWrite) {
       // TWO different read-only states, and only one of them is a thing the
       // reader can act on.
@@ -724,6 +758,146 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   el("mType").innerHTML = '<option value=""></option>' +
     ["Industrial","Office","Retail","Multifamily","Land","Residential"]
       .map(function(t){ return "<option>" + t + "</option>"; }).join("");
+
+  // ---- Who is in this hub, and closing it ----------------------------------
+  //
+  // PUT /api/hub/participants is a WHOLESALE REPLACE (one state to reason
+  // about instead of three), so every edit here sends the full intended list,
+  // not a delta. The page therefore has to hold the current list, which is why
+  // the read serves it.
+  var people = [];
+
+  function peopleMsg(text, bad){
+    var n = el("peopleMsg");
+    n.textContent = text || "";
+    n.className = text ? ("msg" + (bad ? " bad" : "")) : "";
+    n.style.marginTop = text ? "10px" : "0";
+  }
+
+  function renderPeople(list, hub){
+    people = list || [];
+    var box = el("peopleList");
+    box.textContent = "";
+    if (!people.length){
+      var none = document.createElement("p");
+      none.className = "who";
+      none.textContent = "Nobody has been invited yet. This hub is only visible to you.";
+      box.appendChild(none);
+    }
+    people.forEach(function(p){
+      var row = document.createElement("div");
+      row.className = "prow";
+      var who = document.createElement("span");
+      who.className = "who2";
+      who.textContent = p.email;
+      row.appendChild(who);
+      var st = document.createElement("span");
+      st.className = "state";
+      // Whether they have opened it is the one fact worth showing: it is the
+      // difference between "sent and ignored" and "never actually delivered",
+      // and the broker is the only person who can act on either.
+      st.textContent = p.opened ? "opened" : "not opened yet";
+      row.appendChild(st);
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "link danger";
+      rm.textContent = "Remove";
+      rm.addEventListener("click", function(){ removePerson(p.email); });
+      row.appendChild(rm);
+      box.appendChild(row);
+    });
+    // A closed hub cannot take new people, and saying so beats a control that
+    // fails on click.
+    var closed = !!(hub && (hub.closedAt || hub.status === "closed"));
+    show("peopleAdd", !closed);
+    show("closeWrap", !closed);
+  }
+
+  function savePeople(emails, note){
+    fetch("/api/hub/participants", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID, emails: emails }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        el("peopleSave").disabled = false;
+        if (o.s === 401){ askForAccount(o.j && o.j.error, function(m){ peopleMsg(m, true); }); return; }
+        if (o.s !== 200){ peopleMsg((o.j && o.j.error) || "That list could not be saved.", true); return; }
+        peopleMsg(note || "Saved.");
+        showPeopleInvites(o.j);
+        el("peopleEmails").value = "";
+        // Re-read rather than trust the local list: removal and re-invitation
+        // both change what the server holds in ways this page did not compute.
+        readHub("").then(function(res){ if (res.s === 200) render(res.j); }).catch(function(){});
+      })
+      .catch(function(){
+        el("peopleSave").disabled = false;
+        peopleMsg("That did not reach the server. Nothing changed.", true);
+      });
+  }
+
+  // The invite links, shown ONLY when the server could not email them. When it
+  // did, the links are still secrets and there is no reason to put them on
+  // screen.
+  function showPeopleInvites(j){
+    var box = el("peopleInvites");
+    var list = (j.invites || []);
+    // show() takes an ID, not a node. Passing the element made
+    // getElementById(node) return null and .classList throw, which the
+    // caller's catch then reported to the broker as "that did not reach the
+    // server" — after the invitation had in fact been saved. A failure message
+    // that describes the opposite of what happened is worse than none.
+    if (!list.length || j.emailed){ show("peopleInvites", false); box.textContent = ""; return; }
+    box.textContent = "";
+    var p = document.createElement("p");
+    p.className = "who";
+    p.textContent = "Copy each link and send it yourself. They cannot be shown again.";
+    box.appendChild(p);
+    list.forEach(function(inv){
+      var row = document.createElement("div");
+      row.className = "mt10";
+      var f = document.createElement("input");
+      f.type = "text"; f.readOnly = true; f.value = inv.url;
+      f.setAttribute("aria-label", "Invite link for " + inv.email);
+      f.id = "pinv" + inv.email.replace(/[^a-z0-9]/gi, "");
+      row.appendChild(f);
+      box.appendChild(row);
+    });
+    show("peopleInvites", true);
+  }
+
+  el("peopleSave").addEventListener("click", function(){
+    var typed = el("peopleEmails").value.split(/[,;\s]+/).filter(Boolean);
+    if (!typed.length) return peopleMsg("Type an email address first.", true);
+    el("peopleSave").disabled = true;
+    peopleMsg("");
+    // Wholesale replace: everyone already here, PLUS the new ones.
+    var all = people.map(function(p){ return p.email; }).concat(typed);
+    savePeople(all, "Invited.");
+  });
+
+  function removePerson(email){
+    if (!confirm("Remove " + email + " from this hub? Their link stops working immediately. " +
+      "Anything they already posted stays.")) return;
+    peopleMsg("");
+    savePeople(people.filter(function(p){ return p.email !== email; })
+      .map(function(p){ return p.email; }), "Removed.");
+  }
+
+  el("hubClose").addEventListener("click", function(){
+    if (!confirm("Close this hub? Everyone keeps access to what is already here, " +
+      "but nobody can post again. This cannot be undone.")) return;
+    fetch("/api/hub/close", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        if (o.s !== 200){ peopleMsg((o.j && o.j.error) || "This hub could not be closed.", true); return; }
+        readHub("").then(function(res){ if (res.s === 200) render(res.j); }).catch(function(){});
+      })
+      .catch(function(){ peopleMsg("That did not reach the server.", true); });
+  });
 
   // ---- Sending comps out of the broker's own vault -------------------------
   //

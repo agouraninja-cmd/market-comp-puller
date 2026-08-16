@@ -29,6 +29,19 @@ intent, the devlog states history.
 
 ## Next
 
+- **Enterprise (firm) accounts** — design written 2026-08-16 in
+  `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`,
+  from Chuck's email the same day. A firm is an account with a shelf on it;
+  brokers keep the workspace they have today and *publish onto* it, so a BOV
+  reaches a colleague without an email thread. Nothing is built. Slice 1
+  (orgs, invites, `org-access.js`, and a firm branch in `canReadShare`) is
+  buildable now and is what makes the enterprise demo true; slices 2-4 (the
+  shelf, the shared vault, per-seat billing) should be bought with a
+  customer. Two refusals in that spec are load-bearing and should not be
+  re-litigated casually: **no auto-join by email domain**, and **no existing
+  `user_id=eq.` filter is widened to an org** — firm reads are new functions
+  against new tables, migration 013's separate-tables rule. Blocked on the
+  five decisions in its §1, one of which is the attorney question below.
 - **`/api/geocode` should take a POST, not a query string.** The two
   follow-ons left by the private-comp geocoding work, in the order Owen set
   when he answered section 7 — this one ABOVE import-time geocoding, not
@@ -113,7 +126,12 @@ privacy — processing limits, deletion rights, and liability for data a
 broker was not licensed to hold. **The last of these gates launch, not
 development.** As of 2026-08-06 it is no longer hypothetical: brokers'
 private comps are live in storage (`broker_comps`, `broker_properties`)
-and flow into that broker's own valuation reports.
+and flow into that broker's own valuation reports. **Enterprise accounts
+sharpen the same question** (2026-08-16): when a broker uploads their book as
+an employee and then leaves the firm, whose comps are they? The design
+recommends the uploader keeps their vault and the firm keeps whatever was
+published to its shelf — a recommendation, not an agreement, and the first
+time it matters is the worst time to decide it.
 
 For Chuck: the gut-check benchmark, pricing, day-one dashboard
 views. Details in Section 8 of the Ecosystem Plan docx.

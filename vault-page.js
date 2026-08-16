@@ -1192,11 +1192,31 @@ if(dd)dd.open=false;});</script>
     if(k==="size_sqft")return num(v);
     return String(v);
   }
+  // A table column used to size itself to the text in it, because a <td> of
+  // text reports how wide its content is and wraps when it cannot have it. An
+  // <input> does neither: it has its own default width of about twenty
+  // characters and never wraps, so the moment these cells became inputs a long
+  // address rendered clipped inside a box narrower than the address — the
+  // column had stopped being told what it was holding.
+  //
+  // min-width in ch puts that back. A column's min-content width is the widest
+  // of its cells, so sizing each cell to its own value sizes the column to the
+  // longest one in it, which is what the text did before. Capped per field
+  // because a 400-character note must not produce a 400-character column; past
+  // the cap the table's own wrapper scrolls, as it already does.
+  var CELL_MAX_CH={address:46,notes:64,deal_date:14,price:16,size_sqft:14,
+    property_type:16,transaction:12,cap_rate:12,tenancy:20,year_built:12};
+  function cellWidth(k,shown){
+    var n=String(shown==null?"":shown).length;
+    // +3 covers the input's own padding and border, which sit inside the
+    // width and would otherwise eat the last characters back off again.
+    return Math.max(7,Math.min(CELL_MAX_CH[k]||24,n+3));
+  }
   function cellInput(c,k){
-    var raw=c[k]==null?"":c[k];
+    var raw=c[k]==null?"":c[k],shown=cellDisplay(k,c[k]);
     return '<input type="text" class="cell" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
-      '" data-raw="'+escA(raw)+'" value="'+escA(cellDisplay(k,c[k]))+
-      '" aria-label="'+escA(sheetLabel(k))+'"/>';
+      '" data-raw="'+escA(raw)+'" value="'+escA(shown)+
+      '" style="min-width:'+cellWidth(k,shown)+'ch" aria-label="'+escA(sheetLabel(k))+'"/>';
   }
   // Derived cells carry their own id/key so a save can refresh just them,
   // without the re-render that would steal focus from the next cell.
@@ -1378,8 +1398,11 @@ if(dd)dd.open=false;});</script>
         : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
       var cells=keys.map(function(k){
         var v=c[k]==null?"":c[k];
+        // Same width rule as the compact table (see cellWidth): a notes cell
+        // holding two sentences must not render as a twenty-character box
+        // with the rest of the sentence scrolled out of sight.
         return '<td><input type="text" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
-          '" value="'+escA(v)+'"/></td>';
+          '" value="'+escA(v)+'" style="min-width:'+cellWidth(k,v)+'ch"/></td>';
       }).join("");
       return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
@@ -3001,9 +3024,17 @@ if(dd)dd.open=false;});</script>
   // formatting "1000000" into "$1,000,000" there would make the one screen a
   // broker opens to check what was actually imported stop showing it.
   function showCell(el,key,v){
-    if(!el.getAttribute||el.getAttribute("data-raw")===null)return;
-    if(el.setAttribute)el.setAttribute("data-raw",v==null?"":String(v));
-    el.value=cellDisplay(key,v);
+    var hasRaw=el.getAttribute&&el.getAttribute("data-raw")!==null;
+    var shown=hasRaw?cellDisplay(key,v):(v==null?"":String(v));
+    if(hasRaw){
+      if(el.setAttribute)el.setAttribute("data-raw",v==null?"":String(v));
+      el.value=shown;
+    }
+    // Re-widen for what is now in the cell. Typing a longer address than the
+    // one the column was built around would otherwise leave the new value
+    // clipped until the next full render — which, since saves deliberately do
+    // not re-render, could be a long time.
+    if(el.style)el.style.minWidth=cellWidth(key,shown)+"ch";
   }
 
   // market and $/SF are the server's to compute, so after a save they are read

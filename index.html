@@ -2447,6 +2447,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                a house buyer scanning the hero never saw it. Not a ledger
                figure. -->
           <p id="ownerYearBuilt" class="hidden text-xs text-[#5A6473] mt-2"></p>
+          <!-- Gain the market's own drift doesn't explain, when the report
+               knows both the subject's last sale and what it asks today.
+               Reads last because it is the conclusion drawn from the three
+               evidence lines above it, and it is evidence itself — never a
+               ledger figure. Prints and captures with the rest of the hero. -->
+          <p id="ownerImproved" class="hidden text-xs text-[#5A6473] mt-2"></p>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
@@ -3044,6 +3050,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
           compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
+          conditionSpread, unexplainedGain,
           parseRadiusMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
@@ -4060,7 +4067,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -4920,6 +4927,53 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.classList.remove("hidden");
   }
 
+  // The part of the subject's gain since its last sale that this market's own
+  // trend does not account for. The arithmetic and every refusal belong to
+  // VALUATION.unexplainedGain; this only decides how to say it.
+  //
+  // Hedged on purpose. "Often means" is the strongest claim the inputs
+  // support: the same gap is also produced by a below-market purchase from
+  // family, an unusually good original buy, or a listing priced on hope. And
+  // it says plainly that the figure is NOT in the range above, because a
+  // dollar amount sitting under a valuation otherwise reads as part of it.
+  function renderSubjectImproved(parsed, meta) {
+    const el = document.getElementById("ownerImproved");
+    if (!el) return;
+    el.textContent = "";
+    el.classList.add("hidden");
+    const ls = parsed && parsed.subject_last_sale;
+    if (!ls || !ls.date) return;
+    // The user's own typed price wins over the looked-up listing, same
+    // precedence askFit and the comparison card already use.
+    const askR = askingRangeFrom(parsed);
+    if (!askR) return;
+    const trend = trendPctOf(parsed);
+    const gain = unexplainedGain({
+      lastPrice: numericValue(ls.price),
+      lastDate: ls.date,
+      askPrice: (askR.min + askR.max) / 2,
+      trendPct: trend,
+      asOf: asOfOf(meta),
+    });
+    if (!gain) return;
+    // Leads with "that sale" because #ownerLastSale renders directly above and
+    // has already named the price and the date — this line is its second half,
+    // and repeating them would read as a different sale.
+    const money = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+    // On a house the usual explanation is physical work. On commercial the
+    // same gap is just as often lease-up or rent growth, which is not
+    // renovation at all, so the sentence names both rather than asserting the
+    // residential one at an office building.
+    const cause = (meta && meta.type) === "Residential"
+      ? "which often means work was done since"
+      : "which often means the property was improved or its income grew since";
+    el.appendChild(document.createTextNode(
+      `At this market's ${trend > 0 ? "+" : ""}${trend}%/yr, that sale would be worth about ${money(gain.expected)} today. `
+      + `The current ask is ${money(gain.unexplained)} above that (${gain.pct}%), ${cause}. `
+      + `We can't see what, so it is not in the range above.`));
+    el.classList.remove("hidden");
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
@@ -4930,6 +4984,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderSubjectLastSale(parsed, meta);
     renderSubjectAsking(parsed, meta);
     renderSubjectYearBuilt(parsed, meta);
+    renderSubjectImproved(parsed, meta);
     // Market-level search (a city like "Boise ID", no street number) — there's
     // no building to value, so the whole hero (incl. the BOV button) hides.
     // Any user-entered subject value signals building intent and re-shows it,
@@ -5555,6 +5610,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (meta.type === "Residential") {
       trustEl.textContent += (trustEl.textContent ? " " : "")
         + "Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.";
+      // What the weighting can't reach, named in this report's own numbers.
+      // Reads the same currentPsfBand the outlier chips and the scatter read,
+      // so all three describe one band. It is null when no $/SF valuation was
+      // computable (no priced sale comps, no size), which is exactly when this
+      // sentence would have nothing to quote. The unit is safe here: $/SF is
+      // what the sentence speaks in, and Residential always renders through
+      // the $/SF branch — ALT_BASIS's per-unit and per-acre ledgers belong to
+      // Multifamily and Land.
+      const cond = conditionSpread(currentPsfBand, subjSFMid);
+      if (cond) {
+        const psf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+        // "The middle half spans", not "these comps sold from": psfLow/psfHigh
+        // are the weighted interquartile band of trend-indexed values, which
+        // is what the ledger's own $/SF sub-labels and the basis line's
+        // "middle range of N sale comps" already quote. "Sold from" would
+        // claim these were literal sale prices.
+        trustEl.textContent += ` Once size, age and distance are accounted for, the middle half of these comps still spans `
+          + `${psf0(cond.psfLow)} to ${psf0(cond.psfHigh)}/SF`
+          + (cond.swing > 0
+            ? ` — a ${formatUsd(cond.swing, { maximumFractionDigits: 0 })} swing on this ${assetNoun(meta.type)}'s size`
+            : "")
+          + `. That remaining spread is mostly condition and finish, which this estimate can't see.`;
+      }
       trustEl.classList.remove("hidden");
     }
 

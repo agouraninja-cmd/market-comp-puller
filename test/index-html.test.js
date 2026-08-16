@@ -971,3 +971,81 @@ test("the loading ninja is a two-frame runner that freezes for reduced motion an
   assert.match(show, /classList\.remove\("done"\)/);
   assert.match(hide, /classList\.remove\("done"\)/);
 });
+
+// ---------------------------------------------------------------------------
+// The two lines that tell a reader what the number can't see: the unexplained
+// gain since the subject's own last sale, and the condition spread the
+// weighting can't explain away. Both are copy over VALUATION math, so these
+// pin the wiring and the wording, not the arithmetic (valuation.test.js owns
+// that).
+// ---------------------------------------------------------------------------
+
+test("the unexplained-gain line is present and wired into the hero", () => {
+  assert.match(html, /id="ownerImproved"/);
+  assert.match(html, /function renderSubjectImproved\(/);
+  assert.match(html, /renderSubjectImproved\(parsed, meta\)/);
+});
+
+test("the unexplained-gain line names physical work only on a house", () => {
+  const src = html.match(/  function renderSubjectImproved\(parsed, meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find renderSubjectImproved in index.html — was it renamed?");
+  const V = require("../valuation");
+  const made = {};
+  const stubEl = () => ({
+    textContent: "", classList: { add() {}, remove() {} },
+    appendChild(n) { this.textContent += n.text; },
+  });
+  const ctx = vm.createContext({
+    document: {
+      getElementById(id) { return (made[id] = made[id] || stubEl()); },
+      createTextNode: (text) => ({ text }),
+    },
+    askingRangeFrom: () => ({ min: 700000, max: 700000 }),
+    unexplainedGain: V.unexplainedGain,
+    numericValue: V.numericValue,
+    trendPctOf: () => 6,
+    asOfOf: () => Date.parse("2026-08-16"),
+    formatUsd: (v) => "$" + Math.round(v).toLocaleString("en-US"),
+  });
+  new vm.Script(src[0] + "\n;this.fn = renderSubjectImproved;", { filename: "index.html" }).runInContext(ctx);
+  const parsed = { subject_last_sale: { date: "June 2021", price: "$400,000" } };
+
+  ctx.fn(parsed, { type: "Residential" });
+  const house = made.ownerImproved.textContent;
+  assert.match(house, /\$540,000 today/);
+  assert.match(house, /\$160,000 above that \(30%\)/);
+  assert.match(house, /work was done since/);
+  // The disclaimer is the point of the line: a dollar figure under a valuation
+  // reads as part of it unless this says otherwise.
+  assert.match(house, /not in the range above/);
+
+  made.ownerImproved = null;
+  ctx.fn(parsed, { type: "Office" });
+  const office = made.ownerImproved.textContent;
+  // On commercial the same gap is as often lease-up as renovation, so the
+  // sentence must not assert physical work.
+  assert.match(office, /improved or its income grew since/);
+  assert.doesNotMatch(office, /work was done since/);
+});
+
+test("the condition-spread clause rides the Residential trust line", () => {
+  const i = html.indexOf('Residential sales mostly live in the MLS');
+  assert.ok(i > 0, "could not find the Residential trust-line block");
+  const block = html.slice(i, i + 2600);
+  assert.match(block, /conditionSpread\(currentPsfBand, subjSFMid\)/);
+  assert.match(block, /mostly condition and finish, which this estimate can't see/);
+  // It reads the band the chips and scatter read, never a hardcoded percentage
+  // standing in for one — that constant would be the only figure in the hero
+  // with no source behind it.
+  assert.doesNotMatch(block, /10-20%|10 to 20%/);
+});
+
+test("the unexplained-gain line is hidden during streaming assembly", () => {
+  // Same trap ownerScatter carries: assembly puts a counts-only hero on screen
+  // a minute before renderResults repaints, so a line left out of this list
+  // hangs the PREVIOUS report's dollar figure under the next report's
+  // placeholder.
+  const i = html.indexOf('["widenSearchWrap", "ownerScatter"');
+  assert.ok(i > 0, "could not find beginAssembly's hidden list");
+  assert.match(html.slice(i, i + 220), /"ownerImproved"/);
+});

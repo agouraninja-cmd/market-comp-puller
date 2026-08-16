@@ -511,3 +511,135 @@ test("a blended vault comp has a tier, at full weight", () => {
   const unknown = comp({ source_type: "who knows" });
   assert.equal(V.compWeight(vault, AS_OF), V.compWeight(unknown, AS_OF));
 });
+
+// ---------------------------------------------------------------------------
+// conditionSpread — the spread the six weighting factors can't explain away,
+// which on a house is condition and finish. Derived from the report's own
+// band on purpose, so these tests pin the derivation, never a constant.
+// ---------------------------------------------------------------------------
+
+test("conditionSpread reports the band in $/SF and as a dollar swing", () => {
+  const band = { low: 412, mid: 450, high: 487, trimmed: true };
+  const c = V.conditionSpread(band, 2450);
+  assert.equal(c.psfLow, 412);
+  assert.equal(c.psfHigh, 487);
+  // (487 - 412) / 450 — the same ratio index.html's spreadPhrase reads.
+  assert.equal(c.pct, 17);
+  // (487 - 412) * 2450 = 183,750, heroRound'd to the nearest 5,000.
+  assert.equal(c.swing, 185000);
+});
+
+test("conditionSpread stays quiet below the outlier trim", () => {
+  // trimmed:false means fewer than 4 sale comps, so low/high are the literal
+  // min and max of a tiny sample: that measures scatter, not what the market
+  // pays for condition. smallNNote already speaks for this case.
+  assert.equal(V.conditionSpread({ low: 412, mid: 450, high: 487, trimmed: false }, 2450), null);
+  assert.equal(V.conditionSpread(null, 2450), null);
+});
+
+test("conditionSpread still answers in $/SF with no subject size", () => {
+  const c = V.conditionSpread({ low: 400, mid: 500, high: 600, trimmed: true }, 0);
+  assert.equal(c.psfLow, 400);
+  assert.equal(c.psfHigh, 600);
+  assert.equal(c.pct, 40);
+  // No size, no swing — never a swing computed off a guessed size.
+  assert.equal(c.swing, undefined);
+});
+
+test("conditionSpread refuses an inverted or zero band", () => {
+  assert.equal(V.conditionSpread({ low: 600, mid: 500, high: 400, trimmed: true }, 2450), null);
+  assert.equal(V.conditionSpread({ low: 0, mid: 500, high: 600, trimmed: true }, 2450), null);
+});
+
+// ---------------------------------------------------------------------------
+// unexplainedGain — the part of a subject's gain since its own last sale that
+// the market's drift does not account for. The closest honest answer to "how
+// much was spent on the renovation" without permit data.
+// ---------------------------------------------------------------------------
+
+const GAIN_AS_OF = Date.parse("2026-08-16");
+
+test("unexplainedGain separates market drift from the rest of the gain", () => {
+  // $400k in June 2021, +6%/yr, asking $700k today. 5.21 years of drift
+  // explains roughly $542k of it; the remainder is what the market did not
+  // hand over.
+  const g = V.unexplainedGain({
+    lastPrice: 400000, lastDate: "2021-06-01",
+    askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF,
+  });
+  assert.equal(g.expected, 540000);
+  // Derived from the ROUNDED expected, so the two figures reconcile against
+  // the ask exactly on screen rather than drifting a rounding step apart.
+  assert.equal(g.expected + g.unexplained, 700000);
+  assert.equal(g.unexplained, 160000);
+  assert.equal(g.pct, 30);
+  assert.equal(g.years, 5.2);
+});
+
+test("unexplainedGain stays silent without a market trend", () => {
+  // report-parse.js normalizes annual_price_trend_pct to null unless it is a
+  // nonzero number within +/-30. With no drift model, reading it as flat would
+  // report every appreciating market as a renovation.
+  const args = { lastPrice: 400000, lastDate: "2021-06-01", askPrice: 700000, asOf: GAIN_AS_OF };
+  assert.equal(V.unexplainedGain({ ...args, trendPct: null }), null);
+  assert.equal(V.unexplainedGain({ ...args, trendPct: 0 }), null);
+  assert.equal(V.unexplainedGain({ ...args, trendPct: 45 }), null);
+});
+
+test("unexplainedGain only speaks in the ABOVE direction", () => {
+  // Asking LESS than drift explains has unknowable causes — distress, a
+  // divorce, deferred maintenance, an overpriced original purchase — and this
+  // report cannot defend naming any of them about a specific home.
+  assert.equal(V.unexplainedGain({
+    lastPrice: 600000, lastDate: "2023-06-01",
+    askPrice: 560000, trendPct: 6, asOf: GAIN_AS_OF,
+  }), null);
+});
+
+test("unexplainedGain holds to the same 25% bar as askFit and outlierOf", () => {
+  // Drift alone takes $400k to ~$540k. An ask inside 25% of that is not a
+  // gap worth naming, and must not disagree with the report's other two
+  // users of OUTLIER_PCT.
+  assert.equal(V.unexplainedGain({
+    lastPrice: 400000, lastDate: "2021-06-01",
+    askPrice: 620000, trendPct: 6, asOf: GAIN_AS_OF,
+  }), null);
+  assert.ok(V.unexplainedGain({
+    lastPrice: 400000, lastDate: "2021-06-01",
+    askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF,
+  }));
+});
+
+test("unexplainedGain is bounded to a decade back and a quarter forward", () => {
+  const args = { lastPrice: 200000, askPrice: 900000, trendPct: 6, asOf: GAIN_AS_OF };
+  // 30 years of one current annual rate is fiction, not a renovation signal.
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "1996-06-01" }), null);
+  // A same-month relist divides by noise.
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "2026-08-01" }), null);
+  // A classic buy-renovate-list flip is inside the window and must speak.
+  assert.ok(V.unexplainedGain({ ...args, lastDate: "2025-02-01" }));
+});
+
+test("unexplainedGain refuses missing or unparseable inputs", () => {
+  const args = { lastPrice: 400000, lastDate: "2021-06-01", askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF };
+  assert.equal(V.unexplainedGain({ ...args, lastPrice: NaN }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastPrice: 0 }), null);
+  assert.equal(V.unexplainedGain({ ...args, askPrice: 0 }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "last spring" }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "" }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastDate: null }), null);
+  assert.equal(V.unexplainedGain(), null);
+});
+
+test("unexplainedGain refuses prose Date.parse would coerce to January", () => {
+  // V8 answers Date.parse("sometime in 2021") with 2021-01-01, not NaN, so
+  // without the year-shape guard free text becomes a January anchor under a
+  // dollar figure nobody could check.
+  const args = { lastPrice: 400000, askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF };
+  ["sometime in 2021", "Sometime 2021", "Q2 2021", "2021", "last spring", "6/2021"]
+    .forEach((d) => assert.equal(V.unexplainedGain({ ...args, lastDate: d }), null, d));
+  // The forms the model actually writes all still work, and all land on the
+  // same June 2021 anchor.
+  ["2021-06-01", "2021-06", "2021/06/01", "June 2021", "june 2021", "Jun 1, 2021", "6/1/2021", "1 June 2021"]
+    .forEach((d) => assert.ok(V.unexplainedGain({ ...args, lastDate: d }), d));
+});

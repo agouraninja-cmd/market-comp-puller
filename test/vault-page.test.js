@@ -238,17 +238,28 @@ function parseSelects(html) {
 // sections are hidden, and what a click on Import or Cancel does.
 function stubInput(attrs) {
   const on = {};
+  // data-raw and class are mutable here, unlike the read-only attributes above:
+  // a compact-table cell shows the formatted figure, swaps to data-raw on
+  // focus, and has its state class swapped without losing its base class. All
+  // three are real behaviors of the emitted script, so the stub has to be able
+  // to carry them or the tests can only prove the markup, not the editing.
+  let raw = attrs.dataRaw;
+  let cls = attrs.cls || "";
   const attr = (a) => {
     if (a === "data-i") return attrs.dataI;
     if (a === "data-k") return attrs.dataK;
     if (a === "data-id") return attrs.dataId;
+    if (a === "data-raw") return raw;
     return null;
   };
   return {
     type: attrs.type,
     checked: attrs.checked,
     value: attrs.value,
+    get className() { return cls; }, set className(v) { cls = v; },
     getAttribute: attr,
+    setAttribute(a, v) { if (a === "data-raw") raw = v == null ? null : String(v); },
+    blur() { (on.blur || []).forEach((fn) => fn({})); },
     addEventListener(t, fn) { (on[t] = on[t] || []).push(fn); },
     fire(t, ev) { (on[t] || []).forEach((fn) => fn(ev || {})); },
   };
@@ -263,6 +274,11 @@ function parseInputs(html) {
     const dataI = (/\bdata-i="([^"]*)"/.exec(attrs) || [])[1] || null;
     const dataK = (/\bdata-k="([^"]*)"/.exec(attrs) || [])[1] || null;
     const dataId = (/\bdata-id="([^"]*)"/.exec(attrs) || [])[1] || null;
+    // null, not "", when absent: the page distinguishes a compact-table cell
+    // (carries data-raw) from a spreadsheet cell (does not) by exactly that.
+    const rawM = /\bdata-raw="([^"]*)"/.exec(attrs);
+    const dataRaw = rawM ? rawM[1] : null;
+    const cls = (/\bclass="([^"]*)"/.exec(attrs) || [])[1] || "";
     const valueM = /\bvalue="([^"]*)"/.exec(attrs);
     const checked = /\schecked(?:\s|\/|>|$)/.test(" " + attrs) || /\bchecked="/.test(attrs);
     out.push(stubInput({
@@ -270,6 +286,8 @@ function parseInputs(html) {
       dataI,
       dataK,
       dataId,
+      dataRaw,
+      cls,
       value: valueM ? valueM[1] : "",
       checked,
     }));
@@ -1146,10 +1164,32 @@ test("a file with no type still routes on its extension, both ways", async () =>
 // Row edit / delete (task 7)
 // ---------------------------------------------------------------------------
 
-test("each comp row offers an edit and a delete", () => {
-  const html = renderVaultHTML(boot([comp({})]), CHROME);
-  assert.ok(html.includes("data-edit"), "rows need an edit control");
-  assert.ok(html.includes("data-del-comp"), "rows need a delete control");
+test("each comp row is typed into directly, with a delete beside it", async () => {
+  const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })]);
+  const html = doc.getElementById("tbody").innerHTML;
+  assert.ok(!html.includes("data-edit"),
+    "there is no Edit button any more — the cells themselves are the editor");
+  assert.match(html, /class="cell"[^>]*data-id="c1"[^>]*data-k="address"/,
+    "the address cell must be an input bound to the comp");
+  assert.ok(html.includes("data-del-comp"), "rows still need a delete control");
+});
+
+// The two columns the server owns. Offering them as inputs would let a broker
+// type a market or a $/SF that the very next save silently overwrites, because
+// marketOf() and normalizeRow() recompute both from the address, price and
+// size — so they render as text, and every OTHER column the compact table
+// shows is editable.
+test("derived columns are not editable, and every other column is", async () => {
+  const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })]);
+  const html = doc.getElementById("tbody").innerHTML;
+  for (const k of ["address", "property_type", "transaction", "deal_date", "price", "size_sqft"]) {
+    assert.match(html, new RegExp('data-k="' + k + '"'), k + " must be an editable cell");
+  }
+  for (const k of ["market", "price_per_sqft"]) {
+    assert.ok(!html.includes('data-k="' + k + '"'), k + " is derived and must not be typed into");
+    assert.match(html, new RegExp('data-ro-k="' + k + '"'),
+      k + " must still be rendered, as a read-only cell the save can refresh");
+  }
 });
 
 test("the delete control is a trash icon, not a red Delete word", async () => {
@@ -1243,38 +1283,16 @@ test("the emitted script still parses with the row actions in it", () => {
 // ---- Row edit / delete actually behave (beyond markup + parsing) ----------
 // The tests above only prove the controls exist and the script compiles —
 // the same gap the gut check and mapper reviews found. These drive the REAL
-// emitted script through Edit -> change a field -> Save, and through Delete,
+// emitted script through typing in a cell and leaving it, and through Delete,
 // against a stubbed /api/vault/comp, with a stubbed global confirm() since
 // the stub DOM has no window.confirm of its own.
 
-// The stub DOM in this file does not parse rendered HTML into live elements
-// (see stubDocument above) — getElementById auto-vivifies a blank stub the
-// first time an id is touched, whatever markup was written to innerHTML. So
-// "pre-filled" is checked against the rendered markup string itself, which
-// is exactly what a real browser would parse into the input's initial
-// .value, rather than through a stub .value that the harness cannot derive
-// from HTML.
-test("Edit reveals a form pre-filled from the comp already on the page, and Cancel restores the row", async () => {
-  const c1 = comp({ id: "c1", address: "100 Main St", notes: "corner lot" });
-  const { doc } = await runPage([c1]);
+// One helper for both views, since a compact-table cell and a spreadsheet
+// cell are now the same input saved the same way.
+const cellOf = (doc, k) =>
+  doc.getElementById("tbody").querySelectorAll("input").find((el) => el.getAttribute("data-k") === k);
 
-  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
-  await tick();
-
-  const editHtml = doc.getElementById("tbody").innerHTML;
-  assert.match(editHtml, /id="edit_address" value="100 Main St"/,
-    "the form must be pre-filled from the comp the page already holds");
-  assert.match(editHtml, /id="edit_notes" value="corner lot"/);
-
-  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-cancel-edit]' ? { getAttribute: () => "1" } : null } });
-  await tick();
-  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/,
-    "cancelling must put the ordinary row back");
-  assert.ok(!doc.getElementById("tbody").innerHTML.includes('id="edit_address"'),
-    "the edit form must not still be on screen after Cancel");
-});
-
-test("Save sends only the changed field, and reports the unpublish warning", async () => {
+test("leaving a changed cell PATCHes only that field, and reports the unpublish warning", async () => {
   const c1 = comp({ id: "c1", address: "100 Main St", published: true });
   let sentBody = null;
   const { doc } = await runPage([c1], null, {
@@ -1284,47 +1302,102 @@ test("Save sends only the changed field, and reports the unpublish warning", asy
     },
   });
 
-  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
+  const addr = cellOf(doc, "address");
+  assert.ok(addr, "the address cell must be an input in the ordinary table");
+  addr.value = "101 Main St";
+  doc.getElementById("tbody").fire("focusout", { target: addr });
   await tick();
 
-  // Simulate what a real browser's initial-value parse of the rendered
-  // markup already gave every input, since the stub DOM cannot derive it:
-  // every field starts equal to the comp's own value, then exactly one is
-  // touched. That is what makes "only the changed field travels" a real
-  // assertion here, not an artifact of the stub starting blank.
-  const EDIT_FIELDS = ["address", "property_type", "transaction", "deal_date",
-    "price", "size_sqft", "cap_rate", "tenancy", "year_built", "notes"];
-  EDIT_FIELDS.forEach((f) => {
-    doc.getElementById("edit_" + f).value = c1[f] == null ? "" : String(c1[f]);
-  });
-  doc.getElementById("edit_notes").value = "updated note";
-
-  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-save-edit]' ? { getAttribute: () => "c1" } : null } });
-  await tick();
-
-  assert.deepEqual(sentBody, { notes: "updated note" },
+  assert.deepEqual(sentBody, { address: "101 Main St" },
     "only the field that actually changed should travel in the PATCH body");
   assert.match(doc.getElementById("compMsg").textContent, /withdrawn from the public/i,
     "a broker must be told a published comp was retracted by the edit");
 });
 
-test("a 400 from the server shows every listed problem, not just the first", async () => {
+test("leaving an untouched cell sends nothing", async () => {
   const c1 = comp({ id: "c1", address: "100 Main St" });
+  let called = 0;
+  const { doc } = await runPage([c1], null, {
+    comp: () => { called += 1; return Promise.resolve(jsonResponse(200, { ok: true })); },
+  });
+
+  const addr = cellOf(doc, "address");
+  addr.value = "100 Main St";
+  doc.getElementById("tbody").fire("focusout", { target: addr });
+  await tick();
+
+  assert.equal(called, 0, "tabbing through a cell must not write to the vault");
+});
+
+test("a 400 from the server shows every listed problem, and keeps what was typed", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", price: 1000000 });
   const { doc } = await runPage([c1], null, {
     comp: () => Promise.resolve(jsonResponse(400, { error: "price is not a number; deal_date is required" })),
   });
 
-  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-edit]' ? { getAttribute: () => "c1" } : null } });
-  await tick();
-  doc.getElementById("edit_price").value = "abc";
-
-  doc.getElementById("tbody").fire("click", { target: { closest: (sel) => sel === 'button[data-save-edit]' ? { getAttribute: () => "c1" } : null } });
+  const price = cellOf(doc, "price");
+  price.value = "1.2M";
+  doc.getElementById("tbody").fire("focusout", { target: price });
   await tick();
 
   assert.match(doc.getElementById("compMsg").textContent, /price is not a number; deal_date is required/,
     "the whole 400 error must render, not a generic fallback");
-  assert.ok(doc.getElementById("tbody").innerHTML.includes('id="edit_price"'),
-    "a failed save must not close the editor and lose the broker's in-progress edit");
+  assert.equal(price.value, "1.2M",
+    "a rejected save must keep the broker's typing so the fix is one keystroke, not a retype");
+  assert.match(price.className, /\berr\b/, "the cell that failed must be the one marked");
+  assert.match(price.className, /\bcell\b/,
+    "the state class must not strip the base class off the input");
+});
+
+// The compact table reads as a book of business, not a form: the price column
+// shows $1,250,000 and hands over 1250000 the moment it is focused. The
+// figures the broker READS must stay formatted even though every one of them
+// is now editable.
+test("a price cell shows the formatted figure and offers the raw one on focus", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", price: 1250000, size_sqft: 10000 });
+  const { doc } = await runPage([c1]);
+
+  const price = cellOf(doc, "price");
+  assert.equal(price.value, "$1,250,000", "the cell shows the figure, formatted");
+  assert.equal(price.getAttribute("data-raw"), "1250000");
+
+  doc.getElementById("tbody").fire("focusin", { target: price });
+  assert.equal(price.value, "1250000", "focusing a cell swaps in the stored value to edit");
+});
+
+test("a saved cell goes back to the formatted figure the server actually stored", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", price: 1000000 });
+  const { doc } = await runPage([c1], null, {
+    comp: () => Promise.resolve(jsonResponse(200, {
+      ok: true, unpublished: false, comp: { price: 1250000, price_per_sqft: 125, market: "Boise, ID" },
+    })),
+  });
+
+  const price = cellOf(doc, "price");
+  price.value = "1,250,000";
+  doc.getElementById("tbody").fire("focusout", { target: price });
+  await tick();
+
+  assert.equal(price.value, "$1,250,000",
+    "the server's normalized figure goes back on screen, never the raw typing");
+  assert.equal(price.getAttribute("data-raw"), "1250000",
+    "data-raw must follow the stored value, or the next focus offers a stale one");
+});
+
+test("Escape restores the stored value and saves nothing", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", price: 1000000 });
+  let called = 0;
+  const { doc } = await runPage([c1], null, {
+    comp: () => { called += 1; return Promise.resolve(jsonResponse(200, { ok: true })); },
+  });
+
+  const price = cellOf(doc, "price");
+  price.value = "oops";
+  doc.getElementById("tbody").fire("keydown", { target: price, key: "Escape", preventDefault() {} });
+  await tick();
+
+  assert.equal(price.value, "1000000", "Escape puts the stored value back");
+  assert.equal(called, 0, "Escape is the Cancel the edit form used to carry — it must not write");
 });
 
 test("Delete confirms, then sends DELETE and reports an ordinary removal", async () => {
@@ -1375,11 +1448,16 @@ test("Open spreadsheet turns the current view into editable cells", async () => 
   assert.match(html, /value="100 Main St"/);
   assert.match(html, /data-k="price"/);
   assert.equal(doc.getElementById("sheetToggle").textContent, "Done");
-  assert.match(doc.getElementById("sheetBar").textContent, /save when you leave a cell/i);
-  assert.ok(!html.includes("data-edit"),
-    "spreadsheet cells replace the compact Edit link; the trash stays");
+  assert.match(doc.getElementById("sheetBar").textContent, /save when you leave the cell/i);
   assert.match(html, /data-del-comp/);
   assert.match(html, /class="lnk trash"/);
+  // The spreadsheet's cells hold the stored value, not the formatted one:
+  // it is the view a broker opens to check what an import actually landed.
+  const price = doc.getElementById("tbody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "price");
+  assert.equal(price.value, "1000000");
+  assert.equal(price.getAttribute("data-raw"), null,
+    "a spreadsheet cell must not carry data-raw, or it would be reformatted on save");
 });
 
 test("Open on an import shows only that file's comps", async () => {
@@ -1472,8 +1550,15 @@ test("Done returns to the compact table", async () => {
   await tick();
 
   assert.equal(doc.getElementById("sheetToggle").textContent, "Open spreadsheet");
-  assert.match(doc.getElementById("tbody").innerHTML, /data-edit/);
-  assert.ok(doc.getElementById("sheetBar").classList.contains("hide"));
+  assert.match(doc.getElementById("tbody").innerHTML, /class="cell"/,
+    "the compact table's own cells are editable too");
+  // The hint stays up in BOTH views. Cells that look like text but can be
+  // typed into need a line saying so, and there is no Edit button left to
+  // make it obvious.
+  assert.ok(!doc.getElementById("sheetBar").classList.contains("hide"));
+  assert.match(doc.getElementById("sheetBar").textContent, /Type in any cell/i);
+  assert.match(doc.getElementById("sheetBar").textContent, /cap rate, tenancy, year built and notes/i,
+    "the compact view must say where the fields it has no column for live");
 });
 
 // ---------------------------------------------------------------------------

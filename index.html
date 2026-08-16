@@ -10269,10 +10269,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(item.id)).catch(() => null);
           if (full) refreshPortfolioItem(full);
         });
+        // Removing is a quiet trash icon, not the word "Remove" — the same
+        // control the broker vault's comp rows use (`.lnk.trash` in
+        // vault-page.js): ink that goes red on hover, so the destructive
+        // action doesn't shout as loudly as the one beside it.
+        // Styled inline rather than with new Tailwind utilities: a class
+        // missing from the vendored tailwind.css silently styles nothing,
+        // and `hover:text-red-700` is the only hover this needs (already in
+        // the build). The padding + offsetting negative margin is a real tap
+        // target that moves no pixel of the row.
         const del = document.createElement("button");
         del.type = "button";
-        del.className = "text-[#68707E] hover:text-red-700 underline";
-        del.textContent = "Remove";
+        del.className = "text-[#68707E] hover:text-red-700 align-middle";
+        del.style.cssText = "padding:8px;margin:-8px 0 -8px 2px;display:inline-flex;" +
+          "align-items:center;justify-content:center;line-height:0";
+        del.setAttribute("aria-label", `Remove ${item.address} from your portfolio`);
+        del.title = "Remove from your portfolio";
+        del.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" style="display:block">' +
+          '<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" ' +
+          'd="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg>';
         del.addEventListener("click", async () => {
           if (!confirm(`Remove ${item.address} from your portfolio?`)) return;
           try { await acctApi("DELETE", "/api/portfolio?id=" + encodeURIComponent(item.id)); } catch (_) {}

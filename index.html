@@ -761,6 +761,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        sides means they cannot drift apart. */
     .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
     @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid var(--hair); } .rd-row { border-bottom: 0; } }
+    /* A 2x2 .rd-row (Focus / Lookback over Size / Asking price). :last-child
+       only knows the 4th cell, so on a wrapped grid cell 2 paints a right
+       border straight onto the card edge and the two lines run together with no
+       rule between them. Scoped to the two-column range only — below 640px the
+       rule above has already stacked every cell and zeroed the right borders,
+       and re-adding a border-bottom to cells 1-2 there would be harmless but
+       redundant, while an nth-child right border would not be. Cells are
+       equal-height grid items, so the vertical hairline between 3 and 4 lines
+       up with the one between 1 and 2 for free. */
+    @media (min-width: 640px) {
+      .rd-row-2up > .rd-cell:nth-child(2n) { border-right: 0; }
+      .rd-row-2up > .rd-cell:nth-last-child(n + 3) { border-bottom: 1px solid var(--hair); }
+    }
     /* Split Research Desk (owner-approved Mock A, 2026-08-14): one bordered
        unit, two chambers. Market Explorer is a SIBLING of #compForm, not a
        child — Enter in that field must not submit a building report. Do not
@@ -1718,7 +1731,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                    above the type sentence now, and two inline spans would run
                    the two together with no space the moment an estimate lands.
                    The four call sites toggle it by id and never by tag. -->
-              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it under Details for comps if it's off.</div>
+              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it below if it's off.</div>
               <span id="typeStatusLine" aria-live="polite"></span>
               <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
               <div id="typeAutoNote" class="mt-1"></div>
@@ -1761,7 +1774,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
-        <div class="rd-row grid grid-cols-1 sm:grid-cols-3">
+        <!-- 2x2, not four across. The build chamber is ~552px, so a four-cell
+             row leaves 106px of content per cell and "BUILDING SIZE (SF)" at
+             .rd-lab's tracking wraps to two lines — the same crowding that sent
+             the size range down to Refine in the first place. Two columns give
+             each cell ~244px, which is the width the half-Refine cell had, so
+             the size range fits up here intact (min, "to", max) with no lone
+             max left orphaned downstairs. Pairing is deliberate: the two
+             everyday controls on the top line, the two optional numbers under
+             them. See .rd-row-2up in the style block for the borders — a
+             wrapped grid breaks .rd-cell:last-child. -->
+        <div class="rd-row rd-row-2up grid grid-cols-1 sm:grid-cols-2">
           <div class="rd-cell" id="txFocusWrap">
             <label class="rd-lab" for="txFocus">Focus</label>
             <select id="txFocus" class="rd-in">
@@ -1786,6 +1809,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="lookbackHint" class="text-xs text-[#68707E] mt-1"></div>
           </div>
           <div class="rd-cell">
+            <!-- Back on the form 2026-08-16 (owner's call). It went down to
+                 Refine on 2026-08-10 because it is answered automatically on
+                 most searches — true, but the two automatic answers can both be
+                 wrong (the footprint estimate refuses outright on a unit
+                 address or a campus, and the record lookup can miss), and the
+                 only way to correct them was to cancel out of the confirm
+                 dialog and go open a collapsed section. It is also the number
+                 the hero multiplies, so it earns a visible slot more than its
+                 hit rate suggests.
+                 Every id here is unchanged and every consumer reads by
+                 getElementById — SIZE_LABELS relabelling (#targetSizeLabel),
+                 the footprint estimate's autoFor/autoValue markers, the
+                 saved-report and shared-report restores, targetRange() over the
+                 min/max pair. The inputs take .rd-in rather than the bordered
+                 Refine styling so the cell gets .rd-cell:focus-within's red
+                 inset ring like every other cell on the desk.
+                 Placeholder is "max", not "max (optional)": at ~105px per input
+                 the longer string clips, and the label already carries the
+                 range's shape. -->
+            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
+            <div class="flex items-center gap-2">
+              <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="rd-in min-w-0" />
+              <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
+              <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max" class="rd-in min-w-0" />
+            </div>
+            <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
+          </div>
+          <div class="rd-cell">
             <!-- The size held this slot until 2026-08-10 and was being answered
                  automatically twice over (public records server-side, the OSM
                  footprint estimate during the confirm dialog), so the slot went
@@ -1796,9 +1847,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  verdict. Still optional — the address is this form's only
                  required field. One input, because two inputs around a "to"
                  inside a third-of-a-row cell is exactly what clipped the size
-                 range; the max lives in Refine. Moved to the last slot
-                 2026-08-10: it's the one optional field of the three, and
-                 Focus/Lookback are the everyday controls that belong up front. -->
+                 range. (That constraint eased on 2026-08-16 when the row went
+                 2x2 and the size range came back beside this cell — a price
+                 max could fit here now. It is still deliberately absent: a
+                 price BAND is not a thing an owner has, where a size band is.)
+                 Moved to the last slot 2026-08-10: it's the one optional field
+                 of the three, and Focus/Lookback are the everyday controls that
+                 belong up front. -->
             <!-- "Asking price", not "Your price": a bare "your price" invites
                  the price they PAID years ago, and a historical number would
                  make the comparison card announce a nonsense over/under against
@@ -1821,30 +1876,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  selection and the title should say so. Structure and field
                  list are upstream's 2026-08-10 redesign (price promoted to
                  the form, size demoted here, market note tucked here). -->
-            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(size, NOI, cap rate, market note: optional, sharpens the match)</span></span>
+            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(NOI, cap rate, market note: optional, sharpens the match)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in size and specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Size and property type come from public records automatically, so set a size here only to override what we found.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size sits on the form above and only needs a value to override what we found.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <!-- Size is one range in one cell again, the shape it had before
-                     Direction N: a half-width Refine cell has room for two
-                     inputs and a "to", which a third-of-a-row cell did not.
-                     Every id here is unchanged, and all of the size machinery
-                     (SIZE_LABELS relabelling to Lot size / Living area, the
-                     footprint estimate, the autoFor/autoValue machine-size
-                     markers, saved-report restores) reads by getElementById and
-                     never by position, so it keeps working from down here — the
-                     estimate lands the same way even while this section is
-                     collapsed, which is why the strip above still announces it. -->
-                <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
-                <div class="flex items-center gap-2">
-                  <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                  <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
-                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                </div>
-                <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
-              </div>
+              <!-- Size is NOT here any more — it went back up onto the form on
+                   2026-08-16. Do not add a second size input down here to be
+                   helpful: #targetSize is a single id read by the footprint
+                   estimate, targetRange(), and every report restore, and a
+                   duplicate would either break those or silently disagree with
+                   the value the search actually sends. -->
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
                 <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
@@ -3261,19 +3303,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Land is the reason the footprint sentence is dropped rather than reworded:
     // a parcel's size does not come from a building footprint at all.
     const noun = assetNoun(type);
+    // "in specs", not "in size and specs": the size that steers comp selection
+    // is entered on the form now, not behind this summary.
     document.getElementById("subjectHintLead").textContent =
-      `What you enter here steers which comps we pick — ${assetNounPlural(type)} like yours in size and specs.`;
+      `What you enter here steers which comps we pick — ${assetNounPlural(type)} like yours in specs.`;
     const hintIncome = document.getElementById("subjectHintIncome");
     const summaryBits = document.getElementById("subjectSummaryBits");
+    // The bits list what is actually BEHIND this summary, so none of them names
+    // the size any more — it moved onto the form on 2026-08-16, and a collapsed
+    // section promising a field it does not contain is what sends someone
+    // hunting. Land loses its income line, so market note + zoning is all it
+    // has left to advertise.
     if (type === "Residential") {
       hintIncome.textContent = "If this is a rental, add NOI for an income-approach cross-check.";
-      summaryBits.textContent = "(living area, beds/baths: optional)";
+      summaryBits.textContent = "(beds/baths, market note: optional)";
     } else if (type === "Land") {
       hintIncome.textContent = "";
-      summaryBits.textContent = "(lot size, zoning, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(zoning, market note: optional, sharpens the match)";
     } else {
       hintIncome.textContent = "Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.";
-      summaryBits.textContent = "(size, NOI, cap rate, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(NOI, cap rate, market note: optional, sharpens the match)";
     }
     document.getElementById("targetSizeHint").textContent = type === "Land"
       ? "Left blank, it comes from public records."

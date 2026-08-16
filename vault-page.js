@@ -3180,13 +3180,35 @@ if(dd)dd.open=false;});</script>
     fetch("/api/hubs",{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
-        // 401/403 are not errors to report here: the whole page is already
-        // gated, and a member who cannot see hubs sees the deck's empty state
-        // rather than a refusal they can do nothing about.
-        if(o.s!==200){hubs=[];renderHubs();return;}
+        // 401/403 stay silent: the whole page is already gated, and a member
+        // who cannot see hubs gets nothing to act on from a refusal here.
+        if(o.s===401||o.s===403){hubs=[];renderHubs();return;}
+        // EVERYTHING ELSE SAYS SO. This used to fall into the same branch, so
+        // a 503 rendered "No hubs yet. Create one when you have comps to put in
+        // front of a client." — an outage reading as "you have none", to the
+        // one person who would know it was wrong. It happened for real during
+        // a deploy on 2026-08-14 and cost a confused ten minutes.
+        //
+        // It is also backwards from this repo's own rule: the lead inbox
+        // refuses with a 503 rather than showing an empty inbox, "because an
+        // empty inbox on error would misreport demand as zero". Same argument,
+        // same answer.
+        if(o.s!==200){hubsFailed((o.j&&o.j.error)||"Your hubs could not be loaded.");return;}
         hubs=o.j.mine||[];renderHubs();
       })
-      .catch(function(){hubs=[];renderHubs();});
+      .catch(function(){hubsFailed("Your hubs could not be reached.");});
+  }
+
+  // A failed load is NOT an empty list. The invitation stays hidden, because
+  // "create your first hub" is the wrong thing to say to somebody whose hubs
+  // we simply could not fetch.
+  function hubsFailed(text){
+    hubs=[];
+    var rows=$("hubRows"); if(rows)rows.innerHTML="";
+    hubShow($("hubTableWrap"),false);
+    hubShow($("hubEmpty"),false);
+    hubShow($("hubIntro"),true);
+    hubMsg(text,true);
   }
 
   $("hubType").innerHTML='<option value=""></option>'+

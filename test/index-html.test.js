@@ -609,7 +609,7 @@ test("the desk hub list has no empty state, and never shows one", () => {
   assert.match(html, /id="deskHubs"/);
   assert.match(html, /id="deskHubRows"/);
   assert.ok(!/id="deskHubsEmpty"/.test(html), "the hub list is hidden when empty, not emptied");
-  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/);
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/);
   assert.ok(fn, "index.html must define renderDeskHubs()");
   assert.match(fn[0], /if \(!rows\.length\) return;/);
   // Every failure is silent here: this is an extra list at the bottom of a
@@ -626,7 +626,7 @@ test("hub rows render user-authored text through textContent, never innerHTML", 
   // A hub title is typed by the broker who created it, so it is user-authored
   // text like an address or a viewer email — the rule the rest of this desk
   // already follows.
-  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/)[0];
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/)[0];
   assert.match(fn, /link\.textContent = h\.title/);
   assert.ok(!/innerHTML\s*=\s*[^"']/.test(fn.replace(/innerHTML = "";/g, "")),
     "no interpolated innerHTML in the hub list");

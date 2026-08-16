@@ -2063,3 +2063,44 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   assert.equal(/harvestComps\s*\(\s*typeOk/.test(body), false,
     "harvest must not run inside gate() — extras would re-enter the corpus from a serialization-only merge");
 });
+
+// --- hub invitations by email (2026-08-14) --------------------------------
+
+test("hub invites are wired to the outbound mail gate", async () => {
+  // Hubs shipped with copy-link invitations and NOTHING that could email one:
+  // sendHubInvites did not exist, so verifying a Resend domain would not have
+  // made invitations start working. This pins that both minting sites call it
+  // and that it rides the same EMAIL_FROM gate as every other outbound mail,
+  // so an un-verified deployment stays copy-link and a verified one just works.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  assert.match(src, /function sendHubInvites\(invites, \{ hubTitle, fromName \}\)/);
+  // It must go through sendOutboundEmail, which is the gate. Calling sendEmail
+  // directly would mail from an unverified domain.
+  const fn = src.match(/function sendHubInvites[\s\S]*?\n\}/)[0];
+  assert.match(fn, /sendOutboundEmail\(/);
+  assert.ok(!/\bsendEmail\(/.test(fn), "must not bypass the outbound gate");
+
+  // Both places that mint a token send it.
+  assert.equal((src.match(/sendHubInvites\(/g) || []).length, 3,
+    "declaration + create route + participants route");
+
+  // And the client is told whether anything actually left, so the panel's copy
+  // cannot claim "we do not email" on a deployment that does.
+  assert.match(src, /const OUTBOUND_EMAIL_LIVE = \(\) => Boolean\(RESEND_API_KEY && EMAIL_FROM\)/);
+  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\)/g) || []).length, 2);
+});
+
+test("only newly invited people are mailed when a participant list is replaced", () => {
+  // Re-saving an unchanged list, or only REMOVING somebody, must email nobody.
+  // Same rule as PUT /api/shares/viewers, and the reason the route builds its
+  // link list from `invites` (the new tokens) rather than from `wanted`.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const route = src.match(/PUT" && hubPath === "\/api\/hub\/participants"[\s\S]*?\n    \}/)[0];
+  assert.match(route, /if \(newLinks\.length\) \{/);
+  assert.match(route, /sendHubInvites\(newLinks/);
+});

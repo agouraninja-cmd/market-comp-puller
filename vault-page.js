@@ -3251,9 +3251,16 @@ if(dd)dd.open=false;});</script>
   function showInvites(j){
     var list=(j.invites||[]);
     var box=$("hubInvites");
-    var head='<p class="note">Your hub is ready. Copy each link and send it to that '+
-      'person yourself: CompNinja does not email them yet, and these links cannot be '+
-      'shown again.</p>';
+    // The copy depends on whether the server actually MAILED them, which it
+    // reports as the emailed flag. This used to hard-code "CompNinja does not email
+    // them yet" — true when hubs shipped, and a lie the day a domain is
+    // verified in Resend, told to the one person relying on it.
+    var head = j.emailed
+      ? '<p class="note">Your hub is ready, and each person has been emailed their link. '+
+        'The links are below if you would rather send them yourself; they cannot be shown again.</p>'
+      : '<p class="note">Your hub is ready. Copy each link and send it to that '+
+        'person yourself: CompNinja cannot email them until a sending domain is verified, '+
+        'and these links cannot be shown again.</p>';
     if(!list.length){
       box.innerHTML=head+'<p class="note"><a href="/hub/'+encodeURIComponent(j.id)+
         '">Open the hub</a> and add people to it when you are ready.</p>';

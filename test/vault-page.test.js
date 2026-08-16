@@ -2127,3 +2127,118 @@ test("the win rate is a dash below three decided BOVs", async () => {
   assert.match(doc.getElementById("pipeNote").innerHTML, /1 this year/);
   assert.match(doc.getElementById("pipeNote").innerHTML, /win rate (?:—|&mdash;|\\u2014|\u2014)/);
 });
+
+// ---------------------------------------------------------------------------
+// The lease side of the book (migration 028)
+//
+// A sale is priced in $/SF and a lease in $/SF/yr. They are different
+// measures, not a wider spread of one, so the page's job here is to keep them
+// apart: label the unit it is showing, and decline to state a single median
+// over both rather than sealing the table with a figure that describes
+// neither.
+// ---------------------------------------------------------------------------
+
+const lease = (o) => comp({
+  transaction: "lease", price: null, price_per_sqft: null,
+  rent_psf: 28.5, rent_basis: "annual", rent_psf_yr: 28.5, lease_type: "NNN", ...o,
+});
+
+test("the comps toolbar offers a Sale/Lease filter", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /id="fTrans"/);
+  assert.match(html, /value="sale">Sales/);
+  assert.match(html, /value="lease">Leases/);
+});
+
+test("a leasing book shows its rent median instead of no figure at all", async () => {
+  const { doc } = await runPage([
+    lease({ id: "l1", rent_psf_yr: 24 }),
+    lease({ id: "l2", rent_psf_yr: 28 }),
+  ]);
+  assert.match(doc.getElementById("tblHead").innerHTML, /Rent \$\/SF\/yr/,
+    "the rate column must name the unit it is actually showing");
+  const foot = doc.getElementById("tblFoot").innerHTML;
+  assert.match(foot, /Median rent of 2 leases/);
+  assert.match(foot, /\$26\.00/, "the median of 24 and 28");
+});
+
+test("a rent cell shows the annual figure, and a sale row still shows its $/SF", async () => {
+  const { doc } = await runPage([
+    comp({ id: "s1", price_per_sqft: 100 }),
+    lease({ id: "l1", rent_psf_yr: 28.5 }),
+  ]);
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, /\$100\.00/, "the sale keeps its $/SF");
+  assert.match(body, /\$28\.50/, "the lease shows its annual rent in the same column");
+});
+
+// The reason the filter had to exist before the median could.
+test("a view holding both declines to state one median and names the filter", async () => {
+  const { doc } = await runPage([comp({ id: "s1" }), lease({ id: "l1" })]);
+  const foot = doc.getElementById("tblFoot").innerHTML;
+  assert.match(foot, /priced differently/i);
+  assert.match(foot, /filter by deal/i);
+  assert.ok(!/Median rent of/.test(foot), "no rent median over a set that is half sales");
+  assert.match(doc.getElementById("tblHead").innerHTML, /\$\/SF or rent\/yr/,
+    "and the column heading must not claim to be one unit");
+});
+
+test("filtering to Leases resolves it into a figure", async () => {
+  const { doc } = await runPage([
+    comp({ id: "s1" }), lease({ id: "l1", rent_psf_yr: 30 }), lease({ id: "l2", rent_psf_yr: 40 }),
+  ]);
+  doc.getElementById("fTrans").value = "lease";
+  doc.getElementById("fTrans").fire("change", {});
+  await tick();
+  assert.match(doc.getElementById("tblFoot").innerHTML, /Median rent of 2 leases/);
+  assert.match(doc.getElementById("tblFoot").innerHTML, /\$35\.00/);
+});
+
+// Mixing annual with monthly would make the median WRONG and is refused by the
+// parser. Mixing NNN with full-service makes it WEAKER, so it is disclosed.
+test("a rent median over mixed lease structures says so", async () => {
+  const { doc } = await runPage([
+    lease({ id: "l1", lease_type: "NNN", rent_psf_yr: 20 }),
+    lease({ id: "l2", lease_type: "FS", rent_psf_yr: 40 }),
+  ]);
+  assert.match(doc.getElementById("tblFoot").innerHTML, /mixed lease types/);
+});
+
+test("one lease structure throughout gets no such caveat", async () => {
+  const { doc } = await runPage([
+    lease({ id: "l1", lease_type: "NNN", rent_psf_yr: 20 }),
+    lease({ id: "l2", lease_type: "NNN", rent_psf_yr: 40 }),
+  ]);
+  assert.ok(!/mixed lease types/.test(doc.getElementById("tblFoot").innerHTML));
+});
+
+test("a market card leads with the rent median when the bucket is leases", async () => {
+  const { doc } = await runPage([
+    lease({ id: "l1", rent_psf_yr: 24 }), lease({ id: "l2", rent_psf_yr: 28 }),
+  ]);
+  const html = doc.getElementById("rollup").innerHTML;
+  assert.match(html, /\/SF\/yr rent/, "the card names the unit");
+  assert.ok(!/no priced sales yet/.test(html),
+    "a book of leases has a median; it was only ever in another unit");
+});
+
+test("the year chart follows the filter rather than putting two units on one axis", async () => {
+  const { doc } = await runPage([
+    lease({ id: "l1", deal_date: "2024-02-01", rent_psf_yr: 20 }),
+    lease({ id: "l2", deal_date: "2025-02-01", rent_psf_yr: 24 }),
+    lease({ id: "l3", deal_date: "2026-02-01", rent_psf_yr: 28 }),
+  ]);
+  assert.match(doc.getElementById("chartTitle").textContent, /Median rent \$\/SF\/yr by year/);
+});
+
+// The gut check compares against corpus quartiles and market-page figures,
+// both of which are SALE $/SF. It abstains here by construction — leases carry
+// no price_per_sqft — and this is what keeps that true if anyone ever adds a
+// rent fallback to psfOf.
+test("the gut check abstains on a leasing book rather than judging rent against sale prices", async () => {
+  const { doc } = await runPage([
+    lease({ id: "l1", rent_psf_yr: 24 }), lease({ id: "l2", rent_psf_yr: 28 }),
+  ]);
+  assert.ok(doc.getElementById("gutBox").className.includes("hide"),
+    "no benchmark exists for rent, so the panel must not draw a verdict");
+});

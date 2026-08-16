@@ -709,6 +709,13 @@ if(dd)dd.open=false;});</script>
       <div class="row filters">
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
+        <!-- Static options, unlike Market and Type: the vocabulary is the two
+             values parseTransaction accepts and cannot grow from the data. It
+             is also load-bearing rather than a convenience — a sale is priced
+             in $/SF and a lease in $/SF/yr, so a view holding both has no
+             single median to seal the table with, and this is how a broker
+             resolves that into a figure. -->
+        <label>Deal <select id="fTrans"><option value="">All</option><option value="sale">Sales</option><option value="lease">Leases</option></select></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
         <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
@@ -965,10 +972,10 @@ if(dd)dd.open=false;});</script>
   //      out loud rather than quietly under-reporting someone's book.
   //   3. Filtering is now instant and costs no round trip.
   function view(){
-    var m=$("fMarket").value,t=$("fType").value;
+    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value;
     return comps.filter(function(c){
       if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
-      return (!m||c.market===m)&&(!t||c.property_type===t);
+      return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x);
     });
   }
 
@@ -1032,6 +1039,52 @@ if(dd)dd.open=false;});</script>
       if(!dom||byType[t].length>dom.values.length)dom={type:t,values:byType[t]};
     });
     return {values:vals,types:types,mixed:types>1,dominant:dom};
+  };
+  // The lease half, and the exact mirror of psfOf above: the stored, canonical
+  // ANNUAL figure, never rent_psf itself. rent_psf is what the broker typed
+  // and means nothing without rent_basis beside it — a Californian 1.35/mo and
+  // a Midwestern 16.20/yr are the same rent, and taking a median over the raw
+  // column would average those two into a number describing neither. The
+  // server does that multiplication once, in normalizeRow, and this reads the
+  // result. Do not "improve" this by multiplying here.
+  var rentOf=function(c){
+    var v=c.rent_psf_yr;
+    return (v==null||!isFinite(Number(v)))?null:Number(v);
+  };
+  // Same shape as psfStats, and same property-type rule: office at $28/SF/yr
+  // and industrial at $9 are no more averageable than their sale prices are.
+  // The extra field is structures: how many distinct lease_types the values
+  // span, counting "not stated" as one of them. Mixing NNN with full-service
+  // does not make the median WRONG the way mixing annual with monthly would,
+  // so it is disclosed beside the figure rather than refused: a tenant paying
+  // $28.50 net and one paying $28.50 gross are different deals, and a broker
+  // reading one median over both should know that is what they are looking at.
+  var rentStats=function(list){
+    var vals=[],byType={},types=0,st={},structures=0;
+    (list||[]).forEach(function(c){
+      var v=rentOf(c);
+      if(v==null)return;
+      vals.push(v);
+      var k=(c&&c.lease_type)||"unstated";
+      if(!st[k]){st[k]=1;structures++;}
+      var t=c&&c.property_type;
+      if(!t)return;
+      if(!byType[t]){byType[t]=[];types++;}
+      byType[t].push(v);
+    });
+    return {values:vals,types:types,mixed:types>1,structures:structures};
+  };
+  // Which unit the rows on screen are priced in. A view holding both priced
+  // sales and rents has no single median — they are different measures, not a
+  // wider spread of one — so it reports "both" and every surface says to filter
+  // rather than sealing the table with a figure that means nothing. This is
+  // the same instinct as psfStats' own mixed-types rule one level up: where a number
+  // would be fabricated, say what is true instead.
+  var unitOf=function(rows){
+    var s=psfStats(rows),r=rentStats(rows);
+    if(s.values.length&&r.values.length)return {kind:"both",sale:s,rent:r};
+    if(r.values.length)return {kind:"lease",sale:s,rent:r};
+    return {kind:"sale",sale:s,rent:r};
   };
   var yearOf=function(c){
     var m=/^(\\d{4})/.exec(String(c.deal_date||""));
@@ -1160,9 +1213,11 @@ if(dd)dd.open=false;});</script>
   // comp carries cap_rate/tenancy/year_built/notes that the compact table has
   // nowhere to put.
   var EDIT_FIELDS=["address","property_type","transaction","deal_date",
-                   "price","size_sqft","cap_rate","tenancy","year_built","notes"];
+                   "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
+                   "tenancy","year_built","notes"];
   var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
     deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
+    rent_psf:"Rent $/SF",rent_basis:"Rent per",lease_type:"Lease type",
     tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
 
   function sheetLabel(k){
@@ -1220,6 +1275,14 @@ if(dd)dd.open=false;});</script>
   }
   // Derived cells carry their own id/key so a save can refresh just them,
   // without the re-render that would steal focus from the next cell.
+  // One rate column, two measures, decided per ROW rather than per view: a
+  // sale shows its $/SF and a lease shows its annual rent. Both are server-
+  // derived and only one of them is ever set, so this cannot show two figures
+  // for one comp.
+  function rateCell(c){
+    if(c.transaction==="lease")return psf(c.rent_psf_yr);
+    return psf(c.price_per_sqft);
+  }
   function roCell(c,k,html,isNum){
     return '<td class="ro'+(isNum?" num":"")+'" data-ro-id="'+escA(c.id)+
       '" data-ro-k="'+escA(k)+'">'+html+"</td>";
@@ -1290,7 +1353,7 @@ if(dd)dd.open=false;});</script>
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    if(uploadId){ $("fMarket").value=""; $("fType").value=""; }
+    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -1326,16 +1389,28 @@ if(dd)dd.open=false;});</script>
     setSheetChrome();
     if(sheetMode){
       renderSheet(rows);
-      var sst=psfStats(rows),sps=sst.values,smed=median(sps);
-      renderStrip(rows,sps,smed,sst);
+      // The strip summarises whatever is on screen, in whichever unit that
+      // turns out to be — the spreadsheet shows the same comps as the compact
+      // table, so it reads the same decision rather than a sales-only copy.
+      var sunit=unitOf(rows);
+      renderStrip(rows,sunit,footFigure(sunit));
       $("tblFoot").innerHTML="";
       return;
     }
+    // The rate column names the unit it is actually showing. Left reading
+    // "$/SF" over a column of annual rents it would be a wrong label on a real
+    // figure, which is worse than no column: $28.50 under a "$/SF" heading
+    // reads as a building worth twenty-eight dollars a foot. In a mixed view
+    // each row still shows its own measure and the heading says so, which the
+    // Deal column beside it disambiguates row by row.
+    var unit=unitOf(rows);
+    var rateHead=unit.kind==="lease"?"Rent $/SF/yr"
+      :unit.kind==="both"?"$/SF or rent/yr":"$/SF";
     $("tblHead").innerHTML="<tr>"+
       headCell("address","Address")+headCell("market","Market")+
       headCell("property_type","Type")+headCell("transaction","Deal")+
       headCell("deal_date","Date")+headCell("price","Price",true)+
-      headCell("size_sqft","Size",true)+headCell("price_per_sqft","$/SF",true)+
+      headCell("size_sqft","Size",true)+headCell("price_per_sqft",rateHead,true)+
       headCell("published","Public")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
       // Published state is a two-way toggle, never a checkbox that could be
@@ -1356,7 +1431,7 @@ if(dd)dd.open=false;});</script>
         "<td>"+cellInput(c,"property_type")+"</td><td>"+cellInput(c,"transaction")+"</td>"+
         "<td>"+cellInput(c,"deal_date")+'</td><td class="num">'+cellInput(c,"price")+
         '</td><td class="num">'+cellInput(c,"size_sqft")+"</td>"+
-        roCell(c,"price_per_sqft",psf(c.price_per_sqft)+flag,true)+
+        roCell(c,"price_per_sqft",rateCell(c)+flag,true)+
         "<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
@@ -1364,26 +1439,52 @@ if(dd)dd.open=false;});</script>
     // cards and the year chart lead with, so the three views read against
     // each other. No priced sales = no row; a double rule over a blank would
     // claim a figure that does not exist.
-    var vst=psfStats(rows),vps=vst.values,vmed=median(vps);
-    renderStrip(rows,vps,vmed,vst);
-    // Three states, two of which still draw the closing rule: a view spanning
-    // several property types says why there is no figure rather than sealing
-    // the column with one, because the $/SF it would average is measured in
-    // different units row to row.
-    //
+    // The unit was already decided above for the column heading; the footer
+    // seals the table in that same unit, so the heading and the median under
+    // it can never name different measures.
+    var foot=footFigure(unit);
+    renderStrip(rows,unit,foot);
     // ONE row template with the label and the number varying, deliberately
-    // not two branches emitting their own <tr>: the footer's column count is
-    // checked by finding a single label cell with a colspan in this file and
-    // counting the cells after it, so a second copy silently breaks that
-    // check (it did, on the first attempt at this change). No backticks in
-    // this block either — the whole page is one template literal.
-    $("tblFoot").innerHTML=!vps.length ? "" :
-      '<tr><td class="lab" colspan="7">'+
-      (vst.mixed
-        ? "No single median across "+vst.types+" property types \\u2014 filter by type to compare"
-        : "Median of "+vps.length+" priced sale"+(vps.length===1?"":"s")+
-          (rows.length===comps.length?"":" in this view"))+
-      '</td><td class="num">'+(vst.mixed?"\\u2014":psf(vmed))+"</td><td></td><td></td></tr>";
+    // not a branch per case emitting its own <tr>: the footer's column count
+    // is checked by finding a single label cell with a colspan in this file
+    // and counting the cells after it, so a second copy silently breaks that
+    // check (it did, on the first attempt at the change that added this). No
+    // backticks in this block either — the whole page is one template literal.
+    $("tblFoot").innerHTML=!foot.show ? "" :
+      '<tr><td class="lab" colspan="7">'+foot.label+
+      (foot.value==null||rows.length===comps.length?"":" in this view")+
+      '</td><td class="num">'+(foot.value==null?"\\u2014":psf(foot.value))+
+      "</td><td></td><td></td></tr>";
+  }
+
+  // What seals the table, in one place, because the reading strip quotes the
+  // same figure and the two are required never to disagree.
+  //
+  // Four outcomes, and three of them decline to state a median. A view holding
+  // both sales and leases has two different measures in it rather than a wider
+  // spread of one, and a view spanning property types has the artifact
+  // psfStats' own note describes. In both cases the honest thing is to name
+  // the filter that resolves it — the reason the Deal filter exists at all.
+  function footFigure(unit){
+    if(unit.kind==="both"){
+      return {show:true,value:null,
+        label:"Sales and leases are priced differently \\u2014 filter by deal to compare"};
+    }
+    var lease=unit.kind==="lease",st=lease?unit.rent:unit.sale,vals=st.values;
+    if(!vals.length)return {show:false,value:null,label:""};
+    if(st.mixed){
+      return {show:true,value:null,
+        label:"No single median across "+st.types+" property types \\u2014 filter by type to compare"};
+    }
+    if(!lease){
+      return {show:true,value:median(vals),
+        label:"Median of "+vals.length+" priced sale"+(vals.length===1?"":"s")};
+    }
+    // Stated, never refused: see rentStats on why a mixed lease structure
+    // weakens this figure rather than invalidating it.
+    return {show:true,value:median(vals),
+      label:"Median rent of "+vals.length+" lease"+(vals.length===1?"":"s")+" \\u00b7 $/SF/yr"+
+        (st.structures>1?" \\u00b7 mixed lease types":"")};
   }
 
   function renderSheet(rows){
@@ -1424,8 +1525,16 @@ if(dd)dd.open=false;});</script>
     return order.map(function(k){
       var g=by[k],dates=g.comps.map(function(c){return c.deal_date}).filter(Boolean).sort();
       var ps=psfList(g.comps);
+      // A leasing bucket has no priced sales and led with its comp count,
+      // which is how a book of 200 leases showed no figure anywhere. It has a
+      // median, just in a different unit — so the card carries the unit rather
+      // than assuming one. Sales still win the headline where a bucket has
+      // both: $/SF is the figure the rest of the page and the market
+      // benchmarks are denominated in.
+      var rents=g.comps.map(rentOf).filter(function(v){return v!=null});
       return {market:g.market,type:g.type,n:g.comps.length,pub:g.pub,
         med:median(ps),psfN:ps.length,
+        rentMed:median(rents),rentN:rents.length,
         first:dates[0]||"",last:dates[dates.length-1]||""};
     }).sort(function(a,b){return b.n-a.n});
   }
@@ -1438,15 +1547,20 @@ if(dd)dd.open=false;});</script>
       // A card reads as selected only when the filter is exactly this card.
       var on=(m===g.market&&t===g.type)?" on":"";
       // The headline number is the median $/SF where there are priced sales to
-      // take one from, and the comp count where there are not. A book of
-      // leases has no $/SF and must not be shown a blank space where every
-      // other card has a figure.
+      // take one from, the median RENT where the bucket is leases, and the comp
+      // count where it is neither. A leasing bucket used to fall straight to
+      // the count and read "no priced sales yet" — true, and useless, since the
+      // median it does have was simply in another unit.
       var head=g.med!=null
         ? '<div class="big">'+psf0(g.med)+'<span>/SF median</span></div>'
+        : g.rentMed!=null
+        ? '<div class="big">'+psf0(g.rentMed)+'<span>/SF/yr rent</span></div>'
         : '<div class="big">'+g.n+'<span> comp'+(g.n===1?"":"s")+'</span></div>';
       var line=g.med!=null
         ? g.n+" comp"+(g.n===1?"":"s")+" \\u00b7 "+g.psfN+" priced sale"+(g.psfN===1?"":"s")
-        : "no priced sales yet";
+        : g.rentMed!=null
+        ? g.n+" comp"+(g.n===1?"":"s")+" \\u00b7 "+g.rentN+" lease"+(g.rentN===1?"":"s")
+        : "no priced deals yet";
       var span=g.first?(g.first.slice(0,4)===g.last.slice(0,4)
         ? g.first.slice(0,4)
         : g.first.slice(0,4)+"\\u2013"+g.last.slice(0,4)):"";
@@ -1560,8 +1674,15 @@ if(dd)dd.open=false;});</script>
   }
   function renderChart(rows){
     var box=$("chartBox"),by={},order=[];
+    // One axis, so one measure. A view holding both sales and leases charts
+    // the SALES and says so in its title: two units on one axis would draw
+    // rents as a collapse in prices, and an axis tall enough for both makes
+    // the rents a flat line along the bottom. Filtering to Leases charts the
+    // rents on their own axis, which is the whole point of the filter.
+    var lease=unitOf(rows).kind==="lease";
+    var valOf=lease?rentOf:psfOf;
     rows.forEach(function(c){
-      var y=yearOf(c),v=psfOf(c);
+      var y=yearOf(c),v=valOf(c);
       if(!y||v==null)return;
       if(!by[y]){by[y]=[];order.push(y);}
       by[y].push(v);
@@ -1572,16 +1693,18 @@ if(dd)dd.open=false;});</script>
     // Two years and three priced sales is the floor for calling anything a
     // trend. Below it the honest thing is to say so, not to draw one column
     // and let it imply a direction. Silence would read as a broken panel.
+    var noun=lease?"lease":"priced sale";
+    var title=lease?"Median rent $/SF/yr by year":"Median $/SF by year";
     if(pts.length<2||total<3){
       box.className="dbox chart";
-      $("chartTitle").textContent="Median $/SF by year";
-      $("chartWrap").innerHTML='<p class="note">A price trend needs priced sales in at least two years. '+
+      $("chartTitle").textContent=title;
+      $("chartWrap").innerHTML='<p class="note">A trend needs '+noun+'s in at least two years. '+
         (total?"There "+(total===1?"is 1":"are "+total)+" here so far.":"There are none in this view yet.")+"</p>";
       if(!rows.length)box.className="dbox chart hide";
       return;
     }
     box.className="dbox chart";
-    $("chartTitle").textContent="Median $/SF by year \\u00b7 "+total+" priced sales";
+    $("chartTitle").textContent=title+" \\u00b7 "+total+" "+noun+(total===1?"":"s");
 
     var W=600,H=190,L=44,R=8,T=16,B=34;               // B leaves room for the year band
     var plotW=W-L-R,plotH=H-T-B;
@@ -1653,18 +1776,23 @@ if(dd)dd.open=false;});</script>
       '<div class="sfig'+(ok?" ok":"")+'">'+fig+"</div>"+
       (sub?'<div class="ssub">'+sub+"</div>":"")+"</"+tag+">";
   }
-  function renderStrip(rows,vps,vmed,vst){
+  function renderStrip(rows,unit,foot){
     var box=$("readStrip");
     // Nothing on screen means nothing to summarise. The empty-table line below
     // says what is going on; a strip of dashes above it would not.
     if(!rows.length){box.className="strip hide";box.innerHTML="";return;}
     var cells=[];
-    // Reads the same psfStats the footer does, so the two cannot quote
-    // different things — the rule this strip has carried since it shipped.
-    var mixed=!!(vst&&vst.mixed);
-    cells.push(stripCell("Median $/SF",(vps.length&&!mixed)?psf(vmed):"&mdash;",
-      mixed?vst.types+" property types":
-        (vps.length?vps.length+" priced sale"+(vps.length===1?"":"s"):"no priced sales"),
+    // Takes the footer's OWN computed figure rather than recomputing one, so
+    // the strip and the seal under the table cannot quote different numbers —
+    // the rule this strip has carried since it shipped, now enforced by there
+    // being a single computation instead of two that happen to agree.
+    var lease=unit.kind==="lease",st=lease?unit.rent:unit.sale;
+    var head=unit.kind==="both"?"Median rate":lease?"Median rent/yr":"Median $/SF";
+    var sub=unit.kind==="both"?"sales and leases"
+      :st.mixed?st.types+" property types"
+      :st.values.length?st.values.length+(lease?" lease":" priced sale")+(st.values.length===1?"":"s")
+      :lease?"no rents":"no priced sales";
+    cells.push(stripCell(head,foot.value==null?"&mdash;":psf(foot.value),sub,
       $("chartBox").className.indexOf("hide")<0?"chartBox":""));
     var gv="&mdash;",gs="",gok=false;
     if(lastGut&&lastGut.unavailable){ gs="benchmarks unavailable"; }
@@ -2423,7 +2551,7 @@ if(dd)dd.open=false;});</script>
   // Keep in step with broker-vault.js REQUIRED_TARGETS / TEMPLATE_COLUMNS /
   // OPTIONAL_SPEC_COLUMNS. This page cannot require that module.
   var PDF_REQUIRED=["address","property_type","transaction","deal_date"];
-  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
+  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
   var TARGET_LABELS={
     address:"Address", property_type:"Property type", transaction:"Sale or lease",
     deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",
@@ -2766,8 +2894,8 @@ if(dd)dd.open=false;});</script>
   // submit handler below builds the row generically instead of naming every
   // input twice.
   var BASE_FIELDS=["address","property_type","transaction","deal_date",
-                   "price","size_sqft","cap_rate","tenancy","year_built",
-                   "notes","lat","lng"];
+                   "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
+                   "tenancy","year_built","notes","lat","lng"];
   $("addComp_property_type").innerHTML=Object.keys(TYPE_FIELDS)
     .map(function(t){return "<option>"+t+"</option>"}).join("");
   function renderAddTypeFields(){
@@ -2854,14 +2982,15 @@ if(dd)dd.open=false;});</script>
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.
   function redraw(){
-    $("fClear").className=($("fMarket").value||$("fType").value)?"btn ghost":"btn ghost hide";
+    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value)?"btn ghost":"btn ghost hide";
     renderRollup();
     render();
   }
   $("fMarket").addEventListener("change",redraw);
   $("fType").addEventListener("change",redraw);
+  $("fTrans").addEventListener("change",redraw);
   $("fClear").addEventListener("click",function(){
-    $("fMarket").value=""; $("fType").value=""; redraw();
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; redraw();
   });
   $("sheetToggle").addEventListener("click",function(){
     if(sheetMode)closeSheet(); else openSheet(null);
@@ -3050,7 +3179,7 @@ if(dd)dd.open=false;});</script>
     for(var i=0;i<cells.length;i++){
       var k=cells[i].getAttribute&&cells[i].getAttribute("data-ro-k");
       if(k==="market")cells[i].innerHTML=esc(row.market);
-      else if(k==="price_per_sqft")cells[i].innerHTML=psf(row.price_per_sqft);
+      else if(k==="price_per_sqft")cells[i].innerHTML=rateCell(row);
     }
   }
 

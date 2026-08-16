@@ -618,6 +618,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         break-inside: avoid; page-break-inside: avoid;
         animation: none !important; opacity: 1 !important;
       }
+      /* The trust line's mechanics collapse on SCREEN only. Paper is the copy
+         that gets forwarded to a client, so it carries the whole explanation
+         — the toggle button is .no-print and disappears on its own. */
+      #ownerTrustHow { display: block !important; }
       #compsTable tr { break-inside: avoid; page-break-inside: avoid; }
       #compsTable thead { display: table-header-group; }
       /* Paper cannot scroll sideways: unclip the table and let cells wrap. */
@@ -2456,6 +2460,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
+          <!-- The MECHANICS half of the trust line: how the weighting works,
+               and the MLS caveat that is identical on every house report.
+               Collapsed on screen so the warnings above stay readable (the
+               combined line measured 1,034 characters before the split), and
+               forced open on paper and in the PNG — an export is the copy that
+               gets forwarded, so it carries the whole explanation. The toggle
+               itself is no-print/no-capture; the paragraph is revealed by the
+               @media print rule and by downloadImage's onclone. -->
+          <div id="ownerTrustHowWrap" class="hidden mt-2">
+            <button id="ownerTrustHowBtn" type="button" aria-expanded="false" aria-controls="ownerTrustHow"
+              class="no-print no-capture text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">How this range is calculated</button>
+            <p id="ownerTrustHow" class="hidden text-xs text-[#68707E] mt-2"></p>
+          </div>
           <p class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
             <button id="bovCtaBtn" type="button"
@@ -4067,7 +4084,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -5054,9 +5071,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
       : null;
     currentPsfBand = psfBand;
+    // The trust line is in two halves, and the split is the point.
+    //
+    // WARNINGS stay in #ownerTrust, always visible: the comp count and its
+    // provenance, a size class that does not fit, a listing that disagrees,
+    // the condition spread. Each one can change what the reader does next.
+    //
+    // MECHANICS go to #ownerTrustHow, collapsed behind a toggle on screen and
+    // forced open on paper and in the PNG: how the weighting works, and the
+    // MLS caveat that is word-for-word identical on every house report and so
+    // reads as boilerplate wherever it sits.
+    //
+    // Measured before the split (2026-08-16): the worst-case Residential trust
+    // line ran 1,034 characters — 177 words, nine sentences of 12px grey — and
+    // the condition sentence, the one thing in there a reader could act on,
+    // sat ninth of nine. Everything was disclosed and nothing was read. Adding
+    // any further sentence to the visible half should be weighed against that.
+    const mechanics = [];
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
-    const weighNote = " Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
+    const weighNote = "Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
           + `(adj in the table shows each indexed figure).`
@@ -5355,7 +5389,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps (${excludedSaleN} excluded ${whoCurated})`
         : `Based on ${ppsfs.length} sale comps`;
       trustEl.textContent = countPhrase
-        + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote
+        + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`
         + sizeNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
       renderCompScatter(ppsfs, rr, { fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF" });
@@ -5398,7 +5432,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ? `the middle range of ${per.length} sale comps`
         : `price per ${spec.noun} from ${per.length} sale comps`);
       trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
-        + `Building size wasn't needed for this estimate.` + weighNote + smallNNote(per.length);
+        + `Building size wasn't needed for this estimate.` + smallNNote(per.length);
       trustEl.classList.remove("hidden");
       // Same line, this type's own unit: the ledger above is quoting per unit
       // or per acre, so a $/SF scatter under it would be measuring something
@@ -5501,7 +5535,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ? `The middle range of ${ppsfs.length} sale comps, per square foot. `
         : `$/SF from ${ppsfs.length} sale comps. `)
         + `We couldn't find this ${noun}'s square footage; enter it under 'Details for comps' and this becomes a total dollar value instantly.`;
-      trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
+      trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
       renderCompScatter(ppsfs, rr, { fmt: fmtPsf, unitPhrase: "$/SF" });
       const entries = [{
@@ -5604,12 +5638,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     // Residential is the one type whose closed sales mostly live behind the
     // MLS, where web search can't reliably reach — the comp pool is thinner
-    // and skews toward listing-worthy (pricier) sales. Say so on EVERY
+    // and skews toward listing-worthy (pricier) sales. Said on EVERY
     // Residential report, whichever branch rendered above, rather than
     // letting the range carry commercial-grade confidence.
+    //
+    // It sits in the MECHANICS half: it is identical on every house report,
+    // so it cannot tell one reader anything another reader would not also be
+    // told, and in the visible line it crowded out the notes that are
+    // specific to THIS property. Still on paper and in the PNG.
     if (meta.type === "Residential") {
-      trustEl.textContent += (trustEl.textContent ? " " : "")
-        + "Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.";
+      mechanics.push("Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.");
       // What the weighting can't reach, named in this report's own numbers.
       // Reads the same currentPsfBand the outlier chips and the scatter read,
       // so all three describe one band. It is null when no $/SF valuation was
@@ -5631,10 +5669,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           + (cond.swing > 0
             ? ` — a ${formatUsd(cond.swing, { maximumFractionDigits: 0 })} swing on this ${assetNoun(meta.type)}'s size`
             : "")
-          + `. That remaining spread is mostly condition and finish, which this estimate can't see.`;
+          + `. That remaining spread is mostly condition and finish, which this estimate can't see without someone walking the property.`;
+        // The pointer to the CTA is SCREEN-ONLY, in its own span, because
+        // #bovCtaWrap is itself no-print and is skipped by html2canvas's
+        // ignoreElements — a printed PDF or an exported PNG carrying "the
+        // button below" would point at a button that is not on the page. The
+        // sentence above stays in both media because it is true in both; only
+        // the call to action is conditional on the button existing.
+        //
+        // Wording tracks bovCopy()'s Residential branch ("Talk to a local
+        // agent", not "Broker Opinion of Value") — this block is Residential
+        // only, and naming a different product than the button underneath it
+        // would read as two separate offers. ⚠ Keep the two in step.
+        const cta = document.createElement("span");
+        cta.className = "no-print no-capture";
+        cta.textContent = " That's what the free agent intro below is for.";
+        trustEl.appendChild(cta);
       }
       trustEl.classList.remove("hidden");
     }
+
+    // The mechanics half, written once, after every branch and every append
+    // above has had its say. weighNote is pushed HERE rather than in the three
+    // branches so it rides on whether a trust line was actually rendered: the
+    // no-estimate branch leaves #ownerTrust hidden, and an explanation of
+    // weighting with no range above it explains nothing.
+    // unshift, not push: the panel is titled "How this range is calculated",
+    // so the weighting leads and the MLS coverage caveat follows it.
+    if (trustEl.textContent) mechanics.unshift(weighNote);
+    const howWrap = document.getElementById("ownerTrustHowWrap");
+    const howBody = document.getElementById("ownerTrustHow");
+    howBody.textContent = mechanics.join(" ");
+    howWrap.classList.toggle("hidden", mechanics.length === 0);
+    // Collapsed on every render, never left open from the previous report.
+    howBody.classList.add("hidden");
+    const howBtn = document.getElementById("ownerTrustHowBtn");
+    howBtn.setAttribute("aria-expanded", "false");
+    howBtn.textContent = "How this range is calculated";
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.
     applyBovCopy(meta);
@@ -14383,6 +14454,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   document.getElementById("xlsxBtn").addEventListener("click", gatedExport(exportXlsx));
 
+  // The trust line's mechanics toggle. Registered once at module scope, not in
+  // renderOwnerHero — that function runs on every render and every edit to a
+  // subject field, and an addEventListener there would stack a new handler on
+  // each pass until one click fired the toggle a dozen times.
+  document.getElementById("ownerTrustHowBtn").addEventListener("click", () => {
+    const body = document.getElementById("ownerTrustHow");
+    const btn = document.getElementById("ownerTrustHowBtn");
+    const open = body.classList.toggle("hidden") === false;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.textContent = open ? "Hide how this is calculated" : "How this range is calculated";
+  });
+
   async function downloadImage() {
     const node = document.getElementById("reportArea");
     const btn = document.getElementById("imgBtn");
@@ -14415,7 +14498,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // inside @media screen, which a print run never sees.
           doc.documentElement.removeAttribute("data-theme");
           const s = doc.createElement("style");
-          s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }";
+          // html2canvas ignores @media print, so the print rule that opens the
+          // trust line's mechanics does not reach the PNG. Restated here: an
+          // exported image is the copy that gets pasted into a client's deck,
+          // and it must not be the one version of the report whose weighting
+          // is unexplained. The toggle button is .no-capture and is dropped by
+          // ignoreElements, so only the prose lands.
+          s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }"
+            + " #ownerTrustHow { display: block !important; }";
           doc.head.appendChild(s);
           // .print-only keeps the raster off the screen, and html2canvas
           // honours the screen stylesheet, so it has to be revealed in the

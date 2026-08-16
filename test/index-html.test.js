@@ -1047,5 +1047,68 @@ test("the unexplained-gain line is hidden during streaming assembly", () => {
   // placeholder.
   const i = html.indexOf('["widenSearchWrap", "ownerScatter"');
   assert.ok(i > 0, "could not find beginAssembly's hidden list");
-  assert.match(html.slice(i, i + 220), /"ownerImproved"/);
+  const list = html.slice(i, i + 260);
+  assert.match(list, /"ownerImproved"/);
+  // The mechanics panel carries the same hazard: left out, the previous
+  // report's "How this range is calculated" hangs under the next report's
+  // placeholder hero.
+  assert.match(list, /"ownerTrustHowWrap"/);
+});
+
+// ---------------------------------------------------------------------------
+// The trust line is two halves: property-specific warnings stay visible,
+// mechanics collapse. Measured 2026-08-16, the combined line ran 1,034
+// characters of 12px grey and buried the condition sentence ninth of nine.
+// ---------------------------------------------------------------------------
+
+test("mechanics are routed to the collapsed half, not the visible line", () => {
+  assert.match(html, /id="ownerTrustHowWrap"/);
+  assert.match(html, /id="ownerTrustHow"/);
+  assert.match(html, /id="ownerTrustHowBtn"/);
+  // The weighting note and the MLS caveat are the two mechanics. Neither may
+  // be concatenated into #ownerTrust: the visible half is for notes specific
+  // to THIS property, and the MLS sentence is identical on every house report.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  // Assignment or append only — `if (trustEl.textContent) mechanics.push(...)`
+  // is the correct routing and must not trip this.
+  assert.doesNotMatch(body, /trustEl\.textContent\s*\+?=[^;]*weighNote/);
+  assert.doesNotMatch(body, /trustEl\.textContent\s*\+?=[^;]*Residential sales mostly live in the MLS/);
+  assert.match(body, /mechanics\.push\("Residential sales mostly live in the MLS/);
+  // Routed into the mechanics array, and only when a trust line actually
+  // rendered — an explanation of the weighting with no range above it explains
+  // nothing. (unshift vs push is ordering, not routing; don't pin the method.)
+  assert.match(body, /if \(trustEl\.textContent\) mechanics\.(un)?shift\(weighNote\)/);
+});
+
+test("the collapsed half is forced open on paper and in the PNG", () => {
+  // An export is the copy that gets forwarded to a client, so it must not be
+  // the one version of the report whose weighting is unexplained. Two separate
+  // mechanisms because html2canvas ignores @media print.
+  const printBlock = html.slice(html.indexOf("@media print {"), html.indexOf("@media print {") + 2000);
+  assert.match(printBlock, /#ownerTrustHow \{ display: block !important; \}/);
+  const clone = html.slice(html.indexOf("onclone: (doc) =>"), html.indexOf("onclone: (doc) =>") + 1400);
+  assert.match(clone, /#ownerTrustHow \{ display: block !important; \}/);
+  // The toggle itself must NOT survive into either — a button in a PNG is
+  // furniture that cannot be clicked.
+  assert.match(html, /id="ownerTrustHowBtn"[\s\S]{0,200}?no-print no-capture/);
+});
+
+test("the agent-intro pointer is screen-only", () => {
+  // #bovCtaWrap is no-print and is dropped by html2canvas's ignoreElements, so
+  // a printed or captured report carrying "the button below" would point at a
+  // button that is not on the page.
+  const i = html.indexOf('cta.className = "no-print no-capture"');
+  assert.ok(i > 0, "the CTA pointer must carry no-print no-capture");
+  assert.match(html.slice(i, i + 260), /free agent intro below/);
+  // The sentence that stays in both media makes no reference to a control.
+  assert.match(html, /can't see without someone walking the property/);
+});
+
+test("the mechanics toggle is registered once, not per render", () => {
+  // renderOwnerHero runs on every render and every subject-field edit; an
+  // addEventListener in there would stack handlers until one click fired the
+  // toggle a dozen times.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  assert.doesNotMatch(body, /ownerTrustHowBtn"\)\.addEventListener/);
+  assert.match(html, /document\.getElementById\("ownerTrustHowBtn"\)\.addEventListener\("click"/);
 });

@@ -1656,11 +1656,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
     should not have to author a CSV); `GET /api/vault/export.csv` downloads
-    the whole book. After a spreadsheet import, `/vault` can open that book
-    as a grid (`Open spreadsheet`, or Open on that import): the same PATCH,
-    one field per cell, saved on leaving the cell so Tab/Enter work like a
-    spreadsheet. The compact Edit form stays for a single-row change from
-    the ordinary table. **`EDITABLE_FIELDS` in `broker-vault.js` is an
+    the whole book. **Every cell on `/vault` is typed into directly**
+    (2026-08-16): one field per cell, saved on leaving it, so Tab/Enter work
+    like a spreadsheet and Esc restores the stored value. There is no Edit
+    button — the compact table's own cells are the editor, and the inline
+    edit form it used to open is gone. Three rules the compact table adds
+    over the spreadsheet, all in `vault-page.js`. **`CELL_FIELDS` excludes
+    the two derived columns**: `market` is parsed from the address by
+    `marketOf()` server-side and `price_per_sqft` is computed by
+    `normalizeRow` for priced sales only, so offering either as an input
+    would let a broker type a figure the very next save silently overwrites;
+    they render as `td.ro` cells and are **refreshed from the row the PATCH
+    returns**, because a price edit that left the old $/SF sitting beside it
+    is a wrong number in a priced column. **A cell shows the formatted figure
+    and swaps to the raw one on focus** (`data-raw` + `cellDisplay`), since a
+    book of business is read far more often than edited and every price
+    becoming `1250000` is not an acceptable cost of making it editable; the
+    value put back after a save is the SERVER's normalized one, never the
+    string that was typed. And **a save that lands after the table was
+    rebuilt** (a sort, a filter, a delete's reload) re-renders instead of
+    writing into the detached input, or the row would show the pre-save value
+    with a refreshed $/SF next to it. Spreadsheet mode (`Open spreadsheet`,
+    or Open on that import) stays as the other door: it is the only place
+    `cap_rate`/`tenancy`/`year_built`/`notes` and the per-type extras have
+    columns, and its cells deliberately show STORED values with no
+    formatting, because it is the view a broker opens to check what an import
+    actually landed. **`EDITABLE_FIELDS` in `broker-vault.js` is an
     allowlist**, not a second validator — `validateEdit(existing, patch)`
     merges the patch over the stored row and reruns it through
     `normalizeRow`, the same function every imported row goes through, so a

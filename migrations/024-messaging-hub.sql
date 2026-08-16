@@ -71,8 +71,14 @@ alter table hubs enable row level security;
 -- IDENTITY IS THE EMAIL, not a user id — migration 018's decision, adopted
 -- wholesale. A tenant invited before they have an account is recognized the
 -- moment they sign up with that address, with nothing to reconcile. user_id
--- is stamped on the first authenticated read, as a convenience for joins,
--- never as the thing access is decided on.
+-- is NOT written by anything today. This comment used to claim it was
+-- "stamped on the first authenticated read"; nothing stamped it, and the
+-- column has been null on every row since the table shipped (verified on
+-- production 2026-08-14). Harmless, because identity is the email and the
+-- email match is what actually resolves a participant — but a schema comment
+-- describing behaviour that does not exist is worse than no comment, so this
+-- says what is true. Fill it only if something needs the join; access must
+-- keep being decided on the email.
 --
 -- ONE TOKEN PER PARTICIPANT, HASHED. A single hub-wide link cannot say who
 -- said what, and a forwarded hub-wide link cannot be cut off without cutting

@@ -1,0 +1,26 @@
+{
+  "note": "The answer key for run-accuracy.js: real transactions we know independently of the model, used to score whether a live comp search finds them and reports their numbers correctly. Starts empty on purpose - a fabricated answer key is worse than none, because every number measured against it would look authoritative and be meaningless. Populate it with --seed-from-submissions, or by hand from a county record or a press release.",
+  "rules": [
+    "basis says how the deal was established, and it is what keeps this an answer key rather than a mirror. Allowed: broker_verified (an approved broker submission - a named broker vouched), public_record (a county recorder or assessor page), news (a press release or trade coverage), listing (a sold listing page).",
+    "basis: model_corpus is REFUSED by the validator, by name. A deal a past search produced is not independent of the thing being measured; scoring a new search against it measures agreement between two model runs and reports a flattering number for a shared mistake.",
+    "public_record, news and listing must carry a source_url. broker_verified does not: its citation is a named broker in comp_submissions, not a document.",
+    "This repo is PUBLIC. Never add a vault comp - the vault's privacy wall is absolute. Broker-submitted deals enter only when status is approved, because approval is already what publishes those deal facts into customer-facing reports, and no broker name, email, phone or company travels with them.",
+    "An address that names a statistic or carries no street number is refused: a submarket average cannot be an answer.",
+    "The deals here define the exam. targetsFromTruthSet groups them by market and property type into one search each, with a window wide enough to reach the group's oldest deal, so adding a deal in a new market adds a billed search to the next run.",
+    "Add rather than edit. Changing a deal's figures silently changes the score of every past run in docs/accuracy/, the same comparability rule eval-set.json carries."
+  ],
+  "example": {
+    "address": "1234 W Example Ave, Boise, ID 83702",
+    "city_state": "Boise, ID",
+    "type": "Industrial",
+    "transaction": "Sale",
+    "date": "2026-03-14",
+    "price": 4250000,
+    "size_sqft": 42000,
+    "basis": "public_record",
+    "source_url": "https://example-county.gov/recorder/instrument/2026-012345",
+    "added": "2026-08-16",
+    "note": "What this deal is here to catch, and anything odd about it a future reader would otherwise rediscover. Kept OUT of `deals` on purpose: an illustrative row inside the answer key is a fake transaction being scored as a real one, the same trap the vault template's `#` comment rows exist to avoid."
+  },
+  "deals": []
+}

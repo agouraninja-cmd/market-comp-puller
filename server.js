@@ -2352,6 +2352,17 @@ const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO
 // still writes either way.
 const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
 
+// Comps must be within ±30% of the subject's square footage (size-band.js).
+// Default ON; `off` is the rollback lever, and it is a KILL SWITCH rather than
+// a change of default: the form sends its own percentage on every search, so a
+// lever that only moved the server's default would leave every real request
+// filtering exactly as before and look broken. Off restores the pre-band app —
+// no filtering, no SIZE LIMIT rule in the prompt, and the same cache keys the
+// app used before the feature existed. The PERCENTAGE itself is deliberately
+// not an env var: it is a product decision that belongs with the rules and the
+// form's own prose, not in Render's dashboard.
+const SIZE_BAND = !/^(0|off|false|no)$/i.test(String(process.env.SIZE_BAND || ""));
+
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
 // each lane carries its own copy of the base prompt, so splitting a shallow
@@ -11494,12 +11505,14 @@ const server = http.createServer((req, res) =>
         // its cache entries with /api/explore-market's own pipeline (see the
         // lockstep note in gen-market-seed.js), so the two must agree on the
         // prompt, not just on the key.
-        const tolOk = internal ? null : SIZEBAND.normalizeTolerancePct(sizeTolerancePct);
-        // …and the key they share must stay byte-identical, so an internal
-        // caller contributes NOTHING here rather than an explicit "off",
-        // which would be a different key from the Explorer's (which passes no
-        // band at all) and would quietly double-bill the same search.
-        const tolKey = internal ? undefined : tolOk;
+        const tolOk = (internal || !SIZE_BAND) ? null : SIZEBAND.normalizeTolerancePct(sizeTolerancePct);
+        // …and the key they share must stay byte-identical, so neither an
+        // internal caller nor a rolled-back deployment contributes anything
+        // here — an explicit "off" would be a different key from the
+        // Explorer's (which passes no band at all), quietly double-billing
+        // the same search, and would split the 30-day cache in two on the way
+        // out of the feature.
+        const tolKey = (internal || !SIZE_BAND) ? undefined : tolOk;
         const addressOk = String(address).trim();
         const typeOk = String(type);
         const noteOk = note ? String(note).trim() : "";
@@ -15288,6 +15301,12 @@ const server = http.createServer((req, res) =>
         guestSearch,
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),
+        // Presentation only, like every other flag here — the band is enforced
+        // server-side regardless. It exists so the rollback lever is a whole
+        // lever: with SIZE_BAND=off the form must stop offering a "Comp size
+        // range" that no longer does anything, which is worse than not having
+        // the control at all.
+        sizeBand: { enabled: SIZE_BAND, defaultPct: SIZEBAND.DEFAULT_TOLERANCE_PCT },
         pro: {
           enabled: on,
           // Checkout and the portal both 503 unless Stripe is configured too,
@@ -17395,6 +17414,9 @@ server.listen(PORT, () => {
   console.log(CORPUS_RADIUS
     ? "📍 Corpus radius blend ON — saved deals within 10 miles join CRE reports, 1 mile for houses (set CORPUS_RADIUS=off to disable)."
     : "📍 Corpus radius blend off (CORPUS_RADIUS=off) — reports are search-only.");
+  console.log(SIZE_BAND
+    ? `📏 Comp size band ON — comps must be within ±${SIZEBAND.DEFAULT_TOLERANCE_PCT}% of the subject's size unless the visitor widens it (set SIZE_BAND=off to disable).`
+    : "📏 Comp size band off (SIZE_BAND=off) — comps of any size, and the form's Comp size range is hidden.");
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`
     : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);

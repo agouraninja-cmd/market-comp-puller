@@ -3906,6 +3906,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
     accountWall = Boolean(cfg.accountWall);
+    // The band's rollback lever, reaching the form. A missing key means an
+    // older server that has no lever, which is the ON state — so this hides
+    // the control only on an explicit `false`, never on silence.
+    if (cfg.sizeBand && cfg.sizeBand.enabled === false) {
+      const wrap = document.getElementById("sizeToleranceWrap");
+      if (wrap) wrap.classList.add("hidden");
+      // …and stop the control's value from riding along on searches, so a
+      // visitor who had picked 10% before the lever was pulled does not keep
+      // sending it to a server that is ignoring it anyway.
+      setSizeToleranceControls(null);
+    }
     renderGuestSearchHint();
     applyLookbackGating();
     // Safe here despite initGate() being called near the top of the script:

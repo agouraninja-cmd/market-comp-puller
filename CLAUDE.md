@@ -689,7 +689,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   with no subject size there is no band at all. The cache key carries the
   tolerance only when it is NOT the default, so the existing 30-day cache
   survives (a legacy entry re-served under the default is still filtered at
-  serialization). Every response carries `market_cap_rate_range`,
+  serialization). Rollback is **`SIZE_BAND=off`**, and it is a KILL SWITCH,
+  not a change of default: the form states its own percentage on every
+  search, so a lever that only moved the server's default would leave real
+  traffic filtering exactly as before while the startup banner claimed it
+  was off. Off restores the pre-band app — no filter, no SIZE LIMIT rule in
+  the prompt, the same cache keys as before the feature — and
+  `/api/config`'s `sizeBand.enabled` carries it to the browser so the form
+  hides a control that would otherwise sit there doing nothing (an explicit
+  `false` only; a missing key is an older server, which is the ON state).
+  The PERCENTAGE is deliberately not an env var: it is a product decision
+  that belongs with the rules and the prose that states it, not in Render's
+  dashboard. Every response carries `market_cap_rate_range`,
   `value_drivers`, `market_trend`, and a per-comp `source_type` that the
   server normalizes onto its enum (unknown → `estimate`, so badges can
   under-claim provenance but never over-claim). Normalization also ENFORCES

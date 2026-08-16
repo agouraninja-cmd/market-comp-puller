@@ -2120,8 +2120,11 @@ test("the request's own band reaches the prompt, the cache key and the filter", 
   // The seed generator and the Explorer share cache entries, so an internal
   // caller must contribute neither a band nor a key fragment — otherwise the
   // same market search is prompted two ways and billed twice.
-  assert.match(src, /const tolOk = internal \? null : SIZEBAND\.normalizeTolerancePct\(sizeTolerancePct\);/);
-  assert.match(src, /const tolKey = internal \? undefined : tolOk;/);
+  assert.match(src, /SIZEBAND\.normalizeTolerancePct\(sizeTolerancePct\)/);
+  // The internal opt-out and the SIZE_BAND lever share these two lines; the
+  // lever's own test below pins their exact shape.
+  assert.match(src, /const tolOk = \(internal \|\| !SIZE_BAND\)/);
+  assert.match(src, /const tolKey = \(internal \|\| !SIZE_BAND\)/);
   // And the model is told, so it spends its searches on comps that survive.
   assert.match(src, /getComps\(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, tolOk,/);
   assert.match(src, /SIZE LIMIT \(a hard rule, not a preference\)/);
@@ -2139,4 +2142,39 @@ test("30% is the default on the server and in the form", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
   assert.match(html, new RegExp(`<option value="${DEFAULT_TOLERANCE_PCT}" selected>`),
     "the form's preselected option must be the module's default");
+});
+
+// The size band's rollback lever. Every other risky default in this app has
+// one (CORPUS_RADIUS, CORPUS_METRO, ACCOUNT_WALL, GUEST_SEARCH_LIMIT), and
+// this one carries an extra requirement: the form sends its own percentage on
+// every search, so a lever that only changed the SERVER's default would leave
+// real traffic filtering exactly as before while the logs claimed it was off.
+// It is a kill switch, and /api/config carries it so the control disappears
+// with it rather than sitting there doing nothing.
+test("SIZE_BAND=off is a whole rollback lever", async (t) => {
+  await t.test("/api/config reports the band off, and the form can hide the control", async () => {
+    const srv = await boot({ SIZE_BAND: "off" });
+    t.after(() => srv.stop());
+    const cfg = await (await fetch(srv.base + "/api/config")).json();
+    assert.equal(cfg.sizeBand.enabled, false);
+  });
+
+  await t.test("the band is on by default, and states its own percentage", async () => {
+    const srv = await boot({});
+    t.after(() => srv.stop());
+    const cfg = await (await fetch(srv.base + "/api/config")).json();
+    assert.equal(cfg.sizeBand.enabled, true);
+    assert.equal(cfg.sizeBand.defaultPct, require("../size-band").DEFAULT_TOLERANCE_PCT);
+  });
+
+  await t.test("the lever reaches the request, not just the banner", () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+    // Both the band ITSELF and the cache key: off must restore the exact keys
+    // the app used before the feature, not split the 30-day cache on the way
+    // out.
+    assert.match(src, /const tolOk = \(internal \|\| !SIZE_BAND\) \? null :/);
+    assert.match(src, /const tolKey = \(internal \|\| !SIZE_BAND\) \? undefined : tolOk;/);
+  });
 });

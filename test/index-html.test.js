@@ -1072,3 +1072,14 @@ test("the notice names the percentage that would bring the dropped comps back", 
   assert.match(fn, /Set "Comp size range" to Any size/);
   assert.match(fn, /Widening "Comp size range" to \$\{widen\}%/);
 });
+
+test("SIZE_BAND=off hides the control, and silence never does", () => {
+  const start = html.indexOf("async function initGate()");
+  const fn = html.slice(start, start + 3000);
+  // Explicit false only: an older server with no such key is the ON state, and
+  // reading a missing key as off would hide a control that still works.
+  assert.match(fn, /cfg\.sizeBand && cfg\.sizeBand\.enabled === false/);
+  assert.match(fn, /getElementById\("sizeToleranceWrap"\)/);
+  // The stored preference must also stop riding along on searches.
+  assert.match(fn, /setSizeToleranceControls\(null\)/);
+});

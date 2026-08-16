@@ -320,3 +320,46 @@ test("a hub sells the client nothing", () => {
   // silently loses its pricing link.
   assert.match(server, /function accountNavSlots\(\{ desk = true, upsell = true \} = \{\}\)/);
 });
+
+// --- sending comps out of the vault (2026-08-14) --------------------------
+
+test("the vault picker is the OWNER's, not every writer's", () => {
+  // A client can add a building they found; only the broker sends out of the
+  // book of record. canAdd, not canWrite.
+  const js = pageScript(html);
+  assert.match(js, /show\("vaultWrap", !!d\.canAdd\)/);
+  assert.match(js, /show\("addWrap", !!d\.canWrite\)/);
+});
+
+test("the vault is fetched once, lazily, and never on an ordinary hub visit", () => {
+  // Most hub visits never open this. A broker's whole book is the largest
+  // thing this page could ask for.
+  const js = pageScript(html);
+  assert.match(js, /if \(!open \|\| vaultBook\) return;/);
+  assert.match(js, /\/api\/vault\?limit=1000/);
+});
+
+test("a refused vault read says so instead of showing an empty book", () => {
+  // An empty list and a refused read look identical, and one of them is a
+  // broker's whole book of business appearing to be gone.
+  const js = pageScript(html);
+  const fn = js.match(/el\("vaultToggle"\)\.addEventListener[\s\S]*?\n  \}\);/);
+  assert.ok(fn, "the toggle handler must exist");
+  assert.match(fn[0], /Your vault could not be loaded/);
+});
+
+test("the send reports what actually landed, not what was asked for", () => {
+  // added can be fewer than requested when something was already here. A
+  // broker told five were sent will not go looking for the two that were not.
+  const js = pageScript(html);
+  assert.match(js, /var n = o\.j\.added \|\| 0;/);
+  assert.match(js, /already in this hub/);
+});
+
+test("already-sent comps cannot be selected", () => {
+  // Matched on address, because the client item shape deliberately carries no
+  // vault row id. A hint only — the server filters duplicates itself.
+  const js = pageScript(html);
+  assert.match(js, /function alreadySent\(\)\{/);
+  assert.match(js, /cb\.disabled = isSent/);
+});

@@ -181,7 +181,7 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 #covRow{align-items:center;margin-top:8px;gap:8px}
 #covRow .empty{padding:4px 0;text-align:left}
 .addpanel .tw,.mappanel .tw{box-shadow:none}
-.row label,.form label,.editrow label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
+.row label,.form label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink-3);font-weight:600}
 select,input[type=text],input[type=date]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);min-height:40px}
@@ -257,9 +257,10 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;
   padding:0 2px;font-family:inherit}
 .chip button:hover{color:var(--red)}
-/* Row actions: Edit stays a text link. Delete is a trash icon — quiet ink
-   that goes red on hover, the same pattern as removing an import. A red
-   "Delete" word next to Publish was a second shout on the row. */
+/* Row actions: Delete is a trash icon — quiet ink that goes red on hover, the
+   same pattern as removing an import. A red "Delete" word next to Publish was
+   a second shout on the row. Edit used to sit beside it as a text link; the
+   cells are typed into directly now, so the row's only control is the trash. */
 .lnk{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;
   color:var(--ink-3);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .lnk:hover{color:var(--ink)}
@@ -269,18 +270,33 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .lnk.trash:hover,.lnk.trash:focus{color:var(--red)}
 .lnk.trash svg{display:block}
 td.rowact{white-space:nowrap}
-/* The inline edit row: one form spanning every column, not per-cell inputs —
-   a compact-table row hides cap_rate/tenancy/year_built/notes, so a per-cell
-   form on THAT view could not hold them. Spreadsheet mode is the other
-   door: it shows those columns as cells and saves on blur. Same grid as
-   the add-by-hand and BOV forms, so the three data-entry surfaces read as
-   one vocabulary. */
-.editrow td{background:var(--wash);padding:16px 18px}
-.editk{margin:0 0 12px;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600}
-.editrow .form{max-width:920px}
-.editrow input,.editrow select{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);width:100%;min-height:40px}
+/* Editable cells in the compact table. There is no Edit button: a broker
+   fixing a typo types over it, exactly as they would in the spreadsheet they
+   exported this book from.
+   Borderless at rest, because the table is a statement about a book of
+   business first and a form second — a grid of ten visible input boxes per
+   row reads as data entry and buries the numbers. The edge appears on hover
+   and focus, which is where the affordance lives. Keep this input's font
+   inherited: a cell that changes size or weight when touched makes the whole
+   row jump, and the row is what the broker is reading. */
+#tbl input.cell{width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:var(--r);
+  padding:6px 8px;margin:-6px -8px;font-family:inherit;font-size:inherit;line-height:inherit;
+  font-weight:inherit;letter-spacing:inherit;
+  background:transparent;color:inherit;min-height:34px}
+#tbl input.cell:hover{border-color:var(--edge)}
+#tbl input.cell:focus{border-color:var(--ink-3);background:var(--card);outline:none}
+#tbl td.num input.cell{text-align:right}
+/* Save state rides on the input, never on a re-render: rebuilding the table
+   on every blur would steal the focus the broker just Tabbed into. Shared
+   with spreadsheet mode below, which is the same save on the same PATCH. */
+#tbl input.cell.saving{opacity:.65}
+#tbl input.cell.err{border-color:var(--red);background:var(--err-bg)}
+#tbl input.cell.saved{border-color:var(--ok-rule)}
+/* Derived, and so never typed into: market is parsed from the address by the
+   server (it has to agree byte for byte with comp_corpus.market) and $/SF is
+   computed for priced sales only. Both are refreshed from the server's own
+   saved row after an edit rather than recomputed here. */
+#tbl td.ro{color:var(--ink-2)}
 /* Spreadsheet mode: the uploaded book, as a grid. Cells are real inputs so
    Tab/Enter move the way they do in Excel; a saving/error state rides on
    the input rather than replacing the row, because rebuilding the table
@@ -925,10 +941,6 @@ if(dd)dd.open=false;});</script>
   var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
   var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false,bovsLoaded=false;
   var bench=null,benchFailed=false,benchLoaded=false;
-  // The one comp row currently swapped for an inline edit form, or null. Only
-  // one at a time: two open forms would double the "only changed fields
-  // travel" bookkeeping in saveComp for no real benefit.
-  var editingId=null;
   // Spreadsheet mode: the uploaded book as a grid of inputs. sheetUploadId
   // narrows to one import (Open on that file); null means the current view.
   // Kept across load() so a cell save that refetches, or a delete, does not
@@ -1142,10 +1154,11 @@ if(dd)dd.open=false;});</script>
     return null;
   }
 
-  // Every field PATCH /api/vault/comp accepts. The whole row becomes one form
-  // spanning the table's colspan, not ten per-cell inputs: a comp carries
-  // fields (cap_rate, tenancy, year_built, notes) the table itself has no
-  // column for, so a per-cell form could never reach them.
+  // Every field PATCH /api/vault/comp accepts. Spreadsheet mode shows all of
+  // them; the compact table shows the six it has columns for (CELL_FIELDS
+  // below), which is why the spreadsheet still exists as the other door — a
+  // comp carries cap_rate/tenancy/year_built/notes that the compact table has
+  // nowhere to put.
   var EDIT_FIELDS=["address","property_type","transaction","deal_date",
                    "price","size_sqft","cap_rate","tenancy","year_built","notes"];
   var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
@@ -1154,6 +1167,57 @@ if(dd)dd.open=false;});</script>
 
   function sheetLabel(k){
     return EDIT_LABELS[k]||(typeof TARGET_LABELS!=="undefined"&&TARGET_LABELS[k])||k;
+  }
+
+  // The compact table's editable columns: its own columns, minus the two it
+  // derives. market is parsed from the address BY THE SERVER (marketOf, which
+  // must agree byte for byte with comp_corpus.market), and price_per_sqft is
+  // computed by normalizeRow for priced sales only — typing into either would
+  // let a broker set a figure the next save would silently overwrite, which is
+  // worse than not offering it. Both are refreshed after an edit from the row
+  // the server sends back. Every entry here must be in EDIT_FIELDS, or the
+  // PATCH would reject the field it just offered.
+  var CELL_FIELDS=["address","property_type","transaction","deal_date","price","size_sqft"];
+
+  // A cell shows the FORMATTED figure and holds the raw one, swapping to raw
+  // on focus (cellFocus below). A book of business is read far more often than
+  // it is edited, and "$1,250,000" is the number the broker is reading; making
+  // every price cell editable is not a reason to show them all as 1250000.
+  // parseMoney/parseNumber would in fact accept the formatted string back, but
+  // that is a happy accident of the parsers, not something to lean the display
+  // on — the raw value is what gets compared and sent.
+  function cellDisplay(k,v){
+    if(v==null||v==="")return "";
+    if(k==="price")return money(v);
+    if(k==="size_sqft")return num(v);
+    return String(v);
+  }
+  function cellInput(c,k){
+    var raw=c[k]==null?"":c[k];
+    return '<input type="text" class="cell" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
+      '" data-raw="'+escA(raw)+'" value="'+escA(cellDisplay(k,c[k]))+
+      '" aria-label="'+escA(sheetLabel(k))+'"/>';
+  }
+  // Derived cells carry their own id/key so a save can refresh just them,
+  // without the re-render that would steal focus from the next cell.
+  function roCell(c,k,html,isNum){
+    return '<td class="ro'+(isNum?" num":"")+'" data-ro-id="'+escA(c.id)+
+      '" data-ro-k="'+escA(k)+'">'+html+"</td>";
+  }
+  // Preserves whatever base class the input carries (.cell in the compact
+  // table, none in the spreadsheet) while swapping the save state, so a
+  // className assignment cannot quietly strip the styling off the cell.
+  // split(" "), NOT a regex: this whole page is one template literal, where a
+  // single-backslash escape is eaten before the browser ever sees it — /\s+/
+  // in this source emits as /s+/, which splits "saving" into ["","aving"] and
+  // leaves the state class stuck on the cell forever. Class names here are
+  // written by this file and are single-space separated, so a plain split is
+  // both correct and immune to that.
+  function cellState(el,state){
+    var base=String(el.className||"").split(" ").filter(function(c){
+      return c&&c!=="saving"&&c!=="saved"&&c!=="err";
+    }).join(" ");
+    el.className=state?(base?base+" "+state:state):base;
   }
   // Columns the spreadsheet shows. Core fields always (they are the template);
   // per-type extras only when at least one row on screen carries them, matching
@@ -1183,20 +1247,29 @@ if(dd)dd.open=false;});</script>
     var arrow=on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"";
     return '<th data-k="'+k+'"'+(num?' class="num"':"")+">"+esc(label)+arrow+"</th>";
   }
+  // The bar is on in BOTH views now. Cells that can be typed into but look
+  // like text need one line saying so — there is no Edit button left to make
+  // it obvious, and a broker who never discovers the cells are live would
+  // conclude the vault had simply stopped letting them fix anything. It also
+  // carries the warning about published comps, which is the one consequence a
+  // save can have that the broker cannot see from the row.
+  var CELL_HINT="Type in any cell to change it \\u00b7 changes save when you leave the cell, Esc undoes. "+
+    "Editing a published comp withdraws it from the public records.";
   function setSheetChrome(){
     $("tbl").className=sheetMode?"sheet":"";
     $("sheetToggle").textContent=sheetMode?"Done":"Open spreadsheet";
     var bar=$("sheetBar");
-    if(!sheetMode){ bar.className="note hide"; bar.textContent=""; return; }
-    var name=uploadName(sheetUploadId);
     bar.className="note";
-    bar.textContent=(name?"Editing "+name+" \\u00b7 ":"Spreadsheet \\u00b7 ")+
-      "changes save when you leave a cell. Editing a published comp withdraws it from the public records.";
+    if(!sheetMode){
+      bar.textContent=CELL_HINT+" Open the spreadsheet for cap rate, tenancy, year built and notes.";
+      return;
+    }
+    var name=uploadName(sheetUploadId);
+    bar.textContent=(name?"Editing "+name+" \\u00b7 ":"Spreadsheet \\u00b7 ")+CELL_HINT;
   }
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    editingId=null;
     if(uploadId){ $("fMarket").value=""; $("fType").value=""; }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
@@ -1212,19 +1285,6 @@ if(dd)dd.open=false;});</script>
   function trashBtn(id){
     return '<button type="button" class="lnk trash" data-del-comp="'+esc(id)+
       '" aria-label="Delete this comp" title="Delete"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg></button>';
-  }
-
-  function editRow(c){
-    var fields=EDIT_FIELDS.map(function(f){
-      var v=c[f]==null?"":c[f];
-      var wide=(f==="address"||f==="notes")?' class="span2"':"";
-      return "<label"+wide+">"+esc(EDIT_LABELS[f]||f)+
-        '<input type="text" id="edit_'+f+'" value="'+escA(v)+'"/></label>';
-    }).join("");
-    return '<tr class="editrow"><td colspan="10"><p class="editk">Editing this comp</p><div class="form">'+fields+
-      '<div class="formact span-all"><button class="btn" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
-      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button></div>'+
-      "</div></td></tr>";
   }
 
   function render(){
@@ -1258,11 +1318,6 @@ if(dd)dd.open=false;});</script>
       headCell("size_sqft","Size",true)+headCell("price_per_sqft","$/SF",true)+
       headCell("published","Public")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
-      // A row being edited replaces itself with the form, rather than the
-      // form appearing beside it: two representations of the same comp on
-      // screen at once is what "only changed fields travel" was written to
-      // avoid confusion about.
-      if(editingId===c.id)return editRow(c);
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
       // it goes through a button and a confirm.
@@ -1273,12 +1328,16 @@ if(dd)dd.open=false;});</script>
         ? ' <span class="gcOut" title="'+escA(Math.abs(gutOutliers[c.id].pct)+"% "+
             (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
         : "";
-      var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
-        '">Edit</button> '+trashBtn(c.id)+"</td>";
-      return '<tr><td class="addr">'+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
-        '</td><td><span class="tag">'+esc(c.transaction)+"</span></td><td>"+esc(c.deal_date)+
-        '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
-        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+actions+"</tr>";
+      // Six typed cells, two derived ones, then the public toggle and the
+      // trash. The transaction cell loses its .tag chip by becoming an input:
+      // a chip a broker cannot correct in place was the thing being fixed.
+      return '<tr><td class="addr">'+cellInput(c,"address")+"</td>"+
+        roCell(c,"market",esc(c.market))+
+        "<td>"+cellInput(c,"property_type")+"</td><td>"+cellInput(c,"transaction")+"</td>"+
+        "<td>"+cellInput(c,"deal_date")+'</td><td class="num">'+cellInput(c,"price")+
+        '</td><td class="num">'+cellInput(c,"size_sqft")+"</td>"+
+        roCell(c,"price_per_sqft",psf(c.price_per_sqft)+flag,true)+
+        "<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
     // current view, sealed under a double rule — the same figure the market
@@ -2849,17 +2908,6 @@ if(dd)dd.open=false;});</script>
     el.textContent=text||"";
   }
 
-  function openEditor(id){
-    if(!compById(id))return;
-    editingId=id;
-    render();
-  }
-
-  function closeEditor(){
-    editingId=null;
-    render();
-  }
-
   async function deleteComp(id){
     // Hard delete, no undo: confirm by name rather than with a generic prompt.
     if(!confirm("Delete this comp? This cannot be undone."))return;
@@ -2880,61 +2928,38 @@ if(dd)dd.open=false;});</script>
       : "Deleted.");
   }
 
-  // Sends only CHANGED fields, so an untouched input can never overwrite a
-  // value with a stale copy the page happened to be holding.
-  async function saveComp(id,before){
-    var patch={},any=false;
-    EDIT_FIELDS.forEach(function(f){
-      var el=$("edit_"+f); if(!el)return;
-      var v=el.value.trim();
-      var was=before[f]==null?"":String(before[f]);
-      if(v!==was){patch[f]=v;any=true;}
-    });
-    if(!any){closeEditor();return;}
+  // One field of one row, on blur — from a compact-table cell or a spreadsheet
+  // one, which are the same input saved the same way. Only the changed field
+  // travels, so an untouched cell can never overwrite a value with a stale
+  // copy the page happened to be holding.
+  //
+  // Does NOT re-render the table: rebuilding the inputs would steal focus from
+  // the cell the broker just Tabbed into. Everything the save changes on
+  // screen is therefore patched in place below.
+  async function saveCell(id, key, el){
+    var before=compById(id); if(!before||!el)return;
+    var v=String(el.value||"").trim();
+    var was=before[key]==null?"":String(before[key]);
+    if(v===was){ cellState(el,""); showCell(el,key,before[key]); return; }
+    var patch={}; patch[key]=v;
+    cellState(el,"saving");
     var r;
     try{
       r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
         method:"PATCH",credentials:"same-origin",
         headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
     }catch(err){
+      cellState(el,"err");
       return compMsg("That didn't reach the server. Nothing was changed.",true);
     }
     var j=await r.json().catch(function(){return{};});
     // 400 and 409 both carry a sentence written for the broker, and a 400
     // lists EVERY problem with the row rather than just the first. Show it
     // whole: "You already have this comp." tells them what to do, "Could not
-    // save" does not.
-    if(!r.ok)return compMsg(j.error||"Could not save that change.",true);
-    closeEditor();
-    load();
-    compMsg(j.unpublished
-      ? "Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it."
-      : "Saved.");
-  }
-
-  // One field of one row, from spreadsheet blur. Same PATCH as Save on the
-  // compact form, same "only the changed field travels" rule. Does NOT
-  // re-render the table: rebuilding the inputs would steal focus from the
-  // cell the broker just Tabbed into.
-  async function saveSheetCell(id, key, el){
-    var before=compById(id); if(!before||!el)return;
-    var v=String(el.value||"").trim();
-    var was=before[key]==null?"":String(before[key]);
-    if(v===was){ el.className=""; return; }
-    var patch={}; patch[key]=v;
-    el.className="saving";
-    var r;
-    try{
-      r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
-        method:"PATCH",credentials:"same-origin",
-        headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
-    }catch(err){
-      el.className="err";
-      return compMsg("That didn't reach the server. Nothing was changed.",true);
-    }
-    var j=await r.json().catch(function(){return{};});
+    // save" does not. The cell keeps what they typed, so the correction is
+    // one keystroke away rather than something to retype from memory.
     if(!r.ok){
-      el.className="err";
+      cellState(el,"err");
       return compMsg(j.error||"Could not save that change.",true);
     }
     var row=compById(id);
@@ -2944,11 +2969,57 @@ if(dd)dd.open=false;});</script>
         Object.keys(j.comp).forEach(function(k){ row[k]=j.comp[k]; });
       }
     }
-    el.className="saved";
+    // Sorting a column, changing the filter or a delete's reload all rebuild
+    // the table, and any of them can land while this save is still in flight —
+    // leaving us holding a detached input over a freshly-drawn row that still
+    // shows the PRE-save value. Patching the dead node would leave the new row
+    // stale with a refreshed $/SF beside it, so redraw the whole table
+    // instead. Focus has already moved on by definition here, so the usual
+    // reason not to re-render does not apply.
+    if(el.isConnected===false){ render(); }
+    else{
+      cellState(el,"saved");
+      // The server's own saved row is what goes back on screen, never the
+      // string the broker typed: normalizeRow is what turns "45,000 SF" into
+      // 45000 and re-derives market and $/SF, and a cell still showing the raw
+      // typing while the row behind it holds something else is how a broker
+      // ends up trusting a figure the vault never stored.
+      showCell(el,key,row?row[key]:v);
+      refreshDerived(id,row);
+    }
     if(j.unpublished){
       compMsg("Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it.");
     }else{
       compMsg("Saved.");
+    }
+  }
+
+  // Put the formatted figure back in a cell that is no longer focused, and
+  // keep data-raw in step so the next focus offers the stored value.
+  // Only compact-table cells carry data-raw. A spreadsheet cell is deliberately
+  // left alone: that view is the book as a grid of stored values, and quietly
+  // formatting "1000000" into "$1,000,000" there would make the one screen a
+  // broker opens to check what was actually imported stop showing it.
+  function showCell(el,key,v){
+    if(!el.getAttribute||el.getAttribute("data-raw")===null)return;
+    if(el.setAttribute)el.setAttribute("data-raw",v==null?"":String(v));
+    el.value=cellDisplay(key,v);
+  }
+
+  // market and $/SF are the server's to compute, so after a save they are read
+  // from the row it sent back. Without this, editing a price left the $/SF
+  // beside it reading the old figure until the next full render — a wrong
+  // number sitting in a priced column, which is the one thing this table
+  // cannot do.
+  function refreshDerived(id,row){
+    if(!row)return;
+    var tb=$("tbody");
+    if(!tb||!tb.querySelectorAll)return;
+    var cells=tb.querySelectorAll('td[data-ro-id="'+id+'"]')||[];
+    for(var i=0;i<cells.length;i++){
+      var k=cells[i].getAttribute&&cells[i].getAttribute("data-ro-k");
+      if(k==="market")cells[i].innerHTML=esc(row.market);
+      else if(k==="price_per_sqft")cells[i].innerHTML=psf(row.price_per_sqft);
     }
   }
 
@@ -2958,27 +3029,50 @@ if(dd)dd.open=false;});</script>
   $("tbody").addEventListener("click",function(e){
     var d=e.target.closest("button[data-del-comp]");
     if(d)return deleteComp(d.getAttribute("data-del-comp"));
-    var s=e.target.closest("button[data-save-edit]");
-    if(s)return saveComp(s.getAttribute("data-save-edit"),compById(s.getAttribute("data-save-edit"))||{});
-    var c=e.target.closest("button[data-cancel-edit]");
-    if(c)return closeEditor();
-    var b=e.target.closest("button[data-edit]");
-    if(b)return openEditor(b.getAttribute("data-edit"));
   });
-  // focusout bubbles (blur does not). One listener for every sheet cell,
-  // attached once: renderSheet rebuilds the inputs and must not re-bind.
+  // focusout bubbles (blur does not). One listener for every cell in either
+  // view, attached once: render() and renderSheet() rebuild the inputs on
+  // every draw and must not re-bind.
+  //
+  // Deliberately NOT gated on sheetMode any more — the compact table's cells
+  // are the same input saved by the same PATCH, and the gate was what made an
+  // Edit button necessary in the first place.
   $("tbody").addEventListener("focusout",function(e){
     var el=e.target;
-    if(!sheetMode||!el||!el.getAttribute)return;
+    if(!el||!el.getAttribute)return;
     var k=el.getAttribute("data-k"), id=el.getAttribute("data-id");
     if(!k||!id)return;
-    saveSheetCell(id,k,el);
+    saveCell(id,k,el);
+  });
+  // Focus shows the stored value rather than the formatted one, so a broker
+  // edits 1250000 and never has to work out whether the $ and commas they can
+  // see are part of what they are about to retype.
+  $("tbody").addEventListener("focusin",function(e){
+    var el=e.target;
+    if(!el||!el.getAttribute)return;
+    var raw=el.getAttribute("data-raw");
+    if(raw===null||!el.getAttribute("data-k"))return;
+    el.value=raw;
   });
   $("tbody").addEventListener("keydown",function(e){
-    if(!sheetMode)return;
     var el=e.target;
     if(!el||!el.getAttribute||!el.getAttribute("data-k"))return;
+    // Enter commits by blurring, which is what fires the save. Escape puts the
+    // stored value back and leaves without saving — the cell IS the editor
+    // now, so it needs the Cancel that the edit form used to carry.
     if(e.key==="Enter"){ e.preventDefault(); el.blur(); }
+    else if(e.key==="Escape"){
+      // A spreadsheet cell carries no data-raw (it already shows the stored
+      // value), so its undo comes from the row the page is holding.
+      var raw=el.getAttribute("data-raw");
+      if(raw===null){
+        var row=compById(el.getAttribute("data-id"));
+        if(row)raw=row[el.getAttribute("data-k")]==null?"":String(row[el.getAttribute("data-k")]);
+      }
+      if(raw!==null)el.value=raw;
+      cellState(el,"");
+      el.blur();
+    }
   });
 
   $("ups").addEventListener("click",function(e){

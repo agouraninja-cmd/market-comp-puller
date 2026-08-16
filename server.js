@@ -11498,21 +11498,35 @@ const server = http.createServer((req, res) =>
         // opt-in. "off" is a real value (no band at all); anything unreadable
         // falls back to the default rather than refusing the search.
         //
-        // Internal callers opt OUT: gen-market-seed.js searches "Boise, ID"
-        // with no subject building, so a band could only produce the prompt's
-        // "once you determine the target's size…" clause about a target that
-        // is a whole city. It matters more than it looks — that script shares
-        // its cache entries with /api/explore-market's own pipeline (see the
-        // lockstep note in gen-market-seed.js), so the two must agree on the
-        // prompt, not just on the key.
-        const tolOk = (internal || !SIZE_BAND) ? null : SIZEBAND.normalizeTolerancePct(sizeTolerancePct);
-        // …and the key they share must stay byte-identical, so neither an
-        // internal caller nor a rolled-back deployment contributes anything
-        // here — an explicit "off" would be a different key from the
-        // Explorer's (which passes no band at all), quietly double-billing
-        // the same search, and would split the 30-day cache in two on the way
-        // out of the feature.
-        const tolKey = (internal || !SIZE_BAND) ? undefined : tolOk;
+        // Internal callers DEFAULT out, rather than being refused: this is the
+        // fallback argument, not an override. gen-market-seed.js searches
+        // "Boise, ID" with no subject building, so a default band could only
+        // produce the prompt's "once you determine the target's size…" clause
+        // about a target that is a whole city — and it shares its cache
+        // entries with /api/explore-market's own pipeline (see the lockstep
+        // note in gen-market-seed.js), so the two must agree on the prompt and
+        // not merely on the key. Neither of them states a band, so neither
+        // gets one.
+        //
+        // But an internal caller that ASKS for a band gets it, and that is
+        // load-bearing: run-eval.js is an internal caller by construction (the
+        // admin key is what buys it `fresh` and an ungated report), so an
+        // internal override would have made a band-on vs band-off eval two
+        // identical runs — about $8.60 to measure nothing, with both runs
+        // looking perfectly healthy.
+        const bandAsked = sizeTolerancePct !== undefined && sizeTolerancePct !== null && sizeTolerancePct !== "";
+        const tolOk = !SIZE_BAND
+          ? null
+          : SIZEBAND.normalizeTolerancePct(sizeTolerancePct, internal ? null : SIZEBAND.DEFAULT_TOLERANCE_PCT);
+        // The key the seed generator and the Explorer share must stay
+        // byte-identical, so an internal caller that stated nothing
+        // contributes nothing here — an explicit "off" would be a different
+        // key from the Explorer's (which passes no band at all) and would
+        // quietly double-bill the same search. A rolled-back deployment
+        // likewise contributes nothing, so SIZE_BAND=off restores the exact
+        // keys the app used before the feature instead of splitting the
+        // 30-day cache in two on the way out.
+        const tolKey = (!SIZE_BAND || (internal && !bandAsked)) ? undefined : tolOk;
         const addressOk = String(address).trim();
         const typeOk = String(type);
         const noteOk = note ? String(note).trim() : "";
@@ -11548,8 +11562,29 @@ const server = http.createServer((req, res) =>
         // binding; cache-hit and billed exits both run after it is assigned.
         let corpusRadiusRows = [];
 
+        // The size band, applied to whatever comps a caller is about to be
+        // shown. Unlike everything else in gate() this is NOT an entitlement
+        // or a privacy rule — it is the caller's own search parameter — so it
+        // is the one thing here an internal caller does not skip: a band is
+        // only ever set for one because it explicitly asked, and run-eval.js
+        // measuring the prompt half while the filter sat behind the internal
+        // early-return would report a difference customers never see.
+        // Still serialization-time: every call sits inside gate(), downstream
+        // of the cache write, harvestComps() and the market snapshot.
+        const applySizeBand = (rep) => {
+          const subjectSqft = sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0;
+          const band = SIZEBAND.sizeBandFor(subjectSqft, tolOk);
+          if (!band) return { report: rep, band: null, subjectSqft };
+          const before = Array.isArray(rep && rep.comps) ? rep.comps.length : 0;
+          const report = SIZEBAND.applySizeBand(rep, band);
+          if (report.size_filtered_count) {
+            console.log(`Size band: kept ${report.comps.length} of ${before} comp(s) within ${SIZEBAND.describeSizeBand(band)} (±${band.pct}%) — ${addressOk}`);
+          }
+          return { report, band, subjectSqft };
+        };
+
         const gate = async (rep) => {
-          if (internal) return rep;
+          if (internal) return applySizeBand(rep).report;
           // Public saved deals first, then the paywall, then the vault.
           // Radius blend is before gateReport so extras become locked_basis
           // for a free visitor instead of printing their addresses. Vault
@@ -11579,22 +11614,17 @@ const server = http.createServer((req, res) =>
           } else {
             merged = RADIUSBLEND.attachCompDistances(merged);
           }
-          const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
-          // The size band, enforced. Between the radius blend and the paywall
-          // on purpose: a saved deal three miles away is as capable of being
-          // the wrong size class as a searched one, and a comp the visitor
-          // asked us not to consider must not survive as a locked_basis row
-          // either — those feed the valuation math a free report computes.
-          // Removals are counted onto the report (size_filtered_count), so the
-          // client can say the filter is why the list is short.
-          const band = SIZEBAND.sizeBandFor(subjectSqft, tolOk);
-          if (band) {
-            const before = Array.isArray(merged && merged.comps) ? merged.comps.length : 0;
-            merged = SIZEBAND.applySizeBand(merged, band);
-            if (merged.size_filtered_count) {
-              console.log(`Size band: kept ${merged.comps.length} of ${before} comp(s) within ${SIZEBAND.describeSizeBand(band)} (±${band.pct}%) — ${addressOk}`);
-            }
-          }
+          // The band goes on between the radius blend and the paywall, on
+          // purpose: a saved deal three miles away is as capable of being the
+          // wrong size class as a searched one, and a comp the visitor asked
+          // us not to consider must not survive as a locked_basis row either
+          // — those feed the valuation math a free report computes. Removals
+          // are counted onto the report (size_filtered_count), so the client
+          // can say the filter is why the list is short.
+          const banded = applySizeBand(merged);
+          merged = banded.report;
+          const subjectSqft = banded.subjectSqft;
+          const band = banded.band;
           const gated = GATE.gateReport(merged, ent, {
             asOfMs: Date.now(),
             subjectSqft,

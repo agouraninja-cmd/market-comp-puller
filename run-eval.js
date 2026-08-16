@@ -31,6 +31,17 @@
 //   node run-eval.js --compare docs/evals/a.json docs/evals/b.json
 //   ... --only 2            run just the first 2 targets (plumbing check)
 //   ... --only=2            equals form, also accepted
+//   ... --size-band 30      state the comp size band for this run (or "off")
+//
+// MEASURING THE SIZE BAND. This harness is an internal caller (the admin key
+// is what buys it `fresh` and an ungated report), and internal callers take
+// no band unless they state one -- so a run WITHOUT --size-band is the
+// band-off baseline and a run WITH it is the candidate. Both halves of the
+// feature are exercised: the prompt states the window, and the filter runs
+// (server.js applies the band even for an internal caller, precisely so this
+// measures what a customer would get). The numbers that answer "is 30% safe"
+// are valuationPossibleRate and pricedSales -- the hero needs two priced
+// sale comps, so a band that starves it shows up in both.
 // Spec: docs/superpowers/specs/2026-08-09-search-quality-eval-design.md
 
 const fs = require("fs");
@@ -52,18 +63,29 @@ const flag = (name) => {
 // old indexOf-only flag() never matched the equals form) would fall through
 // to a default full run: an intended ~$0.72 plumbing check turning into a
 // ~$4.30 run with nobody meaning it to.
-const KNOWN_FLAGS = ["--compare", "--label", "--only"];
+const KNOWN_FLAGS = ["--compare", "--label", "--only", "--size-band"];
 for (const a of args) {
   if (!a.startsWith("--")) continue; // positional value (e.g. a --compare file path)
   const name = a.includes("=") ? a.slice(0, a.indexOf("=")) : a;
   if (!KNOWN_FLAGS.includes(name)) {
     console.error(`Unrecognized argument: ${a}`);
     console.error("Usage:");
-    console.error("  EVAL_BASE=... ADMIN_KEY=... node run-eval.js --label <name> [--only <n>|--only=<n>]");
+    console.error("  EVAL_BASE=... ADMIN_KEY=... node run-eval.js --label <name> [--only <n>|--only=<n>] [--size-band <pct|off>]");
     console.error("  node run-eval.js --compare <a.json> <b.json>");
     process.exit(1);
   }
 }
+
+// Absent means the band is not stated at all, which for an internal caller is
+// the band-off baseline -- deliberately NOT the same as "off", which states it.
+// Both resolve to no filtering here; keeping them distinct is what lets the
+// summary say which run was which instead of guessing.
+const sizeBandFlag = flag("--size-band");
+if (sizeBandFlag !== null && sizeBandFlag !== "" && !/^(off|\d+(\.\d+)?)$/i.test(sizeBandFlag)) {
+  console.error(`--size-band takes a percentage (e.g. 30) or "off", got: ${sizeBandFlag}`);
+  process.exit(1);
+}
+const sizeBand = sizeBandFlag === null || sizeBandFlag === "" ? null : sizeBandFlag;
 
 if (args.includes("--compare")) {
   const i = args.indexOf("--compare");
@@ -75,8 +97,9 @@ if (args.includes("--compare")) {
     const arrow = o.delta == null ? "" : (o.delta > 0 ? "  +" : "   ") + fmt(o.delta);
     console.log(`  ${label.padEnd(22)} ${fmt(o.baseline).padStart(10)} -> ${fmt(o.candidate).padStart(10)}${arrow}`);
   };
-  console.log(`\nbaseline: ${a.label} (${a.model || "model not recorded"}, ${a.ranAt})`);
-  console.log(`candidate: ${b.label} (${b.model || "model not recorded"}, ${b.ranAt})\n`);
+  const band = (o) => `size band ${o.sizeBand === undefined ? "(run predates the band)" : o.sizeBand}`;
+  console.log(`\nbaseline: ${a.label} (${a.model || "model not recorded"}, ${band(a)}, ${a.ranAt})`);
+  console.log(`candidate: ${b.label} (${b.model || "model not recorded"}, ${band(b)}, ${b.ranAt})\n`);
   row("valuation possible", d.valuationPossibleRate);
   row("subject size found", d.subjectSizeFoundRate);
   row("failures", d.failures);
@@ -157,6 +180,9 @@ async function runOne(t) {
     body: JSON.stringify({
       address: t.address, type: t.type, months: t.months, maxComps: t.maxComps,
       txFocus: "both",
+      // Stated only when the run asked for it: an absent field is what makes
+      // an internal caller's run the band-off baseline.
+      ...(sizeBand === null ? {} : { sizeTolerancePct: sizeBand }),
       // Never serve this run a report an earlier run wrote.
       fresh: true,
     }),
@@ -279,6 +305,9 @@ async function runOne(t) {
       setSize: targets.length,
       corpusWiped: corpusWiped,
       subjectSizesWiped: subjectSizesWiped,
+      // "(not stated)" rather than null, so a comparison of two summaries can
+      // never read a missing field as "this run had no band" by accident.
+      sizeBand: sizeBand === null ? "(not stated)" : sizeBand,
       summary: summary,
       results: results,
     };
@@ -289,7 +318,7 @@ async function runOne(t) {
     const file = path.join(dir, `${new Date().toISOString().slice(0, 10)}-${label}-${Date.now()}.json`);
     fs.writeFileSync(file, JSON.stringify(out, null, 2));
     console.log(`\nScored ${summary.scored}/${summary.targets} (${summary.failures} failed).`);
-    console.log(`Valuation possible: ${(summary.valuationPossibleRate * 100).toFixed(0)}%`);
+    console.log(`Valuation possible: ${(summary.valuationPossibleRate * 100).toFixed(0)}% (size band: ${sizeBand === null ? "not stated" : sizeBand})`);
     console.log(`Raw reports: ${runDir}`);
     console.log(`Summary: ${file}`);
   } catch (err) {

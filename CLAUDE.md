@@ -700,7 +700,24 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `false` only; a missing key is an older server, which is the ON state).
   The PERCENTAGE is deliberately not an env var: it is a product decision
   that belongs with the rules and the prose that states it, not in Render's
-  dashboard. Every response carries `market_cap_rate_range`,
+  dashboard.
+  **Internal callers DEFAULT out of the band; they are not refused one.**
+  `gen-market-seed.js` and the Explorer state no band and so get none (a
+  market search has no subject building, and those two share cache entries,
+  so they must agree on the prompt as well as the key). But a band they
+  ASK for is honored, and that is load-bearing rather than tidy:
+  `run-eval.js` is an internal caller by construction, so an override would
+  have made a band-on vs band-off eval two identical runs — about $8.60 to
+  measure nothing, both runs looking healthy. For the same reason the band
+  is the ONE thing in `gate()` that an internal caller does not skip
+  (`applySizeBand` runs before the `if (internal)` early return): it is the
+  caller's own search parameter, not an entitlement, and measuring the
+  prompt half while the filter sat behind that return would report a
+  difference customers never see. Measure with `node run-eval.js --label
+  band-off` (states nothing) against `--label band-30 --size-band 30`, then
+  `--compare` the two summaries; the summary records which band each run
+  used, and `valuationPossibleRate` + `pricedSales` are the numbers that
+  answer whether ±30% starves the hero. Every response carries `market_cap_rate_range`,
   `value_drivers`, `market_trend`, and a per-comp `source_type` that the
   server normalizes onto its enum (unknown → `estimate`, so badges can
   under-claim provenance but never over-claim). Normalization also ENFORCES

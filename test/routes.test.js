@@ -2091,7 +2091,7 @@ test("the size band is wired inside gate, after the blend and before the paywall
   const body = src.slice(start, end);
 
   const radiusAt = body.indexOf("RADIUSBLEND.blendNearbyComps");
-  const bandAt = body.indexOf("SIZEBAND.applySizeBand");
+  const bandAt = body.indexOf("applySizeBand(merged)");
   const paywallAt = body.indexOf("GATE.gateReport");
   const vaultAt = body.indexOf("BLEND.blendPrivateComps");
   assert.ok(bandAt >= 0, "gate() must apply the size band");
@@ -2099,11 +2099,31 @@ test("the size band is wired inside gate, after the blend and before the paywall
   assert.ok(bandAt < paywallAt, "a filtered comp must not return as a locked_basis row");
   assert.match(body.slice(vaultAt, vaultAt + 200), /SIZEBAND\.splitBySizeBand\(vaultRows/,
     "the broker's own vault comps must be filtered by the same band");
-  // harvestComps/storeCachedSearch stay outside gate() — same rule the radius
-  // blend test pins, restated here because this filter would silently shrink
-  // the permanent corpus if it ever moved upstream.
-  assert.equal(/SIZEBAND\.applySizeBand/.test(src.slice(0, start)), false,
-    "nothing before gate() may apply the band — the corpus keeps every comp found");
+
+  // The band is the caller's own search parameter, not an entitlement, so it
+  // is the ONE thing in gate() an internal caller does not skip — and an
+  // internal caller only ever carries a band because it asked for one. Without
+  // this, a band-on vs band-off eval (run-eval.js is internal by construction)
+  // would be two identical runs that both looked healthy.
+  assert.match(body, /if \(internal\) return applySizeBand\(rep\)\.report;/,
+    "an internal caller that asked for a band must still get it applied");
+
+  // The helper lives outside gate() so both branches can reach it, but it must
+  // only ever be CALLED from inside: the cache write, harvestComps() and the
+  // market snapshot all run before gate() and must keep seeing whole reports,
+  // or the permanent corpus silently shrinks to one visitor's size preference.
+  const defAt = src.indexOf("const applySizeBand = (rep)");
+  assert.ok(defAt >= 0 && defAt < start, "applySizeBand should be a closure declared above gate()");
+  // Every CALL of the helper (the qualified SIZEBAND.applySizeBand inside its
+  // own body excluded) has to sit inside gate()'s bounds.
+  const calls = [...src.matchAll(/(?<!SIZEBAND\.)\bapplySizeBand\(/g)].map((m) => m.index);
+  assert.ok(calls.length >= 2, "expected the internal branch and the main path to call it");
+  for (const at of calls) {
+    assert.ok(at > start && at < end,
+      `applySizeBand is called outside gate() at ${at} — the cache, harvestComps() and the market snapshot must keep seeing whole reports`);
+  }
+  assert.equal((src.match(/SIZEBAND\.applySizeBand/g) || []).length, 1,
+    "the module's applySizeBand must be reached through the one helper");
 });
 
 test("the request's own band reaches the prompt, the cache key and the filter", () => {
@@ -2117,14 +2137,13 @@ test("the request's own band reaches the prompt, the cache key and the filter", 
   // Both cache lookups carry it: the exact key and the derived-window one.
   assert.equal((src.match(/sizeTolerancePct: tolKey/g) || []).length, 2,
     "both the cache key and findDerivableReport must carry the band");
-  // The seed generator and the Explorer share cache entries, so an internal
-  // caller must contribute neither a band nor a key fragment — otherwise the
-  // same market search is prompted two ways and billed twice.
-  assert.match(src, /SIZEBAND\.normalizeTolerancePct\(sizeTolerancePct\)/);
-  // The internal opt-out and the SIZE_BAND lever share these two lines; the
-  // lever's own test below pins their exact shape.
-  assert.match(src, /const tolOk = \(internal \|\| !SIZE_BAND\)/);
-  assert.match(src, /const tolKey = \(internal \|\| !SIZE_BAND\)/);
+  // Internal callers DEFAULT out (the fallback argument), rather than being
+  // overridden — an override is what would have made an eval unable to measure
+  // this feature at all.
+  assert.match(src, /SIZEBAND\.normalizeTolerancePct\(sizeTolerancePct, internal \? null : SIZEBAND\.DEFAULT_TOLERANCE_PCT\)/);
+  // …but the key the seed generator and the Explorer share stays byte-
+  // identical when neither of them states a band.
+  assert.match(src, /const tolKey = \(!SIZE_BAND \|\| \(internal && !bandAsked\)\) \? undefined : tolOk;/);
   // And the model is told, so it spends its searches on comps that survive.
   assert.match(src, /getComps\(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, tolOk,/);
   assert.match(src, /SIZE LIMIT \(a hard rule, not a preference\)/);
@@ -2174,7 +2193,7 @@ test("SIZE_BAND=off is a whole rollback lever", async (t) => {
     // Both the band ITSELF and the cache key: off must restore the exact keys
     // the app used before the feature, not split the 30-day cache on the way
     // out.
-    assert.match(src, /const tolOk = \(internal \|\| !SIZE_BAND\) \? null :/);
-    assert.match(src, /const tolKey = \(internal \|\| !SIZE_BAND\) \? undefined : tolOk;/);
+    assert.match(src, /const tolOk = !SIZE_BAND\s*\n?\s*\? null/);
+    assert.match(src, /const tolKey = \(!SIZE_BAND \|\| \(internal && !bandAsked\)\)/);
   });
 });

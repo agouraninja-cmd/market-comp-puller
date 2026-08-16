@@ -1384,6 +1384,41 @@ test("a saved cell goes back to the formatted figure the server actually stored"
     "data-raw must follow the stored value, or the next focus offers a stale one");
 });
 
+// A <td> of text told the column how wide its content was and wrapped when it
+// could not have it. An <input> does neither, so without a width derived from
+// the value a long address rendered clipped inside a default-width box.
+test("a cell is at least as wide as the value in it, and the column follows the longest", async () => {
+  const short = comp({ id: "c1", address: "1 Oak St" });
+  const long = comp({ id: "c2", address: "8400 W Mission Blvd, Ontario, CA 91762" });
+  const { doc } = await runPage([short, long]);
+  const html = doc.getElementById("tbody").innerHTML;
+
+  const widths = [...html.matchAll(/data-k="address"[^>]*style="min-width:(\d+)ch"/g)]
+    .map((m) => Number(m[1]));
+  assert.equal(widths.length, 2, "both address cells must carry a width");
+  assert.ok(widths[1] >= long.address.length,
+    "the long address must have room for every character of it, not a scrollbar");
+  assert.ok(widths[1] > widths[0], "a longer value asks for a wider cell");
+});
+
+test("a very long value is capped rather than producing an unusable column", async () => {
+  const c1 = comp({ id: "c1", address: "x".repeat(400) });
+  const { doc } = await runPage([c1]);
+  const w = Number(/data-k="address"[^>]*style="min-width:(\d+)ch"/.exec(
+    doc.getElementById("tbody").innerHTML)[1]);
+  assert.ok(w <= 46, "past the cap the table wrapper scrolls; the column must not run to 400ch");
+});
+
+test("spreadsheet cells are sized the same way, so notes are not a 20-character box", async () => {
+  const c1 = comp({ id: "c1", address: "100 Main St", notes: "Sold with the adjacent parcel; buyer is an owner-occupier." });
+  const { doc } = await runPage([c1]);
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+  const w = Number(/data-k="notes"[^>]*style="min-width:(\d+)ch"/.exec(
+    doc.getElementById("tbody").innerHTML)[1]);
+  assert.ok(w > 24, "a notes cell must open wider than the input default");
+});
+
 test("Escape restores the stored value and saves nothing", async () => {
   const c1 = comp({ id: "c1", address: "100 Main St", price: 1000000 });
   let called = 0;

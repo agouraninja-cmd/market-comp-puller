@@ -16168,6 +16168,21 @@ const server = http.createServer((req, res) =>
             // guess from the role string.
             canWrite: HUB.canWriteHub(g).ok,
             canAdd: HUB.canAddItems(g).ok,
+            // The guest list, OWNER ONLY. A broker needs it to add or remove
+            // somebody; a client must not have it, because the other addresses
+            // in a hub are that broker's client relationships and none of a
+            // fellow guest's business. Gated on the same owner-only answer
+            // that governs adding comps, so there is one definition of "this
+            // is the broker" rather than two that can drift.
+            ...(HUB.canAddItems(g).ok ? {
+              people: (g.participants || [])
+                .filter((p) => !p.removed_at)
+                .map((p) => ({
+                  email: p.email,
+                  role: p.role,
+                  opened: !!p.first_viewed_at,
+                })),
+            } : {}),
             // Unconditional, now that a poll carries them too. It was a
             // conditional spread while `since` could suppress the list;
             // leaving that in would be a branch that can no longer be false.

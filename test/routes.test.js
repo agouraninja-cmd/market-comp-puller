@@ -2063,3 +2063,80 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   assert.equal(/harvestComps\s*\(\s*typeOk/.test(body), false,
     "harvest must not run inside gate() — extras would re-enter the corpus from a serialization-only merge");
 });
+
+// The size band, wired. The RULE is proven in test/size-band.test.js; what a
+// pure test cannot see is WHERE server.js applies it, and every part of that
+// placement is load-bearing:
+//
+//   - inside gate(), so the cache, harvestComps() and the market snapshot keep
+//     seeing every comp the search found (the band is one visitor's question
+//     about one building, not a fact about the market);
+//   - AFTER the radius blend, because a saved deal three miles away is as
+//     capable of being the wrong size class as a searched one;
+//   - BEFORE the paywall, because a comp the visitor filtered out must not
+//     come back as a locked_basis row — those feed the free report's own
+//     valuation math;
+//   - and on the vault rows too, since a broker's private 200,000 SF warehouse
+//     moves the number exactly as far as a public one would.
+//
+// Sibling of the radius-blend test above, and written for the same reason.
+test("the size band is wired inside gate, after the blend and before the paywall", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const gate = async (rep)");
+  assert.ok(start >= 0, "gate() should still exist as an async closure");
+  const end = src.indexOf("const maxIdentified", start);
+  assert.ok(end > start, "could not bound gate()");
+  const body = src.slice(start, end);
+
+  const radiusAt = body.indexOf("RADIUSBLEND.blendNearbyComps");
+  const bandAt = body.indexOf("SIZEBAND.applySizeBand");
+  const paywallAt = body.indexOf("GATE.gateReport");
+  const vaultAt = body.indexOf("BLEND.blendPrivateComps");
+  assert.ok(bandAt >= 0, "gate() must apply the size band");
+  assert.ok(radiusAt < bandAt, "the band must filter the blended saved deals too");
+  assert.ok(bandAt < paywallAt, "a filtered comp must not return as a locked_basis row");
+  assert.match(body.slice(vaultAt, vaultAt + 200), /SIZEBAND\.splitBySizeBand\(vaultRows/,
+    "the broker's own vault comps must be filtered by the same band");
+  // harvestComps/storeCachedSearch stay outside gate() — same rule the radius
+  // blend test pins, restated here because this filter would silently shrink
+  // the permanent corpus if it ever moved upstream.
+  assert.equal(/SIZEBAND\.applySizeBand/.test(src.slice(0, start)), false,
+    "nothing before gate() may apply the band — the corpus keeps every comp found");
+});
+
+test("the request's own band reaches the prompt, the cache key and the filter", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  // Read off the body, normalized once, and defaulted server-side — so an old
+  // cached copy of index.html that sends nothing still gets the 30% band.
+  assert.match(src, /sizeTolerancePct,\s*subjectDetails, stream, fresh \} = JSON\.parse/);
+  // Both cache lookups carry it: the exact key and the derived-window one.
+  assert.equal((src.match(/sizeTolerancePct: tolKey/g) || []).length, 2,
+    "both the cache key and findDerivableReport must carry the band");
+  // The seed generator and the Explorer share cache entries, so an internal
+  // caller must contribute neither a band nor a key fragment — otherwise the
+  // same market search is prompted two ways and billed twice.
+  assert.match(src, /const tolOk = internal \? null : SIZEBAND\.normalizeTolerancePct\(sizeTolerancePct\);/);
+  assert.match(src, /const tolKey = internal \? undefined : tolOk;/);
+  // And the model is told, so it spends its searches on comps that survive.
+  assert.match(src, /getComps\(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, tolOk,/);
+  assert.match(src, /SIZE LIMIT \(a hard rule, not a preference\)/);
+});
+
+// The default is the whole feature: "comps within 30% of the size" has to be
+// what a visitor gets without touching anything. Pinned in both files, because
+// they default independently — the browser sends its control's value and the
+// server defaults an absent field — and a disagreement would be invisible.
+test("30% is the default on the server and in the form", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { DEFAULT_TOLERANCE_PCT } = require("../size-band");
+  assert.equal(DEFAULT_TOLERANCE_PCT, 30);
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  assert.match(html, new RegExp(`<option value="${DEFAULT_TOLERANCE_PCT}" selected>`),
+    "the form's preselected option must be the module's default");
+});

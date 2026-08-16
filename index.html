@@ -1821,7 +1821,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  selection and the title should say so. Structure and field
                  list are upstream's 2026-08-10 redesign (price promoted to
                  the form, size demoted here, market note tucked here). -->
-            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(size, NOI, cap rate, market note: optional, sharpens the match)</span></span>
+            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(size, comp size range, NOI, cap rate, market note: optional, sharpens the match)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
             <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in size and specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Size and property type come from public records automatically, so set a size here only to override what we found.</p>
@@ -1844,6 +1844,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                   <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
                 </div>
                 <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
+              </div>
+              <!-- Comp size range. Sits directly under the size it is a
+                   percentage OF: the two only make sense read together, and a
+                   band with nothing to be a band around is the one state this
+                   control cannot enforce (server-side, no subject size means no
+                   filtering at all). Defaults to 30% — the select's own
+                   `selected` is only the first paint; the visitor's last choice
+                   is restored over it, and the SERVER defaults to 30 too, so an
+                   old cached copy of this page that sends nothing still gets the
+                   band. "Custom…" mirrors the Lookback control's idiom rather
+                   than inventing a second one. -->
+              <div id="sizeToleranceWrap">
+                <label class="rd-lab" for="sizeTolerance">Comp size range</label>
+                <select id="sizeTolerance" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none">
+                  <option value="10">Within 10% of the size</option>
+                  <option value="20">Within 20% of the size</option>
+                  <option value="30" selected>Within 30% of the size</option>
+                  <option value="50">Within 50% of the size</option>
+                  <option value="100">Within 100% of the size</option>
+                  <option value="off">Any size</option>
+                  <option value="custom">Custom…</option>
+                </select>
+                <div id="sizeToleranceCustomWrap" class="hidden mt-2 flex items-center gap-2">
+                  <input id="sizeToleranceCustom" type="number" min="1" max="500" step="1" placeholder="e.g. 35" class="w-24 rounded border border-[#D8D4C9] px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <span class="text-sm text-[#68707E] shrink-0">% of the size</span>
+                </div>
+                <!-- Deliberately does NOT restate the window in square feet.
+                     The report itself prints the real window (server-supplied
+                     size_band), and a second copy of that arithmetic in the
+                     browser is a number that can disagree with the filter that
+                     actually ran. -->
+                <p id="sizeToleranceHint" class="text-xs text-[#68707E] mt-1">Comps must be within 30% of the building's size, larger or smaller. Widen it in a market with few similar buildings.</p>
               </div>
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
@@ -2860,6 +2892,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- Word marks on Size / $/SF (calc, size, adj). Built by
                renderCompMarksLegend(); hidden until a visible row wears one. -->
           <p id="compMarksLegend" class="hidden text-xs leading-6 text-[#68707E] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
+          <!-- Size-band disclosure. Like the vault line below it, deliberately
+               NOT no-print/no-capture: it explains why the table holds the rows
+               it holds, and a short comp list with no explanation reads as a
+               thin market rather than as a setting the reader can widen. Built
+               by renderSizeBandNotice() from the server's own size_band. -->
+          <p id="sizeBandNotice" class="hidden text-xs leading-6 text-[#5A6473] px-6 py-2.5 border-t border-[#F0EFE9]"></p>
           <!-- Vault-comp disclosure. Deliberately NOT no-print/no-capture, unlike
                almost everything else down here: the private rows themselves ARE
                stripped from the print and the PNG, and this line is the only
@@ -3267,14 +3305,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const summaryBits = document.getElementById("subjectSummaryBits");
     if (type === "Residential") {
       hintIncome.textContent = "If this is a rental, add NOI for an income-approach cross-check.";
-      summaryBits.textContent = "(living area, beds/baths: optional)";
+      summaryBits.textContent = "(living area, comp size range, beds/baths: optional)";
     } else if (type === "Land") {
       hintIncome.textContent = "";
-      summaryBits.textContent = "(lot size, zoning, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(lot size, comp size range, zoning, market note: optional, sharpens the match)";
     } else {
       hintIncome.textContent = "Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.";
-      summaryBits.textContent = "(size, NOI, cap rate, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(size, comp size range, NOI, cap rate, market note: optional, sharpens the match)";
     }
+    // The band's hint names the asset the percentage is OF ("the home's
+    // size"), so it has to move with the type like the two lines above it.
+    refreshSizeToleranceHint();
     document.getElementById("targetSizeHint").textContent = type === "Land"
       ? "Left blank, it comes from public records."
       : `Left blank, it comes from public records or the ${noun}'s footprint.`;
@@ -3366,6 +3407,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
     }
     if (meta.months) parts.push(meta.months === 1 ? "Last 1 month" : `Last ${meta.months} months`);
+    // null is "Any size", an explicit choice worth a chip; an absent key is a
+    // report from before the band existed and gets none.
+    if (meta.sizeTolerancePct !== undefined) {
+      parts.push(meta.sizeTolerancePct === null ? "Any comp size" : `Size within ${meta.sizeTolerancePct}%`);
+    }
     if (meta.txFocus) {
       parts.push(meta.txFocus === "sales" ? "Sales only"
                : meta.txFocus === "leases" ? "Leases only" : "Sales & Leases");
@@ -3420,6 +3466,83 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!preset) lookbackCustomInput.value = months;
     refreshLookbackHint();
   }
+
+  // Comp size range — "only comps within ±N% of the building's size", 30% by
+  // default. The rule itself lives on the server (size-band.js); these controls
+  // only carry the number, and a search that sends nothing still gets 30%.
+  const sizeTolSel = document.getElementById("sizeTolerance");
+  const sizeTolCustomWrap = document.getElementById("sizeToleranceCustomWrap");
+  const sizeTolCustomInput = document.getElementById("sizeToleranceCustom");
+  const SIZE_TOL_KEY = "sizeTolerance.v1";
+
+  sizeTolSel.addEventListener("change", () => {
+    const custom = sizeTolSel.value === "custom";
+    sizeTolCustomWrap.classList.toggle("hidden", !custom);
+    if (custom) sizeTolCustomInput.focus();
+    refreshSizeToleranceHint();
+    rememberSizeTolerance();
+  });
+  sizeTolCustomInput.addEventListener("input", () => {
+    refreshSizeToleranceHint();
+    rememberSizeTolerance();
+  });
+
+  // Three return values, and the caller has to tell them apart:
+  //   a number  — the band, in percent
+  //   null      — "Any size", an explicit choice, not a missing one
+  //   undefined — the custom box holds something unusable; the submit handler
+  //               stops rather than quietly searching at some other width
+  function selectedSizeTolerance() {
+    if (sizeTolSel.value === "off") return null;
+    if (sizeTolSel.value !== "custom") return Number(sizeTolSel.value);
+    const p = Math.round(numericValue(sizeTolCustomInput.value));
+    return p >= 1 && p <= 500 ? p : undefined;
+  }
+
+  // Sets the controls to a given band (preset when it matches, else custom;
+  // null is "Any size"). Used when a saved or shared report is re-run, so the
+  // re-run searches the width the report was built at.
+  function setSizeToleranceControls(pct) {
+    if (pct === null) {
+      sizeTolSel.value = "off";
+    } else {
+      const preset = [...sizeTolSel.options].some((o) => o.value === String(pct));
+      sizeTolSel.value = preset ? String(pct) : "custom";
+      if (!preset) sizeTolCustomInput.value = pct;
+    }
+    sizeTolCustomWrap.classList.toggle("hidden", sizeTolSel.value !== "custom");
+    refreshSizeToleranceHint();
+  }
+
+  function refreshSizeToleranceHint() {
+    const el = document.getElementById("sizeToleranceHint");
+    if (!el) return;
+    const pct = selectedSizeTolerance();
+    // The hidden select read directly, NOT propertyTypeSel: that const is
+    // declared further down this file and this function runs during the
+    // localStorage restore above, which would sit in its temporal dead zone.
+    // Same trap `proConfig` and `typeResolution` already carry.
+    const noun = assetNoun(document.getElementById("propertyType").value);
+    el.textContent = pct === null
+      ? "Comps of any size can be used. The valuation still weights same-size comps more heavily."
+      : pct === undefined
+      ? "Enter a percentage between 1 and 500."
+      : `Comps must be within ${pct}% of the ${noun}'s size, larger or smaller. Widen it in a market with few similar ${assetNounPlural(document.getElementById("propertyType").value)}.`;
+  }
+
+  // Remembered like the property type: a broker who wants a tight band wants it
+  // on every search, not on the one they just ran. Invalid custom entries are
+  // not stored — there is nothing to restore them to.
+  function rememberSizeTolerance() {
+    const pct = selectedSizeTolerance();
+    if (pct === undefined) return;
+    try { localStorage.setItem(SIZE_TOL_KEY, pct === null ? "off" : String(pct)); } catch (_) {}
+  }
+  try {
+    const saved = localStorage.getItem(SIZE_TOL_KEY);
+    if (saved === "off") setSizeToleranceControls(null);
+    else if (saved && Number(saved) >= 1 && Number(saved) <= 500) setSizeToleranceControls(Number(saved));
+  } catch (_) {}
 
   // Recommended lookback per property type (a user suggestion): multifamily and
   // residential trade often, so a shorter, fresher window fits; office and land
@@ -5883,7 +6006,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (currentUser && currentMeta.portfolioId && currentParsed) {
         const meta = {
           address: currentMeta.address, type: currentMeta.type, note: currentMeta.note || "",
-          months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
+          months: currentMeta.months, txFocus: currentMeta.txFocus,
+          sizeTolerancePct: currentMeta.sizeTolerancePct,
+          subject: currentMeta.subject || null,
           assumptions: currentMeta.assumptions || null,
           curation: currentMeta.curation || null,
         };
@@ -9186,7 +9311,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         .filter((r) => !(r.meta.address === meta.address && r.meta.type === meta.type));
       list.unshift({
         ts: Date.now(),
-        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null, assumptions: meta.assumptions || null, curation: meta.curation || null },
+        meta: { address: meta.address, type: meta.type, note: meta.note || "", months: meta.months, txFocus: meta.txFocus, sizeTolerancePct: meta.sizeTolerancePct, subject: meta.subject || null, assumptions: meta.assumptions || null, curation: meta.curation || null },
         data,
       });
       writeHistory(trimHistory(list));
@@ -9215,7 +9340,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } else if (currentUser) {
       const payloadMeta = {
         address: meta.address, type: meta.type, note: meta.note || "",
-        months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null,
+        months: meta.months, txFocus: meta.txFocus,
+        sizeTolerancePct: meta.sizeTolerancePct,
+        subject: meta.subject || null,
         assumptions: meta.assumptions || null,
         curation: meta.curation || null,
       };
@@ -9265,7 +9392,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         if (list.some((r) => r.meta.address === s.address && r.meta.type === s.type)) return;
         list.push({
           ts: null,
-          meta: { address: s.address, type: s.type, note: s.note || "", months: s.months, txFocus: s.txFocus, subject: s.subject || null, assumptions: null, curation: null },
+          meta: { address: s.address, type: s.type, note: s.note || "", months: s.months, txFocus: s.txFocus, sizeTolerancePct: s.sizeTolerancePct, subject: s.subject || null, assumptions: null, curation: null },
           data: null,
         });
       });
@@ -9309,6 +9436,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("marketNote").value = m.note || "";
     if (m.months) setLookbackControls(m.months);
     if (m.txFocus) document.getElementById("txFocus").value = m.txFocus;
+    // `null` is a real stored value here ("Any size"), so this tests for the
+    // key's absence rather than for falsiness — a saved report from before the
+    // band existed keeps whatever the visitor's own control says.
+    if (m.sizeTolerancePct !== undefined) setSizeToleranceControls(m.sizeTolerancePct);
     if (m.subject) {
       document.getElementById("targetSize").value = m.subject.sizeMin || "";
       document.getElementById("targetSizeMax").value = m.subject.sizeMax && m.subject.sizeMax !== m.subject.sizeMin ? m.subject.sizeMax : "";
@@ -10036,7 +10167,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     try {
       const meta = {
         address: currentMeta.address, type: currentMeta.type, note: currentMeta.note || "",
-        months: currentMeta.months, txFocus: currentMeta.txFocus, subject: currentMeta.subject || null,
+        months: currentMeta.months, txFocus: currentMeta.txFocus,
+        sizeTolerancePct: currentMeta.sizeTolerancePct,
+        subject: currentMeta.subject || null,
         assumptions: currentMeta.assumptions || null,
         curation: currentMeta.curation || null,
       };
@@ -13056,6 +13189,39 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     });
   }
 
+  // The size band, stated. Reads the server's own size_band rather than the
+  // form control: the report may be a saved one, a shared one, or one run at a
+  // width the control has since been changed away from, and the only honest
+  // answer is what the search actually filtered on. The square-foot window is
+  // printed by the server too (size-band.js owns that arithmetic), so this
+  // file never recomputes it and the two can never disagree.
+  //
+  // Survives into the print and the PNG on purpose, like the vault line below:
+  // it is the reason a table is short, and a short table with no reason reads
+  // as a market with nothing in it.
+  function renderSizeBandNotice() {
+    const el = document.getElementById("sizeBandNotice");
+    if (!el) return;
+    const band = currentParsed && currentParsed.size_band;
+    if (!band || !(band.min > 0)) { el.classList.add("hidden"); el.textContent = ""; return; }
+    const dropped = Number(currentParsed.size_filtered_count) || 0;
+    // `range`, not `window` — a local of that name shadows the global inside
+    // this function, which is a trap for whoever edits it next.
+    const range = `${Math.round(band.min).toLocaleString()}-${Math.round(band.max).toLocaleString()} SF`;
+    const one = dropped === 1;
+    let text = `Comps are limited to ${range} — within ${band.pct}% of this ${assetNoun(currentMeta && currentMeta.type)}'s size.`;
+    if (dropped > 0) {
+      text += ` ${dropped} other transaction${one ? "" : "s"} ${one ? "was" : "were"} found and left out for falling outside that range.`;
+      // A shared report's reader has no form to widen — the sender does. Same
+      // reader-vs-owner split renderPrivateNotice() makes.
+      if (!(currentMeta && currentMeta.shared)) {
+        text += ` Change "Comp size range" under Details for comps to widen it.`;
+      }
+    }
+    el.textContent = text;
+    el.classList.remove("hidden");
+  }
+
   // One honest line about the vault rows, and the only place the two halves of
   // this feature are reconciled for the reader: the comps count toward the
   // valuation but not toward any file.
@@ -13468,6 +13634,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderCards(animateIn);
     renderBadgeLegend();
     renderCompMarksLegend();
+    renderSizeBandNotice();
     renderPrivateNotice();
     renderSubjectRow();
     const body = document.getElementById("tableBody");
@@ -15196,10 +15363,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // body below, so it never reaches the server and never enters the cache key.
     const capVal = numericValue(document.getElementById("capRate").value);
     const subjectDetails = readSubjectDetails();
+    // number = the band in percent, null = any size, undefined = the custom
+    // box holds something unusable (blocked below, never sent).
+    const sizeTolerancePct = selectedSizeTolerance();
     if (!address) return;
     if (!months) {
       showStatus("Enter a custom lookback window between 1 and 120 months.", "error");
       document.getElementById("lookbackCustom").focus();
+      return;
+    }
+    if (sizeTolerancePct === undefined) {
+      showStatus("Enter a comp size range between 1 and 500 percent.", "error");
+      document.getElementById("subjectDetails").open = true;
+      document.getElementById("sizeToleranceCustom").focus();
       return;
     }
 
@@ -15251,6 +15427,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         body: JSON.stringify({
           address, type, note, months, txFocus,
           subjectSizeSqft: sizeR ? Math.round((sizeR.min + sizeR.max) / 2) : undefined,
+          // The band the server enforces. Sent as "off" rather than omitted
+          // when the visitor chose Any size: an absent field means "use the
+          // default 30%" server-side, so silence would quietly re-narrow it.
+          sizeTolerancePct: sizeTolerancePct === null ? "off" : sizeTolerancePct,
           subjectDetails,
           // Ask for live progress. The server still answers plain JSON for
           // everything fast or failed (cache hits, auth, rate limits), so we
@@ -15319,6 +15499,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
       renderResults(parsed, {
         address, type, note, months, txFocus,
+        // Rides in meta like months and txFocus: it is a search parameter, so
+        // re-running a saved report has to reach for the same width. Older
+        // saved reports carry no key at all, which reads as "unknown", not as
+        // "any size".
+        sizeTolerancePct,
         // Subject inputs ride along in meta so saved/reopened reports can
         // re-render the comparison and value cards without the form.
         subject: {

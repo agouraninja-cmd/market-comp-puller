@@ -41,7 +41,9 @@ There is one small test suite: `npm test` (`node --test`, no dependencies)
 covers the nine pure modules — **`entitlements.js`** (the Pro tier's
 decision table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`**,
 **`corpus-audit.js`**, **`blend-corpus.js`** (saved deals within 10 miles
-join the report at serialization, before the paywall), **`broker-leads.js`** (the broker lead inbox's
+join the report at serialization, before the paywall), **`size-band.js`**
+(comps must be within ±30% of the subject's square footage, adjustable per
+search — applied at serialization beside the blend), **`broker-leads.js`** (the broker lead inbox's
 rules: coverage matching, lead anonymization allowlist, coverage seeding,
 notify dedupe), **`valuation.js`** (the value-range math shared by the
 browser and the accuracy backtest — the one pure module here that loads in a
@@ -657,7 +659,31 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (6 → 8 for a ≤8-comp ask). Body also takes optional `subjectDetails` — the per-type
   facts about the user's own building (see flow 4), whitelisted by
   `sanitizeSubjectDetails` against that type's `TYPE_COMP_FIELDS` keys and
-  shown to the model so comp selection matches the subject. Every response carries `market_cap_rate_range`,
+  shown to the model so comp selection matches the subject.
+  **Size band** (2026-08-16; rules and the reasons in `size-band.js`, plus
+  its own test file). Body takes optional `sizeTolerancePct`: comps must be
+  within **±30% of the subject's square footage** by default, `"off"` for
+  any size, 1-500 otherwise; an ABSENT field means the default, which is
+  what makes the band the default for a browser holding a cached copy of
+  the old page. The form control is "Comp size range" under *Details for
+  comps* (remembered in `localStorage` `sizeTolerance.v1`, carried in
+  `meta.sizeTolerancePct` so a re-run keeps its width). Two halves, the
+  usual requests-vs-guarantee split: `buildPrompt` states the window in
+  square feet as a SIZE LIMIT rule so the model does not spend searches on
+  comps that will be discarded, and `gate()` then removes anything outside
+  it — inside the serialization funnel, **after** the radius blend (a saved
+  deal can be the wrong size class too) and **before** `gateReport` (a
+  filtered comp must not return as a `locked_basis` row, which would still
+  feed the free report's valuation). The vault rows are filtered by the
+  same band. Nothing upstream is filtered, so the cache, `harvestComps()`
+  and the market snapshot keep every comp the search found. Removals ride
+  the response as `size_band` + `size_filtered_count` and are disclosed
+  under the comp table (`renderSizeBandNotice`) — a short list must never
+  read as a thin market. A comp with no stated size is never dropped, and
+  with no subject size there is no band at all. The cache key carries the
+  tolerance only when it is NOT the default, so the existing 30-day cache
+  survives (a legacy entry re-served under the default is still filtered at
+  serialization). Every response carries `market_cap_rate_range`,
   `value_drivers`, `market_trend`, and a per-comp `source_type` that the
   server normalizes onto its enum (unknown → `estimate`, so badges can
   under-claim provenance but never over-claim). Normalization also ENFORCES

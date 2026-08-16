@@ -971,3 +971,79 @@ test("the loading ninja is a two-frame runner that freezes for reduced motion an
   assert.match(show, /classList\.remove\("done"\)/);
   assert.match(hide, /classList\.remove\("done"\)/);
 });
+
+// ----------------------------------------------------------------------------
+// Comp size range — the ±30% band's browser half.
+//
+// The RULE lives on the server (size-band.js, and its own test file); nothing
+// here can prove a comp was filtered. What it pins is the wiring, which is
+// where this feature can fail silently: a control that never reaches the
+// request body leaves the server on its 30% default while the visitor watches
+// their chosen width do nothing, and a missing notice turns a filtered comp
+// list into a market that looks empty.
+// ----------------------------------------------------------------------------
+
+test("the comp size range control exists, defaults to 30%, and offers a way off", () => {
+  assert.match(html, /id="sizeTolerance"/);
+  assert.match(html, /<option value="30" selected>/);
+  assert.match(html, /<option value="off">Any size<\/option>/);
+  assert.match(html, /<option value="custom">/);
+  assert.match(html, /id="sizeToleranceCustom"/);
+  // Sits with the size it is a percentage of, not off in another section.
+  const size = html.indexOf('id="targetSize"');
+  const band = html.indexOf('id="sizeTolerance"');
+  const noi = html.indexOf('id="noiWrap"');
+  assert.ok(size < band && band < noi, "the band control must sit between the size field and NOI");
+});
+
+test("every Tailwind class the size range control uses is in the vendored stylesheet", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "tailwind.css"), "utf8");
+  for (const cls of ["w-24", "min-w-0", "items-center", "gap-2", "shrink-0", "mt-2", "mt-1"]) {
+    assert.ok(css.includes("." + cls), `tailwind.css is missing .${cls}`);
+  }
+});
+
+test("the chosen band is sent to the server, with Any size sent as a value", () => {
+  const body = html.match(/sizeTolerancePct: sizeTolerancePct === null \? "off" : sizeTolerancePct/);
+  assert.ok(body, "the /api/comps body must carry sizeTolerancePct");
+  // Silence would mean the server's own 30% default, which is the opposite of
+  // what "Any size" asks for — so null has to travel as a real value.
+  assert.doesNotMatch(html, /sizeTolerancePct: sizeTolerancePct \|\| undefined/);
+});
+
+test("an unusable custom band stops the search instead of searching at some other width", () => {
+  const start = html.indexOf("function selectedSizeTolerance()");
+  const end = html.indexOf("function setSizeToleranceControls(");
+  assert.ok(start >= 0 && end > start, "selectedSizeTolerance / setSizeToleranceControls moved");
+  const fn = html.slice(start, end);
+  // null is "Any size" and undefined is "unusable" — the two must stay apart.
+  assert.match(fn, /if \(sizeTolSel\.value === "off"\) return null;/);
+  assert.match(fn, /p >= 1 && p <= 500 \? p : undefined/);
+  assert.match(html, /if \(sizeTolerancePct === undefined\) \{/);
+});
+
+test("the band rides in meta so re-running a saved report keeps its width", () => {
+  assert.match(html, /if \(m\.sizeTolerancePct !== undefined\) setSizeToleranceControls\(m\.sizeTolerancePct\);/);
+  assert.match(html, /sizeTolerancePct: currentMeta\.sizeTolerancePct/);
+  assert.match(html, /sizeTolerancePct: meta\.sizeTolerancePct/);
+});
+
+test("a filtered comp list says so, and never recomputes the server's window", () => {
+  assert.match(html, /id="sizeBandNotice"/);
+  const start = html.indexOf("function renderSizeBandNotice()");
+  const end = html.indexOf("// One honest line about the vault rows");
+  assert.ok(start >= 0 && end > start, "renderSizeBandNotice moved");
+  const fn = html.slice(start, end);
+  // Reads the server's own band, so a saved or shared report states the width
+  // it was actually built at rather than whatever the form now says.
+  assert.match(fn, /currentParsed && currentParsed\.size_band/);
+  assert.match(fn, /size_filtered_count/);
+  // The square-foot window is the server's arithmetic; a second copy here
+  // could disagree with the filter that actually ran.
+  assert.doesNotMatch(fn, /band\.pct \/ 100/);
+  assert.match(html, /renderSizeBandNotice\(\);/);
+  // Not no-print/no-capture: it explains a short table, and the table is
+  // shortest exactly where it travels — the PDF and the PNG.
+  const el = html.match(/<p id="sizeBandNotice"[^>]*>/)[0];
+  assert.ok(!/no-print|no-capture/.test(el), "the size-band notice must survive into exports");
+});

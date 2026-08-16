@@ -28,6 +28,11 @@ const ENT = require("./entitlements");
 // Comp gating — which comps leave the server, and the anonymized basis rows
 // that keep a free report's valuation as accurate as a Pro one. Also pure.
 const GATE = require("./comp-gate");
+// The size band — comps must be within ±N% of the subject's square footage
+// (30% by default, adjustable per search). Pure and tested; applied at
+// serialization inside gate(), so the cache and the corpus keep every comp
+// the search found. See size-band.js's header for the five rules.
+const SIZEBAND = require("./size-band");
 // Stripe over plain fetch — signature verification and the Stripe->our-row
 // mapping are pure and tested; see stripe.js.
 const STRIPE = require("./stripe");
@@ -2405,7 +2410,7 @@ function tryConsumeDailySearch() {
 // ---------------------------------------------------------------------------
 const searchCacheMem = new Map();
 
-function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, subjectDetails }) {
+function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, subjectDetails, sizeTolerancePct }) {
   // Strips decorative punctuation ("St." vs "St", "City,IL" vs "City, IL")
   // so near-identical typing of the same address still hits the cache.
   const norm = (s) => String(s || "")
@@ -2426,9 +2431,21 @@ function cacheKeyFor({ address, type, note, months, maxComps, txFocus, subjectSi
     .sort()
     .join(",");
   const raw = [norm(address), type, norm(note), months, maxComps, txFocus, subjectSizeSqft || "", verifiedSig].join("::");
+  // The size band changes the PROMPT (see buildPrompt's SIZE LIMIT rule), so a
+  // ±15% search must not be served a report written under a ±100% one.
+  // Appended only when the band is NOT the default, exactly like detailsSig
+  // below: the default is what almost every search sends, so folding it into
+  // every key would invalidate the entire 30-day cache on deploy for no
+  // change in what the visitor sees — the band is ENFORCED at serialization
+  // either way, so a legacy entry re-served under the default still comes
+  // back filtered to ±30%.
+  const bandSig = sizeTolerancePct === SIZEBAND.DEFAULT_TOLERANCE_PCT || sizeTolerancePct === undefined
+    ? ""
+    : `sz=${sizeTolerancePct == null ? "off" : sizeTolerancePct}`;
   // Appended only when present, so every existing cache entry keeps its key
   // instead of the whole 7-day cache invalidating on deploy.
-  return crypto.createHash("sha256").update(detailsSig ? `${raw}::${detailsSig}` : raw).digest("hex");
+  const parts = [raw, detailsSig, bandSig].filter(Boolean);
+  return crypto.createHash("sha256").update(parts.join("::")).digest("hex");
 }
 
 // The Address Explorer's "instant report" badge asks a question the opaque
@@ -3766,7 +3783,7 @@ Rules:
 - address must be a specific property with a street number, not a district or "general submarket estimate".
 - Do not include a verified flag or a source_url.`;
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo", sizeTolerancePct = null) {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -3793,6 +3810,12 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
   // lane for it too would spend a second search re-finding the same number, and
   // listing sites are the weaker source for building SF anyway.
   const wantsSize = !subjectSizeSqft && lane !== "primary";
+
+  // The size band, spelled out in square feet when the subject's size is
+  // already known. When it isn't, the SIZE LIMIT rule below states the
+  // percentage instead and leans on the SUBJECT SIZE step to establish the
+  // number first — which is the order that step already runs in.
+  const sizeBandText = SIZEBAND.describeSizeBand(SIZEBAND.sizeBandFor(subjectSizeSqft, sizeTolerancePct));
 
   // Anchor the lookback window to real dates — the model doesn't know "today",
   // so "last N months" alone drifts toward stale comps.
@@ -3947,11 +3970,24 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // Size class moves $/SF (economies of scale) — steer comp selection
     // toward the subject's size band so the valuation range isn't set by
     // buildings of a wholly different scale.
-    `SIZE FIT: Prefer comps between roughly half and twice the target building's size${
-      subjectSizeSqft
-        ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
-        : ` (once you determine the target's size)`
-    } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
+    //
+    // With a size band in effect (the default, ±30% — see size-band.js) this
+    // is no longer a preference: server.js REMOVES out-of-band comps at
+    // serialization. Told plainly, because a model that spends four searches
+    // on properties the server will discard returns a three-comp report from
+    // a market that had nine. The old half-to-twice wording stays as the
+    // fallback for a search that turned the band off.
+    sizeBandText
+      ? `SIZE LIMIT (a hard rule, not a preference): every comp MUST be between ${sizeBandText}${
+          subjectSizeSqft ? ` — within ${sizeTolerancePct}% of the target's ${subjectSizeSqft.toLocaleString("en-US")} SF` : ""
+        }. A comp outside that range is discarded before the report is written, so finding one wastes a search. Check the size BEFORE you commit to a comp. If the market genuinely holds fewer than 3 in that range, return the smaller number you did find and say so in "summary" — do not reach outside the range to fill the list. A comp whose size you genuinely cannot determine may still be included, but only when it plainly looks like the same scale of property; never use an unknown size to slip in a much larger or smaller one.`
+      : !subjectSizeSqft && sizeTolerancePct
+      ? `SIZE LIMIT (a hard rule, not a preference): once you determine the target's building size, every comp MUST be within ${sizeTolerancePct}% of it, larger or smaller. Comps outside that range are discarded before the report is written, so establish the target's size first and check each comp's size before committing to it. If fewer than 3 comps fall in that range, return the smaller number and say so in "summary". A comp whose size you genuinely cannot determine may still be included, but only when it plainly looks like the same scale of property.`
+      : `SIZE FIT: Prefer comps between roughly half and twice the target building's size${
+          subjectSizeSqft
+            ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
+            : ` (once you determine the target's size)`
+        } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
     // Bedroom count is not in the valuation math (beds_baths is a display
     // field), so the prompt is the only place a 2-bed can be stopped from
     // pulling a 4-bed headline. Same "fewer local matches beat a padded
@@ -4701,7 +4737,7 @@ async function extractFileOnce(fileBase64, mediaType) {
   }
 }
 
-async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null, stats = null) {
+async function callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, sizeTolerancePct, corpus, subjectDetails, lane = "solo", maxUses = null, onProgress = null, stats = null) {
   // Resolved once: the same number feeds the API's search budget AND the
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
@@ -4712,7 +4748,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
                         subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
-                        subjectDetails, lane),
+                        subjectDetails, lane, sizeTolerancePct),
     maxComps,
     searchUses,
     stream: useStream,
@@ -5156,7 +5192,7 @@ async function applySourceLinkCheck(report, type, address) {
   }
 }
 
-async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null, stats = null) {
+async function getComps(address, type, note, months, maxComps, txFocus, subjectSizeSqft, sizeTolerancePct, verifiedComps, corpus = { comps: [], coverage: 0, fresh: false }, subjectDetails = {}, onProgress = null, stats = null) {
   if (verifiedComps.length) {
     console.log(`Offering ${verifiedComps.length} verified comp(s) to the model for ${type}.`);
   }
@@ -5175,8 +5211,8 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
     // duplicates the merge has to throw away.
     // Progress rides the PRIMARY lane only. Two concurrent streams would
     // interleave and double-count the search numbers the bar advances on.
-    const primaryCall = solo((attempt) => callAnthropicOnce(address, type, note, months, laneComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "primary", perLane, progressFor(onProgress, attempt), stats), onProgress, stats);
-    const recordsCall = callAnthropicOnce(address, type, note, months, laneComps, txFocus, [], subjectSizeSqft, { comps: [] }, subjectDetails, "records", perLane)
+    const primaryCall = solo((attempt) => callAnthropicOnce(address, type, note, months, laneComps, txFocus, verifiedComps, subjectSizeSqft, sizeTolerancePct, corpus, subjectDetails, "primary", perLane, progressFor(onProgress, attempt), stats), onProgress, stats);
+    const recordsCall = callAnthropicOnce(address, type, note, months, laneComps, txFocus, [], subjectSizeSqft, sizeTolerancePct, { comps: [] }, subjectDetails, "records", perLane)
       .catch((err) => {
         // The records lane is additive. Losing it costs comps and provenance
         // mix, never the report — no retry, since retrying serially here would
@@ -5194,7 +5230,7 @@ async function getComps(address, type, note, months, maxComps, txFocus, subjectS
     return merged;
   }
 
-  const report = await solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
+  const report = await solo((attempt) => callAnthropicOnce(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, sizeTolerancePct, corpus, subjectDetails, "solo", null, progressFor(onProgress, attempt), stats), onProgress, stats);
   await applySourceLinkCheck(report, type, address);
   return report;
 }
@@ -11394,7 +11430,7 @@ const server = http.createServer((req, res) =>
             error: "Too many searches from this connection. Please wait a few minutes and try again.",
           });
         }
-        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, subjectDetails, stream, fresh } = JSON.parse(body || "{}");
+        const { address, type, note, months, maxComps, txFocus, subjectSizeSqft, sizeTolerancePct, subjectDetails, stream, fresh } = JSON.parse(body || "{}");
         // Entitlements are resolved BEFORE anything else reads the body's
         // knobs: the lookback ceiling below depends on them, and every exit
         // from here on serializes through gateReport().
@@ -11446,6 +11482,24 @@ const server = http.createServer((req, res) =>
         const txFocusOk = ["both", "sales", "leases"].includes(String(txFocus)) ? String(txFocus) : "both";
         const sizeNum = Math.round(Number(subjectSizeSqft));
         const sizeOk = Number.isFinite(sizeNum) && sizeNum > 0 ? Math.min(20_000_000, sizeNum) : null;
+        // Comps must be within ±N% of the subject's size — 30% when the body
+        // says nothing, which is what makes this the DEFAULT rather than an
+        // opt-in. "off" is a real value (no band at all); anything unreadable
+        // falls back to the default rather than refusing the search.
+        //
+        // Internal callers opt OUT: gen-market-seed.js searches "Boise, ID"
+        // with no subject building, so a band could only produce the prompt's
+        // "once you determine the target's size…" clause about a target that
+        // is a whole city. It matters more than it looks — that script shares
+        // its cache entries with /api/explore-market's own pipeline (see the
+        // lockstep note in gen-market-seed.js), so the two must agree on the
+        // prompt, not just on the key.
+        const tolOk = internal ? null : SIZEBAND.normalizeTolerancePct(sizeTolerancePct);
+        // …and the key they share must stay byte-identical, so an internal
+        // caller contributes NOTHING here rather than an explicit "off",
+        // which would be a different key from the Explorer's (which passes no
+        // band at all) and would quietly double-bill the same search.
+        const tolKey = internal ? undefined : tolOk;
         const addressOk = String(address).trim();
         const typeOk = String(type);
         const noteOk = note ? String(note).trim() : "";
@@ -11458,7 +11512,7 @@ const server = http.createServer((req, res) =>
         const cacheKey = cacheKeyFor({
           address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
           maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
-          subjectDetails: detailsOk,
+          subjectDetails: detailsOk, sizeTolerancePct: tolKey,
         });
 
         // Gating happens at SERIALIZATION, never at generation: the cache, the
@@ -11513,6 +11567,21 @@ const server = http.createServer((req, res) =>
             merged = RADIUSBLEND.attachCompDistances(merged);
           }
           const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
+          // The size band, enforced. Between the radius blend and the paywall
+          // on purpose: a saved deal three miles away is as capable of being
+          // the wrong size class as a searched one, and a comp the visitor
+          // asked us not to consider must not survive as a locked_basis row
+          // either — those feed the valuation math a free report computes.
+          // Removals are counted onto the report (size_filtered_count), so the
+          // client can say the filter is why the list is short.
+          const band = SIZEBAND.sizeBandFor(subjectSqft, tolOk);
+          if (band) {
+            const before = Array.isArray(merged && merged.comps) ? merged.comps.length : 0;
+            merged = SIZEBAND.applySizeBand(merged, band);
+            if (merged.size_filtered_count) {
+              console.log(`Size band: kept ${merged.comps.length} of ${before} comp(s) within ${SIZEBAND.describeSizeBand(band)} (±${band.pct}%) — ${addressOk}`);
+            }
+          }
           const gated = GATE.gateReport(merged, ent, {
             asOfMs: Date.now(),
             subjectSqft,
@@ -11545,7 +11614,15 @@ const server = http.createServer((req, res) =>
           // earlier serves one broker's private book to the next visitor who
           // searches that address, because the cache is keyed by property and
           // not by user.
-          return BLEND.blendPrivateComps(withExports, vaultRows);
+          // The band applies to the broker's own book too: a 200,000 SF
+          // warehouse out of the vault moves the valuation exactly as far as
+          // a searched one would, and a broker who narrowed the band did so
+          // to keep that from happening. Filtered here rather than in the
+          // vault read, so the read stays the plain market+type+window
+          // question every other vault surface asks. An empty list still
+          // returns the very same object, so a non-broker's response is
+          // unchanged.
+          return BLEND.blendPrivateComps(withExports, SIZEBAND.splitBySizeBand(vaultRows, band).kept);
         };
 
         // The gate's principle applied to live progress: a limited visitor
@@ -11611,7 +11688,7 @@ const server = http.createServer((req, res) =>
         const dw = skipCache ? null : await findDerivableReport({
           address: addressOk, type: typeOk, note: noteOk,
           maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
-          verifiedComps, subjectDetails: detailsOk,
+          verifiedComps, subjectDetails: detailsOk, sizeTolerancePct: tolKey,
         }, monthsOk, txFocusOk, maxCompsOk);
         if (dw) {
           console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
@@ -11673,7 +11750,7 @@ const server = http.createServer((req, res) =>
         // count, output size, and rescue history for the analytics event.
         const callStats = {};
         const billedT0 = Date.now();
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
+        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, tolOk, verifiedComps, corpus, detailsOk,
           sse ? (evt) => sse.send("progress", guardComp(evt)) : null, callStats);
         // With the size supplied (memo hit), the prompt skips the lookup and
         // the payload has no subject_size_sqft — carry the remembered size
@@ -11840,10 +11917,11 @@ const server = http.createServer((req, res) =>
               }
               // Progress rides only the billed leg. A cache hit emits nothing,
               // which is exactly what keeps that path answering as plain JSON
-              // (see the lazy openSse below). Arguments 9 and 10 are getComps'
+              // (see the lazy openSse below). Arguments 10 and 11 are getComps'
               // corpus and subjectDetails defaults, spelled out because the
-              // progress callback sits behind them.
-              result = await getComps(address, typeOk, "", 24, 8, "both", null, verifiedComps,
+              // progress callback sits behind them. The size band is null: a
+              // market page has no subject building to be a percentage of.
+              result = await getComps(address, typeOk, "", 24, 8, "both", null, null, verifiedComps,
                 { comps: [], coverage: 0, fresh: false }, {}, emit);
               await storeCachedSearch(cacheKey, result);
             }

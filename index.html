@@ -5625,12 +5625,31 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // and never narrower than the window already searched. A re-run is a
       // billed search, so it only ever fires on the visitor's own click.
       if (!meta.shared && !curatedShortfall && altCompN < 3) {
+        // The size band takes precedence over the wider window when it removed
+        // something: those comps were FOUND, and the reader's own setting is
+        // what is keeping them out — so a longer lookback would spend a billed
+        // search re-finding rows this report already saw and discarded. The
+        // percentage comes from the server, which knew the dropped comps'
+        // sizes; `"off"` means no allowed setting reaches them.
+        const widen = parsed.size_widen_pct;
+        if (widen) {
+          const widenBtn = document.getElementById("widenSearchBtn");
+          const to = widen === "off" ? null : Number(widen);
+          widenBtn.textContent = to === null ? "Search comps of any size" : `Search sizes within ${to}%`;
+          // Assignment, not addEventListener, for the same reason the lookback
+          // branch below uses one: this runs per render and must replace the
+          // previous report's handler rather than stack on it. rerunHistory
+          // also moves the form's own control, so the setting the re-run used
+          // is the setting the visitor can see afterward.
+          widenBtn.onclick = () => rerunHistory({ ...meta, sizeTolerancePct: to });
+          widenWrap.classList.remove("hidden");
+        }
         const ceiling = (!proConfig || !proConfig.enabled)
           ? PRO_LOOKBACK_CEILING
           : (Number(proConfig.maxLookbackMonths) || PRO_LOOKBACK_CEILING);
         const months = Number(meta.months) || 0;
         const target = Math.min(Math.max(60, months), ceiling);
-        if (target >= months && (target > months || meta.txFocus !== "sales")) {
+        if (!widen && target >= months && (target > months || meta.txFocus !== "sales")) {
           const widenBtn = document.getElementById("widenSearchBtn");
           widenBtn.textContent = `Search ${target} months, sales only`;
           // Through rerunHistory -> the form's ordinary submit path, so the
@@ -13215,7 +13234,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // A shared report's reader has no form to widen — the sender does. Same
       // reader-vs-owner split renderPrivateNotice() makes.
       if (!(currentMeta && currentMeta.shared)) {
-        text += ` Change "Comp size range" under Details for comps to widen it.`;
+        // Name the setting that would bring them back rather than leaving the
+        // reader to guess a percentage: the server worked it out from the
+        // sizes of the rows it removed, which are the only place that answer
+        // exists (they are not in this payload, deliberately).
+        const widen = currentParsed.size_widen_pct;
+        text += widen === "off"
+          ? ` Set "Comp size range" to Any size under Details for comps to include them.`
+          : widen
+          ? ` Widening "Comp size range" to ${widen}% under Details for comps would include ${one ? "it" : "them"}.`
+          : ` Change "Comp size range" under Details for comps to widen it.`;
       }
     }
     el.textContent = text;

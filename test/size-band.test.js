@@ -63,7 +63,7 @@ test("the fallback is a parameter, so a caller can default to off", () => {
 // ---------------------------------------------------------------------------
 
 test("±30% of 25,000 SF is 17,500 to 32,500", () => {
-  assert.deepEqual(SB.sizeBandFor(25000, 30), { pct: 30, min: 17500, max: 32500 });
+  assert.deepEqual(SB.sizeBandFor(25000, 30), { pct: 30, min: 17500, max: 32500, subject: 25000 });
 });
 
 test("no subject size means no band — it falls open", () => {
@@ -118,6 +118,19 @@ test("no band keeps everything", () => {
 
 const report = (comps) => ({ summary: "A market.", avg_price_per_sqft: "$140", comps });
 
+test("the report offers the smallest setting that would bring the dropped comps back", () => {
+  const band = SB.sizeBandFor(25000, 30);
+  // 40,000 SF is 60% over; rounded up to the next figure a person would pick.
+  assert.equal(SB.widenToInclude([comp("34,000"), comp("40,000")], band), 60);
+  // Nothing dropped, nothing to offer.
+  assert.equal(SB.widenToInclude([], band), null);
+  // A dropped comp with no size cannot have been dropped FOR its size.
+  assert.equal(SB.widenToInclude([comp("")], band), null);
+  // No allowed percentage reaches a comp twenty times the subject, so the
+  // honest offer is "any size" rather than a number that would not work.
+  assert.equal(SB.widenToInclude([comp("500,000")], band), "off");
+});
+
 test("out-of-band comps are removed and counted", () => {
   const band = SB.sizeBandFor(25000, 30);
   const out = SB.applySizeBand(report([
@@ -126,6 +139,8 @@ test("out-of-band comps are removed and counted", () => {
   assert.deepEqual(out.comps.map((c) => c.size_sqft), ["24,000", "30,000"]);
   assert.equal(out.size_filtered_count, 2);
   assert.deepEqual(out.size_band, { pct: 30, min: 17500, max: 32500 });
+  // 120,000 SF needs 380%; 4,000 SF needs 84%. The offer has to clear both.
+  assert.equal(out.size_widen_pct, 380);
 });
 
 test("a band that removes nothing still discloses itself", () => {
@@ -133,6 +148,8 @@ test("a band that removes nothing still discloses itself", () => {
   const out = SB.applySizeBand(report([comp("24,000")]), band);
   assert.equal(out.size_filtered_count, 0);
   assert.deepEqual(out.size_band, { pct: 30, min: 17500, max: 32500 });
+  // No key at all, so a client can test for presence rather than for zero.
+  assert.equal("size_widen_pct" in out, false);
 });
 
 test("the source report is never mutated — it may be the cached object", () => {

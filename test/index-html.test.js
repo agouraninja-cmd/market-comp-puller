@@ -1047,3 +1047,28 @@ test("a filtered comp list says so, and never recomputes the server's window", (
   const el = html.match(/<p id="sizeBandNotice"[^>]*>/)[0];
   assert.ok(!/no-print|no-capture/.test(el), "the size-band notice must survive into exports");
 });
+
+test("when the band is what made a report thin, the rescue button widens the band", () => {
+  const start = html.indexOf("if (!meta.shared && !curatedShortfall && altCompN < 3) {");
+  assert.ok(start >= 0, "the rescue CTA branch moved");
+  const fn = html.slice(start, start + 2200);
+  // The band comes first: those comps were FOUND and the reader's own setting
+  // is holding them out, so a longer lookback would pay for a search that
+  // re-finds rows this report already discarded.
+  const bandAt = fn.indexOf("parsed.size_widen_pct");
+  const monthsAt = fn.indexOf("Math.max(60, months)");
+  assert.ok(bandAt >= 0 && monthsAt > bandAt, "the band offer must be considered before the wider window");
+  assert.match(fn, /Search sizes within \$\{to\}%/);
+  assert.match(fn, /"Search comps of any size"/, '"off" must offer Any size, not a percentage');
+  assert.match(fn, /rerunHistory\(\{ \.\.\.meta, sizeTolerancePct: to \}\)/);
+  // The two offers are mutually exclusive — one button, one handler.
+  assert.match(fn, /if \(!widen && target >= months/);
+});
+
+test("the notice names the percentage that would bring the dropped comps back", () => {
+  const start = html.indexOf("function renderSizeBandNotice()");
+  const fn = html.slice(start, html.indexOf("// One honest line about the vault rows"));
+  assert.match(fn, /currentParsed\.size_widen_pct/);
+  assert.match(fn, /Set "Comp size range" to Any size/);
+  assert.match(fn, /Widening "Comp size range" to \$\{widen\}%/);
+});

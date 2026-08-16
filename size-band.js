@@ -90,7 +90,33 @@ function sizeBandFor(subjectSqft, pct) {
     pct: p,
     min: Math.round(sf * (1 - Math.min(p, 99.9) / 100)),
     max: Math.round(sf * (1 + p / 100)),
+    // The size everything here is a percentage OF. Carried on the band rather
+    // than recovered from min/max later, which would round: widenToInclude
+    // needs the real figure to name a percentage a re-run can be run at.
+    subject: sf,
   };
+}
+
+// The smallest setting that would have kept every comp the band removed —
+// what the report offers as a one-click "widen it" rather than making someone
+// guess a number. Rounded UP to the next 5 so the answer is a figure a person
+// would choose, and `"off"` when no allowed percentage reaches far enough (a
+// comp twenty times the subject's size needs 1,900%, and a button promising
+// to bring it back at 500% would simply be wrong).
+function widenToInclude(dropped, band) {
+  if (!band || !(band.subject > 0)) return null;
+  let needed = 0;
+  for (const c of Array.isArray(dropped) ? dropped : []) {
+    const sf = compSizeSqft(c);
+    if (!sf) continue;
+    needed = Math.max(needed, Math.abs(sf / band.subject - 1) * 100);
+  }
+  if (!(needed > 0)) return null;
+  // Rounded to the nearest thousandth before the ceiling: 40,000 ÷ 25,000 - 1
+  // is 0.6000000000000001 in floating point, which would otherwise offer 65%
+  // for a comp that is exactly 60% over.
+  const rounded = Math.ceil(Math.round(needed * 1000) / 1000 / 5) * 5;
+  return rounded > MAX_TOLERANCE_PCT ? "off" : rounded;
 }
 
 // A comp's own square footage. 0 means "not stated", which rule 1 protects.
@@ -130,11 +156,17 @@ function applySizeBand(report, band) {
   if (!band) return report;
   const comps = Array.isArray(report.comps) ? report.comps : [];
   const { kept, dropped } = splitBySizeBand(comps, band);
+  const widen = widenToInclude(dropped, band);
   return {
     ...report,
     comps: kept,
     size_band: { pct: band.pct, min: band.min, max: band.max },
     size_filtered_count: dropped.length,
+    // A number (or "off") only when something was actually removed, so the
+    // client can test for its presence. Deliberately NOT the dropped comps'
+    // sizes: this is one figure, not a description of rows the visitor asked
+    // not to see.
+    ...(widen == null ? {} : { size_widen_pct: widen }),
   };
 }
 
@@ -149,5 +181,5 @@ function describeSizeBand(band) {
 module.exports = {
   DEFAULT_TOLERANCE_PCT, MIN_TOLERANCE_PCT, MAX_TOLERANCE_PCT,
   normalizeTolerancePct, sizeBandFor, compSizeSqft, fitsSizeBand,
-  splitBySizeBand, applySizeBand, describeSizeBand,
+  splitBySizeBand, applySizeBand, describeSizeBand, widenToInclude,
 };

@@ -679,7 +679,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   and the market snapshot keep every comp the search found. Removals ride
   the response as `size_band` + `size_filtered_count` and are disclosed
   under the comp table (`renderSizeBandNotice`) — a short list must never
-  read as a thin market. A comp with no stated size is never dropped, and
+  read as a thin market. `size_widen_pct` is the smallest setting that
+  would have kept every comp the band removed (or `"off"` when no allowed
+  percentage reaches), computed where the dropped rows are still in hand;
+  the notice names it, and on a report too thin to value it takes over the
+  hero's rescue button from the wider-lookback offer — those comps were
+  FOUND, so a longer window would pay for a search that re-finds rows this
+  report already discarded. A comp with no stated size is never dropped, and
   with no subject size there is no band at all. The cache key carries the
   tolerance only when it is NOT the default, so the existing 30-day cache
   survives (a legacy entry re-served under the default is still filtered at

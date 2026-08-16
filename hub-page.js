@@ -86,6 +86,18 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .addbox input,.addbox select{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
   border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
+/* The vault picker. A plain scrolling list of rows with checkboxes: a broker
+   picking three comps out of two hundred needs to read addresses, not admire
+   a grid. */
+.vlist{max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+.vrow{display:flex;align-items:baseline;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);
+  font-size:13px}
+.vrow:last-child{border-bottom:0}
+.vrow input{margin:0}
+.vrow .addr{flex:1;min-width:0}
+.vrow .fig{color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.vrow.sent{opacity:.55}
+.vrow.sent .addr::after{content:" · already in this hub";color:var(--ink-3);font-size:11.5px}
 /* A client's own find is marked as theirs and never wears the vault badge:
    the two are different claims and must not look alike. */
 .mine{border-color:var(--ink-3);color:var(--ink-2)}
@@ -134,6 +146,24 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       <!-- Adding a building the CLIENT found. Behind a toggle, and below the
            table, because it is the rarer act and the list is what people come
            here to read. Shown only to someone who may post. -->
+      <!-- Sending comps out of the broker's own vault. Lives HERE, on the hub,
+           rather than as a control on every vault row: this is where you are
+           already thinking about one client, and the vault's comp table has
+           three actions on it before this one. Owner only (canAdd), so a
+           client never sees it. -->
+      <div id="vaultWrap" class="hide">
+        <button class="link" id="vaultToggle" aria-expanded="false" aria-controls="vaultBox">Add comps from your vault</button>
+        <div id="vaultBox" class="hide addbox">
+          <p class="who">Sending a comp shows this client its full address and price.
+            It stays in this hub and never enters CompNinja's public records.</p>
+          <div id="vaultList"></div>
+          <div style="margin-top:10px">
+            <button class="btn" id="vaultSend" disabled>Send selected comps</button>
+          </div>
+          <div id="vaultMsg"></div>
+        </div>
+      </div>
+
       <div id="addWrap" class="hide">
         <button class="link" id="addToggle" aria-expanded="false" aria-controls="addBox">Add a comp you found</button>
         <div id="addBox" class="hide addbox">
@@ -257,6 +287,10 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     // found and saying something about one are the same class of act, and a
     // hub that lets you talk but not point at a building is half a workspace.
     show("addWrap", !!d.canWrite);
+    // Sending from the vault is the OWNER's act (canAdd), not every writer's.
+    // A client can add a building they found; only the broker sends out of the
+    // book of record.
+    show("vaultWrap", !!d.canAdd);
     if (!d.canWrite) {
       // TWO different read-only states, and only one of them is a thing the
       // reader can act on.
@@ -690,6 +724,141 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   el("mType").innerHTML = '<option value=""></option>' +
     ["Industrial","Office","Retail","Multifamily","Land","Residential"]
       .map(function(t){ return "<option>" + t + "</option>"; }).join("");
+
+  // ---- Sending comps out of the broker's own vault -------------------------
+  //
+  // The book is fetched ONCE, lazily, the first time the panel is opened: most
+  // hub visits never touch it, and a broker's whole vault is the largest thing
+  // this page could ask for.
+  var vaultBook = null;
+
+  function vaultMsg(text, bad){
+    var n = el("vaultMsg");
+    n.textContent = text || "";
+    n.className = text ? ("msg" + (bad ? " bad" : "")) : "";
+    n.style.marginTop = text ? "10px" : "0";
+  }
+
+  // Which of the broker's comps are already here. Matched on ADDRESS, because
+  // the item shape a client receives deliberately does not carry the vault row
+  // id — that is the broker's own plumbing and has no business travelling to a
+  // tenant. This is a HINT only: correctness lives on the server, which filters
+  // duplicates itself and answers a re-send as a no-op.
+  function alreadySent(){
+    var seen = {};
+    lastItems.forEach(function(it){
+      if (it.source === "vault" && it.snapshot && it.snapshot.address){
+        seen[String(it.snapshot.address).trim().toLowerCase()] = true;
+      }
+    });
+    return seen;
+  }
+
+  function renderVaultList(){
+    var box = el("vaultList");
+    box.textContent = "";
+    if (!vaultBook) return;
+    if (!vaultBook.length){
+      var none = document.createElement("p");
+      none.className = "who";
+      none.textContent = "Your vault has no comps yet. Add them on the vault page first.";
+      box.appendChild(none);
+      return;
+    }
+    var sent = alreadySent();
+    var list = document.createElement("div");
+    list.className = "vlist";
+    vaultBook.forEach(function(c){
+      var isSent = !!sent[String(c.address || "").trim().toLowerCase()];
+      var row = document.createElement("label");
+      row.className = "vrow" + (isSent ? " sent" : "");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = c.id;
+      cb.disabled = isSent;
+      cb.addEventListener("change", updateSendButton);
+      row.appendChild(cb);
+      var addr = document.createElement("span");
+      addr.className = "addr";
+      addr.textContent = c.address || "(no address)";
+      row.appendChild(addr);
+      var fig = document.createElement("span");
+      fig.className = "fig";
+      fig.textContent = [c.transaction, c.deal_date, money(c.price), num(c.size_sqft) && (num(c.size_sqft) + " SF")]
+        .filter(Boolean).join(" · ");
+      row.appendChild(fig);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    updateSendButton();
+  }
+
+  function selectedIds(){
+    return [].filter.call(el("vaultList").querySelectorAll("input[type=checkbox]"), function(c){ return c.checked; })
+      .map(function(c){ return c.value; });
+  }
+  function updateSendButton(){
+    var n = selectedIds().length;
+    el("vaultSend").disabled = n === 0;
+    el("vaultSend").textContent = n ? ("Send " + n + " comp" + (n === 1 ? "" : "s")) : "Send selected comps";
+  }
+
+  el("vaultToggle").addEventListener("click", function(){
+    var open = el("vaultBox").classList.contains("hide");
+    show("vaultBox", open);
+    el("vaultToggle").setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open || vaultBook) return;
+    vaultMsg("Loading your vault…");
+    fetch("/api/vault?limit=1000", { credentials: "same-origin" })
+      .then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        if (o.s !== 200){
+          // Says which failure it was rather than showing an empty book: an
+          // empty list and a refused read look identical, and one of them is
+          // a broker's whole book of business appearing to be gone.
+          vaultMsg((o.j && o.j.error) || "Your vault could not be loaded.", true);
+          return;
+        }
+        vaultMsg("");
+        vaultBook = (o.j.comps || []);
+        renderVaultList();
+      })
+      .catch(function(){ vaultMsg("Your vault could not be reached.", true); });
+  });
+
+  el("vaultSend").addEventListener("click", function(){
+    var ids = selectedIds();
+    if (!ids.length) return;
+    el("vaultSend").disabled = true;
+    vaultMsg("");
+    fetch("/api/hub/items", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID, items: ids.map(function(x){ return { source: "vault", ref: x }; }) }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        updateSendButton();
+        if (o.s === 401){ askForAccount(o.j && o.j.error, function(m){ vaultMsg(m, true); }); return; }
+        if (o.s !== 201 && o.s !== 200){
+          vaultMsg((o.j && o.j.error) || "Those comps could not be sent.", true);
+          return;
+        }
+        // The added count is what actually landed, which can be fewer than asked for if
+        // something was already here. Say the real number: a broker told five
+        // were sent will not go looking for the two that were not.
+        var n = o.j.added || 0;
+        vaultMsg(n ? (n + " comp" + (n === 1 ? "" : "s") + " sent.") : "Those comps were already in this hub.");
+        // Refetch so the table, the tally and the already-sent marks all come
+        // from the server rather than from what we hoped happened.
+        readHub("").then(function(res){
+          if (res.s === 200){ render(res.j); renderVaultList(); }
+        }).catch(function(){});
+      })
+      .catch(function(){
+        updateSendButton();
+        vaultMsg("That did not reach the server. Nothing was sent.", true);
+      });
+  });
 
   el("addToggle").addEventListener("click", function(){
     var open = el("addBox").classList.contains("hide");

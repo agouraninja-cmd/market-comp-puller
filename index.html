@@ -11698,6 +11698,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
   });
 
+  // ----------------------------------------------------------------------------
+  // Escape leaves My Desk and returns to the home view — the desk-view mirror of
+  // the report-close handler above (results is hidden while on desk, so that
+  // handler never fires here). Same overlay rules: modals and the fullscreen map
+  // own Escape first, and a focused form control just drops focus.
+  // ----------------------------------------------------------------------------
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !onDesk()) return;
+    if (e.defaultPrevented) return;
+    if (document.getElementById("compMap").classList.contains("map-fullscreen")) return;
+    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal"]
+        .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
+    leaveDesk();
+  });
+
   // Market Explorer: lives in the signed-in desk's right chamber (sibling of
   // #compForm, never inside it). Matches covered market pages as you type; an uncovered
   // market can be generated on the spot (POST /api/explore-market — one billed

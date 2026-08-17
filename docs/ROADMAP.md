@@ -29,15 +29,6 @@ intent, the devlog states history.
 
 ## Next
 
-- **`/api/geocode` should take a POST, not a query string.** The two
-  follow-ons left by the private-comp geocoding work, in the order Owen set
-  when he answered section 7 — this one ABOVE import-time geocoding, not
-  below it. Today every comp's address travels in a URL, which means the
-  platform's access logs and any Referer. `POST /api/report-access` is already
-  POST for exactly this reason (CLAUDE.md says so). It is the same class of
-  fix at a wider blast radius, because it covers *every* comp rather than only
-  private ones. Scoped out of the original change deliberately: it touches
-  every caller (the report map, the market pages, the Explorer).
 - **Import-time geocoding for vault comps** (step 2 of the same spec).
   Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
   what fraction of broker exports already carry coordinates — could not be
@@ -140,6 +131,24 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-17: `/api/geocode` takes a POST, and the GET form is gone.** The
+  higher-ranked of the two follow-ons from the private-comp geocoding work
+  (Owen's section 7 ordering: above import-time geocoding, which stays in
+  "Next"). Every comp's address used to travel in a query string, so it landed
+  in Render's access logs and in any outbound Referer; it rides in the body
+  now, the same reasoning `POST /api/report-access` and `POST /api/hub/access`
+  already carry. It matters most for the comps that are not public — a vault
+  comp is geocoded through this proxy and deliberately nowhere else (GUARD 2),
+  so logging its address in a URL undid part of what that guard bought.
+  Both callers moved (index.html's `geocodeAddress`, `MARKET_MAP_JS`); the
+  Explorer turned out not to be one. **The GET alias was removed, not
+  deprecated** — an open door is one stale caller away from putting the
+  addresses back, and nothing detects that. The bounded cost is market pages
+  cached `public, max-age=3600` before the deploy, which geocode nothing for
+  up to an hour and hide the map card rather than showing a broken one;
+  index.html is `no-store` and updates at once. Four tests pin it, including
+  a source check that neither caller ever rebuilds a query string.
+
 - **2026-08-13/14: five changes aimed at the acquisition constraint, plus two
   money-path holes.** None of these were on this roadmap, which is the point:
   the list above is engineering the product needs, and every item here answers
@@ -147,8 +156,9 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
   - **A refund takes the report back** (#61). `charge.refunded` and the
     async-payment pair had no handlers, so a refunded buyer kept their unlock
     forever and a payment settling after checkout charged the card and never
-    unlocked anything. **Owner action outstanding: the three events are not
-    ticked on the Stripe destination, so the code is inert until they are.**
+    unlocked anything. **Closed 2026-08-17**: the three events are ticked on
+    the live destination (`empowering-legacy`), which now reports all nine,
+    matching `PRO-BILLING-SETUP.md`. The handlers were inert for two weeks.
   - **The market pages stop promising a broker nobody has** (#62). All 38
     offered "a no-cost Broker Opinion of Value from a licensed local broker"
     while the broker card above rendered nothing. The promise now reads the

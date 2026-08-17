@@ -1,4 +1,4 @@
--- 028 · Lease rent in the broker vault (2026-08-16)
+-- 029 · Lease rent in the broker vault (2026-08-17)
 --
 -- Until now the vault only really worked for investment sales. normalizeRow
 -- writes price_per_sqft for SALES ONLY — correctly, because an annual rent
@@ -33,7 +33,9 @@
 -- makes it WRONG, which is refused. Those are different problems and get
 -- different answers.
 --
--- MIGRATE BEFORE DEPLOY, unlike 027. This is the broker_comps insert path:
+-- MIGRATE BEFORE DEPLOY, unlike 027. (Filed as 028 until 2026-08-17, when a
+-- concurrently-shipped 028-comp-condition.sql took the number; the SQL the
+-- owner ran is byte-identical to what is below.) This is the broker_comps insert path:
 -- normalizeRow puts these keys on the row it returns and server.js inserts
 -- that row wholesale, so PostgREST would 400 on the unknown columns and refuse
 -- the broker's entire spreadsheet. Same one-directional ordering as 013, 016

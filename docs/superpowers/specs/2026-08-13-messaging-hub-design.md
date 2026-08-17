@@ -134,7 +134,12 @@ honest.
 
 **Identity is the email** (018 precedent). A tenant invited before they have
 an account is recognized the moment they sign up with that address, with
-nothing to reconcile. `user_id` is stamped on the first authenticated read.
+nothing to reconcile. `user_id` is **never written** — the spec and the
+migration both claimed it was "stamped on the first authenticated read",
+and nothing stamps it. Corrected 2026-08-14 after checking production,
+where the column is null on every row. It costs nothing, because the email
+match is what resolves a participant; it is recorded here so the next
+reader does not build on a join that has no data behind it.
 
 **One token per participant, hashed.** A single hub-wide link cannot say who
 said what, and a forwarded hub-wide link cannot be cut off without cutting

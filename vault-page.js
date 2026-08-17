@@ -1192,11 +1192,31 @@ if(dd)dd.open=false;});</script>
     if(k==="size_sqft")return num(v);
     return String(v);
   }
+  // A table column used to size itself to the text in it, because a <td> of
+  // text reports how wide its content is and wraps when it cannot have it. An
+  // <input> does neither: it has its own default width of about twenty
+  // characters and never wraps, so the moment these cells became inputs a long
+  // address rendered clipped inside a box narrower than the address — the
+  // column had stopped being told what it was holding.
+  //
+  // min-width in ch puts that back. A column's min-content width is the widest
+  // of its cells, so sizing each cell to its own value sizes the column to the
+  // longest one in it, which is what the text did before. Capped per field
+  // because a 400-character note must not produce a 400-character column; past
+  // the cap the table's own wrapper scrolls, as it already does.
+  var CELL_MAX_CH={address:46,notes:64,deal_date:14,price:16,size_sqft:14,
+    property_type:16,transaction:12,cap_rate:12,tenancy:20,year_built:12};
+  function cellWidth(k,shown){
+    var n=String(shown==null?"":shown).length;
+    // +3 covers the input's own padding and border, which sit inside the
+    // width and would otherwise eat the last characters back off again.
+    return Math.max(7,Math.min(CELL_MAX_CH[k]||24,n+3));
+  }
   function cellInput(c,k){
-    var raw=c[k]==null?"":c[k];
+    var raw=c[k]==null?"":c[k],shown=cellDisplay(k,c[k]);
     return '<input type="text" class="cell" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
-      '" data-raw="'+escA(raw)+'" value="'+escA(cellDisplay(k,c[k]))+
-      '" aria-label="'+escA(sheetLabel(k))+'"/>';
+      '" data-raw="'+escA(raw)+'" value="'+escA(shown)+
+      '" style="min-width:'+cellWidth(k,shown)+'ch" aria-label="'+escA(sheetLabel(k))+'"/>';
   }
   // Derived cells carry their own id/key so a save can refresh just them,
   // without the re-render that would steal focus from the next cell.
@@ -1378,8 +1398,11 @@ if(dd)dd.open=false;});</script>
         : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
       var cells=keys.map(function(k){
         var v=c[k]==null?"":c[k];
+        // Same width rule as the compact table (see cellWidth): a notes cell
+        // holding two sentences must not render as a twenty-character box
+        // with the rest of the sentence scrolled out of sight.
         return '<td><input type="text" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
-          '" value="'+escA(v)+'"/></td>';
+          '" value="'+escA(v)+'" style="min-width:'+cellWidth(k,v)+'ch"/></td>';
       }).join("");
       return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
@@ -3001,9 +3024,17 @@ if(dd)dd.open=false;});</script>
   // formatting "1000000" into "$1,000,000" there would make the one screen a
   // broker opens to check what was actually imported stop showing it.
   function showCell(el,key,v){
-    if(!el.getAttribute||el.getAttribute("data-raw")===null)return;
-    if(el.setAttribute)el.setAttribute("data-raw",v==null?"":String(v));
-    el.value=cellDisplay(key,v);
+    var hasRaw=el.getAttribute&&el.getAttribute("data-raw")!==null;
+    var shown=hasRaw?cellDisplay(key,v):(v==null?"":String(v));
+    if(hasRaw){
+      if(el.setAttribute)el.setAttribute("data-raw",v==null?"":String(v));
+      el.value=shown;
+    }
+    // Re-widen for what is now in the cell. Typing a longer address than the
+    // one the column was built around would otherwise leave the new value
+    // clipped until the next full render — which, since saves deliberately do
+    // not re-render, could be a long time.
+    if(el.style)el.style.minWidth=cellWidth(key,shown)+"ch";
   }
 
   // market and $/SF are the server's to compute, so after a save they are read
@@ -3149,13 +3180,35 @@ if(dd)dd.open=false;});</script>
     fetch("/api/hubs",{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
-        // 401/403 are not errors to report here: the whole page is already
-        // gated, and a member who cannot see hubs sees the deck's empty state
-        // rather than a refusal they can do nothing about.
-        if(o.s!==200){hubs=[];renderHubs();return;}
+        // 401/403 stay silent: the whole page is already gated, and a member
+        // who cannot see hubs gets nothing to act on from a refusal here.
+        if(o.s===401||o.s===403){hubs=[];renderHubs();return;}
+        // EVERYTHING ELSE SAYS SO. This used to fall into the same branch, so
+        // a 503 rendered "No hubs yet. Create one when you have comps to put in
+        // front of a client." — an outage reading as "you have none", to the
+        // one person who would know it was wrong. It happened for real during
+        // a deploy on 2026-08-14 and cost a confused ten minutes.
+        //
+        // It is also backwards from this repo's own rule: the lead inbox
+        // refuses with a 503 rather than showing an empty inbox, "because an
+        // empty inbox on error would misreport demand as zero". Same argument,
+        // same answer.
+        if(o.s!==200){hubsFailed((o.j&&o.j.error)||"Your hubs could not be loaded.");return;}
         hubs=o.j.mine||[];renderHubs();
       })
-      .catch(function(){hubs=[];renderHubs();});
+      .catch(function(){hubsFailed("Your hubs could not be reached.");});
+  }
+
+  // A failed load is NOT an empty list. The invitation stays hidden, because
+  // "create your first hub" is the wrong thing to say to somebody whose hubs
+  // we simply could not fetch.
+  function hubsFailed(text){
+    hubs=[];
+    var rows=$("hubRows"); if(rows)rows.innerHTML="";
+    hubShow($("hubTableWrap"),false);
+    hubShow($("hubEmpty"),false);
+    hubShow($("hubIntro"),true);
+    hubMsg(text,true);
   }
 
   $("hubType").innerHTML='<option value=""></option>'+
@@ -3198,9 +3251,16 @@ if(dd)dd.open=false;});</script>
   function showInvites(j){
     var list=(j.invites||[]);
     var box=$("hubInvites");
-    var head='<p class="note">Your hub is ready. Copy each link and send it to that '+
-      'person yourself: CompNinja does not email them yet, and these links cannot be '+
-      'shown again.</p>';
+    // The copy depends on whether the server actually MAILED them, which it
+    // reports as the emailed flag. This used to hard-code "CompNinja does not email
+    // them yet" — true when hubs shipped, and a lie the day a domain is
+    // verified in Resend, told to the one person relying on it.
+    var head = j.emailed
+      ? '<p class="note">Your hub is ready, and each person has been emailed their link. '+
+        'The links are below if you would rather send them yourself; they cannot be shown again.</p>'
+      : '<p class="note">Your hub is ready. Copy each link and send it to that '+
+        'person yourself: CompNinja cannot email them until a sending domain is verified, '+
+        'and these links cannot be shown again.</p>';
     if(!list.length){
       box.innerHTML=head+'<p class="note"><a href="/hub/'+encodeURIComponent(j.id)+
         '">Open the hub</a> and add people to it when you are ready.</p>';

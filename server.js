@@ -3608,6 +3608,44 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
+// Is outbound mail actually going to leave the building? The two env vars
+// sendOutboundEmail checks, asked as a question the CALLER can answer, because
+// a hub needs to tell a broker whether their client was emailed or whether
+// they have to send the link themselves. Without it the create panel has to
+// guess, and it guessed wrong in both directions: it hard-coded "CompNinja
+// does not email them yet", which becomes a lie the day a domain is verified.
+const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
+
+// The hub invitation.
+//
+// Rides the same EMAIL_FROM gate as every other outbound mail, so on a
+// deployment with no verified domain this logs "Outbound email skipped" and
+// the broker copies the link by hand — which is exactly how hubs have worked
+// since they shipped. Nothing here changes behaviour today; it means the day
+// the domain is verified, invitations start sending with no code change.
+//
+// THE LINK CARRIES THE TOKEN, and that is the point: it is the credential, and
+// mailing it is the delivery mechanism, the same trade a password reset makes.
+// It is why the copy names the address the hub was shared with — a forwarded
+// invite lets somebody READ, and only signing in as the invited address lets
+// them post.
+//
+// Fire and forget, ALWAYS: the hub and its participants are already written
+// when this runs. A mail provider having a bad afternoon must never turn a
+// created hub into an error, and the broker still holds every link.
+function sendHubInvites(invites, { hubTitle, fromName }) {
+  for (const inv of invites) {
+    const who = fromName ? `${fromName} has` : "A broker has";
+    const what = hubTitle ? `"${hubTitle}"` : "a set of comps";
+    sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
+      `${who} shared ${what} with you on CompNinja.\n\n` +
+      `Open it here: ${inv.url}\n\n` +
+      `You can read it without an account. To reply or shortlist a building, ` +
+      `sign in with this email address (${inv.email}) — a free account is all it takes.\n\n` +
+      `Every CompNinja valuation is an automated estimate, not an appraisal.`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Prompt builder — property-type aware
 // ---------------------------------------------------------------------------
@@ -15964,11 +16002,22 @@ const server = http.createServer((req, res) =>
           }
 
           logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
+          const inviteLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Fire and forget, AFTER the rows are written. A mail provider having
+          // a bad afternoon must never turn a created hub into an error.
+          try {
+            sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
+          } catch (err) {
+            console.error("Hub invite send failed:", err.message);
+          }
           return sendJson(res, 201, {
             ok: true,
             id,
             url: `${SITE_URL}/hub/${id}`,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: inviteLinks,
+            // Whether the invitations actually LEFT. The panel says something
+            // different depending on the answer, and it must not guess.
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -16119,6 +16168,21 @@ const server = http.createServer((req, res) =>
             // guess from the role string.
             canWrite: HUB.canWriteHub(g).ok,
             canAdd: HUB.canAddItems(g).ok,
+            // The guest list, OWNER ONLY. A broker needs it to add or remove
+            // somebody; a client must not have it, because the other addresses
+            // in a hub are that broker's client relationships and none of a
+            // fellow guest's business. Gated on the same owner-only answer
+            // that governs adding comps, so there is one definition of "this
+            // is the broker" rather than two that can drift.
+            ...(HUB.canAddItems(g).ok ? {
+              people: (g.participants || [])
+                .filter((p) => !p.removed_at)
+                .map((p) => ({
+                  email: p.email,
+                  role: p.role,
+                  opened: !!p.first_viewed_at,
+                })),
+            } : {}),
             // Unconditional, now that a poll carries them too. It was a
             // conditional spread while `since` could suppress the list;
             // leaving that in would be a branch that can no longer be false.
@@ -16490,10 +16554,22 @@ const server = http.createServer((req, res) =>
                 { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
             }
           }
+          const newLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Only the NEWLY invited are mailed — re-saving an unchanged list, or
+          // only removing people, must email nobody. Same rule as
+          // PUT /api/shares/viewers.
+          if (newLinks.length) {
+            try {
+              sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
+            } catch (err) {
+              console.error("Hub invite send failed:", err.message);
+            }
+          }
           return sendJson(res, 200, {
             ok: true,
             participants: wanted,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: newLinks,
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

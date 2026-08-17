@@ -11023,7 +11023,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     let data;
     try {
       const res = await fetch("/api/hubs");
-      if (!res.ok) return;            // 401/403/503 all mean "show nothing"
+      // 401/403 mean "not for you" and stay silent, as before. Anything else
+      // is a failure, and this list stays hidden rather than rendering as
+      // though the member has no hubs — the same correction the vault's deck
+      // needed on 2026-08-14, where a 503 read as "No hubs yet".
+      //
+      // It stays SILENT rather than showing an error, unlike the vault: this
+      // section has no empty state at all, so hiding it says nothing false.
+      // The vault's deck has an invitation that would be a lie.
+      if (!res.ok) return;
       data = await res.json();
     } catch (_) { return; }
     const rows = (data && Array.isArray(data.theirs)) ? data.theirs : [];

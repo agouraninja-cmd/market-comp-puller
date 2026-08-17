@@ -765,19 +765,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        sides means they cannot drift apart. */
     .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
     @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid var(--hair); } .rd-row { border-bottom: 0; } }
-    /* A 2x2 .rd-row (Focus / Lookback over Size / Asking price). :last-child
-       only knows the 4th cell, so on a wrapped grid cell 2 paints a right
-       border straight onto the card edge and the two lines run together with no
-       rule between them. Scoped to the two-column range only — below 640px the
-       rule above has already stacked every cell and zeroed the right borders,
-       and re-adding a border-bottom to cells 1-2 there would be harmless but
-       redundant, while an nth-child right border would not be. Cells are
-       equal-height grid items, so the vertical hairline between 3 and 4 lines
-       up with the one between 1 and 2 for free. */
-    @media (min-width: 640px) {
-      .rd-row-2up > .rd-cell:nth-child(2n) { border-right: 0; }
-      .rd-row-2up > .rd-cell:nth-last-child(n + 3) { border-bottom: 1px solid var(--hair); }
-    }
     /* Split Research Desk (owner-approved Mock A, 2026-08-14): one bordered
        unit, two chambers. Market Explorer is a SIBLING of #compForm, not a
        child — Enter in that field must not submit a building report. Do not
@@ -1778,17 +1765,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
-        <!-- 2x2, not four across. The build chamber is ~552px, so a four-cell
-             row leaves 106px of content per cell and "BUILDING SIZE (SF)" at
-             .rd-lab's tracking wraps to two lines — the same crowding that sent
-             the size range down to Refine in the first place. Two columns give
-             each cell ~244px, which is the width the half-Refine cell had, so
-             the size range fits up here intact (min, "to", max) with no lone
-             max left orphaned downstairs. Pairing is deliberate: the two
-             everyday controls on the top line, the two optional numbers under
-             them. See .rd-row-2up in the style block for the borders — a
-             wrapped grid breaks .rd-cell:last-child. -->
-        <div class="rd-row rd-row-2up grid grid-cols-1 sm:grid-cols-2">
+        <!-- Three across on ONE line, the shape this row held before the size
+             came back onto the form. It went 2x2 on 2026-08-16 to fit four
+             cells (Focus / Lookback over Property SF / Asking price); the
+             asking price moved down into "Details for comps" on 2026-08-17
+             (owner's call), which hands the row its single line back. Three
+             cells is the most this row takes: the build chamber is ~552px, so
+             a fourth leaves ~106px of content and .rd-lab's tracking wraps the
+             label to two lines. With no wrap, .rd-cell:last-child does the
+             right-hand border on its own and no nth-child rule is needed —
+             that is why .rd-row-2up is gone from the style block rather than
+             left sitting unused. -->
+        <div class="rd-row grid grid-cols-1 sm:grid-cols-3">
           <div class="rd-cell" id="txFocusWrap">
             <label class="rd-lab" for="txFocus">Focus</label>
             <select id="txFocus" class="rd-in">
@@ -1822,11 +1810,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  dialog and go open a collapsed section. It is also the number
                  the hero multiplies, so it earns a visible slot more than its
                  hit rate suggests.
-                 ONE input, no range: the owner's call, and the same shape as
-                 Asking price beside it. A size BAND is a comp-selection filter,
-                 which is a different question from "how big is my building" —
-                 and this field's answer is the one the hero multiplies, so a
-                 second box invited a spread where a single figure is wanted.
+                 ONE input, no range: the owner's call. A size BAND is a
+                 comp-selection filter, which is a different question from "how
+                 big is my building" — and this field's answer is the one the
+                 hero multiplies, so a second box invited a spread where a
+                 single figure is wanted.
                  #targetSizeMax is gone with it; sizeMax survives in meta.subject
                  exactly as priceMax has since 2026-08-10, so saved reports and
                  shares written while the range existed still render it.
@@ -1841,39 +1829,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 24800" class="rd-in" />
             <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
           </div>
-          <div class="rd-cell">
-            <!-- The size held this slot until 2026-08-10 and was being answered
-                 automatically twice over (public records server-side, the OSM
-                 footprint estimate during the confirm dialog), so the slot went
-                 to the one optional input that lights up a whole report surface
-                 that is otherwise dark: renderComparison() hides itself unless
-                 it has BOTH a size and a price, so without a price nobody ever
-                 sees their own $/SF against the market's, or the over/under
-                 verdict. Still optional — the address is this form's only
-                 required field. One input, because two inputs around a "to"
-                 inside a third-of-a-row cell is exactly what clipped the size
-                 range. (That constraint eased on 2026-08-16 when the row went
-                 2x2 and the size range came back beside this cell — a price
-                 max could fit here now. It is still deliberately absent: a
-                 price BAND is not a thing an owner has, where a size band is.)
-                 Moved to the last slot 2026-08-10: it's the one optional field
-                 of the three, and Focus/Lookback are the everyday controls that
-                 belong up front. -->
-            <!-- "Asking price", not "Your price": a bare "your price" invites
-                 the price they PAID years ago, and a historical number would
-                 make the comparison card announce a nonsense over/under against
-                 today's market. Measured against the cell's real 184px (171px
-                 at the sm breakpoint): the old "Asking / expected price ($)"
-                 wrapped to two lines here and pushed this input below the
-                 Lookback and Focus inputs beside it. -->
-            <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-            <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="rd-in" />
-          </div>
         </div>
-        <!-- Refine (optional; the address, price, lookback and focus live up
-             top). Size moved back down here on 2026-08-10 when the price took
-             its slot on the form: it is answered automatically on the great
-             majority of searches, so it belongs where an override belongs. -->
+        <!-- Refine (optional; the address, focus, lookback and size live up
+             top). The asking price came back down here on 2026-08-17 (owner's
+             call) so the row above holds one line: it is a fact about the
+             subject rather than a control over the search, which is what
+             everything else behind this summary is. -->
         <details id="subjectDetails" class="rd-row group">
           <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
             <!-- Owner's retitle (2026-08-08 notes): "Details for comps", not
@@ -1881,7 +1842,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  selection and the title should say so. Structure and field
                  list are upstream's 2026-08-10 redesign (price promoted to
                  the form, size demoted here, market note tucked here). -->
-            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(NOI, cap rate, market note: optional, sharpens the match)</span></span>
+            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(asking price, NOI, cap rate, market note: optional)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
             <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size sits on the form above and only needs a value to override what we found.</p>
@@ -1916,6 +1877,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <div>
                 <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
                 <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+              </div>
+              <!-- Asking price came down off the form on 2026-08-17 (owner's
+                   call) so the row above fits on one line again. It sits
+                   directly beside the per-type facts below — beds/baths on a
+                   house, unit count on a multifamily — because that is what it
+                   is: a fact about the subject, not a control over the search.
+                   Still optional; the address is this form's only required
+                   field. It stays ONE input: a price BAND is not a thing an
+                   owner has, where a size band is.
+                   "Asking price", not "Your price": a bare "your price" invites
+                   the price they PAID years ago, and a historical number would
+                   make the comparison card announce a nonsense over/under
+                   against today's market.
+                   Worth knowing before removing it: renderComparison() hides
+                   itself unless it has BOTH a size and a price, so this is the
+                   only field that lights up the owner's own $/SF against the
+                   market's — and on Residential it is a compWeight factor, the
+                   thing that stops cheaper sales in the next pocket over
+                   halving a house's estimate. It takes the bordered Refine
+                   styling rather than .rd-in now that it lives in this grid. -->
+              <div>
+                <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+                <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                <p class="text-xs text-[#68707E] mt-1">What it's listed at, or what you'd ask today. Shows your $/SF against the market's.</p>
               </div>
               <div id="subjectTypeFields" class="contents"></div>
             </div>
@@ -3352,17 +3337,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // The bits list what is actually BEHIND this summary, so none of them names
     // the size any more — it moved onto the form on 2026-08-16, and a collapsed
     // section promising a field it does not contain is what sends someone
-    // hunting. Land loses its income line, so market note + zoning is all it
-    // has left to advertise.
+    // hunting. The asking price came the other way on 2026-08-17 and so is
+    // named on every branch: it is the one field down here a seller looks for
+    // by name, and it is now the only place to type it. Land loses its income
+    // line, so asking price + market note + zoning is all it has left to
+    // advertise.
     if (type === "Residential") {
       hintIncome.textContent = "If this is a rental, add NOI for an income-approach cross-check.";
-      summaryBits.textContent = "(beds/baths, market note: optional)";
+      summaryBits.textContent = "(asking price, beds/baths, market note: optional)";
     } else if (type === "Land") {
       hintIncome.textContent = "";
-      summaryBits.textContent = "(zoning, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(asking price, zoning, market note: optional)";
     } else {
       hintIncome.textContent = "Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.";
-      summaryBits.textContent = "(NOI, cap rate, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(asking price, NOI, cap rate, market note: optional)";
     }
     document.getElementById("targetSizeHint").textContent = type === "Land"
       ? "Left blank, it comes from public records."

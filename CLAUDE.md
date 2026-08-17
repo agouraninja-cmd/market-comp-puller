@@ -2161,12 +2161,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
-CSV / PNG / Print-to-PDF exporters. The main form's controls row is a **2x2
-grid** (`.rd-row-2up`): Focus and Lookback on the top line, **Property SF**
-and Asking price under them, both optional and both a single input. It is 2x2
-rather than four across because the build chamber is ~552px, so a fourth cell
-leaves ~106px of content and the label wraps — and `.rd-cell:last-child`
-cannot see a wrapped grid, hence the `.rd-row-2up` border rules. The property
+CSV / PNG / Print-to-PDF exporters. The main form's controls row is **three
+cells on one line** (`sm:grid-cols-3`): Focus, Lookback and **Property SF**.
+It was briefly a 2x2 grid (2026-08-16) carrying the asking price as a fourth
+cell; the price moved down into "Details for comps" on 2026-08-17 (owner's
+call) and the row went back to one line, so `.rd-row-2up` and its
+wrapped-grid border rules are gone from the style block rather than left
+sitting unused. Three is the ceiling: the build chamber is ~552px, so a
+fourth cell leaves ~106px of content and `.rd-lab`'s tracking wraps the label
+to two lines — and `.rd-cell:last-child` cannot see a wrapped grid, which is
+what the deleted rules existed to patch. **Asking price is a Refine field
+now**, sitting immediately before `#subjectTypeFields` so it reads beside the
+per-type facts about the subject (beds/baths on a house, unit count on a
+multifamily) — same id, same single input, so `targetRange()`,
+`askingRangeFrom` and every report restore are untouched; only its parent
+element and its styling changed. The property
 type is chosen at the verification step, and the confirm dialog blocks the run
 until a type is resolved. Contains **no secrets**.
 **The size field is one figure, not a range** (2026-08-16, owner's call).

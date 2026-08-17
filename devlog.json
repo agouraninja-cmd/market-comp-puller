@@ -2247,5 +2247,11 @@
     "type": "improvement",
     "title": "Vault funnel on /admin, and CSV exports can no longer carry live formulas",
     "details": "Two smaller hardening passes. The vault now logs four PII-free funnel events (page visit by outcome, template download, import by outcome) and /admin shows them as their own card, so with zero uploads to date the question of WHERE brokers fall off — never finding /vault, the Pro gate, or a refused import — finally has an answer; the events deliberately carry no market, since a broker’s markets are their private book. And every CSV the app emits (vault export, admin lead/corpus/submission downloads, the contacts book) now neutralizes cells starting with =, +, - or @, which Excel would otherwise execute as formulas; plain numbers are exempt so exported longitudes still re-import cleanly."
+  },
+  {
+    "date": "2026-08-17",
+    "type": "improvement",
+    "title": "The search form's controls fit on one line again",
+    "details": "Asking price moved off the form and down into \"Details for comps\", where it sits beside the per-type facts about your property — beds/baths on a house, unit count on a multifamily. Focus, Lookback and Property SF are back to three cells on a single row."
   }
 ]

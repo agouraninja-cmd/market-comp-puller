@@ -90,8 +90,15 @@ tr.thread td{background:var(--wash);padding:12px 10px}
    picking three comps out of two hundred needs to read addresses, not admire
    a grid. */
 .vlist{max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px}
-.vrow{display:flex;align-items:baseline;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);
-  font-size:13px}
+/* SCOPED TO .addbox ON PURPOSE, and load-bearing. The picker's rows ARE
+   labels and they live inside the add box, so the .addbox label rule above
+   (0,1,1) out-specifies a bare .vrow (0,1,0) and every row lost its flex:
+   the checkbox stacked onto its own line and the 10px gap never applied, so
+   the address ran straight into the figures ("...Agoura Hills, CAsale").
+   Found by opening the panel, not by reading it. Same cascade trap as
+   ACCOUNT_NAV_CSS's [hidden] line and .deck.hide. */
+.addbox .vrow{display:flex;align-items:baseline;gap:10px;padding:8px 10px;
+  border-bottom:1px solid var(--line);font-size:13px}
 .vrow:last-child{border-bottom:0}
 .vrow input{margin:0}
 .vrow .addr{flex:1;min-width:0}
@@ -648,6 +655,13 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       // list it belongs to rather than the previous one.
       if (o.j.items) applyItems(o.j.items);
       if (o.j.messages && o.j.messages.length) addMessages(o.j.messages, false);
+      // The People card polls too. Whether a client has OPENED the hub is the
+      // one fact that card exists to show, and it is the one fact on this page
+      // that changes through somebody ELSE's action while the broker sits and
+      // watches — so it was the last thing that should have needed a reload,
+      // and it was the only thing that did. The server sends the people list
+      // on every read, owner only, so a client's poll simply has no key here.
+      if (o.j.people && !samePeople(o.j.people, people)) renderPeople(o.j.people, o.j.hub);
     }).catch(function(){});
   }
 
@@ -667,6 +681,16 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       // id and status are what a poll can change; addedAt catches a comp that
       // was removed and re-sent, which reuses neither.
       if (a[i].id !== b[i].id || a[i].status !== b[i].status || a[i].addedAt !== b[i].addedAt) return false;
+    }
+    return true;
+  }
+  // Repaint only on a real change, the same rule sameItems buys for the comp
+  // table, for a smaller reason: a rebuild drops focus off a Remove button
+  // under the broker's cursor.
+  function samePeople(a, b){
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++){
+      if (a[i].email !== b[i].email || a[i].opened !== b[i].opened || a[i].role !== b[i].role) return false;
     }
     return true;
   }

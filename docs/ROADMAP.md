@@ -29,19 +29,29 @@ intent, the devlog states history.
 
 ## Next
 
-- **Enterprise (firm) accounts** — design written 2026-08-16 in
+- **Enterprise (firm) accounts — slice 2 onward.** Design in
   `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`,
-  from Chuck's email the same day. A firm is an account with a shelf on it;
-  brokers keep the workspace they have today and *publish onto* it, so a BOV
-  reaches a colleague without an email thread. Nothing is built. Slice 1
-  (orgs, invites, `org-access.js`, and a firm branch in `canReadShare`) is
-  buildable now and is what makes the enterprise demo true; slices 2-4 (the
-  shelf, the shared vault, per-seat billing) should be bought with a
-  customer. Two refusals in that spec are load-bearing and should not be
-  re-litigated casually: **no auto-join by email domain**, and **no existing
+  from Chuck's email of 2026-08-16. **Slice 1 shipped the same day**: firms,
+  invites, `org-access.js`, the firm branch in `canReadShare`, a "My firm"
+  audience on Share, and both firm surfaces on `/desk`. **Migration 028 must
+  be run before that code deploys** — it adds `shared_reports.org_id`, which
+  every share read SELECTs by name.
+  What is left, in order: **slice 2**, the firm shelf (`org_shelf_items`,
+  publish-to-firm, `orgs.share_default`); **slice 3**, the shared vault
+  (opt-in per import, attributed, with the vault's "Visible only to you"
+  copy rewritten to match); **slice 4**, per-seat billing — until a firm
+  asks to pay, seats are granted by hand, the `vault_beta` precedent.
+  Slices 2 and 3 should be bought with a customer: slice 3's central
+  question — do brokers at one firm want each other's comps *in their
+  reports*, or a shelf they can search — is measurable the moment there is
+  one real firm and guesswork until then.
+  Two refusals in that spec are load-bearing and should not be re-litigated
+  casually: **no auto-join by email domain**, and **no existing
   `user_id=eq.` filter is widened to an org** — firm reads are new functions
-  against new tables, migration 013's separate-tables rule. Blocked on the
-  five decisions in its §1, one of which is the attorney question below.
+  against new tables, migration 013's separate-tables rule (a test fails the
+  build if the widened form appears).
+  Four of the five decisions in the spec's §1 are still open, including the
+  attorney question below; slice 1 was built because none of them change it.
 - **`/api/geocode` should take a POST, not a query string.** The two
   follow-ons left by the private-comp geocoding work, in the order Owen set
   when he answered section 7 — this one ABOVE import-time geocoding, not

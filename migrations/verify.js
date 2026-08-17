@@ -63,6 +63,8 @@ const TABLES = [
   ["hub_items",           "024-messaging-hub.sql"],
   ["hub_messages",        "024-messaging-hub.sql"],
   ["user_avatars",        "027-account-avatar.sql"],
+  ["orgs",                "028-enterprise-orgs.sql"],
+  ["org_members",         "028-enterprise-orgs.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -154,6 +156,13 @@ const COLUMNS = [
   // a report into a fact — same standing as 025/026 until a machine holding
   // the service key actually runs this.
   ["users",             ["avatar_rev"],                         "027-account-avatar.sql"],
+  // 028 is 018's hazard again, and worse: getShareRecord SELECTs org_id by
+  // name on EVERY share read, so without this column PostgREST 400s and the
+  // deliberately fail-closed catch turns every legacy public link — including
+  // ones already mailed to property owners with no account — into a 503. The
+  // membership columns only cost the new feature; this one costs the old one.
+  ["shared_reports",    ["org_id"],                             "028-enterprise-orgs.sql"],
+  ["org_members",       ["joined_at", "removed_at", "role"],    "028-enterprise-orgs.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

@@ -1501,6 +1501,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <span class="block text-[#68707E]">Named clients or partners, by email. Part of the paid plan.</span>
           </span>
         </label>
+        <!-- The firm audience (migration 028). Hidden unless this account is
+             an ACTIVE member of a firm — an option that can only ever fail is
+             worse than no option, the same rule the Buy button follows when
+             Stripe is unconfigured. Membership is re-checked server-side at
+             POST /api/share; this is presentation. -->
+        <label id="shareFirmWrap" class="hidden flex items-start gap-2 text-sm text-[#374253]">
+          <input type="radio" name="shareVisibility" value="org" class="accent-[#B91C1C] mt-0.5" />
+          <span>
+            <span class="block font-medium text-[#1A2433]">My firm</span>
+            <span id="shareFirmNote" class="block text-[#68707E]">Everyone at your firm, now and later.</span>
+          </span>
+        </label>
       </div>
       <div id="shareEmailsWrap" class="hidden mt-3">
         <textarea id="shareEmails" rows="2" placeholder="client@company.com, partner@company.com" aria-label="Emails to invite"
@@ -2062,6 +2074,60 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="dk-rule"><span class="rd-lab">Shared with you</span></div>
         <p id="deskSharedWithMeEmpty" class="hidden text-sm text-[#5A6473] mt-2">No one has shared a report with you yet.</p>
         <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
+      </div>
+
+      <!-- Reports a colleague shared with the whole firm (migration 028).
+           Rendered ONLY for a member of a firm — the same rule the hub list
+           below follows, and the opposite of the two lists above: those teach
+           a feature every account can use, while an empty firm section shown
+           to somebody with no firm is an empty room. The firm's own section
+           (deskFirm) is what teaches the feature. -->
+      <div id="deskSharedWithFirm" class="hidden mt-8">
+        <div class="dk-rule"><span id="deskFirmSharesLabel" class="rd-lab">Shared with your firm</span></div>
+        <p id="deskSharedWithFirmEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nobody at your firm has shared a report yet. Open a report and use Share → My firm.</p>
+        <div id="sharedWithFirmRows" class="mt-2 space-y-1.5"></div>
+      </div>
+
+      <!-- The firm itself: create one, accept an invitation, see who is in it.
+           Three states in one section, exactly one visible at a time
+           (renderFirm owns that). Deliberately BELOW the share lists: this is
+           the plumbing, they are the point. -->
+      <div id="deskFirm" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Your firm</span>
+          <span id="firmStats" class="dk-note"></span>
+        </div>
+
+        <!-- 1. An invitation waiting. Above the create box on purpose: someone
+                who was invited should accept, not start a rival firm. -->
+        <div id="firmInvites" class="hidden mt-2 space-y-1.5"></div>
+
+        <!-- 2. No firm yet. -->
+        <div id="firmCreate" class="hidden mt-2">
+          <p class="text-sm text-[#5A6473]">A firm is a shared shelf. Reports you share with it show up for every colleague, while your own reports and desk stay yours.</p>
+          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+            <input id="firmNameInput" type="text" maxlength="80" placeholder="Your firm's name" aria-label="Firm name"
+              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button id="firmCreateBtn" type="button"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Create firm</button>
+          </div>
+          <p id="firmCreateErr" class="hidden text-red-600 text-xs mt-1.5"></p>
+        </div>
+
+        <!-- 3. A member. -->
+        <div id="firmMembers" class="hidden mt-2">
+          <div id="firmMemberRows" class="space-y-1.5"></div>
+          <div id="firmInviteWrap" class="hidden mt-3">
+            <textarea id="firmInviteEmails" rows="2" placeholder="colleague@yourfirm.com, analyst@yourfirm.com" aria-label="Colleagues to invite"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+            <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+              <button id="firmInviteBtn" type="button"
+                class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Invite colleagues</button>
+              <span id="firmInviteMsg" class="text-xs text-[#68707E]"></span>
+            </div>
+          </div>
+          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours.</p>
+        </div>
       </div>
 
       <!-- Hubs someone has invited this member into. The TENANT side only —
@@ -10610,7 +10676,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const sharedWithMeBox = document.getElementById("deskSharedWithMe");
     const errEl = document.getElementById("deskSharesLoadError");
     errEl.classList.add("hidden");
-    const hideAll = () => { sharesBox.classList.add("hidden"); sharedWithMeBox.classList.add("hidden"); };
+    const hideAll = () => {
+      sharesBox.classList.add("hidden");
+      sharedWithMeBox.classList.add("hidden");
+      // The two firm surfaces hide with them. A stale firm roster left on
+      // screen after a sign-out is the same class of mistake as a stale share
+      // list, and this one names colleagues.
+      document.getElementById("deskSharedWithFirm").classList.add("hidden");
+      document.getElementById("deskFirm").classList.add("hidden");
+    };
     if (!currentUser) { hideAll(); return; }
     let res;
     try {
@@ -10628,7 +10702,314 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     sharedWithMeBox.classList.remove("hidden");
     renderMyShares(Array.isArray(data.mine) ? data.mine : []);
     renderSharedWithMe(Array.isArray(data.sharedWithMe) ? data.sharedWithMe : []);
+    renderSharedWithFirm(
+      Array.isArray(data.firms) ? data.firms : [],
+      Array.isArray(data.sharedWithFirm) ? data.sharedWithFirm : []);
+    renderFirm();
   }
+
+  // Reports a colleague shared with the firm. Hidden entirely for somebody who
+  // is in no firm — unlike the two lists above it, which teach a feature every
+  // account has. The firm section below is what teaches this one.
+  function renderSharedWithFirm(firms, rows) {
+    const box = document.getElementById("deskSharedWithFirm");
+    box.classList.toggle("hidden", !firms.length);
+    if (!firms.length) return;
+    document.getElementById("deskFirmSharesLabel").textContent =
+      firms.length === 1 ? `Shared with ${firms[0].name}` : "Shared with your firm";
+    const wrap = document.getElementById("sharedWithFirmRows");
+    wrap.innerHTML = "";
+    document.getElementById("deskSharedWithFirmEmpty").classList.toggle("hidden", rows.length > 0);
+    rows.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const addr = document.createElement("a");
+      addr.href = r.url;
+      addr.target = "_blank";
+      addr.rel = "noopener noreferrer";
+      addr.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      addr.textContent = r.address;
+      row.appendChild(addr);
+      const bits = [r.type];
+      // Only when there is more than one firm to be ambiguous about; on the
+      // ordinary one-firm desk the section header already says it.
+      if (firms.length > 1 && r.firm) bits.push(r.firm);
+      if (r.createdAt) bits.push(`shared ${fmtShareDate(r.createdAt)}`);
+      const meta = document.createElement("span");
+      meta.className = "text-xs text-[#68707E]";
+      meta.textContent = bits.filter(Boolean).join(" · ");
+      row.appendChild(meta);
+      wrap.appendChild(row);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // The firm section — create one, accept an invitation, manage the roster.
+  //
+  // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
+  //
+  // THREE STATES, exactly one visible: an invitation waiting, no firm yet, or
+  // a member. They are decided here and nowhere else, so a fourth caller
+  // cannot leave two of them on screen at once.
+  //
+  // Every decision this file makes is presentation. Membership, roles, who may
+  // invite and who may be removed are all settled server-side by org-access.js;
+  // a browser that unhides all three boxes gets three boxes and no access.
+  // ---------------------------------------------------------------------------
+  let firmState = null;   // { canCreate, orgs, invites } — null while unknown
+  let firmLoad = null;    // in-flight, so the desk and the share panel opening
+                          // together make one request rather than two
+
+  async function loadMyFirms(force) {
+    if (!currentUser) { firmState = null; firmLoad = null; return null; }
+    if (!force && firmState) return firmState;
+    if (!force && firmLoad) return firmLoad;
+    firmLoad = (async () => {
+      try {
+        const res = await fetch("/api/org");
+        if (!res.ok) return null;
+        const data = await res.json();
+        firmState = {
+          canCreate: data.canCreate === true,
+          orgs: Array.isArray(data.orgs) ? data.orgs : [],
+          invites: Array.isArray(data.invites) ? data.invites : [],
+        };
+        return firmState;
+      } catch (_) {
+        // Deliberately leaves firmState alone rather than writing an empty
+        // one: "we could not ask" must never render as "you have no firm."
+        return null;
+      } finally {
+        firmLoad = null;
+      }
+    })();
+    return firmLoad;
+  }
+
+  // One firm per account today (POST /api/org 409s on a second), so the
+  // singular is safe. activeOrgIds is already a set server-side, so lifting
+  // the limit is a UI question rather than a data one.
+  function myFirm() {
+    return firmState && firmState.orgs.length ? firmState.orgs[0] : null;
+  }
+
+  async function renderFirm() {
+    const box = document.getElementById("deskFirm");
+    if (!currentUser) { box.classList.add("hidden"); return; }
+    const state = await loadMyFirms(true);
+    if (!state) { box.classList.add("hidden"); return; }
+
+    const invitesBox = document.getElementById("firmInvites");
+    const createBox = document.getElementById("firmCreate");
+    const membersBox = document.getElementById("firmMembers");
+    const stats = document.getElementById("firmStats");
+    invitesBox.classList.add("hidden");
+    createBox.classList.add("hidden");
+    membersBox.classList.add("hidden");
+    stats.textContent = "";
+
+    const firm = myFirm();
+    if (firm) {
+      box.classList.remove("hidden");
+      membersBox.classList.remove("hidden");
+      await renderFirmMembers(firm);
+      return;
+    }
+    if (state.invites.length) {
+      box.classList.remove("hidden");
+      invitesBox.classList.remove("hidden");
+      renderFirmInvites(state.invites);
+      return;
+    }
+    // No firm and no invitation: only offer to create one to an account that
+    // could actually create it. The paywall for firms lives in the pricing
+    // modal like every other one, and an invitation to start something the
+    // server would refuse is worse than silence.
+    if (state.canCreate) {
+      box.classList.remove("hidden");
+      createBox.classList.remove("hidden");
+      return;
+    }
+    box.classList.add("hidden");
+  }
+
+  function renderFirmInvites(invites) {
+    const wrap = document.getElementById("firmInvites");
+    wrap.innerHTML = "";
+    invites.forEach((inv) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const name = document.createElement("span");
+      name.className = "font-medium text-[#1A2433]";
+      name.textContent = inv.name || "A firm";
+      row.appendChild(name);
+      const note = document.createElement("span");
+      note.className = "text-xs text-[#68707E]";
+      note.textContent = "invited you";
+      row.appendChild(note);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5";
+      btn.textContent = "Accept";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/org/accept", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ orgId: inv.orgId }),
+          });
+          if (!res.ok) throw new Error("failed");
+          // Re-read both: joining changes the firm section AND puts the
+          // firm's shares on the desk, and they come from two endpoints.
+          await renderShares();
+        } catch (_) {
+          note.textContent = "That didn't go through. Please try again.";
+          btn.disabled = false;
+        }
+      });
+      row.appendChild(btn);
+      wrap.appendChild(row);
+    });
+  }
+
+  async function renderFirmMembers(firm) {
+    const wrap = document.getElementById("firmMemberRows");
+    const stats = document.getElementById("firmStats");
+    wrap.innerHTML = "";
+    let data = null;
+    try {
+      const res = await fetch(`/api/org/members?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below */ }
+    if (!data) {
+      stats.textContent = firm.name;
+      return;
+    }
+    const members = Array.isArray(data.members) ? data.members : [];
+    const joined = members.filter((m) => !m.pending).length;
+    // The last owner cannot be removed and cannot leave — org-access.js
+    // refuses it, because a firm with no owner has nobody who can invite,
+    // remove, or hand the role on, and no route repairs one. Counted here so
+    // the control is never OFFERED in that state: a sole owner shown
+    // "Leave firm" gets an error message for clicking the only button on
+    // their own row. This is the same rule the server enforces, read from the
+    // same roster, not a second opinion about it.
+    const owners = members.filter((m) => !m.pending && m.role === "owner").length;
+    stats.textContent = `${data.name} · ${joined} ${joined === 1 ? "person" : "people"}` +
+      (members.length > joined ? ` · ${members.length - joined} invited` : "");
+
+    members.forEach((m) => {
+      const row = document.createElement("div");
+      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      const who = document.createElement("span");
+      who.className = "font-medium text-[#1A2433]";
+      who.textContent = m.email;
+      row.appendChild(who);
+      const bits = [];
+      if (m.role !== "member") bits.push(m.role);
+      if (m.pending) bits.push("invited, not accepted");
+      if (m.self) bits.push("you");
+      const meta = document.createElement("span");
+      meta.className = "text-xs text-[#68707E]";
+      meta.textContent = bits.join(" · ");
+      row.appendChild(meta);
+
+      // Offered when the server said this account can manage people, or on
+      // your own row (leaving is always yours to do). The server re-decides
+      // both, including the last-owner rule, so a button that should not be
+      // here buys a 403 rather than a removal.
+      const lastOwner = m.role === "owner" && !m.pending && owners <= 1;
+      if ((data.canManage || m.self) && !lastOwner) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "text-xs text-[#68707E] hover:text-[#374253] underline";
+        btn.textContent = m.self ? "Leave firm" : "Remove";
+        btn.addEventListener("click", async () => {
+          const msg = m.self
+            ? `Leave ${data.name}? You will stop seeing reports shared with the firm. Anything you already shared with it stays.`
+            : `Remove ${m.email} from ${data.name}? They keep their own reports and lose access to the firm's.`;
+          if (!confirm(msg)) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(
+              `/api/org/member?org=${encodeURIComponent(firm.id)}&id=${encodeURIComponent(m.id)}`,
+              { method: "DELETE" });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body.error || "failed");
+            await renderShares();
+          } catch (err) {
+            meta.textContent = err.message || "That didn't go through.";
+            btn.disabled = false;
+          }
+        });
+        row.appendChild(btn);
+      }
+      wrap.appendChild(row);
+    });
+
+    document.getElementById("firmInviteWrap").classList.toggle("hidden", !data.canManage);
+  }
+
+  document.getElementById("firmCreateBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("firmCreateBtn");
+    const err = document.getElementById("firmCreateErr");
+    const name = document.getElementById("firmNameInput").value;
+    err.classList.add("hidden");
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/org", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // A paywall refusal is an offer, not an error message — the same
+        // structured `upgrade` flag the share panel branches on.
+        if (body.upgrade === true) { openUpgradePrompt(); return; }
+        throw new Error(body.error || "That didn't go through.");
+      }
+      document.getElementById("firmNameInput").value = "";
+      await renderShares();
+    } catch (e) {
+      err.textContent = e.message || "That didn't go through. Please try again.";
+      err.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("firmInviteBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("firmInviteBtn");
+    const msg = document.getElementById("firmInviteMsg");
+    const firm = myFirm();
+    if (!firm) return;
+    const emails = document.getElementById("firmInviteEmails").value
+      .split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+    if (!emails.length) { msg.textContent = "Add at least one email address."; return; }
+    btn.disabled = true;
+    msg.textContent = "Sending…";
+    try {
+      const res = await fetch("/api/org/invite", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id, emails }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (body.upgrade === true) { openUpgradePrompt(); msg.textContent = ""; return; }
+        throw new Error(body.error || "That didn't go through.");
+      }
+      document.getElementById("firmInviteEmails").value = "";
+      // The server's own final count (deduped, already-members dropped),
+      // never what was typed — the same rule the share panel follows.
+      const n = typeof body.invited === "number" ? body.invited : 0;
+      msg.textContent = `${n} ${n === 1 ? "invitation" : "invitations"} sent.`;
+      await renderFirm();
+    } catch (e) {
+      msg.textContent = e.message || "That didn't go through. Please try again.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   function renderMyShares(rows) {
     const wrap = document.getElementById("sharesRows");
@@ -10659,11 +11040,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     // Status line: revoked wins over visibility — a report can be "invited"
     // AND turned off, and "Link turned off" is the more useful thing to say.
+    //
+    // The firm case is named EXPLICITLY rather than left to the else. Before
+    // migration 028 there were two visibilities and `!invited` meant public,
+    // so a firm share inherited "Anyone with the link" — telling the person
+    // who restricted a report to their firm that they had published it, which
+    // is the one wrong answer on this line that could make them forward it.
     const status = document.createElement("div");
     status.className = "text-xs mt-1 " + (revoked ? "text-[#68707E]" : "text-[#4C5665]");
     status.textContent = revoked
       ? "Link turned off"
-      : (invited ? `${viewers.length} invited` : "Anyone with the link");
+      : invited ? `${viewers.length} invited`
+      : r.visibility === "org" ? (r.firm ? `Shared with ${r.firm}` : "Shared with your firm")
+      : "Anyone with the link";
     card.appendChild(status);
 
     if (!revoked && invited && viewers.length) {
@@ -14695,7 +15084,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // The memo exists so Share-then-BOV does not publish twice. It must key on
     // the AUDIENCE as well as the report, or an invited share silently returns
     // the public link created a moment earlier.
-    const key = JSON.stringify([opts.visibility || "public", opts.viewers || [], !!opts.includePrivate]);
+    // `orgId` belongs in the key for the same reason `viewers` does: two firm
+    // shares of one report to two different firms are two different audiences,
+    // and without it the second would silently return the first one's link.
+    const key = JSON.stringify([opts.visibility || "public", opts.viewers || [],
+      !!opts.includePrivate, opts.orgId || ""]);
     if (lastPublished.parsed === currentParsed && lastPublished.key === key && lastPublished.result) {
       return lastPublished.result;
     }
@@ -14749,9 +15142,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("shareIncludePrivateWrap").classList.toggle("hidden", !canPrivate);
   }
 
+  // Shows the "My firm" option, and names the firm in it. Async on purpose:
+  // the panel opens immediately on whatever is already known, and the option
+  // appears a beat later if this account is in a firm. A failed /api/org read
+  // leaves the option hidden — the honest outcome, since the alternative is
+  // offering an audience the server would refuse.
+  function applyShareFirmOption() {
+    const wrap = document.getElementById("shareFirmWrap");
+    const firm = myFirm();
+    wrap.classList.toggle("hidden", !firm);
+    if (firm) {
+      document.getElementById("shareFirmNote").textContent =
+        `Everyone at ${firm.name} — including colleagues who join later.`;
+      return;
+    }
+    // The option went away (left the firm in another tab) while it was the
+    // selected one. Fall back rather than leave a checked radio nobody can see.
+    const cur = document.querySelector('input[name="shareVisibility"]:checked');
+    if (cur && cur.value === "org") {
+      document.querySelector('input[name="shareVisibility"][value="public"]').checked = true;
+      updateShareVisibilityUI();
+    }
+  }
+
   function openSharePanel() {
     if (!currentParsed || !currentMeta) return;
     document.querySelector('input[name="shareVisibility"][value="public"]').checked = true;
+    loadMyFirms().then(applyShareFirmOption).catch(() => {});
     document.getElementById("shareEmails").value = "";
     document.getElementById("shareIncludePrivate").checked = false;
     document.getElementById("shareResult").textContent = "";
@@ -14784,11 +15201,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       out.textContent = "Add at least one email address, or choose a public link.";
       return;
     }
+    const firm = visibility === "org" ? myFirm() : null;
+    if (visibility === "org" && !firm) {
+      out.textContent = "Couldn't reach your firm just now. Try again, or choose another audience.";
+      return;
+    }
     if (includePrivate && !confirm(SHARE_PRIVATE_CONFIRM)) return;
     btn.disabled = true;
     out.textContent = "Creating link…";
     try {
-      const result = await publishCurrentReport({ visibility, viewers, includePrivate });
+      const result = await publishCurrentReport({
+        visibility, viewers, includePrivate, orgId: firm ? firm.id : undefined,
+      });
       try { await navigator.clipboard.writeText(result.url); } catch (_) {}
       // Read the server's own count (result.invited), never viewers.length —
       // see the comment on publishCurrentReport. `invited` can be null (the
@@ -14796,7 +15220,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // say only that the link was copied rather than guess a number.
       out.textContent = (visibility === "invited" && typeof result.invited === "number")
         ? `Link copied. ${result.invited} ${result.invited === 1 ? "person" : "people"} invited.`
-        : "Link copied.";
+        // A firm share is not mailed to anybody — it appears on the firm's
+        // desk — so saying "link copied" alone would leave the sharer
+        // wondering whether to send it on. Say where it landed.
+        : (visibility === "org" && firm)
+          ? `Link copied. It is on ${firm.name}'s desk now.`
+          : "Link copied.";
     } catch (err) {
       // A paywall refusal is an offer, not an error message. Branch on the
       // structured `upgrade` flag (see publishCurrentReport), not on prose.

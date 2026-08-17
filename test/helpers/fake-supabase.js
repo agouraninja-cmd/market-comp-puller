@@ -44,6 +44,12 @@ function parseInList(raw) {
 function matches(row, key, expr) {
   const val = row[key];
   if (expr.startsWith("eq.")) return String(val) === decodeValue(expr.slice(3));
+  // `neq.` is taught deliberately, not guessed at (see the header): the firm
+  // share list excludes the caller's own shares with it, so without this the
+  // whole /api/shares read 400s. PostgREST's semantics here are unambiguous —
+  // it is `eq.` negated — and a null column is NOT equal to a value, so it
+  // matches, which is the one place this could have been wrong.
+  if (expr.startsWith("neq.")) return String(val) !== decodeValue(expr.slice(4));
   if (expr.startsWith("in.(")) return parseInList(expr).some((v) => String(val) === v);
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
@@ -115,15 +121,59 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
         if (req.method === "POST") {
           const payload = JSON.parse(body || "{}");
           const rows = Array.isArray(payload) ? payload : [payload];
-          rows.forEach((r) => tables[table].push({ id: `${table}-${tables[table].length + 1}`, ...r }));
+          // The STORED rows are returned, not the payload — PostgREST's
+          // `return=representation` answers with what the table now holds,
+          // including a generated id. Returning the payload instead meant a
+          // caller that reads `row.id` back (createOrgWithOwner does, to
+          // insert the owner's membership) got undefined and every later
+          // scoped read silently missed.
           const prefer = String(req.headers.prefer || "");
-          return json(201, prefer.includes("return=minimal") ? undefined : rows);
+          // `on_conflict=a,b` names the unique key an upsert resolves against,
+          // and it is a shape server.js sends all over (report_viewers,
+          // comp_corpus, broker_properties, org_members). Taught deliberately
+          // rather than ignored: without it a re-invite that PostgREST would
+          // have ignored became a SECOND membership row here, and the test
+          // that caught it was asserting a real rule about the server.
+          //
+          // Only the two resolutions server.js actually asks for. Anything
+          // else is left to the plain-insert path rather than guessed at.
+          const conflict = (url.searchParams.get("on_conflict") || "")
+            .split(",").map((s) => s.trim()).filter(Boolean);
+          const keyOf = (r) => conflict.map((c) => String(r[c])).join("\u0000");
+          const stored = [];
+          for (const r of rows) {
+            const existing = conflict.length
+              ? tables[table].find((t) => keyOf(t) === keyOf(r))
+              : null;
+            if (existing) {
+              if (prefer.includes("resolution=merge-duplicates")) {
+                Object.assign(existing, r);
+                stored.push(existing);
+              }
+              // ignore-duplicates: the row stays exactly as it was, and is
+              // not returned as inserted.
+              continue;
+            }
+            const row = { id: `${table}-${tables[table].length + 1}`, ...r };
+            tables[table].push(row);
+            stored.push(row);
+          }
+          return json(201, prefer.includes("return=minimal") ? undefined : stored);
         }
         if (req.method === "PATCH") {
           const patch = JSON.parse(body || "{}");
           const hit = applyFilters(tables[table], params);
           hit.forEach((r) => Object.assign(r, patch));
-          return json(200, []);
+          // `return=representation` answers with the rows that were actually
+          // updated, and callers use the EMPTY case as a verdict: accepting a
+          // firm invitation matches on the caller's own email and a null
+          // joined_at, so "no rows" is how the route knows there was no open
+          // invitation to accept. Answering [] unconditionally made that
+          // route look permanently broken while the write had already
+          // succeeded. Only when the header asks — an unqualified PATCH here
+          // stays as it was.
+          const prefer = String(req.headers.prefer || "");
+          return json(200, prefer.includes("return=representation") ? hit : []);
         }
         if (req.method === "DELETE") {
           const doomed = new Set(applyFilters(tables[table], params));

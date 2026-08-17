@@ -834,3 +834,61 @@ test("a live subscription with vault_beta reads as an ordinary subscriber", () =
   assert.equal(e.status, "active");
   assert.equal(e.canUseVault, true);
 });
+
+// ---------------------------------------------------------------------------
+// canUseOrg — creating a firm and inviting colleagues (migration 028).
+//
+// It tracks `broker` exactly, so most of its behaviour is already pinned by
+// the vault cases above. What is pinned here is the pairing itself: the two
+// flags must not be allowed to drift apart by accident, and the ONE place the
+// firm's reasoning differs from the vault's (why a dark deployment refuses it)
+// has to survive a future editor who reads the disabled branch as "grant
+// everything back".
+// ---------------------------------------------------------------------------
+
+test("canUseOrg tracks canUseVault across every state — one subscription, one answer", () => {
+  const states = [
+    ["anonymous free", { user: null }],
+    ["signed-in free", { user: USER }],
+    ["active Pro", { user: USER, subscription: activeSub() }],
+    ["cancelling", { user: USER, subscription: activeSub({ status: "cancelled", current_period_end: iso(NOW + 5 * DAY) }) }],
+    ["grace", { user: USER, subscription: activeSub({ status: "past_due", grace_until: iso(NOW + 2 * DAY) }) }],
+    ["expired", { user: USER, subscription: activeSub({ status: "active", current_period_end: iso(NOW - 5 * DAY) }) }],
+    ["comped admin", { user: USER, admin: true }],
+    ["vault beta", { user: USER, vaultBeta: true }],
+    ["tester without the vault grant", { user: USER, tester: true }],
+    ["tester with the vault grant", { user: USER, tester: true, vaultBeta: true }],
+  ];
+  for (const [label, opts] of states) {
+    const e = ent(opts);
+    assert.equal(e.canUseOrg, e.canUseVault, `${label}: canUseOrg must track canUseVault`);
+  }
+});
+
+test("a dark deployment grants no firm, for the vault's reason plus one of its own", () => {
+  // PRO_ENABLED=off restores PRE-Pro behavior, and a firm has no pre-Pro state
+  // to restore. The extra reason: POST /api/org/invite SENDS EMAIL, so
+  // granting this on an un-launched deployment would hand an anonymous visitor
+  // an endpoint that mails anybody they name.
+  for (const user of [null, USER]) {
+    const e = computeEntitlements({ user, now: NOW, enabled: false });
+    assert.equal(e.canUseOrg, false);
+  }
+  assert.equal(computeEntitlements({ user: USER, admin: true, now: NOW, enabled: false }).canUseOrg, false,
+    "and possession of ADMIN_KEY cannot switch it on either");
+});
+
+test("a beta tester gets no firm unless they also hold the vault grant", () => {
+  // The passkey exclusion, restated: a code shared with a wider group must not
+  // also hand out an endpoint that emails any address typed into it.
+  assert.equal(ent({ user: USER, tester: true }).canUseOrg, false);
+  assert.equal(ent({ user: USER, tester: true, vaultBeta: true }).canUseOrg, true);
+});
+
+test("a single-report purchase does not buy a firm", () => {
+  // Everything a $20 unlock grants is scoped to one address+type. A firm is an
+  // account relationship and cannot be scoped to a property at all.
+  const e = ent({ user: USER, reportId: "r1", purchase: { report_id: "r1" } });
+  assert.equal(e.reportUnlocked, true);
+  assert.equal(e.canUseOrg, false);
+});

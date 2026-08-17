@@ -49,6 +49,12 @@ const RADIUSBLEND = require("./blend-corpus");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
+// Who is in a firm, and what their membership lets them do (migration 028).
+// Same pure, fails-closed contract as report-access.js, and it feeds that
+// file directly: activeOrgIds() is the sole source of the `orgIds` canReadShare
+// consults, so there is exactly one place that decides a pending invite is not
+// a membership. "org" is the internal noun here, "firm" is the word on screen.
+const ORG = require("./org-access.js");
 // Who may read, write and add to a messaging hub. Same pure, fails-closed
 // contract as report-access.js: this file owns the reads, that one owns the
 // rules. NOT the connection hub at /brokers — see the spec's naming warning
@@ -2784,13 +2790,17 @@ async function getShareRecord(id) {
     try {
       const rows = await sbRequest("GET",
         `shared_reports?id=eq.${encodeURIComponent(id)}` +
-        `&select=id,payload,user_id,visibility,include_private,revoked_at,created_at&limit=1`);
+        `&select=id,payload,user_id,visibility,include_private,revoked_at,created_at,org_id&limit=1`);
       const row = rows && rows[0];
       if (!row) return null;
       const share = {
         id: row.id, user_id: row.user_id, visibility: row.visibility,
         include_private: row.include_private, revoked_at: row.revoked_at,
         created_at: row.created_at,
+        // Migration 028. Selected by NAME above, which is why an unrun 028
+        // breaks every share read and not just a firm one — see the file's
+        // header and verify.js's note.
+        org_id: row.org_id || null,
       };
       // Only an invited share needs its viewer list, and only then is the
       // extra round trip worth paying on a page load.
@@ -2816,15 +2826,24 @@ async function getShareRecord(id) {
   const payload = mem || (await loadSharedReportsFile())[id];
   if (!payload) return null;
   sharedReportsMem.set(id, payload);
-  return { payload, share: { id, user_id: null, visibility: "public", revoked_at: null }, viewers: [] };
+  return { payload, share: { id, user_id: null, visibility: "public", revoked_at: null, org_id: null }, viewers: [] };
 }
 
 async function storeSharedReport(id, payload, opts = {}) {
-  const { userId = null, visibility = "public", includePrivate = false, viewers = [] } = opts;
+  const {
+    userId = null, visibility = "public", includePrivate = false, viewers = [],
+    orgId = null,
+  } = opts;
   if (DB_CONFIGURED) {
     const row = {
       id, payload, created_at: new Date().toISOString(),
       user_id: userId, visibility, include_private: includePrivate,
+      // Only ever set on a firm share. The `visibility !== "public"` guards
+      // below already refuse to write this row to the file store, so a firm
+      // share is covered by the same refusal an invited one is — the file has
+      // no column for org_id either, and a firm share landing there would
+      // come back out of getShareRecord as a PUBLIC link.
+      org_id: visibility === "org" ? orgId : null,
     };
     try {
       await sbRequest("POST", "shared_reports", [row], { prefer: "return=minimal" });
@@ -2926,7 +2945,7 @@ async function revokeShare(shareId, userId) {
 async function listSharesForOwner(userId) {
   return (await sbRequest("GET",
     `shared_reports?user_id=eq.${encodeURIComponent(userId)}` +
-    `&select=id,payload,visibility,include_private,revoked_at,created_at,report_viewers(email,invited_at,first_viewed_at,last_viewed_at)` +
+    `&select=id,payload,visibility,include_private,revoked_at,created_at,org_id,report_viewers(email,invited_at,first_viewed_at,last_viewed_at)` +
     `&order=created_at.desc&limit=200`)) || [];
 }
 
@@ -2935,6 +2954,174 @@ async function listSharesForViewer(email) {
     `report_viewers?email=eq.${encodeURIComponent(email)}` +
     `&select=share_id,invited_at,shared_reports(id,payload,visibility,revoked_at,created_at)` +
     `&order=invited_at.desc&limit=200`)) || [];
+}
+
+// ---------------------------------------------------------------------------
+// Firms (migration 028) — the reads and writes behind /api/org*.
+//
+// Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
+//
+// EVERY access decision in this section belongs to org-access.js. This part
+// owns only the I/O — the org row, the membership rows, the session — and
+// hands them in, which is the same division report-access.js, hub-access.js
+// and entitlements.js already carry. A second opinion here about who is in a
+// firm is how the gate on other people's reports grows a hole.
+//
+// DATABASE ONLY, no file fallback: 013's, 018's and 024's stance, for their
+// reason. An access-control list in a JSON file on an ephemeral disk is not
+// one, so every route 503s when DB_CONFIGURED is false.
+//
+// NOTHING HERE WIDENS AN EXISTING READ. There is no `or=(user_id.eq.X,
+// org_id.eq.Y)` anywhere in this file and there must never be one: a firm read
+// is a new query against the new tables, which is migration 013's
+// separate-tables rule. The vault, the portfolio, the watchlist, the BOV log
+// and the lead inbox are all untouched by this feature.
+// ---------------------------------------------------------------------------
+
+// Every membership row for one person, across every firm — pending invites
+// included, because /desk renders both and org-access.js is what tells them
+// apart. Keyed on the EMAIL, never the user id: migration 018's decision,
+// which is what lets a colleague be invited before they have an account.
+async function orgMembershipsFor(email) {
+  const mine = ORG.normalizeEmail(email);
+  if (!DB_CONFIGURED || !mine) return [];
+  return (await sbRequest("GET",
+    `org_members?email=eq.${encodeURIComponent(mine)}` +
+    `&select=id,org_id,email,role,invited_at,joined_at,removed_at` +
+    `&order=invited_at.desc&limit=100`)) || [];
+}
+
+// Firm names for a set of ids, as a Map. A SECOND QUERY rather than a
+// PostgREST embedded `orgs(id,name)` on the membership read — 016's note names
+// this as the house pattern ("where it needs a join it runs two queries and
+// stitches them in JS"), and it keeps the membership read to filters a fake
+// PostgREST can parse, which is what lets test/org-run.test.js execute this
+// whole feature rather than only its refusals.
+//
+// Never throws: a name is a label. A firm whose name could not be read still
+// admits its members, and the desk says "your firm" rather than failing.
+async function orgNamesByIds(ids) {
+  const out = new Map();
+  try {
+    const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+    if (!DB_CONFIGURED || !list.length) return out;
+    const rows = await sbRequest("GET",
+      `orgs?id=in.(${pgInList(list)})&select=id,name&limit=${list.length}`);
+    for (const r of rows || []) out.set(String(r.id), r.name || "");
+  } catch (err) {
+    console.error("Firm name read failed (membership is unaffected):", err.message);
+  }
+  return out;
+}
+
+// The org ids whose firm shares this person may open. THE widest thing in the
+// file — an id reaching this array is an id whose shared reports the caller
+// can read — so it goes through org-access.js's activeOrgIds rather than
+// filtering here, and it returns [] on any failure.
+//
+// Fails CLOSED on purpose, unlike most enrichment reads in server.js: an
+// error resolving membership must narrow the audience to the viewer list, not
+// widen it. The caller (GET /api/shared) has its own catch that refuses the
+// read outright, so a firm member sees a 503 during a database blip rather
+// than a wrong answer either way.
+async function activeOrgIdsFor(user) {
+  if (!user || !user.email) return [];
+  const rows = await orgMembershipsFor(user.email);
+  return ORG.activeOrgIds(rows, user.email);
+}
+
+// One firm's member list. Used for the roster, for the invite dedupe, and for
+// canRemoveMember's last-owner rule — which is why it returns removed rows
+// too: org-access.js filters them, and counting owners from a list that had
+// already dropped them would be a second opinion about who is active.
+async function orgMemberRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,org_id,email,role,invited_at,joined_at,removed_at,user_id` +
+    `&order=invited_at.asc&limit=${ORG.MAX_MEMBERS + 1}`)) || [];
+}
+
+async function findOrg(orgId) {
+  if (!DB_CONFIGURED || !orgId) return null;
+  const rows = await sbRequest("GET",
+    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,created_at&limit=1`);
+  return (rows && rows[0]) || null;
+}
+
+// Create the firm and its first member in that order, and make the creator an
+// OWNER who has already joined: they are the one person whose membership needs
+// no accept step, because they are the one who asked for it.
+async function createOrgWithOwner(name, user) {
+  const rows = await sbRequest("POST", "orgs",
+    [{ name, created_by: user.id }], { prefer: "return=representation" });
+  const org = rows && rows[0];
+  if (!org) throw new Error("Firm row was not returned.");
+  await sbRequest("POST", "org_members", [{
+    org_id: org.id,
+    email: ORG.normalizeEmail(user.email),
+    user_id: user.id,
+    role: "owner",
+    invited_by: user.id,
+    joined_at: new Date().toISOString(),
+  }], { prefer: "return=minimal" });
+  return org;
+}
+
+// Invites, as rows with joined_at NULL. `ignore-duplicates` on the natural key
+// so re-inviting somebody already on the list is a no-op rather than an error
+// — and note that a person previously REMOVED keeps their old row, so a
+// re-invite does not silently resurrect them: it needs the un-remove PATCH
+// below, which is a deliberate, separate act.
+async function inviteOrgMembers(orgId, emails, invitedBy) {
+  if (!emails.length) return;
+  await sbRequest("POST", "org_members?on_conflict=org_id,email",
+    emails.map((email) => ({
+      org_id: orgId, email, role: "member", invited_by: invitedBy,
+    })), { prefer: "resolution=ignore-duplicates,return=minimal" });
+  // A previously-removed person who is invited again gets their row cleared
+  // back to a PENDING invite — never straight back to active. They accept
+  // again, exactly like anybody else, so returning to a firm is always
+  // something the returning person did.
+  await sbRequest("PATCH",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=in.(${pgInList(emails)})&removed_at=not.is.null`,
+    { removed_at: null, joined_at: null, invited_at: new Date().toISOString() },
+    { prefer: "return=minimal" });
+}
+
+// Accept: stamp joined_at and the user id. Scoped by BOTH the org and the
+// caller's own email in the query, not checked after the fact — knowing an org
+// id must never be enough to join it. `joined_at=is.null` keeps it idempotent
+// and stops a second click rewriting the date somebody actually joined.
+async function acceptOrgInvite(orgId, user) {
+  return sbRequest("PATCH",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=eq.${encodeURIComponent(ORG.normalizeEmail(user.email))}` +
+    `&removed_at=is.null&joined_at=is.null`,
+    { joined_at: new Date().toISOString(), user_id: user.id },
+    { prefer: "return=representation" });
+}
+
+// Removal is a stamp, never a DELETE: the row is the record that somebody was
+// here, and 028 makes removed_at beat everything precisely so it can be read
+// rather than inferred from an absence.
+async function removeOrgMember(orgId, memberId) {
+  return sbRequest("PATCH",
+    `org_members?id=eq.${encodeURIComponent(memberId)}&org_id=eq.${encodeURIComponent(orgId)}`,
+    { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
+}
+
+// Reports shared WITH a firm. `neq` on the owner so a member's own share is
+// never also listed as something their firm shared with them — the same rule
+// the hub list applies to a hub the caller owns.
+async function listSharesForOrgs(orgIds, excludeUserId) {
+  if (!DB_CONFIGURED || !orgIds.length) return [];
+  const q = `shared_reports?org_id=in.(${pgInList(orgIds)})` +
+    `&visibility=eq.org&revoked_at=is.null` +
+    (excludeUserId ? `&user_id=neq.${encodeURIComponent(excludeUserId)}` : "") +
+    `&select=id,payload,org_id,created_at,user_id&order=created_at.desc&limit=200`;
+  return (await sbRequest("GET", q)) || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -3605,6 +3792,28 @@ function sendShareInvites(emails, { url, address, fromName }) {
       `This report was shared with specific people. Sign in with this email address (${to}) to open it. ` +
       `A free account is all it takes.\n\n` +
       `Every CompNinja valuation is an automated estimate, not an appraisal.`);
+  }
+}
+
+// A colleague invited to a firm (migration 028). Rides the same outbound gate
+// as everything else, so it silently no-ops until EMAIL_FROM is set.
+//
+// It says who invited them and from what address, because this mail arrives
+// unsolicited: an invitation naming nobody is indistinguishable from spam, and
+// the recipient's only way to check it is real is to recognise the sender.
+// Nothing about the firm's reports travels here — the invite grants no access
+// on its own, and does not until the person accepts it themselves.
+function sendOrgInvites(emails, { firm, fromName, fromEmail }) {
+  for (const to of emails) {
+    const who = fromName ? `${fromName} (${fromEmail})` : fromEmail;
+    sendOutboundEmail(to, `${firm || "A firm"} invited you on CompNinja`,
+      `${who} invited you to join ${firm || "their firm"} on CompNinja.\n\n` +
+      `A firm is a shared shelf: reports and BOVs a colleague shares with the firm ` +
+      `show up on your desk, while your own reports and dashboard stay yours.\n\n` +
+      `Accept here: ${SITE_URL}/desk\n\n` +
+      `Sign in with this email address (${to}) — a free account is all it takes. ` +
+      `Nothing is shared with you until you accept, and you can leave at any time.\n\n` +
+      `If you were not expecting this, ignore it: an unaccepted invitation gives nobody access to anything.`);
   }
 }
 
@@ -15540,7 +15749,16 @@ const server = http.createServer((req, res) =>
           if (brand) safeMeta.branding = brand;
         }
 
-        const visibility = parsed.visibility === "invited" ? "invited" : "public";
+        // Three audiences now. An unrecognized value still falls to "public",
+        // which is the ONE place in this feature that fails open — and it is
+        // the pre-existing behaviour of a route whose default has always been
+        // a public link, not a widening: a caller who asks for nothing gets
+        // the zero-friction share they have always got. Everything downstream
+        // of here (report-access.js, storeSharedReport, the file-fallback
+        // refusal) fails closed on an unrecognized value instead.
+        const visibility = parsed.visibility === "invited" ? "invited"
+          : parsed.visibility === "org" ? "org"
+          : "public";
         const includePrivate = parsed.includePrivate === true;
 
         // A public link that carries private comps is the one mistake this
@@ -15549,6 +15767,51 @@ const server = http.createServer((req, res) =>
         // attempt by luck.
         if (visibility === "public" && includePrivate) {
           return sendJson(res, 400, { error: "A public link cannot include private comps." });
+        }
+        // A FIRM share cannot carry whole vault comps either, and this is a
+        // deliberate slice-1 refusal rather than an oversight. Sharing a
+        // broker's own book across their firm is the spec's §7 — opt-in per
+        // import, attributed, with the vault's "Visible only to you" copy
+        // rewritten to match — and none of that exists yet. Until it does, a
+        // firm share behaves exactly like an invited one: the private comps
+        // are anonymized into the valuation basis, so the colleague's range
+        // matches to the dollar with no address or price travelling.
+        //
+        // 400 rather than a silent strip, for the public link's reason: a
+        // client bug should be loud on the first attempt rather than correct
+        // on every attempt by luck.
+        if (visibility === "org" && includePrivate) {
+          return sendJson(res, 400, {
+            error: "Private vault comps can't be shared with a firm yet. They will be counted in the valuation without their details.",
+          });
+        }
+
+        // The firm audience (migration 028). Same three refusals as the
+        // invited path — signed in, a database, and the audience proven
+        // server-side — with the membership taking the place of the email
+        // list. Two differences worth naming:
+        //
+        //   - It needs NO Pro check of its own. Membership is the gate, and a
+        //     firm can only exist because somebody in it holds canUseOrg. A
+        //     free colleague sharing back to the firm that invited them is the
+        //     feature working, not a hole.
+        //   - The org id is VERIFIED against the sharer's own membership rows,
+        //     never taken from the body. Without that, posting any firm's id
+        //     would publish a report onto that firm's desk.
+        let orgId = null;
+        if (visibility === "org") {
+          if (!user) return sendJson(res, 401, { error: "Please sign in to share a report with your firm." });
+          if (!DB_CONFIGURED) {
+            return sendJson(res, 503, { error: "Firm sharing is unavailable right now. Please try again in a minute." });
+          }
+          const asked = String(parsed.orgId || "").trim();
+          const rows = await orgMembershipsFor(user.email);
+          const membership = ORG.membershipOf(
+            rows.filter((r) => String(r.org_id) === asked), user.email);
+          if (!membership || !ORG.canPublishToOrg(membership)) {
+            return sendJson(res, 403, { error: "You are not a member of that firm." });
+          }
+          orgId = asked;
         }
 
         let viewers = [];
@@ -15614,7 +15877,7 @@ const server = http.createServer((req, res) =>
 
         const id = newShareId();
         await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
-          userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers,
+          userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers, orgId,
         });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
         // The share row is already written. A mail send must never turn this
@@ -15652,7 +15915,14 @@ const server = http.createServer((req, res) =>
       const user = await getSessionUser(req);
       const rec = await getShareRecord(id);
       if (!rec) return sendJson(res, 404, { error: "This shared report was not found." });
-      const decision = SHAREACCESS.canReadShare({ share: rec.share, viewers: rec.viewers, user });
+      // Read ONLY for a firm share with somebody signed in. A public link and
+      // an invited one are answered exactly as they were before this feature,
+      // with no extra round trip — /r/<id> is a page-load path and most links
+      // in the world are still public ones.
+      const orgIds = (rec.share.visibility === "org" && user)
+        ? await activeOrgIdsFor(user)
+        : [];
+      const decision = SHAREACCESS.canReadShare({ share: rec.share, viewers: rec.viewers, user, orgIds });
       if (!decision.ok) {
         if (decision.reason === "revoked") {
           // NOT 404 (a client would hunt for a typo in a link that was
@@ -15665,6 +15935,13 @@ const server = http.createServer((req, res) =>
             error: "This report was shared with specific people. Please sign in to view it.",
             signin_required: true,
           });
+        }
+        // A firm share tells the reader WHICH kind of audience they missed,
+        // because the fix is different: an invited share needs the sender to
+        // add them, a firm share needs them to be in the firm (and they may
+        // have an invitation sitting unaccepted on their desk).
+        if (rec.share.visibility === "org") {
+          return sendJson(res, 403, { error: "This report was shared with a firm, and this account is not a member of it." });
         }
         return sendJson(res, 403, { error: "This report was shared with specific people, and this account is not one of them." });
       }
@@ -15686,9 +15963,25 @@ const server = http.createServer((req, res) =>
       const user = await getSessionUser(req);
       if (!user) return sendJson(res, 401, { error: "Please sign in." });
       if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
-      const [owned, invited] = await Promise.all([
+      // Three lists in one call now, for the reason the first two were: /desk
+      // needs all of them and this is a page-load path. The firm half is two
+      // dependent reads (membership, then that firm's shares), so it is a
+      // small async block rather than a third entry in the Promise.all.
+      const [owned, invited, firm] = await Promise.all([
         listSharesForOwner(user.id),
         listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
+        (async () => {
+          const rows = await orgMembershipsFor(user.email);
+          const orgIds = ORG.activeOrgIds(rows, user.email);
+          if (!orgIds.length) return { orgs: [], shares: [], names: new Map() };
+          const names = await orgNamesByIds(orgIds);
+          // Excludes the caller's own shares: a member's own report is
+          // already in the list above it, and showing it twice reads as the
+          // firm having received something from them. Same rule the hub list
+          // applies to a hub the caller owns.
+          const shares = await listSharesForOrgs(orgIds, user.id);
+          return { orgs: orgIds.map((id) => ({ id, name: names.get(String(id)) || "" })), shares, names };
+        })(),
       ]);
       const brief = (payload) => ({
         address: (payload && payload.meta && payload.meta.address) || "",
@@ -15697,6 +15990,11 @@ const server = http.createServer((req, res) =>
       return sendJson(res, 200, {
         mine: owned.map((r) => ({
           id: r.id, ...brief(r.payload), visibility: r.visibility,
+          // The firm's NAME, not just its id: /desk says who a link is for,
+          // and "Anyone with the link" was what a firm share used to read as —
+          // a sharer told their firm-only report was public is the one wrong
+          // answer here that could make them forward it.
+          firm: r.org_id ? (firm.names.get(String(r.org_id)) || "Your firm") : "",
           includePrivate: r.include_private, revokedAt: r.revoked_at, createdAt: r.created_at,
           url: `${SITE_URL}/r/${r.id}`,
           viewers: (r.report_viewers || []).map((v) => ({
@@ -15710,6 +16008,14 @@ const server = http.createServer((req, res) =>
             id: r.share_id, ...brief(r.shared_reports.payload),
             invitedAt: r.invited_at, url: `${SITE_URL}/r/${r.share_id}`,
           })),
+        // The firms this member belongs to, so /desk can name the section
+        // even before anyone has shared anything into it.
+        firms: firm.orgs,
+        sharedWithFirm: firm.shares.map((r) => ({
+          id: r.id, ...brief(r.payload),
+          firm: (firm.names && firm.names.get(String(r.org_id))) || "",
+          createdAt: r.created_at, url: `${SITE_URL}/r/${r.id}`,
+        })),
       });
     })().catch((err) => {
       console.error("Shares list failed:", err.message);
@@ -15757,6 +16063,14 @@ const server = http.createServer((req, res) =>
         // public link, which canReadShare serves to anyone with the URL,
         // signed in or not. Adding rows here would send that false promise.
         if (owned[0].visibility !== "invited") {
+          // Two audiences reach this, and they need different sentences: a
+          // public link has no list because everyone can already open it, and
+          // a firm share's list is the firm's membership — editable on the
+          // desk's firm section, never here, or removing somebody from one
+          // report would read as removing them from the firm.
+          if (owned[0].visibility === "org") {
+            return sendJson(res, 400, { error: "This report is shared with your firm. Manage who can see it from the firm section on your desk." });
+          }
           return sendJson(res, 400, { error: "This is a public link. Anyone with it can already open it, so there is no viewer list to edit." });
         }
         const before = new Set((owned[0].report_viewers || []).map((v) => v.email));
@@ -15812,6 +16126,299 @@ const server = http.createServer((req, res) =>
       }
     });
     return;
+  }
+
+  // ==========================================================================
+  // Firms — /api/org and /api/org/*   (enterprise accounts, slice 1)
+  //
+  // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
+  // Schema: migrations/028-enterprise-orgs.sql   Gate: org-access.js
+  //
+  // The shape of every route here, copied from the hub's: read the rows and
+  // the session, ask org-access.js, then act. No route makes its own access
+  // decision, and no route trusts anything the browser said about who it is —
+  // including which firm it is in.
+  //
+  // THE ENTITLEMENT SPLIT, which is easy to get backwards: creating a firm and
+  // inviting to it need `canUseOrg` (Pro), because both are surfaces a firm
+  // pays for and the invite endpoint sends email. ACCEPTING an invite and
+  // reading what a firm shared need only an account — the colleague on the
+  // receiving end is exactly an invited share's viewer, who has never needed a
+  // plan. A firm that could only share with people who had already bought the
+  // product would not solve the problem it exists for.
+  // ==========================================================================
+  const orgPath = req.url.split("?")[0];
+  if (orgPath === "/api/org" || orgPath.startsWith("/api/org/")) {
+    const readOrgBody = (max = 1e4) => new Promise((resolve, reject) => {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > max && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", () => {
+        if (tooBig) return reject(new Error("too_big"));
+        try { resolve(JSON.parse(body || "{}")); }
+        catch (_) { reject(new SyntaxError("bad_json")); }
+      });
+      req.on("error", () => reject(new Error("aborted")));
+    });
+
+    // 401 not signed in → 503 no database. Deliberately WITHOUT the 403 the
+    // vault's openVault() carries: most routes here are open to any account,
+    // and the two that are not check `canUseOrg` themselves where the refusal
+    // copy can name what it is refusing.
+    const openOrg = async () => {
+      const user = await getSessionUser(req);
+      if (!user) { sendJson(res, 401, { error: "Please sign in." }); return null; }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, { error: "Firm accounts are unavailable right now. Please try again in a minute." });
+        return null;
+      }
+      return user;
+    };
+
+    // Resolve the caller's membership of ONE firm from their own rows. Returns
+    // null (and answers 403) when they are not an active member — the whole
+    // point being that the org id came from the browser and proves nothing.
+    const memberOf = async (user, orgId) => {
+      const rows = await orgMembershipsFor(user.email);
+      const mine = rows.filter((r) => String(r.org_id) === String(orgId));
+      const membership = ORG.membershipOf(mine, user.email);
+      if (!membership) {
+        // One message for "no such firm" and "not in it", on purpose: telling
+        // a stranger which firms exist is an answer they have not earned.
+        sendJson(res, 403, { error: "You are not a member of that firm." });
+        return null;
+      }
+      return membership;
+    };
+
+    const orgSummary = (row, names) => ({
+      id: row.org_id,
+      name: names.get(String(row.org_id)) || "",
+      role: ORG.roleOf(row),
+      canManage: ORG.canManageMembers(row),
+    });
+
+    // --- GET /api/org — my firms and my pending invites ---------------------
+    if (req.method === "GET" && orgPath === "/api/org") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const rows = await orgMembershipsFor(user.email);
+        const ent = await entitlementsFor(req);
+        const mine = rows.filter((r) => ORG.isActive(r));
+        const pending = rows.filter((r) => ORG.isPending(r));
+        const names = await orgNamesByIds([...mine, ...pending].map((r) => r.org_id));
+        return sendJson(res, 200, {
+          // Whether this account may CREATE one. The browser uses it to decide
+          // between an invitation to start a firm and the paywall; it is
+          // presentation only, and POST /api/org checks it again.
+          canCreate: ent.canUseOrg === true,
+          orgs: mine.map((r) => orgSummary(r, names)),
+          invites: pending.map((r) => ({
+            id: r.id,
+            orgId: r.org_id,
+            name: names.get(String(r.org_id)) || "",
+            invitedAt: r.invited_at,
+          })),
+        });
+      })().catch((err) => {
+        console.error("Firm read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your firm. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org — create a firm --------------------------------------
+    if (req.method === "POST" && orgPath === "/api/org") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        if (rateLimited("org:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a few minutes." });
+        }
+        const ent = await entitlementsFor(req);
+        if (!ent.canUseOrg) {
+          return sendJson(res, 403, { error: "Firm accounts are part of Pro.", upgrade: true });
+        }
+        const body = await readOrgBody();
+        const check = ORG.validateOrgName(body && body.name);
+        if (!check.ok) return sendJson(res, 400, { error: check.error });
+        // One firm per person, for now. Not a technical limit — the schema is
+        // many-to-many and activeOrgIds already returns a set — but a member of
+        // two firms raises "which firm did I just share that with", and slice 1
+        // has no answer worth shipping. Lifting it is a UI question first.
+        const existing = await orgMembershipsFor(user.email);
+        if (existing.some((r) => ORG.isActive(r))) {
+          return sendJson(res, 409, { error: "You are already part of a firm." });
+        }
+        const org = await createOrgWithOwner(check.name, user);
+        logEvent("org_create", {});
+        return sendJson(res, 200, { id: org.id, name: org.name, role: "owner", canManage: true });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm create failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't create the firm. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/members?id= — the roster ------------------------------
+    if (req.method === "GET" && orgPath === "/api/org/members") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const [org, rows] = await Promise.all([findOrg(orgId), orgMemberRows(orgId)]);
+        // Emails are shown to colleagues, which is what a member list IS —
+        // and is exactly why this route is behind an active membership of
+        // this firm rather than behind knowing its id.
+        return sendJson(res, 200, {
+          id: orgId,
+          name: (org && org.name) || "",
+          role: ORG.roleOf(membership),
+          canManage: ORG.canManageMembers(membership),
+          members: rows.filter((r) => !r.removed_at).map((r) => ({
+            id: r.id, email: r.email, role: ORG.roleOf(r),
+            pending: !r.joined_at, invitedAt: r.invited_at, joinedAt: r.joined_at,
+            self: ORG.normalizeEmail(r.email) === ORG.normalizeEmail(user.email),
+          })),
+        });
+      })().catch((err) => {
+        console.error("Firm roster read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the member list. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org/invite ----------------------------------------------
+    if (req.method === "POST" && orgPath === "/api/org/invite") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        if (rateLimited("orginvite:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many invitations from this connection. Please wait a few minutes." });
+        }
+        const body = await readOrgBody();
+        const orgId = String((body && body.orgId) || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can invite people." });
+        }
+        // Checked on the INVITER, after membership: a lapsed firm keeps
+        // everything it has and simply cannot grow.
+        const ent = await entitlementsFor(req);
+        if (!ent.canUseOrg) {
+          return sendJson(res, 403, { error: "Inviting colleagues is part of Pro.", upgrade: true });
+        }
+        const rows = await orgMemberRows(orgId);
+        const live = rows.filter((r) => !r.removed_at);
+        const clean = ORG.normalizeInviteEmails(body && body.emails, {
+          self: user.email,
+          existing: live.map((r) => r.email),
+        });
+        if (!clean.ok) return sendJson(res, 400, { error: clean.error });
+        if (live.length + clean.emails.length > ORG.MAX_MEMBERS) {
+          return sendJson(res, 400, { error: `A firm can hold up to ${ORG.MAX_MEMBERS} people.` });
+        }
+        await inviteOrgMembers(orgId, clean.emails, user.id);
+        const org = await findOrg(orgId);
+        // Fire and forget, exactly like the share invites: the rows are
+        // written, and a mail provider having a bad minute must not turn this
+        // into an error the inviter has to interpret.
+        try {
+          sendOrgInvites(clean.emails, {
+            firm: (org && org.name) || "", fromName: user.name || "", fromEmail: user.email,
+          });
+        } catch (err) {
+          console.error("Firm invite send failed:", err.message);
+        }
+        logEvent("org_invite", {});
+        // The server's own final count, deduped and cleaned — never what the
+        // browser typed. Same rule as POST /api/share's `invited`.
+        return sendJson(res, 200, { ok: true, invited: clean.emails.length });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm invite failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't send those invitations. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org/accept ------------------------------------------------
+    // No entitlement: accepting is the free half of the split described at the
+    // top of this block.
+    if (req.method === "POST" && orgPath === "/api/org/accept") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const body = await readOrgBody();
+        const orgId = String((body && body.orgId) || "").trim();
+        if (!orgId) return sendJson(res, 400, { error: "Which firm?" });
+        // The invite is matched on the caller's OWN email inside the PATCH,
+        // so an org id alone can never join anybody to anything.
+        const rows = await acceptOrgInvite(orgId, user);
+        if (!rows || !rows.length) {
+          // Covers "no invite", "already accepted" and "was removed" with one
+          // message. The first is the only one that is really an error, and
+          // distinguishing them tells a stranger which firms exist.
+          return sendJson(res, 404, { error: "That invitation is no longer open." });
+        }
+        const org = await findOrg(orgId);
+        logEvent("org_join", {});
+        return sendJson(res, 200, { ok: true, id: orgId, name: (org && org.name) || "" });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm accept failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't accept that invitation. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- DELETE /api/org/member?id=&org= — remove someone, or leave ---------
+    // ONE route for both, deliberately: "remove" and "leave" are the same
+    // state change under different permissions, and org-access.js's
+    // canRemoveMember owns the difference. A second endpoint for leaving is a
+    // second place the last-owner rule could be forgotten.
+    if (req.method === "DELETE" && orgPath === "/api/org/member") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const orgId = (q.get("org") || "").trim();
+        const memberId = (q.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await orgMemberRows(orgId);
+        const verdict = ORG.canRemoveMember({
+          members: rows, actorEmail: user.email, targetId: memberId,
+        });
+        if (!verdict.ok) {
+          if (verdict.reason === "not_found") {
+            return sendJson(res, 404, { error: "That person is not on the list." });
+          }
+          if (verdict.reason === "last_owner") {
+            return sendJson(res, 400, {
+              error: "A firm needs an owner. Make someone else an owner first.",
+            });
+          }
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can remove people." });
+        }
+        await removeOrgMember(orgId, memberId);
+        return sendJson(res, 200, { ok: true, left: verdict.reason === "left" });
+      })().catch((err) => {
+        console.error("Firm member removal failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't update the member list. Please try again in a minute." });
+      });
+      return;
+    }
+
+    return sendJson(res, 404, { error: "Not found." });
   }
 
   // ==========================================================================

@@ -74,3 +74,71 @@ test("normalizeEmail lowercases and trims, and rejects junk to empty", () => {
   assert.equal(normalizeEmail(null), "");
   assert.equal(normalizeEmail("a@b.co"), "a@b.co");
 });
+
+// ---------------------------------------------------------------------------
+// The firm audience (migration 028, enterprise accounts slice 1).
+//
+// The branch sits INSIDE the invited path, so every test above still describes
+// it: revocation beats it, an anonymous reader is still signin_required, and
+// the owner still reads their own. What these add is the one new question —
+// does membership let somebody in — and the four ways it must fail closed.
+// ---------------------------------------------------------------------------
+const firmShare = { id: "s3", user_id: "u1", visibility: "org", org_id: "org1", revoked_at: null };
+const COLLEAGUE = { id: "u4", email: "mike@colliers.com" };
+
+test("a firm share admits an active member of that firm", () => {
+  assert.deepEqual(
+    canReadShare({ share: firmShare, viewers: [], user: COLLEAGUE, orgIds: ["org1"] }),
+    { ok: true, reason: "firm" });
+});
+
+test("a firm share refuses somebody in a DIFFERENT firm", () => {
+  const d = canReadShare({ share: firmShare, viewers: [], user: COLLEAGUE, orgIds: ["org2"] });
+  assert.equal(d.ok, false);
+  assert.equal(d.reason, "not_invited");
+});
+
+test("a firm share refuses a reader in no firm, and never throws on a missing orgIds", () => {
+  for (const orgIds of [[], null, undefined, "org1", 7]) {
+    const d = canReadShare({ share: firmShare, viewers: [], user: COLLEAGUE, orgIds });
+    assert.equal(d.ok, false, JSON.stringify(orgIds));
+    assert.equal(d.reason, "not_invited", JSON.stringify(orgIds));
+  }
+});
+
+test("a firm share still asks an anonymous reader to sign in", () => {
+  // Membership is decided on an account, so there is nothing to check yet.
+  const d = canReadShare({ share: firmShare, viewers: [], user: null, orgIds: ["org1"] });
+  assert.equal(d.reason, "signin_required");
+});
+
+test("revocation beats firm membership too", () => {
+  const dead = { ...firmShare, revoked_at: "2026-08-17T00:00:00Z" };
+  assert.equal(canReadShare({ share: dead, viewers: [], user: COLLEAGUE, orgIds: ["org1"] }).reason, "revoked");
+});
+
+test("BOTH the visibility and the org_id are required — neither alone widens a share", () => {
+  // A stray org_id on an INVITED share must not let a firm read it...
+  const strayId = { ...firmShare, visibility: "invited" };
+  assert.equal(canReadShare({ share: strayId, viewers: [], user: COLLEAGUE, orgIds: ["org1"] }).ok, false);
+  // ...and visibility 'org' with no org_id must not fall through to anything
+  // but the viewer list, which for a firm share is empty.
+  const noId = { ...firmShare, org_id: null };
+  assert.equal(canReadShare({ share: noId, viewers: [], user: COLLEAGUE, orgIds: ["org1"] }).ok, false);
+});
+
+test("a firm share may ALSO carry named viewers, and the firm branch never blocks them", () => {
+  // The org check runs first and simply does not match; the viewer list is
+  // still consulted below it.
+  const outside = { id: "u5", email: "client@acme.com" };
+  const d = canReadShare({
+    share: firmShare, viewers: [{ email: "client@acme.com" }], user: outside, orgIds: [],
+  });
+  assert.deepEqual(d, { ok: true, reason: "invited" });
+});
+
+test("org ids compare as strings, so a numeric id from the database still matches", () => {
+  const numeric = { ...firmShare, org_id: 42 };
+  assert.equal(canReadShare({ share: numeric, viewers: [], user: COLLEAGUE, orgIds: ["42"] }).ok, true);
+  assert.equal(canReadShare({ share: firmShare, viewers: [], user: COLLEAGUE, orgIds: [null] }).ok, false);
+});

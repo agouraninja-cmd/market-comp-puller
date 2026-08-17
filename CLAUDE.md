@@ -55,7 +55,10 @@ profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-diges
 initiative, so every judgment in it is about what a person is worth
 interrupting for) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
-treated as invited, never public) and **`market-hero.js`** (which city's
+treated as invited, never public) and **`org-access.js`** (who is in a firm
+and what their membership allows — an unknown role is a `member`,
+`removed_at` beats ownership, and an invite is not a membership until the
+invited person accepts it) and **`market-hero.js`** (which city's
 photograph heads a market page, and the rule that a missing city gets no
 picture rather than someone else's skyline) and **`market-hero-quality.js`**
 (whether a stored hero JPEG is the right size and dense enough to not be an
@@ -842,6 +845,74 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /r/<id>` — serves `index.html`; the SPA reads the id off the path and
   fetches the report from `/api/shared`. (server.js allow-lists this path
   alongside `/` and `/index.html`.)
+- **Firms — enterprise accounts, slice 1** (2026-08-16; migration
+  `028-enterprise-orgs.sql`, **run before deploying — see below**; spec
+  `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`).
+  Colleagues at one brokerage share a shelf: a report shared with the firm
+  lands on every member's desk, while each of them keeps their own reports,
+  portfolio, watchlist, BOV pipeline and private vault. Rules live in the
+  pure, tested **`org-access.js`**; server.js owns the reads.
+  `GET|POST /api/org` (my firms + pending invites / create one),
+  `GET /api/org/members?id=`, `POST /api/org/invite`, `POST /api/org/accept`,
+  `DELETE /api/org/member?org=&id=` (removing somebody and leaving are the
+  SAME route under different permissions, so the last-owner rule has one
+  home). `POST /api/share` takes `visibility: "org"` + `orgId`;
+  `GET /api/shares` carries `firms` and `sharedWithFirm`; `/desk` renders
+  both plus the firm section.
+  **"org" is the internal noun and "firm" is the word on screen** — tables,
+  columns, routes and identifiers all say org, every string a person reads
+  says firm. One translation point, at the copy layer.
+  Rules a future editor will otherwise break:
+  - **No existing `user_id=eq.` read is ever widened to an org.** There are
+    60-odd of them in server.js and they are the wall; a firm read is a new
+    query against the new tables, migration 013's separate-tables rule. The
+    one-line version of the shared vault is `or=(user_id.eq.X,org_id.eq.Y)`
+    on `vaultCompsForReport`, which looks correct in review and fails
+    silently because that path returns `[]` on error. `test/org-routes.test.js`
+    fails the build if that pattern appears.
+  - **No auto-join by email domain, ever.** `gmail.com` is a company by that
+    logic, and even a real corporate domain proves only that somebody can
+    receive mail there. A domain may one day SUGGEST an invite to an admin;
+    it may never grant one, which is why `orgs` has no domain column.
+    `broker_profiles.company` is free text a broker typed about themselves —
+    two people typing "Colliers" are not verified colleagues.
+  - **An invite is not a membership.** `joined_at` is null until the invited
+    person accepts. Identity is the EMAIL (018's decision, adopted by 024 and
+    again here), so anyone can type anyone's address into their own firm;
+    without the accept step that would put a firm's reports on a stranger's
+    desk and offer their next report a "share with my firm" button for a firm
+    they have never heard of.
+  - **`canReadShare` requires BOTH `visibility === "org"` AND a non-null
+    `org_id`** before it consults membership, so a mistake in either column
+    fails toward the viewer list — toward LESS access. The firm branch sits
+    INSIDE the invited path, below revocation and below the sign-in check, so
+    a firm share inherits every protection an invited one has.
+  - **A firm share can never carry whole vault comps** (400, not a silent
+    strip). Private comps are anonymized into the valuation basis exactly as
+    on an invited share, so a colleague's range matches to the dollar with no
+    address or price travelling. Sharing a broker's own book across their
+    firm is the spec's §7 and is deliberately NOT built: it needs the opt-in,
+    the attribution, and the vault's "Visible only to you" copy rewritten to
+    match.
+  - **`canUseOrg` gates creating and inviting, never accepting or reading.**
+    It tracks `broker` (one subscription), so it is false on a dark
+    deployment and for a tester without `vault_beta` — the invite route sends
+    email, so a widely-shared passkey must not open it. A colleague on the
+    receiving end needs no plan at all: they are exactly an invited share's
+    viewer, and a firm that could only share with people who had already
+    bought the product would not solve the problem it exists for.
+  - **Migration 028 must be run BEFORE the code deploys**, like 018 and 026
+    and unlike most: it adds `shared_reports.org_id`, which `getShareRecord`
+    SELECTs by name on EVERY share read, and PostgREST 400s an unknown
+    column. Deploy-first breaks every legacy public link — including ones
+    already mailed to property owners with no account — not just the new
+    feature.
+  What is NOT built: the firm shelf (`org_shelf_items`, publish-to-firm
+  without naming an audience, the `share_default`), the shared vault, and
+  per-seat billing. Seats are granted by hand, the `vault_beta` precedent.
+  `orgs.share_default` and `orgs.seats` ship as unwritten columns so slice 2
+  and slice 4 are code changes rather than migrations — the same reason
+  `hub_items.status` shipped early in 024.
 - `GET /api/geocode?address=` — CORS pass-through to the free US Census
   geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
   longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow

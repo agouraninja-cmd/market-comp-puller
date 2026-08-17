@@ -3,6 +3,11 @@
 > Read this first if you're picking the project up in a new chat. It captures
 > everything done so far, how to run it, the problems already solved, and the
 > next step.
+>
+> **2026-08-17:** the Windows machine described below (portable node under
+> `C:\Users\JacobAdler\...`) was reclaimed — it was a work computer. Machine
+> setup and the what-to-rotate-when-a-machine-is-lost checklist now live in
+> **DEV-SEATS.md**; treat this file's machine-specific paths as history.
 
 ## What this is
 A web app for a commercial real estate company. A user enters a property address

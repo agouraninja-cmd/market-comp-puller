@@ -1760,3 +1760,132 @@ test("extractWasTruncated is true for Anthropic max_tokens and Gemini MAX_TOKENS
   assert.equal(extractWasTruncated(""), false);
   assert.equal(extractWasTruncated(undefined), false);
 });
+
+// ---------------------------------------------------------------------------
+// The lease side (migration 028)
+//
+// Until this shipped the vault only really worked for investment sales: the
+// template told brokers to leave `price` blank on a lease and put the rent in
+// notes as prose, so a leasing book carried no figure any median could read.
+// The refusals below are the point, as everywhere else in this module — a rent
+// stored against the wrong basis is a number twelve times wrong sitting in a
+// broker's own records, which is precisely what nobody ever notices.
+// ---------------------------------------------------------------------------
+
+const leaseRow = (extra) => ({
+  address: "100 Main St", property_type: "Office", transaction: "lease",
+  deal_date: "2025-06-01", size_sqft: "12500", ...extra,
+});
+
+test("an annual rent is stored as given and annualizes to itself", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "annual", lease_type: "NNN" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf, 28.5);
+  assert.equal(r.row.rent_basis, "annual");
+  assert.equal(r.row.rent_psf_yr, 28.5);
+  assert.equal(r.row.lease_type, "NNN");
+});
+
+test("a monthly rent is annualized once, on the server, into rent_psf_yr", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "1.35", rent_basis: "per month" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf, 1.35, "what the broker typed is kept as typed");
+  assert.equal(r.row.rent_psf_yr, 16.2, "and the canonical annual figure rides beside it");
+});
+
+// The whole reason rent_basis exists. $1.35/SF is an ordinary California
+// monthly rent and an impossible annual one; defaulting either way stores a
+// figure 12x wrong in the broker's own book.
+test("a rent with no basis is REFUSED, never defaulted to annual", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50" }));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /rent_basis is required/);
+});
+
+test("an unreadable basis says so once, without also claiming the column is missing", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "quarterly" }));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /not "annual" or "monthly"/);
+  assert.equal(r.errors.filter((e) => /required/.test(e)).length, 0,
+    "a filled-in column must not also be reported as missing");
+});
+
+// The other way this field gets filled in wrong: the total for the space typed
+// into a per-square-foot column.
+test("a total rent typed into the per-SF column is refused with the reason", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "356250", rent_basis: "annual" }));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /too large to be a rent per square foot/);
+});
+
+test("a real Manhattan rent is not caught by that guard", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "295", rent_basis: "annual" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf_yr, 295);
+});
+
+test("a rent on a SALE row is kept but never annualized into the lease median", () => {
+  const r = normalizeRow(leaseRow({
+    transaction: "sale", price: "12500000", rent_psf: "28.50", rent_basis: "annual",
+  }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf, 28.5);
+  assert.equal(r.row.rent_psf_yr, null,
+    "rent_psf_yr is the lease measure; a sale-leaseback must not enter the rent median");
+  assert.ok(r.row.price_per_sqft > 0, "and its sale side is unaffected");
+});
+
+test("lease_type is optional — a broker who does not track it still gets their book in", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "annual" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.lease_type, null);
+});
+
+test("lease_type vocabulary is generous about wording, strict about the result", () => {
+  const t = (v) => normalizeRow(leaseRow({ rent_psf: "28.5", rent_basis: "annual", lease_type: v })).row.lease_type;
+  assert.equal(t("triple net"), "NNN");
+  assert.equal(t("Full Service"), "FS");
+  assert.equal(t("modified gross"), "MG");
+  assert.equal(normalizeRow(leaseRow({ rent_psf: "28.5", rent_basis: "annual", lease_type: "whatever" })).ok, false);
+});
+
+// isRateHeader stops a derived rate landing on a MEASURE it was divided from
+// ("$/SF" importing 68.11 as a 68 sq ft building). A rent column is itself a
+// rate, so the guard has to make room for it or the one header that
+// unambiguously means rent could never claim rent.
+test("a rate-shaped header may claim rent, but still may not claim size", () => {
+  // normalizeHeader strips the "/" rather than making it a separator, so these
+  // arrive as rentsfyr / rentsf. Both real headers, both rate-shaped.
+  assert.equal(suggestMapping(["Address", "Rent/SF/Yr"]).mapping["rentsfyr"], "rent_psf");
+  assert.equal(suggestMapping(["Address", "Rent/SF"]).mapping["rentsf"], "rent_psf");
+  assert.equal(suggestMapping(["Address", "Asking Rent"]).mapping["asking_rent"], "rent_psf");
+
+  const psf = suggestMapping(["Address", "Bldg SF", "$/SF"]);
+  assert.equal(psf.mapping["sf"], undefined,
+    "a $/SF column must still never be read as the building size");
+  assert.equal(psf.mapping["bldg_sf"], "size_sqft",
+    "and the real size column is still found beside it");
+});
+
+test("the template documents the rent columns, including why the basis is asked for", () => {
+  const csv = templateCsv();
+  for (const c of ["rent_psf", "rent_basis", "lease_type"]) {
+    assert.ok(csv.includes(c), "the template header needs " + c);
+  }
+  assert.match(csv, /annual or monthly/i);
+  assert.match(csv, /California/i, "the reason the basis has no default belongs on the page");
+});
+
+// comp_corpus has no rent column, and an unknown column 400s PostgREST — the
+// documented shape of a silent harvest outage. submissionRowFrom is an
+// explicit allowlist, so this holds by construction; the test is what keeps it
+// holding when someone later reaches for a spread.
+test("publishing a lease carries no rent column into the public records", () => {
+  const comp = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "annual", lease_type: "NNN" })).row;
+  const sub = submissionRowFrom(comp, { creditName: "Adler & Co", email: "b@example.com" });
+  for (const k of ["rent_psf", "rent_basis", "lease_type", "rent_psf_yr"]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(sub, k), false,
+      k + " must not travel to comp_submissions");
+  }
+  assert.equal(sub.transaction, "Lease");
+});

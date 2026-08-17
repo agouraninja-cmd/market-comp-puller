@@ -82,6 +82,14 @@ const API_COMP_FIELDS = Object.freeze([
   "size_sqft",
   "price_per_sqft",
   "cap_rate",
+  // The lease side (migration 028). rent_psf/rent_basis are what the broker
+  // typed and rent_psf_yr is the canonical annual figure derived from the two,
+  // carried so the page never has to redo that multiplication and disagree
+  // with the stored median.
+  "rent_psf",
+  "rent_basis",
+  "lease_type",
+  "rent_psf_yr",
   "clear_height",
   "dock_doors",
   "building_class",

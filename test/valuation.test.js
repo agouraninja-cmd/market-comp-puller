@@ -643,3 +643,84 @@ test("unexplainedGain refuses prose Date.parse would coerce to January", () => {
   ["2021-06-01", "2021-06", "2021/06/01", "June 2021", "june 2021", "Jun 1, 2021", "6/1/2021", "1 June 2021"]
     .forEach((d) => assert.ok(V.unexplainedGain({ ...args, lastDate: d }), d));
 });
+
+// ---------------------------------------------------------------------------
+// conditionFit — where the subject sits in the condition spread its comps
+// show, once the owner has stated their own. Guidance about which half of the
+// existing band to read, never a change to the band.
+// ---------------------------------------------------------------------------
+
+function condComp(condition, over) {
+  return Object.assign(comp({ condition }), over || {});
+}
+
+test("conditionFit points at the upper half when the comps are less updated", () => {
+  const fit = V.conditionFit("Renovated", [
+    condComp("Original"), condComp("Original"), condComp("Needs work"), condComp("Updated"),
+  ]);
+  assert.equal(fit.dir, "above");
+  assert.equal(fit.rated, 4);
+  assert.equal(fit.below, 4);
+  assert.equal(fit.subject, "Renovated");
+});
+
+test("conditionFit points at the lower half when the comps are more updated", () => {
+  const fit = V.conditionFit("Needs work", [
+    condComp("Renovated"), condComp("Updated"), condComp("Renovated"),
+  ]);
+  assert.equal(fit.dir, "below");
+  assert.equal(fit.above, 3);
+});
+
+test("conditionFit says inline when the subject sits among its comps", () => {
+  // The caller prints nothing for this. A sentence reporting no difference is
+  // exactly what took the trust line to 1,034 characters.
+  const fit = V.conditionFit("Updated", [
+    condComp("Renovated"), condComp("Original"), condComp("Updated"), condComp("Needs work"),
+  ]);
+  assert.equal(fit.dir, "inline");
+});
+
+test("conditionFit needs three rated comps before it claims a direction", () => {
+  assert.equal(V.conditionFit("Renovated", [condComp("Original"), condComp("Original")]), null);
+  // Unrated comps don't count toward the floor — three comps, one rated.
+  assert.equal(V.conditionFit("Renovated", [
+    condComp("Original"), condComp(""), condComp("not a condition"),
+  ]), null);
+  assert.ok(V.conditionFit("Renovated", [
+    condComp("Original"), condComp("Original"), condComp("Original"),
+  ]));
+});
+
+test("conditionFit ignores leases and an unstated subject", () => {
+  // The band it is annotating is sales-only, so its evidence must be too.
+  assert.equal(V.conditionFit("Renovated", [
+    condComp("Original", { transaction: "Lease" }),
+    condComp("Original", { transaction: "Lease" }),
+    condComp("Original", { transaction: "Lease" }),
+  ]), null);
+  const comps = [condComp("Original"), condComp("Original"), condComp("Original")];
+  assert.equal(V.conditionFit("", comps), null);
+  assert.equal(V.conditionFit(undefined, comps), null);
+  // A word outside the vocabulary is not a rank — never a silent "Original".
+  assert.equal(V.conditionFit("Fully renovated", comps), null);
+});
+
+test("conditionFit's vocabulary matches report-parse's, in rank order", () => {
+  // A word here the parser drops to "" would be a rank nothing can reach.
+  const RP = require("../report-parse");
+  assert.deepEqual(Object.keys(V.CONDITION_RANK), RP.CONDITION_VALUES);
+  RP.CONDITION_VALUES.forEach((v) => assert.equal(RP.normalizeConditionValue(v), v));
+});
+
+test("conditionFit is not fooled by inherited Object properties", () => {
+  // CONDITION_RANK["toString"] is a FUNCTION on a plain object literal, and a
+  // function passes an `== null` guard. Before rankOf, this returned
+  // dir "below" and the trust line would have stated confidently that three
+  // comps were more updated than a house whose condition was "constructor".
+  const junk = ["toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"];
+  const comps = junk.map((c) => comp({ condition: c }));
+  junk.forEach((v) => assert.equal(V.conditionFit(v, comps), null, v));
+  // Real subject, junk comps: the comps must not count as rated.
+  assert.equal(V.conditionFit("Renovated", comps), null);
+});

@@ -3110,7 +3110,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
           compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
-          conditionSpread, unexplainedGain,
+          conditionSpread, unexplainedGain, conditionFit,
           parseRadiusMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
@@ -3166,6 +3166,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // TYPE_COMP_FIELDS.Residential: the model couldn't fill it reliably.
     Residential: [
       { key: "beds_baths",     label: "Beds / Baths",   numeric: false, after: "size_sqft" },
+      { key: "condition",      label: "Condition",      numeric: false, after: "size_sqft" },
     ],
   };
 
@@ -3237,6 +3238,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ],
     Residential: [
       { key: "beds_baths", label: "Beds / baths", type: "text", placeholder: "e.g. 4 bd / 3 ba" },
+      // The four options ARE report-parse.js's CONDITION_VALUES, in rank order,
+      // and the server re-validates against that same list rather than trusting
+      // this select (SUBJECT_FIELD_ENUMS) — the browser is not the gate. ⚠ Keep
+      // the words identical in all three places or a homeowner's answer lands
+      // as "" and VALUATION.conditionFit can never fire.
+      { key: "condition", label: "Condition", type: "select",
+        options: ["", "Needs work", "Original", "Updated", "Renovated"] },
     ],
   };
 
@@ -5728,7 +5736,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           + (cond.swing > 0
             ? ` — a ${formatUsd(cond.swing, { maximumFractionDigits: 0 })} swing on this ${assetNoun(meta.type)}'s size`
             : "")
-          + `. That remaining spread is mostly condition and finish, which this estimate can't see without someone walking the property.`;
+          + `. That remaining spread is mostly condition and finish, which this estimate can't see`;
+        // ...unless the owner told us. Once they have, and enough comps carry a
+        // condition of their own, the report can say which HALF of the band is
+        // the fairer read for this house. Guidance about where to look inside
+        // the existing range, never a change to Low/Likely/High — the same
+        // standing askFit and subjectSizeFit have.
+        //
+        // conditionFit returns dir "inline" when the subject sits among its
+        // comps, and that case deliberately adds NOTHING. The trust line hit
+        // 1,034 characters by printing every sentence it could compute; one
+        // reporting no difference is exactly the kind to leave out.
+        const fit = conditionFit(((meta.subject && meta.subject.details) || {}).condition,
+                                 includedComps());
+        const half = fit && fit.dir === "above" ? "upper"
+          : fit && fit.dir === "below" ? "lower" : "";
+        if (half) {
+          const n = fit.dir === "above" ? fit.below : fit.above;
+          trustEl.textContent += ` — though you told us this one is "${fit.subject}", and `
+            + `${n} of the ${fit.rated} comps with a stated condition are ${fit.dir === "above" ? "less" : "more"} `
+            + `updated, so the ${half} half of the range is the fairer read.`;
+        } else {
+          trustEl.textContent += ` without someone walking the property.`;
+        }
         // The pointer to the CTA is SCREEN-ONLY, in its own span, because
         // #bovCtaWrap is itself no-print and is skipped by html2canvas's
         // ignoreElements — a printed PDF or an exported PNG carrying "the
@@ -5742,7 +5772,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         // would read as two separate offers. ⚠ Keep the two in step.
         const cta = document.createElement("span");
         cta.className = "no-print no-capture";
-        cta.textContent = " That's what the free agent intro below is for.";
+        // Worded to follow EITHER branch above: "confirm it" reads correctly
+        // after "can't see without someone walking the property" and after
+        // "the upper half of the range is the fairer read". The earlier
+        // "that's what the intro below is for" only worked after the first.
+        cta.textContent = " A local agent below can confirm it — free, no obligation.";
         trustEl.appendChild(cta);
       }
       trustEl.classList.remove("hidden");

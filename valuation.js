@@ -503,12 +503,66 @@
     };
   }
 
+  // Where the subject sits in the condition spread the comps show — the payoff
+  // for asking the question at all.
+  //
+  // conditionSpread above says a house's condition is worth $X of the range and
+  // that the estimate cannot see it. Once the OWNER has told us their own
+  // condition, and enough comps carry one, the report can say which half of
+  // that range is the fairer read for this particular house. That is guidance
+  // about where to look inside the existing band, not a fourth figure and not a
+  // change to Low/Likely/High — the same standing askFit and subjectSizeFit
+  // have.
+  //
+  // The vocabulary is report-parse.js's CONDITION_VALUES and the ranks are its
+  // order. Keep the two in step; a word here that the parser drops to "" would
+  // be a rank nothing can ever reach.
+  //
+  // Two deliberate silences:
+  //   * Under three RATED comps it returns null. "Most of the comps" is not a
+  //     claim two houses can support, and it is the same floor subjectSizeFit
+  //     uses for the same reason.
+  //   * A subject that sits among its comps returns dir "inline", and the
+  //     caller is expected to say NOTHING. The trust line measured 1,034
+  //     characters on 2026-08-16 precisely because every computable sentence
+  //     got printed; a sentence that reports no difference is one to leave out.
+  var CONDITION_RANK = { "Needs work": 0, "Original": 1, "Updated": 2, "Renovated": 3 };
+  var CONDITION_FIT_MIN_COMPS = 3;
+  var CONDITION_FIT_SHARE = 2 / 3;
+  // Own-property lookup, NOT CONDITION_RANK[v]. A plain object literal inherits
+  // from Object.prototype, so CONDITION_RANK["toString"] is a FUNCTION, not
+  // undefined — and a function passes an `== null` guard. Before this,
+  // conditionFit("constructor", …) returned dir "below" and the trust line
+  // would have stated, confidently, that three comps were more updated than a
+  // house whose condition was the word "constructor". The server gates both
+  // sides onto the vocabulary (normalizeConditions, SUBJECT_FIELD_ENUMS), but
+  // this module is shared with backtest.js and reads saved and shared reports
+  // written before that gate existed, so it defends itself.
+  function rankOf(v) {
+    return Object.prototype.hasOwnProperty.call(CONDITION_RANK, v) ? CONDITION_RANK[v] : null;
+  }
+  function conditionFit(subjectCondition, comps) {
+    var subj = rankOf(subjectCondition);
+    if (subj == null) return null;
+    var ranks = (comps || [])
+      .filter(function (c) { return c && !String(c.transaction || "").toLowerCase().startsWith("lease"); })
+      .map(function (c) { return rankOf(c && c.condition); })
+      .filter(function (r) { return r != null; });
+    if (ranks.length < CONDITION_FIT_MIN_COMPS) return null;
+    var below = ranks.filter(function (r) { return r < subj; }).length;
+    var above = ranks.filter(function (r) { return r > subj; }).length;
+    var out = { subject: subjectCondition, rated: ranks.length, below: below, above: above, dir: "inline" };
+    if (below >= ranks.length * CONDITION_FIT_SHARE) out.dir = "above";
+    else if (above >= ranks.length * CONDITION_FIT_SHARE) out.dir = "below";
+    return out;
+  }
+
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
     parseRadiusMiles, priceTierFactor, PRICE_TIER_RATIO,
     compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
-    conditionSpread, unexplainedGain,
+    conditionSpread, unexplainedGain, conditionFit, CONDITION_RANK,
   };
 });

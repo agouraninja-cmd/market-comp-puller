@@ -78,6 +78,10 @@ const COLUMNS = [
   ["comp_corpus",       ["building_class", "floor_plate", "center_type", "anchor_tenant",
                          "units", "price_per_unit", "lot_acres", "price_per_acre",
                          "zoning", "beds_baths"],               "004-comp-corpus-per-type-columns.sql"],
+  // Named here for the same reason as 004's ten: harvest and corpus retrieval
+  // both name every per-type column, so a missing one silently freezes the
+  // corpus rather than raising anything.
+  ["comp_corpus",       ["condition"],                          "028-comp-condition.sql"],
   ["users",             ["stripe_customer_id"],                 "008-pro-billing.sql"],
   ["analytics_events",  ["duration_ms", "searches", "out_tokens", "rescue"],
                                                                 "012-search-timings.sql"],

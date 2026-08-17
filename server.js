@@ -3707,8 +3707,15 @@ const TYPE_COMP_FIELDS = {
   // search budget (6-8 calls total) doesn't stretch to a per-comp assessor
   // lookup for a list this size, and general listing search rarely surfaces it.
   Residential: {
-    fields: ["beds_baths"],
-    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba"`,
+    fields: ["beds_baths", "condition"],
+    // `condition` is a CLOSED vocabulary, not free text: the four words are
+    // named here and the gate that enforces them is RPARSE.normalizeConditions,
+    // which drops anything else to "". The instruction spells the words out and
+    // says what each one means, because the whole value of the field is that a
+    // homeowner picking from a dropdown and the model reading a listing land on
+    // the same word for the same house. If fill rate is poor, fix THIS text —
+    // never loosen the parser (see the note above CONDITION_VALUES).
+    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba". "condition" = how updated the home is, as EXACTLY ONE of these four words and nothing else: "Needs work" (deferred maintenance, sold as a fixer), "Original" (sound but largely original finishes), "Updated" (some rooms modernized, e.g. kitchen or baths), "Renovated" (comprehensively renovated recently). Read it from the listing description or sale writeup; if the page does not say, use "" - do not infer it from price, age or photos`,
   },
 };
 
@@ -3716,12 +3723,24 @@ const TYPE_COMP_FIELDS = {
 // for a prompt. Keep only the keys this property type actually reports, force
 // them to short strings, and drop blanks. Everything else is discarded rather
 // than sanitized in place.
+// Fields whose VALUE is a closed vocabulary, not just a string. The key
+// whitelist below stops an undeclared field getting through; this stops a
+// declared one carrying arbitrary text. It matters because subject details are
+// interpolated into the prompt and stored in the report's meta, so a 40-char
+// free-text "condition" would be attacker-chosen text in both places, and the
+// comp column beside it would be showing a vocabulary the subject does not use.
+// Declarative rather than an `if (key === "condition")` so the next enum field
+// is one line.
+const SUBJECT_FIELD_ENUMS = { condition: RPARSE.normalizeConditionValue };
+
 function sanitizeSubjectDetails(type, raw) {
   const spec = TYPE_COMP_FIELDS[type];
   if (!spec || !raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out = {};
   for (const key of spec.fields) {
-    const v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    let v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    const enumOf = SUBJECT_FIELD_ENUMS[key];
+    if (enumOf) v = enumOf(v);
     if (v) out[key] = v;
   }
   return out;
@@ -3758,6 +3777,7 @@ const FIELD_LABELS = {
   zoning: "Zoning",
   price_per_acre: "$/Acre",
   beds_baths: "Beds / Baths",
+  condition: "Condition",
   cap_rate: "Cap Rate",
   tenancy: "Tenancy",
   year_built: "Year Built",
@@ -4125,7 +4145,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
-        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt } = RPARSE;
+        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
+        normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -4989,7 +5010,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               normalizeTrendPct(
                 normalizeCurrency(
                   normalizeSourceTypes(
-                    expandCompKeys(parseCompJson(raw, stats), type)))))))),
+                    normalizeConditions(
+                      expandCompKeys(parseCompJson(raw, stats), type))))))))),
       new Date());
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));

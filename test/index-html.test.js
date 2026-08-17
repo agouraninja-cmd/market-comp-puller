@@ -1099,9 +1099,11 @@ test("the agent-intro pointer is screen-only", () => {
   // button that is not on the page.
   const i = html.indexOf('cta.className = "no-print no-capture"');
   assert.ok(i > 0, "the CTA pointer must carry no-print no-capture");
-  assert.match(html.slice(i, i + 260), /free agent intro below/);
-  // The sentence that stays in both media makes no reference to a control.
+  // Pin that it POINTS at the on-page control, not the exact phrasing.
+  assert.match(html.slice(i, i + 400), /cta\.textContent = " A local agent below/);
+  // The sentences that stay in both media make no reference to a control.
   assert.match(html, /can't see without someone walking the property/);
+  assert.match(html, /half of the range is the fairer read/);
 });
 
 test("the mechanics toggle is registered once, not per render", () => {

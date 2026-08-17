@@ -2340,6 +2340,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     <!-- Results -->
     <div id="results" class="hidden mt-6">
 
+      <!-- "This is a firm link" — shown to a colleague (or the sender)
+           reading a report shared with their firm. no-print/no-capture on
+           purpose, unlike the vault disclosure at the foot of the table:
+           that one explains a table that is short by rows, while this is
+           reading context about the LINK, and a printed copy handed to a
+           client has no business carrying a firm's internal routing.
+           Built by renderFirmShareNotice() from meta.firmShare, which the
+           server sends only to somebody entitled by the firm. -->
+      <p id="firmShareNotice" class="hidden no-print no-capture text-xs leading-6 text-[#5A6473] mb-3"></p>
+
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
         <button id="shareBtn" style="margin-right:auto"
@@ -13502,6 +13512,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   //
   // Report-level, not filter-level: it describes what the exports do, and the
   // exporters ignore the Sale/Lease filter.
+  // "You're reading a firm link." Driven entirely by meta.firmShare, which
+  // only ever arrives on a report the server decided this reader may see
+  // through their firm — so there is no audience check to get wrong here, and
+  // an ordinary report clears the line rather than leaving the last one up.
+  function renderFirmShareNotice() {
+    const el = document.getElementById("firmShareNotice");
+    if (!el) return;
+    const fs = currentMeta && currentMeta.firmShare;
+    if (!fs || !fs.firm) { el.textContent = ""; el.classList.add("hidden"); return; }
+    const who = fs.mine ? "You shared this" : `${fs.sharedBy} shared this`;
+    el.textContent = `${who} with ${fs.firm}. ` +
+      // The line that earns the notice: the concrete mistake is forwarding a
+      // firm link to a client and finding out it was refused after sending.
+      "Only people at your firm can open this link — send a client a separate link.";
+    el.classList.remove("hidden");
+  }
+
   function renderPrivateNotice() {
     const el = document.getElementById("privateNotice");
     if (!el) return;
@@ -13902,6 +13929,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderBadgeLegend();
     renderCompMarksLegend();
     renderPrivateNotice();
+    renderFirmShareNotice();
     renderSubjectRow();
     const body = document.getElementById("tableBody");
     body.innerHTML = "";

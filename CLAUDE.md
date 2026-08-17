@@ -875,6 +875,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Boise" and never "Anyone with the link" (it read as the latter before that
   field existed, which is the one wrong answer there that could make somebody
   forward a firm-only report).
+  **The reader's half of that same rule**: `GET /api/shared` adds
+  `meta.firmShare` (`firm`, `sharedBy`, `mine`, `sharedAt`) so a colleague
+  opening the link is told it is a firm link and by whom —
+  `renderFirmShareNotice()` in index.html, `no-print`/`no-capture` because it
+  is context about the LINK, not report content, and a printed copy handed to
+  a client has no business carrying a firm's routing. Three rules: it is sent
+  ONLY to a reader entitled by the firm or its owner (an outside client named
+  on a firm share's viewer list is not owed the firm's internals); the payload
+  is **copied, never mutated**, because `sharedReportsMem` holds that object
+  for the life of the process and writing into it would stamp one reader's
+  context onto every later reader's copy; and the two extra reads are paid
+  only on that path.
   **"org" is the internal noun and "firm" is the word on screen** — tables,
   columns, routes and identifiers all say org, every string a person reads
   says firm. One translation point, at the copy layer.

@@ -206,6 +206,28 @@ test("firms, end to end", async (t) => {
     assert.equal(mine.firm, "Colliers Boise");
   });
 
+  await t.test("a colleague opening it is told it is a firm link, and by whom", async () => {
+    // Without this the report is indistinguishable from a public one on
+    // screen, and the concrete mistake is forwarding the link to a client and
+    // learning it was refused only after sending.
+    const body = await (await fetch(srv.base + "/api/shared?id=" + shareId, as(MIKE))).json();
+    assert.deepEqual(
+      { firm: body.meta.firmShare.firm, sharedBy: body.meta.firmShare.sharedBy, mine: body.meta.firmShare.mine },
+      { firm: "Colliers Boise", sharedBy: "Brad", mine: false });
+    // The sender gets it too — the "do not forward this" warning is his as
+    // much as anyone's — and knows it as his own.
+    const own = await (await fetch(srv.base + "/api/shared?id=" + shareId, as(BRAD))).json();
+    assert.equal(own.meta.firmShare.mine, true);
+  });
+
+  await t.test("the stored payload is copied, never stamped with one reader's context", async () => {
+    // sharedReportsMem holds the payload object for the life of the process,
+    // so writing the notice into it would put Mike's reading context on every
+    // later reader's copy — and on the row itself.
+    const row = tables.shared_reports.find((s) => s.id === shareId);
+    assert.equal(row.payload.meta.firmShare, undefined);
+  });
+
   await t.test("an outsider is refused, and told which kind of audience they missed", async () => {
     const r = await fetch(srv.base + "/api/shared?id=" + shareId, as(OUTSIDER));
     assert.equal(r.status, 403);

@@ -15973,6 +15973,41 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 403, { error: "This report was shared with specific people, and this account is not one of them." });
       }
       if (decision.reason === "invited") stampShareView(id, SHAREACCESS.normalizeEmail(user.email));
+
+      // Tell a firm reader that this is a FIRM link, and who sent it.
+      //
+      // Without it a firm share is indistinguishable from a public one on
+      // screen, which is the reader's half of the bug already fixed on the
+      // sender's desk ("Anyone with the link"). The concrete mistake it
+      // prevents: a colleague forwarding the link to a client, who gets a 403
+      // — a failure they would only discover after sending.
+      //
+      // Only for somebody entitled BY the firm or by owning it. An outside
+      // client named on a firm share's viewer list is not owed the firm's
+      // internal routing, and the two extra reads are paid only on this path.
+      // The payload is COPIED, never mutated: sharedReportsMem holds that
+      // object for the life of the process, so writing into it would stamp
+      // one reader's context onto every later reader's copy.
+      if (rec.share.visibility === "org" && rec.share.org_id
+        && (decision.reason === "firm" || decision.reason === "owner")) {
+        const [names, people] = await Promise.all([
+          orgNamesByIds([rec.share.org_id]),
+          usersByIds([rec.share.user_id]),
+        ]);
+        const who = rec.share.user_id ? people.get(String(rec.share.user_id)) : null;
+        return sendJson(res, 200, {
+          ...rec.payload,
+          meta: {
+            ...(rec.payload && rec.payload.meta),
+            firmShare: {
+              firm: names.get(String(rec.share.org_id)) || "your firm",
+              sharedBy: (who && (who.name || who.email)) || "a colleague",
+              mine: Boolean(user && rec.share.user_id && String(user.id) === String(rec.share.user_id)),
+              sharedAt: rec.share.created_at || null,
+            },
+          },
+        });
+      }
       return sendJson(res, 200, rec.payload);
     })().catch((err) => {
       console.error("Shared report lookup failed:", err.message);
@@ -16323,6 +16358,13 @@ const server = http.createServer((req, res) =>
       (async () => {
         const user = await openOrg();
         if (!user) return;
+        // Rate-limited unlike the other firm reads: this one returns up to a
+        // thousand rows, so it is the only place here where repeating the
+        // request is expensive. Generous, because the desk fetches it on
+        // every render.
+        if (rateLimited("orgshelf:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+        }
         const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
         const membership = await memberOf(user, orgId);
         if (!membership) return;

@@ -86,6 +86,35 @@ tr.thread td{background:var(--wash);padding:12px 10px}
 .addbox input,.addbox select{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
   border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
+/* The vault picker. A plain scrolling list of rows with checkboxes: a broker
+   picking three comps out of two hundred needs to read addresses, not admire
+   a grid. */
+.vlist{max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+/* SCOPED TO .addbox ON PURPOSE, and load-bearing. The picker's rows ARE
+   labels and they live inside the add box, so the .addbox label rule above
+   (0,1,1) out-specifies a bare .vrow (0,1,0) and every row lost its flex:
+   the checkbox stacked onto its own line and the 10px gap never applied, so
+   the address ran straight into the figures ("...Agoura Hills, CAsale").
+   Found by opening the panel, not by reading it. Same cascade trap as
+   ACCOUNT_NAV_CSS's [hidden] line and .deck.hide. */
+.addbox .vrow{display:flex;align-items:baseline;gap:10px;padding:8px 10px;
+  border-bottom:1px solid var(--line);font-size:13px}
+.vrow:last-child{border-bottom:0}
+.vrow input{margin:0}
+.vrow .addr{flex:1;min-width:0}
+.vrow .fig{color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.vrow.sent{opacity:.55}
+.vrow.sent .addr::after{content:" · already in this hub";color:var(--ink-3);font-size:11.5px}
+.mt10{margin-top:10px}
+#peopleEmails{width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--line);
+  border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px}
+.prow{display:flex;align-items:baseline;gap:10px;padding:6px 0;font-size:13.5px;
+  border-bottom:1px solid var(--line)}
+.prow:last-child{border-bottom:0}
+.prow .who2{flex:1;min-width:0}
+.prow .state{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.link.danger{color:var(--red)}
+.link.danger:hover{color:var(--red-fill)}
 /* A client's own find is marked as theirs and never wears the vault badge:
    the two are different claims and must not look alike. */
 .mine{border-color:var(--ink-3);color:var(--ink-2)}
@@ -134,6 +163,24 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       <!-- Adding a building the CLIENT found. Behind a toggle, and below the
            table, because it is the rarer act and the list is what people come
            here to read. Shown only to someone who may post. -->
+      <!-- Sending comps out of the broker's own vault. Lives HERE, on the hub,
+           rather than as a control on every vault row: this is where you are
+           already thinking about one client, and the vault's comp table has
+           three actions on it before this one. Owner only (canAdd), so a
+           client never sees it. -->
+      <div id="vaultWrap" class="hide">
+        <button class="link" id="vaultToggle" aria-expanded="false" aria-controls="vaultBox">Add comps from your vault</button>
+        <div id="vaultBox" class="hide addbox">
+          <p class="who">Sending a comp shows this client its full address and price.
+            It stays in this hub and never enters CompNinja's public records.</p>
+          <div id="vaultList"></div>
+          <div style="margin-top:10px">
+            <button class="btn" id="vaultSend" disabled>Send selected comps</button>
+          </div>
+          <div id="vaultMsg"></div>
+        </div>
+      </div>
+
       <div id="addWrap" class="hide">
         <button class="link" id="addToggle" aria-expanded="false" aria-controls="addBox">Add a comp you found</button>
         <div id="addBox" class="hide addbox">
@@ -175,6 +222,26 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
         <div style="margin-top:8px"><button class="btn" id="send">Post note</button></div>
       </div>
       <div id="readonly" class="msg hide"></div>
+    </div>
+
+    <!-- Who is in this hub, and the two acts only its owner has: inviting
+         somebody else, and closing it. Both routes shipped with no caller at
+         all, so until now a broker could create a hub and never add a second
+         person to it. Owner only — the other addresses in a hub are that
+         broker's client relationships. -->
+    <div class="card hide" id="peopleCard">
+      <h2>People</h2>
+      <div id="peopleList"></div>
+      <div id="peopleAdd" class="mt10">
+        <label class="who" for="peopleEmails">Invite someone else</label>
+        <input id="peopleEmails" type="text" placeholder="client@firm.com, colleague@firm.com"/>
+        <div class="mt10"><button class="btn" id="peopleSave">Send invites</button></div>
+        <div id="peopleMsg"></div>
+        <div id="peopleInvites" class="hide"></div>
+      </div>
+      <div class="mt10" id="closeWrap">
+        <button class="link danger" id="hubClose">Close this hub</button>
+      </div>
     </div>
 
     <p class="foot">
@@ -257,6 +324,14 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
     // found and saying something about one are the same class of act, and a
     // hub that lets you talk but not point at a building is half a workspace.
     show("addWrap", !!d.canWrite);
+    // Sending from the vault is the OWNER's act (canAdd), not every writer's.
+    // A client can add a building they found; only the broker sends out of the
+    // book of record.
+    show("vaultWrap", !!d.canAdd);
+    // The People card carries the two owner-only acts. The people list is only sent
+    // to the owner, so its presence IS the permission — no second guess.
+    show("peopleCard", !!d.people);
+    if (d.people) renderPeople(d.people, d.hub);
     if (!d.canWrite) {
       // TWO different read-only states, and only one of them is a thing the
       // reader can act on.
@@ -580,6 +655,13 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       // list it belongs to rather than the previous one.
       if (o.j.items) applyItems(o.j.items);
       if (o.j.messages && o.j.messages.length) addMessages(o.j.messages, false);
+      // The People card polls too. Whether a client has OPENED the hub is the
+      // one fact that card exists to show, and it is the one fact on this page
+      // that changes through somebody ELSE's action while the broker sits and
+      // watches — so it was the last thing that should have needed a reload,
+      // and it was the only thing that did. The server sends the people list
+      // on every read, owner only, so a client's poll simply has no key here.
+      if (o.j.people && !samePeople(o.j.people, people)) renderPeople(o.j.people, o.j.hub);
     }).catch(function(){});
   }
 
@@ -599,6 +681,16 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       // id and status are what a poll can change; addedAt catches a comp that
       // was removed and re-sent, which reuses neither.
       if (a[i].id !== b[i].id || a[i].status !== b[i].status || a[i].addedAt !== b[i].addedAt) return false;
+    }
+    return true;
+  }
+  // Repaint only on a real change, the same rule sameItems buys for the comp
+  // table, for a smaller reason: a rebuild drops focus off a Remove button
+  // under the broker's cursor.
+  function samePeople(a, b){
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++){
+      if (a[i].email !== b[i].email || a[i].opened !== b[i].opened || a[i].role !== b[i].role) return false;
     }
     return true;
   }
@@ -690,6 +782,281 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   el("mType").innerHTML = '<option value=""></option>' +
     ["Industrial","Office","Retail","Multifamily","Land","Residential"]
       .map(function(t){ return "<option>" + t + "</option>"; }).join("");
+
+  // ---- Who is in this hub, and closing it ----------------------------------
+  //
+  // PUT /api/hub/participants is a WHOLESALE REPLACE (one state to reason
+  // about instead of three), so every edit here sends the full intended list,
+  // not a delta. The page therefore has to hold the current list, which is why
+  // the read serves it.
+  var people = [];
+
+  function peopleMsg(text, bad){
+    var n = el("peopleMsg");
+    n.textContent = text || "";
+    n.className = text ? ("msg" + (bad ? " bad" : "")) : "";
+    n.style.marginTop = text ? "10px" : "0";
+  }
+
+  function renderPeople(list, hub){
+    people = list || [];
+    var box = el("peopleList");
+    box.textContent = "";
+    if (!people.length){
+      var none = document.createElement("p");
+      none.className = "who";
+      none.textContent = "Nobody has been invited yet. This hub is only visible to you.";
+      box.appendChild(none);
+    }
+    people.forEach(function(p){
+      var row = document.createElement("div");
+      row.className = "prow";
+      var who = document.createElement("span");
+      who.className = "who2";
+      who.textContent = p.email;
+      row.appendChild(who);
+      var st = document.createElement("span");
+      st.className = "state";
+      // Whether they have opened it is the one fact worth showing: it is the
+      // difference between "sent and ignored" and "never actually delivered",
+      // and the broker is the only person who can act on either.
+      st.textContent = p.opened ? "opened" : "not opened yet";
+      row.appendChild(st);
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "link danger";
+      rm.textContent = "Remove";
+      rm.addEventListener("click", function(){ removePerson(p.email); });
+      row.appendChild(rm);
+      box.appendChild(row);
+    });
+    // A closed hub cannot take new people, and saying so beats a control that
+    // fails on click.
+    var closed = !!(hub && (hub.closedAt || hub.status === "closed"));
+    show("peopleAdd", !closed);
+    show("closeWrap", !closed);
+  }
+
+  function savePeople(emails, note){
+    fetch("/api/hub/participants", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID, emails: emails }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        el("peopleSave").disabled = false;
+        if (o.s === 401){ askForAccount(o.j && o.j.error, function(m){ peopleMsg(m, true); }); return; }
+        if (o.s !== 200){ peopleMsg((o.j && o.j.error) || "That list could not be saved.", true); return; }
+        peopleMsg(note || "Saved.");
+        showPeopleInvites(o.j);
+        el("peopleEmails").value = "";
+        // Re-read rather than trust the local list: removal and re-invitation
+        // both change what the server holds in ways this page did not compute.
+        readHub("").then(function(res){ if (res.s === 200) render(res.j); }).catch(function(){});
+      })
+      .catch(function(){
+        el("peopleSave").disabled = false;
+        peopleMsg("That did not reach the server. Nothing changed.", true);
+      });
+  }
+
+  // The invite links, shown ONLY when the server could not email them. When it
+  // did, the links are still secrets and there is no reason to put them on
+  // screen.
+  function showPeopleInvites(j){
+    var box = el("peopleInvites");
+    var list = (j.invites || []);
+    // show() takes an ID, not a node. Passing the element made
+    // getElementById(node) return null and .classList throw, which the
+    // caller's catch then reported to the broker as "that did not reach the
+    // server" — after the invitation had in fact been saved. A failure message
+    // that describes the opposite of what happened is worse than none.
+    if (!list.length || j.emailed){ show("peopleInvites", false); box.textContent = ""; return; }
+    box.textContent = "";
+    var p = document.createElement("p");
+    p.className = "who";
+    p.textContent = "Copy each link and send it yourself. They cannot be shown again.";
+    box.appendChild(p);
+    list.forEach(function(inv){
+      var row = document.createElement("div");
+      row.className = "mt10";
+      var f = document.createElement("input");
+      f.type = "text"; f.readOnly = true; f.value = inv.url;
+      f.setAttribute("aria-label", "Invite link for " + inv.email);
+      f.id = "pinv" + inv.email.replace(/[^a-z0-9]/gi, "");
+      row.appendChild(f);
+      box.appendChild(row);
+    });
+    show("peopleInvites", true);
+  }
+
+  el("peopleSave").addEventListener("click", function(){
+    var typed = el("peopleEmails").value.split(/[,;\s]+/).filter(Boolean);
+    if (!typed.length) return peopleMsg("Type an email address first.", true);
+    el("peopleSave").disabled = true;
+    peopleMsg("");
+    // Wholesale replace: everyone already here, PLUS the new ones.
+    var all = people.map(function(p){ return p.email; }).concat(typed);
+    savePeople(all, "Invited.");
+  });
+
+  function removePerson(email){
+    if (!confirm("Remove " + email + " from this hub? Their link stops working immediately. " +
+      "Anything they already posted stays.")) return;
+    peopleMsg("");
+    savePeople(people.filter(function(p){ return p.email !== email; })
+      .map(function(p){ return p.email; }), "Removed.");
+  }
+
+  el("hubClose").addEventListener("click", function(){
+    if (!confirm("Close this hub? Everyone keeps access to what is already here, " +
+      "but nobody can post again. This cannot be undone.")) return;
+    fetch("/api/hub/close", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        if (o.s !== 200){ peopleMsg((o.j && o.j.error) || "This hub could not be closed.", true); return; }
+        readHub("").then(function(res){ if (res.s === 200) render(res.j); }).catch(function(){});
+      })
+      .catch(function(){ peopleMsg("That did not reach the server.", true); });
+  });
+
+  // ---- Sending comps out of the broker's own vault -------------------------
+  //
+  // The book is fetched ONCE, lazily, the first time the panel is opened: most
+  // hub visits never touch it, and a broker's whole vault is the largest thing
+  // this page could ask for.
+  var vaultBook = null;
+
+  function vaultMsg(text, bad){
+    var n = el("vaultMsg");
+    n.textContent = text || "";
+    n.className = text ? ("msg" + (bad ? " bad" : "")) : "";
+    n.style.marginTop = text ? "10px" : "0";
+  }
+
+  // Which of the broker's comps are already here. Matched on ADDRESS, because
+  // the item shape a client receives deliberately does not carry the vault row
+  // id — that is the broker's own plumbing and has no business travelling to a
+  // tenant. This is a HINT only: correctness lives on the server, which filters
+  // duplicates itself and answers a re-send as a no-op.
+  function alreadySent(){
+    var seen = {};
+    lastItems.forEach(function(it){
+      if (it.source === "vault" && it.snapshot && it.snapshot.address){
+        seen[String(it.snapshot.address).trim().toLowerCase()] = true;
+      }
+    });
+    return seen;
+  }
+
+  function renderVaultList(){
+    var box = el("vaultList");
+    box.textContent = "";
+    if (!vaultBook) return;
+    if (!vaultBook.length){
+      var none = document.createElement("p");
+      none.className = "who";
+      none.textContent = "Your vault has no comps yet. Add them on the vault page first.";
+      box.appendChild(none);
+      return;
+    }
+    var sent = alreadySent();
+    var list = document.createElement("div");
+    list.className = "vlist";
+    vaultBook.forEach(function(c){
+      var isSent = !!sent[String(c.address || "").trim().toLowerCase()];
+      var row = document.createElement("label");
+      row.className = "vrow" + (isSent ? " sent" : "");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = c.id;
+      cb.disabled = isSent;
+      cb.addEventListener("change", updateSendButton);
+      row.appendChild(cb);
+      var addr = document.createElement("span");
+      addr.className = "addr";
+      addr.textContent = c.address || "(no address)";
+      row.appendChild(addr);
+      var fig = document.createElement("span");
+      fig.className = "fig";
+      fig.textContent = [c.transaction, c.deal_date, money(c.price), num(c.size_sqft) && (num(c.size_sqft) + " SF")]
+        .filter(Boolean).join(" · ");
+      row.appendChild(fig);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    updateSendButton();
+  }
+
+  function selectedIds(){
+    return [].filter.call(el("vaultList").querySelectorAll("input[type=checkbox]"), function(c){ return c.checked; })
+      .map(function(c){ return c.value; });
+  }
+  function updateSendButton(){
+    var n = selectedIds().length;
+    el("vaultSend").disabled = n === 0;
+    el("vaultSend").textContent = n ? ("Send " + n + " comp" + (n === 1 ? "" : "s")) : "Send selected comps";
+  }
+
+  el("vaultToggle").addEventListener("click", function(){
+    var open = el("vaultBox").classList.contains("hide");
+    show("vaultBox", open);
+    el("vaultToggle").setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open || vaultBook) return;
+    vaultMsg("Loading your vault…");
+    fetch("/api/vault?limit=1000", { credentials: "same-origin" })
+      .then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        if (o.s !== 200){
+          // Says which failure it was rather than showing an empty book: an
+          // empty list and a refused read look identical, and one of them is
+          // a broker's whole book of business appearing to be gone.
+          vaultMsg((o.j && o.j.error) || "Your vault could not be loaded.", true);
+          return;
+        }
+        vaultMsg("");
+        vaultBook = (o.j.comps || []);
+        renderVaultList();
+      })
+      .catch(function(){ vaultMsg("Your vault could not be reached.", true); });
+  });
+
+  el("vaultSend").addEventListener("click", function(){
+    var ids = selectedIds();
+    if (!ids.length) return;
+    el("vaultSend").disabled = true;
+    vaultMsg("");
+    fetch("/api/hub/items", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: HUB_ID, items: ids.map(function(x){ return { source: "vault", ref: x }; }) }),
+    }).then(function(r){ return r.json().then(function(j){ return { s: r.status, j: j }; }); })
+      .then(function(o){
+        updateSendButton();
+        if (o.s === 401){ askForAccount(o.j && o.j.error, function(m){ vaultMsg(m, true); }); return; }
+        if (o.s !== 201 && o.s !== 200){
+          vaultMsg((o.j && o.j.error) || "Those comps could not be sent.", true);
+          return;
+        }
+        // The added count is what actually landed, which can be fewer than asked for if
+        // something was already here. Say the real number: a broker told five
+        // were sent will not go looking for the two that were not.
+        var n = o.j.added || 0;
+        vaultMsg(n ? (n + " comp" + (n === 1 ? "" : "s") + " sent.") : "Those comps were already in this hub.");
+        // Refetch so the table, the tally and the already-sent marks all come
+        // from the server rather than from what we hoped happened.
+        readHub("").then(function(res){
+          if (res.s === 200){ render(res.j); renderVaultList(); }
+        }).catch(function(){});
+      })
+      .catch(function(){
+        updateSendButton();
+        vaultMsg("That did not reach the server. Nothing was sent.", true);
+      });
+  });
 
   el("addToggle").addEventListener("click", function(){
     var open = el("addBox").classList.contains("hide");

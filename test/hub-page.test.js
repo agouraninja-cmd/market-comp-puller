@@ -320,3 +320,109 @@ test("a hub sells the client nothing", () => {
   // silently loses its pricing link.
   assert.match(server, /function accountNavSlots\(\{ desk = true, upsell = true \} = \{\}\)/);
 });
+
+// --- sending comps out of the vault (2026-08-14) --------------------------
+
+test("the vault picker is the OWNER's, not every writer's", () => {
+  // A client can add a building they found; only the broker sends out of the
+  // book of record. canAdd, not canWrite.
+  const js = pageScript(html);
+  assert.match(js, /show\("vaultWrap", !!d\.canAdd\)/);
+  assert.match(js, /show\("addWrap", !!d\.canWrite\)/);
+});
+
+test("the vault is fetched once, lazily, and never on an ordinary hub visit", () => {
+  // Most hub visits never open this. A broker's whole book is the largest
+  // thing this page could ask for.
+  const js = pageScript(html);
+  assert.match(js, /if \(!open \|\| vaultBook\) return;/);
+  assert.match(js, /\/api\/vault\?limit=1000/);
+});
+
+test("a refused vault read says so instead of showing an empty book", () => {
+  // An empty list and a refused read look identical, and one of them is a
+  // broker's whole book of business appearing to be gone.
+  const js = pageScript(html);
+  const fn = js.match(/el\("vaultToggle"\)\.addEventListener[\s\S]*?\n  \}\);/);
+  assert.ok(fn, "the toggle handler must exist");
+  assert.match(fn[0], /Your vault could not be loaded/);
+});
+
+test("the send reports what actually landed, not what was asked for", () => {
+  // added can be fewer than requested when something was already here. A
+  // broker told five were sent will not go looking for the two that were not.
+  const js = pageScript(html);
+  assert.match(js, /var n = o\.j\.added \|\| 0;/);
+  assert.match(js, /already in this hub/);
+});
+
+test("already-sent comps cannot be selected", () => {
+  // Matched on address, because the client item shape deliberately carries no
+  // vault row id. A hint only — the server filters duplicates itself.
+  const js = pageScript(html);
+  assert.match(js, /function alreadySent\(\)\{/);
+  assert.match(js, /cb\.disabled = isSent/);
+});
+
+test("hub-page.js and vault-page.js contain exactly two backticks", () => {
+  // Each file is ONE template literal, so a backtick anywhere inside it — in a
+  // comment, in a string, in a regex — ends the template early and emits
+  // broken JavaScript. `node --check` catches it, but as a SyntaxError
+  // pointing at whatever happened to follow, which reads as unrelated.
+  //
+  // This failed three times in one session, always in a comment quoting an
+  // identifier. The count is the cheapest possible guard: two backticks, the
+  // ones opening and closing the template.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  for (const f of ["hub-page.js", "vault-page.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    const n = (src.match(/`/g) || []).length;
+    assert.equal(n, 2,
+      `${f} has ${n} backticks; it is one template literal, so it must have exactly 2. ` +
+      `A backtick in a comment ends the string and ships a dead page.`);
+  }
+});
+
+// --- who is in a hub, and closing it (2026-08-14) -------------------------
+
+test("the People card is the OWNER's, and its presence is the server's answer", () => {
+  // `people` is only sent to the owner, so the page does not decide who may
+  // manage a guest list — it renders what it was given. The other addresses in
+  // a hub are that broker's client relationships and no fellow guest's
+  // business.
+  const js = pageScript(html);
+  assert.match(js, /show\("peopleCard", !!d\.people\)/);
+  assert.match(js, /if \(d\.people\) renderPeople\(d\.people, d\.hub\)/);
+});
+
+test("editing the guest list sends the WHOLE list, because the route replaces it", () => {
+  // PUT /api/hub/participants is a wholesale replace — one state to reason
+  // about instead of three. Inviting sends everyone plus the new ones;
+  // removing sends everyone except one.
+  const js = pageScript(html);
+  assert.match(js, /var all = people\.map\(function\(p\)\{ return p\.email; \}\)\.concat\(typed\)/);
+  assert.match(js, /people\.filter\(function\(p\)\{ return p\.email !== email; \}\)/);
+});
+
+test("invite links are shown only when the server could NOT email them", () => {
+  // When it did email, the links are still secrets and there is no reason to
+  // put them on screen.
+  assert.match(pageScript(html), /if \(!list\.length \|\| j\.emailed\)\{ show\("peopleInvites", false\)/);
+});
+
+test("show() is never handed a DOM node", () => {
+  // show(name, on) does getElementById(name). Passing an element makes that
+  // return null and .classList throw — which, inside a fetch .then, surfaced
+  // to the broker as "that did not reach the server" AFTER the invitation had
+  // been saved. A failure message describing the opposite of what happened is
+  // worse than none. Caught by clicking the button, not by reading it.
+  const js = pageScript(html);
+  assert.ok(!/show\(box,/.test(js), "show() takes an id string, not a node");
+});
+
+test("a closed hub hides the controls that would fail on click", () => {
+  const js = pageScript(html);
+  assert.match(js, /show\("peopleAdd", !closed\)/);
+  assert.match(js, /show\("closeWrap", !closed\)/);
+});

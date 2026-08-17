@@ -3608,6 +3608,44 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
+// Is outbound mail actually going to leave the building? The two env vars
+// sendOutboundEmail checks, asked as a question the CALLER can answer, because
+// a hub needs to tell a broker whether their client was emailed or whether
+// they have to send the link themselves. Without it the create panel has to
+// guess, and it guessed wrong in both directions: it hard-coded "CompNinja
+// does not email them yet", which becomes a lie the day a domain is verified.
+const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
+
+// The hub invitation.
+//
+// Rides the same EMAIL_FROM gate as every other outbound mail, so on a
+// deployment with no verified domain this logs "Outbound email skipped" and
+// the broker copies the link by hand — which is exactly how hubs have worked
+// since they shipped. Nothing here changes behaviour today; it means the day
+// the domain is verified, invitations start sending with no code change.
+//
+// THE LINK CARRIES THE TOKEN, and that is the point: it is the credential, and
+// mailing it is the delivery mechanism, the same trade a password reset makes.
+// It is why the copy names the address the hub was shared with — a forwarded
+// invite lets somebody READ, and only signing in as the invited address lets
+// them post.
+//
+// Fire and forget, ALWAYS: the hub and its participants are already written
+// when this runs. A mail provider having a bad afternoon must never turn a
+// created hub into an error, and the broker still holds every link.
+function sendHubInvites(invites, { hubTitle, fromName }) {
+  for (const inv of invites) {
+    const who = fromName ? `${fromName} has` : "A broker has";
+    const what = hubTitle ? `"${hubTitle}"` : "a set of comps";
+    sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
+      `${who} shared ${what} with you on CompNinja.\n\n` +
+      `Open it here: ${inv.url}\n\n` +
+      `You can read it without an account. To reply or shortlist a building, ` +
+      `sign in with this email address (${inv.email}) — a free account is all it takes.\n\n` +
+      `Every CompNinja valuation is an automated estimate, not an appraisal.`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Prompt builder — property-type aware
 // ---------------------------------------------------------------------------
@@ -3669,8 +3707,15 @@ const TYPE_COMP_FIELDS = {
   // search budget (6-8 calls total) doesn't stretch to a per-comp assessor
   // lookup for a list this size, and general listing search rarely surfaces it.
   Residential: {
-    fields: ["beds_baths"],
-    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba"`,
+    fields: ["beds_baths", "condition"],
+    // `condition` is a CLOSED vocabulary, not free text: the four words are
+    // named here and the gate that enforces them is RPARSE.normalizeConditions,
+    // which drops anything else to "". The instruction spells the words out and
+    // says what each one means, because the whole value of the field is that a
+    // homeowner picking from a dropdown and the model reading a listing land on
+    // the same word for the same house. If fill rate is poor, fix THIS text —
+    // never loosen the parser (see the note above CONDITION_VALUES).
+    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba". "condition" = how updated the home is, as EXACTLY ONE of these four words and nothing else: "Needs work" (deferred maintenance, sold as a fixer), "Original" (sound but largely original finishes), "Updated" (some rooms modernized, e.g. kitchen or baths), "Renovated" (comprehensively renovated recently). Read it from the listing description or sale writeup; if the page does not say, use "" - do not infer it from price, age or photos`,
   },
 };
 
@@ -3678,12 +3723,24 @@ const TYPE_COMP_FIELDS = {
 // for a prompt. Keep only the keys this property type actually reports, force
 // them to short strings, and drop blanks. Everything else is discarded rather
 // than sanitized in place.
+// Fields whose VALUE is a closed vocabulary, not just a string. The key
+// whitelist below stops an undeclared field getting through; this stops a
+// declared one carrying arbitrary text. It matters because subject details are
+// interpolated into the prompt and stored in the report's meta, so a 40-char
+// free-text "condition" would be attacker-chosen text in both places, and the
+// comp column beside it would be showing a vocabulary the subject does not use.
+// Declarative rather than an `if (key === "condition")` so the next enum field
+// is one line.
+const SUBJECT_FIELD_ENUMS = { condition: RPARSE.normalizeConditionValue };
+
 function sanitizeSubjectDetails(type, raw) {
   const spec = TYPE_COMP_FIELDS[type];
   if (!spec || !raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out = {};
   for (const key of spec.fields) {
-    const v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    let v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    const enumOf = SUBJECT_FIELD_ENUMS[key];
+    if (enumOf) v = enumOf(v);
     if (v) out[key] = v;
   }
   return out;
@@ -3720,6 +3777,7 @@ const FIELD_LABELS = {
   zoning: "Zoning",
   price_per_acre: "$/Acre",
   beds_baths: "Beds / Baths",
+  condition: "Condition",
   cap_rate: "Cap Rate",
   tenancy: "Tenancy",
   year_built: "Year Built",
@@ -4087,7 +4145,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
-        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt } = RPARSE;
+        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
+        normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -4951,7 +5010,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               normalizeTrendPct(
                 normalizeCurrency(
                   normalizeSourceTypes(
-                    expandCompKeys(parseCompJson(raw, stats), type)))))))),
+                    normalizeConditions(
+                      expandCompKeys(parseCompJson(raw, stats), type))))))))),
       new Date());
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
@@ -6251,11 +6311,13 @@ const MARKET_FOOTER =
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
-// stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
-// misses cached in localStorage geoCache.v1 — same key shape, so the app and
-// these pages share a cache). Comps geocode sequentially, not in a burst, to
-// stay friendly to /api/geocode's per-IP rate limit. If not a single pin
-// resolves, the whole card hides rather than showing an empty map.
+// stack (Census proxy first — a POST since 2026-08-17, so the address stays out
+// of the URL — Nominatim fallback with 1.1s spacing, hits AND misses cached in
+// localStorage geoCache.v1 — same key shape, so the app and these pages share a
+// cache). Comps geocode sequentially, not in a burst, to stay friendly to
+// /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
+// card hides rather than showing an empty map — which is also what a market
+// page cached from before that deploy does for its last hour of life.
 const MARKET_MAP_JS = `(function(){
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
   var CACHE_KEY = "geoCache.v1";
@@ -6268,11 +6330,18 @@ const MARKET_MAP_JS = `(function(){
       localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
     } catch (e) {}
   }
-  function jfetch(u) {
+  function jfetch(u, o) {
     return Promise.race([
-      fetch(u).then(function (r) { return r.json(); }),
+      fetch(u, o).then(function (r) { return r.json(); }),
       new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, 7000); }),
     ]);
+  }
+  function postJson(u, payload) {
+    return jfetch(u, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
   var nq = Promise.resolve();
   function nominatim(a) {
@@ -6291,7 +6360,7 @@ const MARKET_MAP_JS = `(function(){
     var k = String(a || "").trim().toLowerCase();
     if (!k) return Promise.resolve(null);
     if (k in cache) { var h = cache[k]; return Promise.resolve(h && isFinite(h.lat) ? h : null); }
-    return jfetch("/api/geocode?address=" + encodeURIComponent(a))
+    return postJson("/api/geocode", { address: a })
       .then(function (j) { return (j && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null; })
       .catch(function () { return null; })
       .then(function (f) { return f || nominatim(a); })
@@ -14464,22 +14533,50 @@ const server = http.createServer((req, res) =>
   // the front-end re-places map pins from the free US Census geocoder — which
   // has no CORS headers, hence this pass-through. Failures return {} so the
   // browser can fall back to Nominatim (which it can reach directly). ---
-  if (req.method === "GET" && req.url.split("?")[0] === "/api/geocode") {
-    const address = (new URL(req.url, "http://localhost").searchParams.get("address") || "").trim().slice(0, 200);
-    if (!address) return sendJson(res, 400, { error: "address is required." });
-    // Generous cap: one report geocodes the subject plus up to 8 comps.
-    if (rateLimited("geo:" + clientIp(req), 120)) {
-      return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
-    }
-    (async () => {
+  //
+  // **POST, and the address travels in the BODY** (2026-08-17). A query string
+  // is written to the platform's access logs and leaks in every outbound
+  // Referer header, and this route sees a wider set of addresses than any
+  // other: the subject plus every comp of every report, market pages included.
+  // Same reasoning as POST /api/report-access and POST /api/hub/access; this
+  // one simply covers far more of them. It matters most for the comps that are
+  // not public — a broker's private vault comp is geocoded HERE and nowhere
+  // else, because GUARD 2 of the private-comp contract stops it at this hop
+  // rather than letting it reach Nominatim
+  // (docs/superpowers/specs/2026-08-06-private-comp-geocoding.md). Sending an
+  // off-market address to our own proxy and then logging it in a URL undid a
+  // good part of what that guard bought.
+  //
+  // The GET form is REMOVED rather than kept as a deprecated alias: a door
+  // left open is one stale caller away from putting addresses back in URLs,
+  // and nothing here can detect that happening. The cost of removing it is
+  // bounded and self-healing — index.html is served `no-store` so the app
+  // updates on the next load, and the only other caller is MARKET_MAP_JS,
+  // embedded in market pages cached `public, max-age=3600`. For at most an
+  // hour after deploy those cached pages geocode nothing, and that script
+  // hides the whole map card when no pin resolves, so it degrades to no map
+  // rather than a broken one.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/geocode") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
       try {
+        // Generous cap: one report geocodes the subject plus up to 8 comps.
+        if (rateLimited("geo:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
+        }
+        const address = String(JSON.parse(body || "{}").address || "").trim().slice(0, 200);
+        if (!address) return sendJson(res, 400, { error: "address is required." });
         const ll = await geocodeCensus(address);
         if (ll) return sendJson(res, 200, { lat: ll.lat, lng: ll.lng, matchedAddress: ll.matchedAddress, source: "census" });
         return sendJson(res, 200, {});
-      } catch (_) {
-        return sendJson(res, 200, {}); // soft failure — the client falls back
+      } catch (err) {
+        // A malformed body is the caller's bug and says so; everything else is
+        // a soft failure, because the client's own fallback handles {}.
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        return sendJson(res, 200, {});
       }
-    })();
+    });
     return;
   }
 
@@ -15964,11 +16061,22 @@ const server = http.createServer((req, res) =>
           }
 
           logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
+          const inviteLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Fire and forget, AFTER the rows are written. A mail provider having
+          // a bad afternoon must never turn a created hub into an error.
+          try {
+            sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
+          } catch (err) {
+            console.error("Hub invite send failed:", err.message);
+          }
           return sendJson(res, 201, {
             ok: true,
             id,
             url: `${SITE_URL}/hub/${id}`,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: inviteLinks,
+            // Whether the invitations actually LEFT. The panel says something
+            // different depending on the answer, and it must not guess.
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -16119,6 +16227,21 @@ const server = http.createServer((req, res) =>
             // guess from the role string.
             canWrite: HUB.canWriteHub(g).ok,
             canAdd: HUB.canAddItems(g).ok,
+            // The guest list, OWNER ONLY. A broker needs it to add or remove
+            // somebody; a client must not have it, because the other addresses
+            // in a hub are that broker's client relationships and none of a
+            // fellow guest's business. Gated on the same owner-only answer
+            // that governs adding comps, so there is one definition of "this
+            // is the broker" rather than two that can drift.
+            ...(HUB.canAddItems(g).ok ? {
+              people: (g.participants || [])
+                .filter((p) => !p.removed_at)
+                .map((p) => ({
+                  email: p.email,
+                  role: p.role,
+                  opened: !!p.first_viewed_at,
+                })),
+            } : {}),
             // Unconditional, now that a poll carries them too. It was a
             // conditional spread while `since` could suppress the list;
             // leaving that in would be a branch that can no longer be false.
@@ -16490,10 +16613,22 @@ const server = http.createServer((req, res) =>
                 { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
             }
           }
+          const newLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Only the NEWLY invited are mailed — re-saving an unchanged list, or
+          // only removing people, must email nobody. Same rule as
+          // PUT /api/shares/viewers.
+          if (newLinks.length) {
+            try {
+              sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
+            } catch (err) {
+              console.error("Hub invite send failed:", err.message);
+            }
+          }
           return sendJson(res, 200, {
             ok: true,
             participants: wanted,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: newLinks,
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

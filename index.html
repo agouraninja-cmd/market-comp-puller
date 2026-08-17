@@ -618,6 +618,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         break-inside: avoid; page-break-inside: avoid;
         animation: none !important; opacity: 1 !important;
       }
+      /* The trust line's mechanics collapse on SCREEN only. Paper is the copy
+         that gets forwarded to a client, so it carries the whole explanation
+         — the toggle button is .no-print and disappears on its own. */
+      #ownerTrustHow { display: block !important; }
       #compsTable tr { break-inside: avoid; page-break-inside: avoid; }
       #compsTable thead { display: table-header-group; }
       /* Paper cannot scroll sideways: unclip the table and let cells wrap. */
@@ -761,6 +765,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        sides means they cannot drift apart. */
     .rd-cell:focus-within:not(:has(.rd-in:focus-within)) { box-shadow: none; }
     @media (max-width: 639.98px) { .rd-cell { border-right: 0; border-bottom: 1px solid var(--hair); } .rd-row { border-bottom: 0; } }
+    /* A 2x2 .rd-row (Focus / Lookback over Size / Asking price). :last-child
+       only knows the 4th cell, so on a wrapped grid cell 2 paints a right
+       border straight onto the card edge and the two lines run together with no
+       rule between them. Scoped to the two-column range only — below 640px the
+       rule above has already stacked every cell and zeroed the right borders,
+       and re-adding a border-bottom to cells 1-2 there would be harmless but
+       redundant, while an nth-child right border would not be. Cells are
+       equal-height grid items, so the vertical hairline between 3 and 4 lines
+       up with the one between 1 and 2 for free. */
+    @media (min-width: 640px) {
+      .rd-row-2up > .rd-cell:nth-child(2n) { border-right: 0; }
+      .rd-row-2up > .rd-cell:nth-last-child(n + 3) { border-bottom: 1px solid var(--hair); }
+    }
     /* Split Research Desk (owner-approved Mock A, 2026-08-14): one bordered
        unit, two chambers. Market Explorer is a SIBLING of #compForm, not a
        child — Enter in that field must not submit a building report. Do not
@@ -1718,7 +1735,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                    above the type sentence now, and two inline spans would run
                    the two together with no space the moment an estimate lands.
                    The four call sites toggle it by id and never by tag. -->
-              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it under Details for comps if it's off.</div>
+              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it below if it's off.</div>
               <span id="typeStatusLine" aria-live="polite"></span>
               <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
               <div id="typeAutoNote" class="mt-1"></div>
@@ -1761,7 +1778,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
-        <div class="rd-row grid grid-cols-1 sm:grid-cols-3">
+        <!-- 2x2, not four across. The build chamber is ~552px, so a four-cell
+             row leaves 106px of content per cell and "BUILDING SIZE (SF)" at
+             .rd-lab's tracking wraps to two lines — the same crowding that sent
+             the size range down to Refine in the first place. Two columns give
+             each cell ~244px, which is the width the half-Refine cell had, so
+             the size range fits up here intact (min, "to", max) with no lone
+             max left orphaned downstairs. Pairing is deliberate: the two
+             everyday controls on the top line, the two optional numbers under
+             them. See .rd-row-2up in the style block for the borders — a
+             wrapped grid breaks .rd-cell:last-child. -->
+        <div class="rd-row rd-row-2up grid grid-cols-1 sm:grid-cols-2">
           <div class="rd-cell" id="txFocusWrap">
             <label class="rd-lab" for="txFocus">Focus</label>
             <select id="txFocus" class="rd-in">
@@ -1786,6 +1813,35 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="lookbackHint" class="text-xs text-[#68707E] mt-1"></div>
           </div>
           <div class="rd-cell">
+            <!-- Back on the form 2026-08-16 (owner's call). It went down to
+                 Refine on 2026-08-10 because it is answered automatically on
+                 most searches — true, but the two automatic answers can both be
+                 wrong (the footprint estimate refuses outright on a unit
+                 address or a campus, and the record lookup can miss), and the
+                 only way to correct them was to cancel out of the confirm
+                 dialog and go open a collapsed section. It is also the number
+                 the hero multiplies, so it earns a visible slot more than its
+                 hit rate suggests.
+                 ONE input, no range: the owner's call, and the same shape as
+                 Asking price beside it. A size BAND is a comp-selection filter,
+                 which is a different question from "how big is my building" —
+                 and this field's answer is the one the hero multiplies, so a
+                 second box invited a spread where a single figure is wanted.
+                 #targetSizeMax is gone with it; sizeMax survives in meta.subject
+                 exactly as priceMax has since 2026-08-10, so saved reports and
+                 shares written while the range existed still render it.
+                 "Property SF", not the per-type SIZE_LABELS wording: one label
+                 that is true for a warehouse, a parcel and a house alike, so it
+                 no longer changes under the visitor when the type resolves.
+                 SIZE_LABELS still drives the hero's basis line — it is not dead.
+                 The input takes .rd-in rather than the bordered Refine styling
+                 so the cell gets .rd-cell:focus-within's red inset ring like
+                 every other cell on the desk. -->
+            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Property SF <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+            <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 24800" class="rd-in" />
+            <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
+          </div>
+          <div class="rd-cell">
             <!-- The size held this slot until 2026-08-10 and was being answered
                  automatically twice over (public records server-side, the OSM
                  footprint estimate during the confirm dialog), so the slot went
@@ -1796,9 +1852,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  verdict. Still optional — the address is this form's only
                  required field. One input, because two inputs around a "to"
                  inside a third-of-a-row cell is exactly what clipped the size
-                 range; the max lives in Refine. Moved to the last slot
-                 2026-08-10: it's the one optional field of the three, and
-                 Focus/Lookback are the everyday controls that belong up front. -->
+                 range. (That constraint eased on 2026-08-16 when the row went
+                 2x2 and the size range came back beside this cell — a price
+                 max could fit here now. It is still deliberately absent: a
+                 price BAND is not a thing an owner has, where a size band is.)
+                 Moved to the last slot 2026-08-10: it's the one optional field
+                 of the three, and Focus/Lookback are the everyday controls that
+                 belong up front. -->
             <!-- "Asking price", not "Your price": a bare "your price" invites
                  the price they PAID years ago, and a historical number would
                  make the comparison card announce a nonsense over/under against
@@ -1821,30 +1881,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  selection and the title should say so. Structure and field
                  list are upstream's 2026-08-10 redesign (price promoted to
                  the form, size demoted here, market note tucked here). -->
-            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(size, NOI, cap rate, market note: optional, sharpens the match)</span></span>
+            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(NOI, cap rate, market note: optional, sharpens the match)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in size and specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Size and property type come from public records automatically, so set a size here only to override what we found.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size sits on the form above and only needs a value to override what we found.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <!-- Size is one range in one cell again, the shape it had before
-                     Direction N: a half-width Refine cell has room for two
-                     inputs and a "to", which a third-of-a-row cell did not.
-                     Every id here is unchanged, and all of the size machinery
-                     (SIZE_LABELS relabelling to Lot size / Living area, the
-                     footprint estimate, the autoFor/autoValue machine-size
-                     markers, saved-report restores) reads by getElementById and
-                     never by position, so it keeps working from down here — the
-                     estimate lands the same way even while this section is
-                     collapsed, which is why the strip above still announces it. -->
-                <label id="targetSizeLabel" class="rd-lab" for="targetSize">Building size (SF)</label>
-                <div class="flex items-center gap-2">
-                  <input id="targetSize" type="number" min="0" step="any" placeholder="auto" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                  <span class="text-sm text-[#9AA2AD] shrink-0">to</span>
-                  <input id="targetSizeMax" type="number" min="0" step="any" placeholder="max (optional)" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                </div>
-                <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
-              </div>
+              <!-- Size is NOT here any more — it went back up onto the form on
+                   2026-08-16. Do not add a second size input down here to be
+                   helpful: #targetSize is a single id read by the footprint
+                   estimate, targetRange(), and every report restore, and a
+                   duplicate would either break those or silently disagree with
+                   the value the search actually sends. -->
               <div id="noiWrap">
                 <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
                 <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
@@ -2447,9 +2494,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                a house buyer scanning the hero never saw it. Not a ledger
                figure. -->
           <p id="ownerYearBuilt" class="hidden text-xs text-[#5A6473] mt-2"></p>
+          <!-- Gain the market's own drift doesn't explain, when the report
+               knows both the subject's last sale and what it asks today.
+               Reads last because it is the conclusion drawn from the three
+               evidence lines above it, and it is evidence itself — never a
+               ledger figure. Prints and captures with the rest of the hero. -->
+          <p id="ownerImproved" class="hidden text-xs text-[#5A6473] mt-2"></p>
           <!-- Trust line: plain paragraph, margins only — the PNG exporter can't
                render flex gap, and #ownerHero IS captured in the image export. -->
           <p id="ownerTrust" class="hidden text-xs text-[#5A6473] mt-4"></p>
+          <!-- The MECHANICS half of the trust line: how the weighting works,
+               and the MLS caveat that is identical on every house report.
+               Collapsed on screen so the warnings above stay readable (the
+               combined line measured 1,034 characters before the split), and
+               forced open on paper and in the PNG — an export is the copy that
+               gets forwarded, so it carries the whole explanation. The toggle
+               itself is no-print/no-capture; the paragraph is revealed by the
+               @media print rule and by downloadImage's onclone. -->
+          <div id="ownerTrustHowWrap" class="hidden mt-2">
+            <button id="ownerTrustHowBtn" type="button" aria-expanded="false" aria-controls="ownerTrustHow"
+              class="no-print no-capture text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">How this range is calculated</button>
+            <p id="ownerTrustHow" class="hidden text-xs text-[#68707E] mt-2"></p>
+          </div>
           <p class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
             <button id="bovCtaBtn" type="button"
@@ -3044,6 +3110,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // so every call site below reads exactly as it did when these were local.
   const { numericValue, salePsfOf, heroRound,
           compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
+          conditionSpread, unexplainedGain, conditionFit,
           parseRadiusMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
@@ -3099,6 +3166,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // TYPE_COMP_FIELDS.Residential: the model couldn't fill it reliably.
     Residential: [
       { key: "beds_baths",     label: "Beds / Baths",   numeric: false, after: "size_sqft" },
+      { key: "condition",      label: "Condition",      numeric: false, after: "size_sqft" },
     ],
   };
 
@@ -3170,6 +3238,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ],
     Residential: [
       { key: "beds_baths", label: "Beds / baths", type: "text", placeholder: "e.g. 4 bd / 3 ba" },
+      // The four options ARE report-parse.js's CONDITION_VALUES, in rank order,
+      // and the server re-validates against that same list rather than trusting
+      // this select (SUBJECT_FIELD_ENUMS) — the browser is not the gate. ⚠ Keep
+      // the words identical in all three places or a homeowner's answer lands
+      // as "" and VALUATION.conditionFit can never fire.
+      { key: "condition", label: "Condition", type: "select",
+        options: ["", "Needs work", "Original", "Updated", "Renovated"] },
     ],
   };
 
@@ -3256,24 +3331,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       cell.appendChild(input);
       wrap.appendChild(cell);
     });
-    document.getElementById("targetSizeLabel").textContent = SIZE_LABELS[type] || "Building size (SF)";
+    // #targetSizeLabel is deliberately NOT relabelled here any more (2026-08-16):
+    // the form field reads "Property SF" for every type, one term that is true
+    // of a warehouse, a parcel and a house alike and does not shift under the
+    // visitor when detection resolves the type a moment after they start typing.
+    // SIZE_LABELS is still live — renderOwnerHero's basis line reads it (and
+    // reads it from the map, never off this element, so a shared report of
+    // someone else's type is described correctly). The HINT below still varies
+    // by type, which is where the per-type nuance belongs.
     // Same relabelling as the size field, for the two lines of prose around it.
     // Land is the reason the footprint sentence is dropped rather than reworded:
     // a parcel's size does not come from a building footprint at all.
     const noun = assetNoun(type);
+    // "in specs", not "in size and specs": the size that steers comp selection
+    // is entered on the form now, not behind this summary.
     document.getElementById("subjectHintLead").textContent =
-      `What you enter here steers which comps we pick — ${assetNounPlural(type)} like yours in size and specs.`;
+      `What you enter here steers which comps we pick — ${assetNounPlural(type)} like yours in specs.`;
     const hintIncome = document.getElementById("subjectHintIncome");
     const summaryBits = document.getElementById("subjectSummaryBits");
+    // The bits list what is actually BEHIND this summary, so none of them names
+    // the size any more — it moved onto the form on 2026-08-16, and a collapsed
+    // section promising a field it does not contain is what sends someone
+    // hunting. Land loses its income line, so market note + zoning is all it
+    // has left to advertise.
     if (type === "Residential") {
       hintIncome.textContent = "If this is a rental, add NOI for an income-approach cross-check.";
-      summaryBits.textContent = "(living area, beds/baths: optional)";
+      summaryBits.textContent = "(beds/baths, market note: optional)";
     } else if (type === "Land") {
       hintIncome.textContent = "";
-      summaryBits.textContent = "(lot size, zoning, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(zoning, market note: optional, sharpens the match)";
     } else {
       hintIncome.textContent = "Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.";
-      summaryBits.textContent = "(size, NOI, cap rate, market note: optional, sharpens the match)";
+      summaryBits.textContent = "(NOI, cap rate, market note: optional, sharpens the match)";
     }
     document.getElementById("targetSizeHint").textContent = type === "Land"
       ? "Left blank, it comes from public records."
@@ -3707,12 +3796,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (e.isTrusted) document.getElementById("sizeEstimateNote").classList.add("hidden");
   });
   let subjectEditTimer = null;
-  ["targetSize", "targetSizeMax", "targetPrice", "capRate", "noi"].forEach((id) => {
+  ["targetSize", "targetPrice", "capRate", "noi"].forEach((id) => {
     document.getElementById(id).addEventListener("input", () => {
       if (!currentParsed || !currentMeta) return;
       clearTimeout(subjectEditTimer);
       subjectEditTimer = setTimeout(() => {
-        const sizeR = targetRange("targetSize", "targetSizeMax");
+        const sizeR = targetRange("targetSize", null);
         const priceR = targetRange("targetPrice", null);
         const noiVal = numericValue(document.getElementById("noi").value);
         const capVal = numericValue(document.getElementById("capRate").value);
@@ -3896,10 +3985,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (meta.type) { typeResolution = "explicit"; renderTypeStatus(); }
       writeSubjectDetails(s.details);
       if (s.sizeMin != null) document.getElementById("targetSize").value = s.sizeMin;
-      if (s.sizeMax != null && s.sizeMax !== s.sizeMin) document.getElementById("targetSizeMax").value = s.sizeMax;
       if (s.priceMin != null) document.getElementById("targetPrice").value = s.priceMin;
-      // priceMax has no input to restore into since 2026-08-10; it survives in
-      // meta so pre-existing shares keep rendering their range on the subject row.
+      // Neither priceMax (since 2026-08-10) nor sizeMax (since 2026-08-16) has
+      // an input to restore into; both survive in meta so pre-existing shares
+      // keep rendering their range on the subject row.
       if (s.capRate != null) document.getElementById("capRate").value = s.capRate;
       renderResults(payload.data, meta);
       sharedViewMeta = meta;
@@ -4060,7 +4149,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
-    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerTrust", "bovCtaWrap"].forEach((id) =>
+    ["widenSearchWrap", "ownerScatter", "ownerApproaches", "ownerLastSale", "ownerAsking", "ownerYearBuilt", "ownerImproved", "ownerTrust", "ownerTrustHowWrap", "bovCtaWrap"].forEach((id) =>
       document.getElementById(id).classList.add("asm-hidden"));
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
@@ -4370,8 +4459,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (s && s[kind + "Min"] > 0) {
       return { min: s[kind + "Min"], max: s[kind + "Max"] > 0 ? s[kind + "Max"] : s[kind + "Min"] };
     }
-    return targetRange(kind === "size" ? "targetSize" : "targetPrice",
-                       kind === "size" ? "targetSizeMax" : null);
+    // Both maxes are null now — neither size nor price has a max input on the
+    // form (price lost one 2026-08-10, size 2026-08-16). The meta branch above
+    // still returns a real range for reports saved while they did.
+    return targetRange(kind === "size" ? "targetSize" : "targetPrice", null);
   }
 
   // Asking / list price for the comparison card and askFit. The user's typed
@@ -4920,6 +5011,53 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.classList.remove("hidden");
   }
 
+  // The part of the subject's gain since its last sale that this market's own
+  // trend does not account for. The arithmetic and every refusal belong to
+  // VALUATION.unexplainedGain; this only decides how to say it.
+  //
+  // Hedged on purpose. "Often means" is the strongest claim the inputs
+  // support: the same gap is also produced by a below-market purchase from
+  // family, an unusually good original buy, or a listing priced on hope. And
+  // it says plainly that the figure is NOT in the range above, because a
+  // dollar amount sitting under a valuation otherwise reads as part of it.
+  function renderSubjectImproved(parsed, meta) {
+    const el = document.getElementById("ownerImproved");
+    if (!el) return;
+    el.textContent = "";
+    el.classList.add("hidden");
+    const ls = parsed && parsed.subject_last_sale;
+    if (!ls || !ls.date) return;
+    // The user's own typed price wins over the looked-up listing, same
+    // precedence askFit and the comparison card already use.
+    const askR = askingRangeFrom(parsed);
+    if (!askR) return;
+    const trend = trendPctOf(parsed);
+    const gain = unexplainedGain({
+      lastPrice: numericValue(ls.price),
+      lastDate: ls.date,
+      askPrice: (askR.min + askR.max) / 2,
+      trendPct: trend,
+      asOf: asOfOf(meta),
+    });
+    if (!gain) return;
+    // Leads with "that sale" because #ownerLastSale renders directly above and
+    // has already named the price and the date — this line is its second half,
+    // and repeating them would read as a different sale.
+    const money = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+    // On a house the usual explanation is physical work. On commercial the
+    // same gap is just as often lease-up or rent growth, which is not
+    // renovation at all, so the sentence names both rather than asserting the
+    // residential one at an office building.
+    const cause = (meta && meta.type) === "Residential"
+      ? "which often means work was done since"
+      : "which often means the property was improved or its income grew since";
+    el.appendChild(document.createTextNode(
+      `At this market's ${trend > 0 ? "+" : ""}${trend}%/yr, that sale would be worth about ${money(gain.expected)} today. `
+      + `The current ask is ${money(gain.unexplained)} above that (${gain.pct}%), ${cause}. `
+      + `We can't see what, so it is not in the range above.`));
+    el.classList.remove("hidden");
+  }
+
   function renderOwnerHero(parsed, meta) {
     lastValuation = null;
     currentPsfBand = null;
@@ -4930,6 +5068,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderSubjectLastSale(parsed, meta);
     renderSubjectAsking(parsed, meta);
     renderSubjectYearBuilt(parsed, meta);
+    renderSubjectImproved(parsed, meta);
     // Market-level search (a city like "Boise ID", no street number) — there's
     // no building to value, so the whole hero (incl. the BOV button) hides.
     // Any user-entered subject value signals building intent and re-shows it,
@@ -4999,9 +5138,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       ? { low: val.psfLow, mid: val.psfMid, high: val.psfHigh, trimmed: val.trimmed }
       : null;
     currentPsfBand = psfBand;
+    // The trust line is in two halves, and the split is the point.
+    //
+    // WARNINGS stay in #ownerTrust, always visible: the comp count and its
+    // provenance, a size class that does not fit, a listing that disagrees,
+    // the condition spread. Each one can change what the reader does next.
+    //
+    // MECHANICS go to #ownerTrustHow, collapsed behind a toggle on screen and
+    // forced open on paper and in the PNG: how the weighting works, and the
+    // MLS caveat that is word-for-word identical on every house report and so
+    // reads as boilerplate wherever it sits.
+    //
+    // Measured before the split (2026-08-16): the worst-case Residential trust
+    // line ran 1,034 characters — 177 words, nine sentences of 12px grey — and
+    // the condition sentence, the one thing in there a reader could act on,
+    // sat ninth of nine. Everything was disclosed and nothing was read. Adding
+    // any further sentence to the visible half should be weighed against that.
+    const mechanics = [];
     // One quiet sentence disclosing the math, shared by both sales bases.
     const trendPct = parsed ? parsed.annual_price_trend_pct : null;
-    const weighNote = " Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
+    const weighNote = "Recent, similar-size, similar-vintage, nearby, same-price-tier, well-sourced comps count more"
       + (Number.isFinite(trendPct)
         ? `; prices are indexed to the report date at the market's ${trendPct > 0 ? "+" : ""}${trendPct}%/yr trend `
           + `(adj in the table shows each indexed figure).`
@@ -5300,7 +5456,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ? `Based on ${ppsfs.length} of ${allSaleComps.length} sale comps (${excludedSaleN} excluded ${whoCurated})`
         : `Based on ${ppsfs.length} sale comps`;
       trustEl.textContent = countPhrase
-        + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}` + weighNote
+        + (srcBits.length ? `, ${srcBits.join(", ")}` : "") + `. ${spreadPhrase}`
         + sizeNote + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
       renderCompScatter(ppsfs, rr, { fmt: (v) => ppsf0(v) + "/SF", unitPhrase: "$/SF" });
@@ -5343,7 +5499,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ? `the middle range of ${per.length} sale comps`
         : `price per ${spec.noun} from ${per.length} sale comps`);
       trustEl.textContent = `Based on ${per.length} sale comps that published a price per ${spec.noun}. `
-        + `Building size wasn't needed for this estimate.` + weighNote + smallNNote(per.length);
+        + `Building size wasn't needed for this estimate.` + smallNNote(per.length);
       trustEl.classList.remove("hidden");
       // Same line, this type's own unit: the ledger above is quoting per unit
       // or per acre, so a $/SF scatter under it would be measuring something
@@ -5446,7 +5602,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         ? `The middle range of ${ppsfs.length} sale comps, per square foot. `
         : `$/SF from ${ppsfs.length} sale comps. `)
         + `We couldn't find this ${noun}'s square footage; enter it under 'Details for comps' and this becomes a total dollar value instantly.`;
-      trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + weighNote + smallNNote(ppsfs.length);
+      trustEl.textContent = `Based on ${ppsfs.length} sale comps.` + smallNNote(ppsfs.length);
       trustEl.classList.remove("hidden");
       renderCompScatter(ppsfs, rr, { fmt: fmtPsf, unitPhrase: "$/SF" });
       const entries = [{
@@ -5549,14 +5705,115 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     // Residential is the one type whose closed sales mostly live behind the
     // MLS, where web search can't reliably reach — the comp pool is thinner
-    // and skews toward listing-worthy (pricier) sales. Say so on EVERY
+    // and skews toward listing-worthy (pricier) sales. Said on EVERY
     // Residential report, whichever branch rendered above, rather than
     // letting the range carry commercial-grade confidence.
+    //
+    // It sits in the MECHANICS half: it is identical on every house report,
+    // so it cannot tell one reader anything another reader would not also be
+    // told, and in the visible line it crowded out the notes that are
+    // specific to THIS property. Still on paper and in the PNG.
     if (meta.type === "Residential") {
-      trustEl.textContent += (trustEl.textContent ? " " : "")
-        + "Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.";
+      mechanics.push("Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.");
+      // What the weighting can't reach, named in this report's own numbers.
+      // Reads the same currentPsfBand the outlier chips and the scatter read,
+      // so all three describe one band. It is null when no $/SF valuation was
+      // computable (no priced sale comps, no size), which is exactly when this
+      // sentence would have nothing to quote. The unit is safe here: $/SF is
+      // what the sentence speaks in, and Residential always renders through
+      // the $/SF branch — ALT_BASIS's per-unit and per-acre ledgers belong to
+      // Multifamily and Land.
+      const cond = conditionSpread(currentPsfBand, subjSFMid);
+      if (cond) {
+        const psf0 = (v) => formatUsd(v, { maximumFractionDigits: 0 });
+        // "The middle half spans", not "these comps sold from": psfLow/psfHigh
+        // are the weighted interquartile band of trend-indexed values, which
+        // is what the ledger's own $/SF sub-labels and the basis line's
+        // "middle range of N sale comps" already quote. "Sold from" would
+        // claim these were literal sale prices.
+        trustEl.textContent += ` Once size, age and distance are accounted for, the middle half of these comps still spans `
+          + `${psf0(cond.psfLow)} to ${psf0(cond.psfHigh)}/SF`
+          + (cond.swing > 0
+            ? ` — a ${formatUsd(cond.swing, { maximumFractionDigits: 0 })} swing on this ${assetNoun(meta.type)}'s size`
+            : "")
+          + `. That remaining spread is mostly condition and finish, which this estimate can't see`;
+        // ...unless the owner told us. Once they have, and enough comps carry a
+        // condition of their own, the report can say which HALF of the band is
+        // the fairer read for this house. Guidance about where to look inside
+        // the existing range, never a change to Low/Likely/High — the same
+        // standing askFit and subjectSizeFit have.
+        //
+        // conditionFit returns dir "inline" when the subject sits among its
+        // comps, and that case deliberately adds NOTHING. The trust line hit
+        // 1,034 characters by printing every sentence it could compute; one
+        // reporting no difference is exactly the kind to leave out.
+        const fit = conditionFit(((meta.subject && meta.subject.details) || {}).condition,
+                                 includedComps());
+        // askFit and conditionFit can point in OPPOSITE directions in the same
+        // paragraph, and seen rendered that reads as the report arguing with
+        // itself. A real fixture: listed at $700,000 against a $1,050,000
+        // estimate, so askFit says "50% below this estimate ... the comps are
+        // probably a pricier pocket" (our number may be too high) — and then
+        // conditionFit said "the upper half of the range is the fairer read".
+        //
+        // The listing is a hard fact about THIS property and the condition
+        // steer is a comparison against the comps, so the listing wins and the
+        // steer stays quiet. Only the genuinely opposed pairs are suppressed:
+        // askFit "above" means the estimate sits above the ask, which conflicts
+        // with steering higher; "below" conflicts with steering lower. When
+        // they agree, the steer is corroboration and is kept.
+        const contradictsAsk = askGap && askGap.skewed && fit && askGap.dir === fit.dir;
+        const half = contradictsAsk ? ""
+          : fit && fit.dir === "above" ? "upper"
+          : fit && fit.dir === "below" ? "lower" : "";
+        if (half) {
+          const n = fit.dir === "above" ? fit.below : fit.above;
+          trustEl.textContent += ` — though you told us this one is "${fit.subject}", and `
+            + `${n} of the ${fit.rated} comps with a stated condition are ${fit.dir === "above" ? "less" : "more"} `
+            + `updated, so the ${half} half of the range is the fairer read.`;
+        } else {
+          trustEl.textContent += ` without someone walking the property.`;
+        }
+        // The pointer to the CTA is SCREEN-ONLY, in its own span, because
+        // #bovCtaWrap is itself no-print and is skipped by html2canvas's
+        // ignoreElements — a printed PDF or an exported PNG carrying "the
+        // button below" would point at a button that is not on the page. The
+        // sentence above stays in both media because it is true in both; only
+        // the call to action is conditional on the button existing.
+        //
+        // Wording tracks bovCopy()'s Residential branch ("Talk to a local
+        // agent", not "Broker Opinion of Value") — this block is Residential
+        // only, and naming a different product than the button underneath it
+        // would read as two separate offers. ⚠ Keep the two in step.
+        const cta = document.createElement("span");
+        cta.className = "no-print no-capture";
+        // Worded to follow EITHER branch above: "confirm it" reads correctly
+        // after "can't see without someone walking the property" and after
+        // "the upper half of the range is the fairer read". The earlier
+        // "that's what the intro below is for" only worked after the first.
+        cta.textContent = " A local agent below can confirm it — free, no obligation.";
+        trustEl.appendChild(cta);
+      }
       trustEl.classList.remove("hidden");
     }
+
+    // The mechanics half, written once, after every branch and every append
+    // above has had its say. weighNote is pushed HERE rather than in the three
+    // branches so it rides on whether a trust line was actually rendered: the
+    // no-estimate branch leaves #ownerTrust hidden, and an explanation of
+    // weighting with no range above it explains nothing.
+    // unshift, not push: the panel is titled "How this range is calculated",
+    // so the weighting leads and the MLS coverage caveat follows it.
+    if (trustEl.textContent) mechanics.unshift(weighNote);
+    const howWrap = document.getElementById("ownerTrustHowWrap");
+    const howBody = document.getElementById("ownerTrustHow");
+    howBody.textContent = mechanics.join(" ");
+    howWrap.classList.toggle("hidden", mechanics.length === 0);
+    // Collapsed on every render, never left open from the previous report.
+    howBody.classList.add("hidden");
+    const howBtn = document.getElementById("ownerTrustHowBtn");
+    howBtn.setAttribute("aria-expanded", "false");
+    howBtn.textContent = "How this range is calculated";
 
     // Fresh CTA state per report — a prior confirmation shouldn't stick.
     applyBovCopy(meta);
@@ -6726,9 +6983,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } catch (_) { /* private mode — the cache is a nicety */ }
   }
 
-  function geoFetch(url) {
+  // `init` is optional so the Nominatim leg stays a plain GET while our own
+  // proxy is POSTed to — the address must not appear in a URL we log.
+  function geoFetch(url, init) {
     return Promise.race([
-      fetch(url).then((r) => r.json()),
+      fetch(url, init).then((r) => r.json()),
       new Promise((_, rej) => setTimeout(() => rej(new Error("geocode timeout")), 7000)),
     ]);
   }
@@ -6774,7 +7033,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     let found = null;
     try {
-      const j = await geoFetch("/api/geocode?address=" + encodeURIComponent(address));
+      const j = await geoFetch("/api/geocode", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
       if (j && isFinite(j.lat) && isFinite(j.lng)) found = { lat: j.lat, lng: j.lng, label: j.matchedAddress || undefined };
     } catch (_) { /* proxy down — try the fallback */ }
     if (!found && !noThirdParty) found = await nominatimGeocode(address);
@@ -9310,8 +9573,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (m.months) setLookbackControls(m.months);
     if (m.txFocus) document.getElementById("txFocus").value = m.txFocus;
     if (m.subject) {
+      // sizeMax has no input to restore into since 2026-08-16 (same as priceMax
+      // since 2026-08-10); it stays in meta, so a report saved with a range
+      // still shows it on the subject row and in exports.
       document.getElementById("targetSize").value = m.subject.sizeMin || "";
-      document.getElementById("targetSizeMax").value = m.subject.sizeMax && m.subject.sizeMax !== m.subject.sizeMin ? m.subject.sizeMax : "";
       document.getElementById("targetPrice").value = m.subject.priceMin || "";
       document.getElementById("noi").value = m.subject.noi || "";
       document.getElementById("capRate").value = m.subject.capRate || "";
@@ -10962,7 +11227,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     let data;
     try {
       const res = await fetch("/api/hubs");
-      if (!res.ok) return;            // 401/403/503 all mean "show nothing"
+      // 401/403 mean "not for you" and stay silent, as before. Anything else
+      // is a failure, and this list stays hidden rather than rendering as
+      // though the member has no hubs — the same correction the vault's deck
+      // needed on 2026-08-14, where a 503 read as "No hubs yet".
+      //
+      // It stays SILENT rather than showing an error, unlike the vault: this
+      // section has no empty state at all, so hiding it says nothing false.
+      // The vault's deck has an invitation that would be a lie.
+      if (!res.ok) return;
       data = await res.json();
     } catch (_) { return; }
     const rows = (data && Array.isArray(data.theirs)) ? data.theirs : [];
@@ -14305,6 +14578,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   document.getElementById("xlsxBtn").addEventListener("click", gatedExport(exportXlsx));
 
+  // The trust line's mechanics toggle. Registered once at module scope, not in
+  // renderOwnerHero — that function runs on every render and every edit to a
+  // subject field, and an addEventListener there would stack a new handler on
+  // each pass until one click fired the toggle a dozen times.
+  document.getElementById("ownerTrustHowBtn").addEventListener("click", () => {
+    const body = document.getElementById("ownerTrustHow");
+    const btn = document.getElementById("ownerTrustHowBtn");
+    const open = body.classList.toggle("hidden") === false;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.textContent = open ? "Hide how this is calculated" : "How this range is calculated";
+  });
+
   async function downloadImage() {
     const node = document.getElementById("reportArea");
     const btn = document.getElementById("imgBtn");
@@ -14337,7 +14622,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // inside @media screen, which a print run never sees.
           doc.documentElement.removeAttribute("data-theme");
           const s = doc.createElement("style");
-          s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }";
+          // html2canvas ignores @media print, so the print rule that opens the
+          // trust line's mechanics does not reach the PNG. Restated here: an
+          // exported image is the copy that gets pasted into a client's deck,
+          // and it must not be the one version of the report whose weighting
+          // is unexplained. The toggle button is .no-capture and is dropped by
+          // ignoreElements, so only the prose lands.
+          s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }"
+            + " #ownerTrustHow { display: block !important; }";
           doc.head.appendChild(s);
           // .print-only keeps the raster off the screen, and html2canvas
           // honours the screen stylesheet, so it has to be revealed in the
@@ -15189,7 +15481,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const note = document.getElementById("marketNote").value.trim();
     const months = selectedLookbackMonths();
     const txFocus = document.getElementById("txFocus").value;
-    const sizeR = targetRange("targetSize", "targetSizeMax");
+    const sizeR = targetRange("targetSize", null);
     const priceR = targetRange("targetPrice", null);
     const noiVal = numericValue(document.getElementById("noi").value);
     // Browser-only, exactly like the NOI above it: never added to the request

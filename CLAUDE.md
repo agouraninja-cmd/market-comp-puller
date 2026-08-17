@@ -842,8 +842,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /r/<id>` — serves `index.html`; the SPA reads the id off the path and
   fetches the report from `/api/shared`. (server.js allow-lists this path
   alongside `/` and `/index.html`.)
-- `GET /api/geocode?address=` — CORS pass-through to the free US Census
-  geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
+- `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
+  Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
+  string lands in the platform's access logs and in every outbound Referer,
+  and this route sees more addresses than any other — the subject plus every
+  comp of every report — including the private vault comps that are geocoded
+  here and deliberately nowhere else (GUARD 2 of the private-comp contract).
+  The GET alias was removed rather than deprecated, because a door left open
+  is one stale caller away from putting addresses back in URLs and nothing
+  detects that. Comp pins are placed ENTIRELY from real geocoding — the model no
   longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
   report-writing burst; only `subject_lat`/`subject_lng` remain, for the
   map's first paint and the wrong-state sanity gate). Old cached reports
@@ -1833,7 +1840,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       only**, from the broker's `rent_psf` × their stated `rent_basis`. The
       page reads both and never recomputes either. A bucket with neither shows
       its comp count instead of a fabricated number.
-    - **Lease rent (migration 028, 2026-08-16).** Until then the vault only
+    - **Lease rent (migration 029, 2026-08-17).** Until then the vault only
       really worked for investment sales: the template said to leave `price`
       blank on a lease and put the rent in `notes` as prose, so a leasing book
       carried no figure any median could read and every card said "no priced
@@ -2183,10 +2190,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
-CSV / PNG / Print-to-PDF exporters. The main form's second slot is the
-Building size (SF) field; the property type is chosen at the verification
-step, and the confirm dialog blocks the run until a type is resolved.
-Contains **no secrets**.
+CSV / PNG / Print-to-PDF exporters. The main form's controls row is a **2x2
+grid** (`.rd-row-2up`): Focus and Lookback on the top line, **Property SF**
+and Asking price under them, both optional and both a single input. It is 2x2
+rather than four across because the build chamber is ~552px, so a fourth cell
+leaves ~106px of content and the label wraps — and `.rd-cell:last-child`
+cannot see a wrapped grid, hence the `.rd-row-2up` border rules. The property
+type is chosen at the verification step, and the confirm dialog blocks the run
+until a type is resolved. Contains **no secrets**.
+**The size field is one figure, not a range** (2026-08-16, owner's call).
+`#targetSizeMax` no longer exists; `targetRange()` is called with a null
+`maxId` for both size and price, so `meta.subject.sizeMax` now always equals
+`sizeMin` on a new report. The key it is stored under is deliberately kept:
+`sizeMax` survives in `meta.subject` exactly as `priceMax` has since
+2026-08-10, so reports saved while the range existed still render it on the
+subject row and in exports — the two restore paths (`loadSharedReport`,
+`rerunHistory`) simply no longer write it into an input. Do not add a second
+size box to Refine "to bring the range back": `#targetSize` is a single id
+read by the footprint estimate, `targetRange()` and every report restore, and
+a duplicate would either break those or silently disagree with the figure the
+search actually sends.
 
 **Private comps in the front end** (the display half of blended comps, 2026-08-06;
 server half and spec are under the broker vault above). A comp the server flags
@@ -2229,8 +2252,9 @@ private row has not earned. Two rules matter when editing anything down here:
   still entitled to it. Public comps are untouched by all of this.
   Owen owns the other half (migration 017, `lat`/`lng` in the vault CSV,
   `toApiComp` lifting them onto the comp); **import-time geocoding is
-  deliberately deferred**, and moving `/api/geocode` to POST ranks above it
-  when this is picked up again.
+  deliberately deferred**. Moving `/api/geocode` to POST ranked above it and
+  **shipped 2026-08-17** — see that route's entry above; the address a private
+  comp sends to our own proxy no longer lands in a URL.
 
 ### Non-obvious flows to know before editing
 
@@ -2309,11 +2333,19 @@ private row has not earned. Two rules matter when editing anything down here:
    range, while `property` is also the unit the report already prices on
    (`ALT_BASIS`). Retail is `property` for the same both-shapes reason —
    "building" fits only a single-tenant pad, "center" only an anchored center.
-   Three rules: **it is related to `SIZE_LABELS` but deliberately not equal to
-   it** — Multifamily and Retail keep "Building size (SF)" as the FIELD label
-   because that really is the building square footage the valuation divides
-   by, even though the asset above it is called a property; check both when
-   adding a type, and expect them to differ; **plurals come from
+   Three rules: **`SIZE_LABELS` no longer names the FORM field at all**
+   (changed 2026-08-16) — that input is labelled **"Property SF" for every
+   type**, one term true of a warehouse, a parcel and a house alike, and
+   `syncSubjectFieldsToType` deliberately does not touch `#targetSizeLabel`
+   any more, so the label cannot shift under a visitor when detection resolves
+   the type a moment after they start typing. `SIZE_LABELS` is NOT dead: it
+   still names the hero's basis line ("Building size" / "Lot size" / "Living
+   area"), which is where the per-type nuance now lives along with the hint
+   under the input; adding a type still means adding its entry. Read the rest
+   of this rule with that split in mind — the old wording had Multifamily and
+   Retail keeping "Building size (SF)" as the field label while the asset above
+   was called a property, and that reconciliation is now the basis line's job
+   alone; **plurals come from
    `ASSET_NOUN_PLURAL`, never `noun + "s"`**
    (that shipped "propertys" on Land); and **the hero heading is set at TWO
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the

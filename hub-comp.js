@@ -136,6 +136,22 @@ function normalizeManualComp(input) {
     else comp.source_url = url;
   }
 
+  // A PRICE WITH NO DEAL TYPE cannot be read, so it is refused rather than
+  // stored. $/SF is computed for sales only (the rule directly below), so a
+  // priced comp that never said which it was lands in the table as a figure
+  // in a column of figures with no unit behind it: $1,200,000 that might be a
+  // purchase and might be a year's rent, and the reader cannot tell which
+  // from anything on the row. The form's "Not sure" stays honest for a client
+  // who has an address and nothing else, which is the case this whole box was
+  // built for; it stops being honest the moment they type money.
+  //
+  // Keyed on the RAW string being empty, not on comp.transaction being unset,
+  // or a value that failed to parse would collect a second complaint about the
+  // same field it was already refused for.
+  if (comp.price > 0 && !transaction) {
+    errors.push("Say whether that price is a sale or a lease. A price on its own cannot be compared with the others.");
+  }
+
   // $/SF only for a SALE with both numbers, which is broker-vault.js's rule
   // and matters for the same reason: an annual rent divided by size is
   // $/SF/year, a different unit, and putting it in this column would corrupt

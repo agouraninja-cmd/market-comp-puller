@@ -2127,3 +2127,26 @@ test("the win rate is a dash below three decided BOVs", async () => {
   assert.match(doc.getElementById("pipeNote").innerHTML, /1 this year/);
   assert.match(doc.getElementById("pipeNote").innerHTML, /win rate (?:—|&mdash;|\\u2014|\u2014)/);
 });
+
+test("a failed hub load says so instead of inviting you to create your first hub", () => {
+  // The bug: 401/403/503 all fell into one branch, so a 503 rendered
+  // "No hubs yet. Create one when you have comps to put in front of a client."
+  // An outage read as "you have none" — to the one person who would know it
+  // was wrong. It happened for real during a deploy on 2026-08-14.
+  //
+  // It is also backwards from this repo's own rule: the lead inbox refuses
+  // with a 503 rather than showing an empty inbox, "because an empty inbox on
+  // error would misreport demand as zero".
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "vault-page.js"), "utf8");
+  assert.match(src, /function hubsFailed\(text\)\{/);
+  // Not-for-you stays silent; everything else speaks.
+  assert.match(src, /if\(o\.s===401\|\|o\.s===403\)\{hubs=\[\];renderHubs\(\);return;\}/);
+  assert.match(src, /if\(o\.s!==200\)\{hubsFailed\(/);
+  assert.match(src, /\.catch\(function\(\)\{hubsFailed\(/);
+  // And the invitation must be HIDDEN on failure — "create your first hub" is
+  // the wrong thing to say to somebody whose hubs we could not fetch.
+  const fn = src.match(/function hubsFailed\(text\)\{[\s\S]*?\n  \}/)[0];
+  assert.match(fn, /hubShow\(\$\("hubEmpty"\),false\)/);
+});

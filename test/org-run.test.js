@@ -149,9 +149,12 @@ test("firms, end to end", async (t) => {
     // their own firm, so an invitation must grant nothing on its own.
     const r = await fetch(srv.base + "/api/shared?id=" + shareId, as(MIKE));
     assert.equal(r.status, 403);
-    const list = await (await fetch(srv.base + "/api/shares", as(MIKE))).json();
-    assert.deepEqual(list.sharedWithFirm, [], "and it is not on his desk either");
-    assert.deepEqual(list.firms, []);
+    // And the firm's shelf refuses him outright, rather than answering with
+    // an empty one: an unaccepted invitation is not a membership.
+    const shelf = await fetch(srv.base + "/api/org/shelf?id=" + orgId, as(MIKE));
+    assert.equal(shelf.status, 403);
+    const mine = await (await fetch(srv.base + "/api/org", as(MIKE))).json();
+    assert.deepEqual(mine.orgs, []);
   });
 
   await t.test("Mike sees the invitation on his desk and accepts it", async () => {
@@ -176,22 +179,31 @@ test("firms, end to end", async (t) => {
     assert.equal(body.meta.address, REPORT.meta.address);
   });
 
-  await t.test("and it is on his desk, named after the firm", async () => {
-    const list = await (await fetch(srv.base + "/api/shares", as(MIKE))).json();
-    assert.equal(list.firms.length, 1);
-    assert.equal(list.firms[0].name, "Colliers Boise");
-    assert.equal(list.sharedWithFirm.length, 1);
-    assert.equal(list.sharedWithFirm[0].id, shareId);
-    assert.equal(list.sharedWithFirm[0].address, REPORT.meta.address);
+  await t.test("and it is on the firm's shelf, attributed to Brad", async () => {
+    const shelf = await (await fetch(srv.base + "/api/org/shelf?id=" + orgId, as(MIKE))).json();
+    assert.equal(shelf.items.length, 1);
+    assert.equal(shelf.items[0].id, shareId);
+    assert.equal(shelf.items[0].address, REPORT.meta.address);
+    assert.equal(shelf.items[0].market, "Boise, ID", "canonical marketOf form, so the filter matches the corpus");
+    assert.equal(shelf.items[0].sharedBy, "Brad", "a row nobody can be asked about is a dead end");
+    assert.equal(shelf.items[0].mine, false);
+    assert.equal(shelf.truncated, false);
   });
 
-  await t.test("Brad's own share is NOT listed back to him as something his firm shared", async () => {
+  await t.test("the shelf holds Brad's OWN share too — it is the firm's whole record", async () => {
+    // Slice 1 excluded the caller's own, which is right for a "shared with
+    // you" list and wrong for a shelf: a record with your own work missing
+    // cannot answer "has anybody here valued this building".
+    const shelf = await (await fetch(srv.base + "/api/org/shelf?id=" + orgId, as(BRAD))).json();
+    assert.equal(shelf.items.length, 1);
+    assert.equal(shelf.items[0].mine, true, "and the browser marks it as his");
+  });
+
+  await t.test("his own row still says which firm it went to, never 'anyone with the link'", async () => {
     const list = await (await fetch(srv.base + "/api/shares", as(BRAD))).json();
-    assert.deepEqual(list.sharedWithFirm, [], "it is already in `mine`");
     const mine = list.mine.find((s) => s.id === shareId);
     assert.equal(mine.visibility, "org");
-    assert.equal(mine.firm, "Colliers Boise",
-      "and it must never read as 'Anyone with the link'");
+    assert.equal(mine.firm, "Colliers Boise");
   });
 
   await t.test("an outsider is refused, and told which kind of audience they missed", async () => {
@@ -213,6 +225,10 @@ test("firms, end to end", async (t) => {
     assert.equal(bad.status, 403);
     const nosy = await fetch(srv.base + "/api/org/members?id=" + orgId, as(OUTSIDER));
     assert.equal(nosy.status, 403);
+    // The shelf is every valuation the firm has done, so knowing an org id —
+    // which travels in every roster read a member makes — must not open it.
+    const shelf = await fetch(srv.base + "/api/org/shelf?id=" + orgId, as(OUTSIDER));
+    assert.equal(shelf.status, 403);
   });
 
   await t.test("the roster shows both people to a member of the firm", async () => {
@@ -244,8 +260,8 @@ test("firms, end to end", async (t) => {
     // on the next deploy would be the same bug 018's rule exists to prevent.
     const read = await fetch(srv.base + "/api/shared?id=" + shareId, as(MIKE));
     assert.equal(read.status, 403);
-    const list = await (await fetch(srv.base + "/api/shares", as(MIKE))).json();
-    assert.deepEqual(list.sharedWithFirm, []);
+    const shelf = await fetch(srv.base + "/api/org/shelf?id=" + orgId, as(MIKE));
+    assert.equal(shelf.status, 403, "and the shelf closes with it");
   });
 
   await t.test("the fake never had to guess at a filter it did not understand", () => {

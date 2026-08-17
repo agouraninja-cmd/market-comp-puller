@@ -44,11 +44,11 @@ function parseInList(raw) {
 function matches(row, key, expr) {
   const val = row[key];
   if (expr.startsWith("eq.")) return String(val) === decodeValue(expr.slice(3));
-  // `neq.` is taught deliberately, not guessed at (see the header): the firm
-  // share list excludes the caller's own shares with it, so without this the
-  // whole /api/shares read 400s. PostgREST's semantics here are unambiguous —
-  // it is `eq.` negated — and a null column is NOT equal to a value, so it
-  // matches, which is the one place this could have been wrong.
+  // `neq.` is taught deliberately, not guessed at (see the header): server.js
+  // sends it — the vault's per-comp collision check is one — and a fake that
+  // 400s on it cannot exercise those paths at all. PostgREST's semantics here
+  // are unambiguous, it is `eq.` negated, and a null column is NOT equal to a
+  // value so it matches, which is the one place this could have been wrong.
   if (expr.startsWith("neq.")) return String(val) !== decodeValue(expr.slice(4));
   if (expr.startsWith("in.(")) return parseInList(expr).some((v) => String(val) === v);
   if (expr === "is.null") return val === null || val === undefined;

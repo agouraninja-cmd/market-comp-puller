@@ -36,15 +36,27 @@ intent, the devlog states history.
   audience on Share, and both firm surfaces on `/desk`. **Migration 028 must
   be run before that code deploys** — it adds `shared_reports.org_id`, which
   every share read SELECTs by name.
-  What is left, in order: **slice 2**, the firm shelf (`org_shelf_items`,
-  publish-to-firm, `orgs.share_default`); **slice 3**, the shared vault
-  (opt-in per import, attributed, with the vault's "Visible only to you"
-  copy rewritten to match); **slice 4**, per-seat billing — until a firm
-  asks to pay, seats are granted by hand, the `vault_beta` precedent.
-  Slices 2 and 3 should be bought with a customer: slice 3's central
-  question — do brokers at one firm want each other's comps *in their
-  reports*, or a shelf they can search — is measurable the moment there is
-  one real firm and guesswork until then.
+  **Slice 2 shipped the same day too**, in the form the design did not
+  predict: the shelf needed no `org_shelf_items` table, because reports
+  already live in `shared_reports` with `visibility='org'` and a second copy
+  would be two sources of truth for one thing. `GET /api/org/shelf` is the
+  firm's whole record — searchable, attributed, everyone's own shares
+  included. That table becomes worth building when the shelf holds something
+  a share cannot: a BOV pipeline row, or an individual vault comp.
+  What is left: **`orgs.share_default`**, auto-publishing a member's new
+  reports to the firm, which is decision #2 in the spec's §1 and is HELD
+  rather than skipped — it changes what members experience without them
+  asking, so it wants the owner's yes plus disclosure on join and a
+  per-report opt-out, and it is never retroactive. Then **slice 3**, the
+  shared vault (opt-in per import, attributed, with the vault's "Visible
+  only to you" copy rewritten to match); and **slice 4**, per-seat billing —
+  until a firm asks to pay, seats are granted by hand, the `vault_beta`
+  precedent.
+  Slice 3 should be bought with a customer: its central question — do
+  brokers at one firm want each other's comps *in their reports*, or a shelf
+  they can search — is measurable the moment there is one real firm and
+  guesswork until then. The shelf shipping first is what makes that
+  measurable at all.
   Two refusals in that spec are load-bearing and should not be re-litigated
   casually: **no auto-join by email domain**, and **no existing
   `user_id=eq.` filter is widened to an org** — firm reads are new functions

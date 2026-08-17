@@ -853,12 +853,28 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   portfolio, watchlist, BOV pipeline and private vault. Rules live in the
   pure, tested **`org-access.js`**; server.js owns the reads.
   `GET|POST /api/org` (my firms + pending invites / create one),
-  `GET /api/org/members?id=`, `POST /api/org/invite`, `POST /api/org/accept`,
+  `GET /api/org/members?id=`, `GET /api/org/shelf?id=`, `POST /api/org/invite`,
+  `POST /api/org/accept`,
   `DELETE /api/org/member?org=&id=` (removing somebody and leaving are the
   SAME route under different permissions, so the last-owner rule has one
-  home). `POST /api/share` takes `visibility: "org"` + `orgId`;
-  `GET /api/shares` carries `firms` and `sharedWithFirm`; `/desk` renders
-  both plus the firm section.
+  home). `POST /api/share` takes `visibility: "org"` + `orgId`; `/desk`
+  renders the shelf plus the firm section.
+  **The shelf** (`GET /api/org/shelf`) is every report anybody has shared with
+  the firm, up to 1000, fetched WHOLE and filtered in the browser — `/vault`'s
+  rule, for its reasons: the header count describes the whole shelf, so a
+  server-side filter would leave the page unable to say how much it was not
+  showing, and a search box that re-queries per keystroke is a request per
+  keystroke. Past 1000 it SAYS it is truncated rather than under-reporting.
+  It includes **the caller's own** shares, attributed and marked "shared by
+  you" — slice 1 excluded them, which is right for a "shared with you" list
+  and wrong for a shelf, since a record missing your own work cannot answer
+  "has anybody here valued this building". `market` is computed with
+  `marketOf()` so the filter matches the corpus and vault vocabulary.
+  `GET /api/shares` is otherwise back to its pre-firm shape; its `mine` rows
+  gained `firm` so a firm share's status line can say "Shared with Colliers
+  Boise" and never "Anyone with the link" (it read as the latter before that
+  field existed, which is the one wrong answer there that could make somebody
+  forward a firm-only report).
   **"org" is the internal noun and "firm" is the word on screen** — tables,
   columns, routes and identifiers all say org, every string a person reads
   says firm. One translation point, at the copy layer.
@@ -907,12 +923,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     column. Deploy-first breaks every legacy public link — including ones
     already mailed to property owners with no account — not just the new
     feature.
-  What is NOT built: the firm shelf (`org_shelf_items`, publish-to-firm
-  without naming an audience, the `share_default`), the shared vault, and
-  per-seat billing. Seats are granted by hand, the `vault_beta` precedent.
-  `orgs.share_default` and `orgs.seats` ship as unwritten columns so slice 2
-  and slice 4 are code changes rather than migrations — the same reason
-  `hub_items.status` shipped early in 024.
+  What is NOT built: **`orgs.share_default`** — auto-publishing a member's new
+  reports to the firm — which is a deliberate hold, not an omission. It is
+  open decision #2 in the spec's §1, and it changes what members experience
+  without them asking for it, so it needs the owner's yes plus the two
+  safeguards the spec names (disclosed on join, per-report opt-out) and is
+  **never retroactive**. Also not built: the shared vault (§7) and per-seat
+  billing. Seats are granted by hand, the `vault_beta` precedent.
+  `orgs.share_default` and `orgs.seats` ship as unwritten columns so both are
+  code changes rather than migrations — the same reason `hub_items.status`
+  shipped early in 024. The shelf needed **no** `org_shelf_items` table in the
+  end: reports already live in `shared_reports` with `visibility='org'`, and a
+  second copy would have been two sources of truth for one thing. That table
+  becomes worth building when the shelf holds something a share cannot — a
+  BOV pipeline row, or an individual vault comp.
 - `GET /api/geocode?address=` — CORS pass-through to the free US Census
   geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
   longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow

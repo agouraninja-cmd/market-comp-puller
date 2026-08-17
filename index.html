@@ -2083,9 +2083,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            to somebody with no firm is an empty room. The firm's own section
            (deskFirm) is what teaches the feature. -->
       <div id="deskSharedWithFirm" class="hidden mt-8">
-        <div class="dk-rule"><span id="deskFirmSharesLabel" class="rd-lab">Shared with your firm</span></div>
+        <div class="dk-rule">
+          <span id="deskFirmSharesLabel" class="rd-lab">Shared with your firm</span>
+          <span id="firmShelfStats" class="dk-note"></span>
+        </div>
         <p id="deskSharedWithFirmEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nobody at your firm has shared a report yet. Open a report and use Share → My firm.</p>
+        <!-- The search box appears only once there is enough on the shelf to
+             need one. A filter over three rows is furniture. -->
+        <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
+          <input id="firmShelfSearch" type="text" placeholder="Search by address, market or type" aria-label="Search your firm's reports"
+            class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
+        </div>
+        <p id="firmShelfTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
         <div id="sharedWithFirmRows" class="mt-2 space-y-1.5"></div>
+        <p id="firmShelfNoMatch" class="hidden text-sm text-[#5A6473] mt-2">Nothing on the shelf matches that.</p>
       </div>
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.
@@ -10702,25 +10714,87 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     sharedWithMeBox.classList.remove("hidden");
     renderMyShares(Array.isArray(data.mine) ? data.mine : []);
     renderSharedWithMe(Array.isArray(data.sharedWithMe) ? data.sharedWithMe : []);
-    renderSharedWithFirm(
-      Array.isArray(data.firms) ? data.firms : [],
-      Array.isArray(data.sharedWithFirm) ? data.sharedWithFirm : []);
-    renderFirm();
+    // AWAITED, then the shelf: renderFirm is what loads the membership, and
+    // renderFirmShelf reads it through myFirm(). Firing them together showed
+    // the shelf for whatever firm was in memory from the last render — which
+    // on a sign-out-then-sign-in is somebody else's.
+    await renderFirm();
+    await renderFirmShelf();
   }
 
-  // Reports a colleague shared with the firm. Hidden entirely for somebody who
-  // is in no firm — unlike the two lists above it, which teach a feature every
-  // account has. The firm section below is what teaches this one.
-  function renderSharedWithFirm(firms, rows) {
+  // ---------------------------------------------------------------------------
+  // The firm shelf — every report anybody at the firm has shared, searchable.
+  //
+  // Hidden entirely for somebody in no firm, unlike the two lists above it,
+  // which teach a feature every account has. The firm section below is what
+  // teaches this one.
+  //
+  // Fetched WHOLE (up to 1000) and filtered here, which is /vault's rule and
+  // is here for its reasons: the count line describes the whole shelf, so a
+  // server-side filter would leave this page unable to say how much it was
+  // not showing, and a search box that re-queries per keystroke is a request
+  // per keystroke.
+  // ---------------------------------------------------------------------------
+  let firmShelfItems = [];
+
+  async function renderFirmShelf() {
     const box = document.getElementById("deskSharedWithFirm");
-    box.classList.toggle("hidden", !firms.length);
-    if (!firms.length) return;
-    document.getElementById("deskFirmSharesLabel").textContent =
-      firms.length === 1 ? `Shared with ${firms[0].name}` : "Shared with your firm";
+    // `currentUser` first, before the cached membership: a failed /api/org
+    // read leaves firmState holding the LAST answer, and the one state where
+    // acting on that would be wrong rather than merely stale is a signed-out
+    // page. The server gates the fetch either way; this stops us asking.
+    const firm = currentUser ? myFirm() : null;
+    // myFirm() is populated by renderFirm()'s own load, which renderShares
+    // calls first. A member with no firm, or a firm read that failed, both
+    // land here — and both correctly show nothing rather than an empty shelf
+    // for a firm we could not confirm they are in.
+    if (!firm) { box.classList.add("hidden"); firmShelfItems = []; return; }
+    let data = null;
+    try {
+      const res = await fetch(`/api/org/shelf?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below */ }
+    if (!data) { box.classList.add("hidden"); firmShelfItems = []; return; }
+
+    firmShelfItems = Array.isArray(data.items) ? data.items : [];
+    box.classList.remove("hidden");
+    document.getElementById("deskFirmSharesLabel").textContent = `Shared with ${firm.name}`;
+    document.getElementById("firmShelfTruncated").classList.toggle("hidden", !data.truncated);
+
+    // The header line describes the WHOLE shelf and never the filtered view —
+    // "3 reports" under a search box that is hiding twenty is how a shelf
+    // stops being trusted as a record.
+    const markets = new Set(firmShelfItems.map((i) => i.market).filter(Boolean));
+    const stats = document.getElementById("firmShelfStats");
+    stats.textContent = firmShelfItems.length
+      ? `${firmShelfItems.length} ${firmShelfItems.length === 1 ? "report" : "reports"}` +
+        (markets.size ? ` · ${markets.size} ${markets.size === 1 ? "market" : "markets"}` : "")
+      : "";
+
+    // A filter over three rows is furniture.
+    document.getElementById("firmShelfSearchWrap").classList.toggle("hidden", firmShelfItems.length < 6);
+    document.getElementById("deskSharedWithFirmEmpty").classList.toggle("hidden", firmShelfItems.length > 0);
+    applyFirmShelfFilter();
+  }
+
+  function applyFirmShelfFilter() {
+    const q = document.getElementById("firmShelfSearch").value.trim().toLowerCase();
+    const shown = q
+      ? firmShelfItems.filter((i) =>
+          `${i.address} ${i.market} ${i.type} ${i.sharedBy}`.toLowerCase().includes(q))
+      : firmShelfItems;
+
     const wrap = document.getElementById("sharedWithFirmRows");
     wrap.innerHTML = "";
-    document.getElementById("deskSharedWithFirmEmpty").classList.toggle("hidden", rows.length > 0);
-    rows.forEach((r) => {
+    // Told apart on purpose: an empty shelf is an invitation to share
+    // something, a search with no hits is a search with no hits, and showing
+    // the first message for the second reads as the shelf having been wiped.
+    document.getElementById("firmShelfNoMatch").classList
+      .toggle("hidden", !(q && !shown.length && firmShelfItems.length));
+    document.getElementById("firmShelfCount").textContent =
+      q ? `${shown.length} of ${firmShelfItems.length}` : "";
+
+    shown.forEach((r) => {
       const row = document.createElement("div");
       row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
       const addr = document.createElement("a");
@@ -10730,11 +10804,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       addr.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
       addr.textContent = r.address;
       row.appendChild(addr);
-      const bits = [r.type];
-      // Only when there is more than one firm to be ambiguous about; on the
-      // ordinary one-firm desk the section header already says it.
-      if (firms.length > 1 && r.firm) bits.push(r.firm);
-      if (r.createdAt) bits.push(`shared ${fmtShareDate(r.createdAt)}`);
+      // Attribution is the point of a shelf: a row nobody can be asked about
+      // is a dead end. "you" rather than your own name, because reading your
+      // own name in a list of colleagues is a beat of confusion every time.
+      const bits = [r.type, r.mine ? "shared by you" : `shared by ${r.sharedBy}`];
+      if (r.createdAt) bits.push(fmtShareDate(r.createdAt));
       const meta = document.createElement("span");
       meta.className = "text-xs text-[#68707E]";
       meta.textContent = bits.filter(Boolean).join(" · ");
@@ -10742,6 +10816,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       wrap.appendChild(row);
     });
   }
+
+  document.getElementById("firmShelfSearch").addEventListener("input", applyFirmShelfFilter);
 
   // ---------------------------------------------------------------------------
   // The firm section — create one, accept an invitation, manage the roster.

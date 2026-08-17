@@ -3112,16 +3112,43 @@ async function removeOrgMember(orgId, memberId) {
     { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
 }
 
-// Reports shared WITH a firm. `neq` on the owner so a member's own share is
-// never also listed as something their firm shared with them — the same rule
-// the hub list applies to a hub the caller owns.
-async function listSharesForOrgs(orgIds, excludeUserId) {
-  if (!DB_CONFIGURED || !orgIds.length) return [];
-  const q = `shared_reports?org_id=in.(${pgInList(orgIds)})` +
+// THE SHELF: every report anybody has shared with this firm.
+//
+// EVERYONE'S, including the caller's own. Slice 1 excluded them, which was
+// right for a "shared with you" list and wrong for a shelf: the point of the
+// thing is that it is the firm's whole record, and a record with your own work
+// missing from it is one you cannot trust to answer "has anybody valued this
+// building". They are attributed instead, and the browser marks yours.
+//
+// The 1000-row cap is the vault's, with the vault's rule attached: past it the
+// page SAYS it is truncated rather than quietly under-reporting. A firm that
+// reaches four figures of shared reports needs paging, and finding out from a
+// silently short list is the wrong way to learn that.
+async function orgShelfRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `shared_reports?org_id=eq.${encodeURIComponent(orgId)}` +
     `&visibility=eq.org&revoked_at=is.null` +
-    (excludeUserId ? `&user_id=neq.${encodeURIComponent(excludeUserId)}` : "") +
-    `&select=id,payload,org_id,created_at,user_id&order=created_at.desc&limit=200`;
-  return (await sbRequest("GET", q)) || [];
+    `&select=id,payload,org_id,created_at,user_id&order=created_at.desc&limit=1000`)) || [];
+}
+
+// Display names for a set of user ids, as a Map. A SECOND QUERY and a stitch,
+// the house pattern, for the reason orgNamesByIds gives.
+//
+// Never throws, and the caller falls back to "a colleague": attribution is a
+// label on a shelf row, and losing it must not cost the row.
+async function usersByIds(ids) {
+  const out = new Map();
+  try {
+    const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+    if (!DB_CONFIGURED || !list.length) return out;
+    const rows = await sbRequest("GET",
+      `users?id=in.(${pgInList(list)})&select=id,name,email&limit=${list.length}`);
+    for (const r of rows || []) out.set(String(r.id), { name: r.name || "", email: r.email || "" });
+  } catch (err) {
+    console.error("Shelf attribution read failed (rows are unaffected):", err.message);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -15963,26 +15990,20 @@ const server = http.createServer((req, res) =>
       const user = await getSessionUser(req);
       if (!user) return sendJson(res, 401, { error: "Please sign in." });
       if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
-      // Three lists in one call now, for the reason the first two were: /desk
-      // needs all of them and this is a page-load path. The firm half is two
-      // dependent reads (membership, then that firm's shares), so it is a
-      // small async block rather than a third entry in the Promise.all.
-      const [owned, invited, firm] = await Promise.all([
+      // Two lists, as before slice 1. The firm's SHELF is deliberately not
+      // here: it is its own route (GET /api/org/shelf), fetched by the desk
+      // alongside this one, because it reads up to 1000 rows and this is a
+      // page-load path that already does two.
+      //
+      // What survives from the firm work is the NAMES of the firms this
+      // member's own shares went to, so a row can say "Shared with Colliers
+      // Boise" instead of "Anyone with the link". One extra read, and only
+      // when they have actually shared something with a firm.
+      const [owned, invited] = await Promise.all([
         listSharesForOwner(user.id),
         listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
-        (async () => {
-          const rows = await orgMembershipsFor(user.email);
-          const orgIds = ORG.activeOrgIds(rows, user.email);
-          if (!orgIds.length) return { orgs: [], shares: [], names: new Map() };
-          const names = await orgNamesByIds(orgIds);
-          // Excludes the caller's own shares: a member's own report is
-          // already in the list above it, and showing it twice reads as the
-          // firm having received something from them. Same rule the hub list
-          // applies to a hub the caller owns.
-          const shares = await listSharesForOrgs(orgIds, user.id);
-          return { orgs: orgIds.map((id) => ({ id, name: names.get(String(id)) || "" })), shares, names };
-        })(),
       ]);
+      const firmNames = await orgNamesByIds(owned.map((r) => r.org_id).filter(Boolean));
       const brief = (payload) => ({
         address: (payload && payload.meta && payload.meta.address) || "",
         type: (payload && payload.meta && payload.meta.type) || "",
@@ -15994,7 +16015,7 @@ const server = http.createServer((req, res) =>
           // and "Anyone with the link" was what a firm share used to read as —
           // a sharer told their firm-only report was public is the one wrong
           // answer here that could make them forward it.
-          firm: r.org_id ? (firm.names.get(String(r.org_id)) || "Your firm") : "",
+          firm: r.org_id ? (firmNames.get(String(r.org_id)) || "Your firm") : "",
           includePrivate: r.include_private, revokedAt: r.revoked_at, createdAt: r.created_at,
           url: `${SITE_URL}/r/${r.id}`,
           viewers: (r.report_viewers || []).map((v) => ({
@@ -16008,14 +16029,6 @@ const server = http.createServer((req, res) =>
             id: r.share_id, ...brief(r.shared_reports.payload),
             invitedAt: r.invited_at, url: `${SITE_URL}/r/${r.share_id}`,
           })),
-        // The firms this member belongs to, so /desk can name the section
-        // even before anyone has shared anything into it.
-        firms: firm.orgs,
-        sharedWithFirm: firm.shares.map((r) => ({
-          id: r.id, ...brief(r.payload),
-          firm: (firm.names && firm.names.get(String(r.org_id))) || "",
-          createdAt: r.created_at, url: `${SITE_URL}/r/${r.id}`,
-        })),
       });
     })().catch((err) => {
       console.error("Shares list failed:", err.message);
@@ -16291,6 +16304,59 @@ const server = http.createServer((req, res) =>
       })().catch((err) => {
         console.error("Firm roster read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load the member list. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/shelf?id= — everything shared with this firm ----------
+    //
+    // The whole shelf in one read, filtered in the BROWSER. That is the
+    // /vault dashboard's rule and it is here for the same two reasons: the
+    // counts and the market list describe the WHOLE shelf, so a server-side
+    // filter would leave the page holding only the current slice and unable
+    // to say how much it was not showing; and a search box that re-queries on
+    // every keystroke is a request per keystroke for a list this size.
+    //
+    // Membership-gated like the roster, and for a stronger reason: this is
+    // every valuation the firm has done.
+    if (req.method === "GET" && orgPath === "/api/org/shelf") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await orgShelfRows(orgId);
+        const people = await usersByIds(rows.map((r) => r.user_id));
+        return sendJson(res, 200, {
+          id: orgId,
+          // The vault's rule: say so rather than under-report silently.
+          truncated: rows.length >= 1000,
+          items: rows.map((r) => {
+            const meta = (r.payload && r.payload.meta) || {};
+            const who = r.user_id ? people.get(String(r.user_id)) : null;
+            return {
+              id: r.id,
+              address: meta.address || "",
+              type: meta.type || "",
+              // Computed here with marketOf so the shelf's market filter uses
+              // the SAME canonical form as the corpus and the vault. A second
+              // parse would give a firm two spellings of one city.
+              market: marketOf(meta.address || ""),
+              createdAt: r.created_at,
+              url: `${SITE_URL}/r/${r.id}`,
+              // A colleague's name, or their email, or nothing recognisable —
+              // never an id. Both are already on the roster this member can
+              // read, and an unattributed shelf row is one nobody can follow
+              // up on, which is most of what a shelf is for.
+              sharedBy: (who && (who.name || who.email)) || "a colleague",
+              mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
+            };
+          }),
+        });
+      })().catch((err) => {
+        console.error("Firm shelf read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your firm's reports. Please try again in a minute." });
       });
       return;
     }

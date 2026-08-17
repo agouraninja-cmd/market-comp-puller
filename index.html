@@ -5749,7 +5749,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         // reporting no difference is exactly the kind to leave out.
         const fit = conditionFit(((meta.subject && meta.subject.details) || {}).condition,
                                  includedComps());
-        const half = fit && fit.dir === "above" ? "upper"
+        // askFit and conditionFit can point in OPPOSITE directions in the same
+        // paragraph, and seen rendered that reads as the report arguing with
+        // itself. A real fixture: listed at $700,000 against a $1,050,000
+        // estimate, so askFit says "50% below this estimate ... the comps are
+        // probably a pricier pocket" (our number may be too high) — and then
+        // conditionFit said "the upper half of the range is the fairer read".
+        //
+        // The listing is a hard fact about THIS property and the condition
+        // steer is a comparison against the comps, so the listing wins and the
+        // steer stays quiet. Only the genuinely opposed pairs are suppressed:
+        // askFit "above" means the estimate sits above the ask, which conflicts
+        // with steering higher; "below" conflicts with steering lower. When
+        // they agree, the steer is corroboration and is kept.
+        const contradictsAsk = askGap && askGap.skewed && fit && askGap.dir === fit.dir;
+        const half = contradictsAsk ? ""
+          : fit && fit.dir === "above" ? "upper"
           : fit && fit.dir === "below" ? "lower" : "";
         if (half) {
           const n = fit.dir === "above" ? fit.below : fit.above;

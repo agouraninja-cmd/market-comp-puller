@@ -1114,3 +1114,32 @@ test("the mechanics toggle is registered once, not per render", () => {
   assert.doesNotMatch(body, /ownerTrustHowBtn"\)\.addEventListener/);
   assert.match(html, /document\.getElementById\("ownerTrustHowBtn"\)\.addEventListener\("click"/);
 });
+
+test("the condition steer yields to a listing that disagrees with it", () => {
+  // Seen only by rendering a report: listed at $700,000 against a $1,050,000
+  // estimate, askFit said "50% below this estimate ... the comps are probably a
+  // pricier pocket" (our number may be high) and conditionFit then said "the
+  // upper half of the range is the fairer read". The paragraph argued with
+  // itself. The listing is a hard fact about this property; the condition steer
+  // is a comparison against comps, so the listing wins.
+  const i = html.indexOf("const contradictsAsk");
+  assert.ok(i > 0, "the contradiction guard is gone");
+  assert.match(html.slice(i, i + 200), /askGap && askGap\.skewed && fit && askGap\.dir === fit\.dir/);
+  // askGap is computed well above this line; if it ever moves below, the guard
+  // silently reads undefined and stops suppressing anything.
+  assert.ok(html.indexOf("const askGap = askFit(") < i, "askGap must be computed before the guard");
+});
+
+test("askFit and conditionFit share one direction vocabulary", () => {
+  // The guard is `askGap.dir === fit.dir`. If either function's dir vocabulary
+  // drifts — "higher"/"lower", say — the comparison silently never matches and
+  // the contradiction comes back with nothing failing.
+  const V = require("../valuation");
+  const comp = (condition) => ({ transaction: "Sale", condition });
+  const up = V.conditionFit("Renovated", [comp("Original"), comp("Original"), comp("Original")]);
+  const down = V.conditionFit("Needs work", [comp("Renovated"), comp("Renovated"), comp("Renovated")]);
+  assert.equal(up.dir, "above");
+  assert.equal(down.dir, "below");
+  assert.equal(V.askFit(1000000, 2000000).dir, "above");
+  assert.equal(V.askFit(2000000, 1000000).dir, "below");
+});

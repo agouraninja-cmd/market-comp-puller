@@ -6289,11 +6289,13 @@ const MARKET_FOOTER =
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
-// stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
-// misses cached in localStorage geoCache.v1 — same key shape, so the app and
-// these pages share a cache). Comps geocode sequentially, not in a burst, to
-// stay friendly to /api/geocode's per-IP rate limit. If not a single pin
-// resolves, the whole card hides rather than showing an empty map.
+// stack (Census proxy first — a POST since 2026-08-17, so the address stays out
+// of the URL — Nominatim fallback with 1.1s spacing, hits AND misses cached in
+// localStorage geoCache.v1 — same key shape, so the app and these pages share a
+// cache). Comps geocode sequentially, not in a burst, to stay friendly to
+// /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
+// card hides rather than showing an empty map — which is also what a market
+// page cached from before that deploy does for its last hour of life.
 const MARKET_MAP_JS = `(function(){
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
   var CACHE_KEY = "geoCache.v1";
@@ -6306,11 +6308,18 @@ const MARKET_MAP_JS = `(function(){
       localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
     } catch (e) {}
   }
-  function jfetch(u) {
+  function jfetch(u, o) {
     return Promise.race([
-      fetch(u).then(function (r) { return r.json(); }),
+      fetch(u, o).then(function (r) { return r.json(); }),
       new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, 7000); }),
     ]);
+  }
+  function postJson(u, payload) {
+    return jfetch(u, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
   var nq = Promise.resolve();
   function nominatim(a) {
@@ -6329,7 +6338,7 @@ const MARKET_MAP_JS = `(function(){
     var k = String(a || "").trim().toLowerCase();
     if (!k) return Promise.resolve(null);
     if (k in cache) { var h = cache[k]; return Promise.resolve(h && isFinite(h.lat) ? h : null); }
-    return jfetch("/api/geocode?address=" + encodeURIComponent(a))
+    return postJson("/api/geocode", { address: a })
       .then(function (j) { return (j && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null; })
       .catch(function () { return null; })
       .then(function (f) { return f || nominatim(a); })
@@ -14502,22 +14511,50 @@ const server = http.createServer((req, res) =>
   // the front-end re-places map pins from the free US Census geocoder — which
   // has no CORS headers, hence this pass-through. Failures return {} so the
   // browser can fall back to Nominatim (which it can reach directly). ---
-  if (req.method === "GET" && req.url.split("?")[0] === "/api/geocode") {
-    const address = (new URL(req.url, "http://localhost").searchParams.get("address") || "").trim().slice(0, 200);
-    if (!address) return sendJson(res, 400, { error: "address is required." });
-    // Generous cap: one report geocodes the subject plus up to 8 comps.
-    if (rateLimited("geo:" + clientIp(req), 120)) {
-      return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
-    }
-    (async () => {
+  //
+  // **POST, and the address travels in the BODY** (2026-08-17). A query string
+  // is written to the platform's access logs and leaks in every outbound
+  // Referer header, and this route sees a wider set of addresses than any
+  // other: the subject plus every comp of every report, market pages included.
+  // Same reasoning as POST /api/report-access and POST /api/hub/access; this
+  // one simply covers far more of them. It matters most for the comps that are
+  // not public — a broker's private vault comp is geocoded HERE and nowhere
+  // else, because GUARD 2 of the private-comp contract stops it at this hop
+  // rather than letting it reach Nominatim
+  // (docs/superpowers/specs/2026-08-06-private-comp-geocoding.md). Sending an
+  // off-market address to our own proxy and then logging it in a URL undid a
+  // good part of what that guard bought.
+  //
+  // The GET form is REMOVED rather than kept as a deprecated alias: a door
+  // left open is one stale caller away from putting addresses back in URLs,
+  // and nothing here can detect that happening. The cost of removing it is
+  // bounded and self-healing — index.html is served `no-store` so the app
+  // updates on the next load, and the only other caller is MARKET_MAP_JS,
+  // embedded in market pages cached `public, max-age=3600`. For at most an
+  // hour after deploy those cached pages geocode nothing, and that script
+  // hides the whole map card when no pin resolves, so it degrades to no map
+  // rather than a broken one.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/geocode") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
       try {
+        // Generous cap: one report geocodes the subject plus up to 8 comps.
+        if (rateLimited("geo:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
+        }
+        const address = String(JSON.parse(body || "{}").address || "").trim().slice(0, 200);
+        if (!address) return sendJson(res, 400, { error: "address is required." });
         const ll = await geocodeCensus(address);
         if (ll) return sendJson(res, 200, { lat: ll.lat, lng: ll.lng, matchedAddress: ll.matchedAddress, source: "census" });
         return sendJson(res, 200, {});
-      } catch (_) {
-        return sendJson(res, 200, {}); // soft failure — the client falls back
+      } catch (err) {
+        // A malformed body is the caller's bug and says so; everything else is
+        // a soft failure, because the client's own fallback handles {}.
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        return sendJson(res, 200, {});
       }
-    })();
+    });
     return;
   }
 

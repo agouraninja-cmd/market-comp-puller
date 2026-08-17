@@ -2104,3 +2104,63 @@ test("only newly invited people are mailed when a participant list is replaced",
   assert.match(route, /if \(newLinks\.length\) \{/);
   assert.match(route, /sendHubInvites\(newLinks/);
 });
+
+// --- The geocode proxy takes a POST, and no longer takes a GET --------------
+//
+// The address of every comp on every report goes through this route, private
+// vault comps included (GUARD 2 of the private-comp contract stops them here
+// and never lets them reach Nominatim). On a query string all of those landed
+// in the platform's access logs and in outbound Referer headers, which is what
+// moving it to POST fixes.
+//
+// The GET form was removed rather than kept as an alias, so the half of this
+// worth testing is that it is really GONE: a deprecated door nobody notices is
+// exactly how the addresses come back. The source check is the other half —
+// the route can be perfect and still leak if a caller was missed, and both
+// callers live in files this suite already has on disk.
+//
+// Costs nothing: an empty address is refused before geocodeCensus is reached,
+// so no test here ever calls the Census API.
+
+test("the geocode proxy is POST-only and no caller builds a query string", async (t) => {
+  const srv = await boot({});
+  t.after(() => srv.stop());
+
+  await t.test("the GET form is gone, not merely unused", async () => {
+    const r = await fetch(srv.base + "/api/geocode?address=" + encodeURIComponent("1600 Pennsylvania Ave NW, Washington, DC"));
+    assert.equal(r.status, 404);
+  });
+
+  await t.test("a POST with no address is refused before any lookup", async () => {
+    const r = await fetch(srv.base + "/api/geocode", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /address is required/i);
+  });
+
+  await t.test("a malformed body is a 400, not a soft empty answer", async () => {
+    const r = await fetch(srv.base + "/api/geocode", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not json",
+    });
+    assert.equal(r.status, 400);
+  });
+
+  await t.test("neither caller puts the address in a URL", () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    for (const file of ["server.js", "index.html"]) {
+      const src = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+      // Catches the exact shape that was removed and any revival of it,
+      // including a differently-named param on the same route.
+      assert.ok(
+        !/["'`]\/api\/geocode\?/.test(src),
+        file + " builds a /api/geocode query string — the address must ride in a POST body"
+      );
+    }
+  });
+});

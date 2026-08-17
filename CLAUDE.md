@@ -842,8 +842,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /r/<id>` — serves `index.html`; the SPA reads the id off the path and
   fetches the report from `/api/shared`. (server.js allow-lists this path
   alongside `/` and `/index.html`.)
-- `GET /api/geocode?address=` — CORS pass-through to the free US Census
-  geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
+- `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
+  Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
+  string lands in the platform's access logs and in every outbound Referer,
+  and this route sees more addresses than any other — the subject plus every
+  comp of every report — including the private vault comps that are geocoded
+  here and deliberately nowhere else (GUARD 2 of the private-comp contract).
+  The GET alias was removed rather than deprecated, because a door left open
+  is one stale caller away from putting addresses back in URLs and nothing
+  detects that. Comp pins are placed ENTIRELY from real geocoding — the model no
   longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
   report-writing burst; only `subject_lat`/`subject_lng` remain, for the
   map's first paint and the wrong-state sanity gate). Old cached reports
@@ -2216,8 +2223,9 @@ private row has not earned. Two rules matter when editing anything down here:
   still entitled to it. Public comps are untouched by all of this.
   Owen owns the other half (migration 017, `lat`/`lng` in the vault CSV,
   `toApiComp` lifting them onto the comp); **import-time geocoding is
-  deliberately deferred**, and moving `/api/geocode` to POST ranks above it
-  when this is picked up again.
+  deliberately deferred**. Moving `/api/geocode` to POST ranked above it and
+  **shipped 2026-08-17** — see that route's entry above; the address a private
+  comp sends to our own proxy no longer lands in a URL.
 
 ### Non-obvious flows to know before editing
 

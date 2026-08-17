@@ -6934,9 +6934,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } catch (_) { /* private mode — the cache is a nicety */ }
   }
 
-  function geoFetch(url) {
+  // `init` is optional so the Nominatim leg stays a plain GET while our own
+  // proxy is POSTed to — the address must not appear in a URL we log.
+  function geoFetch(url, init) {
     return Promise.race([
-      fetch(url).then((r) => r.json()),
+      fetch(url, init).then((r) => r.json()),
       new Promise((_, rej) => setTimeout(() => rej(new Error("geocode timeout")), 7000)),
     ]);
   }
@@ -6982,7 +6984,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     let found = null;
     try {
-      const j = await geoFetch("/api/geocode?address=" + encodeURIComponent(address));
+      const j = await geoFetch("/api/geocode", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
       if (j && isFinite(j.lat) && isFinite(j.lng)) found = { lat: j.lat, lng: j.lng, label: j.matchedAddress || undefined };
     } catch (_) { /* proxy down — try the fallback */ }
     if (!found && !noThirdParty) found = await nominatimGeocode(address);

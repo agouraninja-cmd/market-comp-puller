@@ -2349,6 +2349,11 @@ const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO
 // wanting to roll back one is no reason to roll back the other.
 // `LEAD_METRO=off` restores exact-market matching everywhere below.
 const LEAD_METRO = !/^(0|off|false|no)$/i.test(String(process.env.LEAD_METRO || ""));
+// One bulk-publish request's ceiling. Each comp costs an insert plus a patch,
+// so this bounds the request, not the broker's book: over it, the route
+// publishes what it can and reports how many are left, and running it again is
+// safe because an already-published comp is skipped rather than re-submitted.
+const VAULT_PUBLISH_BATCH = 100;
 // One expression, three call sites (inbox, intro gate, new-lead alert), so the
 // flag cannot end up half-applied and show a broker a lead they may not act on.
 const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
@@ -14160,6 +14165,141 @@ const server = http.createServer((req, res) =>
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault publish failed:", err.message);
           return sendJson(res, 502, { error: "That didn't go through. Nothing was changed." });
+        }
+      });
+      return;
+    }
+
+    // Publish a batch, from the filter the broker is already looking at.
+    //
+    // Publishing is how the public corpus grows, and it was one button and one
+    // identical confirm dialog per comp -- a broker with 60 clean sales read 60
+    // dialogs, so in practice nobody published a book, they published a comp.
+    //
+    // Deliberately its own route rather than an `ids` array on the single one:
+    // that route's contract (one comp, 404 if it is not yours, 400 if it is not
+    // publishable) is exactly right for one comp and exactly wrong for fifty,
+    // where "some of these are not ready" is the normal answer rather than a
+    // failure. The rules it enforces are the SAME rules -- same openVault gate,
+    // same user_id scoping, same VAULT.canPublish, same credit-name refusal --
+    // because a second set would be a second place for the public corpus to
+    // grow a hole.
+    if (req.method === "POST" && path === "/api/vault/publish-many") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultpub:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const { ids } = JSON.parse(body || "{}");
+          if (!Array.isArray(ids) || !ids.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          // Shape-filtered before the query, like the single route's isUuid
+          // check: broker_comps.id is a uuid column, so one malformed entry
+          // would make PostgREST reject the whole in.() list and take the
+          // batch down with it.
+          const clean = [];
+          for (const id of ids) {
+            if (VAULT.isUuid(id) && clean.indexOf(id) < 0) clean.push(id);
+          }
+          // A ceiling on one request, not on a book. Each comp costs an insert
+          // plus a patch, so an uncapped batch would be a single HTTP request
+          // doing thousands of round trips. Over the cap we publish what we can
+          // and say how many are left rather than refusing outright -- the
+          // operation is idempotent (an already-published comp is skipped), so
+          // running it again is safe and is what the page tells them to do.
+          const batch = clean.slice(0, VAULT_PUBLISH_BATCH);
+          const remaining = Math.max(0, clean.length - batch.length);
+          if (!batch.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          // Asked ONCE for the whole batch, before anything is written: fifty
+          // comps published under no credit is fifty rows given away, and the
+          // page turns this exact code into the form that fixes it.
+          const profile = await findBrokerProfile(user.email, user.id);
+          const by = VAULT.creditName(profile);
+          if (!by) {
+            return sendJson(res, 400, {
+              error: "Add your firm or display name before publishing — published comps are credited to it.",
+              code: "needs_credit_name",
+            });
+          }
+
+          // user_id in the filter, always. Without it, knowing another broker's
+          // comp ids would be enough to publish their private data.
+          const rows = (await sbRequest("GET",
+            `broker_comps?id=in.(${batch.map((i) => encodeURIComponent(i)).join(",")})` +
+            `&user_id=eq.${encodeURIComponent(user.id)}&limit=${batch.length}`)) || [];
+
+          const skipped = [];
+          const ready = [];
+          for (const comp of rows) {
+            if (comp.published) continue;                 // idempotent, not an error
+            const gate = VAULT.canPublish(comp);
+            if (!gate.ok) { skipped.push({ id: comp.id, address: comp.address, reason: gate.reason }); continue; }
+            ready.push(comp);
+          }
+
+          // Bounded concurrency: sequential would make a 100-comp batch a
+          // minute-long request, and unbounded would open 200 sockets to
+          // PostgREST at once. Each comp's insert and patch stay paired inside
+          // one task, so a submission id can never be matched to the wrong
+          // comp -- which is why this is not one bulk insert with the ids read
+          // back positionally. Repeat properties are a real thing in this
+          // vault (two deals on one building), so the returned rows could not
+          // be re-paired by address afterwards even in principle.
+          let published = 0;
+          const failed = [];
+          const queue = ready.slice();
+          const worker = async () => {
+            for (;;) {
+              const comp = queue.shift();
+              if (!comp) return;
+              let subId = null;
+              try {
+                const inserted = await sbRequest("POST", "comp_submissions",
+                  [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+                  { prefer: "return=representation" });
+                subId = inserted && inserted[0] && inserted[0].id;
+                if (!subId) throw new Error("comp_submissions insert returned no id");
+                await sbRequest("PATCH",
+                  `broker_comps?id=eq.${encodeURIComponent(comp.id)}` +
+                  `&user_id=eq.${encodeURIComponent(user.id)}`,
+                  { published: true, published_at: new Date().toISOString(), published_submission_id: subId },
+                  { prefer: "return=minimal" });
+                published += 1;
+              } catch (err) {
+                // The submission landed but the comp was never marked: the row
+                // is in the public records crediting a comp the vault still
+                // calls unpublished, and a re-run would credit it TWICE. Take
+                // the submission back out. Best-effort by necessity -- if this
+                // fails too there is nothing further to try from here -- but
+                // leaving it would turn one transient error into a permanent
+                // duplicate nobody would ever go looking for.
+                if (subId) {
+                  await sbRequest("DELETE",
+                    `comp_submissions?id=eq.${encodeURIComponent(subId)}`,
+                    undefined, { prefer: "return=minimal" }).catch(() => {});
+                }
+                failed.push({ id: comp.id, address: comp.address, reason: "Could not publish this one — try again." });
+              }
+            }
+          };
+          await Promise.all(Array.from({ length: Math.min(6, ready.length) }, worker));
+
+          console.log(`📤 Vault bulk publish: ${published} of ${rows.length} by ${by} (user ${user.id})`);
+          return sendJson(res, 200, {
+            ok: true, published, creditedTo: by,
+            skipped: skipped.concat(failed).slice(0, 50),
+            skippedCount: skipped.length + failed.length,
+            remaining,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault bulk publish failed:", err.message);
+          return sendJson(res, 502, { error: "That didn't go through." });
         }
       });
       return;

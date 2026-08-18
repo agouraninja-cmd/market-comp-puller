@@ -2138,7 +2138,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <span id="firmInviteMsg" class="text-xs text-[#68707E]"></span>
             </div>
           </div>
-          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours.</p>
+          <!-- The auto-share switches. Two of them, and which you see depends
+               on what you may set: the firm default is an owner/admin control,
+               the personal one is everybody's. Rendered by
+               renderFirmAutoShare(). -->
+          <div id="firmAutoShare" class="mt-3 space-y-1.5">
+            <label id="firmDefaultWrap" class="hidden flex items-center gap-2 text-sm text-[#4C5665] cursor-pointer">
+              <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
+              <span>Share new reports with the firm by default</span>
+            </label>
+            <div class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+              <label for="firmAutoShareSelect">My new reports</label>
+              <select id="firmAutoShareSelect"
+                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                <option value="follow">Follow the firm</option>
+                <option value="always">Always share with the firm</option>
+                <option value="never">Never share automatically</option>
+              </select>
+              <span id="firmAutoShareState" class="text-xs text-[#68707E]"></span>
+            </div>
+          </div>
+          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours. Automatic sharing never applies to reports you have already run.</p>
         </div>
       </div>
 
@@ -2349,6 +2369,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            Built by renderFirmShareNotice() from meta.firmShare, which the
            server sends only to somebody entitled by the firm. -->
       <p id="firmShareNotice" class="hidden no-print no-capture text-xs leading-6 text-[#5A6473] mb-3"></p>
+
+      <!-- "This went to your firm automatically." The per-report opt-out the
+           auto-share default ships with: it says what happened the moment it
+           happens, and offers Undo, rather than leaving a member to discover
+           on the shelf that a client's valuation is there. Same
+           no-print/no-capture reasoning as the notice above — it is about the
+           link, not the building. Built by renderAutoShareNotice(). -->
+      <p id="autoShareNotice" class="hidden no-print no-capture text-xs leading-6 text-[#5A6473] mb-3"></p>
 
       <!-- Toolbar (not captured in the image / not printed) -->
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4 no-print">
@@ -9183,6 +9211,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     updateCurationNote();
     if (!meta.sample && !meta.fromHistory && !meta.shared) {
       saveHistory(meta, parsed);
+      // The same three-part guard is what keeps auto-share off saved, shared
+      // and sample reports — i.e. what makes the firm setting apply only to
+      // work run after it was turned on, never retroactively.
+      maybeAutoShareToFirm(meta);
     }
     // Sharing publishes a real valuation; the sample is illustrative, so hide
     // the share link for it.
@@ -10931,7 +10963,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       row.appendChild(name);
       const note = document.createElement("span");
       note.className = "text-xs text-[#68707E]";
-      note.textContent = "invited you";
+      // Disclosed BEFORE the accept, never after: joining a firm whose default
+      // is on changes what happens to work you have not run yet, and being
+      // told once you are already in is being told too late. The spec's
+      // safeguard, and the reason this rides on the invitation itself.
+      note.textContent = inv.shareDefault === "reports"
+        ? "invited you · new reports you run would be shared with them (you can turn that off)"
+        : "invited you";
       row.appendChild(note);
       const btn = document.createElement("button");
       btn.type = "button";
@@ -11034,7 +11072,64 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     });
 
     document.getElementById("firmInviteWrap").classList.toggle("hidden", !data.canManage);
+    renderFirmAutoShare(firm);
   }
+
+  // The two auto-share switches. Presentation only — the server re-decides
+  // both, and org-access.js owns what the pair MEANS. Note this reads
+  // `autoShareOn` from the server rather than recomputing it from the other
+  // two fields: that combination is exactly the sort of rule that grows a
+  // second, subtly different copy.
+  function renderFirmAutoShare(firm) {
+    if (!firm) return;
+    const defWrap = document.getElementById("firmDefaultWrap");
+    const defToggle = document.getElementById("firmDefaultToggle");
+    const sel = document.getElementById("firmAutoShareSelect");
+    const state = document.getElementById("firmAutoShareState");
+
+    defWrap.classList.toggle("hidden", !firm.canManage);
+    defToggle.checked = firm.shareDefault === "reports";
+    sel.value = firm.autoShare || "follow";
+    // Says what will actually happen, in a sentence, because the two switches
+    // interact and "Follow the firm" alone does not tell a member which way
+    // the firm is currently set.
+    state.textContent = firm.autoShareOn
+      ? `On — new reports go to ${firm.name}`
+      : "Off — nothing is shared unless you share it";
+  }
+
+  async function saveFirmSetting(patch) {
+    const firm = myFirm();
+    if (!firm) return;
+    const state = document.getElementById("firmAutoShareState");
+    const before = state.textContent;
+    state.textContent = "Saving…";
+    try {
+      const res = await fetch("/api/org/settings", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id, ...patch }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      // Re-read from the server's own answer rather than assuming the switch
+      // landed the way it looked: the firm default and the personal override
+      // interact, and the server is the one that resolved them.
+      firm.shareDefault = body.shareDefault;
+      firm.autoShare = body.autoShare;
+      firm.autoShareOn = body.autoShareOn;
+      renderFirmAutoShare(firm);
+    } catch (e) {
+      state.textContent = e.message || "That didn't go through.";
+      setTimeout(() => { state.textContent = before; }, 4000);
+    }
+  }
+
+  document.getElementById("firmDefaultToggle").addEventListener("change", (e) => {
+    saveFirmSetting({ shareDefault: e.target.checked ? "reports" : "none" });
+  });
+  document.getElementById("firmAutoShareSelect").addEventListener("change", (e) => {
+    saveFirmSetting({ autoShare: e.target.value });
+  });
 
   document.getElementById("firmCreateBtn").addEventListener("click", async () => {
     const btn = document.getElementById("firmCreateBtn");
@@ -13529,6 +13624,79 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     el.classList.remove("hidden");
   }
 
+  // Auto-share: publish a FRESH report to the firm when the member's effective
+  // setting says so, and say so on screen with an Undo.
+  //
+  // Four rules:
+  //   - Fresh reports only. The caller's guard (not sample, not fromHistory,
+  //     not shared) is the same one saveHistory uses, so opening an old report
+  //     never publishes it. The setting is never retroactive.
+  //   - Once per report, guarded on meta.autoShared having been set. Without
+  //     it every subject-field edit re-runs renderResults and would re-publish
+  //     (or, worse, re-publish something the member had just undone).
+  //   - The state lives on meta, like everything else this file re-renders
+  //     from, so a repaint cannot lose the line or the Undo.
+  //   - It is fire-and-forget from the caller's point of view: a firm that
+  //     cannot be reached leaves the report exactly as it is, unshared and
+  //     unannounced. Failing quiet is right in that direction only.
+  async function maybeAutoShareToFirm(meta) {
+    try {
+      if (!currentUser || !meta || meta.autoShared) return;
+      await loadMyFirms();
+      const firm = myFirm();
+      if (!firm || !firm.autoShareOn) return;
+      const result = await publishCurrentReport({ visibility: "org", orgId: firm.id });
+      // A newer report may have started rendering while that was in flight;
+      // stamping this one's meta then would put the line under the wrong
+      // building.
+      if (currentMeta !== meta) return;
+      meta.autoShared = { firm: firm.name, id: result.id, url: result.url, undone: false };
+      renderAutoShareNotice();
+    } catch (_) {
+      // Deliberately silent: nothing was published, and a member who never
+      // asked for this notification does not need an error about it.
+    }
+  }
+
+  function renderAutoShareNotice() {
+    const el = document.getElementById("autoShareNotice");
+    if (!el) return;
+    const a = currentMeta && currentMeta.autoShared;
+    el.textContent = "";
+    if (!a || !a.firm) { el.classList.add("hidden"); return; }
+    if (a.undone) {
+      el.textContent = `Removed from ${a.firm}. Your colleagues can no longer open this link.`;
+      el.classList.remove("hidden");
+      return;
+    }
+    el.appendChild(document.createTextNode(
+      `Shared with ${a.firm} automatically, because that is your firm's setting. `));
+    // A real control, not a link to a settings page: the moment somebody wants
+    // this off is the moment they are looking at the report, and anything that
+    // costs a page change will not be used.
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "text-[#B91C1C] hover:text-[#991B1B] font-medium underline";
+    undo.textContent = "Undo";
+    undo.addEventListener("click", async () => {
+      undo.disabled = true;
+      try {
+        const res = await fetch("/api/shares/revoke", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: a.id }),
+        });
+        if (!res.ok) throw new Error("failed");
+        a.undone = true;
+        renderAutoShareNotice();
+      } catch (_) {
+        undo.disabled = false;
+        el.appendChild(document.createTextNode(" That didn't go through — try again."));
+      }
+    });
+    el.appendChild(undo);
+    el.classList.remove("hidden");
+  }
+
   function renderPrivateNotice() {
     const el = document.getElementById("privateNotice");
     if (!el) return;
@@ -13930,6 +14098,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderCompMarksLegend();
     renderPrivateNotice();
     renderFirmShareNotice();
+    renderAutoShareNotice();
     renderSubjectRow();
     const body = document.getElementById("tableBody");
     body.innerHTML = "";
@@ -15214,6 +15383,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     const body = await r.json();
     const result = {
+      id: body.id || null,
       url: body.url,
       invited: typeof body.invited === "number" ? body.invited : null,
       visibility: body.visibility || null,

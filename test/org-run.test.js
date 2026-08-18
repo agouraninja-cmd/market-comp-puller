@@ -349,6 +349,98 @@ test("joining a firm is something the joiner does", async (t) => {
   });
 });
 
+test("the firm's auto-share default, and the member's veto over it", async (t) => {
+  const tables = seedTables();
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+
+  const org = await (await fetch(srv.base + "/api/org",
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+  await fetch(srv.base + "/api/org/invite", as(BRAD, {
+    method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
+  }));
+
+  const settings = (user, body) => fetch(srv.base + "/api/org/settings",
+    as(user, { method: "POST", body: JSON.stringify({ orgId: org.id, ...body }) }));
+  const myOrg = async (user) =>
+    (await (await fetch(srv.base + "/api/org", as(user))).json());
+
+  await t.test("a firm starts with automatic sharing OFF", async () => {
+    // 028 defaults share_default to 'none'. A feature that publishes other
+    // people's work must never arrive switched on.
+    const me = await myOrg(BRAD);
+    assert.equal(me.orgs[0].shareDefault, "none");
+    assert.equal(me.orgs[0].autoShareOn, false);
+  });
+
+  await t.test("the invitation discloses the firm's setting BEFORE it is accepted", async () => {
+    await settings(BRAD, { shareDefault: "reports" });
+    const mike = await myOrg(MIKE);
+    assert.equal(mike.invites[0].shareDefault, "reports",
+      "joining changes what happens to work not yet run; being told after is too late");
+  });
+
+  await t.test("an owner sets the firm default; a plain member cannot", async () => {
+    await fetch(srv.base + "/api/org/accept",
+      as(MIKE, { method: "POST", body: JSON.stringify({ orgId: org.id }) }));
+    const refused = await settings(MIKE, { shareDefault: "none" });
+    assert.equal(refused.status, 403);
+    const still = await myOrg(BRAD);
+    assert.equal(still.orgs[0].shareDefault, "reports", "and nothing changed");
+  });
+
+  await t.test("a member who has not chosen follows the firm", async () => {
+    const mike = await myOrg(MIKE);
+    assert.equal(mike.orgs[0].autoShare, "follow");
+    assert.equal(mike.orgs[0].autoShareOn, true);
+  });
+
+  await t.test("a member's NO beats the firm's yes — the safeguard", async () => {
+    const r = await settings(MIKE, { autoShare: "never" });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.autoShareOn, false);
+    assert.equal(body.shareDefault, "reports", "the firm still says yes");
+    const mike = await myOrg(MIKE);
+    assert.equal(mike.orgs[0].autoShareOn, false, "and it survives a fresh read");
+    assert.equal((await myOrg(BRAD)).orgs[0].autoShareOn, true, "for him alone, not the firm");
+  });
+
+  await t.test("an admin turning the firm switch off and on again does not revive it", async () => {
+    // The rule that makes the veto worth having: read the other way round, a
+    // broker who said "not my client work" starts publishing again the next
+    // time an admin changes their mind, with nothing telling them.
+    await settings(BRAD, { shareDefault: "none" });
+    await settings(BRAD, { shareDefault: "reports" });
+    assert.equal((await myOrg(MIKE)).orgs[0].autoShareOn, false);
+  });
+
+  await t.test("a member's YES stands even when the firm's default is off", async () => {
+    await settings(BRAD, { shareDefault: "none" });
+    await settings(MIKE, { autoShare: "always" });
+    const mike = await myOrg(MIKE);
+    assert.equal(mike.orgs[0].autoShareOn, true, "publishing your own work is yours to decide");
+    assert.equal((await myOrg(BRAD)).orgs[0].autoShareOn, false);
+  });
+
+  await t.test("'follow' is a real choice, and junk is refused", async () => {
+    const back = await settings(MIKE, { autoShare: "follow" });
+    assert.equal(back.status, 200);
+    assert.equal((await back.json()).autoShare, "follow");
+    for (const junk of ["yes", "", true, "REPORTS"]) {
+      const r = await settings(MIKE, { autoShare: junk });
+      assert.equal(r.status, 400, JSON.stringify(junk));
+    }
+    assert.equal((await settings(BRAD, { shareDefault: "everything" })).status, 400);
+    assert.equal((await settings(BRAD, {})).status, 400, "a call that changes nothing is a mistake");
+  });
+
+  await t.test("a non-member cannot read or set a firm's settings", async () => {
+    assert.equal((await settings(OUTSIDER, { autoShare: "always" })).status, 403);
+  });
+});
+
 test("a firm share still refuses to carry whole vault comps", async (t) => {
   const tables = seedTables();
   const ctx = await bootWithDb(tables);

@@ -43,11 +43,11 @@ intent, the devlog states history.
   firm's whole record — searchable, attributed, everyone's own shares
   included. That table becomes worth building when the shelf holds something
   a share cannot: a BOV pipeline row, or an individual vault comp.
-  What is left: **`orgs.share_default`**, auto-publishing a member's new
-  reports to the firm, which is decision #2 in the spec's §1 and is HELD
-  rather than skipped — it changes what members experience without them
-  asking, so it wants the owner's yes plus disclosure on join and a
-  per-report opt-out, and it is never retroactive. Then **slice 3**, the
+  **Auto-share shipped 2026-08-16** on the owner's yes (decision #2 in the
+  spec's §1, now answered): a firm can share members' new reports
+  automatically, off by default, never retroactive, disclosed on the
+  invitation, undoable per report, and with a member-level `never` that an
+  admin cannot override — migration 029. What is left: **slice 3**, the
   shared vault (opt-in per import, attributed, with the vault's "Visible
   only to you" copy rewritten to match); and **slice 4**, per-seat billing —
   until a firm asks to pay, seats are granted by hand, the `vault_beta`
@@ -62,8 +62,9 @@ intent, the devlog states history.
   `user_id=eq.` filter is widened to an org** — firm reads are new functions
   against new tables, migration 013's separate-tables rule (a test fails the
   build if the widened form appears).
-  Four of the five decisions in the spec's §1 are still open, including the
-  attorney question below; slice 1 was built because none of them change it.
+  Three of the five decisions in the spec's §1 are still open, including the
+  attorney question below; slices 1 and 2 were built because none of them
+  change either.
 - **`/api/geocode` should take a POST, not a query string.** The two
   follow-ons left by the private-comp geocoding work, in the order Owen set
   when he answered section 7 — this one ABOVE import-time geocoding, not

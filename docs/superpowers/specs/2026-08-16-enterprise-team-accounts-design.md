@@ -1,9 +1,13 @@
 # Enterprise accounts: a firm as an account, not a login everyone shares
 
-Status: **DESIGN ONLY — nothing here is built.** Written 2026-08-16 in answer
-to Chuck's email of the same day. Sections 1 and 12 hold questions only the
-owner and the attorney can answer; sections 2-11 are the design that follows
-from the answers this document recommends.
+Status: **SLICES 1-2 SHIPPED 2026-08-16, plus auto-share.** Written the same
+day in answer to Chuck's email, as a design; what shipped is recorded against
+each slice in §10 and against decision #2 in §1. Slice 2 landed in a shape
+this document did not predict — no `org_shelf_items` table — and §4/§5 are
+left as written, with the correction noted in §10, because the reasoning that
+led there is still what a future editor needs. Sections 1 and 12 hold the
+questions still open, three of which only the owner and the attorney can
+answer.
 
 Chuck's email, quoted because the whole design turns on the example in it:
 
@@ -73,9 +77,15 @@ These gate the build. Recommended answers in brackets; each is argued below.
    the uploader owns their vault; the firm keeps whatever was published to the
    shelf, as a snapshot.] This is the one that needs the attorney, and it is
    the same attorney question already open in ROADMAP about broker data.
-2. **Does a member's new work go to the shelf by default?** [Recommended: the
-   firm admin sets a default at creation; the member can override per report;
-   never retroactive.]
+2. **Does a member's new work go to the shelf by default?** **ANSWERED YES,
+   2026-08-16, and shipped** (migration 029). An owner or admin sets the firm
+   default; it is off until they do; it never applies to reports already run;
+   the invitation discloses it before anybody accepts; every auto-shared
+   report carries an Undo; and each member has a three-state switch of their
+   own whose `never` beats the firm permanently. That last one is the
+   safeguard that made the rest acceptable: without it, one person's setting
+   silently publishes every colleague's client work and the only recourse is
+   leaving the firm.
 3. **May a firm-shared vault comp blend into a colleague's report?**
    [Recommended: yes, opt-in per import, attributed by name — this is the
    feature's whole value, and §7 is the safe way to do it.]
@@ -318,9 +328,16 @@ Build the seat billing when a firm asks to pay for seats. Not before.
   accept, `org-access.js`, the `canReadShare` org branch, and "Shared with my
   firm" beside the existing "Shared with me" on `/desk`. No shelf, no vault.
   This alone delivers Chuck's example for anything already shareable as a
-  link, and it is the demo.
-- **Slice 2 — the shelf.** `org_shelf_items`, publish-to-firm, the firm feed,
-  the `share_default`, BOV publishing.
+  link, and it is the demo. **SHIPPED 2026-08-16** (migration 028).
+- **Slice 2 — the shelf.** ~~`org_shelf_items`~~, publish-to-firm, the firm
+  feed, the `share_default`, BOV publishing. **SHIPPED 2026-08-16, without the
+  table.** Reports already live in `shared_reports` with `visibility='org'`, so
+  a shelf table would have been a second copy and two sources of truth for one
+  thing; `GET /api/org/shelf` reads the firm's whole record directly, filtered
+  in the browser like `/vault`. `share_default` shipped with it (see §1 #2).
+  The table becomes worth building when the shelf holds something a share
+  cannot — a BOV pipeline row, or an individual vault comp — which is also the
+  form BOV publishing will take.
 - **Slice 3 — the shared vault.** §7, opt-in, attributed, with the conditional
   vault copy from §2.
 - **Slice 4 — seats.** §9, when someone asks to pay.

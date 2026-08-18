@@ -2987,31 +2987,57 @@ async function orgMembershipsFor(email) {
   if (!DB_CONFIGURED || !mine) return [];
   return (await sbRequest("GET",
     `org_members?email=eq.${encodeURIComponent(mine)}` +
-    `&select=id,org_id,email,role,invited_at,joined_at,removed_at` +
+    `&select=id,org_id,email,role,invited_at,joined_at,removed_at,auto_share` +
     `&order=invited_at.desc&limit=100`)) || [];
 }
 
-// Firm names for a set of ids, as a Map. A SECOND QUERY rather than a
-// PostgREST embedded `orgs(id,name)` on the membership read — 016's note names
-// this as the house pattern ("where it needs a join it runs two queries and
-// stitches them in JS"), and it keeps the membership read to filters a fake
-// PostgREST can parse, which is what lets test/org-run.test.js execute this
-// whole feature rather than only its refusals.
+// Firms for a set of ids, as a Map of id -> the row. A SECOND QUERY rather
+// than a PostgREST embedded `orgs(id,name)` on the membership read — 016's
+// note names this as the house pattern ("where it needs a join it runs two
+// queries and stitches them in JS"), and it keeps the membership read to
+// filters a fake PostgREST can parse, which is what lets test/org-run.test.js
+// execute this whole feature rather than only its refusals.
 //
-// Never throws: a name is a label. A firm whose name could not be read still
-// admits its members, and the desk says "your firm" rather than failing.
-async function orgNamesByIds(ids) {
+// It carries `share_default` as well as the name because the auto-share rule
+// needs both, and a second read for the setting would be a second thing to
+// keep in step with membership.
+//
+// Never throws. A name is a label — a firm whose row could not be read still
+// admits its members, and the desk says "your firm". Note what that failure
+// does to auto-share: org-access.js reads a missing row as share_default
+// 'none', so a database blip suppresses automatic publishing rather than
+// causing it. That is the right direction and it is not an accident.
+async function orgsByIds(ids) {
   const out = new Map();
   try {
     const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
     if (!DB_CONFIGURED || !list.length) return out;
     const rows = await sbRequest("GET",
-      `orgs?id=in.(${pgInList(list)})&select=id,name&limit=${list.length}`);
-    for (const r of rows || []) out.set(String(r.id), r.name || "");
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default&limit=${list.length}`);
+    for (const r of rows || []) out.set(String(r.id), r);
   } catch (err) {
-    console.error("Firm name read failed (membership is unaffected):", err.message);
+    console.error("Firm read failed (membership is unaffected):", err.message);
   }
   return out;
+}
+
+// The firm's default, set by an owner or an admin. Scoped by id alone because
+// the route has already proven the caller manages this firm; the value is
+// validated against org-access.js's vocabulary before it gets here.
+async function setOrgShareDefault(orgId, value) {
+  return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+    { share_default: value }, { prefer: "return=minimal" });
+}
+
+// The member's own override (migration 029). Scoped by BOTH the org and the
+// caller's own email IN THE QUERY, never checked after the fact: this is the
+// switch that lets somebody refuse an admin's decision about their work, so
+// knowing an org id must not be enough to flip anybody else's.
+async function setMemberAutoShare(orgId, email, value) {
+  return sbRequest("PATCH",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=eq.${encodeURIComponent(ORG.normalizeEmail(email))}&removed_at=is.null`,
+    { auto_share: value }, { prefer: "return=representation" });
 }
 
 // The org ids whose firm shares this person may open. THE widest thing in the
@@ -3133,7 +3159,7 @@ async function orgShelfRows(orgId) {
 }
 
 // Display names for a set of user ids, as a Map. A SECOND QUERY and a stitch,
-// the house pattern, for the reason orgNamesByIds gives.
+// the house pattern, for the reason orgsByIds gives.
 //
 // Never throws, and the caller falls back to "a colleague": attribution is a
 // label on a shelf row, and losing it must not cost the row.
@@ -15990,17 +16016,18 @@ const server = http.createServer((req, res) =>
       // one reader's context onto every later reader's copy.
       if (rec.share.visibility === "org" && rec.share.org_id
         && (decision.reason === "firm" || decision.reason === "owner")) {
-        const [names, people] = await Promise.all([
-          orgNamesByIds([rec.share.org_id]),
+        const [firms, people] = await Promise.all([
+          orgsByIds([rec.share.org_id]),
           usersByIds([rec.share.user_id]),
         ]);
         const who = rec.share.user_id ? people.get(String(rec.share.user_id)) : null;
+        const firmRow = firms.get(String(rec.share.org_id));
         return sendJson(res, 200, {
           ...rec.payload,
           meta: {
             ...(rec.payload && rec.payload.meta),
             firmShare: {
-              firm: names.get(String(rec.share.org_id)) || "your firm",
+              firm: (firmRow && firmRow.name) || "your firm",
               sharedBy: (who && (who.name || who.email)) || "a colleague",
               mine: Boolean(user && rec.share.user_id && String(user.id) === String(rec.share.user_id)),
               sharedAt: rec.share.created_at || null,
@@ -16038,7 +16065,7 @@ const server = http.createServer((req, res) =>
         listSharesForOwner(user.id),
         listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
       ]);
-      const firmNames = await orgNamesByIds(owned.map((r) => r.org_id).filter(Boolean));
+      const firmRows = await orgsByIds(owned.map((r) => r.org_id).filter(Boolean));
       const brief = (payload) => ({
         address: (payload && payload.meta && payload.meta.address) || "",
         type: (payload && payload.meta && payload.meta.type) || "",
@@ -16050,7 +16077,8 @@ const server = http.createServer((req, res) =>
           // and "Anyone with the link" was what a firm share used to read as —
           // a sharer told their firm-only report was public is the one wrong
           // answer here that could make them forward it.
-          firm: r.org_id ? (firmNames.get(String(r.org_id)) || "Your firm") : "",
+          firm: r.org_id
+            ? ((firmRows.get(String(r.org_id)) || {}).name || "Your firm") : "",
           includePrivate: r.include_private, revokedAt: r.revoked_at, createdAt: r.created_at,
           url: `${SITE_URL}/r/${r.id}`,
           viewers: (r.report_viewers || []).map((v) => ({
@@ -16242,12 +16270,24 @@ const server = http.createServer((req, res) =>
       return membership;
     };
 
-    const orgSummary = (row, names) => ({
-      id: row.org_id,
-      name: names.get(String(row.org_id)) || "",
-      role: ORG.roleOf(row),
-      canManage: ORG.canManageMembers(row),
-    });
+    const orgSummary = (row, firms) => {
+      const org = firms.get(String(row.org_id)) || null;
+      return {
+        id: row.org_id,
+        name: (org && org.name) || "",
+        role: ORG.roleOf(row),
+        canManage: ORG.canManageMembers(row),
+        // The firm's setting, and this member's own answer to it, and the
+        // answer that actually applies. All three, because the desk has to
+        // show a member following a default they did not set WITHOUT making it
+        // look like their own choice — and because an admin needs to see that
+        // a colleague has opted out rather than wonder why nothing arrives.
+        shareDefault: ORG.shareDefaultOf(org),
+        autoShare: row.auto_share === true ? "always"
+          : row.auto_share === false ? "never" : "follow",
+        autoShareOn: ORG.autoShareFor({ org, membership: row }),
+      };
+    };
 
     // --- GET /api/org — my firms and my pending invites ---------------------
     if (req.method === "GET" && orgPath === "/api/org") {
@@ -16258,17 +16298,23 @@ const server = http.createServer((req, res) =>
         const ent = await entitlementsFor(req);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
-        const names = await orgNamesByIds([...mine, ...pending].map((r) => r.org_id));
+        const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
         return sendJson(res, 200, {
           // Whether this account may CREATE one. The browser uses it to decide
           // between an invitation to start a firm and the paywall; it is
           // presentation only, and POST /api/org checks it again.
           canCreate: ent.canUseOrg === true,
-          orgs: mine.map((r) => orgSummary(r, names)),
+          orgs: mine.map((r) => orgSummary(r, firms)),
           invites: pending.map((r) => ({
             id: r.id,
             orgId: r.org_id,
-            name: names.get(String(r.org_id)) || "",
+            name: (firms.get(String(r.org_id)) || {}).name || "",
+            // Disclosed BEFORE the accept, not after: joining a firm whose
+            // default is on changes what happens to the work you have not run
+            // yet, and being told afterwards is being told too late. The
+            // spec's safeguard, and the reason this rides on the invite rather
+            // than on a settings page nobody opens.
+            shareDefault: ORG.shareDefaultOf(firms.get(String(r.org_id))),
             invitedAt: r.invited_at,
           })),
         });
@@ -16454,6 +16500,73 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Firm invite failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't send those invitations. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org/settings — the auto-share switches --------------------
+    //
+    // TWO SWITCHES ON ONE ROUTE, with different permissions, because they are
+    // two halves of one decision and splitting them would let the pair drift:
+    //
+    //   shareDefault  the FIRM's default, owner/admin only. An admin's
+    //                 decision about other people's work.
+    //   autoShare     THIS member's own answer to it, any active member, and
+    //                 always their own row. `never` beats the firm default
+    //                 permanently — that override is the safeguard that let
+    //                 this feature be built at all (spec §5), so it is not a
+    //                 courtesy an admin can revoke.
+    //
+    // A call may carry either, or both.
+    if (req.method === "POST" && orgPath === "/api/org/settings") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const body = await readOrgBody();
+        const orgId = String((body && body.orgId) || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+
+        let changed = false;
+        if (body.shareDefault !== undefined) {
+          if (!ORG.canManageMembers(membership)) {
+            return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+          }
+          if (!ORG.SHARE_DEFAULTS.includes(body.shareDefault)) {
+            return sendJson(res, 400, { error: "Unrecognized setting." });
+          }
+          await setOrgShareDefault(orgId, body.shareDefault);
+          changed = true;
+        }
+        if (body.autoShare !== undefined) {
+          const value = ORG.autoShareValue(body.autoShare);
+          // `undefined` is the refusal and `null` is a real value ("follow"),
+          // which is why this tests for undefined explicitly rather than
+          // truthiness — a junk choice must not quietly mean follow.
+          if (value === undefined) return sendJson(res, 400, { error: "Unrecognized setting." });
+          await setMemberAutoShare(orgId, user.email, value);
+          changed = true;
+        }
+        if (!changed) return sendJson(res, 400, { error: "Nothing to change." });
+
+        // Answer with the state that now APPLIES, re-read rather than
+        // predicted: the two switches interact, so a browser that computed the
+        // result itself would be a second copy of autoShareFor.
+        const rows = await orgMembershipsFor(user.email);
+        const mine = ORG.membershipOf(
+          rows.filter((r) => String(r.org_id) === orgId), user.email);
+        const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
+        return sendJson(res, 200, {
+          ok: true,
+          shareDefault: ORG.shareDefaultOf(org),
+          autoShare: mine && mine.auto_share === true ? "always"
+            : mine && mine.auto_share === false ? "never" : "follow",
+          autoShareOn: ORG.autoShareFor({ org, membership: mine }),
+        });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm settings update failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that setting. Please try again in a minute." });
       });
       return;
     }

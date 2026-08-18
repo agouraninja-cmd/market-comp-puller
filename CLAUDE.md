@@ -935,12 +935,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     column. Deploy-first breaks every legacy public link — including ones
     already mailed to property owners with no account — not just the new
     feature.
-  What is NOT built: **`orgs.share_default`** — auto-publishing a member's new
-  reports to the firm — which is a deliberate hold, not an omission. It is
-  open decision #2 in the spec's §1, and it changes what members experience
-  without them asking for it, so it needs the owner's yes plus the two
-  safeguards the spec names (disclosed on join, per-report opt-out) and is
-  **never retroactive**. Also not built: the shared vault (§7) and per-seat
+  **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
+  029, owner's yes 2026-08-16). An owner or admin can set the firm to share
+  members' NEW reports automatically; `POST /api/org/settings` carries both
+  switches. It ships with the safeguards the spec made a condition of building
+  it at all, and each one is load-bearing:
+  - **Off by default**, and an unrecognized `share_default` reads as `none`.
+    The failure that matters is publishing work somebody did not mean to
+    publish, and unlike a missing share it cannot be undone by trying again.
+  - **Never retroactive.** It fires from the same three-part guard
+    `saveHistory` uses (not sample, not `fromHistory`, not `shared`), so
+    opening an old report never publishes it.
+  - **The member has a veto that beats the firm.** `org_members.auto_share` is
+    NULLABLE for three states — null follow, true always, false never — and
+    `false` survives an admin switching the firm off and on again. A boolean
+    with a default would collapse "has not chosen" into one of the other two,
+    and a broker who said "not my client work" would start publishing again
+    the next time an admin changed their mind.
+  - **Disclosed before the accept, not after.** A pending invite carries the
+    firm's `shareDefault`, because joining a firm whose default is on changes
+    what happens to work not yet run.
+  - **Per-report opt-out on the report itself.** `renderAutoShareNotice()`
+    says it happened and offers Undo (which revokes), because the moment
+    somebody wants this off is the moment they are looking at the report.
+    Guarded on `meta.autoShared`, or every subject-field repaint would
+    re-publish — including something just undone.
+  Also not built: the shared vault (§7) and per-seat
   billing. Seats are granted by hand, the `vault_beta` precedent.
   `orgs.share_default` and `orgs.seats` ship as unwritten columns so both are
   code changes rather than migrations — the same reason `hub_items.status`

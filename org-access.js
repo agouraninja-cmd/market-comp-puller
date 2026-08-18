@@ -149,6 +149,57 @@ function canPublishToOrg(membership) {
   return isActive(membership);
 }
 
+// The firm's auto-share setting. 'reports' means a member's NEW reports go to
+// the shelf as they are run; 'none' means nothing does. Anything
+// unrecognized — a typo, a value added later without updating this — reads as
+// 'none', because the failure that matters here is publishing somebody's work
+// they did not mean to publish, and it is not undoable in the way a missing
+// share is.
+const SHARE_DEFAULTS = ["none", "reports"];
+function shareDefaultOf(org) {
+  const v = org && typeof org === "object" ? String(org.share_default || "") : "";
+  return SHARE_DEFAULTS.includes(v) ? v : "none";
+}
+
+/**
+ * Does THIS member's next report go to the firm's shelf automatically?
+ *
+ * The safeguard the spec attached to `orgs.share_default` before it could be
+ * built at all: the firm default is an ADMIN's decision about other people's
+ * work, so it must be overridable by the person whose work it is. Hence three
+ * states on `org_members.auto_share` (migration 029) rather than a boolean:
+ *
+ *   null   has not chosen  -> follow the firm
+ *   true   always, even if the firm's default is off — publishing your OWN
+ *          report to your OWN firm is a thing you may decide for yourself
+ *   false  never, and an admin turning the firm switch on cannot override it
+ *
+ * `false` beating the firm is the whole point. Read it the other way round and
+ * a broker who has said "not my client work" starts publishing again the next
+ * time an admin changes their mind, with nothing telling them.
+ *
+ * Inactive membership is always false: a pending invite and a removed
+ * colleague have no shelf to publish to.
+ */
+function autoShareFor({ org, membership } = {}) {
+  if (!isActive(membership)) return false;
+  if (membership.auto_share === false) return false;
+  if (membership.auto_share === true) return true;
+  return shareDefaultOf(org) === "reports";
+}
+
+// What a member may set their own switch to. Deliberately accepts the three
+// states by name rather than a boolean, so a caller cannot express "unset" by
+// accident: "follow" is a real choice a member makes (back to the firm's
+// decision), not the absence of one.
+const AUTO_SHARE_CHOICES = ["follow", "always", "never"];
+function autoShareValue(choice) {
+  if (choice === "always") return true;
+  if (choice === "never") return false;
+  if (choice === "follow") return null;
+  return undefined;            // not a choice — the caller refuses it
+}
+
 /**
  * May `actorEmail` remove the member row `targetId` from this firm?
  *
@@ -224,7 +275,9 @@ function normalizeInviteEmails(raw, { self = "", existing = [] } = {}) {
 
 module.exports = {
   ROLES, MANAGE_ROLES, MAX_MEMBERS, MAX_INVITES_PER_CALL, MAX_NAME_LEN,
+  SHARE_DEFAULTS, AUTO_SHARE_CHOICES,
   normalizeEmail, roleOf, isActive, isPending,
   validateOrgName, membershipOf, pendingInviteOf, activeOrgIds,
   canManageMembers, canPublishToOrg, canRemoveMember, normalizeInviteEmails,
+  shareDefaultOf, autoShareFor, autoShareValue,
 };

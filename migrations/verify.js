@@ -163,6 +163,11 @@ const COLUMNS = [
   // membership columns only cost the new feature; this one costs the old one.
   ["shared_reports",    ["org_id"],                             "028-enterprise-orgs.sql"],
   ["org_members",       ["joined_at", "removed_at", "role"],    "028-enterprise-orgs.sql"],
+  // 029 is the member's half of the firm's auto-share default. Its absence is
+  // quiet rather than fatal — every member reads as "has not chosen" and
+  // follows the firm — which is exactly why it is named here: a member who
+  // said NO would silently start following the firm again.
+  ["org_members",       ["auto_share"],                         "029-org-auto-share.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

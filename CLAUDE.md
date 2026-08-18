@@ -488,6 +488,14 @@ dependency. `.env` is git-ignored — never commit it.
   the same easy comps. Re-measure on real traffic before flipping it on.
   Each search logs `Anthropic call [lane]: Ns · N search(es) · N out / N in
   tokens`, which is how any of this gets re-measured.
+- `LEAD_METRO` — optional `on`/`off`, **default ON**. Matches broker lead
+  coverage across `market.js`'s curated `METRO_GROUPS`, so a Boise-covering
+  broker sees Meridian leads. Reads the same table as `CORPUS_METRO` and is
+  switched separately on purpose — one decides which comps a search may draw
+  on, the other decides who sees a stranger's enquiry, and rolling back one is
+  no reason to roll back the other. `off` restores exact-market matching in
+  the inbox, the intro gate and the new-lead alert together. Rules live in
+  `broker-leads.js`, so `npm test` covers them.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
@@ -1826,6 +1834,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     through the module-level `lastGut`/`lastReps` rather than a changed return
     type, because the return value is the outlier map the table reads. Four
     further rules:
+    - **Four filters, and only one of them is a search.** Market and Type
+      narrow to a slice; Deal (Sale/Lease) exists because the two are priced
+      in different units and a view holding both can state no median; and the
+      Find box searches address, notes, market, type and tenancy, ANDing its
+      terms so two words mean both rather than the phrase. All four compose,
+      all four are cleared together, and **opening one import clears every one
+      of them** — a search left over from the previous view would hide the
+      comps that import just landed. **An empty result names which of the two
+      empty states it is**: "No comps match this filter" with a Clear link
+      when the book is non-empty, and the upload invitation only when it is
+      genuinely empty. Telling a broker who searched for a deal they own that
+      there is "nothing here yet" reads as the vault having lost their book —
+      the same misreport-an-outage-as-absence trap the hub list and the lead
+      inbox each had to fix.
     - **The page fetches `?limit=1000` and filters in the BROWSER.** It used to
       re-query with `market=`/`type=` params, which cannot work now: the rollup
       counts the whole book, and server-side filtering leaves the browser
@@ -2154,6 +2176,31 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead
   anonymization allowlist, coverage seeding, notify dedupe); server.js owns
   every read/write and computes `market` with `marketOf()` before calling in.
+  **Metro matching (2026-08-17).** Coverage matching reads the same curated
+  `METRO_GROUPS` corpus retrieval does, so a broker covering Boise industrial
+  also sees Meridian industrial leads — those cities trade as one market, and
+  until this shipped that table was read by retrieval and by nothing else.
+  Four rules. **The adjacency function is INJECTED, never required**:
+  `broker-leads.js` does not know what an address or a metro is (its header
+  rule), so `filterLeadsForCoverage(leads, cov, siblingsOf)` takes it as an
+  optional third argument and behaves exactly as it did before when omitted —
+  which is what keeps every other caller and the whole test file safe by
+  default. **The property type is never widened with the geography**: an
+  industrial broker one suburb over is still an industrial broker, and
+  crossing types would put a retail enquiry in their inbox on the strength of
+  a shared postcode. **All THREE call sites move together or none do** — the
+  inbox, the intro gate (`filterLeadsForCoverage` again, so a visible lead is
+  always actionable) and the new-lead alert, which starts from one lead and
+  therefore widens from the other end via `coverageMarketsFor` into a
+  PostgREST `market=in.(...)`; a broker emailed about a lead the inbox hides,
+  or shown one they were never told about, is a bug either way, and a test
+  states the two as one rule. **And the reach is disclosed**: the API adds
+  `nearby` per coverage row and the chip reads "+7 nearby", because a lead
+  from a city the broker never typed otherwise reads as a bug in the one
+  surface whose whole job is to be trusted about where their business is.
+  Rollback is `LEAD_METRO=off`, deliberately separate from `CORPUS_METRO`:
+  the two read one table but answer different questions — which comps a
+  search may draw on, versus which PEOPLE see a stranger's enquiry.
   `GET|POST|DELETE /api/broker/coverage` — the broker's list of market +
   property-type pairs to watch. `GET` lists it; `POST` adds one pair
   (validated against `LEADSVC.isCanonicalMarket` and `VAULT.PROPERTY_TYPES`,

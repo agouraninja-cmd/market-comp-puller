@@ -42,22 +42,73 @@ function coverageKey(market, propertyType) {
   return `${String(market || "").trim()}|${String(propertyType || "").trim()}`;
 }
 
-function buildCoverageSet(rows) {
+// `siblingsOf` is OPTIONAL and INJECTED, never required from market.js: this
+// module's whole discipline is that it does not know what an address or a
+// metro is -- the caller computes market with marketOf() before calling in,
+// and now supplies the adjacency table the same way. Omit it and every
+// behaviour below is byte-identical to before metro matching existed, which
+// is what keeps the notify path, the tests, and any future caller safe by
+// default.
+function buildCoverageSet(rows, siblingsOf) {
   const set = new Set();
+  const near = typeof siblingsOf === "function" ? siblingsOf : null;
   for (const r of rows || []) {
     if (!r) continue;
-    if (!String(r.market || "").trim() || !String(r.property_type || "").trim()) continue;
-    set.add(coverageKey(r.market, r.property_type));
+    const market = String(r.market || "").trim();
+    const type = String(r.property_type || "").trim();
+    if (!market || !type) continue;
+    set.add(coverageKey(market, type));
+    // A broker covering Boise industrial is covering Meridian industrial:
+    // those cities trade as one market, which is exactly what METRO_GROUPS
+    // records. The property type is NOT widened with it -- an industrial
+    // broker in the next suburb is still an industrial broker, and crossing
+    // types would put a retail lead in their inbox on the strength of
+    // geography alone.
+    if (!near) continue;
+    for (const sib of near(market) || []) {
+      if (isCanonicalMarket(sib)) set.add(coverageKey(sib, type));
+    }
   }
   return set;
 }
 
 // Leads arrive with `market` already computed by the caller (marketOf).
-// Matching is EXACT, deliberately: both sides are written in canonical form,
-// and a lenient match here would paper over a drift bug worth surfacing.
-function filterLeadsForCoverage(leads, coverageRows) {
-  const set = buildCoverageSet(coverageRows);
+// Matching is EXACT against that set, deliberately: both sides are written in
+// canonical form, and a lenient match here (substring, case-folding, fuzzy
+// city names) would paper over a drift bug worth surfacing. Metro adjacency is
+// not leniency -- it is a curated list of cities that share one submarket,
+// expanded into exact keys above.
+function filterLeadsForCoverage(leads, coverageRows, siblingsOf) {
+  const set = buildCoverageSet(coverageRows, siblingsOf);
   return (leads || []).filter((l) => l && set.has(coverageKey(l.market, l.type)));
+}
+
+// The market keys a NEW lead should alert on: its own, plus the rest of its
+// metro. The inbox widens by expanding the broker's coverage; the notify path
+// cannot -- it starts from one lead and queries coverage rows in SQL -- so it
+// widens from the other end and asks for every market in the group. The two
+// meet in the middle and agree, which they must: a broker who can see a lead
+// in their inbox and was never emailed about it, or emailed about one the
+// inbox then hides, is a bug either way.
+//
+// Always includes the market itself, and only ever returns canonical keys, so
+// the caller can interpolate the result straight into a PostgREST in.() list.
+function coverageMarketsFor(market, siblingsOf) {
+  const key = String(market || "").trim();
+  if (!isCanonicalMarket(key)) return [];
+  const out = [key];
+  const near = typeof siblingsOf === "function" ? siblingsOf : null;
+  for (const sib of (near ? near(key) : []) || []) {
+    if (isCanonicalMarket(sib) && out.indexOf(sib) < 0) out.push(sib);
+  }
+  return out;
+}
+
+// How many EXTRA markets a coverage row reaches, for the page to disclose.
+// A broker whose stated coverage says "Boise, ID" and whose inbox shows a
+// Meridian lead should not have to wonder whether that is a bug.
+function nearbyCountFor(market, siblingsOf) {
+  return Math.max(0, coverageMarketsFor(market, siblingsOf).length - 1);
 }
 
 // THE PRIVACY WALL for leads. A broker-facing lead is exactly these six
@@ -126,6 +177,8 @@ module.exports = {
   coverageKey,
   buildCoverageSet,
   filterLeadsForCoverage,
+  coverageMarketsFor,
+  nearbyCountFor,
   anonymizeLead,
   seedCoverageFromSubmissions,
   cleanSizeSqft,

@@ -2341,6 +2341,17 @@ const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SE
 // immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a
 // reason to search less. Default ON; `off` restores exact-market matching.
 const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
+// Lead matching across a metro: a broker covering Boise industrial also sees
+// Meridian industrial leads. Reads the SAME curated METRO_GROUPS as
+// CORPUS_METRO but is switched separately, because the two answer different
+// questions about the same table -- one decides which comps a search may
+// draw on, the other decides which PEOPLE see a stranger's enquiry, and
+// wanting to roll back one is no reason to roll back the other.
+// `LEAD_METRO=off` restores exact-market matching everywhere below.
+const LEAD_METRO = !/^(0|off|false|no)$/i.test(String(process.env.LEAD_METRO || ""));
+// One expression, three call sites (inbox, intro gate, new-lead alert), so the
+// flag cannot end up half-applied and show a broker a lead they may not act on.
+const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
 
 // Saved deals within 10 miles (CRE) / 1 mile (houses) join the report at
 // serialization. Default ON; `off` restores search-only reports. Harvest
@@ -12091,8 +12102,16 @@ const server = http.createServer((req, res) =>
             // A non-canonical market (marketOf's no-state fallback) can never
             // match a coverage row, so skip the round trip entirely.
             if (!LEADSVC.isCanonicalMarket(market) || !lead.type) return;
+            // in.() over the lead's whole metro, not eq. on its one city:
+            // the inbox widens a broker's coverage outward, and this has to
+            // meet it from the other end or a Boise broker sees a Meridian
+            // lead they were never told about. Values are canonical "City, ST"
+            // from a curated table, and quoted because they contain a comma.
+            const markets = LEADSVC.coverageMarketsFor(market, leadSiblings());
+            if (!markets.length) return;
+            const inList = markets.map((m) => `"${encodeURIComponent(m)}"`).join(",");
             const cov = await sbRequest("GET",
-              `broker_coverage?market=eq.${encodeURIComponent(market)}` +
+              `broker_coverage?market=in.(${inList})` +
               `&property_type=eq.${encodeURIComponent(lead.type)}&select=user_id&limit=200`);
             const ids = LEADSVC.notifyTargets(cov);
             if (!ids.length) return;
@@ -13234,11 +13253,16 @@ const server = http.createServer((req, res) =>
           console.warn("broker leads: 90-day BOV window hit the 200-row cap — brokers in quiet markets may be missing leads");
         }
         const withMarket = (leads || []).map((l) => ({ ...l, market: marketOf(l.address) }));
-        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || []);
+        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || [], leadSiblings());
         const introSet = new Set((intros || []).map((r) => String(r.lead_id)));
         return sendJson(res, 200, {
           leads: mine.map((l) => LEADSVC.anonymizeLead(l, introSet)),
-          coverage: cov || [],
+          // `nearby` is how many EXTRA markets each row reaches. Without it a
+          // broker whose coverage says "Boise, ID" sees a Meridian lead in
+          // their inbox and has no way to tell that from a bug.
+          coverage: (cov || []).map((c) => ({
+            ...c, nearby: LEADSVC.nearbyCountFor(c.market, leadSiblings()),
+          })),
         });
       } catch (err) {
         console.error("broker leads read failed:", err.message);
@@ -13484,7 +13508,7 @@ const server = http.createServer((req, res) =>
         const cov = await sbRequest("GET",
           `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=market,property_type&limit=500`);
         const visible = LEADSVC.filterLeadsForCoverage(
-          [{ ...lead, market: marketOf(lead.address) }], cov || []);
+          [{ ...lead, market: marketOf(lead.address) }], cov || [], leadSiblings());
         if (!visible.length) return sendJson(res, 404, { error: "That lead no longer exists." });
         // Read-then-insert so we can tell "new" from "already requested" (and
         // avoid double-emailing the owner); the upsert below still backstops

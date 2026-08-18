@@ -2265,3 +2265,126 @@ test("a failed hub load says so instead of inviting you to create your first hub
   const fn = src.match(/function hubsFailed\(text\)\{[\s\S]*?\n  \}/)[0];
   assert.match(fn, /hubShow\(\$\("hubEmpty"\),false\)/);
 });
+
+// ---------------------------------------------------------------------------
+// Find: one box over a book the page already holds
+//
+// The Market/Type/Deal dropdowns narrow to a SLICE. This finds one deal inside
+// it — which is what a broker with 400 comps actually wants, and the market
+// they would have to pick first is often the thing they are trying to recall.
+// ---------------------------------------------------------------------------
+
+const typeFind = async (doc, text) => {
+  doc.getElementById("fText").value = text;
+  doc.getElementById("fText").fire("input", {});
+  await tick();
+};
+
+test("the filter row offers a find box", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /id="fText"/);
+  assert.match(html, /type="search"/);
+});
+
+test("typing narrows the table to matching addresses", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", address: "6728 W Fairview Ave" }),
+    comp({ id: "c2", address: "8400 W Mission Blvd" }),
+  ]);
+  await typeFind(doc, "fairview");
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, /Fairview/);
+  assert.ok(!body.includes("Mission"), "a non-matching comp must leave the view");
+});
+
+test("it searches notes too, where the tenant name lives", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", address: "100 Main St", notes: "Leased to Sherwin-Williams" }),
+    comp({ id: "c2", address: "200 Oak Ave", notes: "Owner-occupier" }),
+  ]);
+  await typeFind(doc, "sherwin");
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
+  assert.ok(!doc.getElementById("tbody").innerHTML.includes("200 Oak Ave"));
+});
+
+// Every term must appear, in any order and any field: a broker typing two
+// words means both of them, not the phrase.
+test("several terms are ANDed across fields, in any order", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", address: "100 Main St", property_type: "Retail" }),
+    comp({ id: "c2", address: "100 Main Rd", property_type: "Industrial" }),
+  ]);
+  await typeFind(doc, "retail main");
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, /100 Main St/);
+  assert.ok(!body.includes("100 Main Rd"));
+});
+
+test("the search composes with the dropdowns rather than replacing them", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", address: "100 Main St", transaction: "sale" }),
+    comp({ id: "c2", address: "100 Main St Unit B", transaction: "lease",
+      price: null, price_per_sqft: null, rent_psf_yr: 20 }),
+  ]);
+  doc.getElementById("fTrans").value = "lease";
+  doc.getElementById("fTrans").fire("change", {});
+  await typeFind(doc, "main");
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, /Unit B/);
+  assert.ok(!/100 Main St</.test(body), "the sale is excluded by the Deal filter, not the text");
+});
+
+// The trap this codebase keeps fixing: a filtered-out view reported as an
+// absent one. "Nothing here yet, upload a spreadsheet" to a broker searching
+// for a deal they own reads as the vault having lost their book.
+test("a search that matches nothing says so, and does not claim the vault is empty", async () => {
+  const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })]);
+  await typeFind(doc, "zzzz");
+  const none = doc.getElementById("none");
+  assert.equal(none.className, "empty", "the empty line must be visible");
+  assert.match(none.innerHTML, /No comps match this filter/);
+  assert.ok(!none.innerHTML.includes("Nothing here yet"),
+    "a broker with comps must never be told they have none");
+  assert.match(none.innerHTML, /id="noneClear"/, "and it must offer the way out");
+});
+
+test("a genuinely empty vault still gets the upload invitation", async () => {
+  const { doc } = await runPage([]);
+  assert.match(doc.getElementById("none").innerHTML, /Nothing here yet/);
+  assert.ok(!doc.getElementById("none").innerHTML.includes("No comps match"));
+});
+
+test("Clear filters from the empty line puts every control back", async () => {
+  const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })]);
+  doc.getElementById("fTrans").value = "lease";
+  await typeFind(doc, "zzzz");
+  doc.getElementById("none").fire("click", { target: { id: "noneClear" } });
+  await tick();
+  assert.equal(doc.getElementById("fText").value, "");
+  assert.equal(doc.getElementById("fTrans").value, "");
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
+});
+
+test("Escape in the find box clears it", async () => {
+  const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })]);
+  await typeFind(doc, "zzzz");
+  doc.getElementById("fText").fire("keydown", { key: "Escape" });
+  await tick();
+  assert.equal(doc.getElementById("fText").value, "");
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
+});
+
+// Opening one import re-scopes the whole page; a search left over from the
+// previous view would hide the comps that import just landed.
+test("opening an import clears a stale search", async () => {
+  const { doc } = await runPage([comp({ id: "c1", upload_id: "u1", address: "100 Main St" })], null, {
+    uploads: [{ id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+  });
+  await typeFind(doc, "zzzz");
+  doc.getElementById("ups").fire("click", {
+    target: { closest: (sel) => sel === 'button[data-open-sheet]' ? { getAttribute: () => "u1" } : null },
+  });
+  await tick();
+  assert.equal(doc.getElementById("fText").value, "");
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
+});

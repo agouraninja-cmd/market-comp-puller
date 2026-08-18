@@ -165,3 +165,91 @@ test("notifyTargets drops ids that are not UUID-shaped (defense for a PostgREST 
     L.notifyTargets([{ user_id: "u1" }, { user_id: "00000000-0000-4000-8000-000000000001" }]),
     ["00000000-0000-4000-8000-000000000001"]);
 });
+
+// --- metro matching ---------------------------------------------------------
+//
+// A broker covering Boise industrial is covering Meridian industrial: those
+// cities trade as one market, which is what market.js's curated METRO_GROUPS
+// records. Until this shipped, that table was read by corpus retrieval and by
+// nothing else, so a Meridian lead reached nobody in Boise.
+//
+// The adjacency function is INJECTED rather than required, so these tests can
+// state the adjacency they are testing instead of depending on the live table.
+
+const SIBS = { "Boise, ID": ["Meridian, ID", "Nampa, ID"], "Meridian, ID": ["Boise, ID", "Nampa, ID"] };
+const siblingsOf = (m) => SIBS[m] || [];
+
+test("without an adjacency function, matching is exactly what it was", () => {
+  const cov = [{ market: "Boise, ID", property_type: "Industrial" }];
+  const leads = [{ id: 1, market: "Meridian, ID", type: "Industrial" }];
+  assert.deepEqual(L.filterLeadsForCoverage(leads, cov), [],
+    "the default must stay exact-market, so every existing caller is unchanged");
+});
+
+test("a broker covering Boise sees a Meridian lead of the same type", () => {
+  const cov = [{ market: "Boise, ID", property_type: "Industrial" }];
+  const leads = [{ id: 1, market: "Meridian, ID", type: "Industrial" }];
+  assert.deepEqual(L.filterLeadsForCoverage(leads, cov, siblingsOf).map((l) => l.id), [1]);
+});
+
+// The widening is geographic ONLY. Crossing property types would put a retail
+// enquiry in an industrial broker's inbox on the strength of a shared suburb.
+test("the property type is never widened along with the geography", () => {
+  const cov = [{ market: "Boise, ID", property_type: "Industrial" }];
+  const leads = [{ id: 1, market: "Meridian, ID", type: "Retail" }];
+  assert.deepEqual(L.filterLeadsForCoverage(leads, cov, siblingsOf), []);
+});
+
+test("an ungrouped market matches only itself, adjacency function or not", () => {
+  const cov = [{ market: "Denver, CO", property_type: "Industrial" }];
+  const leads = [
+    { id: 1, market: "Denver, CO", type: "Industrial" },
+    { id: 2, market: "Boulder, CO", type: "Industrial" },
+  ];
+  assert.deepEqual(L.filterLeadsForCoverage(leads, cov, siblingsOf).map((l) => l.id), [1]);
+});
+
+// The set is built from a table, and a malformed entry in it must not become a
+// coverage key that quietly matches nothing forever (the isCanonicalMarket
+// rule the rest of this module already holds).
+test("a non-canonical sibling is dropped rather than keyed", () => {
+  const set = L.buildCoverageSet(
+    [{ market: "Boise, ID", property_type: "Industrial" }],
+    () => ["Meridian, ID", "not a market", ""]);
+  assert.ok(set.has("Meridian, ID|Industrial"));
+  assert.ok(!set.has("not a market|Industrial"));
+});
+
+// The notify path starts from one lead and queries coverage in SQL, so it
+// cannot expand the broker's side -- it widens from the other end instead.
+// The two have to agree or a broker is emailed about a lead the inbox hides,
+// or shown one they were never told about.
+test("coverageMarketsFor returns the lead's own market plus its metro", () => {
+  assert.deepEqual(L.coverageMarketsFor("Boise, ID", siblingsOf),
+    ["Boise, ID", "Meridian, ID", "Nampa, ID"]);
+  assert.deepEqual(L.coverageMarketsFor("Boise, ID"), ["Boise, ID"],
+    "no adjacency function means today's exact behaviour");
+  assert.deepEqual(L.coverageMarketsFor("Denver, CO", siblingsOf), ["Denver, CO"]);
+});
+
+test("coverageMarketsFor refuses a non-canonical market outright", () => {
+  assert.deepEqual(L.coverageMarketsFor("123 Main St", siblingsOf), [],
+    "marketOf's no-state fallback must never reach a coverage query");
+  assert.deepEqual(L.coverageMarketsFor("", siblingsOf), []);
+});
+
+// The inbox and the alert are two halves of one rule, so state it as one test.
+test("what a lead alerts on and what an inbox shows are the same set", () => {
+  const lead = { id: 1, market: "Meridian, ID", type: "Industrial" };
+  const cov = [{ market: "Boise, ID", property_type: "Industrial" }];
+  const seesIt = L.filterLeadsForCoverage([lead], cov, siblingsOf).length === 1;
+  const alertsBoise = L.coverageMarketsFor(lead.market, siblingsOf).includes("Boise, ID");
+  assert.equal(seesIt, alertsBoise);
+  assert.equal(seesIt, true);
+});
+
+test("nearbyCountFor counts the EXTRA markets, for the page to disclose", () => {
+  assert.equal(L.nearbyCountFor("Boise, ID", siblingsOf), 2);
+  assert.equal(L.nearbyCountFor("Denver, CO", siblingsOf), 0);
+  assert.equal(L.nearbyCountFor("Boise, ID"), 0, "off by default");
+});

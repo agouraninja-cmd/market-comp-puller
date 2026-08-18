@@ -193,6 +193,12 @@ select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-c
   border-radius:var(--r);align-items:flex-end}
 .filters .btn{min-height:40px}
 .filters .note{margin:0 0 10px;align-self:flex-end}
+.filters input[type=search]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:14px;background:var(--card);color:var(--ink);min-height:40px;min-width:190px}
+/* WebKit paints its own clear affordance inside the field; the box is already
+   cleared by Escape and by Clear filters, and the native gutter clipped the
+   placeholder on the market field once already (see the market page note). */
+.filters input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .filters .exp{margin-left:auto}
 table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px;margin:0}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
@@ -257,6 +263,9 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;
   padding:0 2px;font-family:inherit}
 .chip button:hover{color:var(--red)}
+/* Quieter than the market it qualifies: it is a footnote on the chip, not a
+   second fact competing with the market name. */
+.chip .near{margin-left:6px;color:var(--ink-3);font-weight:500;font-size:11.5px;letter-spacing:.02em}
 /* Row actions: Delete is a trash icon — quiet ink that goes red on hover, the
    same pattern as removing an import. A red "Delete" word next to Publish was
    a second shout on the row. Edit used to sit beside it as a text link; the
@@ -716,6 +725,13 @@ if(dd)dd.open=false;});</script>
              single median to seal the table with, and this is how a broker
              resolves that into a figure. -->
         <label>Deal <select id="fTrans"><option value="">All</option><option value="sale">Sales</option><option value="lease">Leases</option></select></label>
+        <!-- Two dropdowns narrow to a SLICE of the book; this finds one deal
+             in it. A broker hunting the Fairview comp among 400 rows had only
+             scrolling, and the market/type pair they would have to guess at is
+             exactly what they are trying to remember. Searches address and
+             notes: the address is what they know, and notes is where the
+             tenant name or the "sold with the adjacent parcel" detail lives. -->
+        <label>Find <input type="search" id="fText" placeholder="address or note" autocomplete="off"/></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
         <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
@@ -971,11 +987,29 @@ if(dd)dd.open=false;});</script>
   //      fixes that up to 1000; past it, the #trunc line in apply() says so
   //      out loud rather than quietly under-reporting someone's book.
   //   3. Filtering is now instant and costs no round trip.
+  // Every term must appear somewhere in the row, in any order and any field:
+  // a broker types "fairview industrial" or "8400 mission" and means both
+  // words, not the phrase. Case-folded, and matched on a substring rather than
+  // a word boundary so "fair" finds Fairview -- this is a find box over one
+  // person's own records, where being generous costs nothing and a miss costs
+  // them the scroll they were trying to avoid.
+  function matchesText(c,terms){
+    if(!terms.length)return true;
+    var hay=((c.address||"")+" "+(c.notes||"")+" "+(c.market||"")+" "+
+             (c.property_type||"")+" "+(c.tenancy||"")).toLowerCase();
+    for(var i=0;i<terms.length;i++){ if(hay.indexOf(terms[i])<0)return false; }
+    return true;
+  }
+  function searchTerms(){
+    return String(($("fText")&&$("fText").value)||"").toLowerCase().split(" ")
+      .filter(function(w){return w});
+  }
   function view(){
-    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value;
+    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,q=searchTerms();
     return comps.filter(function(c){
       if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
-      return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x);
+      return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x)&&
+        matchesText(c,q);
     });
   }
 
@@ -1353,7 +1387,7 @@ if(dd)dd.open=false;});</script>
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; }
+    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -1378,6 +1412,19 @@ if(dd)dd.open=false;});</script>
       return sortAsc?String(x).localeCompare(String(y)):String(y).localeCompare(String(x));
     });
     var gutOutliers=renderGutCheck(rows);
+    // Two different empty states, and telling them apart matters: a broker who
+    // searched for a deal they own and got "Nothing here yet, upload a
+    // spreadsheet" would reasonably think the vault had lost their book. Same
+    // rule the hub list and the lead inbox already hold -- never report a
+    // filtered-out view as an absent one.
+    var narrowed=comps.length>0;
+    // Single-quoted with plain double quotes inside, and HTML entities for the
+    // curly quotes: this page is ONE template literal, so a backslash escape
+    // written here is eaten before the browser ever sees it -- \" would reach
+    // the emitted script as a bare " and end the string mid-attribute.
+    $("none").innerHTML=narrowed
+      ? 'No comps match this filter. <button type="button" class="lnk" id="noneClear">Clear filters</button>'
+      : 'Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet, PDF or screenshot.';
     $("none").className=rows.length?"empty hide":"empty";
     // Say "of N" whenever a filter is narrowing, so the number on screen can
     // never be mistaken for the size of the book.
@@ -2029,8 +2076,16 @@ if(dd)dd.open=false;});</script>
     var emptyHint='<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
     $("covRow").innerHTML=cov.length?cov.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
+      // Cities that trade as one market are matched together (the server's
+      // METRO_GROUPS), so a chip reading "Boise, ID" can legitimately pull in
+      // a Meridian lead. Said out loud here, because a lead from a city the
+      // broker never typed otherwise reads as a bug in the thing whose whole
+      // job is to be trusted about where their business is.
+      var near=Number(c.nearby||0);
+      var nearTip=near?" Also matches "+near+" nearby market"+(near===1?"":"s")+" that trade as one with it.":"";
       return '<span class="chip">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
-        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        (near?'<span class="near" title="'+escA(nearTip.trim())+'">+'+near+" nearby</span>":"")+
+        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+nearTip+'" title="Stop watching '+label+
         '">&times;</button></span>';
     }).join(" "):(($("covForm").parentNode&&$("covForm").parentNode.id==="pipeEmpty")?"":emptyHint);
     var seen={},opts=[];
@@ -2982,15 +3037,29 @@ if(dd)dd.open=false;});</script>
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.
   function redraw(){
-    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value)?"btn ghost":"btn ghost hide";
+    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fText").value)?"btn ghost":"btn ghost hide";
     renderRollup();
     render();
   }
   $("fMarket").addEventListener("change",redraw);
   $("fType").addEventListener("change",redraw);
   $("fTrans").addEventListener("change",redraw);
+  // "input", not "change": filtering as they type is the whole point, and the
+  // work is a substring scan over at most 1000 rows the page already holds.
+  // Escape clears, which is the one thing every search box on the web does.
+  $("fText").addEventListener("input",redraw);
+  // Delegated: #none's contents are rewritten on every render, so a handler
+  // bound to the button itself would be lost on the next draw.
+  $("none").addEventListener("click",function(e){
+    if(!e.target||e.target.id!=="noneClear")return;
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value="";
+    redraw();
+  });
+  $("fText").addEventListener("keydown",function(e){
+    if(e.key==="Escape"&&$("fText").value){ $("fText").value=""; redraw(); }
+  });
   $("fClear").addEventListener("click",function(){
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; redraw();
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; redraw();
   });
   $("sheetToggle").addEventListener("click",function(){
     if(sheetMode)closeSheet(); else openSheet(null);

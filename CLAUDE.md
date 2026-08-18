@@ -1833,11 +1833,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       defaults to `limit=200`, so a broker with 400 comps was shown half their
       vault with nothing saying so. Past 1,000 the page says it is truncated
       rather than under-reporting silently.
-    - **Every $/SF figure comes from the stored `price_per_sqft`, never derived
-      here.** `broker-vault.js` writes that column for **sales only** and
-      leaves it null on a lease, because an annual rent ÷ size is $/SF/yr and
-      would corrupt any median it entered. A card with no priced sales shows
+    - **Every rate figure comes from a stored column, never derived here.**
+      `broker-vault.js` writes `price_per_sqft` for **sales only** and leaves
+      it null on a lease, because an annual rent ÷ size is $/SF/yr and would
+      corrupt any median it entered; it writes `rent_psf_yr` for **leases
+      only**, from the broker's `rent_psf` × their stated `rent_basis`. The
+      page reads both and never recomputes either. A bucket with neither shows
       its comp count instead of a fabricated number.
+    - **Lease rent (migration 029, 2026-08-17).** Until then the vault only
+      really worked for investment sales: the template said to leave `price`
+      blank on a lease and put the rent in `notes` as prose, so a leasing book
+      carried no figure any median could read and every card said "no priced
+      sales yet". Four rules.
+      **`rent_basis` is required with a rent and has no default** — California
+      industrial and retail quote rent MONTHLY while most of the country
+      quotes annually, so $1.35/SF is an ordinary monthly rent and an
+      impossible annual one; defaulting either way stores a figure 12× wrong
+      in a broker's own records, which is the class of error this module
+      refuses "1.2M" to avoid. **`lease_type` (NNN/FS/MG) is optional and
+      disclosed**, the deliberate asymmetry: mixing bases makes a median
+      WRONG, mixing structures makes it WEAKER, and those get different
+      answers — the footer says "mixed lease types" rather than refusing.
+      **Sales and leases are never averaged together**: a view holding both
+      states no median and names the Deal filter, which is why that filter
+      had to ship first, and the rate column heading changes with the unit
+      rather than labelling annual rents "$/SF". **The gut check abstains on
+      leases** — corpus quartiles and market-page figures are sale $/SF and
+      there is no public rent benchmark — which holds by construction because
+      leases carry no `price_per_sqft`; a rent fallback in `psfOf` would break
+      it, and a test pins that.
+      Rent is deliberately **not carried into the public corpus**:
+      `comp_corpus` has no rent column and `submissionRowFrom` is an explicit
+      allowlist, so a published lease carries what it always did. Giving the
+      corpus a rent column is its own decision with its own provenance
+      questions, not a side effect of this one.
     - **Repeat properties group on `market` + address, never address alone.**
       Street names repeat across a metro; on the first test book that merged a
       Boise building and a Meridian building at the same house number into one

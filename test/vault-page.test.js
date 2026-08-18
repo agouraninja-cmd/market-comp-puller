@@ -423,6 +423,13 @@ async function runPage(comps, benchResult, opts, identity) {
     if (u.indexOf("/api/vault/upload") === 0) {
       return opts.upload ? opts.upload() : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
     }
+    // Checked BEFORE the single-publish prefix, which would otherwise swallow
+    // it: "/api/vault/publish-many".indexOf("/api/vault/publish") is 0 too.
+    if (u.indexOf("/api/vault/publish-many") === 0) {
+      return opts.publishMany
+        ? opts.publishMany(init)
+        : Promise.resolve(jsonResponse(200, { ok: true, published: 0, skippedCount: 0, remaining: 0 }));
+    }
     if (u.indexOf("/api/vault/publish") === 0) {
       return opts.publish
         ? opts.publish()
@@ -1448,7 +1455,11 @@ test("Delete confirms, then sends DELETE and reports an ordinary removal", async
     await tick();
 
     assert.match(calls[0], /Delete this comp/, "the confirm text names the destructive action");
-    assert.equal(doc.getElementById("compMsg").textContent, "Deleted.");
+    // The message now carries the way back, so read the element's HTML: the
+    // confirm no longer claims the delete cannot be undone, because it can,
+    // for as long as this message is on screen.
+    assert.match(doc.getElementById("compMsg").innerHTML, /Deleted\./);
+    assert.match(doc.getElementById("compMsg").innerHTML, /id="undoDel"/);
   } finally {
     global.confirm = realConfirm;
   }
@@ -2387,4 +2398,240 @@ test("opening an import clears a stale search", async () => {
   await tick();
   assert.equal(doc.getElementById("fText").value, "");
   assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
+});
+
+// ---------------------------------------------------------------------------
+// Bulk publish
+//
+// Publishing is how the public corpus grows, and it was one button plus one
+// identical confirm per comp — so in practice nobody published a book, they
+// published a comp. The button counts what is in the current view and lets the
+// SERVER decide eligibility: VAULT.canPublish is the rule, and a second copy
+// in the browser is the kind of pair this repo already carries warnings about.
+// ---------------------------------------------------------------------------
+
+test("the publish-all button counts the unpublished comps in view", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", published: false }),
+    comp({ id: "c2", published: false }),
+    comp({ id: "c3", published: true }),
+  ]);
+  assert.equal(doc.getElementById("pubAll").textContent, "Publish 2 comps");
+  assert.ok(!doc.getElementById("pubAll").classList.contains("hide"));
+});
+
+test("it follows the filter, so it always means what is on screen", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", address: "100 Main St", published: false }),
+    comp({ id: "c2", address: "200 Oak Ave", published: false }),
+  ]);
+  doc.getElementById("fText").value = "main";
+  doc.getElementById("fText").fire("input", {});
+  await tick();
+  assert.equal(doc.getElementById("pubAll").textContent, "Publish 1 comp");
+});
+
+// Hidden, not greyed: a permanently disabled control on a fully-published book
+// is a thing to wonder about rather than an affordance.
+test("a fully published book hides the button rather than greying it", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true })]);
+  assert.ok(doc.getElementById("pubAll").classList.contains("hide"));
+});
+
+test("it posts every unpublished id in view, once confirmed", async () => {
+  let sent = null;
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([
+      comp({ id: "c1", published: false }), comp({ id: "c2", published: false }),
+    ], null, {
+      publishMany: (init) => {
+        sent = JSON.parse(init.body);
+        return Promise.resolve(jsonResponse(200, { ok: true, published: 2, skippedCount: 0, remaining: 0 }));
+      },
+    });
+    doc.getElementById("pubAll").fire("click", {});
+    await tick();
+    assert.deepEqual(sent, { ids: ["c1", "c2"] });
+    assert.match(doc.getElementById("compMsg").textContent, /2 published/);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("declining the confirm publishes nothing", async () => {
+  let called = 0;
+  const realConfirm = global.confirm;
+  global.confirm = () => false;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", published: false })], null, {
+      publishMany: () => { called += 1; return Promise.resolve(jsonResponse(200, { ok: true })); },
+    });
+    doc.getElementById("pubAll").fire("click", {});
+    await tick();
+    assert.equal(called, 0);
+  } finally { global.confirm = realConfirm; }
+});
+
+// "5 skipped" alone sends a broker hunting through their own book. The reasons
+// repeat, so naming one usually explains all five.
+test("skips are reported with a reason, not just a count", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", published: false })], null, {
+      publishMany: () => Promise.resolve(jsonResponse(200, {
+        ok: true, published: 3, skippedCount: 2, remaining: 0,
+        skipped: [{ id: "c9", reason: "A published comp needs a price — an unpriced comp cannot support a valuation." }],
+      })),
+    });
+    doc.getElementById("pubAll").fire("click", {});
+    await tick();
+    const msg = doc.getElementById("compMsg").textContent;
+    assert.match(msg, /3 published/);
+    assert.match(msg, /2 skipped/);
+    assert.match(msg, /needs a price/);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("a batch over the cap says how many are left rather than failing", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", published: false })], null, {
+      publishMany: () => Promise.resolve(jsonResponse(200, {
+        ok: true, published: 100, skippedCount: 0, remaining: 40,
+      })),
+    });
+    doc.getElementById("pubAll").fire("click", {});
+    await tick();
+    assert.match(doc.getElementById("compMsg").textContent, /40 left/);
+  } finally { global.confirm = realConfirm; }
+});
+
+// The one refusal a broker can fix on this page — same handling the single
+// publish already has.
+test("a missing credit name opens the identity form", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", published: false })], null, {
+      publishMany: () => Promise.resolve(jsonResponse(400, {
+        error: "Add your firm or display name before publishing — published comps are credited to it.",
+        code: "needs_credit_name",
+      })),
+    });
+    doc.getElementById("pubAll").fire("click", {});
+    await tick();
+    assert.match(doc.getElementById("compMsg").textContent, /Add your firm/);
+    assert.ok(!doc.getElementById("idForm").classList.contains("hide"),
+      "the form that supplies the missing name must be open");
+  } finally { global.confirm = realConfirm; }
+});
+
+// ---------------------------------------------------------------------------
+// Undo a delete
+//
+// A hard delete behind one confirm sat oddly against a codebase that elsewhere
+// refuses a local-file fallback rather than risk losing a broker's book. The
+// undo catches the misclick noticed immediately — deliberately not a deletion
+// regretted tomorrow, for which the honest answer stays "it is gone".
+// ---------------------------------------------------------------------------
+
+const deleteFirst = async (doc) => {
+  doc.getElementById("tbody").fire("click", {
+    target: { closest: (sel) => sel === 'button[data-del-comp]' ? { getAttribute: () => "c1" } : null },
+  });
+  await tick();
+};
+
+test("a delete offers a way back", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })], null, {
+      comp: () => Promise.resolve(jsonResponse(200, { ok: true, unpublished: false })),
+    });
+    await deleteFirst(doc);
+    assert.match(doc.getElementById("compMsg").innerHTML, /id="undoDel"/);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("Undo re-posts the comp through the ordinary add route", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  let posted = null;
+  try {
+    const { doc } = await runPage([comp({
+      id: "c1", address: "100 Main St", property_type: "Industrial",
+      transaction: "sale", deal_date: "2026-03-14", price: 1000000, size_sqft: 10000,
+    })], null, {
+      comp: (init) => {
+        if (init && init.method === "POST") posted = JSON.parse(init.body);
+        return Promise.resolve(jsonResponse(200, { ok: true, unpublished: false }));
+      },
+    });
+    await deleteFirst(doc);
+    doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
+    await tick();
+
+    assert.ok(posted, "Undo must write through /api/vault/comp, not a bespoke undelete");
+    assert.equal(posted.address, "100 Main St");
+    assert.equal(posted.price, "1000000");
+    assert.equal(posted.size_sqft, "10000");
+    assert.equal(posted.deal_date, "2026-03-14");
+    assert.match(doc.getElementById("compMsg").textContent, /Put back/);
+  } finally { global.confirm = realConfirm; }
+});
+
+// Publishing is a deliberate public act; undoing a delete is not consent to
+// make it public again. Said out loud rather than left to be discovered.
+test("putting back a published comp does not republish it, and says so", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", address: "100 Main St", published: true })], null, {
+      comp: () => Promise.resolve(jsonResponse(200, { ok: true, unpublished: true })),
+    });
+    await deleteFirst(doc);
+    assert.match(doc.getElementById("compMsg").innerHTML, /withdrawn from the public/);
+    doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
+    await tick();
+    assert.match(doc.getElementById("compMsg").textContent, /not published again/);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("Undo is offered once — a second click cannot double-restore", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  let posts = 0;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })], null, {
+      comp: (init) => {
+        if (init && init.method === "POST") posts += 1;
+        return Promise.resolve(jsonResponse(200, { ok: true, unpublished: false }));
+      },
+    });
+    await deleteFirst(doc);
+    doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
+    await tick();
+    doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
+    await tick();
+    assert.equal(posts, 1);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("a refused restore says so instead of claiming success", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" })], null, {
+      comp: (init) => (init && init.method === "POST")
+        ? Promise.resolve(jsonResponse(409, { error: "You already have this comp." }))
+        : Promise.resolve(jsonResponse(200, { ok: true, unpublished: false })),
+    });
+    await deleteFirst(doc);
+    doc.getElementById("compMsg").fire("click", { target: { id: "undoDel" } });
+    await tick();
+    assert.match(doc.getElementById("compMsg").textContent, /already have this comp/);
+  } finally { global.confirm = realConfirm; }
 });

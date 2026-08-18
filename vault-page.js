@@ -735,6 +735,12 @@ if(dd)dd.open=false;});</script>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
         <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
+        <!-- Counts the UNPUBLISHED comps in the current view, and deliberately
+             does not try to work out which of them are publishable: that rule
+             is VAULT.canPublish on the server, and a second copy here is
+             exactly the kind of pair this repo already carries warnings about.
+             The server reports what it skipped and why. -->
+        <button class="btn ghost hide" type="button" id="pubAll"></button>
         <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
@@ -1491,6 +1497,7 @@ if(dd)dd.open=false;});</script>
     // it can never name different measures.
     var foot=footFigure(unit);
     renderStrip(rows,unit,foot);
+    refreshPublishAll(rows);
     // ONE row template with the label and the number varying, deliberately
     // not a branch per case emitting its own <tr>: the footer's column count
     // is checked by finding a single label cell with a colspan in this file
@@ -1532,6 +1539,20 @@ if(dd)dd.open=false;});</script>
     return {show:true,value:median(vals),
       label:"Median rent of "+vals.length+" lease"+(vals.length===1?"":"s")+" \\u00b7 $/SF/yr"+
         (st.structures>1?" \\u00b7 mixed lease types":"")};
+  }
+
+  // The unpublished comps in the current view, in view order, which is what
+  // "publish these" means to the person looking at the screen.
+  var pubCandidates=[];
+  function refreshPublishAll(rows){
+    pubCandidates=(rows||[]).filter(function(c){return !c.published});
+    var b=$("pubAll");
+    if(!b)return;
+    // Hidden rather than disabled at zero: a permanently greyed control on a
+    // fully-published book is a thing to wonder about, not an affordance.
+    if(!pubCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
+    b.className="btn ghost";
+    b.textContent="Publish "+pubCandidates.length+" comp"+(pubCandidates.length===1?"":"s");
   }
 
   function renderSheet(rows){
@@ -3061,6 +3082,49 @@ if(dd)dd.open=false;});</script>
   $("fClear").addEventListener("click",function(){
     $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; redraw();
   });
+  // Bulk publish. The confirm is the single-comp one's promise, scaled: it
+  // names the count, the credit, and the one thing that cannot be taken back.
+  // Publishing is a public act on somebody else's behalf as much as the
+  // broker's, so the dialog stays specific rather than becoming "Publish 23
+  // comps?" now that it covers more of them.
+  $("pubAll").addEventListener("click",function(){
+    var ids=pubCandidates.map(function(c){return c.id}),n=ids.length;
+    if(!n)return;
+    var who=(identity&&identity.creditedTo)?identity.creditedTo:"your firm";
+    if(!confirm("Publish "+n+" comp"+(n===1?"":"s")+"?\\n\\nThey become part of CompNinja's public records, credited to "+
+      who+" by name in every report they appear in. Everything else in your vault stays private.\\n\\n"+
+      "Comps that are not ready — no price, no size, no street number — are skipped and named afterwards.\\n\\n"+
+      "You can stop publishing any of them later, but reports that already used them will keep them."))return;
+    var b=$("pubAll");
+    b.disabled=true; b.textContent="Publishing\\u2026";
+    fetch("/api/vault/publish-many",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify({ids:ids})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        b.disabled=false;
+        if(o.s!==200){
+          compMsg(o.j.error||"That didn't go through.",true);
+          // The one refusal a broker can fix on this page, same as the single
+          // publish: open the form that supplies the missing credit name.
+          if(o.j.code==="needs_credit_name")setIdOpen(true);
+          load();
+          return;
+        }
+        var parts=[o.j.published+" published"];
+        if(o.j.skippedCount)parts.push(o.j.skippedCount+" skipped");
+        if(o.j.remaining)parts.push(o.j.remaining+" left \u2014 run it again");
+        // Name the FIRST reason rather than a bare count: "5 skipped" sends a
+        // broker hunting through their book, and the reasons repeat, so one
+        // example usually explains all five.
+        var why=(o.j.skipped&&o.j.skipped.length)?o.j.skipped[0].reason:"";
+        compMsg(parts.join(" \\u00b7 ")+(why?" \\u00b7 "+why:""),!o.j.published);
+        load();
+      })
+      .catch(function(){
+        b.disabled=false;
+        compMsg("That didn't reach the server. Nothing was changed.",true);
+      });
+  });
   $("sheetToggle").addEventListener("click",function(){
     if(sheetMode)closeSheet(); else openSheet(null);
   });
@@ -3129,9 +3193,35 @@ if(dd)dd.open=false;});</script>
     el.textContent=text||"";
   }
 
+  // The comp a broker just deleted, held for as long as the message offering
+  // to put it back is on screen. Nothing persists it: this catches the misclick
+  // that is noticed immediately, which is the case worth catching, and NOT a
+  // deletion regretted tomorrow -- for that the honest answer is that it is
+  // gone, and pretending otherwise with a store that empties on reload would
+  // be worse than saying so.
+  var lastDeleted=null;
+
+  // Everything the add-one-comp route accepts, taken off the row the page was
+  // already holding. Reusing that route rather than adding an undelete
+  // endpoint is what keeps the restore honest: it goes through normalizeRow
+  // like every other written comp, so an undo cannot put back something the
+  // vault would refuse to be told today.
+  function restorePayload(c){
+    var out={},fields=BASE_FIELDS.concat(TYPE_FIELDS[c.property_type]||[]);
+    fields.forEach(function(f){
+      var v=c[f];
+      if(v!=null&&String(v).trim()!=="")out[f]=String(v);
+    });
+    return out;
+  }
+
   async function deleteComp(id){
-    // Hard delete, no undo: confirm by name rather than with a generic prompt.
-    if(!confirm("Delete this comp? This cannot be undone."))return;
+    var comp=compById(id);
+    // Still a confirm, and still specific: undo is a safety net for the
+    // misclick, not a reason to make the destructive click cheap. What the
+    // wording no longer claims is that this cannot be undone -- it can, for
+    // as long as the message below is on screen.
+    if(!confirm("Delete this comp?"))return;
     var r;
     try{
       r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
@@ -3144,10 +3234,46 @@ if(dd)dd.open=false;});</script>
     var j=await r.json().catch(function(){return{};});
     if(!r.ok)return compMsg(j.error||"Could not delete that comp.",true);
     load();
-    compMsg(j.unpublished
+    lastDeleted=comp?{payload:restorePayload(comp),
+      address:comp.address,wasPublished:!!j.unpublished}:null;
+    if(!lastDeleted)return compMsg("Deleted.");
+    compMsgUndo((lastDeleted.wasPublished
       ? "Deleted, and withdrawn from the public records."
-      : "Deleted.");
+      : "Deleted."));
   }
+
+  // A message with a way back. Separate from compMsg because that one sets
+  // textContent, which is right for every other caller and cannot carry a
+  // button.
+  function compMsgUndo(text){
+    var el=$("compMsg");
+    el.className="msg ok";
+    el.innerHTML=esc(text)+' <button type="button" class="lnk" id="undoDel">Undo</button>';
+  }
+
+  // Delegated: #compMsg's contents are rewritten by every other message on the
+  // page, so a handler bound to the button itself would outlive its button.
+  $("compMsg").addEventListener("click",function(e){
+    if(!e.target||e.target.id!=="undoDel")return;
+    var d=lastDeleted;
+    lastDeleted=null;
+    if(!d)return;
+    compMsg("Putting it back\u2026");
+    fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(d.payload)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200)return compMsg(o.j.error||"Could not put that comp back.",true);
+        load();
+        // Said plainly rather than left to be discovered. The restore is a new
+        // entry: it belongs to no import, so deleting that import will not
+        // remove it, and a comp that was published is NOT republished by
+        // putting it back -- publishing is a deliberate public act and undoing
+        // a delete is not consent to make it public again.
+        compMsg("Put back."+(d.wasPublished?" It is not published again — publish it when you are ready.":""));
+      })
+      .catch(function(){ compMsg("That didn't reach the server. Nothing was changed.",true); });
+  });
 
   // One field of one row, on blur — from a compact-table cell or a spreadsheet
   // one, which are the same input saved the same way. Only the changed field

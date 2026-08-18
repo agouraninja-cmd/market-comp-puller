@@ -1834,6 +1834,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     through the module-level `lastGut`/`lastReps` rather than a changed return
     type, because the return value is the outlier map the table reads. Four
     further rules:
+    - **Bulk publish** (`POST /api/vault/publish-many`, 2026-08-17). Publishing
+      is how the public corpus grows and it was one button plus one identical
+      confirm per comp, so in practice nobody published a book — they published
+      a comp. The button counts the UNPUBLISHED comps in the current view and
+      deliberately does not decide eligibility: `VAULT.canPublish` is the rule,
+      a browser copy would be a second one, and the route reports what it
+      skipped and why (naming the first reason, since they repeat). Its own
+      route rather than an `ids` array on the single one — that contract's
+      404/400 are right for one comp and wrong for fifty, where "some of these
+      are not ready" is the normal answer. Same `openVault` gate, same
+      `user_id` scoping, same credit-name refusal, asked ONCE before anything
+      is written. Insert and PATCH stay **paired inside one task** at
+      concurrency 6, never one bulk insert with ids read back positionally:
+      repeat properties are real here, so returned rows could not be re-paired
+      by address even in principle. A PATCH that fails after its insert
+      **deletes the submission back out**, or the comp sits in the public
+      records crediting a row the vault still calls unpublished and a re-run
+      credits it twice. Capped at `VAULT_PUBLISH_BATCH` (100) per request,
+      reporting `remaining` rather than refusing, which is safe because
+      publishing is idempotent.
+    - **Undo a delete** (2026-08-17). A hard delete behind one confirm sat
+      oddly against a codebase that refuses a file fallback rather than risk
+      losing a broker's book. The message now carries an Undo that re-posts the
+      comp through **`POST /api/vault/comp`**, the ordinary add route, so a
+      restore goes through `normalizeRow` like every other written comp and
+      cannot put back something the vault would refuse to be told today.
+      Three rules: it is held **in memory only** — this catches the misclick
+      noticed immediately, not a deletion regretted tomorrow, and a store that
+      emptied on reload would promise more than it keeps; the restore is a
+      **new entry** belonging to no import, said plainly rather than left to be
+      discovered; and a comp that was published **is not republished** by
+      putting it back, because publishing is a deliberate public act and
+      undoing a delete is not consent to repeat it. The confirm no longer says
+      "this cannot be undone", since that stopped being true.
     - **Four filters, and only one of them is a search.** Market and Type
       narrow to a slice; Deal (Sale/Lease) exists because the two are priced
       in different units and a view holding both can state no median; and the

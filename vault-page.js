@@ -257,6 +257,10 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
 .pubbtn.on{border-color:transparent;background:var(--ok-bg);color:var(--ok-text)}
 .pubbtn[disabled]{opacity:.5;cursor:default}
+/* A result, not a control: no border, no hover, and the same quiet ink the
+   row's other secondary figures use. */
+.cites{display:inline-block;margin-left:6px;color:var(--ink-3);font-size:12px;
+  font-weight:600;font-variant-numeric:tabular-nums;cursor:default}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:999px;
   padding:5px 8px 5px 12px;font-size:12.5px;background:var(--card);color:var(--ink-2);font-weight:600;
   letter-spacing:0;text-transform:none}
@@ -550,7 +554,7 @@ if(dd)dd.open=false;});</script>
         <div class="lcell"><span class="llab">Median $/SF</span>
           <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
         <div class="lcell mid"><span class="llab">Published</span>
-          <div class="lfig" id="cPub">0</div><div class="lsub">only if you choose it</div></div>
+          <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
       </div>
       <p class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
         public records, and nothing is published unless you choose it.</p>
@@ -1158,6 +1162,19 @@ if(dd)dd.open=false;});</script>
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    // What publishing gave back. Until now a broker published a comp, saw a
+    // green chip, and learned nothing further — while the very same figure was
+    // already on their public profile page, if they had one, under "Report
+    // citations". Publishing is compensated in credit rather than cash, so a
+    // credit nobody can see is not compensation.
+    //
+    // Summed over the rows on screen, like every other figure in this ledger,
+    // so it cannot disagree with the per-comp counts in the table; the page
+    // already says when a book is truncated past 1,000.
+    var cites=comps.reduce(function(n,c){return n+(Number(c.cited_count)||0)},0);
+    $("cPubSub").textContent=cites
+      ? cites+" report citation"+(cites===1?"":"s")
+      : "only if you choose it";
     // The ledger's other figures come from the returned rows — the same book
     // the rollup and chart read, so the strip can never disagree with the
     // panels below it. Whole-book always; the filter never narrows it.
@@ -1319,6 +1336,28 @@ if(dd)dd.open=false;});</script>
   // sale shows its $/SF and a lease shows its annual rent. Both are server-
   // derived and only one of them is ever set, so this cannot show two figures
   // for one comp.
+  // The publish control, and beside it what publishing earned. One builder for
+  // the compact table and the spreadsheet, which showed the identical chip in
+  // two places and would otherwise grow the citation count in only one.
+  //
+  // The count is deliberately NOT on the button: the button is a toggle with a
+  // confirm behind it, and a number that grows inside a control reads as part
+  // of the action rather than a result of it.
+  function publishCell(c){
+    var btn=c.published
+      ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
+      : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+    var n=Number(c.cited_count)||0;
+    if(!c.published||!n)return btn;
+    // "cited in N reports" rather than "seen N times": the count rises when a
+    // report is GENERATED citing this comp, and a cached re-run of the same
+    // report does not bump it, so it is a floor on how often the broker's name
+    // has actually been in front of somebody.
+    return btn+' <span class="cites" title="'+escA("Cited in "+n+" report"+(n===1?"":"s")+
+      " so far. Counted when a report is generated; a cached re-run of the same report is not counted again.")+
+      '">'+n+"</span>";
+  }
+
   function rateCell(c){
     if(c.transaction==="lease")return psf(c.rent_psf_yr);
     return psf(c.price_per_sqft);
@@ -1469,9 +1508,7 @@ if(dd)dd.open=false;});</script>
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
       // it goes through a button and a confirm.
-      var pub=c.published
-        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
-        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var pub=publishCell(c);
       var flag=gutOutliers[c.id]
         ? ' <span class="gcOut" title="'+escA(Math.abs(gutOutliers[c.id].pct)+"% "+
             (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
@@ -1562,9 +1599,7 @@ if(dd)dd.open=false;});</script>
       return headCell(k,sheetLabel(k),!!numK[k]);
     }).join("")+headCell("published","Public")+'<th></th></tr>';
     $("tbody").innerHTML=rows.map(function(c){
-      var pub=c.published
-        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
-        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var pub=publishCell(c);
       var cells=keys.map(function(k){
         var v=c[k]==null?"":c[k];
         // Same width rule as the compact table (see cellWidth): a notes cell

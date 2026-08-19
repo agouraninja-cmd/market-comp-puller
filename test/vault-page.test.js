@@ -2635,3 +2635,64 @@ test("a refused restore says so instead of claiming success", async () => {
     assert.match(doc.getElementById("compMsg").textContent, /already have this comp/);
   } finally { global.confirm = realConfirm; }
 });
+
+// ---------------------------------------------------------------------------
+// What publishing gave back
+//
+// comp_submissions.cited_count has existed since migration 003 and has been
+// incremented on every earned badge ever since — and it was visible only on
+// /broker/<slug>, a page that exists at all only if the broker opted their
+// profile into being public (false by default). So the person who earned the
+// credit was the one person who could not see it. Nothing new is counted here.
+// ---------------------------------------------------------------------------
+
+test("a published comp shows how often it has been cited", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true, cited_count: 7 })]);
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, /class="cites"[^>]*>7</);
+  assert.match(body, /Cited in 7 reports so far/);
+});
+
+// The count rises when a report is generated; a cached re-run does not bump
+// it, so the tooltip must not imply it counts every reader.
+test("the tooltip says what the number actually counts", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true, cited_count: 1 })]);
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, /Cited in 1 report so far/);
+  assert.match(body, /cached re-run of the same report is not counted again/);
+});
+
+test("an uncited published comp shows the chip alone, not a zero", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true, cited_count: 0 })]);
+  const body = doc.getElementById("tbody").innerHTML;
+  assert.match(body, /Published/);
+  assert.ok(!body.includes('class="cites"'),
+    "a zero beside every freshly published comp is discouraging noise, not information");
+});
+
+test("an unpublished comp never shows a count", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: false, cited_count: 5 })]);
+  assert.ok(!doc.getElementById("tbody").innerHTML.includes('class="cites"'));
+});
+
+test("the ledger totals the citations under Published", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", published: true, cited_count: 4 }),
+    comp({ id: "c2", published: true, cited_count: 3 }),
+    comp({ id: "c3", published: false }),
+  ]);
+  assert.equal(doc.getElementById("cPubSub").textContent, "7 report citations");
+});
+
+test("with nothing cited yet the ledger keeps its original line", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true, cited_count: 0 })]);
+  assert.equal(doc.getElementById("cPubSub").textContent, "only if you choose it");
+});
+
+test("the spreadsheet shows the same count as the compact table", async () => {
+  const { doc } = await runPage([comp({ id: "c1", published: true, cited_count: 2 })]);
+  doc.getElementById("sheetToggle").fire("click", {});
+  await tick();
+  assert.match(doc.getElementById("tbody").innerHTML, /class="cites"[^>]*>2</,
+    "one builder feeds both tables, so the two can never disagree");
+});

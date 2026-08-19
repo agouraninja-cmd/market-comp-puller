@@ -134,10 +134,24 @@ const API_COMP_FIELDS = Object.freeze([
 // nothing downstream needs to know that.
 const PROPERTY_FIELDS = Object.freeze(["lat", "lng", "geo_source"]);
 
+// Fields a comp inherits from the SUBMISSION it was published as, rather than
+// from broker_comps. A third list for the same reason PROPERTY_FIELDS is a
+// second one: the contract tests check API_COMP_FIELDS against the
+// broker_comps schema BOTH ways, so a cited_count in there would correctly
+// fail as a column that table does not have. The fix is another checked list
+// against its own table, never loosening the first.
+//
+// cited_count is the count already kept on comp_submissions and already shown
+// publicly on /broker/<slug>. It rides here so the broker who EARNED it can
+// see it in their own vault, which until now they could not do at all without
+// first opting their profile into being public.
+const SUBMISSION_FIELDS = Object.freeze(["cited_count"]);
+
 // The fields a dashboard actually receives: the contract, minus the plumbing,
 // plus what the property dimension contributes.
 const PUBLIC_COMP_FIELDS = Object.freeze(
-  API_COMP_FIELDS.filter((f) => !INTERNAL_FIELDS.includes(f)).concat(PROPERTY_FIELDS)
+  API_COMP_FIELDS.filter((f) => !INTERNAL_FIELDS.includes(f))
+    .concat(PROPERTY_FIELDS).concat(SUBMISSION_FIELDS)
 );
 
 // One stored row, as the API presents it.
@@ -166,4 +180,5 @@ function toApiComps(rows) {
 module.exports = {
   toApiComp, toApiComps,
   API_COMP_FIELDS, INTERNAL_FIELDS, PUBLIC_COMP_FIELDS, PROPERTY_FIELDS,
+  SUBMISSION_FIELDS,
 };

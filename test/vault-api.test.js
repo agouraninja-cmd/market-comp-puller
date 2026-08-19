@@ -9,7 +9,8 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS , PROPERTY_FIELDS } = require("../vault-api");
+const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS , PROPERTY_FIELDS,
+  SUBMISSION_FIELDS } = require("../vault-api");
 
 // Parse the columns the migrations actually declare, rather than restating
 // them here — a second hand-written list would be a second thing to keep in
@@ -69,6 +70,32 @@ test("property fields and comp fields do not collide", () => {
   const overlap = PROPERTY_FIELDS.filter((f) => API_COMP_FIELDS.includes(f));
   assert.deepEqual(overlap, [],
     `field(s) claimed by both broker_comps and broker_properties: ${overlap.join(", ")}`);
+});
+
+// The same guarantee again, pointed at a third table.
+//
+// SUBMISSION_FIELDS carries what a comp inherits from the submission it was
+// published as: cited_count, which comp_submissions has kept since migration
+// 003. Same reasoning as PROPERTY_FIELDS above — it is not a broker_comps
+// column, so it cannot go in API_COMP_FIELDS, and the answer is another
+// checked list rather than a looser test.
+test("every submission-derived field is a real comp_submissions column", () => {
+  const cols = migrationColumns("comp_submissions");
+  const phantom = SUBMISSION_FIELDS.filter((f) => !cols.includes(f));
+  assert.deepEqual(phantom, [],
+    `The API promises submission field(s) comp_submissions does not have: ${phantom.join(", ")}. ` +
+    `Add them in a migration, or stop claiming them.`);
+});
+
+test("submission fields collide with neither of the other two lists", () => {
+  // Two sources claiming one key on the comp shape means whichever list ran
+  // last wins, silently. Fail the build rather than pick a winner.
+  const overComp = SUBMISSION_FIELDS.filter((f) => API_COMP_FIELDS.includes(f));
+  assert.deepEqual(overComp, [],
+    `field(s) claimed by both broker_comps and comp_submissions: ${overComp.join(", ")}`);
+  const overProp = SUBMISSION_FIELDS.filter((f) => PROPERTY_FIELDS.includes(f));
+  assert.deepEqual(overProp, [],
+    `field(s) claimed by both broker_properties and comp_submissions: ${overProp.join(", ")}`);
 });
 
 test("the internal fields are part of the contract, not stray strings", () => {

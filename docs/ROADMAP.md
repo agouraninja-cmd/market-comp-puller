@@ -29,6 +29,62 @@ intent, the devlog states history.
 
 ## Next
 
+- **Enterprise (firm) accounts — BUILT, awaiting a customer.** Design in
+  `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`,
+  from Chuck's email of 2026-08-16. **Slice 1 shipped the same day**: firms,
+  invites, `org-access.js`, the firm branch in `canReadShare`, a "My firm"
+  audience on Share, and both firm surfaces on `/desk`. **Migration 028 must
+  be run before that code deploys** — it adds `shared_reports.org_id`, which
+  every share read SELECTs by name.
+  **Slice 2 shipped the same day too**, in the form the design did not
+  predict: the shelf needed no `org_shelf_items` table, because reports
+  already live in `shared_reports` with `visibility='org'` and a second copy
+  would be two sources of truth for one thing. `GET /api/org/shelf` is the
+  firm's whole record — searchable, attributed, everyone's own shares
+  included. That table becomes worth building when the shelf holds something
+  a share cannot: a BOV pipeline row, or an individual vault comp.
+  **Auto-share shipped 2026-08-16** on the owner's yes (decision #2 in the
+  spec's §1, now answered): a firm can share members' new reports
+  automatically, off by default, never retroactive, disclosed on the
+  invitation, undoable per report, and with a member-level `never` that an
+  admin cannot override — migration 029. **Slice 3 shipped 2026-08-16**
+  (migration 032): a broker opts ONE COMP AT A TIME into their firm, and it
+  appears in colleagues' own reports attributed, deduped against deals they
+  already hold, still stripped from every client link and download — with
+  the vault's "Visible only to you" copy correcting itself the moment it
+  stops being true. Opt-in per comp rather than per import, which is
+  narrower than the spec proposed and is the version worth defending.
+  **Slice 4 shipped 2026-08-16** (migration 033): per-seat firm billing, the
+  firm as the Stripe customer, seats enforced at the invitation, and a
+  colleague on a seat told whose plan covers them. **It is inert until
+  `STRIPE_PRICE_FIRM_MONTHLY` is set** — unset, firm checkout 503s and the buy
+  control never renders, so seats stay hand-granted exactly as before.
+  Standing recommendation, unchanged by having built it: do not set that price
+  until a firm asks to pay. Nothing about the product is worse for the plan
+  existing unsold, and pricing it before a real firm has used the shelf is a
+  guess.
+  Slice 3's central question — do brokers at one firm want each other's
+  comps *in their reports*, or only a shelf they can search — is now
+  ANSWERABLE rather than answered: both exist, and the first real firm's
+  usage decides which one earns further work.
+  Two refusals in that spec are load-bearing and should not be re-litigated
+  casually: **no auto-join by email domain**, and **no existing
+  `user_id=eq.` filter is widened to an org** — firm reads are new functions
+  against new tables, migration 013's separate-tables rule (a test fails the
+  build if the widened form appears).
+  ONE of the five decisions in the spec's §1 is still open: the attorney
+  question below, sharpened by slice 3 — a departing broker's comps may now
+  be sitting in colleagues' reports as well as on the shelf. It gates launch,
+  not development, and none of the four slices depended on it.
+- **`/api/geocode` should take a POST, not a query string.** The two
+  follow-ons left by the private-comp geocoding work, in the order Owen set
+  when he answered section 7 — this one ABOVE import-time geocoding, not
+  below it. Today every comp's address travels in a URL, which means the
+  platform's access logs and any Referer. `POST /api/report-access` is already
+  POST for exactly this reason (CLAUDE.md says so). It is the same class of
+  fix at a wider blast radius, because it covers *every* comp rather than only
+  private ones. Scoped out of the original change deliberately: it touches
+  every caller (the report map, the market pages, the Explorer).
 - **Import-time geocoding for vault comps** (step 2 of the same spec).
   Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
   what fraction of broker exports already carry coordinates — could not be
@@ -104,7 +160,12 @@ privacy — processing limits, deletion rights, and liability for data a
 broker was not licensed to hold. **The last of these gates launch, not
 development.** As of 2026-08-06 it is no longer hypothetical: brokers'
 private comps are live in storage (`broker_comps`, `broker_properties`)
-and flow into that broker's own valuation reports.
+and flow into that broker's own valuation reports. **Enterprise accounts
+sharpen the same question** (2026-08-16): when a broker uploads their book as
+an employee and then leaves the firm, whose comps are they? The design
+recommends the uploader keeps their vault and the firm keeps whatever was
+published to its shelf — a recommendation, not an agreement, and the first
+time it matters is the worst time to decide it.
 
 For Chuck: the gut-check benchmark, pricing, day-one dashboard
 views. Details in Section 8 of the Ecosystem Plan docx.

@@ -193,6 +193,12 @@ select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-c
   border-radius:var(--r);align-items:flex-end}
 .filters .btn{min-height:40px}
 .filters .note{margin:0 0 10px;align-self:flex-end}
+.filters input[type=search]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:14px;background:var(--card);color:var(--ink);min-height:40px;min-width:190px}
+/* WebKit paints its own clear affordance inside the field; the box is already
+   cleared by Escape and by Clear filters, and the native gutter clipped the
+   placeholder on the market field once already (see the market page note). */
+.filters input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .filters .exp{margin-left:auto}
 table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px;margin:0}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
@@ -251,12 +257,19 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
 .pubbtn.on{border-color:transparent;background:var(--ok-bg);color:var(--ok-text)}
 .pubbtn[disabled]{opacity:.5;cursor:default}
+/* A result, not a control: no border, no hover, and the same quiet ink the
+   row's other secondary figures use. */
+.cites{display:inline-block;margin-left:6px;color:var(--ink-3);font-size:12px;
+  font-weight:600;font-variant-numeric:tabular-nums;cursor:default}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:999px;
   padding:5px 8px 5px 12px;font-size:12.5px;background:var(--card);color:var(--ink-2);font-weight:600;
   letter-spacing:0;text-transform:none}
 .chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;
   padding:0 2px;font-family:inherit}
 .chip button:hover{color:var(--red)}
+/* Quieter than the market it qualifies: it is a footnote on the chip, not a
+   second fact competing with the market name. */
+.chip .near{margin-left:6px;color:var(--ink-3);font-weight:500;font-size:11.5px;letter-spacing:.02em}
 /* Row actions: Delete is a trash icon — quiet ink that goes red on hover, the
    same pattern as removing an import. A red "Delete" word next to Publish was
    a second shout on the row. Edit used to sit beside it as a text link; the
@@ -515,7 +528,7 @@ if(dd)dd.open=false;});</script>
 <main><div class="wrap">
   <p class="kicker">Private workspace</p>
   <h1 class="h">Broker Vault</h1>
-  <p class="sub">Closed deals, leads, and BOVs. Visible only to you.</p>
+  <p class="sub" id="deckSub">Closed deals, leads, and BOVs. Visible only to you.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
@@ -541,9 +554,14 @@ if(dd)dd.open=false;});</script>
         <div class="lcell"><span class="llab">Median $/SF</span>
           <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
         <div class="lcell mid"><span class="llab">Published</span>
-          <div class="lfig" id="cPub">0</div><div class="lsub">only if you choose it</div></div>
+          <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
       </div>
-      <p class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
+      <!-- Rewritten by renderFirmPrivacy() the moment a comp is shared with a
+           firm (migration 032). The default text is the promise this whole
+           tier rests on, so it is in the markup rather than built in JS: a
+           page whose script failed must still make the true statement, not
+           no statement. -->
+      <p class="note" id="trustNote">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
         public records, and nothing is published unless you choose it.</p>
       <!-- The credit identity, stated once and shown BEFORE any publish.
            It sits with the trust line because it answers the same question
@@ -716,9 +734,22 @@ if(dd)dd.open=false;});</script>
              single median to seal the table with, and this is how a broker
              resolves that into a figure. -->
         <label>Deal <select id="fTrans"><option value="">All</option><option value="sale">Sales</option><option value="lease">Leases</option></select></label>
+        <!-- Two dropdowns narrow to a SLICE of the book; this finds one deal
+             in it. A broker hunting the Fairview comp among 400 rows had only
+             scrolling, and the market/type pair they would have to guess at is
+             exactly what they are trying to remember. Searches address and
+             notes: the address is what they know, and notes is where the
+             tenant name or the "sold with the adjacent parcel" detail lives. -->
+        <label>Find <input type="search" id="fText" placeholder="address or note" autocomplete="off"/></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
         <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
+        <!-- Counts the UNPUBLISHED comps in the current view, and deliberately
+             does not try to work out which of them are publishable: that rule
+             is VAULT.canPublish on the server, and a second copy here is
+             exactly the kind of pair this repo already carries warnings about.
+             The server reports what it skipped and why. -->
+        <button class="btn ghost hide" type="button" id="pubAll"></button>
         <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
@@ -953,6 +984,13 @@ if(dd)dd.open=false;});</script>
   // Kept across load() so a cell save that refetches, or a delete, does not
   // dump the broker back into the compact table mid-edit.
   var sheetMode=false,sheetUploadId=null,uploads=[];
+  // The firm this broker belongs to, if any, and which of their comps are on
+  // its shelf (migration 032). null firm = the ordinary case, and the whole
+  // feature renders as nothing: no column, no toggle, no changed copy.
+  // sharedIds is a lookup rather than a flag on each comp because shelf
+  // membership is a property of the RELATIONSHIP, not of the comp — and
+  // because vault-api.js's allowlist is a contract this page must not widen.
+  var myFirm=null,sharedIds={};
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -971,11 +1009,29 @@ if(dd)dd.open=false;});</script>
   //      fixes that up to 1000; past it, the #trunc line in apply() says so
   //      out loud rather than quietly under-reporting someone's book.
   //   3. Filtering is now instant and costs no round trip.
+  // Every term must appear somewhere in the row, in any order and any field:
+  // a broker types "fairview industrial" or "8400 mission" and means both
+  // words, not the phrase. Case-folded, and matched on a substring rather than
+  // a word boundary so "fair" finds Fairview -- this is a find box over one
+  // person's own records, where being generous costs nothing and a miss costs
+  // them the scroll they were trying to avoid.
+  function matchesText(c,terms){
+    if(!terms.length)return true;
+    var hay=((c.address||"")+" "+(c.notes||"")+" "+(c.market||"")+" "+
+             (c.property_type||"")+" "+(c.tenancy||"")).toLowerCase();
+    for(var i=0;i<terms.length;i++){ if(hay.indexOf(terms[i])<0)return false; }
+    return true;
+  }
+  function searchTerms(){
+    return String(($("fText")&&$("fText").value)||"").toLowerCase().split(" ")
+      .filter(function(w){return w});
+  }
   function view(){
-    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value;
+    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,q=searchTerms();
     return comps.filter(function(c){
       if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
-      return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x);
+      return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x)&&
+        matchesText(c,q);
     });
   }
 
@@ -1118,6 +1174,19 @@ if(dd)dd.open=false;});</script>
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    // What publishing gave back. Until now a broker published a comp, saw a
+    // green chip, and learned nothing further — while the very same figure was
+    // already on their public profile page, if they had one, under "Report
+    // citations". Publishing is compensated in credit rather than cash, so a
+    // credit nobody can see is not compensation.
+    //
+    // Summed over the rows on screen, like every other figure in this ledger,
+    // so it cannot disagree with the per-comp counts in the table; the page
+    // already says when a book is truncated past 1,000.
+    var cites=comps.reduce(function(n,c){return n+(Number(c.cited_count)||0)},0);
+    $("cPubSub").textContent=cites
+      ? cites+" report citation"+(cites===1?"":"s")
+      : "only if you choose it";
     // The ledger's other figures come from the returned rows — the same book
     // the rollup and chart read, so the strip can never disagree with the
     // panels below it. Whole-book always; the filter never narrows it.
@@ -1157,6 +1226,10 @@ if(dd)dd.open=false;});</script>
     // a market they already hold comps in, and this is where that list arrives.
     allMarkets=o.j.markets||[];
     uploads=o.j.uploads||[];
+    myFirm=o.j.firm||null;
+    sharedIds={};
+    (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
+    renderFirmPrivacy();
     renderIdentity(o.j.identity);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
@@ -1279,6 +1352,28 @@ if(dd)dd.open=false;});</script>
   // sale shows its $/SF and a lease shows its annual rent. Both are server-
   // derived and only one of them is ever set, so this cannot show two figures
   // for one comp.
+  // The publish control, and beside it what publishing earned. One builder for
+  // the compact table and the spreadsheet, which showed the identical chip in
+  // two places and would otherwise grow the citation count in only one.
+  //
+  // The count is deliberately NOT on the button: the button is a toggle with a
+  // confirm behind it, and a number that grows inside a control reads as part
+  // of the action rather than a result of it.
+  function publishCell(c){
+    var btn=c.published
+      ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
+      : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+    var n=Number(c.cited_count)||0;
+    if(!c.published||!n)return btn;
+    // "cited in N reports" rather than "seen N times": the count rises when a
+    // report is GENERATED citing this comp, and a cached re-run of the same
+    // report does not bump it, so it is a floor on how often the broker's name
+    // has actually been in front of somebody.
+    return btn+' <span class="cites" title="'+escA("Cited in "+n+" report"+(n===1?"":"s")+
+      " so far. Counted when a report is generated; a cached re-run of the same report is not counted again.")+
+      '">'+n+"</span>";
+  }
+
   function rateCell(c){
     if(c.transaction==="lease")return psf(c.rent_psf_yr);
     return psf(c.price_per_sqft);
@@ -1353,7 +1448,7 @@ if(dd)dd.open=false;});</script>
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; }
+    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -1378,6 +1473,19 @@ if(dd)dd.open=false;});</script>
       return sortAsc?String(x).localeCompare(String(y)):String(y).localeCompare(String(x));
     });
     var gutOutliers=renderGutCheck(rows);
+    // Two different empty states, and telling them apart matters: a broker who
+    // searched for a deal they own and got "Nothing here yet, upload a
+    // spreadsheet" would reasonably think the vault had lost their book. Same
+    // rule the hub list and the lead inbox already hold -- never report a
+    // filtered-out view as an absent one.
+    var narrowed=comps.length>0;
+    // Single-quoted with plain double quotes inside, and HTML entities for the
+    // curly quotes: this page is ONE template literal, so a backslash escape
+    // written here is eaten before the browser ever sees it -- \" would reach
+    // the emitted script as a bare " and end the string mid-attribute.
+    $("none").innerHTML=narrowed
+      ? 'No comps match this filter. <button type="button" class="lnk" id="noneClear">Clear filters</button>'
+      : 'Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet, PDF or screenshot.';
     $("none").className=rows.length?"empty hide":"empty";
     // Say "of N" whenever a filter is narrowing, so the number on screen can
     // never be mistaken for the size of the book.
@@ -1411,28 +1519,41 @@ if(dd)dd.open=false;});</script>
       headCell("property_type","Type")+headCell("transaction","Deal")+
       headCell("deal_date","Date")+headCell("price","Price",true)+
       headCell("size_sqft","Size",true)+headCell("price_per_sqft",rateHead,true)+
-      headCell("published","Public")+"<th></th></tr>";
+      headCell("published","Public")+(myFirm?"<th>Firm</th>":"")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
       // it goes through a button and a confirm.
-      var pub=c.published
-        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
-        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var pub=publishCell(c);
       var flag=gutOutliers[c.id]
         ? ' <span class="gcOut" title="'+escA(Math.abs(gutOutliers[c.id].pct)+"% "+
             (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
         : "";
-      // Six typed cells, two derived ones, then the public toggle and the
-      // trash. The transaction cell loses its .tag chip by becoming an input:
-      // a chip a broker cannot correct in place was the thing being fixed.
+      // Firm sharing (migration 032 here → renumbered at merge; see the
+      // migrations folder). A SECOND, separate two-way toggle rather than a
+      // third state on Publish, because they are different acts with
+      // different audiences and collapsing them would let one confirm dialog
+      // cover both: Publish puts a comp in CompNinja's PUBLIC records under
+      // the broker's name, this shows it to named colleagues and to nobody
+      // else. The column only exists for a broker who is in a firm — a
+      // control that can only fail is worse than no control.
+      var firm="";
+      if(myFirm){
+        firm=sharedIds[c.id]
+          ? '<td><button class="pubbtn on" data-firm="'+esc(c.id)+'" data-on="1">Shared</button></td>'
+          : '<td><button class="pubbtn" data-firm="'+esc(c.id)+'">Share</button></td>';
+      }
+      // Six typed cells, two derived ones, then the public toggle, the firm
+      // toggle and the trash. The transaction cell loses its .tag chip by
+      // becoming an input: a chip a broker cannot correct in place was the
+      // thing being fixed.
       return '<tr><td class="addr">'+cellInput(c,"address")+"</td>"+
         roCell(c,"market",esc(c.market))+
         "<td>"+cellInput(c,"property_type")+"</td><td>"+cellInput(c,"transaction")+"</td>"+
         "<td>"+cellInput(c,"deal_date")+'</td><td class="num">'+cellInput(c,"price")+
         '</td><td class="num">'+cellInput(c,"size_sqft")+"</td>"+
         roCell(c,"price_per_sqft",rateCell(c)+flag,true)+
-        "<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
+        "<td>"+pub+"</td>"+firm+'<td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
     // current view, sealed under a double rule — the same figure the market
@@ -1444,6 +1565,7 @@ if(dd)dd.open=false;});</script>
     // it can never name different measures.
     var foot=footFigure(unit);
     renderStrip(rows,unit,foot);
+    refreshPublishAll(rows);
     // ONE row template with the label and the number varying, deliberately
     // not a branch per case emitting its own <tr>: the footer's column count
     // is checked by finding a single label cell with a colspan in this file
@@ -1487,6 +1609,20 @@ if(dd)dd.open=false;});</script>
         (st.structures>1?" \\u00b7 mixed lease types":"")};
   }
 
+  // The unpublished comps in the current view, in view order, which is what
+  // "publish these" means to the person looking at the screen.
+  var pubCandidates=[];
+  function refreshPublishAll(rows){
+    pubCandidates=(rows||[]).filter(function(c){return !c.published});
+    var b=$("pubAll");
+    if(!b)return;
+    // Hidden rather than disabled at zero: a permanently greyed control on a
+    // fully-published book is a thing to wonder about, not an affordance.
+    if(!pubCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
+    b.className="btn ghost";
+    b.textContent="Publish "+pubCandidates.length+" comp"+(pubCandidates.length===1?"":"s");
+  }
+
   function renderSheet(rows){
     var keys=sheetKeys(rows);
     var numK={price:1,size_sqft:1,cap_rate:1,units:1,price_per_unit:1,lot_acres:1,price_per_acre:1};
@@ -1494,9 +1630,7 @@ if(dd)dd.open=false;});</script>
       return headCell(k,sheetLabel(k),!!numK[k]);
     }).join("")+headCell("published","Public")+'<th></th></tr>';
     $("tbody").innerHTML=rows.map(function(c){
-      var pub=c.published
-        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
-        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var pub=publishCell(c);
       var cells=keys.map(function(k){
         var v=c[k]==null?"":c[k];
         // Same width rule as the compact table (see cellWidth): a notes cell
@@ -2029,8 +2163,16 @@ if(dd)dd.open=false;});</script>
     var emptyHint='<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
     $("covRow").innerHTML=cov.length?cov.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
+      // Cities that trade as one market are matched together (the server's
+      // METRO_GROUPS), so a chip reading "Boise, ID" can legitimately pull in
+      // a Meridian lead. Said out loud here, because a lead from a city the
+      // broker never typed otherwise reads as a bug in the thing whose whole
+      // job is to be trusted about where their business is.
+      var near=Number(c.nearby||0);
+      var nearTip=near?" Also matches "+near+" nearby market"+(near===1?"":"s")+" that trade as one with it.":"";
       return '<span class="chip">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
-        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        (near?'<span class="near" title="'+escA(nearTip.trim())+'">+'+near+" nearby</span>":"")+
+        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+nearTip+'" title="Stop watching '+label+
         '">&times;</button></span>';
     }).join(" "):(($("covForm").parentNode&&$("covForm").parentNode.id==="pipeEmpty")?"":emptyHint);
     var seen={},opts=[];
@@ -2982,15 +3124,72 @@ if(dd)dd.open=false;});</script>
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.
   function redraw(){
-    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value)?"btn ghost":"btn ghost hide";
+    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fText").value)?"btn ghost":"btn ghost hide";
     renderRollup();
     render();
   }
   $("fMarket").addEventListener("change",redraw);
   $("fType").addEventListener("change",redraw);
   $("fTrans").addEventListener("change",redraw);
+  // "input", not "change": filtering as they type is the whole point, and the
+  // work is a substring scan over at most 1000 rows the page already holds.
+  // Escape clears, which is the one thing every search box on the web does.
+  $("fText").addEventListener("input",redraw);
+  // Delegated: #none's contents are rewritten on every render, so a handler
+  // bound to the button itself would be lost on the next draw.
+  $("none").addEventListener("click",function(e){
+    if(!e.target||e.target.id!=="noneClear")return;
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value="";
+    redraw();
+  });
+  $("fText").addEventListener("keydown",function(e){
+    if(e.key==="Escape"&&$("fText").value){ $("fText").value=""; redraw(); }
+  });
   $("fClear").addEventListener("click",function(){
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; redraw();
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; redraw();
+  });
+  // Bulk publish. The confirm is the single-comp one's promise, scaled: it
+  // names the count, the credit, and the one thing that cannot be taken back.
+  // Publishing is a public act on somebody else's behalf as much as the
+  // broker's, so the dialog stays specific rather than becoming "Publish 23
+  // comps?" now that it covers more of them.
+  $("pubAll").addEventListener("click",function(){
+    var ids=pubCandidates.map(function(c){return c.id}),n=ids.length;
+    if(!n)return;
+    var who=(identity&&identity.creditedTo)?identity.creditedTo:"your firm";
+    if(!confirm("Publish "+n+" comp"+(n===1?"":"s")+"?\\n\\nThey become part of CompNinja's public records, credited to "+
+      who+" by name in every report they appear in. Everything else in your vault stays private.\\n\\n"+
+      "Comps that are not ready — no price, no size, no street number — are skipped and named afterwards.\\n\\n"+
+      "You can stop publishing any of them later, but reports that already used them will keep them."))return;
+    var b=$("pubAll");
+    b.disabled=true; b.textContent="Publishing\\u2026";
+    fetch("/api/vault/publish-many",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify({ids:ids})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        b.disabled=false;
+        if(o.s!==200){
+          compMsg(o.j.error||"That didn't go through.",true);
+          // The one refusal a broker can fix on this page, same as the single
+          // publish: open the form that supplies the missing credit name.
+          if(o.j.code==="needs_credit_name")setIdOpen(true);
+          load();
+          return;
+        }
+        var parts=[o.j.published+" published"];
+        if(o.j.skippedCount)parts.push(o.j.skippedCount+" skipped");
+        if(o.j.remaining)parts.push(o.j.remaining+" left \u2014 run it again");
+        // Name the FIRST reason rather than a bare count: "5 skipped" sends a
+        // broker hunting through their book, and the reasons repeat, so one
+        // example usually explains all five.
+        var why=(o.j.skipped&&o.j.skipped.length)?o.j.skipped[0].reason:"";
+        compMsg(parts.join(" \\u00b7 ")+(why?" \\u00b7 "+why:""),!o.j.published);
+        load();
+      })
+      .catch(function(){
+        b.disabled=false;
+        compMsg("That didn't reach the server. Nothing was changed.",true);
+      });
   });
   $("sheetToggle").addEventListener("click",function(){
     if(sheetMode)closeSheet(); else openSheet(null);
@@ -3018,6 +3217,55 @@ if(dd)dd.open=false;});</script>
   // corpus has already harvested it. Unpublishing stops future offers; it
   // cannot reach back into reports already delivered. A broker who finds that
   // out afterwards would be right to feel misled, so it is said up front.
+  // Spec §2's rule, in one function: the moment a vault stops being only
+  // yours, the copy has to say so. "Visible only to you" was true of every
+  // vault until a comp could be shared with a firm, and a promise that
+  // quietly stops being true is worse than one that was never made.
+  //
+  // It keys on having actually SHARED something, not on merely being in a
+  // firm: a broker who has shared nothing really does have a vault visible
+  // only to them, and rewriting their copy would frighten them about a thing
+  // that has not happened.
+  function renderFirmPrivacy(){
+    var n=Object.keys(sharedIds).length;
+    var deck=$("deckSub"),trust=$("trustNote");
+    var sharedLine=myFirm&&n
+      ? n+" "+(n===1?"comp is":"comps are")+" shared with "+myFirm.name+
+        ". Everything else is visible only to you, and nothing here is ever read "+
+        "into CompNinja\u2019s public records unless you publish it."
+      : null;
+    if(deck)deck.textContent=sharedLine
+      ? "Closed deals, leads, and BOVs. "+n+" shared with "+myFirm.name+"; the rest visible only to you."
+      : "Closed deals, leads, and BOVs. Visible only to you.";
+    if(trust)trust.innerHTML=sharedLine
+      ? esc(sharedLine)
+      : "Visible only to you. Nothing here is ever read into CompNinja\u2019s "+
+        "public records, and nothing is published unless you choose it.";
+  }
+
+  // The firm toggle. A SEPARATE handler from Publish, deliberately: the two
+  // are different acts with different audiences, and one confirm dialog
+  // covering both is how a broker ends up publishing to the world when they
+  // meant to show a colleague.
+  $("tbody").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-firm]"); if(!b||!myFirm)return;
+    var on=b.getAttribute("data-on")==="1";
+    var id=b.getAttribute("data-firm");
+    if(!on&&!confirm("Share this comp with "+myFirm.name+"?\\n\\nColleagues at your firm will see it inside their own reports, with your name on it. It does NOT go into CompNinja's public records, it is left out of every download and client link, and you can take it back at any time."))return;
+    b.disabled=true; b.textContent=on?"Removing\u2026":"Sharing\u2026";
+    fetch("/api/vault/firm",{method:on?"DELETE":"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({orgId:myFirm.id,compIds:[id]})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){compMsg(o.j.error||"That didn't go through.",true);b.disabled=false;b.textContent=on?"Shared":"Share";return}
+        if(on)delete sharedIds[id]; else sharedIds[id]=true;
+        renderFirmPrivacy();
+        render();
+      })
+      .catch(function(){b.disabled=false;b.textContent=on?"Shared":"Share";compMsg("That didn't go through.",true)});
+  });
+
   $("tbody").addEventListener("click",function(e){
     var b=e.target.closest("button[data-pub]"); if(!b)return;
     var on=b.getAttribute("data-on")==="1";
@@ -3060,9 +3308,35 @@ if(dd)dd.open=false;});</script>
     el.textContent=text||"";
   }
 
+  // The comp a broker just deleted, held for as long as the message offering
+  // to put it back is on screen. Nothing persists it: this catches the misclick
+  // that is noticed immediately, which is the case worth catching, and NOT a
+  // deletion regretted tomorrow -- for that the honest answer is that it is
+  // gone, and pretending otherwise with a store that empties on reload would
+  // be worse than saying so.
+  var lastDeleted=null;
+
+  // Everything the add-one-comp route accepts, taken off the row the page was
+  // already holding. Reusing that route rather than adding an undelete
+  // endpoint is what keeps the restore honest: it goes through normalizeRow
+  // like every other written comp, so an undo cannot put back something the
+  // vault would refuse to be told today.
+  function restorePayload(c){
+    var out={},fields=BASE_FIELDS.concat(TYPE_FIELDS[c.property_type]||[]);
+    fields.forEach(function(f){
+      var v=c[f];
+      if(v!=null&&String(v).trim()!=="")out[f]=String(v);
+    });
+    return out;
+  }
+
   async function deleteComp(id){
-    // Hard delete, no undo: confirm by name rather than with a generic prompt.
-    if(!confirm("Delete this comp? This cannot be undone."))return;
+    var comp=compById(id);
+    // Still a confirm, and still specific: undo is a safety net for the
+    // misclick, not a reason to make the destructive click cheap. What the
+    // wording no longer claims is that this cannot be undone -- it can, for
+    // as long as the message below is on screen.
+    if(!confirm("Delete this comp?"))return;
     var r;
     try{
       r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
@@ -3075,10 +3349,46 @@ if(dd)dd.open=false;});</script>
     var j=await r.json().catch(function(){return{};});
     if(!r.ok)return compMsg(j.error||"Could not delete that comp.",true);
     load();
-    compMsg(j.unpublished
+    lastDeleted=comp?{payload:restorePayload(comp),
+      address:comp.address,wasPublished:!!j.unpublished}:null;
+    if(!lastDeleted)return compMsg("Deleted.");
+    compMsgUndo((lastDeleted.wasPublished
       ? "Deleted, and withdrawn from the public records."
-      : "Deleted.");
+      : "Deleted."));
   }
+
+  // A message with a way back. Separate from compMsg because that one sets
+  // textContent, which is right for every other caller and cannot carry a
+  // button.
+  function compMsgUndo(text){
+    var el=$("compMsg");
+    el.className="msg ok";
+    el.innerHTML=esc(text)+' <button type="button" class="lnk" id="undoDel">Undo</button>';
+  }
+
+  // Delegated: #compMsg's contents are rewritten by every other message on the
+  // page, so a handler bound to the button itself would outlive its button.
+  $("compMsg").addEventListener("click",function(e){
+    if(!e.target||e.target.id!=="undoDel")return;
+    var d=lastDeleted;
+    lastDeleted=null;
+    if(!d)return;
+    compMsg("Putting it back\u2026");
+    fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(d.payload)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200)return compMsg(o.j.error||"Could not put that comp back.",true);
+        load();
+        // Said plainly rather than left to be discovered. The restore is a new
+        // entry: it belongs to no import, so deleting that import will not
+        // remove it, and a comp that was published is NOT republished by
+        // putting it back -- publishing is a deliberate public act and undoing
+        // a delete is not consent to make it public again.
+        compMsg("Put back."+(d.wasPublished?" It is not published again — publish it when you are ready.":""));
+      })
+      .catch(function(){ compMsg("That didn't reach the server. Nothing was changed.",true); });
+  });
 
   // One field of one row, on blur — from a compact-table cell or a spreadsheet
   // one, which are the same input saved the same way. Only the changed field

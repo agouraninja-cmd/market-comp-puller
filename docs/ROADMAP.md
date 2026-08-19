@@ -10,6 +10,10 @@ Update rule: when something ships, move its line to the Shipped log at the
 bottom with the date. When priorities change, reorder; this file states
 intent, the devlog states history.
 
+The shape of that update — what each section is for, and how an entry is
+written so it does not decay into a to-do list — lives in
+`docs/ROADMAP-TEMPLATE.md`.
+
 ## Now
 
 - **Re-check Search Console in a few days** (no code, ~5 minutes). Checked

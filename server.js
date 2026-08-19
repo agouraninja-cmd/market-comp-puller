@@ -1730,12 +1730,51 @@ async function getEntitlements(user, reportId, admin = false) {
 //
 // Never throws: a failure here resolves to no seat, i.e. the member's own
 // tier, which is the fail-closed direction.
+// Memoized exactly like subCache above, and for a sharper reason than
+// convenience: getEntitlements runs on EVERY /api/config, which runs on every
+// page load — and this lookup is reached by every signed-in visitor who is not
+// already Pro, which is most of them. Uncached it added a database read to the
+// hot path for people who are in no firm at all, which is the thing CLAUDE.md
+// keeps /api/pricing out of /api/config to avoid.
+//
+// ONLY THE NEGATIVE IS CACHED — "this person is in no firm" — and that is the
+// whole point rather than a limitation. It is the answer for almost every
+// visitor, it costs one read to reach, and it changes only when they accept an
+// invitation (which drops their entry explicitly). A member who IS in a firm
+// re-reads every time, so their seat reflects a seat count or a lapsed plan
+// immediately instead of up to a minute later. Caching that side too would buy
+// a few reads from a small population and pay for it in stale ENTITLEMENTS,
+// which is the one thing here worth being exact about.
+const SEAT_CACHE_TTL_MS = SUB_CACHE_TTL_MS;
+const seatCache = new Map(); // user_id -> { at }  (presence = "in no firm")
+
+function cacheNoSeat(userId) {
+  if (!userId) return null;
+  seatCache.set(userId, { at: Date.now() });
+  // Same crude cap as subCache: it repopulates on demand, and an unbounded
+  // map on a long-lived process is the only way this could hurt.
+  if (seatCache.size > 5000) seatCache.clear();
+  return null;
+}
+
+// Dropped whenever a firm's membership or billing changes under this process,
+// so a colleague who just accepted an invitation is not told for another
+// minute that they have no seat.
+function dropSeatCache(userId) {
+  if (userId) seatCache.delete(userId);
+  else seatCache.clear();
+}
+
 async function firmSeatSubscriptionFor(user) {
+  const cached = user && user.id ? seatCache.get(user.id) : null;
+  if (cached && Date.now() - cached.at < SEAT_CACHE_TTL_MS) return null;
   try {
     if (!DB_CONFIGURED || !user || !user.email) return null;
     const memberships = await orgMembershipsFor(user.email);
     const mine = memberships.filter(ORG.isActive);
-    if (!mine.length) return null;
+    // Cached too — "in no firm" is the common answer and the one worth not
+    // paying for on every page load.
+    if (!mine.length) return cacheNoSeat(user.id);
     for (const membership of mine) {
       const orgId = String(membership.org_id);
       const [subRows, org, roster] = await Promise.all([
@@ -1758,9 +1797,16 @@ async function firmSeatSubscriptionFor(user) {
         canManage: ORG.roleOf(membership) === "owner",
       };
     }
+    // In a firm, but holding no seat on it. NOT cached: this is the state a
+    // seat purchase is about to change, and a member watching for it should
+    // not wait out a TTL.
     return null;
   } catch (err) {
     console.error("Firm seat lookup failed (falling back to the member's own tier):", err.message);
+    // No seat, and NOT cached, so the next request retries. Fail-closed here
+    // rather than findSubscription's serve-the-last-answer, because the only
+    // thing cached on this path is an absence: there is no previous grant to
+    // hold on to, and inventing one would mint Pro from a database error.
     return null;
   }
 }
@@ -3270,6 +3316,7 @@ async function inviteOrgMembers(orgId, emails, invitedBy) {
 // id must never be enough to join it. `joined_at=is.null` keeps it idempotent
 // and stops a second click rewriting the date somebody actually joined.
 async function acceptOrgInvite(orgId, user) {
+  dropSeatCache(user && user.id);
   return sbRequest("PATCH",
     `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
     `&email=eq.${encodeURIComponent(ORG.normalizeEmail(user.email))}` +
@@ -3282,6 +3329,10 @@ async function acceptOrgInvite(orgId, user) {
 // here, and 028 makes removed_at beat everything precisely so it can be read
 // rather than inferred from an absence.
 async function removeOrgMember(orgId, memberId) {
+  // The removed person becomes "in no firm" and must not be told otherwise
+  // from a stale entry — and they are not necessarily the only one, since
+  // their seat passes to the next member in joined_at order.
+  dropSeatCache();
   return sbRequest("PATCH",
     `org_members?id=eq.${encodeURIComponent(memberId)}&org_id=eq.${encodeURIComponent(orgId)}`,
     { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
@@ -3343,6 +3394,10 @@ async function orgIdForStripeCustomer(customerId) {
 // see firmSeatSubscriptionFor) and keep their membership, so a firm that
 // downgrades and then upgrades again finds its people still there.
 async function setOrgSeats(orgId, seats) {
+  // Only the negative is cached, so this is belt and braces rather than
+  // load-bearing — but a seat count change is exactly when somebody is
+  // watching, and it is rare enough that clearing the map costs nothing.
+  dropSeatCache();
   if (!DB_CONFIGURED || !orgId) return;
   try {
     await sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,

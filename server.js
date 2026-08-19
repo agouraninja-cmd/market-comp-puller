@@ -2988,7 +2988,7 @@ async function getShareRecord(id) {
         id: row.id, user_id: row.user_id, visibility: row.visibility,
         include_private: row.include_private, revoked_at: row.revoked_at,
         created_at: row.created_at,
-        // Migration 028. Selected by NAME above, which is why an unrun 028
+        // Migration 030. Selected by NAME above, which is why an unrun 030
         // breaks every share read and not just a firm one — see the file's
         // header and verify.js's note.
         org_id: row.org_id || null,
@@ -3271,7 +3271,7 @@ async function findOrg(orgId) {
 // no accept step, because they are the one who asked for it.
 async function createOrgWithOwner(name, user) {
   const rows = await sbRequest("POST", "orgs",
-    // `seats` is written explicitly rather than left to 028's column default.
+    // `seats` is written explicitly rather than left to 030's column default.
     // A hand-granted firm is the ordinary case (§9: seats are granted by hand
     // until somebody asks to pay), and code that reads this column should
     // never have to distinguish "not set" from "set to the structural cap".
@@ -3326,7 +3326,7 @@ async function acceptOrgInvite(orgId, user) {
 }
 
 // Removal is a stamp, never a DELETE: the row is the record that somebody was
-// here, and 028 makes removed_at beat everything precisely so it can be read
+// here, and 030 makes removed_at beat everything precisely so it can be read
 // rather than inferred from an absence.
 async function removeOrgMember(orgId, memberId) {
   // The removed person becomes "in no firm" and must not be told otherwise

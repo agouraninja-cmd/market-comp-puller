@@ -65,7 +65,7 @@ function normalizeEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? v : "";
 }
 
-// Least privilege on anything unrecognized. The CHECK constraint in 028 and
+// Least privilege on anything unrecognized. The CHECK constraint in 030 and
 // this function agree on purpose: the constraint stops a bad row, this stops a
 // bad row that somehow exists from granting anything.
 function roleOf(row) {

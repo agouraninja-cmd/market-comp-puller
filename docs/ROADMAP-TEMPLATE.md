@@ -4,6 +4,19 @@ A blank `docs/ROADMAP.md` plus the rules that make one worth reading. Copy
 the skeleton below into a new roadmap, or use the entry shapes at the
 bottom when adding a line to the existing one.
 
+There are two PowerPoint companions to this file, both CompNinja-branded
+and organised as milestones on a week-by-week calendar:
+
+- **`docs/CompNinja-Roadmap-12-Weeks.pptx`** — the same plan filled in for
+  the twelve weeks from 2026-08-17, six milestones, one slide per four-week
+  block.
+- **`docs/CompNinja-Roadmap-Template.pptx`** — the blank version of that
+  deck. Every slot carries a dashed outline and a grey italic prompt; a
+  prompt left in place is the tell that the section was never thought about.
+
+The deck is how the plan is read out loud. This file stays the source of
+truth — when the two disagree, the file is right.
+
 Why a template at all: the CompNinja roadmap earns its keep because its
 entries carry the *reasoning*, not just the intent — what is blocked and
 on what, what was rejected and why, what evidence would change the

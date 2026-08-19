@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Universal Links. `applinks:` must match the host serving
+  /.well-known/apple-app-site-association, which server.js only serves once
+  IOS_APP_ID is set to <TeamID>.<bundle id>. Both halves are required: the
+  entitlement alone gives an app that claims links the server never confirms,
+  and the server file alone gives a file no app is listening for.
+
+  Use `?mode=developer` on a device with Developer Mode enabled while testing,
+  because Apple's CDN caches the association file and will otherwise keep
+  serving the version from before your last deploy.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:compninja.co</string>
+        <string>applinks:www.compninja.co</string>
+    </array>
+</dict>
+</plist>

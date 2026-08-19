@@ -29,6 +29,28 @@ intent, the devlog states history.
 
 ## Next
 
+- **The App Store, when somebody asks for it.** The installable web app
+  shipped 2026-08-19 and needs no Apple involvement: a phone installs
+  CompNinja to its home screen today, own icon, no browser chrome, with an
+  offline page and long-press shortcuts. The store wrapper is written but
+  **uncompiled** (`ios/`, no macOS was available) and the submission plan is
+  `docs/IOS-APP-STORE.md`.
+  Two findings shape the priority. The blocker everyone expects — Apple
+  taking 30% of a Stripe subscription — **does not apply**: since May 2025 a
+  US-storefront app may link out to a web checkout with no in-app purchase
+  and no entitlement, so billing needs no changes. The real risk is Guideline
+  4.2 (a webview wrapper rejected as a repackaged website), and the strongest
+  answer to it is **push notifications for the watchlist digest**, which is
+  also the one feature that would bring a broker back weekly rather than when
+  they remember. That needs an APNs path, a device-token table and a
+  migration, and is deliberately not built.
+  Against the zero-outside-users constraint above, this stays *Next* rather
+  than *Now*: it costs $99/year plus a Mac or a CI service, adds review
+  latency to a repo that ships several times a day, and buys distribution for
+  a product still proving anyone wants it. The slow parts (a D-U-N-S number
+  for the LLC, developer enrolment) can be started at any time and block
+  nothing.
+
 - **Enterprise (firm) accounts — BUILT, awaiting a customer.** Design in
   `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`,
   from Chuck's email of 2026-08-16. **Slice 1 shipped the same day**: firms,

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keys this app actually needs beyond the Xcode template's defaults. Modern
+  Xcode generates most of Info.plist from build settings, so treat this as the
+  list to MERGE rather than a file to drop in wholesale.
+
+  NSFaceIDUsageDescription is not optional paperwork: an app that calls
+  LocalAuthentication without it is terminated by the system the first time it
+  asks, which on this app means the vault appears simply to crash.
+
+  ITSAppUsesNonExemptEncryption declares that the app uses only HTTPS. Without
+  it every single build asks the export-compliance question again in App Store
+  Connect before it can be submitted.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>CompNinja</string>
+
+    <key>NSFaceIDUsageDescription</key>
+    <string>CompNinja uses Face ID to keep your broker vault private if your phone is unlocked by someone else.</string>
+
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+
+    <!-- Portrait and landscape: the comp table and the map are both worth
+         turning a phone sideways for, and an iPad build must support all
+         orientations regardless. -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string>LaunchBackground</string>
+    </dict>
+</dict>
+</plist>

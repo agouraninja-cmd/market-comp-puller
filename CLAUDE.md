@@ -521,6 +521,22 @@ dependency. `.env` is git-ignored — never commit it.
   stops answering. Search Console is the only view of whether the ~38 market
   pages in `sitemap.xml` are indexed at all; `analytics_events` only ever sees
   people who already arrived.
+- `IOS_APP_ID` — optional, `<TeamID>.<bundle id>` (e.g.
+  `A1B2C3D4E5.co.compninja.app`). Set, the server serves
+  `/.well-known/apple-app-site-association`, which is what makes a
+  `https://compninja.co/r/<id>` link open the iOS app on a device that has it
+  and the browser everywhere else — the same link either way, so every share
+  link already in the world quietly gets better. Unset **or malformed**, the
+  route 404s: the value is validated rather than trusted, because an
+  association file naming the wrong team id breaks every deep link into the
+  app *silently* (iOS just falls back to Safari and never says why), and no
+  file is strictly better than a wrong one. Same shape as
+  `GOOGLE_SITE_VERIFICATION` above and for the same reasons, including the
+  loud startup banner. The advertised paths are an allowlist of what the app
+  can RENDER, not of what the site serves — the Stripe checkout return is
+  deliberately excluded, because that journey starts in a browser and has to
+  finish there, and capturing it strands the buyer in an app that cannot
+  complete the payment. `test/routes.test.js` pins all three states.
 - `PRO_ENABLED` — optional `on`/`off`, **default OFF**. Master switch for the
   paid Pro tier. Off means the app behaves exactly as it did before the tier
   existed: no comp gating, no export cap, no lookback limit
@@ -2491,6 +2507,45 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   exists specifically to catch drift between the two copies.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
+- **Installable app (PWA), 2026-08-19.** `manifest.webmanifest`, `sw.js`,
+  `offline.html` and `icons/` make CompNinja install to a phone home screen
+  and launch without browser chrome. All four are on the `STATIC_FILES`
+  allowlist; the icons are generated from `favicon.svg` by
+  `scripts/gen-app-icons.js` (zero-dependency PNG rasterizer) and match the
+  framing of the pre-existing hand-made `apple-touch-icon.png`, which is
+  deliberately left alone rather than regenerated.
+  **The service worker is network-first everywhere and caches by allowlist,
+  and both of those are load-bearing rather than cautious**:
+  - A stale `/valuation.js` aborts the ENTIRE front end (index.html's inline
+    script destructures `VALUATION` as its first statement) while the page
+    still paints and looks fine. That is why server.js pins it, `/gut-check.js`
+    and `/explore-query.js` at `maxAge: 0` — and a service worker is the one
+    layer that can outlive the deploy that fixes it, so those three are on
+    `NEVER_CACHE`. **`test/pwa.test.js` fails the build if any `maxAge: 0`
+    asset ever appears in the worker's cacheable list**, which is the rule
+    neither file can check about itself. Both invariants were mutation-tested.
+  - This app serves private data (the vault, shared reports, My Desk) off
+    ordinary-looking paths, so an allowlist is what stops a future "cache
+    anything static-looking" edit writing a broker's book into a cache on a
+    shared device. Navigations and everything under `/api/` are never stored
+    at all — what lives at `/` depends on auth state, so a cached navigation
+    would serve the signed-in app to a signed-out visitor.
+  `offline.html` is self-contained (no stylesheet, no font, no image file)
+  because it renders precisely when nothing can be fetched; a test pins that.
+  The registration lives in its OWN `<script>` in index.html, both so it
+  survives the main block aborting and because `test/index-html.test.js` finds
+  script blocks by scanning for the opening tag — writing that tag literally
+  inside a comment there starts a phantom block and fails the build.
+- **The iOS App Store wrapper lives in `ios/`, uncompiled.** Swift sources for
+  a WKWebView shell plus the native layer App Review's Guideline 4.2 requires
+  (Face ID over the vault, a native offline screen, Universal Links, the share
+  sheet, external-link routing). **It has never been through a compiler** —
+  written with no macOS available — and there is deliberately no `.xcodeproj`,
+  since a hand-forged one that fails to open costs more than Xcode's own
+  takes to make. The submission plan, including the finding that the US
+  storefront no longer requires in-app purchase for a Stripe subscription
+  (Guideline 3.1.1(a), amended May 2025 — so **billing needs no changes at
+  all**), is in `docs/IOS-APP-STORE.md`. Read that before touching `ios/`.
 - `GET /` — serves `index.html`. The same handler covers `/index.html`,
   `/desk`, and `/r/<id>`, and matches on the **path only** (`req.url` split at
   `?`). That matters: Stripe returns from checkout to `/desk?checkout=success`,

@@ -119,6 +119,14 @@ test("bare environment", async (t) => {
     }
   });
 
+  // With no iOS app configured there must be no Apple App Site Association
+  // file. An AASA is not harmless boilerplate: it names one specific app, and
+  // a wrong or stale one silently breaks every link into it.
+  await t.test("no apple-app-site-association without IOS_APP_ID", async () => {
+    const r = await fetch(srv.base + "/.well-known/apple-app-site-association");
+    assert.equal(r.status, 404);
+  });
+
   // Address Explorer: type is optional so Find addresses can return a mixed
   // list, each chip labelled. A typed request still works (market-page deep
   // link). An unrecognized type is still a 400 — never silently mixed.
@@ -2204,5 +2212,44 @@ test("the geocode proxy is POST-only and no caller builds a query string", async
         file + " builds a /api/geocode query string — the address must ride in a POST body"
       );
     }
+  });
+});
+
+// --- iOS Universal Links ----------------------------------------------------
+
+// IOS_APP_ID turns a shared report link into a link that opens the app on a
+// device that has it, and the browser everywhere else. It follows
+// GOOGLE_SITE_VERIFICATION's shape deliberately: validated, not trusted, and
+// absent rather than wrong when the value does not parse — a malformed team
+// id here breaks every deep link into the app, and does so silently, because
+// iOS simply falls back to Safari and never reports why.
+test("apple-app-site-association", async (t) => {
+  await t.test("serves the app id when IOS_APP_ID is valid", async () => {
+    const srv = await boot({ IOS_APP_ID: "A1B2C3D4E5.co.compninja.app" });
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/.well-known/apple-app-site-association");
+    assert.equal(r.status, 200);
+    // iOS requires JSON and does not follow redirects to find it.
+    assert.match(r.headers.get("content-type") || "", /application\/json/);
+    const j = JSON.parse(await r.text());
+    assert.deepEqual(j.applinks.details[0].appIDs, ["A1B2C3D4E5.co.compninja.app"]);
+
+    const paths = j.applinks.details[0].components.map((c) => c["/"]);
+    assert.ok(paths.includes("/r/*"), "shared reports are the whole point of this");
+    // A path listed here is a promise the app can render it. The checkout
+    // return must stay out: that journey starts in a browser and has to
+    // finish there, and capturing it strands the buyer in an app that cannot
+    // complete the payment.
+    assert.ok(
+      !paths.some((p) => /checkout|api|vault|admin/.test(p)),
+      "AASA claims a path the app has no business intercepting: " + paths.join(", ")
+    );
+  });
+
+  await t.test("serves nothing when IOS_APP_ID is malformed", async () => {
+    const srv = await boot({ IOS_APP_ID: "co.compninja.app" });   // team id missing
+    t.after(() => srv.stop());
+    const r = await fetch(srv.base + "/.well-known/apple-app-site-association");
+    assert.equal(r.status, 404, "a half-configured app id must produce no file at all");
   });
 });

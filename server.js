@@ -442,6 +442,34 @@ const GOOGLE_VERIFY_PATH = /^[A-Za-z0-9_-]{8,128}$/.test(GOOGLE_VERIFY_TOKEN)
   ? `/google${GOOGLE_VERIFY_TOKEN}.html`
   : "";
 
+// Universal Links for the iOS app: set IOS_APP_ID to `<TeamID>.<bundle id>`
+// (e.g. A1B2C3D4E5.co.compninja.app) and the Apple App Site Association file
+// appears at /.well-known/apple-app-site-association. Unset = the route does
+// not exist, which is the correct state for a deployment with no iOS app —
+// an AASA naming an app that is not installed does nothing useful and an AASA
+// naming the WRONG team id silently breaks every link into the app.
+//
+// What it buys: a tap on a shared report link (https://compninja.co/r/<id>)
+// opens the app on a device that has it, and the browser everywhere else.
+// The same link either way, which is the point — the links already in the
+// world keep working and quietly get better.
+//
+// Three things worth knowing before editing the paths below:
+//   - iOS fetches this file over HTTPS from the domain root and does NOT
+//     follow redirects. It must be served, uncached-enough to fix, as JSON
+//     with no .json extension.
+//   - The paths are an allowlist of what the app can HANDLE, not of what the
+//     site serves. Anything the app cannot render must stay OUT, or a tap
+//     opens the app onto a dead end with no way back to Safari. /r/ (a shared
+//     report) and /market/ are ordinary read-only pages the webview handles;
+//     the Stripe checkout return is deliberately excluded, because that
+//     journey starts in a browser and has to finish there.
+//   - Apple caches this file via its CDN, so a change is not immediate.
+const IOS_APP_ID = String(process.env.IOS_APP_ID || "").trim();
+// <10-char Team ID>.<reverse-DNS bundle id>. Validated rather than trusted so
+// a typo produces no file instead of a broken one.
+const IOS_APP_ID_OK = /^[A-Z0-9]{10}\.[A-Za-z0-9.-]{3,128}$/.test(IOS_APP_ID);
+
 // Where a Stripe checkout should return this BUYER — which is not always
 // SITE_URL.
 //
@@ -19125,6 +19153,25 @@ const server = http.createServer((req, res) =>
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return res.end(`google-site-verification: google${GOOGLE_VERIFY_TOKEN}.html\n`);
   }
+  // Universal Links. Same shape as the verification file above: an exact
+  // match on a fixed path, present only when the env var is set and valid.
+  // no-store because the whole file is one identifier that must be
+  // correctable in a deploy rather than in Apple's cache plus ours.
+  if (req.method === "GET" && IOS_APP_ID_OK && req.url === "/.well-known/apple-app-site-association") {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+    return res.end(JSON.stringify({
+      applinks: {
+        details: [{
+          appIDs: [IOS_APP_ID],
+          components: [
+            { "/": "/r/*", comment: "Shared reports open in the app" },
+            { "/": "/market/*", comment: "Market pages open in the app" },
+            { "/": "/desk", comment: "My Desk opens in the app" },
+          ],
+        }],
+      },
+    }) + "\n");
+  }
   if (req.method === "GET" && req.url === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
@@ -19206,6 +19253,11 @@ server.listen(PORT, () => {
     : `🔓 Guest search cap: off (GUEST_SEARCH_LIMIT=off) — visitors search without signing in.`);
   // Loud on purpose: an unverified property means no crawl or impression data
   // for the market pages at all, and the failure is silent from inside the app.
+  console.log(IOS_APP_ID_OK
+    ? `\uD83D\uDCF1 iOS Universal Links live for ${IOS_APP_ID}`
+    : IOS_APP_ID
+      ? "\u26A0  IOS_APP_ID is set but unusable — expected <TeamID>.<bundle id>, e.g. A1B2C3D4E5.co.compninja.app."
+      : "\uD83D\uDCF1 iOS Universal Links off — set IOS_APP_ID once the app has a bundle id.");
   console.log(GOOGLE_VERIFY_PATH
     ? `🔎 Search Console verification file live at ${GOOGLE_VERIFY_PATH}`
     : process.env.GOOGLE_SITE_VERIFICATION

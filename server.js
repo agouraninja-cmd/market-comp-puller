@@ -179,7 +179,10 @@ const SEARCH_PROVIDERS = {
 // Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
 // measured it better on every scored metric of the 12-target eval AND 3.9x
 // cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
-// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// docs/evals/2026-08-10-gemini-pipeline-validation.md. That $0.092 used
+// USD_PER_MTOK's standard rate; billed today at Google's introductory rate
+// (in effect through 2026-12-31) the same measured tokens cost ~$0.045 — see
+// search-provider-gemini.js.
 // Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
 // deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
 // PAID-tier Google project: a free-tier key authenticates and runs the model

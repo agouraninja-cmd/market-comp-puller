@@ -499,7 +499,7 @@ if(dd)dd.open=false;});</script>
 <main><div class="wrap">
   <p class="kicker">Private workspace</p>
   <h1 class="h">Broker Vault</h1>
-  <p class="sub">Closed deals, leads, and BOVs. Visible only to you.</p>
+  <p class="sub" id="deckSub">Closed deals, leads, and BOVs. Visible only to you.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
        /api/vault (session -> entitlements -> two reads), and with both panes
@@ -527,7 +527,12 @@ if(dd)dd.open=false;});</script>
         <div class="lcell mid"><span class="llab">Published</span>
           <div class="lfig" id="cPub">0</div><div class="lsub">only if you choose it</div></div>
       </div>
-      <p class="note">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
+      <!-- Rewritten by renderFirmPrivacy() the moment a comp is shared with a
+           firm (migration 030). The default text is the promise this whole
+           tier rests on, so it is in the markup rather than built in JS: a
+           page whose script failed must still make the true statement, not
+           no statement. -->
+      <p class="note" id="trustNote">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
         public records, and nothing is published unless you choose it.</p>
       <!-- The credit identity, stated once and shown BEFORE any publish.
            It sits with the trust line because it answers the same question
@@ -934,6 +939,13 @@ if(dd)dd.open=false;});</script>
   // Kept across load() so a cell save that refetches, or a delete, does not
   // dump the broker back into the compact table mid-edit.
   var sheetMode=false,sheetUploadId=null,uploads=[];
+  // The firm this broker belongs to, if any, and which of their comps are on
+  // its shelf (migration 030). null firm = the ordinary case, and the whole
+  // feature renders as nothing: no column, no toggle, no changed copy.
+  // sharedIds is a lookup rather than a flag on each comp because shelf
+  // membership is a property of the RELATIONSHIP, not of the comp — and
+  // because vault-api.js's allowlist is a contract this page must not widen.
+  var myFirm=null,sharedIds={};
 
   var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
   var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
@@ -1092,6 +1104,10 @@ if(dd)dd.open=false;});</script>
     // a market they already hold comps in, and this is where that list arrives.
     allMarkets=o.j.markets||[];
     uploads=o.j.uploads||[];
+    myFirm=o.j.firm||null;
+    sharedIds={};
+    (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
+    renderFirmPrivacy();
     renderIdentity(o.j.identity);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
@@ -1256,7 +1272,7 @@ if(dd)dd.open=false;});</script>
       headCell("property_type","Type")+headCell("transaction","Deal")+
       headCell("deal_date","Date")+headCell("price","Price",true)+
       headCell("size_sqft","Size",true)+headCell("price_per_sqft","$/SF",true)+
-      headCell("published","Public")+"<th></th></tr>";
+      headCell("published","Public")+(myFirm?"<th>Firm</th>":"")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
       // A row being edited replaces itself with the form, rather than the
       // form appearing beside it: two representations of the same comp on
@@ -1275,10 +1291,23 @@ if(dd)dd.open=false;});</script>
         : "";
       var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
         '">Edit</button> '+trashBtn(c.id)+"</td>";
+      // Firm sharing (migration 030). A SECOND, separate two-way toggle
+      // rather than a third state on Publish, because they are different
+      // acts with different audiences and collapsing them would let one
+      // confirm dialog cover both: Publish puts a comp in CompNinja's PUBLIC
+      // records under the broker's name, this shows it to named colleagues
+      // and to nobody else. The column only exists for a broker who is in a
+      // firm — a control that can only fail is worse than no control.
+      var firm="";
+      if(myFirm){
+        firm=sharedIds[c.id]
+          ? '<td><button class="pubbtn on" data-firm="'+esc(c.id)+'" data-on="1">Shared</button></td>'
+          : '<td><button class="pubbtn" data-firm="'+esc(c.id)+'">Share</button></td>';
+      }
       return '<tr><td class="addr">'+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
         '</td><td><span class="tag">'+esc(c.transaction)+"</span></td><td>"+esc(c.deal_date)+
         '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
-        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+actions+"</tr>";
+        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+firm+actions+"</tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
     // current view, sealed under a double rule — the same figure the market
@@ -2807,6 +2836,55 @@ if(dd)dd.open=false;});</script>
   // corpus has already harvested it. Unpublishing stops future offers; it
   // cannot reach back into reports already delivered. A broker who finds that
   // out afterwards would be right to feel misled, so it is said up front.
+  // Spec §2's rule, in one function: the moment a vault stops being only
+  // yours, the copy has to say so. "Visible only to you" was true of every
+  // vault until a comp could be shared with a firm, and a promise that
+  // quietly stops being true is worse than one that was never made.
+  //
+  // It keys on having actually SHARED something, not on merely being in a
+  // firm: a broker who has shared nothing really does have a vault visible
+  // only to them, and rewriting their copy would frighten them about a thing
+  // that has not happened.
+  function renderFirmPrivacy(){
+    var n=Object.keys(sharedIds).length;
+    var deck=$("deckSub"),trust=$("trustNote");
+    var sharedLine=myFirm&&n
+      ? n+" "+(n===1?"comp is":"comps are")+" shared with "+myFirm.name+
+        ". Everything else is visible only to you, and nothing here is ever read "+
+        "into CompNinja\u2019s public records unless you publish it."
+      : null;
+    if(deck)deck.textContent=sharedLine
+      ? "Closed deals, leads, and BOVs. "+n+" shared with "+myFirm.name+"; the rest visible only to you."
+      : "Closed deals, leads, and BOVs. Visible only to you.";
+    if(trust)trust.innerHTML=sharedLine
+      ? esc(sharedLine)
+      : "Visible only to you. Nothing here is ever read into CompNinja\u2019s "+
+        "public records, and nothing is published unless you choose it.";
+  }
+
+  // The firm toggle. A SEPARATE handler from Publish, deliberately: the two
+  // are different acts with different audiences, and one confirm dialog
+  // covering both is how a broker ends up publishing to the world when they
+  // meant to show a colleague.
+  $("tbody").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-firm]"); if(!b||!myFirm)return;
+    var on=b.getAttribute("data-on")==="1";
+    var id=b.getAttribute("data-firm");
+    if(!on&&!confirm("Share this comp with "+myFirm.name+"?\\n\\nColleagues at your firm will see it inside their own reports, with your name on it. It does NOT go into CompNinja's public records, it is left out of every download and client link, and you can take it back at any time."))return;
+    b.disabled=true; b.textContent=on?"Removing\u2026":"Sharing\u2026";
+    fetch("/api/vault/firm",{method:on?"DELETE":"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({orgId:myFirm.id,compIds:[id]})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){compMsg(o.j.error||"That didn't go through.",true);b.disabled=false;b.textContent=on?"Shared":"Share";return}
+        if(on)delete sharedIds[id]; else sharedIds[id]=true;
+        renderFirmPrivacy();
+        render();
+      })
+      .catch(function(){b.disabled=false;b.textContent=on?"Shared":"Share";compMsg("That didn't go through.",true)});
+  });
+
   $("tbody").addEventListener("click",function(e){
     var b=e.target.closest("button[data-pub]"); if(!b)return;
     var on=b.getAttribute("data-on")==="1";

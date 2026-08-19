@@ -441,6 +441,109 @@ test("the firm's auto-share default, and the member's veto over it", async (t) =
   });
 });
 
+test("the shared vault: a comp's whole life on the firm's shelf", async (t) => {
+  // The write half, end to end. The blend into a colleague's REPORT needs a
+  // billed search to reach gate(), so it is covered by the pure rules in
+  // blend-comps.test.js plus the source-level guards in org-routes.test.js;
+  // everything below is a real database path.
+  const tables = seedTables();
+  tables.broker_comps = [{
+    id: "11111111-1111-4111-8111-111111111111",
+    user_id: BRAD.id, market: "Boise, ID", property_type: "Industrial",
+    address: "100 Main St", address_key: "100 main st", deal_date: "2026-05-01",
+    transaction: "sale", price: 1000000, size_sqft: 10000, price_per_sqft: 100,
+    dedupe_key: "k1", published: false, notes: "off market",
+  }];
+  tables.broker_properties = [];
+  tables.org_comps = [];
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+  const COMP = tables.broker_comps[0].id;
+
+  const org = await (await fetch(srv.base + "/api/org",
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+  const firm = (method, body) => fetch(srv.base + "/api/vault/firm",
+    as(BRAD, { method, body: JSON.stringify(body) }));
+
+  await t.test("a broker cannot share into a firm they are not in", async () => {
+    const r = await firm("POST", { orgId: "some-other-firm", compIds: [COMP] });
+    assert.equal(r.status, 403);
+    assert.equal(tables.org_comps.length, 0);
+  });
+
+  await t.test("sharing copies the comp, and copies NONE of the vault's plumbing", async () => {
+    const r = await firm("POST", { orgId: org.id, compIds: [COMP] });
+    assert.equal(r.status, 200);
+    assert.equal(tables.org_comps.length, 1);
+    const row = tables.org_comps[0];
+    assert.equal(row.org_id, org.id);
+    assert.equal(row.source_comp_id, COMP);
+    assert.equal(row.market, "Boise, ID", "the filter columns are real columns");
+    assert.equal(row.deal_date, "2026-05-01");
+    assert.equal(row.comp.address, "100 Main St");
+    for (const leak of ["user_id", "dedupe_key", "address_key", "published"]) {
+      assert.equal(leak in row.comp, false, `${leak} must not reach the shelf`);
+    }
+    assert.equal(row.shared_by_name, "Brad", "attributed, so a colleague knows who to ask");
+  });
+
+  await t.test("sharing the same comp twice is a no-op, not a second row", async () => {
+    await firm("POST", { orgId: org.id, compIds: [COMP] });
+    assert.equal(tables.org_comps.length, 1);
+  });
+
+  await t.test("the vault says what is shared, and with whom", async () => {
+    const v = await (await fetch(srv.base + "/api/vault", as(BRAD))).json();
+    assert.equal(v.firm.name, "Colliers Boise");
+    assert.deepEqual(v.sharedWithFirm, [COMP]);
+  });
+
+  await t.test("an edit REFRESHES the copy — a colleague never reads a stale price", async () => {
+    const r = await fetch(`${srv.base}/api/vault/comp?id=${COMP}`,
+      as(BRAD, { method: "PATCH", body: JSON.stringify({ price: 1250000 }) }));
+    assert.equal(r.status, 200);
+    assert.equal(tables.org_comps.length, 1, "still one row");
+    assert.equal(tables.org_comps[0].comp.price, 1250000);
+  });
+
+  await t.test("a REJECTED edit changes nothing on the shelf", async () => {
+    // The scar retractPublishedComp carries, applied here: a broker typing
+    // "1.2M" — the exact input the vault exists to refuse — must not have
+    // their colleagues' copy disturbed before the 400 comes back.
+    const r = await fetch(`${srv.base}/api/vault/comp?id=${COMP}`,
+      as(BRAD, { method: "PATCH", body: JSON.stringify({ price: "1.2M" }) }));
+    assert.equal(r.status, 400);
+    assert.equal(tables.org_comps[0].comp.price, 1250000, "untouched");
+  });
+
+  await t.test("unsharing takes it back", async () => {
+    const r = await firm("DELETE", { compIds: [COMP] });
+    assert.equal(r.status, 200);
+    assert.equal(tables.org_comps.length, 0);
+  });
+
+  await t.test("deleting the comp pulls it off the shelf too", async () => {
+    await firm("POST", { orgId: org.id, compIds: [COMP] });
+    assert.equal(tables.org_comps.length, 1);
+    const r = await fetch(`${srv.base}/api/vault/comp?id=${COMP}`, as(BRAD, { method: "DELETE" }));
+    assert.equal(r.status, 200);
+    assert.equal(tables.org_comps.length, 0, "explicitly, not left to the FK cascade");
+  });
+
+  await t.test("a comp id from somebody else's vault shares nothing", async () => {
+    tables.broker_comps.push({
+      id: "22222222-2222-4222-8222-222222222222",
+      user_id: MIKE.id, market: "Boise, ID", property_type: "Industrial",
+      address: "999 Not Yours", address_key: "999 not yours", deal_date: "2026-05-01",
+      transaction: "sale", price: 1, dedupe_key: "k2", published: false,
+    });
+    const r = await firm("POST", { orgId: org.id, compIds: ["22222222-2222-4222-8222-222222222222"] });
+    assert.equal(r.status, 200, "not an error — there was simply nothing of theirs to share");
+    assert.equal(tables.org_comps.length, 0);
+  });
+});
+
 test("a firm share still refuses to carry whole vault comps", async (t) => {
   const tables = seedTables();
   const ctx = await bootWithDb(tables);

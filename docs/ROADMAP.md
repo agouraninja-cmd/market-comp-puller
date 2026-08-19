@@ -29,7 +29,7 @@ intent, the devlog states history.
 
 ## Next
 
-- **Enterprise (firm) accounts — slice 2 onward.** Design in
+- **Enterprise (firm) accounts — slice 4 (billing) only.** Design in
   `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`,
   from Chuck's email of 2026-08-16. **Slice 1 shipped the same day**: firms,
   invites, `org-access.js`, the firm branch in `canReadShare`, a "My firm"
@@ -47,24 +47,27 @@ intent, the devlog states history.
   spec's §1, now answered): a firm can share members' new reports
   automatically, off by default, never retroactive, disclosed on the
   invitation, undoable per report, and with a member-level `never` that an
-  admin cannot override — migration 029. What is left: **slice 3**, the
-  shared vault (opt-in per import, attributed, with the vault's "Visible
-  only to you" copy rewritten to match); and **slice 4**, per-seat billing —
-  until a firm asks to pay, seats are granted by hand, the `vault_beta`
-  precedent.
-  Slice 3 should be bought with a customer: its central question — do
-  brokers at one firm want each other's comps *in their reports*, or a shelf
-  they can search — is measurable the moment there is one real firm and
-  guesswork until then. The shelf shipping first is what makes that
-  measurable at all.
+  admin cannot override — migration 029. **Slice 3 shipped 2026-08-16**
+  (migration 030): a broker opts ONE COMP AT A TIME into their firm, and it
+  appears in colleagues' own reports attributed, deduped against deals they
+  already hold, still stripped from every client link and download — with
+  the vault's "Visible only to you" copy correcting itself the moment it
+  stops being true. Opt-in per comp rather than per import, which is
+  narrower than the spec proposed and is the version worth defending.
+  What is left: **slice 4**, per-seat billing — until a firm asks to pay,
+  seats are granted by hand, the `vault_beta` precedent.
+  Slice 3's central question — do brokers at one firm want each other's
+  comps *in their reports*, or only a shelf they can search — is now
+  ANSWERABLE rather than answered: both exist, and the first real firm's
+  usage decides which one earns further work.
   Two refusals in that spec are load-bearing and should not be re-litigated
   casually: **no auto-join by email domain**, and **no existing
   `user_id=eq.` filter is widened to an org** — firm reads are new functions
   against new tables, migration 013's separate-tables rule (a test fails the
   build if the widened form appears).
-  Three of the five decisions in the spec's §1 are still open, including the
-  attorney question below; slices 1 and 2 were built because none of them
-  change either.
+  Two of the five decisions in the spec's §1 are still open — how a firm is
+  sold, and the attorney question below. Slices 1-3 were built because
+  neither changes any of them.
 - **`/api/geocode` should take a POST, not a query string.** The two
   follow-ons left by the private-comp geocoding work, in the order Owen set
   when he answered section 7 — this one ABOVE import-time geocoding, not

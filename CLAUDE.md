@@ -960,7 +960,50 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     somebody wants this off is the moment they are looking at the report.
     Guarded on `meta.autoShared`, or every subject-field repaint would
     re-publish — including something just undone.
-  Also not built: the shared vault (§7) and per-seat
+  **The shared vault** (§7, migration 030, 2026-08-16). A broker can opt one
+  comp at a time into their firm; colleagues see it inside their OWN reports,
+  attributed. `POST|DELETE /api/vault/firm`; the toggle is a column on
+  `/vault`'s comps table, shown only to a broker who is in a firm. Rules in
+  `blend-comps.js`, the read in `orgCompsForReport`. Seven things hold it up:
+  - **`org_comps` is a separate table**, never a column on `broker_comps` and
+    never a widened read — 013's rule a third time. The one-line version of
+    this feature is `or=(user_id.eq.X,org_id.eq.Y)` on `vaultCompsForReport`,
+    which looks right in review and fails silently because that path returns
+    `[]` on error.
+  - **A firm comp keeps `source_type: "broker_vault"` and `private: true`.**
+    Whose it is, is ATTRIBUTION (`firm` + `shared_by` on the comp), not a
+    provenance tier — so `/api/share` strips or anonymizes it, exports and the
+    PNG and the print drop it, and the valuation weights it at 1, all by
+    construction. A fifth tier would mean `TIER_WEIGHT` (twice, a pair that
+    already carries a keep-in-step ⚠), `SOURCE_TIERS` and `eval-score.js` all
+    agreeing about a weight that is 1 in every one of them.
+  - **The stored payload comes from `FIELD_MAP` itself** (`firmCompPayload`),
+    so `user_id`, `dedupe_key`, `address_key`, `upload_id` and the publish
+    flags cannot reach another account's table by being forgotten — and a new
+    per-type field needs no migration here, which is why 030 stores jsonb
+    where 013 stores columns.
+  - **One deal is one row.** `dedupeFirmComps` drops a colleague's copy of a
+    deal the reader already holds, the caller's own winning. Two brokers at
+    one firm are routinely on opposite sides of the same transaction, and
+    without this it is counted twice in the valuation with nothing on screen
+    explaining the shift. This is the one place a private comp IS deduped.
+  - **The blend is gated on `canUseVault`, not on membership**, and excludes
+    the caller's own shared comps (they already arrive through
+    `vaultCompsForReport`). A free colleague reads the firm's shared REPORTS,
+    like any invited viewer, but does not get a paid capability by invitation.
+  - **The owner's edit refreshes the copy and their delete pulls it** —
+    `refreshSharedComp` runs AFTER validation, the scar `retractPublishedComp`
+    carries, so a rejected edit never disturbs what colleagues hold. Unlike a
+    shared report (018's set-null rule) the copy CASCADES on delete: a report
+    is a record of what was sent, a comp is a live copy of a row in the
+    broker's book.
+  - **"Visible only to you" corrects itself** (spec §2). `renderFirmPrivacy()`
+    rewrites the deck subtitle and the trust line the moment something is
+    actually shared — keyed on having shared, not on being in a firm, because
+    a broker who has shared nothing really does have a vault visible only to
+    them. The default text stays in the MARKUP so a page whose script failed
+    still makes the true statement rather than none.
+  Also not built: per-seat
   billing. Seats are granted by hand, the `vault_beta` precedent.
   `orgs.share_default` and `orgs.seats` ship as unwritten columns so both are
   code changes rather than migrations — the same reason `hub_items.status`

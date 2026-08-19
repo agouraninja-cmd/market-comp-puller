@@ -13469,6 +13469,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function compTier(comp) {
     return VALUATION.tierOf(comp);
   }
+  // A shared-vault comp: a colleague's private comp, opted in to the firm
+  // (migration 030). It is a broker_vault comp in every respect that matters
+  // downstream — full weight, private:true, stripped from shares and exports —
+  // and the ONLY difference is whose it is, which is an attribution rather
+  // than a provenance tier. So it reads off the comp's own `firm` field
+  // instead of a fifth entry in SOURCE_TIERS / TIER_WEIGHT / the comp-gate
+  // mirror, all of which would have to agree about a weight that is 1 in
+  // every one of them.
+  function firmOfComp(comp) {
+    return comp && comp.private === true ? String(comp.firm || "").trim() : "";
+  }
+
   function sourceBadge(comp) {
     const tier = compTier(comp);
     if (!tier) return null;
@@ -13476,7 +13488,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!t) return null;
     const badge = document.createElement("span");
     badge.className = "ml-1.5 align-middle rd-badge " + t.cls;
-    badge.textContent = t.label;
+    const firm = firmOfComp(comp);
+    badge.textContent = firm ? "From " + firm : t.label;
+    if (firm) {
+      const who = String(comp.shared_by || "").trim();
+      // Names the colleague, because a comp nobody can be asked about is a
+      // dead end — the same reason the firm shelf attributes its rows. Never
+      // the green Verified badge: that is a PUBLIC claim, earned by vouching
+      // in the public records, and a comp shared inside one firm has earned
+      // no such thing.
+      badge.title = who
+        ? `${who} shared this with ${firm}. It is not in CompNinja's public records.`
+        : `Shared with ${firm}. It is not in CompNinja's public records.`;
+      return badge;
+    }
     // Credit the contributing broker on a verified comp (server sets verified_by
     // by matching the comp back to the submission that supplied it).
     const by = tier === "verified" ? String(comp.verified_by || "").trim() : "";
@@ -13549,9 +13574,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // a shared report it must say what's true for THEM instead (same
       // reader-vs-owner split as renderPrivateNotice(), 2026-08-06 review
       // item 4).
-      const legendText = tier === "broker_vault" && currentMeta && currentMeta.shared
-        ? "the sender's own comp, from their private records, not from CompNinja's public research"
-        : t.legend;
+      //
+      // A THIRD reader now (migration 030): a firm comp on this report is a
+      // COLLEAGUE'S private comp, so "your own comp ... visible only to you"
+      // is false on both halves. Spec §2's rule — the moment a vault stops
+      // being only yours, the copy has to say so — applied to the one line
+      // that made the promise.
+      const firmNames = [...new Set(visibleComps().map(firmOfComp).filter(Boolean))];
+      const legendText = tier !== "broker_vault" ? t.legend
+        : currentMeta && currentMeta.shared
+          ? "the sender's own comp, from their private records, not from CompNinja's public research"
+          : firmNames.length
+            ? `a private comp — yours, or shared with you by ${firmNames.join(" or ")}; never in CompNinja's public records`
+            : t.legend;
       text.textContent = "= " + legendText + ".";
       legend.appendChild(chip);
       legend.appendChild(text);
@@ -13720,6 +13755,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         el.textContent = `${n} comp${one ? "" : "s"} in this report ` +
           `${one ? "comes" : "come"} from the sender's own records, ` +
           `not from CompNinja's public research.`;
+      } else if (visibleComps().some(firmOfComp)) {
+        // A THIRD case (migration 030): some of these are a COLLEAGUE'S comps,
+        // shared with the firm. "From your private vault" is then wrong about
+        // whose they are, and this line is the one that survives into the
+        // print and the PNG — it is what stops a table short by rows reading
+        // as lost data — so it has to be true for the mixture actually on
+        // screen rather than for the common case.
+        const firms = [...new Set(visibleComps().map(firmOfComp).filter(Boolean))];
+        el.textContent =
+          `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from private records ` +
+          `— your own vault or ${firms.join(" and ")} — and ${one ? "is" : "are"} left out of ` +
+          `downloads and shared links. The valuation still counts ${one ? "it" : "them"}.`;
       } else {
         el.textContent =
           `${n} comp${one ? "" : "s"} in this report ${one ? "comes" : "come"} from your private vault, ` +

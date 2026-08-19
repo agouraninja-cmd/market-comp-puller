@@ -11054,7 +11054,7 @@ async function vaultReadPayload(req, params) {
   }
   query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
 
-  const [entR, compsR, uploadsR, profileR] = await Promise.allSettled([
+  const [entR, compsR, uploadsR, profileR, firmR, sharedR] = await Promise.allSettled([
     entitlementsFor(req),
     DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
     DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
@@ -11064,6 +11064,13 @@ async function vaultReadPayload(req, params) {
     // settled alongside the rest anyway: an identity read must never be able
     // to fail a vault the broker can otherwise open.
     DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : Promise.resolve(null),
+    // The firm, if any, and which of this broker's comps are already on its
+    // shelf (migration 030). Settled alongside the rest for the reason the
+    // profile is: neither may be able to fail a vault the broker can
+    // otherwise open, and both resolve to "no firm, nothing shared" — the
+    // state that offers no control rather than a broken one.
+    DB_CONFIGURED ? orgMembershipsFor(user.email) : Promise.resolve(null),
+    DB_CONFIGURED ? sharedCompIdsFor(user.id) : Promise.resolve(null),
   ]);
   // entitlementsFor fails closed internally; if it somehow rejects, closed
   // here too — an error must never open a vault.
@@ -11115,6 +11122,20 @@ async function vaultReadPayload(req, params) {
         creditedTo: VAULT.creditName(p),
       };
     })(),
+    // The firm's half of the header, and the per-comp control. `firm: null`
+    // is the ordinary case — a broker in no firm — and the page renders
+    // exactly what it rendered before this feature when it sees one.
+    firm: await (async () => {
+      const rows = (firmR.status === "fulfilled" && firmR.value) || [];
+      const membership = ORG.membershipOf(rows, user.email);
+      if (!membership) return null;
+      const org = (await orgsByIds([membership.org_id])).get(String(membership.org_id));
+      return { id: membership.org_id, name: (org && org.name) || "your firm" };
+    })(),
+    // Ids, not a flag on each comp: the comps array is the vault API's own
+    // contract (vault-api.js's allowlist) and a shelf membership is not a
+    // property of the comp, it is a property of the relationship.
+    sharedWithFirm: (sharedR.status === "fulfilled" && sharedR.value) || [],
   } };
 }
 
@@ -11167,6 +11188,149 @@ async function vaultCompsForReport(req, ent, { market, type, months }) {
     // Deliberately quiet about the rows and loud about the failure: the
     // message may name a column, never a comp.
     console.error("vault blend read failed:", err.message);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The SHARED vault (migration 030) — a broker's comps, opted in to their firm.
+//
+// Spec §7. Rules in blend-comps.js; this owns the I/O.
+//
+// FOUR THINGS HOLD THE WALL UP HERE, and every one of them is load-bearing:
+//
+//   1. `org_comps` is a SEPARATE TABLE and no read below ever widens a
+//      `user_id=eq.` filter to an org. Migration 013's rule, third time of
+//      asking; test/org-routes.test.js fails the build if the widened form
+//      appears anywhere in this file.
+//   2. Sharing is per comp and OPT-IN. There is no bulk "share my vault", no
+//      default, and nothing an admin can set on a member's behalf. A broker's
+//      book is theirs.
+//   3. It returns [] on ANY failure, like vaultCompsForReport — a firm read is
+//      an enrichment, never a reason to fail a search someone is waiting on,
+//      and an error must never widen what comes back.
+//   4. Nothing PUBLIC reads this table. Firm-shared is not published; the
+//      "0 published" counter on /vault still counts the public records alone.
+// ---------------------------------------------------------------------------
+
+// Copy one or more of the caller's own comps onto their firm's shelf.
+//
+// Upsert on (org_id, source_comp_id) so sharing twice is a no-op and the
+// refresh-on-edit path below is the same write rather than a read-then-write
+// race. The rows are read back scoped by user_id FIRST, so a comp id from
+// somebody else's vault cannot be shared by naming it.
+async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
+  if (!DB_CONFIGURED || !orgId || !compIds.length) return 0;
+  const rows = await sbRequest("GET",
+    `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+    `&id=in.(${pgInList(compIds)})&limit=${compIds.length}`);
+  const located = await attachPropertyCoords(user.id, Array.isArray(rows) ? rows : []);
+  const payload = [];
+  for (const row of located) {
+    const comp = BLEND.firmCompPayload(row);
+    // A comp with no address or no date cannot render and cannot be filtered
+    // by a lookback. broker-vault.js refuses both at the door, so this is a
+    // guard against a hand-written row, not an expected case.
+    if (!comp) continue;
+    payload.push({
+      org_id: orgId,
+      shared_by_user_id: user.id,
+      shared_by_name: sharedByName || "",
+      source_comp_id: row.id,
+      market: row.market,
+      property_type: row.property_type,
+      deal_date: row.deal_date,
+      comp,
+      updated_at: new Date().toISOString(),
+    });
+  }
+  if (!payload.length) return 0;
+  await sbRequest("POST", "org_comps?on_conflict=org_id,source_comp_id", payload,
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+  return payload.length;
+}
+
+// Pull a comp back off every firm shelf it is on. Scoped by the SHARER, not by
+// the comp id alone: unsharing is the broker's own control over their own row.
+async function unshareVaultComps(userId, compIds) {
+  if (!DB_CONFIGURED || !compIds.length) return;
+  await sbRequest("DELETE",
+    `org_comps?shared_by_user_id=eq.${encodeURIComponent(userId)}` +
+    `&source_comp_id=in.(${pgInList(compIds)})`, undefined, { prefer: "return=minimal" });
+}
+
+// Which of this broker's comps are already on a firm shelf. Feeds the vault's
+// per-row control and its header count, so the page can say what is shared
+// before anybody clicks anything.
+async function sharedCompIdsFor(userId) {
+  try {
+    if (!DB_CONFIGURED || !userId) return [];
+    const rows = await sbRequest("GET",
+      `org_comps?shared_by_user_id=eq.${encodeURIComponent(userId)}` +
+      `&select=source_comp_id&limit=2000`);
+    return [...new Set((rows || []).map((r) => r.source_comp_id).filter(Boolean))];
+  } catch (err) {
+    console.error("Shared-comp id read failed:", err.message);
+    return [];
+  }
+}
+
+// Re-copy one comp onto every firm shelf it is already on, after its owner
+// edited it. Reads the shelves first and re-shares only where a copy exists,
+// so an edit never PUTS a comp on a shelf the broker did not choose.
+async function refreshSharedComp(user, compId) {
+  if (!DB_CONFIGURED) return;
+  const rows = await sbRequest("GET",
+    `org_comps?shared_by_user_id=eq.${encodeURIComponent(user.id)}` +
+    `&source_comp_id=eq.${encodeURIComponent(compId)}&select=org_id,shared_by_name&limit=20`);
+  for (const r of rows || []) {
+    await shareVaultCompsToOrg(user, r.org_id, [compId], r.shared_by_name || "");
+  }
+}
+
+// A colleague's shared comps, for THIS report. The mirror of
+// vaultCompsForReport, and it repeats that function's four rules for its own
+// reasons:
+//
+//   - `canUseVault` is tested, not `pro` and not membership alone. Blending
+//     private comps into a report is the vault capability; a free colleague
+//     reads the firm's shared REPORTS (which needs no plan, like any invited
+//     share) but does not get a paid capability by being invited to a firm.
+//   - The caller's OWN shared comps are excluded, because they already arrive
+//     through vaultCompsForReport. Without this the broker's own deal appears
+//     twice and is counted twice in the valuation.
+//   - The lookback filter is honesty as much as relevance: a report says it
+//     covers N months, so an older comp would quietly widen the window the
+//     valuation is drawn from.
+//   - [] on any failure.
+async function orgCompsForReport(req, ent, user, { market, type, months }) {
+  try {
+    if (!DB_CONFIGURED) return [];
+    if (!ent || !ent.canUseVault) return [];
+    if (!market || !type || !user) return [];
+    const memberships = await orgMembershipsFor(user.email);
+    const orgIds = ORG.activeOrgIds(memberships, user.email);
+    if (!orgIds.length) return [];
+
+    const cutoff = new Date(Date.now() - Math.max(1, Number(months) || 12) * 31 * 24 * 3600 * 1000)
+      .toISOString().slice(0, 10);
+    const rows = await sbRequest("GET",
+      `org_comps?org_id=in.(${pgInList(orgIds)})` +
+      `&market=eq.${encodeURIComponent(market)}` +
+      `&property_type=eq.${encodeURIComponent(type)}` +
+      `&deal_date=gte.${cutoff}` +
+      `&shared_by_user_id=neq.${encodeURIComponent(user.id)}` +
+      `&order=deal_date.desc&limit=50`);
+    if (!Array.isArray(rows) || !rows.length) return [];
+
+    const firms = await orgsByIds(rows.map((r) => r.org_id));
+    return rows.map((r) => ({
+      ...r, firm: (firms.get(String(r.org_id)) || {}).name || "",
+    }));
+  } catch (err) {
+    // Loud about the failure, quiet about the rows: the message may name a
+    // column, never a comp.
+    console.error("Firm comp blend read failed:", err.message);
     return [];
   }
 }
@@ -11738,6 +11902,16 @@ const server = http.createServer((req, res) =>
           : await vaultCompsForReport(req, ent, {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
+        // A colleague's comps, opted in to the firm (migration 030). Read
+        // alongside the broker's own and blended in the same place, because
+        // they are the same KIND of row — private, full weight, never public —
+        // and splitting them across two seams would be two chances to blend
+        // one of them upstream of the cache.
+        const firmCompRows = internal
+          ? []
+          : await orgCompsForReport(req, ent, await getSessionUser(req), {
+              market: marketOf(addressOk), type: typeOk, months: monthsOk,
+            });
         // Filled after the guest gate so a blocked anonymous visitor does not
         // pay for a type-wide corpus read. The closure below captures this
         // binding; cache-hit and billed exits both run after it is assigned.
@@ -11807,7 +11981,23 @@ const server = http.createServer((req, res) =>
           // earlier serves one broker's private book to the next visitor who
           // searches that address, because the cache is keyed by property and
           // not by user.
-          return BLEND.blendPrivateComps(withExports, vaultRows);
+          // The broker's own comps first, then the firm's — in that order, so
+          // dedupeFirmComps can drop a colleague's copy of a deal the broker
+          // already holds rather than the other way round. Two people at one
+          // firm were routinely on opposite sides of the same transaction, so
+          // without this the deal is counted twice in the valuation with
+          // nothing on screen explaining the shift.
+          const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
+          if (!firmCompRows.length) return withMine;
+          const firmComps = BLEND.dedupeFirmComps(
+            (withMine.comps || []).filter(BLEND.isPrivateComp),
+            firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
+          if (!firmComps.length) return withMine;
+          return {
+            ...withMine,
+            comps: [...(withMine.comps || []), ...firmComps],
+            private_count: (withMine.private_count || 0) + firmComps.length,
+          };
         };
 
         // The gate's principle applied to live progress: a limited visitor
@@ -14459,6 +14649,13 @@ const server = http.createServer((req, res) =>
             // that can fail, so there is no window where retracting turns out
             // to have been premature.
             const unpublished = await retractPublishedComp(user.id, comp);
+            // Pull it off every firm shelf too, and BEFORE the delete rather
+            // than relying on 030's cascade. The cascade is the backstop for
+            // account deletion; doing it explicitly here means the firm copy
+            // is gone even if the FK were ever changed, and it keeps the
+            // "their delete pulls it" promise in code where it can be read.
+            await unshareVaultComps(user.id, [id]).catch((err) =>
+              console.error("firm unshare on delete failed:", err.message));
             await sbRequest("DELETE",
               `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
               undefined, { prefer: "return=minimal" });
@@ -14536,6 +14733,22 @@ const server = http.createServer((req, res) =>
           // failed link costs a join, a failed edit costs the broker their
           // correction.
           await linkVaultProperties(user.id, [row]);
+          // Refresh any firm copy of this comp (migration 030). AFTER the
+          // write and after validation, exactly like retractPublishedComp
+          // above and for the scar that rule came from: a rejected edit must
+          // not disturb what colleagues already hold. It is also the reason a
+          // firm copy is a copy rather than a live join — a colleague must
+          // never read a half-saved row — and the reason the refresh is an
+          // upsert: a comp that is on no shelf simply matches nothing.
+          //
+          // Never throws. The comp is saved; a stale firm copy costs
+          // freshness, while a failure here would cost the broker their
+          // correction.
+          try {
+            await refreshSharedComp(user, id);
+          } catch (err) {
+            console.error("firm comp refresh failed (the edit is saved):", err.message);
+          }
           return sendJson(res, 200, {
             ok: true, unpublished,
             comp: VAULTAPI.toApiComp((saved && saved[0]) || null),
@@ -14544,6 +14757,72 @@ const server = http.createServer((req, res) =>
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault comp edit failed:", err.message);
           sendJson(res, 502, { error: "Could not save that change. Please try again." });
+        }
+      });
+      return;
+    }
+
+    // --- POST|DELETE /api/vault/firm — opt a comp in to your firm ----------
+    //
+    // Spec §7, and the whole of it is opt-in: per comp, by the comp's owner,
+    // never by an admin, never in bulk over a whole vault, and never a
+    // default. A broker's book is theirs; this is the one door out of it, and
+    // it is one comp at a time by construction.
+    //
+    // It goes through openVault() (401 / 403 canUseVault / 503) and THEN
+    // checks membership, so a broker with no firm is told the truth in the
+    // right order rather than being asked to upgrade for a firm they have.
+    if ((req.method === "POST" || req.method === "DELETE") && path === "/api/vault/firm") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 2e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultfirm:" + clientIp(req), 120)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const parsed = JSON.parse(body || "{}");
+          const ids = [...new Set((Array.isArray(parsed.compIds) ? parsed.compIds : [])
+            // VAULT.isUuid, the same guard PATCH /api/vault/comp uses: a
+            // malformed id would otherwise make PostgREST reject the whole
+            // query and this route would answer 502 for what is caller-sent
+            // nonsense. Silently dropped rather than refused, because a
+            // partially valid list is a client bug and the valid part is
+            // still exactly what the broker asked to share.
+            .map((v) => String(v || "").trim()).filter((v) => VAULT.isUuid(v)))].slice(0, 200);
+          if (!ids.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          if (req.method === "DELETE") {
+            // No membership check: taking your own comp back is always yours
+            // to do, including from a firm you have since left. Scoped by
+            // shared_by_user_id, so it can only ever reach your own rows.
+            await unshareVaultComps(user.id, ids);
+            return sendJson(res, 200, { ok: true, shared: false });
+          }
+
+          const memberships = await orgMembershipsFor(user.email);
+          const orgId = String(parsed.orgId || "").trim();
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === orgId), user.email);
+          if (!membership || !ORG.canPublishToOrg(membership)) {
+            return sendJson(res, 403, { error: "You are not a member of that firm." });
+          }
+          // The name a colleague reads on the badge. The broker's stated
+          // credit identity first — the same string a publish would credit,
+          // so one broker is named one way across the product — then their
+          // account name. Deliberately never their email: a firm roster
+          // already carries that, and a comp badge is not the place to
+          // restate it.
+          const profile = await findBrokerProfile(user.email, user.id);
+          const sharedByName = VAULT.creditName(profile) || user.name || "";
+          const n = await shareVaultCompsToOrg(user, orgId, ids, sharedByName);
+          logEvent("vault_firm_share", {});
+          return sendJson(res, 200, { ok: true, shared: true, count: n });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault firm share failed:", err.message);
+          sendJson(res, 502, { error: "Could not update firm sharing. Please try again." });
         }
       });
       return;

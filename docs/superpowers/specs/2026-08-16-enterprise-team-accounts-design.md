@@ -87,8 +87,12 @@ These gate the build. Recommended answers in brackets; each is argued below.
    silently publishes every colleague's client work and the only recourse is
    leaving the firm.
 3. **May a firm-shared vault comp blend into a colleague's report?**
-   [Recommended: yes, opt-in per import, attributed by name — this is the
-   feature's whole value, and §7 is the safe way to do it.]
+   **ANSWERED YES, 2026-08-16, and shipped** (migration 030) — but opt-in per
+   COMP, not per import. Per-import was the recommendation and is the wrong
+   grain: an import is a spreadsheet, often a whole year of deals, and
+   "share this file" is a decision a broker cannot check before making. Per
+   comp is one row, one confirm, one Undo, and it is the version that can
+   honestly be called opt-in.
 4. **Is enterprise sold per seat now, or granted by hand?** [Recommended:
    granted by hand, the `vault_beta` precedent, until a real firm asks. See
    §9.]
@@ -339,7 +343,8 @@ Build the seat billing when a firm asks to pay for seats. Not before.
   cannot — a BOV pipeline row, or an individual vault comp — which is also the
   form BOV publishing will take.
 - **Slice 3 — the shared vault.** §7, opt-in, attributed, with the conditional
-  vault copy from §2.
+  vault copy from §2. **SHIPPED 2026-08-16** (migration 030), opt-in per comp
+  rather than per import — see §1 #3.
 - **Slice 4 — seats.** §9, when someone asks to pay.
 
 Slices 1 and 2 are worth building on their own evidence. Slice 3 should wait

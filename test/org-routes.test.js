@@ -98,6 +98,40 @@ test("firm routes on a bare server (no database)", async (t) => {
       "a firm read must be a new query against the new tables, never a widened one");
   });
 
+  await t.test("/api/vault/firm refuses a signed-out caller before anything else", async () => {
+    for (const method of ["POST", "DELETE"]) {
+      const r = await fetch(srv.base + "/api/vault/firm", {
+        method, headers: { "content-type": "application/json" }, body: "{}",
+      });
+      assert.equal(r.status, 401, method);
+    }
+  });
+
+  await t.test("a firm comp blends at SERIALIZATION, downstream of the cache and the harvest", () => {
+    // The rule blend-comps.js's header states, and the one that fails
+    // silently in both directions: blend before the cache write and one
+    // firm's private book is served to the next visitor who searches that
+    // address; blend before harvestComps() and it enters the public corpus
+    // permanently, on a path that swallows its own errors.
+    const gateAt = SERVER.indexOf("const gate = async (rep) => {");
+    const blendAt = SERVER.indexOf("BLEND.dedupeFirmComps");
+    const harvestAt = SERVER.indexOf("harvestComps(");
+    assert.ok(gateAt > 0 && blendAt > gateAt, "firm comps must blend inside gate()");
+    assert.ok(harvestAt < gateAt || harvestAt > blendAt,
+      "the harvest must never see a blended report");
+  });
+
+  await t.test("the firm comp read is gated on canUseVault and excludes the caller's own", () => {
+    const i = SERVER.indexOf("async function orgCompsForReport");
+    assert.ok(i > 0);
+    const fn = SERVER.slice(i, i + 2200);
+    assert.match(fn, /ent\.canUseVault/,
+      "blending private comps is the vault capability, not a membership perk");
+    assert.match(fn, /shared_by_user_id=neq\./,
+      "the caller's own shared comps already arrive through vaultCompsForReport");
+    assert.match(fn, /return \[\];/, "and it must fail closed to nothing");
+  });
+
   await t.test("the firm share write is refused without a database, never written to the file store", () => {
     // The file store has no column for org_id, so a firm share landing there
     // would come back out of getShareRecord as a PUBLIC link. storeSharedReport

@@ -77,6 +77,48 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The installable-app assets. A manifest that 404s does not break the site,
+  // which is exactly why it needs a test: the only symptom is that phones
+  // quietly stop offering "Add to Home Screen", and nobody is watching for an
+  // absence. The service worker's cache header is pinned here rather than
+  // left to review because it is the one asset that can outlive the deploy
+  // that fixes it — a cached worker keeps serving its own stale rules.
+  await t.test("the installable-app assets are wired to routes", async () => {
+    const r = await fetch(srv.base + "/manifest.webmanifest");
+    assert.equal(r.status, 200, "manifest must serve");
+    assert.match(r.headers.get("content-type") || "", /application\/manifest\+json/);
+    const m = JSON.parse(await r.text());
+    assert.equal(m.display, "standalone", "a browser-tab display is not an app");
+
+    const sw = await fetch(srv.base + "/sw.js");
+    assert.equal(sw.status, 200, "service worker must serve");
+    assert.match(sw.headers.get("content-type") || "", /javascript/);
+    assert.match(
+      sw.headers.get("cache-control") || "",
+      /max-age=0/,
+      "a cached service worker outlives the deploy that fixes it"
+    );
+
+    const off = await fetch(srv.base + "/offline.html");
+    assert.equal(off.status, 200, "offline fallback must serve");
+  });
+
+  // Every icon the manifest names has to resolve, or an install prompt is
+  // offered and then installs a blank square. The manifest is the source of
+  // truth here on purpose: adding an icon to it without adding the route is
+  // the exact mistake this catches.
+  await t.test("every icon the manifest names is served", async () => {
+    const m = JSON.parse(await (await fetch(srv.base + "/manifest.webmanifest")).text());
+    const srcs = new Set(m.icons.map((i) => i.src));
+    for (const sc of m.shortcuts || []) for (const i of sc.icons || []) srcs.add(i.src);
+    assert.ok(srcs.size > 0, "manifest declares no icons at all");
+    for (const src of srcs) {
+      const r = await fetch(srv.base + src);
+      assert.equal(r.status, 200, src + " is named by the manifest but does not serve");
+      assert.match(r.headers.get("content-type") || "", /image\//, src);
+    }
+  });
+
   // Address Explorer: type is optional so Find addresses can return a mixed
   // list, each chip labelled. A typed request still works (market-page deep
   // link). An unrecognized type is still a 400 — never silently mixed.

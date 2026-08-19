@@ -18532,6 +18532,24 @@ const server = http.createServer((req, res) =>
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
     "/favicon.svg": { file: "favicon.svg", type: "image/svg+xml", maxAge: 86400 },
     "/favicon.png": { file: "favicon.png", type: "image/png", maxAge: 86400 },
+    // --- Installable-app (PWA) assets. The manifest is what lets a phone put
+    // CompNinja on a home screen and launch it without browser chrome, and it
+    // is also the icon/name source the iOS wrapper build reads.
+    "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json; charset=utf-8", maxAge: 3600 },
+    // maxAge: 0, and for a sharper version of /valuation.js's reason. A
+    // service worker outlives a deploy: a stale copy of THIS file keeps
+    // serving its own stale rules for as long as it is cached, so it is the
+    // one asset where a cache entry can survive the fix for itself. Browsers
+    // cap service-worker script caching at 24h regardless; saying 0 here
+    // means a redeploy reaches devices on the next launch instead.
+    "/sw.js": { file: "sw.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Served, not just precached: the service worker falls back to a cached
+    // copy, but a first visit that goes offline before the worker installs
+    // still has to fetch it.
+    "/offline.html": { file: "offline.html", type: "text/html; charset=utf-8", maxAge: 3600 },
+    "/icons/icon-192.png": { file: "icons/icon-192.png", type: "image/png", maxAge: 86400 },
+    "/icons/icon-512.png": { file: "icons/icon-512.png", type: "image/png", maxAge: 86400 },
+    "/icons/icon-maskable-512.png": { file: "icons/icon-maskable-512.png", type: "image/png", maxAge: 86400 },
   };
   // Query-string tolerant (reuses `staticPath`, already split above) so the
   // obvious cache-bust "/valuation.js?v=…" resolves instead of 404ing — an

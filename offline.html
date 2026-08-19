@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Offline · CompNinja</title>
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#121826" media="(prefers-color-scheme: dark)" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<!-- Self-contained on purpose: this page is served by the service worker when
+     the network is gone, so it can depend on nothing that would itself need
+     fetching -- not tailwind.css, not a font, not an icon file. Everything
+     here is inline, and the mark is inline SVG rather than /favicon.svg so a
+     cold cache still renders it. -->
+<style>
+  :root {
+    --bg: #FBFBF9; --ink: #121826; --muted: #5B6472;
+    --line: #E4E2DC; --card: #FFFFFF; --accent: #B91C1C;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121826; --ink: #F3F4F6; --muted: #9AA3B2;
+      --line: #273040; --card: #1A2433; --accent: #EF4444;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    width: 100%; max-width: 26rem; background: var(--card);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 32px 28px; text-align: center;
+  }
+  .mark { width: 52px; height: 52px; margin-bottom: 18px; }
+  h1 { font-size: 1.3rem; line-height: 1.3; margin: 0 0 10px; letter-spacing: -0.01em; }
+  p { margin: 0 0 22px; color: var(--muted); font-size: 0.95rem; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    background: var(--ink); color: var(--bg);
+    border: 0; border-radius: 9px; padding: 11px 22px; width: 100%;
+  }
+  button:active { opacity: 0.85; }
+  .note { margin: 20px 0 0; font-size: 0.8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+  <main class="card">
+    <svg class="mark" viewBox="0 0 30 30" aria-hidden="true">
+      <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433" />
+      <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C" />
+    </svg>
+    <h1>You're offline</h1>
+    <p>CompNinja pulls live comps from public records and listings, so it needs a connection to run a report.</p>
+    <button type="button" id="retry">Try again</button>
+    <p class="note">This page will reload automatically when your connection returns.</p>
+  </main>
+<script>
+  var retry = function () { location.replace("/"); };
+  document.getElementById("retry").addEventListener("click", retry);
+  // Fires when the OS regains connectivity, which on a phone is usually
+  // before anyone thinks to tap the button.
+  window.addEventListener("online", retry);
+</script>
+</body>
+</html>

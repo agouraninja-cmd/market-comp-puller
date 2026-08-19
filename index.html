@@ -46,6 +46,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <!-- Installable app. The manifest is what lets a phone install CompNinja to
+       its home screen and launch it without browser chrome; the apple-* tags
+       are the same request to iOS, which reads its own vocabulary rather than
+       the manifest. Keep the title short -- iOS truncates a home-screen label
+       at roughly 12 characters.
+       The status bar is deliberately "default" (opaque) rather than
+       "black-translucent": translucent hands the app the area under the notch
+       and this page's CSS has no safe-area padding, so content would slide
+       under the clock. Changing it means auditing every fixed header first. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="CompNinja" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -16486,6 +16500,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setLoading(false);
     }
   });
+  </script>
+  <!-- Service worker registration. Its own script element rather than a line
+       inside the block above -- and note it must stay that way for a second
+       reason: the "inline script blocks parse as valid JavaScript" test in
+       test/index-html.test.js finds blocks by scanning for the opening tag,
+       so writing that tag literally in a comment here starts a phantom block
+       and fails the build on the prose that follows it.
+       The real reason is that the block above aborts wholesale if /valuation.js
+       failed to load (its first statement destructures VALUATION) and offline
+       handling is exactly what should still work on a bad connection.
+       Deferred to `load` so it never competes with the first paint or the
+       app's own boot, and every failure is swallowed: an app that refuses to
+       start because it could not register an offline helper is strictly worse
+       than one with no offline helper. -->
+  <script>
+  (function () {
+    if (!("serviceWorker" in navigator)) return;
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function (err) {
+        console.warn("Service worker registration failed:", err && err.message);
+      });
+    });
+  })();
   </script>
 </body>
 </html>

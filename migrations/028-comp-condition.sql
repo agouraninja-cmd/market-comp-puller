@@ -1,0 +1,27 @@
+-- 028: comp_corpus.condition — the Residential condition field.
+--
+-- RUN THIS BEFORE DEPLOYING THE CODE THAT WRITES IT.
+--
+-- harvestComps writes one flat comp_corpus row per comp using
+-- ALL_TYPE_COMP_FIELDS, and PostgREST 400s an insert naming a column that does
+-- not exist. Harvest is fire-and-forget, so the failure is SILENT: every
+-- harvested comp diverts to the ephemeral comp-corpus.jsonl, which Render wipes
+-- on the next deploy, while the log still prints "Comp corpus +N" and the app
+-- looks perfectly healthy. That is the 2026-07 outage's exact shape — ten
+-- missing per-type columns froze the corpus at 65 rows for weeks with a 0%
+-- hit rate and no error anywhere.
+--
+-- corpusRowsForMarket also names every ALL_TYPE_COMP_FIELDS column in its
+-- &select=, so a missing column breaks READS too: retrieval returns empty,
+-- every market looks uncovered, and corpus-first retrieval silently stops
+-- saving searches.
+--
+-- Purely additive and idempotent. `condition` is not a reserved word in
+-- PostgreSQL, but it IS reserved in the SQL standard, so it is quoted here and
+-- nowhere relied on unquoted in DDL.
+alter table public.comp_corpus add column if not exists "condition" text;
+
+-- Verify (expects zero rows):
+--   select 'missing: condition'
+--   where not exists (select 1 from information_schema.columns
+--                     where table_name = 'comp_corpus' and column_name = 'condition');

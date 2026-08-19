@@ -250,7 +250,7 @@ test("org-access.js is pure: no requires, no I/O, no clock reads", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Auto-share (migration 029) — the firm default, and the member's veto.
+// Auto-share (migration 031) — the firm default, and the member's veto.
 //
 // This is the rule the spec would not let be built without a safeguard, so
 // the safeguard is what most of these pin: an admin's decision about other

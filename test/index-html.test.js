@@ -609,7 +609,7 @@ test("the desk hub list has no empty state, and never shows one", () => {
   assert.match(html, /id="deskHubs"/);
   assert.match(html, /id="deskHubRows"/);
   assert.ok(!/id="deskHubsEmpty"/.test(html), "the hub list is hidden when empty, not emptied");
-  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/);
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/);
   assert.ok(fn, "index.html must define renderDeskHubs()");
   assert.match(fn[0], /if \(!rows\.length\) return;/);
   // Every failure is silent here: this is an extra list at the bottom of a
@@ -626,7 +626,7 @@ test("hub rows render user-authored text through textContent, never innerHTML", 
   // A hub title is typed by the broker who created it, so it is user-authored
   // text like an address or a viewer email — the rule the rest of this desk
   // already follows.
-  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/)[0];
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/)[0];
   assert.match(fn, /link\.textContent = h\.title/);
   assert.ok(!/innerHTML\s*=\s*[^"']/.test(fn.replace(/innerHTML = "";/g, "")),
     "no interpolated innerHTML in the hub list");
@@ -970,4 +970,176 @@ test("the loading ninja is a two-frame runner that freezes for reduced motion an
   assert.match(complete, /classList\.add\("done"\)/);
   assert.match(show, /classList\.remove\("done"\)/);
   assert.match(hide, /classList\.remove\("done"\)/);
+});
+
+// ---------------------------------------------------------------------------
+// The two lines that tell a reader what the number can't see: the unexplained
+// gain since the subject's own last sale, and the condition spread the
+// weighting can't explain away. Both are copy over VALUATION math, so these
+// pin the wiring and the wording, not the arithmetic (valuation.test.js owns
+// that).
+// ---------------------------------------------------------------------------
+
+test("the unexplained-gain line is present and wired into the hero", () => {
+  assert.match(html, /id="ownerImproved"/);
+  assert.match(html, /function renderSubjectImproved\(/);
+  assert.match(html, /renderSubjectImproved\(parsed, meta\)/);
+});
+
+test("the unexplained-gain line names physical work only on a house", () => {
+  const src = html.match(/  function renderSubjectImproved\(parsed, meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find renderSubjectImproved in index.html — was it renamed?");
+  const V = require("../valuation");
+  const made = {};
+  const stubEl = () => ({
+    textContent: "", classList: { add() {}, remove() {} },
+    appendChild(n) { this.textContent += n.text; },
+  });
+  const ctx = vm.createContext({
+    document: {
+      getElementById(id) { return (made[id] = made[id] || stubEl()); },
+      createTextNode: (text) => ({ text }),
+    },
+    askingRangeFrom: () => ({ min: 700000, max: 700000 }),
+    unexplainedGain: V.unexplainedGain,
+    numericValue: V.numericValue,
+    trendPctOf: () => 6,
+    asOfOf: () => Date.parse("2026-08-16"),
+    formatUsd: (v) => "$" + Math.round(v).toLocaleString("en-US"),
+  });
+  new vm.Script(src[0] + "\n;this.fn = renderSubjectImproved;", { filename: "index.html" }).runInContext(ctx);
+  const parsed = { subject_last_sale: { date: "June 2021", price: "$400,000" } };
+
+  ctx.fn(parsed, { type: "Residential" });
+  const house = made.ownerImproved.textContent;
+  assert.match(house, /\$540,000 today/);
+  assert.match(house, /\$160,000 above that \(30%\)/);
+  assert.match(house, /work was done since/);
+  // The disclaimer is the point of the line: a dollar figure under a valuation
+  // reads as part of it unless this says otherwise.
+  assert.match(house, /not in the range above/);
+
+  made.ownerImproved = null;
+  ctx.fn(parsed, { type: "Office" });
+  const office = made.ownerImproved.textContent;
+  // On commercial the same gap is as often lease-up as renovation, so the
+  // sentence must not assert physical work.
+  assert.match(office, /improved or its income grew since/);
+  assert.doesNotMatch(office, /work was done since/);
+});
+
+test("the condition-spread clause rides the Residential trust line", () => {
+  const i = html.indexOf('Residential sales mostly live in the MLS');
+  assert.ok(i > 0, "could not find the Residential trust-line block");
+  const block = html.slice(i, i + 2600);
+  assert.match(block, /conditionSpread\(currentPsfBand, subjSFMid\)/);
+  assert.match(block, /mostly condition and finish, which this estimate can't see/);
+  // It reads the band the chips and scatter read, never a hardcoded percentage
+  // standing in for one — that constant would be the only figure in the hero
+  // with no source behind it.
+  assert.doesNotMatch(block, /10-20%|10 to 20%/);
+});
+
+test("the unexplained-gain line is hidden during streaming assembly", () => {
+  // Same trap ownerScatter carries: assembly puts a counts-only hero on screen
+  // a minute before renderResults repaints, so a line left out of this list
+  // hangs the PREVIOUS report's dollar figure under the next report's
+  // placeholder.
+  const i = html.indexOf('["widenSearchWrap", "ownerScatter"');
+  assert.ok(i > 0, "could not find beginAssembly's hidden list");
+  const list = html.slice(i, i + 260);
+  assert.match(list, /"ownerImproved"/);
+  // The mechanics panel carries the same hazard: left out, the previous
+  // report's "How this range is calculated" hangs under the next report's
+  // placeholder hero.
+  assert.match(list, /"ownerTrustHowWrap"/);
+});
+
+// ---------------------------------------------------------------------------
+// The trust line is two halves: property-specific warnings stay visible,
+// mechanics collapse. Measured 2026-08-16, the combined line ran 1,034
+// characters of 12px grey and buried the condition sentence ninth of nine.
+// ---------------------------------------------------------------------------
+
+test("mechanics are routed to the collapsed half, not the visible line", () => {
+  assert.match(html, /id="ownerTrustHowWrap"/);
+  assert.match(html, /id="ownerTrustHow"/);
+  assert.match(html, /id="ownerTrustHowBtn"/);
+  // The weighting note and the MLS caveat are the two mechanics. Neither may
+  // be concatenated into #ownerTrust: the visible half is for notes specific
+  // to THIS property, and the MLS sentence is identical on every house report.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  // Assignment or append only — `if (trustEl.textContent) mechanics.push(...)`
+  // is the correct routing and must not trip this.
+  assert.doesNotMatch(body, /trustEl\.textContent\s*\+?=[^;]*weighNote/);
+  assert.doesNotMatch(body, /trustEl\.textContent\s*\+?=[^;]*Residential sales mostly live in the MLS/);
+  assert.match(body, /mechanics\.push\("Residential sales mostly live in the MLS/);
+  // Routed into the mechanics array, and only when a trust line actually
+  // rendered — an explanation of the weighting with no range above it explains
+  // nothing. (unshift vs push is ordering, not routing; don't pin the method.)
+  assert.match(body, /if \(trustEl\.textContent\) mechanics\.(un)?shift\(weighNote\)/);
+});
+
+test("the collapsed half is forced open on paper and in the PNG", () => {
+  // An export is the copy that gets forwarded to a client, so it must not be
+  // the one version of the report whose weighting is unexplained. Two separate
+  // mechanisms because html2canvas ignores @media print.
+  const printBlock = html.slice(html.indexOf("@media print {"), html.indexOf("@media print {") + 2000);
+  assert.match(printBlock, /#ownerTrustHow \{ display: block !important; \}/);
+  const clone = html.slice(html.indexOf("onclone: (doc) =>"), html.indexOf("onclone: (doc) =>") + 1400);
+  assert.match(clone, /#ownerTrustHow \{ display: block !important; \}/);
+  // The toggle itself must NOT survive into either — a button in a PNG is
+  // furniture that cannot be clicked.
+  assert.match(html, /id="ownerTrustHowBtn"[\s\S]{0,200}?no-print no-capture/);
+});
+
+test("the agent-intro pointer is screen-only", () => {
+  // #bovCtaWrap is no-print and is dropped by html2canvas's ignoreElements, so
+  // a printed or captured report carrying "the button below" would point at a
+  // button that is not on the page.
+  const i = html.indexOf('cta.className = "no-print no-capture"');
+  assert.ok(i > 0, "the CTA pointer must carry no-print no-capture");
+  // Pin that it POINTS at the on-page control, not the exact phrasing.
+  assert.match(html.slice(i, i + 400), /cta\.textContent = " A local agent below/);
+  // The sentences that stay in both media make no reference to a control.
+  assert.match(html, /can't see without someone walking the property/);
+  assert.match(html, /half of the range is the fairer read/);
+});
+
+test("the mechanics toggle is registered once, not per render", () => {
+  // renderOwnerHero runs on every render and every subject-field edit; an
+  // addEventListener in there would stack handlers until one click fired the
+  // toggle a dozen times.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  assert.doesNotMatch(body, /ownerTrustHowBtn"\)\.addEventListener/);
+  assert.match(html, /document\.getElementById\("ownerTrustHowBtn"\)\.addEventListener\("click"/);
+});
+
+test("the condition steer yields to a listing that disagrees with it", () => {
+  // Seen only by rendering a report: listed at $700,000 against a $1,050,000
+  // estimate, askFit said "50% below this estimate ... the comps are probably a
+  // pricier pocket" (our number may be high) and conditionFit then said "the
+  // upper half of the range is the fairer read". The paragraph argued with
+  // itself. The listing is a hard fact about this property; the condition steer
+  // is a comparison against comps, so the listing wins.
+  const i = html.indexOf("const contradictsAsk");
+  assert.ok(i > 0, "the contradiction guard is gone");
+  assert.match(html.slice(i, i + 200), /askGap && askGap\.skewed && fit && askGap\.dir === fit\.dir/);
+  // askGap is computed well above this line; if it ever moves below, the guard
+  // silently reads undefined and stops suppressing anything.
+  assert.ok(html.indexOf("const askGap = askFit(") < i, "askGap must be computed before the guard");
+});
+
+test("askFit and conditionFit share one direction vocabulary", () => {
+  // The guard is `askGap.dir === fit.dir`. If either function's dir vocabulary
+  // drifts — "higher"/"lower", say — the comparison silently never matches and
+  // the contradiction comes back with nothing failing.
+  const V = require("../valuation");
+  const comp = (condition) => ({ transaction: "Sale", condition });
+  const up = V.conditionFit("Renovated", [comp("Original"), comp("Original"), comp("Original")]);
+  const down = V.conditionFit("Needs work", [comp("Renovated"), comp("Renovated"), comp("Renovated")]);
+  assert.equal(up.dir, "above");
+  assert.equal(down.dir, "below");
+  assert.equal(V.askFit(1000000, 2000000).dir, "above");
+  assert.equal(V.askFit(2000000, 1000000).dir, "below");
 });

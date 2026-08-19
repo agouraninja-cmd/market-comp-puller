@@ -491,6 +491,14 @@ dependency. `.env` is git-ignored — never commit it.
   the same easy comps. Re-measure on real traffic before flipping it on.
   Each search logs `Anthropic call [lane]: Ns · N search(es) · N out / N in
   tokens`, which is how any of this gets re-measured.
+- `LEAD_METRO` — optional `on`/`off`, **default ON**. Matches broker lead
+  coverage across `market.js`'s curated `METRO_GROUPS`, so a Boise-covering
+  broker sees Meridian leads. Reads the same table as `CORPUS_METRO` and is
+  switched separately on purpose — one decides which comps a search may draw
+  on, the other decides who sees a stranger's enquiry, and rolling back one is
+  no reason to roll back the other. `off` restores exact-market matching in
+  the inbox, the intro gate and the new-lead alert together. Rules live in
+  `broker-leads.js`, so `npm test` covers them.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
@@ -846,7 +854,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   fetches the report from `/api/shared`. (server.js allow-lists this path
   alongside `/` and `/index.html`.)
 - **Firms — enterprise accounts, slice 1** (2026-08-16; migration
-  `028-enterprise-orgs.sql`, **run before deploying — see below**; spec
+  `030-enterprise-orgs.sql`, **run before deploying — see below**; spec
   `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`).
   Colleagues at one brokerage share a shelf: a report shared with the firm
   lands on every member's desk, while each of them keeps their own reports,
@@ -1003,7 +1011,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     a broker who has shared nothing really does have a vault visible only to
     them. The default text stays in the MARKUP so a page whose script failed
     still makes the true statement rather than none.
-  **Per-seat billing** (migration 031, 2026-08-16). `STRIPE_PRICE_FIRM_MONTHLY`
+  **Per-seat billing** (migration 033, 2026-08-16). `STRIPE_PRICE_FIRM_MONTHLY`
   + `plan: "firm_monthly"` on `/api/checkout` (with `orgId` and `seats`), the
   firm's own Stripe customer, and `org_subscriptions` keyed on `org_id`.
   `POST /api/billing-portal` takes an optional `orgId` and opens the firm's
@@ -1050,7 +1058,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   BOV pipeline row, or an individual vault comp.
 - `GET /api/geocode?address=` — CORS pass-through to the free US Census
   geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
-  longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
+- `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
+  Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
+  string lands in the platform's access logs and in every outbound Referer,
+  and this route sees more addresses than any other — the subject plus every
+  comp of every report — including the private vault comps that are geocoded
+  here and deliberately nowhere else (GUARD 2 of the private-comp contract).
+  The GET alias was removed rather than deprecated, because a door left open
+  is one stale caller away from putting addresses back in URLs and nothing
+  detects that. Comp pins are placed ENTIRELY from real geocoding — the model no  longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
   report-writing burst; only `subject_lat`/`subject_lng` remain, for the
   map's first paint and the wrong-state sanity gate). Old cached reports
   still carry comp coords and render unchanged. The front-end places every
@@ -1862,11 +1878,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
     should not have to author a CSV); `GET /api/vault/export.csv` downloads
-    the whole book. After a spreadsheet import, `/vault` can open that book
-    as a grid (`Open spreadsheet`, or Open on that import): the same PATCH,
-    one field per cell, saved on leaving the cell so Tab/Enter work like a
-    spreadsheet. The compact Edit form stays for a single-row change from
-    the ordinary table. **`EDITABLE_FIELDS` in `broker-vault.js` is an
+    the whole book. **Every cell on `/vault` is typed into directly**
+    (2026-08-16): one field per cell, saved on leaving it, so Tab/Enter work
+    like a spreadsheet and Esc restores the stored value. There is no Edit
+    button — the compact table's own cells are the editor, and the inline
+    edit form it used to open is gone. Three rules the compact table adds
+    over the spreadsheet, all in `vault-page.js`. **`CELL_FIELDS` excludes
+    the two derived columns**: `market` is parsed from the address by
+    `marketOf()` server-side and `price_per_sqft` is computed by
+    `normalizeRow` for priced sales only, so offering either as an input
+    would let a broker type a figure the very next save silently overwrites;
+    they render as `td.ro` cells and are **refreshed from the row the PATCH
+    returns**, because a price edit that left the old $/SF sitting beside it
+    is a wrong number in a priced column. **A cell shows the formatted figure
+    and swaps to the raw one on focus** (`data-raw` + `cellDisplay`), since a
+    book of business is read far more often than edited and every price
+    becoming `1250000` is not an acceptable cost of making it editable; the
+    value put back after a save is the SERVER's normalized one, never the
+    string that was typed. And **a save that lands after the table was
+    rebuilt** (a sort, a filter, a delete's reload) re-renders instead of
+    writing into the detached input, or the row would show the pre-save value
+    with a refreshed $/SF next to it. Spreadsheet mode (`Open spreadsheet`,
+    or Open on that import) stays as the other door: it is the only place
+    `cap_rate`/`tenancy`/`year_built`/`notes` and the per-type extras have
+    columns, and its cells deliberately show STORED values with no
+    formatting, because it is the view a broker opens to check what an import
+    actually landed. **`EDITABLE_FIELDS` in `broker-vault.js` is an
     allowlist**, not a second validator — `validateEdit(existing, patch)`
     merges the patch over the stored row and reruns it through
     `normalizeRow`, the same function every imported row goes through, so a
@@ -2004,6 +2041,77 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     through the module-level `lastGut`/`lastReps` rather than a changed return
     type, because the return value is the outlier map the table reads. Four
     further rules:
+    - **What publishing gave back** (2026-08-17). `comp_submissions.cited_count`
+      has existed since migration 003 and `bumpCitedCounts` has incremented it
+      on every earned badge ever since — and it was rendered in exactly one
+      place, the "Report citations" tile on the PUBLIC `/broker/<slug>`, which
+      exists at all only once a broker opts `broker_profiles.public` to true
+      (false by default, per broker-directory.js's two-consents rule). So the
+      one person who could not see the credit was the broker who earned it, and
+      a vault-first broker published comps and got no signal back whatsoever.
+      This surfaces the existing number: per comp beside the Published chip,
+      and summed under the ledger's Published cell. **Nothing new is counted
+      and no hot path changed** — `attachCitedCounts` is a read, chunked at 200
+      ids because the in.() list would otherwise outgrow a URL, and it **never
+      throws**, because a citation count is a reward and a vault that would not
+      open without one would be a strictly worse trade. Two honesty rules: the
+      count is **omitted at zero** rather than shown as "0" beside every
+      freshly published comp, and the tooltip says it is counted **when a
+      report is generated**, since a cache hit serves the stored report without
+      re-running `attachVerifiedAttribution` and therefore does not bump it —
+      the figure is a floor, not an impression count. `cited_count` reaches the
+      browser through `vault-api.js`'s **`SUBMISSION_FIELDS`**, a third checked
+      list beside `PROPERTY_FIELDS` for the same reason that one exists: it is
+      not a `broker_comps` column, so putting it in `API_COMP_FIELDS` would
+      correctly fail the both-ways schema test.
+    - **Bulk publish** (`POST /api/vault/publish-many`, 2026-08-17). Publishing
+      is how the public corpus grows and it was one button plus one identical
+      confirm per comp, so in practice nobody published a book — they published
+      a comp. The button counts the UNPUBLISHED comps in the current view and
+      deliberately does not decide eligibility: `VAULT.canPublish` is the rule,
+      a browser copy would be a second one, and the route reports what it
+      skipped and why (naming the first reason, since they repeat). Its own
+      route rather than an `ids` array on the single one — that contract's
+      404/400 are right for one comp and wrong for fifty, where "some of these
+      are not ready" is the normal answer. Same `openVault` gate, same
+      `user_id` scoping, same credit-name refusal, asked ONCE before anything
+      is written. Insert and PATCH stay **paired inside one task** at
+      concurrency 6, never one bulk insert with ids read back positionally:
+      repeat properties are real here, so returned rows could not be re-paired
+      by address even in principle. A PATCH that fails after its insert
+      **deletes the submission back out**, or the comp sits in the public
+      records crediting a row the vault still calls unpublished and a re-run
+      credits it twice. Capped at `VAULT_PUBLISH_BATCH` (100) per request,
+      reporting `remaining` rather than refusing, which is safe because
+      publishing is idempotent.
+    - **Undo a delete** (2026-08-17). A hard delete behind one confirm sat
+      oddly against a codebase that refuses a file fallback rather than risk
+      losing a broker's book. The message now carries an Undo that re-posts the
+      comp through **`POST /api/vault/comp`**, the ordinary add route, so a
+      restore goes through `normalizeRow` like every other written comp and
+      cannot put back something the vault would refuse to be told today.
+      Three rules: it is held **in memory only** — this catches the misclick
+      noticed immediately, not a deletion regretted tomorrow, and a store that
+      emptied on reload would promise more than it keeps; the restore is a
+      **new entry** belonging to no import, said plainly rather than left to be
+      discovered; and a comp that was published **is not republished** by
+      putting it back, because publishing is a deliberate public act and
+      undoing a delete is not consent to repeat it. The confirm no longer says
+      "this cannot be undone", since that stopped being true.
+    - **Four filters, and only one of them is a search.** Market and Type
+      narrow to a slice; Deal (Sale/Lease) exists because the two are priced
+      in different units and a view holding both can state no median; and the
+      Find box searches address, notes, market, type and tenancy, ANDing its
+      terms so two words mean both rather than the phrase. All four compose,
+      all four are cleared together, and **opening one import clears every one
+      of them** — a search left over from the previous view would hide the
+      comps that import just landed. **An empty result names which of the two
+      empty states it is**: "No comps match this filter" with a Clear link
+      when the book is non-empty, and the upload invitation only when it is
+      genuinely empty. Telling a broker who searched for a deal they own that
+      there is "nothing here yet" reads as the vault having lost their book —
+      the same misreport-an-outage-as-absence trap the hub list and the lead
+      inbox each had to fix.
     - **The page fetches `?limit=1000` and filters in the BROWSER.** It used to
       re-query with `market=`/`type=` params, which cannot work now: the rollup
       counts the whole book, and server-side filtering leaves the browser
@@ -2011,11 +2119,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       defaults to `limit=200`, so a broker with 400 comps was shown half their
       vault with nothing saying so. Past 1,000 the page says it is truncated
       rather than under-reporting silently.
-    - **Every $/SF figure comes from the stored `price_per_sqft`, never derived
-      here.** `broker-vault.js` writes that column for **sales only** and
-      leaves it null on a lease, because an annual rent ÷ size is $/SF/yr and
-      would corrupt any median it entered. A card with no priced sales shows
+    - **Every rate figure comes from a stored column, never derived here.**
+      `broker-vault.js` writes `price_per_sqft` for **sales only** and leaves
+      it null on a lease, because an annual rent ÷ size is $/SF/yr and would
+      corrupt any median it entered; it writes `rent_psf_yr` for **leases
+      only**, from the broker's `rent_psf` × their stated `rent_basis`. The
+      page reads both and never recomputes either. A bucket with neither shows
       its comp count instead of a fabricated number.
+    - **Lease rent (migration 029, 2026-08-17).** Until then the vault only
+      really worked for investment sales: the template said to leave `price`
+      blank on a lease and put the rent in `notes` as prose, so a leasing book
+      carried no figure any median could read and every card said "no priced
+      sales yet". Four rules.
+      **`rent_basis` is required with a rent and has no default** — California
+      industrial and retail quote rent MONTHLY while most of the country
+      quotes annually, so $1.35/SF is an ordinary monthly rent and an
+      impossible annual one; defaulting either way stores a figure 12× wrong
+      in a broker's own records, which is the class of error this module
+      refuses "1.2M" to avoid. **`lease_type` (NNN/FS/MG) is optional and
+      disclosed**, the deliberate asymmetry: mixing bases makes a median
+      WRONG, mixing structures makes it WEAKER, and those get different
+      answers — the footer says "mixed lease types" rather than refusing.
+      **Sales and leases are never averaged together**: a view holding both
+      states no median and names the Deal filter, which is why that filter
+      had to ship first, and the rate column heading changes with the unit
+      rather than labelling annual rents "$/SF". **The gut check abstains on
+      leases** — corpus quartiles and market-page figures are sale $/SF and
+      there is no public rent benchmark — which holds by construction because
+      leases carry no `price_per_sqft`; a rent fallback in `psfOf` would break
+      it, and a test pins that.
+      Rent is deliberately **not carried into the public corpus**:
+      `comp_corpus` has no rent column and `submissionRowFrom` is an explicit
+      allowlist, so a published lease carries what it always did. Giving the
+      corpus a rent column is its own decision with its own provenance
+      questions, not a side effect of this one.
     - **Repeat properties group on `market` + address, never address alone.**
       Street names repeat across a metro; on the first test book that merged a
       Boise building and a Meridian building at the same house number into one
@@ -2303,6 +2440,31 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead
   anonymization allowlist, coverage seeding, notify dedupe); server.js owns
   every read/write and computes `market` with `marketOf()` before calling in.
+  **Metro matching (2026-08-17).** Coverage matching reads the same curated
+  `METRO_GROUPS` corpus retrieval does, so a broker covering Boise industrial
+  also sees Meridian industrial leads — those cities trade as one market, and
+  until this shipped that table was read by retrieval and by nothing else.
+  Four rules. **The adjacency function is INJECTED, never required**:
+  `broker-leads.js` does not know what an address or a metro is (its header
+  rule), so `filterLeadsForCoverage(leads, cov, siblingsOf)` takes it as an
+  optional third argument and behaves exactly as it did before when omitted —
+  which is what keeps every other caller and the whole test file safe by
+  default. **The property type is never widened with the geography**: an
+  industrial broker one suburb over is still an industrial broker, and
+  crossing types would put a retail enquiry in their inbox on the strength of
+  a shared postcode. **All THREE call sites move together or none do** — the
+  inbox, the intro gate (`filterLeadsForCoverage` again, so a visible lead is
+  always actionable) and the new-lead alert, which starts from one lead and
+  therefore widens from the other end via `coverageMarketsFor` into a
+  PostgREST `market=in.(...)`; a broker emailed about a lead the inbox hides,
+  or shown one they were never told about, is a bug either way, and a test
+  states the two as one rule. **And the reach is disclosed**: the API adds
+  `nearby` per coverage row and the chip reads "+7 nearby", because a lead
+  from a city the broker never typed otherwise reads as a bug in the one
+  surface whose whole job is to be trusted about where their business is.
+  Rollback is `LEAD_METRO=off`, deliberately separate from `CORPUS_METRO`:
+  the two read one table but answer different questions — which comps a
+  search may draw on, versus which PEOPLE see a stranger's enquiry.
   `GET|POST|DELETE /api/broker/coverage` — the broker's list of market +
   property-type pairs to watch. `GET` lists it; `POST` adds one pair
   (validated against `LEADSVC.isCanonicalMarket` and `VAULT.PROPERTY_TYPES`,
@@ -2339,10 +2501,35 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
-CSV / PNG / Print-to-PDF exporters. The main form's second slot is the
-Building size (SF) field; the property type is chosen at the verification
-step, and the confirm dialog blocks the run until a type is resolved.
-Contains **no secrets**.
+CSV / PNG / Print-to-PDF exporters. The main form's controls row is **three
+cells on one line** (`sm:grid-cols-3`): Focus, Lookback and **Property SF**.
+It was briefly a 2x2 grid (2026-08-16) carrying the asking price as a fourth
+cell; the price moved down into "Details for comps" on 2026-08-17 (owner's
+call) and the row went back to one line, so `.rd-row-2up` and its
+wrapped-grid border rules are gone from the style block rather than left
+sitting unused. Three is the ceiling: the build chamber is ~552px, so a
+fourth cell leaves ~106px of content and `.rd-lab`'s tracking wraps the label
+to two lines — and `.rd-cell:last-child` cannot see a wrapped grid, which is
+what the deleted rules existed to patch. **Asking price is a Refine field
+now**, sitting immediately before `#subjectTypeFields` so it reads beside the
+per-type facts about the subject (beds/baths on a house, unit count on a
+multifamily) — same id, same single input, so `targetRange()`,
+`askingRangeFrom` and every report restore are untouched; only its parent
+element and its styling changed. The property
+type is chosen at the verification step, and the confirm dialog blocks the run
+until a type is resolved. Contains **no secrets**.
+**The size field is one figure, not a range** (2026-08-16, owner's call).
+`#targetSizeMax` no longer exists; `targetRange()` is called with a null
+`maxId` for both size and price, so `meta.subject.sizeMax` now always equals
+`sizeMin` on a new report. The key it is stored under is deliberately kept:
+`sizeMax` survives in `meta.subject` exactly as `priceMax` has since
+2026-08-10, so reports saved while the range existed still render it on the
+subject row and in exports — the two restore paths (`loadSharedReport`,
+`rerunHistory`) simply no longer write it into an input. Do not add a second
+size box to Refine "to bring the range back": `#targetSize` is a single id
+read by the footprint estimate, `targetRange()` and every report restore, and
+a duplicate would either break those or silently disagree with the figure the
+search actually sends.
 
 **Private comps in the front end** (the display half of blended comps, 2026-08-06;
 server half and spec are under the broker vault above). A comp the server flags
@@ -2385,8 +2572,9 @@ private row has not earned. Two rules matter when editing anything down here:
   still entitled to it. Public comps are untouched by all of this.
   Owen owns the other half (migration 017, `lat`/`lng` in the vault CSV,
   `toApiComp` lifting them onto the comp); **import-time geocoding is
-  deliberately deferred**, and moving `/api/geocode` to POST ranks above it
-  when this is picked up again.
+  deliberately deferred**. Moving `/api/geocode` to POST ranked above it and
+  **shipped 2026-08-17** — see that route's entry above; the address a private
+  comp sends to our own proxy no longer lands in a URL.
 
 ### Non-obvious flows to know before editing
 
@@ -2465,11 +2653,19 @@ private row has not earned. Two rules matter when editing anything down here:
    range, while `property` is also the unit the report already prices on
    (`ALT_BASIS`). Retail is `property` for the same both-shapes reason —
    "building" fits only a single-tenant pad, "center" only an anchored center.
-   Three rules: **it is related to `SIZE_LABELS` but deliberately not equal to
-   it** — Multifamily and Retail keep "Building size (SF)" as the FIELD label
-   because that really is the building square footage the valuation divides
-   by, even though the asset above it is called a property; check both when
-   adding a type, and expect them to differ; **plurals come from
+   Three rules: **`SIZE_LABELS` no longer names the FORM field at all**
+   (changed 2026-08-16) — that input is labelled **"Property SF" for every
+   type**, one term true of a warehouse, a parcel and a house alike, and
+   `syncSubjectFieldsToType` deliberately does not touch `#targetSizeLabel`
+   any more, so the label cannot shift under a visitor when detection resolves
+   the type a moment after they start typing. `SIZE_LABELS` is NOT dead: it
+   still names the hero's basis line ("Building size" / "Lot size" / "Living
+   area"), which is where the per-type nuance now lives along with the hint
+   under the input; adding a type still means adding its entry. Read the rest
+   of this rule with that split in mind — the old wording had Multifamily and
+   Retail keeping "Building size (SF)" as the field label while the asset above
+   was called a property, and that reconciliation is now the basis line's job
+   alone; **plurals come from
    `ASSET_NOUN_PLURAL`, never `noun + "s"`**
    (that shipped "propertys" on Land); and **the hero heading is set at TWO
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the

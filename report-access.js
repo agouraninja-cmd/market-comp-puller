@@ -56,7 +56,7 @@ function canReadShare({ share, viewers, user, orgIds }) {
   }
   if (!user) return { ok: false, reason: "signin_required" };
 
-  // The firm audience (migration 028, spec §6). Deliberately NOT a fourth
+  // The firm audience (migration 030, spec §6). Deliberately NOT a fourth
   // top-level branch beside public/invited: it sits INSIDE the invited path,
   // below revocation and below the sign-in requirement, so a firm share
   // inherits every protection an invited one already has and can only ever

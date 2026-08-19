@@ -1,4 +1,4 @@
--- 030 · The shared vault: a broker's comps, opted in to their firm (2026-08-16)
+-- 032 · The shared vault: a broker's comps, opted in to their firm (2026-08-16)
 -- Spec:  docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md §7
 -- Rules: blend-comps.js (shaping, dedupe), org-access.js (membership)
 --

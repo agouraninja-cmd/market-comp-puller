@@ -79,7 +79,27 @@ test("$/SF is computed for a sale and never for a lease", () => {
   // $/SF/year, a different unit, and it would corrupt the column it sits in.
   assert.equal(ok({ address: "1 A St", transaction: "sale", price: "2850000", size_sqft: "24500" }).price_per_sqft, 116.33);
   assert.equal(ok({ address: "1 A St", transaction: "lease", price: "100000", size_sqft: "10000" }).price_per_sqft, undefined);
-  assert.equal(ok({ address: "1 A St", price: "2850000" }).price_per_sqft, undefined, "no size, no rate");
+  assert.equal(ok({ address: "1 A St", transaction: "sale", price: "2850000" }).price_per_sqft, undefined, "no size, no rate");
+});
+
+test("a price with no deal type is refused, because nothing can read it", () => {
+  // The gap a real client found on 2026-08-17: the form's deal select defaults
+  // to "Not sure", so a comp went in at $1,200,000 with no sale-or-lease and
+  // therefore no $/SF, landing as a bare figure in the column every other row
+  // is compared down. Sale or lease is required ONLY once money is typed.
+  const errs = bad({ address: "1 A St", price: "1200000", size_sqft: "24500" });
+  assert.ok(errs.some((e) => /sale or a lease/.test(e)), errs.join(" "));
+
+  // The case the box exists for is untouched: an address on its own, with or
+  // without a size, still needs nothing else.
+  ok({ address: "1 A St" });
+  ok({ address: "1 A St", size_sqft: "24500" });
+  ok({ address: "1 A St", price: "1200000", transaction: "lease" });
+
+  // One complaint per field. A price with an UNREADABLE deal type is already
+  // being refused for that; it must not also be told it said nothing.
+  const two = bad({ address: "1 A St", price: "1200000", transaction: "swap" });
+  assert.equal(two.length, 1, two.join(" "));
 });
 
 test("a link must be http(s), because it becomes an anchor other people click", () => {

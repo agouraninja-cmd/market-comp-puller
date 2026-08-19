@@ -63,10 +63,10 @@ const TABLES = [
   ["hub_items",           "024-messaging-hub.sql"],
   ["hub_messages",        "024-messaging-hub.sql"],
   ["user_avatars",        "027-account-avatar.sql"],
-  ["orgs",                "028-enterprise-orgs.sql"],
-  ["org_members",         "028-enterprise-orgs.sql"],
-  ["org_comps",           "030-org-shared-comps.sql"],
-  ["org_subscriptions",   "031-org-billing.sql"],
+  ["orgs",                "030-enterprise-orgs.sql"],
+  ["org_members",         "030-enterprise-orgs.sql"],
+  ["org_comps",           "032-org-shared-comps.sql"],
+  ["org_subscriptions",   "033-org-billing.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -82,6 +82,10 @@ const COLUMNS = [
   ["comp_corpus",       ["building_class", "floor_plate", "center_type", "anchor_tenant",
                          "units", "price_per_unit", "lot_acres", "price_per_acre",
                          "zoning", "beds_baths"],               "004-comp-corpus-per-type-columns.sql"],
+  // Named here for the same reason as 004's ten: harvest and corpus retrieval
+  // both name every per-type column, so a missing one silently freezes the
+  // corpus rather than raising anything.
+  ["comp_corpus",       ["condition"],                          "028-comp-condition.sql"],
   ["users",             ["stripe_customer_id"],                 "008-pro-billing.sql"],
   ["analytics_events",  ["duration_ms", "searches", "out_tokens", "rescue"],
                                                                 "012-search-timings.sql"],
@@ -163,13 +167,13 @@ const COLUMNS = [
   // deliberately fail-closed catch turns every legacy public link — including
   // ones already mailed to property owners with no account — into a 503. The
   // membership columns only cost the new feature; this one costs the old one.
-  ["shared_reports",    ["org_id"],                             "028-enterprise-orgs.sql"],
-  ["org_members",       ["joined_at", "removed_at", "role"],    "028-enterprise-orgs.sql"],
+  ["shared_reports",    ["org_id"],                             "030-enterprise-orgs.sql"],
+  ["org_members",       ["joined_at", "removed_at", "role"],    "030-enterprise-orgs.sql"],
   // 029 is the member's half of the firm's auto-share default. Its absence is
   // quiet rather than fatal — every member reads as "has not chosen" and
   // follows the firm — which is exactly why it is named here: a member who
   // said NO would silently start following the firm again.
-  ["org_members",       ["auto_share"],                         "029-org-auto-share.sql"],
+  ["org_members",       ["auto_share"],                         "031-org-auto-share.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

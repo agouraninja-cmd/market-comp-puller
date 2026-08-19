@@ -559,3 +559,61 @@ test("the search prompt asks for subject_asking and subject_year_built on the si
   assert.match(src, /normalizeSubjectAsking\(/);
   assert.match(src, /normalizeSubjectYearBuilt\(/);
 });
+// ---------------------------------------------------------------------------
+// condition — a CLOSED vocabulary, gated strictly. The value is shown as a
+// fact in a comp table whose selling point is provenance, so an unrecognized
+// answer becomes "" (unknown) rather than a guess.
+// ---------------------------------------------------------------------------
+
+test("condition accepts the four words and a short alias list", () => {
+  assert.deepEqual(RP.CONDITION_VALUES, ["Needs work", "Original", "Updated", "Renovated"]);
+  const ok = {
+    "Renovated": "Renovated", "renovated": "Renovated", "  UPDATED ": "Updated",
+    "Original.": "Original", "needs work": "Needs work", "Needs-Work": "Needs work",
+    "needs_work": "Needs work", "needswork": "Needs work",
+  };
+  for (const [input, want] of Object.entries(ok)) {
+    assert.equal(RP.normalizeConditionValue(input), want, input);
+  }
+});
+
+test("condition refuses anything it cannot match exactly", () => {
+  // Every one of these is a plausible thing a model writes, and every one is
+  // a judgement we would be inventing. Widening this is how a provenance
+  // column quietly becomes an opinion column — fix the prompt instead.
+  ["partially renovated", "fully renovated", "recently updated", "fixer",
+   "move-in ready", "well maintained", "good", "dated", "poor", "TLC needed",
+   "", "  ", null, undefined, 42, {}].forEach((v) =>
+    assert.equal(RP.normalizeConditionValue(v), "", JSON.stringify(v)));
+});
+
+test("normalizeConditions gates every comp and adds the key to none", () => {
+  const parsed = {
+    comps: [
+      { address: "1 A St", condition: "renovated" },
+      { address: "2 B St", condition: "partially renovated" },
+      // A comp of a type that never collects condition must not gain the key —
+      // it would add a column of empty strings to every harvested row.
+      { address: "3 C St", clear_height: "32" },
+      null,
+    ],
+  };
+  RP.normalizeConditions(parsed);
+  assert.equal(parsed.comps[0].condition, "Renovated");
+  assert.equal(parsed.comps[1].condition, "");
+  assert.equal("condition" in parsed.comps[2], false);
+  assert.equal(parsed.comps[3], null);
+});
+
+test("normalizeConditions tolerates a report with no comps", () => {
+  assert.deepEqual(RP.normalizeConditions({}), {});
+  assert.equal(RP.normalizeConditions(null), null);
+});
+
+test("condition has a short key that collides with nothing", () => {
+  assert.equal(RP.SHORT_COMP_KEYS.condition, "cd");
+  const shorts = Object.values(RP.SHORT_COMP_KEYS);
+  assert.equal(new Set(shorts).size, shorts.length, "short keys must be unique");
+  const longs = Object.keys(RP.SHORT_COMP_KEYS);
+  shorts.forEach((s) => assert.equal(longs.includes(s), false, `short ${s} shadows a long key`));
+});

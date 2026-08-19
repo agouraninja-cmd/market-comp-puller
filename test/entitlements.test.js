@@ -836,7 +836,7 @@ test("a live subscription with vault_beta reads as an ordinary subscriber", () =
 });
 
 // ---------------------------------------------------------------------------
-// canUseOrg — creating a firm and inviting colleagues (migration 028).
+// canUseOrg — creating a firm and inviting colleagues (migration 030).
 //
 // It tracks `broker` exactly, so most of its behaviour is already pinned by
 // the vault cases above. What is pinned here is the pairing itself: the two

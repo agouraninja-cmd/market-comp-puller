@@ -3,7 +3,7 @@
 // Who is in a firm, and what their membership lets them do.
 //
 // Spec:   docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
-// Schema: migrations/028-enterprise-orgs.sql
+// Schema: migrations/030-enterprise-orgs.sql
 //
 // NAMING, one translation point and only one: **"org" is the internal noun**
 // — these tables, their columns, the `/api/org*` routes and every identifier
@@ -167,7 +167,7 @@ function shareDefaultOf(org) {
  * The safeguard the spec attached to `orgs.share_default` before it could be
  * built at all: the firm default is an ADMIN's decision about other people's
  * work, so it must be overridable by the person whose work it is. Hence three
- * states on `org_members.auto_share` (migration 029) rather than a boolean:
+ * states on `org_members.auto_share` (migration 031) rather than a boolean:
  *
  *   null   has not chosen  -> follow the firm
  *   true   always, even if the firm's default is off — publishing your OWN

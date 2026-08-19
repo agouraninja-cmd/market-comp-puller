@@ -1,4 +1,4 @@
--- 028 · Enterprise (firm) accounts, slice 1 (2026-08-16)
+-- 030 · Enterprise (firm) accounts, slice 1 (2026-08-16)
 -- Spec:   docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
 -- Module: org-access.js (who is in a firm; what their membership allows)
 --

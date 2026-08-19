@@ -48,13 +48,13 @@ intent, the devlog states history.
   automatically, off by default, never retroactive, disclosed on the
   invitation, undoable per report, and with a member-level `never` that an
   admin cannot override — migration 029. **Slice 3 shipped 2026-08-16**
-  (migration 030): a broker opts ONE COMP AT A TIME into their firm, and it
+  (migration 032): a broker opts ONE COMP AT A TIME into their firm, and it
   appears in colleagues' own reports attributed, deduped against deals they
   already hold, still stripped from every client link and download — with
   the vault's "Visible only to you" copy correcting itself the moment it
   stops being true. Opt-in per comp rather than per import, which is
   narrower than the spec proposed and is the version worth defending.
-  **Slice 4 shipped 2026-08-16** (migration 031): per-seat firm billing, the
+  **Slice 4 shipped 2026-08-16** (migration 033): per-seat firm billing, the
   firm as the Stripe customer, seats enforced at the invitation, and a
   colleague on a seat told whose plan covers them. **It is inert until
   `STRIPE_PRICE_FIRM_MONTHLY` is set** — unset, firm checkout 503s and the buy
@@ -192,6 +192,24 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-17: `/api/geocode` takes a POST, and the GET form is gone.** The
+  higher-ranked of the two follow-ons from the private-comp geocoding work
+  (Owen's section 7 ordering: above import-time geocoding, which stays in
+  "Next"). Every comp's address used to travel in a query string, so it landed
+  in Render's access logs and in any outbound Referer; it rides in the body
+  now, the same reasoning `POST /api/report-access` and `POST /api/hub/access`
+  already carry. It matters most for the comps that are not public — a vault
+  comp is geocoded through this proxy and deliberately nowhere else (GUARD 2),
+  so logging its address in a URL undid part of what that guard bought.
+  Both callers moved (index.html's `geocodeAddress`, `MARKET_MAP_JS`); the
+  Explorer turned out not to be one. **The GET alias was removed, not
+  deprecated** — an open door is one stale caller away from putting the
+  addresses back, and nothing detects that. The bounded cost is market pages
+  cached `public, max-age=3600` before the deploy, which geocode nothing for
+  up to an hour and hide the map card rather than showing a broken one;
+  index.html is `no-store` and updates at once. Four tests pin it, including
+  a source check that neither caller ever rebuilds a query string.
+
 - **2026-08-13/14: five changes aimed at the acquisition constraint, plus two
   money-path holes.** None of these were on this roadmap, which is the point:
   the list above is engineering the product needs, and every item here answers
@@ -199,8 +217,9 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
   - **A refund takes the report back** (#61). `charge.refunded` and the
     async-payment pair had no handlers, so a refunded buyer kept their unlock
     forever and a payment settling after checkout charged the card and never
-    unlocked anything. **Owner action outstanding: the three events are not
-    ticked on the Stripe destination, so the code is inert until they are.**
+    unlocked anything. **Closed 2026-08-17**: the three events are ticked on
+    the live destination (`empowering-legacy`), which now reports all nine,
+    matching `PRO-BILLING-SETUP.md`. The handlers were inert for two weeks.
   - **The market pages stop promising a broker nobody has** (#62). All 38
     offered "a no-cost Broker Opinion of Value from a licensed local broker"
     while the broker card above rendered nothing. The promise now reads the

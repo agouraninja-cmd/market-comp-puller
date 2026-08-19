@@ -316,7 +316,7 @@ test("garbage in produces a safe answer, not a throw", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Per-seat firm billing (2026-08-16, migration 031).
+// Per-seat firm billing (2026-08-16, migration 033).
 // ---------------------------------------------------------------------------
 
 test("the firm price resolves to firm_monthly, and only when it is configured", () => {

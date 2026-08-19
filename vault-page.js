@@ -181,7 +181,7 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 #covRow{align-items:center;margin-top:8px;gap:8px}
 #covRow .empty{padding:4px 0;text-align:left}
 .addpanel .tw,.mappanel .tw{box-shadow:none}
-.row label,.form label,.editrow label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
+.row label,.form label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink-3);font-weight:600}
 select,input[type=text],input[type=date]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);min-height:40px}
@@ -193,6 +193,12 @@ select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-c
   border-radius:var(--r);align-items:flex-end}
 .filters .btn{min-height:40px}
 .filters .note{margin:0 0 10px;align-self:flex-end}
+.filters input[type=search]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:inherit;font-size:14px;background:var(--card);color:var(--ink);min-height:40px;min-width:190px}
+/* WebKit paints its own clear affordance inside the field; the box is already
+   cleared by Escape and by Clear filters, and the native gutter clipped the
+   placeholder on the market field once already (see the market page note). */
+.filters input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .filters .exp{margin-left:auto}
 table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px;margin:0}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
@@ -251,15 +257,23 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .pubbtn:hover{border-color:var(--ink-3);color:var(--ink)}
 .pubbtn.on{border-color:transparent;background:var(--ok-bg);color:var(--ok-text)}
 .pubbtn[disabled]{opacity:.5;cursor:default}
+/* A result, not a control: no border, no hover, and the same quiet ink the
+   row's other secondary figures use. */
+.cites{display:inline-block;margin-left:6px;color:var(--ink-3);font-size:12px;
+  font-weight:600;font-variant-numeric:tabular-nums;cursor:default}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:999px;
   padding:5px 8px 5px 12px;font-size:12.5px;background:var(--card);color:var(--ink-2);font-weight:600;
   letter-spacing:0;text-transform:none}
 .chip button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;
   padding:0 2px;font-family:inherit}
 .chip button:hover{color:var(--red)}
-/* Row actions: Edit stays a text link. Delete is a trash icon — quiet ink
-   that goes red on hover, the same pattern as removing an import. A red
-   "Delete" word next to Publish was a second shout on the row. */
+/* Quieter than the market it qualifies: it is a footnote on the chip, not a
+   second fact competing with the market name. */
+.chip .near{margin-left:6px;color:var(--ink-3);font-weight:500;font-size:11.5px;letter-spacing:.02em}
+/* Row actions: Delete is a trash icon — quiet ink that goes red on hover, the
+   same pattern as removing an import. A red "Delete" word next to Publish was
+   a second shout on the row. Edit used to sit beside it as a text link; the
+   cells are typed into directly now, so the row's only control is the trash. */
 .lnk{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;
   color:var(--ink-3);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .lnk:hover{color:var(--ink)}
@@ -269,18 +283,33 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .lnk.trash:hover,.lnk.trash:focus{color:var(--red)}
 .lnk.trash svg{display:block}
 td.rowact{white-space:nowrap}
-/* The inline edit row: one form spanning every column, not per-cell inputs —
-   a compact-table row hides cap_rate/tenancy/year_built/notes, so a per-cell
-   form on THAT view could not hold them. Spreadsheet mode is the other
-   door: it shows those columns as cells and saves on blur. Same grid as
-   the add-by-hand and BOV forms, so the three data-entry surfaces read as
-   one vocabulary. */
-.editrow td{background:var(--wash);padding:16px 18px}
-.editk{margin:0 0 12px;font-size:var(--t6);letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600}
-.editrow .form{max-width:920px}
-.editrow input,.editrow select{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
-  font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);width:100%;min-height:40px}
+/* Editable cells in the compact table. There is no Edit button: a broker
+   fixing a typo types over it, exactly as they would in the spreadsheet they
+   exported this book from.
+   Borderless at rest, because the table is a statement about a book of
+   business first and a form second — a grid of ten visible input boxes per
+   row reads as data entry and buries the numbers. The edge appears on hover
+   and focus, which is where the affordance lives. Keep this input's font
+   inherited: a cell that changes size or weight when touched makes the whole
+   row jump, and the row is what the broker is reading. */
+#tbl input.cell{width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:var(--r);
+  padding:6px 8px;margin:-6px -8px;font-family:inherit;font-size:inherit;line-height:inherit;
+  font-weight:inherit;letter-spacing:inherit;
+  background:transparent;color:inherit;min-height:34px}
+#tbl input.cell:hover{border-color:var(--edge)}
+#tbl input.cell:focus{border-color:var(--ink-3);background:var(--card);outline:none}
+#tbl td.num input.cell{text-align:right}
+/* Save state rides on the input, never on a re-render: rebuilding the table
+   on every blur would steal the focus the broker just Tabbed into. Shared
+   with spreadsheet mode below, which is the same save on the same PATCH. */
+#tbl input.cell.saving{opacity:.65}
+#tbl input.cell.err{border-color:var(--red);background:var(--err-bg)}
+#tbl input.cell.saved{border-color:var(--ok-rule)}
+/* Derived, and so never typed into: market is parsed from the address by the
+   server (it has to agree byte for byte with comp_corpus.market) and $/SF is
+   computed for priced sales only. Both are refreshed from the server's own
+   saved row after an edit rather than recomputed here. */
+#tbl td.ro{color:var(--ink-2)}
 /* Spreadsheet mode: the uploaded book, as a grid. Cells are real inputs so
    Tab/Enter move the way they do in Excel; a saving/error state rides on
    the input rather than replacing the row, because rebuilding the table
@@ -525,10 +554,10 @@ if(dd)dd.open=false;});</script>
         <div class="lcell"><span class="llab">Median $/SF</span>
           <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
         <div class="lcell mid"><span class="llab">Published</span>
-          <div class="lfig" id="cPub">0</div><div class="lsub">only if you choose it</div></div>
+          <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
       </div>
       <!-- Rewritten by renderFirmPrivacy() the moment a comp is shared with a
-           firm (migration 030). The default text is the promise this whole
+           firm (migration 032). The default text is the promise this whole
            tier rests on, so it is in the markup rather than built in JS: a
            page whose script failed must still make the true statement, not
            no statement. -->
@@ -698,9 +727,29 @@ if(dd)dd.open=false;});</script>
       <div class="row filters">
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
+        <!-- Static options, unlike Market and Type: the vocabulary is the two
+             values parseTransaction accepts and cannot grow from the data. It
+             is also load-bearing rather than a convenience — a sale is priced
+             in $/SF and a lease in $/SF/yr, so a view holding both has no
+             single median to seal the table with, and this is how a broker
+             resolves that into a figure. -->
+        <label>Deal <select id="fTrans"><option value="">All</option><option value="sale">Sales</option><option value="lease">Leases</option></select></label>
+        <!-- Two dropdowns narrow to a SLICE of the book; this finds one deal
+             in it. A broker hunting the Fairview comp among 400 rows had only
+             scrolling, and the market/type pair they would have to guess at is
+             exactly what they are trying to remember. Searches address and
+             notes: the address is what they know, and notes is where the
+             tenant name or the "sold with the adjacent parcel" detail lives. -->
+        <label>Find <input type="search" id="fText" placeholder="address or note" autocomplete="off"/></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
         <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
+        <!-- Counts the UNPUBLISHED comps in the current view, and deliberately
+             does not try to work out which of them are publishable: that rule
+             is VAULT.canPublish on the server, and a second copy here is
+             exactly the kind of pair this repo already carries warnings about.
+             The server reports what it skipped and why. -->
+        <button class="btn ghost hide" type="button" id="pubAll"></button>
         <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
@@ -930,17 +979,13 @@ if(dd)dd.open=false;});</script>
   var escA=function(s){return esc(s).replace(/"/g,"&quot;")};
   var comps=[],sortK="deal_date",sortAsc=false,leadsLoaded=false,bovsLoaded=false;
   var bench=null,benchFailed=false,benchLoaded=false;
-  // The one comp row currently swapped for an inline edit form, or null. Only
-  // one at a time: two open forms would double the "only changed fields
-  // travel" bookkeeping in saveComp for no real benefit.
-  var editingId=null;
   // Spreadsheet mode: the uploaded book as a grid of inputs. sheetUploadId
   // narrows to one import (Open on that file); null means the current view.
   // Kept across load() so a cell save that refetches, or a delete, does not
   // dump the broker back into the compact table mid-edit.
   var sheetMode=false,sheetUploadId=null,uploads=[];
   // The firm this broker belongs to, if any, and which of their comps are on
-  // its shelf (migration 030). null firm = the ordinary case, and the whole
+  // its shelf (migration 032). null firm = the ordinary case, and the whole
   // feature renders as nothing: no column, no toggle, no changed copy.
   // sharedIds is a lookup rather than a flag on each comp because shelf
   // membership is a property of the RELATIONSHIP, not of the comp — and
@@ -964,11 +1009,29 @@ if(dd)dd.open=false;});</script>
   //      fixes that up to 1000; past it, the #trunc line in apply() says so
   //      out loud rather than quietly under-reporting someone's book.
   //   3. Filtering is now instant and costs no round trip.
+  // Every term must appear somewhere in the row, in any order and any field:
+  // a broker types "fairview industrial" or "8400 mission" and means both
+  // words, not the phrase. Case-folded, and matched on a substring rather than
+  // a word boundary so "fair" finds Fairview -- this is a find box over one
+  // person's own records, where being generous costs nothing and a miss costs
+  // them the scroll they were trying to avoid.
+  function matchesText(c,terms){
+    if(!terms.length)return true;
+    var hay=((c.address||"")+" "+(c.notes||"")+" "+(c.market||"")+" "+
+             (c.property_type||"")+" "+(c.tenancy||"")).toLowerCase();
+    for(var i=0;i<terms.length;i++){ if(hay.indexOf(terms[i])<0)return false; }
+    return true;
+  }
+  function searchTerms(){
+    return String(($("fText")&&$("fText").value)||"").toLowerCase().split(" ")
+      .filter(function(w){return w});
+  }
   function view(){
-    var m=$("fMarket").value,t=$("fType").value;
+    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,q=searchTerms();
     return comps.filter(function(c){
       if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
-      return (!m||c.market===m)&&(!t||c.property_type===t);
+      return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x)&&
+        matchesText(c,q);
     });
   }
 
@@ -1033,6 +1096,52 @@ if(dd)dd.open=false;});</script>
     });
     return {values:vals,types:types,mixed:types>1,dominant:dom};
   };
+  // The lease half, and the exact mirror of psfOf above: the stored, canonical
+  // ANNUAL figure, never rent_psf itself. rent_psf is what the broker typed
+  // and means nothing without rent_basis beside it — a Californian 1.35/mo and
+  // a Midwestern 16.20/yr are the same rent, and taking a median over the raw
+  // column would average those two into a number describing neither. The
+  // server does that multiplication once, in normalizeRow, and this reads the
+  // result. Do not "improve" this by multiplying here.
+  var rentOf=function(c){
+    var v=c.rent_psf_yr;
+    return (v==null||!isFinite(Number(v)))?null:Number(v);
+  };
+  // Same shape as psfStats, and same property-type rule: office at $28/SF/yr
+  // and industrial at $9 are no more averageable than their sale prices are.
+  // The extra field is structures: how many distinct lease_types the values
+  // span, counting "not stated" as one of them. Mixing NNN with full-service
+  // does not make the median WRONG the way mixing annual with monthly would,
+  // so it is disclosed beside the figure rather than refused: a tenant paying
+  // $28.50 net and one paying $28.50 gross are different deals, and a broker
+  // reading one median over both should know that is what they are looking at.
+  var rentStats=function(list){
+    var vals=[],byType={},types=0,st={},structures=0;
+    (list||[]).forEach(function(c){
+      var v=rentOf(c);
+      if(v==null)return;
+      vals.push(v);
+      var k=(c&&c.lease_type)||"unstated";
+      if(!st[k]){st[k]=1;structures++;}
+      var t=c&&c.property_type;
+      if(!t)return;
+      if(!byType[t]){byType[t]=[];types++;}
+      byType[t].push(v);
+    });
+    return {values:vals,types:types,mixed:types>1,structures:structures};
+  };
+  // Which unit the rows on screen are priced in. A view holding both priced
+  // sales and rents has no single median — they are different measures, not a
+  // wider spread of one — so it reports "both" and every surface says to filter
+  // rather than sealing the table with a figure that means nothing. This is
+  // the same instinct as psfStats' own mixed-types rule one level up: where a number
+  // would be fabricated, say what is true instead.
+  var unitOf=function(rows){
+    var s=psfStats(rows),r=rentStats(rows);
+    if(s.values.length&&r.values.length)return {kind:"both",sale:s,rent:r};
+    if(r.values.length)return {kind:"lease",sale:s,rent:r};
+    return {kind:"sale",sale:s,rent:r};
+  };
   var yearOf=function(c){
     var m=/^(\\d{4})/.exec(String(c.deal_date||""));
     return m?m[1]:null;
@@ -1065,6 +1174,19 @@ if(dd)dd.open=false;});</script>
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
+    // What publishing gave back. Until now a broker published a comp, saw a
+    // green chip, and learned nothing further — while the very same figure was
+    // already on their public profile page, if they had one, under "Report
+    // citations". Publishing is compensated in credit rather than cash, so a
+    // credit nobody can see is not compensation.
+    //
+    // Summed over the rows on screen, like every other figure in this ledger,
+    // so it cannot disagree with the per-comp counts in the table; the page
+    // already says when a book is truncated past 1,000.
+    var cites=comps.reduce(function(n,c){return n+(Number(c.cited_count)||0)},0);
+    $("cPubSub").textContent=cites
+      ? cites+" report citation"+(cites===1?"":"s")
+      : "only if you choose it";
     // The ledger's other figures come from the returned rows — the same book
     // the rollup and chart read, so the strip can never disagree with the
     // panels below it. Whole-book always; the filter never narrows it.
@@ -1158,18 +1280,122 @@ if(dd)dd.open=false;});</script>
     return null;
   }
 
-  // Every field PATCH /api/vault/comp accepts. The whole row becomes one form
-  // spanning the table's colspan, not ten per-cell inputs: a comp carries
-  // fields (cap_rate, tenancy, year_built, notes) the table itself has no
-  // column for, so a per-cell form could never reach them.
+  // Every field PATCH /api/vault/comp accepts. Spreadsheet mode shows all of
+  // them; the compact table shows the six it has columns for (CELL_FIELDS
+  // below), which is why the spreadsheet still exists as the other door — a
+  // comp carries cap_rate/tenancy/year_built/notes that the compact table has
+  // nowhere to put.
   var EDIT_FIELDS=["address","property_type","transaction","deal_date",
-                   "price","size_sqft","cap_rate","tenancy","year_built","notes"];
+                   "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
+                   "tenancy","year_built","notes"];
   var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
     deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
+    rent_psf:"Rent $/SF",rent_basis:"Rent per",lease_type:"Lease type",
     tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
 
   function sheetLabel(k){
     return EDIT_LABELS[k]||(typeof TARGET_LABELS!=="undefined"&&TARGET_LABELS[k])||k;
+  }
+
+  // The compact table's editable columns: its own columns, minus the two it
+  // derives. market is parsed from the address BY THE SERVER (marketOf, which
+  // must agree byte for byte with comp_corpus.market), and price_per_sqft is
+  // computed by normalizeRow for priced sales only — typing into either would
+  // let a broker set a figure the next save would silently overwrite, which is
+  // worse than not offering it. Both are refreshed after an edit from the row
+  // the server sends back. Every entry here must be in EDIT_FIELDS, or the
+  // PATCH would reject the field it just offered.
+  var CELL_FIELDS=["address","property_type","transaction","deal_date","price","size_sqft"];
+
+  // A cell shows the FORMATTED figure and holds the raw one, swapping to raw
+  // on focus (cellFocus below). A book of business is read far more often than
+  // it is edited, and "$1,250,000" is the number the broker is reading; making
+  // every price cell editable is not a reason to show them all as 1250000.
+  // parseMoney/parseNumber would in fact accept the formatted string back, but
+  // that is a happy accident of the parsers, not something to lean the display
+  // on — the raw value is what gets compared and sent.
+  function cellDisplay(k,v){
+    if(v==null||v==="")return "";
+    if(k==="price")return money(v);
+    if(k==="size_sqft")return num(v);
+    return String(v);
+  }
+  // A table column used to size itself to the text in it, because a <td> of
+  // text reports how wide its content is and wraps when it cannot have it. An
+  // <input> does neither: it has its own default width of about twenty
+  // characters and never wraps, so the moment these cells became inputs a long
+  // address rendered clipped inside a box narrower than the address — the
+  // column had stopped being told what it was holding.
+  //
+  // min-width in ch puts that back. A column's min-content width is the widest
+  // of its cells, so sizing each cell to its own value sizes the column to the
+  // longest one in it, which is what the text did before. Capped per field
+  // because a 400-character note must not produce a 400-character column; past
+  // the cap the table's own wrapper scrolls, as it already does.
+  var CELL_MAX_CH={address:46,notes:64,deal_date:14,price:16,size_sqft:14,
+    property_type:16,transaction:12,cap_rate:12,tenancy:20,year_built:12};
+  function cellWidth(k,shown){
+    var n=String(shown==null?"":shown).length;
+    // +3 covers the input's own padding and border, which sit inside the
+    // width and would otherwise eat the last characters back off again.
+    return Math.max(7,Math.min(CELL_MAX_CH[k]||24,n+3));
+  }
+  function cellInput(c,k){
+    var raw=c[k]==null?"":c[k],shown=cellDisplay(k,c[k]);
+    return '<input type="text" class="cell" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
+      '" data-raw="'+escA(raw)+'" value="'+escA(shown)+
+      '" style="min-width:'+cellWidth(k,shown)+'ch" aria-label="'+escA(sheetLabel(k))+'"/>';
+  }
+  // Derived cells carry their own id/key so a save can refresh just them,
+  // without the re-render that would steal focus from the next cell.
+  // One rate column, two measures, decided per ROW rather than per view: a
+  // sale shows its $/SF and a lease shows its annual rent. Both are server-
+  // derived and only one of them is ever set, so this cannot show two figures
+  // for one comp.
+  // The publish control, and beside it what publishing earned. One builder for
+  // the compact table and the spreadsheet, which showed the identical chip in
+  // two places and would otherwise grow the citation count in only one.
+  //
+  // The count is deliberately NOT on the button: the button is a toggle with a
+  // confirm behind it, and a number that grows inside a control reads as part
+  // of the action rather than a result of it.
+  function publishCell(c){
+    var btn=c.published
+      ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
+      : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+    var n=Number(c.cited_count)||0;
+    if(!c.published||!n)return btn;
+    // "cited in N reports" rather than "seen N times": the count rises when a
+    // report is GENERATED citing this comp, and a cached re-run of the same
+    // report does not bump it, so it is a floor on how often the broker's name
+    // has actually been in front of somebody.
+    return btn+' <span class="cites" title="'+escA("Cited in "+n+" report"+(n===1?"":"s")+
+      " so far. Counted when a report is generated; a cached re-run of the same report is not counted again.")+
+      '">'+n+"</span>";
+  }
+
+  function rateCell(c){
+    if(c.transaction==="lease")return psf(c.rent_psf_yr);
+    return psf(c.price_per_sqft);
+  }
+  function roCell(c,k,html,isNum){
+    return '<td class="ro'+(isNum?" num":"")+'" data-ro-id="'+escA(c.id)+
+      '" data-ro-k="'+escA(k)+'">'+html+"</td>";
+  }
+  // Preserves whatever base class the input carries (.cell in the compact
+  // table, none in the spreadsheet) while swapping the save state, so a
+  // className assignment cannot quietly strip the styling off the cell.
+  // split(" "), NOT a regex: this whole page is one template literal, where a
+  // single-backslash escape is eaten before the browser ever sees it — /\s+/
+  // in this source emits as /s+/, which splits "saving" into ["","aving"] and
+  // leaves the state class stuck on the cell forever. Class names here are
+  // written by this file and are single-space separated, so a plain split is
+  // both correct and immune to that.
+  function cellState(el,state){
+    var base=String(el.className||"").split(" ").filter(function(c){
+      return c&&c!=="saving"&&c!=="saved"&&c!=="err";
+    }).join(" ");
+    el.className=state?(base?base+" "+state:state):base;
   }
   // Columns the spreadsheet shows. Core fields always (they are the template);
   // per-type extras only when at least one row on screen carries them, matching
@@ -1199,21 +1425,30 @@ if(dd)dd.open=false;});</script>
     var arrow=on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"";
     return '<th data-k="'+k+'"'+(num?' class="num"':"")+">"+esc(label)+arrow+"</th>";
   }
+  // The bar is on in BOTH views now. Cells that can be typed into but look
+  // like text need one line saying so — there is no Edit button left to make
+  // it obvious, and a broker who never discovers the cells are live would
+  // conclude the vault had simply stopped letting them fix anything. It also
+  // carries the warning about published comps, which is the one consequence a
+  // save can have that the broker cannot see from the row.
+  var CELL_HINT="Type in any cell to change it \\u00b7 changes save when you leave the cell, Esc undoes. "+
+    "Editing a published comp withdraws it from the public records.";
   function setSheetChrome(){
     $("tbl").className=sheetMode?"sheet":"";
     $("sheetToggle").textContent=sheetMode?"Done":"Open spreadsheet";
     var bar=$("sheetBar");
-    if(!sheetMode){ bar.className="note hide"; bar.textContent=""; return; }
-    var name=uploadName(sheetUploadId);
     bar.className="note";
-    bar.textContent=(name?"Editing "+name+" \\u00b7 ":"Spreadsheet \\u00b7 ")+
-      "changes save when you leave a cell. Editing a published comp withdraws it from the public records.";
+    if(!sheetMode){
+      bar.textContent=CELL_HINT+" Open the spreadsheet for cap rate, tenancy, year built and notes.";
+      return;
+    }
+    var name=uploadName(sheetUploadId);
+    bar.textContent=(name?"Editing "+name+" \\u00b7 ":"Spreadsheet \\u00b7 ")+CELL_HINT;
   }
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    editingId=null;
-    if(uploadId){ $("fMarket").value=""; $("fType").value=""; }
+    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -1230,19 +1465,6 @@ if(dd)dd.open=false;});</script>
       '" aria-label="Delete this comp" title="Delete"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg></button>';
   }
 
-  function editRow(c){
-    var fields=EDIT_FIELDS.map(function(f){
-      var v=c[f]==null?"":c[f];
-      var wide=(f==="address"||f==="notes")?' class="span2"':"";
-      return "<label"+wide+">"+esc(EDIT_LABELS[f]||f)+
-        '<input type="text" id="edit_'+f+'" value="'+escA(v)+'"/></label>';
-    }).join("");
-    return '<tr class="editrow"><td colspan="10"><p class="editk">Editing this comp</p><div class="form">'+fields+
-      '<div class="formact span-all"><button class="btn" type="button" data-save-edit="'+esc(c.id)+'">Save</button>'+
-      '<button class="btn ghost" type="button" data-cancel-edit="1">Cancel</button></div>'+
-      "</div></td></tr>";
-  }
-
   function render(){
     var rows=view().slice().sort(function(a,b){
       var x=a[sortK],y=b[sortK];
@@ -1251,6 +1473,19 @@ if(dd)dd.open=false;});</script>
       return sortAsc?String(x).localeCompare(String(y)):String(y).localeCompare(String(x));
     });
     var gutOutliers=renderGutCheck(rows);
+    // Two different empty states, and telling them apart matters: a broker who
+    // searched for a deal they own and got "Nothing here yet, upload a
+    // spreadsheet" would reasonably think the vault had lost their book. Same
+    // rule the hub list and the lead inbox already hold -- never report a
+    // filtered-out view as an absent one.
+    var narrowed=comps.length>0;
+    // Single-quoted with plain double quotes inside, and HTML entities for the
+    // curly quotes: this page is ONE template literal, so a backslash escape
+    // written here is eaten before the browser ever sees it -- \" would reach
+    // the emitted script as a bare " and end the string mid-attribute.
+    $("none").innerHTML=narrowed
+      ? 'No comps match this filter. <button type="button" class="lnk" id="noneClear">Clear filters</button>'
+      : 'Nothing here yet. Use &ldquo;Add comps&rdquo; above to upload a spreadsheet, PDF or screenshot.';
     $("none").className=rows.length?"empty hide":"empty";
     // Say "of N" whenever a filter is narrowing, so the number on screen can
     // never be mistaken for the size of the book.
@@ -1262,78 +1497,130 @@ if(dd)dd.open=false;});</script>
     setSheetChrome();
     if(sheetMode){
       renderSheet(rows);
-      var sst=psfStats(rows),sps=sst.values,smed=median(sps);
-      renderStrip(rows,sps,smed,sst);
+      // The strip summarises whatever is on screen, in whichever unit that
+      // turns out to be — the spreadsheet shows the same comps as the compact
+      // table, so it reads the same decision rather than a sales-only copy.
+      var sunit=unitOf(rows);
+      renderStrip(rows,sunit,footFigure(sunit));
       $("tblFoot").innerHTML="";
       return;
     }
+    // The rate column names the unit it is actually showing. Left reading
+    // "$/SF" over a column of annual rents it would be a wrong label on a real
+    // figure, which is worse than no column: $28.50 under a "$/SF" heading
+    // reads as a building worth twenty-eight dollars a foot. In a mixed view
+    // each row still shows its own measure and the heading says so, which the
+    // Deal column beside it disambiguates row by row.
+    var unit=unitOf(rows);
+    var rateHead=unit.kind==="lease"?"Rent $/SF/yr"
+      :unit.kind==="both"?"$/SF or rent/yr":"$/SF";
     $("tblHead").innerHTML="<tr>"+
       headCell("address","Address")+headCell("market","Market")+
       headCell("property_type","Type")+headCell("transaction","Deal")+
       headCell("deal_date","Date")+headCell("price","Price",true)+
-      headCell("size_sqft","Size",true)+headCell("price_per_sqft","$/SF",true)+
+      headCell("size_sqft","Size",true)+headCell("price_per_sqft",rateHead,true)+
       headCell("published","Public")+(myFirm?"<th>Firm</th>":"")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
-      // A row being edited replaces itself with the form, rather than the
-      // form appearing beside it: two representations of the same comp on
-      // screen at once is what "only changed fields travel" was written to
-      // avoid confusion about.
-      if(editingId===c.id)return editRow(c);
       // Published state is a two-way toggle, never a checkbox that could be
       // flipped by a stray click: publishing is a one-way-ish public act, so
       // it goes through a button and a confirm.
-      var pub=c.published
-        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
-        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var pub=publishCell(c);
       var flag=gutOutliers[c.id]
         ? ' <span class="gcOut" title="'+escA(Math.abs(gutOutliers[c.id].pct)+"% "+
             (gutOutliers[c.id].dir==="above"?"above":"below")+" the market band")+'">outlier</span>'
         : "";
-      var actions='<td class="rowact"><button class="lnk" data-edit="'+esc(c.id)+
-        '">Edit</button> '+trashBtn(c.id)+"</td>";
-      // Firm sharing (migration 030). A SECOND, separate two-way toggle
-      // rather than a third state on Publish, because they are different
-      // acts with different audiences and collapsing them would let one
-      // confirm dialog cover both: Publish puts a comp in CompNinja's PUBLIC
-      // records under the broker's name, this shows it to named colleagues
-      // and to nobody else. The column only exists for a broker who is in a
-      // firm — a control that can only fail is worse than no control.
+      // Firm sharing (migration 032 here → renumbered at merge; see the
+      // migrations folder). A SECOND, separate two-way toggle rather than a
+      // third state on Publish, because they are different acts with
+      // different audiences and collapsing them would let one confirm dialog
+      // cover both: Publish puts a comp in CompNinja's PUBLIC records under
+      // the broker's name, this shows it to named colleagues and to nobody
+      // else. The column only exists for a broker who is in a firm — a
+      // control that can only fail is worse than no control.
       var firm="";
       if(myFirm){
         firm=sharedIds[c.id]
           ? '<td><button class="pubbtn on" data-firm="'+esc(c.id)+'" data-on="1">Shared</button></td>'
           : '<td><button class="pubbtn" data-firm="'+esc(c.id)+'">Share</button></td>';
       }
-      return '<tr><td class="addr">'+esc(c.address)+"</td><td>"+esc(c.market)+"</td><td>"+esc(c.property_type)+
-        '</td><td><span class="tag">'+esc(c.transaction)+"</span></td><td>"+esc(c.deal_date)+
-        '</td><td class="num">'+money(c.price)+'</td><td class="num">'+num(c.size_sqft)+
-        '</td><td class="num">'+psf(c.price_per_sqft)+flag+"</td><td>"+pub+"</td>"+firm+actions+"</tr>";
+      // Six typed cells, two derived ones, then the public toggle, the firm
+      // toggle and the trash. The transaction cell loses its .tag chip by
+      // becoming an input: a chip a broker cannot correct in place was the
+      // thing being fixed.
+      return '<tr><td class="addr">'+cellInput(c,"address")+"</td>"+
+        roCell(c,"market",esc(c.market))+
+        "<td>"+cellInput(c,"property_type")+"</td><td>"+cellInput(c,"transaction")+"</td>"+
+        "<td>"+cellInput(c,"deal_date")+'</td><td class="num">'+cellInput(c,"price")+
+        '</td><td class="num">'+cellInput(c,"size_sqft")+"</td>"+
+        roCell(c,"price_per_sqft",rateCell(c)+flag,true)+
+        "<td>"+pub+"</td>"+firm+'<td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
     // current view, sealed under a double rule — the same figure the market
     // cards and the year chart lead with, so the three views read against
     // each other. No priced sales = no row; a double rule over a blank would
     // claim a figure that does not exist.
-    var vst=psfStats(rows),vps=vst.values,vmed=median(vps);
-    renderStrip(rows,vps,vmed,vst);
-    // Three states, two of which still draw the closing rule: a view spanning
-    // several property types says why there is no figure rather than sealing
-    // the column with one, because the $/SF it would average is measured in
-    // different units row to row.
-    //
+    // The unit was already decided above for the column heading; the footer
+    // seals the table in that same unit, so the heading and the median under
+    // it can never name different measures.
+    var foot=footFigure(unit);
+    renderStrip(rows,unit,foot);
+    refreshPublishAll(rows);
     // ONE row template with the label and the number varying, deliberately
-    // not two branches emitting their own <tr>: the footer's column count is
-    // checked by finding a single label cell with a colspan in this file and
-    // counting the cells after it, so a second copy silently breaks that
-    // check (it did, on the first attempt at this change). No backticks in
-    // this block either — the whole page is one template literal.
-    $("tblFoot").innerHTML=!vps.length ? "" :
-      '<tr><td class="lab" colspan="7">'+
-      (vst.mixed
-        ? "No single median across "+vst.types+" property types \\u2014 filter by type to compare"
-        : "Median of "+vps.length+" priced sale"+(vps.length===1?"":"s")+
-          (rows.length===comps.length?"":" in this view"))+
-      '</td><td class="num">'+(vst.mixed?"\\u2014":psf(vmed))+"</td><td></td><td></td></tr>";
+    // not a branch per case emitting its own <tr>: the footer's column count
+    // is checked by finding a single label cell with a colspan in this file
+    // and counting the cells after it, so a second copy silently breaks that
+    // check (it did, on the first attempt at the change that added this). No
+    // backticks in this block either — the whole page is one template literal.
+    $("tblFoot").innerHTML=!foot.show ? "" :
+      '<tr><td class="lab" colspan="7">'+foot.label+
+      (foot.value==null||rows.length===comps.length?"":" in this view")+
+      '</td><td class="num">'+(foot.value==null?"\\u2014":psf(foot.value))+
+      "</td><td></td><td></td></tr>";
+  }
+
+  // What seals the table, in one place, because the reading strip quotes the
+  // same figure and the two are required never to disagree.
+  //
+  // Four outcomes, and three of them decline to state a median. A view holding
+  // both sales and leases has two different measures in it rather than a wider
+  // spread of one, and a view spanning property types has the artifact
+  // psfStats' own note describes. In both cases the honest thing is to name
+  // the filter that resolves it — the reason the Deal filter exists at all.
+  function footFigure(unit){
+    if(unit.kind==="both"){
+      return {show:true,value:null,
+        label:"Sales and leases are priced differently \\u2014 filter by deal to compare"};
+    }
+    var lease=unit.kind==="lease",st=lease?unit.rent:unit.sale,vals=st.values;
+    if(!vals.length)return {show:false,value:null,label:""};
+    if(st.mixed){
+      return {show:true,value:null,
+        label:"No single median across "+st.types+" property types \\u2014 filter by type to compare"};
+    }
+    if(!lease){
+      return {show:true,value:median(vals),
+        label:"Median of "+vals.length+" priced sale"+(vals.length===1?"":"s")};
+    }
+    // Stated, never refused: see rentStats on why a mixed lease structure
+    // weakens this figure rather than invalidating it.
+    return {show:true,value:median(vals),
+      label:"Median rent of "+vals.length+" lease"+(vals.length===1?"":"s")+" \\u00b7 $/SF/yr"+
+        (st.structures>1?" \\u00b7 mixed lease types":"")};
+  }
+
+  // The unpublished comps in the current view, in view order, which is what
+  // "publish these" means to the person looking at the screen.
+  var pubCandidates=[];
+  function refreshPublishAll(rows){
+    pubCandidates=(rows||[]).filter(function(c){return !c.published});
+    var b=$("pubAll");
+    if(!b)return;
+    // Hidden rather than disabled at zero: a permanently greyed control on a
+    // fully-published book is a thing to wonder about, not an affordance.
+    if(!pubCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
+    b.className="btn ghost";
+    b.textContent="Publish "+pubCandidates.length+" comp"+(pubCandidates.length===1?"":"s");
   }
 
   function renderSheet(rows){
@@ -1343,13 +1630,14 @@ if(dd)dd.open=false;});</script>
       return headCell(k,sheetLabel(k),!!numK[k]);
     }).join("")+headCell("published","Public")+'<th></th></tr>';
     $("tbody").innerHTML=rows.map(function(c){
-      var pub=c.published
-        ? '<button class="pubbtn on" data-pub="'+esc(c.id)+'" data-on="1">Published</button>'
-        : '<button class="pubbtn" data-pub="'+esc(c.id)+'">Publish</button>';
+      var pub=publishCell(c);
       var cells=keys.map(function(k){
         var v=c[k]==null?"":c[k];
+        // Same width rule as the compact table (see cellWidth): a notes cell
+        // holding two sentences must not render as a twenty-character box
+        // with the rest of the sentence scrolled out of sight.
         return '<td><input type="text" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
-          '" value="'+escA(v)+'"/></td>';
+          '" value="'+escA(v)+'" style="min-width:'+cellWidth(k,v)+'ch"/></td>';
       }).join("");
       return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
@@ -1371,8 +1659,16 @@ if(dd)dd.open=false;});</script>
     return order.map(function(k){
       var g=by[k],dates=g.comps.map(function(c){return c.deal_date}).filter(Boolean).sort();
       var ps=psfList(g.comps);
+      // A leasing bucket has no priced sales and led with its comp count,
+      // which is how a book of 200 leases showed no figure anywhere. It has a
+      // median, just in a different unit — so the card carries the unit rather
+      // than assuming one. Sales still win the headline where a bucket has
+      // both: $/SF is the figure the rest of the page and the market
+      // benchmarks are denominated in.
+      var rents=g.comps.map(rentOf).filter(function(v){return v!=null});
       return {market:g.market,type:g.type,n:g.comps.length,pub:g.pub,
         med:median(ps),psfN:ps.length,
+        rentMed:median(rents),rentN:rents.length,
         first:dates[0]||"",last:dates[dates.length-1]||""};
     }).sort(function(a,b){return b.n-a.n});
   }
@@ -1385,15 +1681,20 @@ if(dd)dd.open=false;});</script>
       // A card reads as selected only when the filter is exactly this card.
       var on=(m===g.market&&t===g.type)?" on":"";
       // The headline number is the median $/SF where there are priced sales to
-      // take one from, and the comp count where there are not. A book of
-      // leases has no $/SF and must not be shown a blank space where every
-      // other card has a figure.
+      // take one from, the median RENT where the bucket is leases, and the comp
+      // count where it is neither. A leasing bucket used to fall straight to
+      // the count and read "no priced sales yet" — true, and useless, since the
+      // median it does have was simply in another unit.
       var head=g.med!=null
         ? '<div class="big">'+psf0(g.med)+'<span>/SF median</span></div>'
+        : g.rentMed!=null
+        ? '<div class="big">'+psf0(g.rentMed)+'<span>/SF/yr rent</span></div>'
         : '<div class="big">'+g.n+'<span> comp'+(g.n===1?"":"s")+'</span></div>';
       var line=g.med!=null
         ? g.n+" comp"+(g.n===1?"":"s")+" \\u00b7 "+g.psfN+" priced sale"+(g.psfN===1?"":"s")
-        : "no priced sales yet";
+        : g.rentMed!=null
+        ? g.n+" comp"+(g.n===1?"":"s")+" \\u00b7 "+g.rentN+" lease"+(g.rentN===1?"":"s")
+        : "no priced deals yet";
       var span=g.first?(g.first.slice(0,4)===g.last.slice(0,4)
         ? g.first.slice(0,4)
         : g.first.slice(0,4)+"\\u2013"+g.last.slice(0,4)):"";
@@ -1507,8 +1808,15 @@ if(dd)dd.open=false;});</script>
   }
   function renderChart(rows){
     var box=$("chartBox"),by={},order=[];
+    // One axis, so one measure. A view holding both sales and leases charts
+    // the SALES and says so in its title: two units on one axis would draw
+    // rents as a collapse in prices, and an axis tall enough for both makes
+    // the rents a flat line along the bottom. Filtering to Leases charts the
+    // rents on their own axis, which is the whole point of the filter.
+    var lease=unitOf(rows).kind==="lease";
+    var valOf=lease?rentOf:psfOf;
     rows.forEach(function(c){
-      var y=yearOf(c),v=psfOf(c);
+      var y=yearOf(c),v=valOf(c);
       if(!y||v==null)return;
       if(!by[y]){by[y]=[];order.push(y);}
       by[y].push(v);
@@ -1519,16 +1827,18 @@ if(dd)dd.open=false;});</script>
     // Two years and three priced sales is the floor for calling anything a
     // trend. Below it the honest thing is to say so, not to draw one column
     // and let it imply a direction. Silence would read as a broken panel.
+    var noun=lease?"lease":"priced sale";
+    var title=lease?"Median rent $/SF/yr by year":"Median $/SF by year";
     if(pts.length<2||total<3){
       box.className="dbox chart";
-      $("chartTitle").textContent="Median $/SF by year";
-      $("chartWrap").innerHTML='<p class="note">A price trend needs priced sales in at least two years. '+
+      $("chartTitle").textContent=title;
+      $("chartWrap").innerHTML='<p class="note">A trend needs '+noun+'s in at least two years. '+
         (total?"There "+(total===1?"is 1":"are "+total)+" here so far.":"There are none in this view yet.")+"</p>";
       if(!rows.length)box.className="dbox chart hide";
       return;
     }
     box.className="dbox chart";
-    $("chartTitle").textContent="Median $/SF by year \\u00b7 "+total+" priced sales";
+    $("chartTitle").textContent=title+" \\u00b7 "+total+" "+noun+(total===1?"":"s");
 
     var W=600,H=190,L=44,R=8,T=16,B=34;               // B leaves room for the year band
     var plotW=W-L-R,plotH=H-T-B;
@@ -1600,18 +1910,23 @@ if(dd)dd.open=false;});</script>
       '<div class="sfig'+(ok?" ok":"")+'">'+fig+"</div>"+
       (sub?'<div class="ssub">'+sub+"</div>":"")+"</"+tag+">";
   }
-  function renderStrip(rows,vps,vmed,vst){
+  function renderStrip(rows,unit,foot){
     var box=$("readStrip");
     // Nothing on screen means nothing to summarise. The empty-table line below
     // says what is going on; a strip of dashes above it would not.
     if(!rows.length){box.className="strip hide";box.innerHTML="";return;}
     var cells=[];
-    // Reads the same psfStats the footer does, so the two cannot quote
-    // different things — the rule this strip has carried since it shipped.
-    var mixed=!!(vst&&vst.mixed);
-    cells.push(stripCell("Median $/SF",(vps.length&&!mixed)?psf(vmed):"&mdash;",
-      mixed?vst.types+" property types":
-        (vps.length?vps.length+" priced sale"+(vps.length===1?"":"s"):"no priced sales"),
+    // Takes the footer's OWN computed figure rather than recomputing one, so
+    // the strip and the seal under the table cannot quote different numbers —
+    // the rule this strip has carried since it shipped, now enforced by there
+    // being a single computation instead of two that happen to agree.
+    var lease=unit.kind==="lease",st=lease?unit.rent:unit.sale;
+    var head=unit.kind==="both"?"Median rate":lease?"Median rent/yr":"Median $/SF";
+    var sub=unit.kind==="both"?"sales and leases"
+      :st.mixed?st.types+" property types"
+      :st.values.length?st.values.length+(lease?" lease":" priced sale")+(st.values.length===1?"":"s")
+      :lease?"no rents":"no priced sales";
+    cells.push(stripCell(head,foot.value==null?"&mdash;":psf(foot.value),sub,
       $("chartBox").className.indexOf("hide")<0?"chartBox":""));
     var gv="&mdash;",gs="",gok=false;
     if(lastGut&&lastGut.unavailable){ gs="benchmarks unavailable"; }
@@ -1848,8 +2163,16 @@ if(dd)dd.open=false;});</script>
     var emptyHint='<span class="empty" style="padding:0">No markets yet. Add a market above to start seeing leads here, or submit comps to earn markets automatically.</span>';
     $("covRow").innerHTML=cov.length?cov.map(function(c){
       var label=escA(c.market)+" "+escA(c.property_type);
+      // Cities that trade as one market are matched together (the server's
+      // METRO_GROUPS), so a chip reading "Boise, ID" can legitimately pull in
+      // a Meridian lead. Said out loud here, because a lead from a city the
+      // broker never typed otherwise reads as a bug in the thing whose whole
+      // job is to be trusted about where their business is.
+      var near=Number(c.nearby||0);
+      var nearTip=near?" Also matches "+near+" nearby market"+(near===1?"":"s")+" that trade as one with it.":"";
       return '<span class="chip">'+esc(c.market)+" \\u00b7 "+esc(c.property_type)+
-        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+'" title="Stop watching '+label+
+        (near?'<span class="near" title="'+escA(nearTip.trim())+'">+'+near+" nearby</span>":"")+
+        ' <button type="button" data-cov="'+escA(c.id)+'" aria-label="Stop watching '+label+nearTip+'" title="Stop watching '+label+
         '">&times;</button></span>';
     }).join(" "):(($("covForm").parentNode&&$("covForm").parentNode.id==="pipeEmpty")?"":emptyHint);
     var seen={},opts=[];
@@ -2370,7 +2693,7 @@ if(dd)dd.open=false;});</script>
   // Keep in step with broker-vault.js REQUIRED_TARGETS / TEMPLATE_COLUMNS /
   // OPTIONAL_SPEC_COLUMNS. This page cannot require that module.
   var PDF_REQUIRED=["address","property_type","transaction","deal_date"];
-  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
+  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
   var TARGET_LABELS={
     address:"Address", property_type:"Property type", transaction:"Sale or lease",
     deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",
@@ -2713,8 +3036,8 @@ if(dd)dd.open=false;});</script>
   // submit handler below builds the row generically instead of naming every
   // input twice.
   var BASE_FIELDS=["address","property_type","transaction","deal_date",
-                   "price","size_sqft","cap_rate","tenancy","year_built",
-                   "notes","lat","lng"];
+                   "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
+                   "tenancy","year_built","notes","lat","lng"];
   $("addComp_property_type").innerHTML=Object.keys(TYPE_FIELDS)
     .map(function(t){return "<option>"+t+"</option>"}).join("");
   function renderAddTypeFields(){
@@ -2801,14 +3124,72 @@ if(dd)dd.open=false;});</script>
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.
   function redraw(){
-    $("fClear").className=($("fMarket").value||$("fType").value)?"btn ghost":"btn ghost hide";
+    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fText").value)?"btn ghost":"btn ghost hide";
     renderRollup();
     render();
   }
   $("fMarket").addEventListener("change",redraw);
   $("fType").addEventListener("change",redraw);
+  $("fTrans").addEventListener("change",redraw);
+  // "input", not "change": filtering as they type is the whole point, and the
+  // work is a substring scan over at most 1000 rows the page already holds.
+  // Escape clears, which is the one thing every search box on the web does.
+  $("fText").addEventListener("input",redraw);
+  // Delegated: #none's contents are rewritten on every render, so a handler
+  // bound to the button itself would be lost on the next draw.
+  $("none").addEventListener("click",function(e){
+    if(!e.target||e.target.id!=="noneClear")return;
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value="";
+    redraw();
+  });
+  $("fText").addEventListener("keydown",function(e){
+    if(e.key==="Escape"&&$("fText").value){ $("fText").value=""; redraw(); }
+  });
   $("fClear").addEventListener("click",function(){
-    $("fMarket").value=""; $("fType").value=""; redraw();
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; redraw();
+  });
+  // Bulk publish. The confirm is the single-comp one's promise, scaled: it
+  // names the count, the credit, and the one thing that cannot be taken back.
+  // Publishing is a public act on somebody else's behalf as much as the
+  // broker's, so the dialog stays specific rather than becoming "Publish 23
+  // comps?" now that it covers more of them.
+  $("pubAll").addEventListener("click",function(){
+    var ids=pubCandidates.map(function(c){return c.id}),n=ids.length;
+    if(!n)return;
+    var who=(identity&&identity.creditedTo)?identity.creditedTo:"your firm";
+    if(!confirm("Publish "+n+" comp"+(n===1?"":"s")+"?\\n\\nThey become part of CompNinja's public records, credited to "+
+      who+" by name in every report they appear in. Everything else in your vault stays private.\\n\\n"+
+      "Comps that are not ready — no price, no size, no street number — are skipped and named afterwards.\\n\\n"+
+      "You can stop publishing any of them later, but reports that already used them will keep them."))return;
+    var b=$("pubAll");
+    b.disabled=true; b.textContent="Publishing\\u2026";
+    fetch("/api/vault/publish-many",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify({ids:ids})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        b.disabled=false;
+        if(o.s!==200){
+          compMsg(o.j.error||"That didn't go through.",true);
+          // The one refusal a broker can fix on this page, same as the single
+          // publish: open the form that supplies the missing credit name.
+          if(o.j.code==="needs_credit_name")setIdOpen(true);
+          load();
+          return;
+        }
+        var parts=[o.j.published+" published"];
+        if(o.j.skippedCount)parts.push(o.j.skippedCount+" skipped");
+        if(o.j.remaining)parts.push(o.j.remaining+" left \u2014 run it again");
+        // Name the FIRST reason rather than a bare count: "5 skipped" sends a
+        // broker hunting through their book, and the reasons repeat, so one
+        // example usually explains all five.
+        var why=(o.j.skipped&&o.j.skipped.length)?o.j.skipped[0].reason:"";
+        compMsg(parts.join(" \\u00b7 ")+(why?" \\u00b7 "+why:""),!o.j.published);
+        load();
+      })
+      .catch(function(){
+        b.disabled=false;
+        compMsg("That didn't reach the server. Nothing was changed.",true);
+      });
   });
   $("sheetToggle").addEventListener("click",function(){
     if(sheetMode)closeSheet(); else openSheet(null);
@@ -2927,20 +3308,35 @@ if(dd)dd.open=false;});</script>
     el.textContent=text||"";
   }
 
-  function openEditor(id){
-    if(!compById(id))return;
-    editingId=id;
-    render();
-  }
+  // The comp a broker just deleted, held for as long as the message offering
+  // to put it back is on screen. Nothing persists it: this catches the misclick
+  // that is noticed immediately, which is the case worth catching, and NOT a
+  // deletion regretted tomorrow -- for that the honest answer is that it is
+  // gone, and pretending otherwise with a store that empties on reload would
+  // be worse than saying so.
+  var lastDeleted=null;
 
-  function closeEditor(){
-    editingId=null;
-    render();
+  // Everything the add-one-comp route accepts, taken off the row the page was
+  // already holding. Reusing that route rather than adding an undelete
+  // endpoint is what keeps the restore honest: it goes through normalizeRow
+  // like every other written comp, so an undo cannot put back something the
+  // vault would refuse to be told today.
+  function restorePayload(c){
+    var out={},fields=BASE_FIELDS.concat(TYPE_FIELDS[c.property_type]||[]);
+    fields.forEach(function(f){
+      var v=c[f];
+      if(v!=null&&String(v).trim()!=="")out[f]=String(v);
+    });
+    return out;
   }
 
   async function deleteComp(id){
-    // Hard delete, no undo: confirm by name rather than with a generic prompt.
-    if(!confirm("Delete this comp? This cannot be undone."))return;
+    var comp=compById(id);
+    // Still a confirm, and still specific: undo is a safety net for the
+    // misclick, not a reason to make the destructive click cheap. What the
+    // wording no longer claims is that this cannot be undone -- it can, for
+    // as long as the message below is on screen.
+    if(!confirm("Delete this comp?"))return;
     var r;
     try{
       r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),
@@ -2953,66 +3349,79 @@ if(dd)dd.open=false;});</script>
     var j=await r.json().catch(function(){return{};});
     if(!r.ok)return compMsg(j.error||"Could not delete that comp.",true);
     load();
-    compMsg(j.unpublished
+    lastDeleted=comp?{payload:restorePayload(comp),
+      address:comp.address,wasPublished:!!j.unpublished}:null;
+    if(!lastDeleted)return compMsg("Deleted.");
+    compMsgUndo((lastDeleted.wasPublished
       ? "Deleted, and withdrawn from the public records."
-      : "Deleted.");
+      : "Deleted."));
   }
 
-  // Sends only CHANGED fields, so an untouched input can never overwrite a
-  // value with a stale copy the page happened to be holding.
-  async function saveComp(id,before){
-    var patch={},any=false;
-    EDIT_FIELDS.forEach(function(f){
-      var el=$("edit_"+f); if(!el)return;
-      var v=el.value.trim();
-      var was=before[f]==null?"":String(before[f]);
-      if(v!==was){patch[f]=v;any=true;}
-    });
-    if(!any){closeEditor();return;}
+  // A message with a way back. Separate from compMsg because that one sets
+  // textContent, which is right for every other caller and cannot carry a
+  // button.
+  function compMsgUndo(text){
+    var el=$("compMsg");
+    el.className="msg ok";
+    el.innerHTML=esc(text)+' <button type="button" class="lnk" id="undoDel">Undo</button>';
+  }
+
+  // Delegated: #compMsg's contents are rewritten by every other message on the
+  // page, so a handler bound to the button itself would outlive its button.
+  $("compMsg").addEventListener("click",function(e){
+    if(!e.target||e.target.id!=="undoDel")return;
+    var d=lastDeleted;
+    lastDeleted=null;
+    if(!d)return;
+    compMsg("Putting it back\u2026");
+    fetch("/api/vault/comp",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(d.payload)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200)return compMsg(o.j.error||"Could not put that comp back.",true);
+        load();
+        // Said plainly rather than left to be discovered. The restore is a new
+        // entry: it belongs to no import, so deleting that import will not
+        // remove it, and a comp that was published is NOT republished by
+        // putting it back -- publishing is a deliberate public act and undoing
+        // a delete is not consent to make it public again.
+        compMsg("Put back."+(d.wasPublished?" It is not published again — publish it when you are ready.":""));
+      })
+      .catch(function(){ compMsg("That didn't reach the server. Nothing was changed.",true); });
+  });
+
+  // One field of one row, on blur — from a compact-table cell or a spreadsheet
+  // one, which are the same input saved the same way. Only the changed field
+  // travels, so an untouched cell can never overwrite a value with a stale
+  // copy the page happened to be holding.
+  //
+  // Does NOT re-render the table: rebuilding the inputs would steal focus from
+  // the cell the broker just Tabbed into. Everything the save changes on
+  // screen is therefore patched in place below.
+  async function saveCell(id, key, el){
+    var before=compById(id); if(!before||!el)return;
+    var v=String(el.value||"").trim();
+    var was=before[key]==null?"":String(before[key]);
+    if(v===was){ cellState(el,""); showCell(el,key,before[key]); return; }
+    var patch={}; patch[key]=v;
+    cellState(el,"saving");
     var r;
     try{
       r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
         method:"PATCH",credentials:"same-origin",
         headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
     }catch(err){
+      cellState(el,"err");
       return compMsg("That didn't reach the server. Nothing was changed.",true);
     }
     var j=await r.json().catch(function(){return{};});
     // 400 and 409 both carry a sentence written for the broker, and a 400
     // lists EVERY problem with the row rather than just the first. Show it
     // whole: "You already have this comp." tells them what to do, "Could not
-    // save" does not.
-    if(!r.ok)return compMsg(j.error||"Could not save that change.",true);
-    closeEditor();
-    load();
-    compMsg(j.unpublished
-      ? "Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it."
-      : "Saved.");
-  }
-
-  // One field of one row, from spreadsheet blur. Same PATCH as Save on the
-  // compact form, same "only the changed field travels" rule. Does NOT
-  // re-render the table: rebuilding the inputs would steal focus from the
-  // cell the broker just Tabbed into.
-  async function saveSheetCell(id, key, el){
-    var before=compById(id); if(!before||!el)return;
-    var v=String(el.value||"").trim();
-    var was=before[key]==null?"":String(before[key]);
-    if(v===was){ el.className=""; return; }
-    var patch={}; patch[key]=v;
-    el.className="saving";
-    var r;
-    try{
-      r=await fetch("/api/vault/comp?id="+encodeURIComponent(id),{
-        method:"PATCH",credentials:"same-origin",
-        headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
-    }catch(err){
-      el.className="err";
-      return compMsg("That didn't reach the server. Nothing was changed.",true);
-    }
-    var j=await r.json().catch(function(){return{};});
+    // save" does not. The cell keeps what they typed, so the correction is
+    // one keystroke away rather than something to retype from memory.
     if(!r.ok){
-      el.className="err";
+      cellState(el,"err");
       return compMsg(j.error||"Could not save that change.",true);
     }
     var row=compById(id);
@@ -3022,11 +3431,65 @@ if(dd)dd.open=false;});</script>
         Object.keys(j.comp).forEach(function(k){ row[k]=j.comp[k]; });
       }
     }
-    el.className="saved";
+    // Sorting a column, changing the filter or a delete's reload all rebuild
+    // the table, and any of them can land while this save is still in flight —
+    // leaving us holding a detached input over a freshly-drawn row that still
+    // shows the PRE-save value. Patching the dead node would leave the new row
+    // stale with a refreshed $/SF beside it, so redraw the whole table
+    // instead. Focus has already moved on by definition here, so the usual
+    // reason not to re-render does not apply.
+    if(el.isConnected===false){ render(); }
+    else{
+      cellState(el,"saved");
+      // The server's own saved row is what goes back on screen, never the
+      // string the broker typed: normalizeRow is what turns "45,000 SF" into
+      // 45000 and re-derives market and $/SF, and a cell still showing the raw
+      // typing while the row behind it holds something else is how a broker
+      // ends up trusting a figure the vault never stored.
+      showCell(el,key,row?row[key]:v);
+      refreshDerived(id,row);
+    }
     if(j.unpublished){
       compMsg("Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it.");
     }else{
       compMsg("Saved.");
+    }
+  }
+
+  // Put the formatted figure back in a cell that is no longer focused, and
+  // keep data-raw in step so the next focus offers the stored value.
+  // Only compact-table cells carry data-raw. A spreadsheet cell is deliberately
+  // left alone: that view is the book as a grid of stored values, and quietly
+  // formatting "1000000" into "$1,000,000" there would make the one screen a
+  // broker opens to check what was actually imported stop showing it.
+  function showCell(el,key,v){
+    var hasRaw=el.getAttribute&&el.getAttribute("data-raw")!==null;
+    var shown=hasRaw?cellDisplay(key,v):(v==null?"":String(v));
+    if(hasRaw){
+      if(el.setAttribute)el.setAttribute("data-raw",v==null?"":String(v));
+      el.value=shown;
+    }
+    // Re-widen for what is now in the cell. Typing a longer address than the
+    // one the column was built around would otherwise leave the new value
+    // clipped until the next full render — which, since saves deliberately do
+    // not re-render, could be a long time.
+    if(el.style)el.style.minWidth=cellWidth(key,shown)+"ch";
+  }
+
+  // market and $/SF are the server's to compute, so after a save they are read
+  // from the row it sent back. Without this, editing a price left the $/SF
+  // beside it reading the old figure until the next full render — a wrong
+  // number sitting in a priced column, which is the one thing this table
+  // cannot do.
+  function refreshDerived(id,row){
+    if(!row)return;
+    var tb=$("tbody");
+    if(!tb||!tb.querySelectorAll)return;
+    var cells=tb.querySelectorAll('td[data-ro-id="'+id+'"]')||[];
+    for(var i=0;i<cells.length;i++){
+      var k=cells[i].getAttribute&&cells[i].getAttribute("data-ro-k");
+      if(k==="market")cells[i].innerHTML=esc(row.market);
+      else if(k==="price_per_sqft")cells[i].innerHTML=rateCell(row);
     }
   }
 
@@ -3036,27 +3499,50 @@ if(dd)dd.open=false;});</script>
   $("tbody").addEventListener("click",function(e){
     var d=e.target.closest("button[data-del-comp]");
     if(d)return deleteComp(d.getAttribute("data-del-comp"));
-    var s=e.target.closest("button[data-save-edit]");
-    if(s)return saveComp(s.getAttribute("data-save-edit"),compById(s.getAttribute("data-save-edit"))||{});
-    var c=e.target.closest("button[data-cancel-edit]");
-    if(c)return closeEditor();
-    var b=e.target.closest("button[data-edit]");
-    if(b)return openEditor(b.getAttribute("data-edit"));
   });
-  // focusout bubbles (blur does not). One listener for every sheet cell,
-  // attached once: renderSheet rebuilds the inputs and must not re-bind.
+  // focusout bubbles (blur does not). One listener for every cell in either
+  // view, attached once: render() and renderSheet() rebuild the inputs on
+  // every draw and must not re-bind.
+  //
+  // Deliberately NOT gated on sheetMode any more — the compact table's cells
+  // are the same input saved by the same PATCH, and the gate was what made an
+  // Edit button necessary in the first place.
   $("tbody").addEventListener("focusout",function(e){
     var el=e.target;
-    if(!sheetMode||!el||!el.getAttribute)return;
+    if(!el||!el.getAttribute)return;
     var k=el.getAttribute("data-k"), id=el.getAttribute("data-id");
     if(!k||!id)return;
-    saveSheetCell(id,k,el);
+    saveCell(id,k,el);
+  });
+  // Focus shows the stored value rather than the formatted one, so a broker
+  // edits 1250000 and never has to work out whether the $ and commas they can
+  // see are part of what they are about to retype.
+  $("tbody").addEventListener("focusin",function(e){
+    var el=e.target;
+    if(!el||!el.getAttribute)return;
+    var raw=el.getAttribute("data-raw");
+    if(raw===null||!el.getAttribute("data-k"))return;
+    el.value=raw;
   });
   $("tbody").addEventListener("keydown",function(e){
-    if(!sheetMode)return;
     var el=e.target;
     if(!el||!el.getAttribute||!el.getAttribute("data-k"))return;
+    // Enter commits by blurring, which is what fires the save. Escape puts the
+    // stored value back and leaves without saving — the cell IS the editor
+    // now, so it needs the Cancel that the edit form used to carry.
     if(e.key==="Enter"){ e.preventDefault(); el.blur(); }
+    else if(e.key==="Escape"){
+      // A spreadsheet cell carries no data-raw (it already shows the stored
+      // value), so its undo comes from the row the page is holding.
+      var raw=el.getAttribute("data-raw");
+      if(raw===null){
+        var row=compById(el.getAttribute("data-id"));
+        if(row)raw=row[el.getAttribute("data-k")]==null?"":String(row[el.getAttribute("data-k")]);
+      }
+      if(raw!==null)el.value=raw;
+      cellState(el,"");
+      el.blur();
+    }
   });
 
   $("ups").addEventListener("click",function(e){
@@ -3133,13 +3619,35 @@ if(dd)dd.open=false;});</script>
     fetch("/api/hubs",{credentials:"same-origin"})
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){
-        // 401/403 are not errors to report here: the whole page is already
-        // gated, and a member who cannot see hubs sees the deck's empty state
-        // rather than a refusal they can do nothing about.
-        if(o.s!==200){hubs=[];renderHubs();return;}
+        // 401/403 stay silent: the whole page is already gated, and a member
+        // who cannot see hubs gets nothing to act on from a refusal here.
+        if(o.s===401||o.s===403){hubs=[];renderHubs();return;}
+        // EVERYTHING ELSE SAYS SO. This used to fall into the same branch, so
+        // a 503 rendered "No hubs yet. Create one when you have comps to put in
+        // front of a client." — an outage reading as "you have none", to the
+        // one person who would know it was wrong. It happened for real during
+        // a deploy on 2026-08-14 and cost a confused ten minutes.
+        //
+        // It is also backwards from this repo's own rule: the lead inbox
+        // refuses with a 503 rather than showing an empty inbox, "because an
+        // empty inbox on error would misreport demand as zero". Same argument,
+        // same answer.
+        if(o.s!==200){hubsFailed((o.j&&o.j.error)||"Your hubs could not be loaded.");return;}
         hubs=o.j.mine||[];renderHubs();
       })
-      .catch(function(){hubs=[];renderHubs();});
+      .catch(function(){hubsFailed("Your hubs could not be reached.");});
+  }
+
+  // A failed load is NOT an empty list. The invitation stays hidden, because
+  // "create your first hub" is the wrong thing to say to somebody whose hubs
+  // we simply could not fetch.
+  function hubsFailed(text){
+    hubs=[];
+    var rows=$("hubRows"); if(rows)rows.innerHTML="";
+    hubShow($("hubTableWrap"),false);
+    hubShow($("hubEmpty"),false);
+    hubShow($("hubIntro"),true);
+    hubMsg(text,true);
   }
 
   $("hubType").innerHTML='<option value=""></option>'+
@@ -3182,9 +3690,16 @@ if(dd)dd.open=false;});</script>
   function showInvites(j){
     var list=(j.invites||[]);
     var box=$("hubInvites");
-    var head='<p class="note">Your hub is ready. Copy each link and send it to that '+
-      'person yourself: CompNinja does not email them yet, and these links cannot be '+
-      'shown again.</p>';
+    // The copy depends on whether the server actually MAILED them, which it
+    // reports as the emailed flag. This used to hard-code "CompNinja does not email
+    // them yet" — true when hubs shipped, and a lie the day a domain is
+    // verified in Resend, told to the one person relying on it.
+    var head = j.emailed
+      ? '<p class="note">Your hub is ready, and each person has been emailed their link. '+
+        'The links are below if you would rather send them yourself; they cannot be shown again.</p>'
+      : '<p class="note">Your hub is ready. Copy each link and send it to that '+
+        'person yourself: CompNinja cannot email them until a sending domain is verified, '+
+        'and these links cannot be shown again.</p>';
     if(!list.length){
       box.innerHTML=head+'<p class="note"><a href="/hub/'+encodeURIComponent(j.id)+
         '">Open the hub</a> and add people to it when you are ready.</p>';

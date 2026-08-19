@@ -79,7 +79,7 @@ These gate the build. Recommended answers in brackets; each is argued below.
    shelf, as a snapshot.] This is the one that needs the attorney, and it is
    the same attorney question already open in ROADMAP about broker data.
 2. **Does a member's new work go to the shelf by default?** **ANSWERED YES,
-   2026-08-16, and shipped** (migration 029). An owner or admin sets the firm
+   2026-08-16, and shipped** (migration 031). An owner or admin sets the firm
    default; it is off until they do; it never applies to reports already run;
    the invitation discloses it before anybody accepts; every auto-shared
    report carries an Undo; and each member has a three-state switch of their
@@ -95,7 +95,7 @@ These gate the build. Recommended answers in brackets; each is argued below.
    comp is one row, one confirm, one Undo, and it is the version that can
    honestly be called opt-in.
 4. **Is enterprise sold per seat now, or granted by hand?** **BOTH, as of
-   2026-08-16** (migration 031). Per-seat billing is built and is INERT until
+   2026-08-16** (migration 033). Per-seat billing is built and is INERT until
    `STRIPE_PRICE_FIRM_MONTHLY` is set; with it unset a firm has hand-granted
    seats and a status of `"none"`, which is the recommendation above, still
    standing. Building it early cost the recommendation nothing — what it buys

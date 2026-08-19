@@ -1,4 +1,4 @@
--- 031 · Per-seat firm billing (2026-08-16)
+-- 033 · Per-seat firm billing (2026-08-16)
 -- Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md §9
 --
 -- RUN BEFORE DEPLOYING the firm checkout. Purely additive: one new table.
@@ -24,7 +24,7 @@
 -- SEATS LIVE ON `orgs`, NOT HERE
 -- ---------------------------------------------------------------------------
 -- Deliberately, and it is the one field that could plausibly have gone either
--- way. `orgs.seats` (028) is the enforced cap on how many people may be IN a
+-- way. `orgs.seats` (030) is the enforced cap on how many people may be IN a
 -- firm, and that question has an answer for a firm that has never paid us
 -- anything — the hand-granted case, which is how the first firms arrive
 -- (§9, the vault_beta precedent). Putting it here would mean a firm with no

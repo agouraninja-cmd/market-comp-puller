@@ -76,7 +76,7 @@ test("normalizeEmail lowercases and trims, and rejects junk to empty", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The firm audience (migration 028, enterprise accounts slice 1).
+// The firm audience (migration 030, enterprise accounts slice 1).
 //
 // The branch sits INSIDE the invited path, so every test above still describes
 // it: revocation beats it, an anonymous reader is still signin_required, and

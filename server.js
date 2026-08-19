@@ -49,7 +49,7 @@ const RADIUSBLEND = require("./blend-corpus");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
-// Who is in a firm, and what their membership lets them do (migration 028).
+// Who is in a firm, and what their membership lets them do (migration 032).
 // Same pure, fails-closed contract as report-access.js, and it feeds that
 // file directly: activeOrgIds() is the sole source of the `orgIds` canReadShare
 // consults, so there is exactly one place that decides a pending invite is not
@@ -1685,7 +1685,7 @@ async function getEntitlements(user, reportId, admin = false) {
   const own = ENT.computeEntitlements({
     user, subscription, purchase, usage, reportId, now, enabled: true, tester, vaultBeta,
   });
-  // The firm's seat, as a FALLBACK (migration 031). Their own plan always
+  // The firm's seat, as a FALLBACK (migration 033). Their own plan always
   // wins; the firm is consulted only when nothing else already grants Pro, so
   // a member who pays for themselves keeps their own billing portal and their
   // own renewal date, and a firm seat can never quietly take over an
@@ -1987,7 +1987,7 @@ async function handleStripeEvent(evt) {
 
       if (obj.mode !== "subscription" || !obj.subscription) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${obj.subscription}`);
-      // A FIRM checkout (migration 031). Checked before the user path and
+      // A FIRM checkout (migration 033). Checked before the user path and
       // returned from, because the two write different tables and a firm
       // session must never land a row in `subscriptions` keyed on whoever
       // happened to click Buy — that would give one person a personal
@@ -2476,6 +2476,22 @@ const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SE
 // immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a
 // reason to search less. Default ON; `off` restores exact-market matching.
 const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
+// Lead matching across a metro: a broker covering Boise industrial also sees
+// Meridian industrial leads. Reads the SAME curated METRO_GROUPS as
+// CORPUS_METRO but is switched separately, because the two answer different
+// questions about the same table -- one decides which comps a search may
+// draw on, the other decides which PEOPLE see a stranger's enquiry, and
+// wanting to roll back one is no reason to roll back the other.
+// `LEAD_METRO=off` restores exact-market matching everywhere below.
+const LEAD_METRO = !/^(0|off|false|no)$/i.test(String(process.env.LEAD_METRO || ""));
+// One bulk-publish request's ceiling. Each comp costs an insert plus a patch,
+// so this bounds the request, not the broker's book: over it, the route
+// publishes what it can and reports how many are left, and running it again is
+// safe because an already-published comp is skipped rather than re-submitted.
+const VAULT_PUBLISH_BATCH = 100;
+// One expression, three call sites (inbox, intro gate, new-lead alert), so the
+// flag cannot end up half-applied and show a broker a lead they may not act on.
+const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
 
 // Saved deals within 10 miles (CRE) / 1 mile (houses) join the report at
 // serialization. Default ON; `off` restores search-only reports. Harvest
@@ -3086,7 +3102,7 @@ async function listSharesForViewer(email) {
 }
 
 // ---------------------------------------------------------------------------
-// Firms (migration 028) — the reads and writes behind /api/org*.
+// Firms (migration 032) — the reads and writes behind /api/org*.
 //
 // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
 //
@@ -3158,7 +3174,7 @@ async function setOrgShareDefault(orgId, value) {
     { share_default: value }, { prefer: "return=minimal" });
 }
 
-// The member's own override (migration 029). Scoped by BOTH the org and the
+// The member's own override (migration 033). Scoped by BOTH the org and the
 // caller's own email IN THE QUERY, never checked after the fact: this is the
 // switch that lets somebody refuse an admin's decision about their work, so
 // knowing an org id must not be enough to flip anybody else's.
@@ -3281,7 +3297,7 @@ function seatCapOf(org) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : ORG.MAX_MEMBERS;
 }
 
-// Firm billing (migration 031). Upsert on org_id, 008's rule keyed on the
+// Firm billing (migration 033). Upsert on org_id, 008's rule keyed on the
 // firm: a second checkout must UPDATE the row, never insert a rival one that
 // could out-rank it.
 async function upsertOrgSubscription(row) {
@@ -4069,7 +4085,7 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
-// A colleague invited to a firm (migration 028). Rides the same outbound gate
+// A colleague invited to a firm (migration 032). Rides the same outbound gate
 // as everything else, so it silently no-ops until EMAIL_FROM is set.
 //
 // It says who invited them and from what address, because this mail arrives
@@ -4088,6 +4104,44 @@ function sendOrgInvites(emails, { firm, fromName, fromEmail }) {
       `Sign in with this email address (${to}) — a free account is all it takes. ` +
       `Nothing is shared with you until you accept, and you can leave at any time.\n\n` +
       `If you were not expecting this, ignore it: an unaccepted invitation gives nobody access to anything.`);
+  }
+}
+
+// Is outbound mail actually going to leave the building? The two env vars
+// sendOutboundEmail checks, asked as a question the CALLER can answer, because
+// a hub needs to tell a broker whether their client was emailed or whether
+// they have to send the link themselves. Without it the create panel has to
+// guess, and it guessed wrong in both directions: it hard-coded "CompNinja
+// does not email them yet", which becomes a lie the day a domain is verified.
+const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
+
+// The hub invitation.
+//
+// Rides the same EMAIL_FROM gate as every other outbound mail, so on a
+// deployment with no verified domain this logs "Outbound email skipped" and
+// the broker copies the link by hand — which is exactly how hubs have worked
+// since they shipped. Nothing here changes behaviour today; it means the day
+// the domain is verified, invitations start sending with no code change.
+//
+// THE LINK CARRIES THE TOKEN, and that is the point: it is the credential, and
+// mailing it is the delivery mechanism, the same trade a password reset makes.
+// It is why the copy names the address the hub was shared with — a forwarded
+// invite lets somebody READ, and only signing in as the invited address lets
+// them post.
+//
+// Fire and forget, ALWAYS: the hub and its participants are already written
+// when this runs. A mail provider having a bad afternoon must never turn a
+// created hub into an error, and the broker still holds every link.
+function sendHubInvites(invites, { hubTitle, fromName }) {
+  for (const inv of invites) {
+    const who = fromName ? `${fromName} has` : "A broker has";
+    const what = hubTitle ? `"${hubTitle}"` : "a set of comps";
+    sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
+      `${who} shared ${what} with you on CompNinja.\n\n` +
+      `Open it here: ${inv.url}\n\n` +
+      `You can read it without an account. To reply or shortlist a building, ` +
+      `sign in with this email address (${inv.email}) — a free account is all it takes.\n\n` +
+      `Every CompNinja valuation is an automated estimate, not an appraisal.`);
   }
 }
 
@@ -4152,8 +4206,15 @@ const TYPE_COMP_FIELDS = {
   // search budget (6-8 calls total) doesn't stretch to a per-comp assessor
   // lookup for a list this size, and general listing search rarely surfaces it.
   Residential: {
-    fields: ["beds_baths"],
-    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba"`,
+    fields: ["beds_baths", "condition"],
+    // `condition` is a CLOSED vocabulary, not free text: the four words are
+    // named here and the gate that enforces them is RPARSE.normalizeConditions,
+    // which drops anything else to "". The instruction spells the words out and
+    // says what each one means, because the whole value of the field is that a
+    // homeowner picking from a dropdown and the model reading a listing land on
+    // the same word for the same house. If fill rate is poor, fix THIS text —
+    // never loosen the parser (see the note above CONDITION_VALUES).
+    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba". "condition" = how updated the home is, as EXACTLY ONE of these four words and nothing else: "Needs work" (deferred maintenance, sold as a fixer), "Original" (sound but largely original finishes), "Updated" (some rooms modernized, e.g. kitchen or baths), "Renovated" (comprehensively renovated recently). Read it from the listing description or sale writeup; if the page does not say, use "" - do not infer it from price, age or photos`,
   },
 };
 
@@ -4161,12 +4222,24 @@ const TYPE_COMP_FIELDS = {
 // for a prompt. Keep only the keys this property type actually reports, force
 // them to short strings, and drop blanks. Everything else is discarded rather
 // than sanitized in place.
+// Fields whose VALUE is a closed vocabulary, not just a string. The key
+// whitelist below stops an undeclared field getting through; this stops a
+// declared one carrying arbitrary text. It matters because subject details are
+// interpolated into the prompt and stored in the report's meta, so a 40-char
+// free-text "condition" would be attacker-chosen text in both places, and the
+// comp column beside it would be showing a vocabulary the subject does not use.
+// Declarative rather than an `if (key === "condition")` so the next enum field
+// is one line.
+const SUBJECT_FIELD_ENUMS = { condition: RPARSE.normalizeConditionValue };
+
 function sanitizeSubjectDetails(type, raw) {
   const spec = TYPE_COMP_FIELDS[type];
   if (!spec || !raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out = {};
   for (const key of spec.fields) {
-    const v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    let v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    const enumOf = SUBJECT_FIELD_ENUMS[key];
+    if (enumOf) v = enumOf(v);
     if (v) out[key] = v;
   }
   return out;
@@ -4203,6 +4276,7 @@ const FIELD_LABELS = {
   zoning: "Zoning",
   price_per_acre: "$/Acre",
   beds_baths: "Beds / Baths",
+  condition: "Condition",
   cap_rate: "Cap Rate",
   tenancy: "Tenancy",
   year_built: "Year Built",
@@ -4570,7 +4644,8 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // wrapper pairs them; it is the only caller.
 const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
-        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt } = RPARSE;
+        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
+        normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -5434,7 +5509,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               normalizeTrendPct(
                 normalizeCurrency(
                   normalizeSourceTypes(
-                    expandCompKeys(parseCompJson(raw, stats), type)))))))),
+                    normalizeConditions(
+                      expandCompKeys(parseCompJson(raw, stats), type))))))))),
       new Date());
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
@@ -6734,11 +6810,13 @@ const MARKET_FOOTER =
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
-// stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
-// misses cached in localStorage geoCache.v1 — same key shape, so the app and
-// these pages share a cache). Comps geocode sequentially, not in a burst, to
-// stay friendly to /api/geocode's per-IP rate limit. If not a single pin
-// resolves, the whole card hides rather than showing an empty map.
+// stack (Census proxy first — a POST since 2026-08-17, so the address stays out
+// of the URL — Nominatim fallback with 1.1s spacing, hits AND misses cached in
+// localStorage geoCache.v1 — same key shape, so the app and these pages share a
+// cache). Comps geocode sequentially, not in a burst, to stay friendly to
+// /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
+// card hides rather than showing an empty map — which is also what a market
+// page cached from before that deploy does for its last hour of life.
 const MARKET_MAP_JS = `(function(){
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
   var CACHE_KEY = "geoCache.v1";
@@ -6751,11 +6829,18 @@ const MARKET_MAP_JS = `(function(){
       localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
     } catch (e) {}
   }
-  function jfetch(u) {
+  function jfetch(u, o) {
     return Promise.race([
-      fetch(u).then(function (r) { return r.json(); }),
+      fetch(u, o).then(function (r) { return r.json(); }),
       new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, 7000); }),
     ]);
+  }
+  function postJson(u, payload) {
+    return jfetch(u, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
   var nq = Promise.resolve();
   function nominatim(a) {
@@ -6774,7 +6859,7 @@ const MARKET_MAP_JS = `(function(){
     var k = String(a || "").trim().toLowerCase();
     if (!k) return Promise.resolve(null);
     if (k in cache) { var h = cache[k]; return Promise.resolve(h && isFinite(h.lat) ? h : null); }
-    return jfetch("/api/geocode?address=" + encodeURIComponent(a))
+    return postJson("/api/geocode", { address: a })
       .then(function (j) { return (j && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null; })
       .catch(function () { return null; })
       .then(function (f) { return f || nominatim(a); })
@@ -11257,6 +11342,51 @@ async function linkVaultProperties(userId, comps) {
   }
 }
 
+// How often each published comp has been cited in a report, read from the
+// count comp_submissions has kept since migration 003 and bumpCitedCounts has
+// been incrementing all along.
+//
+// The number was already public on /broker/<slug> ("Report citations · times
+// used in valuation reports") and was visible NOWHERE to the broker who earned
+// it -- and only reachable there at all by opting the profile into being
+// public, which broker-directory.js's two-consents rule keeps false by default.
+// So a vault-first broker published comps and got no signal back whatsoever.
+// This is a read of an existing figure onto the page of the person it is
+// about; nothing new is counted and no hot path changes.
+//
+// MUTATES rows in place, and NEVER THROWS: the count is a reward, not part of
+// the book. A broker whose vault would not open because a citation read failed
+// would rightly consider that worse than a missing number.
+async function attachCitedCounts(rows) {
+  try {
+    if (!DB_CONFIGURED) return;
+    const ids = [];
+    for (const r of rows || []) {
+      const id = r && r.published_submission_id;
+      if (id != null && String(id).trim() !== "" && ids.indexOf(id) < 0) ids.push(id);
+    }
+    if (!ids.length) return;
+    // Chunked: a broker with hundreds of published comps would otherwise build
+    // an in.() list long enough to be refused as a URL, and the failure would
+    // be silent because this whole function swallows its errors.
+    const counts = new Map();
+    for (let i = 0; i < ids.length; i += 200) {
+      const slice = ids.slice(i, i + 200);
+      const subs = await sbRequest("GET",
+        `comp_submissions?id=in.(${slice.map((v) => encodeURIComponent(v)).join(",")})` +
+        "&select=id,cited_count");
+      for (const sub of subs || []) counts.set(String(sub.id), Number(sub.cited_count) || 0);
+    }
+    for (const r of rows || []) {
+      if (!r || r.published_submission_id == null) continue;
+      const n = counts.get(String(r.published_submission_id));
+      if (n != null) r.cited_count = n;
+    }
+  } catch (err) {
+    console.error("cited_count read failed:", err.message);
+  }
+}
+
 async function vaultReadPayload(req, params) {
   const user = await getSessionUser(req);
   if (!user) return { status: 401, body: { error: "Not signed in." } };
@@ -11310,6 +11440,7 @@ async function vaultReadPayload(req, params) {
   if (compsR.status === "rejected") throw compsR.reason;
   if (uploadsR.status === "rejected") throw uploadsR.reason;
   const rows = compsR.value || [];
+  await attachCitedCounts(rows);
 
   return { status: 200, body: {
     // Through the API's own shape, never the raw storage rows. This is the
@@ -11414,7 +11545,7 @@ async function vaultCompsForReport(req, ent, { market, type, months }) {
 }
 
 // ---------------------------------------------------------------------------
-// The SHARED vault (migration 030) — a broker's comps, opted in to their firm.
+// The SHARED vault (migration 032) — a broker's comps, opted in to their firm.
 //
 // Spec §7. Rules in blend-comps.js; this owns the I/O.
 //
@@ -12123,7 +12254,7 @@ const server = http.createServer((req, res) =>
           : await vaultCompsForReport(req, ent, {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
-        // A colleague's comps, opted in to the firm (migration 030). Read
+        // A colleague's comps, opted in to the firm (migration 032). Read
         // alongside the broker's own and blended in the same place, because
         // they are the same KIND of row — private, full weight, never public —
         // and splitting them across two seams would be two chances to blend
@@ -12695,8 +12826,16 @@ const server = http.createServer((req, res) =>
             // A non-canonical market (marketOf's no-state fallback) can never
             // match a coverage row, so skip the round trip entirely.
             if (!LEADSVC.isCanonicalMarket(market) || !lead.type) return;
+            // in.() over the lead's whole metro, not eq. on its one city:
+            // the inbox widens a broker's coverage outward, and this has to
+            // meet it from the other end or a Boise broker sees a Meridian
+            // lead they were never told about. Values are canonical "City, ST"
+            // from a curated table, and quoted because they contain a comma.
+            const markets = LEADSVC.coverageMarketsFor(market, leadSiblings());
+            if (!markets.length) return;
+            const inList = markets.map((m) => `"${encodeURIComponent(m)}"`).join(",");
             const cov = await sbRequest("GET",
-              `broker_coverage?market=eq.${encodeURIComponent(market)}` +
+              `broker_coverage?market=in.(${inList})` +
               `&property_type=eq.${encodeURIComponent(lead.type)}&select=user_id&limit=200`);
             const ids = LEADSVC.notifyTargets(cov);
             if (!ids.length) return;
@@ -13838,11 +13977,16 @@ const server = http.createServer((req, res) =>
           console.warn("broker leads: 90-day BOV window hit the 200-row cap — brokers in quiet markets may be missing leads");
         }
         const withMarket = (leads || []).map((l) => ({ ...l, market: marketOf(l.address) }));
-        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || []);
+        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || [], leadSiblings());
         const introSet = new Set((intros || []).map((r) => String(r.lead_id)));
         return sendJson(res, 200, {
           leads: mine.map((l) => LEADSVC.anonymizeLead(l, introSet)),
-          coverage: cov || [],
+          // `nearby` is how many EXTRA markets each row reaches. Without it a
+          // broker whose coverage says "Boise, ID" sees a Meridian lead in
+          // their inbox and has no way to tell that from a bug.
+          coverage: (cov || []).map((c) => ({
+            ...c, nearby: LEADSVC.nearbyCountFor(c.market, leadSiblings()),
+          })),
         });
       } catch (err) {
         console.error("broker leads read failed:", err.message);
@@ -14088,7 +14232,7 @@ const server = http.createServer((req, res) =>
         const cov = await sbRequest("GET",
           `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=market,property_type&limit=500`);
         const visible = LEADSVC.filterLeadsForCoverage(
-          [{ ...lead, market: marketOf(lead.address) }], cov || []);
+          [{ ...lead, market: marketOf(lead.address) }], cov || [], leadSiblings());
         if (!visible.length) return sendJson(res, 404, { error: "That lead no longer exists." });
         // Read-then-insert so we can tell "new" from "already requested" (and
         // avoid double-emailing the owner); the upsert below still backstops
@@ -14745,6 +14889,141 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // Publish a batch, from the filter the broker is already looking at.
+    //
+    // Publishing is how the public corpus grows, and it was one button and one
+    // identical confirm dialog per comp -- a broker with 60 clean sales read 60
+    // dialogs, so in practice nobody published a book, they published a comp.
+    //
+    // Deliberately its own route rather than an `ids` array on the single one:
+    // that route's contract (one comp, 404 if it is not yours, 400 if it is not
+    // publishable) is exactly right for one comp and exactly wrong for fifty,
+    // where "some of these are not ready" is the normal answer rather than a
+    // failure. The rules it enforces are the SAME rules -- same openVault gate,
+    // same user_id scoping, same VAULT.canPublish, same credit-name refusal --
+    // because a second set would be a second place for the public corpus to
+    // grow a hole.
+    if (req.method === "POST" && path === "/api/vault/publish-many") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultpub:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const { ids } = JSON.parse(body || "{}");
+          if (!Array.isArray(ids) || !ids.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          // Shape-filtered before the query, like the single route's isUuid
+          // check: broker_comps.id is a uuid column, so one malformed entry
+          // would make PostgREST reject the whole in.() list and take the
+          // batch down with it.
+          const clean = [];
+          for (const id of ids) {
+            if (VAULT.isUuid(id) && clean.indexOf(id) < 0) clean.push(id);
+          }
+          // A ceiling on one request, not on a book. Each comp costs an insert
+          // plus a patch, so an uncapped batch would be a single HTTP request
+          // doing thousands of round trips. Over the cap we publish what we can
+          // and say how many are left rather than refusing outright -- the
+          // operation is idempotent (an already-published comp is skipped), so
+          // running it again is safe and is what the page tells them to do.
+          const batch = clean.slice(0, VAULT_PUBLISH_BATCH);
+          const remaining = Math.max(0, clean.length - batch.length);
+          if (!batch.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          // Asked ONCE for the whole batch, before anything is written: fifty
+          // comps published under no credit is fifty rows given away, and the
+          // page turns this exact code into the form that fixes it.
+          const profile = await findBrokerProfile(user.email, user.id);
+          const by = VAULT.creditName(profile);
+          if (!by) {
+            return sendJson(res, 400, {
+              error: "Add your firm or display name before publishing — published comps are credited to it.",
+              code: "needs_credit_name",
+            });
+          }
+
+          // user_id in the filter, always. Without it, knowing another broker's
+          // comp ids would be enough to publish their private data.
+          const rows = (await sbRequest("GET",
+            `broker_comps?id=in.(${batch.map((i) => encodeURIComponent(i)).join(",")})` +
+            `&user_id=eq.${encodeURIComponent(user.id)}&limit=${batch.length}`)) || [];
+
+          const skipped = [];
+          const ready = [];
+          for (const comp of rows) {
+            if (comp.published) continue;                 // idempotent, not an error
+            const gate = VAULT.canPublish(comp);
+            if (!gate.ok) { skipped.push({ id: comp.id, address: comp.address, reason: gate.reason }); continue; }
+            ready.push(comp);
+          }
+
+          // Bounded concurrency: sequential would make a 100-comp batch a
+          // minute-long request, and unbounded would open 200 sockets to
+          // PostgREST at once. Each comp's insert and patch stay paired inside
+          // one task, so a submission id can never be matched to the wrong
+          // comp -- which is why this is not one bulk insert with the ids read
+          // back positionally. Repeat properties are a real thing in this
+          // vault (two deals on one building), so the returned rows could not
+          // be re-paired by address afterwards even in principle.
+          let published = 0;
+          const failed = [];
+          const queue = ready.slice();
+          const worker = async () => {
+            for (;;) {
+              const comp = queue.shift();
+              if (!comp) return;
+              let subId = null;
+              try {
+                const inserted = await sbRequest("POST", "comp_submissions",
+                  [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+                  { prefer: "return=representation" });
+                subId = inserted && inserted[0] && inserted[0].id;
+                if (!subId) throw new Error("comp_submissions insert returned no id");
+                await sbRequest("PATCH",
+                  `broker_comps?id=eq.${encodeURIComponent(comp.id)}` +
+                  `&user_id=eq.${encodeURIComponent(user.id)}`,
+                  { published: true, published_at: new Date().toISOString(), published_submission_id: subId },
+                  { prefer: "return=minimal" });
+                published += 1;
+              } catch (err) {
+                // The submission landed but the comp was never marked: the row
+                // is in the public records crediting a comp the vault still
+                // calls unpublished, and a re-run would credit it TWICE. Take
+                // the submission back out. Best-effort by necessity -- if this
+                // fails too there is nothing further to try from here -- but
+                // leaving it would turn one transient error into a permanent
+                // duplicate nobody would ever go looking for.
+                if (subId) {
+                  await sbRequest("DELETE",
+                    `comp_submissions?id=eq.${encodeURIComponent(subId)}`,
+                    undefined, { prefer: "return=minimal" }).catch(() => {});
+                }
+                failed.push({ id: comp.id, address: comp.address, reason: "Could not publish this one — try again." });
+              }
+            }
+          };
+          await Promise.all(Array.from({ length: Math.min(6, ready.length) }, worker));
+
+          console.log(`📤 Vault bulk publish: ${published} of ${rows.length} by ${by} (user ${user.id})`);
+          return sendJson(res, 200, {
+            ok: true, published, creditedTo: by,
+            skipped: skipped.concat(failed).slice(0, 50),
+            skippedCount: skipped.length + failed.length,
+            remaining,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault bulk publish failed:", err.message);
+          return sendJson(res, 502, { error: "That didn't go through." });
+        }
+      });
+      return;
+    }
+
     // --- The credit identity a published comp carries -----------------------
     //
     // A vault route, not a /api/broker/* one, because it exists FOR publishing
@@ -14954,7 +15233,7 @@ const server = http.createServer((req, res) =>
           // failed link costs a join, a failed edit costs the broker their
           // correction.
           await linkVaultProperties(user.id, [row]);
-          // Refresh any firm copy of this comp (migration 030). AFTER the
+          // Refresh any firm copy of this comp (migration 032). AFTER the
           // write and after validation, exactly like retractPublishedComp
           // above and for the scar that rule came from: a rejected edit must
           // not disturb what colleagues already hold. It is also the reason a
@@ -15226,22 +15505,50 @@ const server = http.createServer((req, res) =>
   // the front-end re-places map pins from the free US Census geocoder — which
   // has no CORS headers, hence this pass-through. Failures return {} so the
   // browser can fall back to Nominatim (which it can reach directly). ---
-  if (req.method === "GET" && req.url.split("?")[0] === "/api/geocode") {
-    const address = (new URL(req.url, "http://localhost").searchParams.get("address") || "").trim().slice(0, 200);
-    if (!address) return sendJson(res, 400, { error: "address is required." });
-    // Generous cap: one report geocodes the subject plus up to 8 comps.
-    if (rateLimited("geo:" + clientIp(req), 120)) {
-      return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
-    }
-    (async () => {
+  //
+  // **POST, and the address travels in the BODY** (2026-08-17). A query string
+  // is written to the platform's access logs and leaks in every outbound
+  // Referer header, and this route sees a wider set of addresses than any
+  // other: the subject plus every comp of every report, market pages included.
+  // Same reasoning as POST /api/report-access and POST /api/hub/access; this
+  // one simply covers far more of them. It matters most for the comps that are
+  // not public — a broker's private vault comp is geocoded HERE and nowhere
+  // else, because GUARD 2 of the private-comp contract stops it at this hop
+  // rather than letting it reach Nominatim
+  // (docs/superpowers/specs/2026-08-06-private-comp-geocoding.md). Sending an
+  // off-market address to our own proxy and then logging it in a URL undid a
+  // good part of what that guard bought.
+  //
+  // The GET form is REMOVED rather than kept as a deprecated alias: a door
+  // left open is one stale caller away from putting addresses back in URLs,
+  // and nothing here can detect that happening. The cost of removing it is
+  // bounded and self-healing — index.html is served `no-store` so the app
+  // updates on the next load, and the only other caller is MARKET_MAP_JS,
+  // embedded in market pages cached `public, max-age=3600`. For at most an
+  // hour after deploy those cached pages geocode nothing, and that script
+  // hides the whole map card when no pin resolves, so it degrades to no map
+  // rather than a broken one.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/geocode") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
       try {
+        // Generous cap: one report geocodes the subject plus up to 8 comps.
+        if (rateLimited("geo:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
+        }
+        const address = String(JSON.parse(body || "{}").address || "").trim().slice(0, 200);
+        if (!address) return sendJson(res, 400, { error: "address is required." });
         const ll = await geocodeCensus(address);
         if (ll) return sendJson(res, 200, { lat: ll.lat, lng: ll.lng, matchedAddress: ll.matchedAddress, source: "census" });
         return sendJson(res, 200, {});
-      } catch (_) {
-        return sendJson(res, 200, {}); // soft failure — the client falls back
+      } catch (err) {
+        // A malformed body is the caller's bug and says so; everything else is
+        // a soft failure, because the client's own fallback handles {}.
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        return sendJson(res, 200, {});
       }
-    })();
+    });
     return;
   }
 
@@ -16073,7 +16380,7 @@ const server = http.createServer((req, res) =>
           // the routes re-resolve entitlements server-side, so editing this
           // response relabels a plan card and unlocks nothing.
           tester: ent.tester === true,
-          // Pro that arrives through a firm's seat (migration 031). The plan
+          // Pro that arrives through a firm's seat (migration 033). The plan
           // card reads it to say "Pro — through Colliers Boise" and, more
           // importantly, to keep the personal "Manage billing" button away
           // from somebody who has never paid us anything: that button opens a
@@ -16427,7 +16734,7 @@ const server = http.createServer((req, res) =>
           });
         }
 
-        // The firm audience (migration 028). Same three refusals as the
+        // The firm audience (migration 032). Same three refusals as the
         // invited path — signed in, a database, and the audience proven
         // server-side — with the membership taking the place of the email
         // list. Two differences worth naming:
@@ -16796,7 +17103,7 @@ const server = http.createServer((req, res) =>
   // Firms — /api/org and /api/org/*   (enterprise accounts, slice 1)
   //
   // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
-  // Schema: migrations/028-enterprise-orgs.sql   Gate: org-access.js
+  // Schema: migrations/030-enterprise-orgs.sql   Gate: org-access.js
   //
   // The shape of every route here, copied from the hub's: read the rows and
   // the session, ask org-access.js, then act. No route makes its own access
@@ -17093,7 +17400,7 @@ const server = http.createServer((req, res) =>
         if (live.length + clean.emails.length > ORG.MAX_MEMBERS) {
           return sendJson(res, 400, { error: `A firm can hold up to ${ORG.MAX_MEMBERS} people.` });
         }
-        // The seat cap (migration 031). `orgs.seats` is what the firm pays
+        // The seat cap (migration 033). `orgs.seats` is what the firm pays
         // for — or, for a hand-granted firm, what was granted — and it is
         // enforced HERE rather than at accept: refusing an invitation is a
         // sentence the inviter can act on, while refusing an accept punishes
@@ -17430,11 +17737,22 @@ const server = http.createServer((req, res) =>
           }
 
           logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
+          const inviteLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Fire and forget, AFTER the rows are written. A mail provider having
+          // a bad afternoon must never turn a created hub into an error.
+          try {
+            sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
+          } catch (err) {
+            console.error("Hub invite send failed:", err.message);
+          }
           return sendJson(res, 201, {
             ok: true,
             id,
             url: `${SITE_URL}/hub/${id}`,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: inviteLinks,
+            // Whether the invitations actually LEFT. The panel says something
+            // different depending on the answer, and it must not guess.
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -17585,6 +17903,21 @@ const server = http.createServer((req, res) =>
             // guess from the role string.
             canWrite: HUB.canWriteHub(g).ok,
             canAdd: HUB.canAddItems(g).ok,
+            // The guest list, OWNER ONLY. A broker needs it to add or remove
+            // somebody; a client must not have it, because the other addresses
+            // in a hub are that broker's client relationships and none of a
+            // fellow guest's business. Gated on the same owner-only answer
+            // that governs adding comps, so there is one definition of "this
+            // is the broker" rather than two that can drift.
+            ...(HUB.canAddItems(g).ok ? {
+              people: (g.participants || [])
+                .filter((p) => !p.removed_at)
+                .map((p) => ({
+                  email: p.email,
+                  role: p.role,
+                  opened: !!p.first_viewed_at,
+                })),
+            } : {}),
             // Unconditional, now that a poll carries them too. It was a
             // conditional spread while `since` could suppress the list;
             // leaving that in would be a branch that can no longer be false.
@@ -17956,10 +18289,22 @@ const server = http.createServer((req, res) =>
                 { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
             }
           }
+          const newLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Only the NEWLY invited are mailed — re-saving an unchanged list, or
+          // only removing people, must email nobody. Same rule as
+          // PUT /api/shares/viewers.
+          if (newLinks.length) {
+            try {
+              sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
+            } catch (err) {
+              console.error("Hub invite send failed:", err.message);
+            }
+          }
           return sendJson(res, 200, {
             ok: true,
             participants: wanted,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: newLinks,
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

@@ -1,15 +1,15 @@
--- 029 · The firm's auto-share default, member half (2026-08-16)
+-- 031 · The firm's auto-share default, member half (2026-08-16)
 -- Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md §5
 -- Rules: org-access.js (autoShareFor)
 --
 -- RUN BEFORE DEPLOYING the auto-share setting. Purely additive, one nullable
--- column; deploy-then-migrate is survivable here, unlike 028 (PostgREST reads a
+-- column; deploy-then-migrate is survivable here, unlike 030 (PostgREST reads a
 -- missing column as absent on a SELECT that does not name it, and org-access.js
 -- reads `undefined` as "has not chosen"), but the setting is inert until it
 -- runs and every member would silently sit on the firm default.
 --
 -- ---------------------------------------------------------------------------
--- WHY A MEMBER COLUMN AT ALL, when 028 already shipped orgs.share_default
+-- WHY A MEMBER COLUMN AT ALL, when 030 already shipped orgs.share_default
 -- ---------------------------------------------------------------------------
 -- share_default is an ADMIN's decision about other people's work. On its own
 -- it means one person can start publishing every colleague's new valuations to

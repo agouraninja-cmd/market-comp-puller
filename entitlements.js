@@ -453,7 +453,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // entitlement one (see the spec's open questions); this flag only answers
     // "may they open it today", and after a lapse the answer is no.
     canUseVault: broker,
-    // Creating a firm and inviting colleagues to it (migration 028). Tracks
+    // Creating a firm and inviting colleagues to it (migration 030). Tracks
     // `broker` for the same reason canUseVault does — one subscription, and
     // the firm is a Pro capability rather than a second tier's.
     //
